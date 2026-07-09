@@ -23,7 +23,7 @@ The actionable `docker compose` stderr is missing from host-visible logs.
 
 Guest bootstrap started Compose through systemd. When `/usr/local/bin/tirosh-vitalserver-compose up` failed, the Python subprocess boundary surfaced only the `systemctl start` failure. The inner Compose command output, service state snapshot, and container logs were not preserved in the shared diagnostics that the Host can read.
 
-This does not mean the Host should infer container state from logs. The missing logs are diagnostic evidence only; runtime state must still come from explicit guest-owned documents such as `runtime-state.json`.
+This does not mean the Host should infer container state from logs. The missing logs are diagnostic evidence only; runtime state must still come from explicit guest-owned documents such as `runtime-observation.json`.
 
 ## Fix Direction
 

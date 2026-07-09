@@ -17,20 +17,20 @@ watchdog recovery deferred: vm-lifecycle-bootstrapping
 
 ## Cause
 
-설치 workflow는 package/runtime 파일 배치가 끝난 뒤 runtime status를 `initializing`으로 기록합니다. 이 상태에서 VM lifecycle은 아직 `bootstrapping`일 수 있고, guest HTTP, host proxy, guest runtime-state 관측은 아직 실패할 수 있습니다.
+설치 workflow는 package/runtime 파일 배치가 끝난 뒤 runtime status projection을 `initializing`으로 기록하고, active operation은 Host operation lease가 소유합니다. 이 상태에서 VM lifecycle은 아직 `bootstrapping`일 수 있고, Guest HTTP, Host proxy, Guest readiness 관측은 아직 실패할 수 있습니다.
 
-watchdog recovery policy는 이 구간을 복구 대상이 아니라 deferred recovery로 판단하지만, 기존 runner는 deferred observation status를 무조건 `degraded`로 저장했습니다. 따라서 초기 설치 상태의 소유자인 `runtime-status.json`이 `initializing + install`을 명시하고 있어도, watchdog 관측 결과가 표시 상태를 덮어썼습니다.
+watchdog recovery policy는 이 구간을 복구 대상이 아니라 deferred recovery로 판단하지만, 기존 runner는 deferred observation status를 무조건 `degraded`로 저장했습니다. 초기 설치 상태와 active operation ownership이 status projection과 섞여 있던 구조에서는 watchdog 관측 결과가 표시 상태와 작업 소유권을 덮어쓸 수 있었습니다.
 
 ## Fix Direction
 
-watchdog runner는 observed status를 쓰기 전에 현재 runtime status document를 명시적으로 읽습니다. current status가 `initializing`이고 operation이 `install`인 경우, deferred recovery event는 남기되 표시 status는 `initializing`으로 유지합니다.
+watchdog runner는 active operation을 Host operation lease에서만 판단하고, status projection이나 install-state artifact에서 operation을 추론하지 않습니다. deferred recovery event는 남기되, 초기 설치/managed operation 소유권은 lease가 제공하는 명시 상태를 따르고 install state document는 diagnostics/export artifact로만 남깁니다.
 
-missing, failed, non-install status는 보정하지 않습니다. 그런 경우 watchdog deferred observation은 기존처럼 `degraded`로 기록됩니다.
+missing, failed, non-install status는 보정하지 않습니다. 그런 경우 watchdog deferred observation은 explicit policy 결과로만 기록됩니다.
 
 ## Prevention Principle
 
 - watchdog은 recovery 이벤트를 기록할 수 있지만, 초기 설치 상태를 추정하거나 생성하지 않습니다.
-- 초기 설치 상태는 install workflow가 작성한 `runtime-status.json` contract로만 판단합니다.
+- 초기 설치 상태는 install workflow/operation-state owner가 제공한 explicit state로 판단합니다. `runtime-status.json`은 diagnostics/status projection이며 current operation owner가 아닙니다.
 - status read failure나 missing document를 `initializing`으로 보정하지 않습니다.
 - bootstrapping defer와 실제 degraded 상태는 owner-provided current status로만 구분합니다.
 

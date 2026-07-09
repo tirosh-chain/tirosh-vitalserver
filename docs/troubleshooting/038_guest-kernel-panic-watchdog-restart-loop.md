@@ -33,7 +33,7 @@ Update 중에는 같은 guest kernel panic 계열이 다른 증상으로 보일 
 ## Impact
 
 - VM이 부팅, guest service start, watchdog restart, launchd respawn을 반복하면서 CPU와 IO 부하가 커집니다.
-- guest `runtime-state.json` 갱신이 멈추거나 stale이 되어 Remote Console 상태가 빠르게 악화됩니다.
+- guest `runtime-observation.json` 갱신이 멈추거나 stale이 되어 Remote Console 상태가 빠르게 악화됩니다.
 - host proxy, recorder ingress, TestKit/Recorder 상태가 연쇄적으로 failed/stale로 보일 수 있습니다.
 - 이미 read-only remount가 발생한 VM disk는 watchdog restart만으로 복구되지 않습니다.
 - 같은 update 또는 테스트를 반복하면 mutable VM disk 손상이 더 커질 수 있습니다.

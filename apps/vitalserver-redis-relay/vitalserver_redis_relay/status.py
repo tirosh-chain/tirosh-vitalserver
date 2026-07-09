@@ -52,7 +52,7 @@ def write_status(
     error: str | None = None,
     last_success_at: str | None = None,
     last_error_at: str | None = None,
-) -> None:
+) -> dict[str, object]:
     target = settings.target
     status = RelayStatus(
         schema_version=1,
@@ -79,44 +79,44 @@ def write_status(
         last_error=error,
         last_error_samples=_error_samples(batch),
     )
+    document = _wire_status(status)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_wire_status(status), sort_keys=True) + "\n")
+    path.write_text(json.dumps(document, sort_keys=True) + "\n")
+    return document
 
 
-def write_unavailable_status(path: Path, *, state: str, error: str) -> None:
+def write_unavailable_status(
+    path: Path, *, state: str, error: str
+) -> dict[str, object]:
     observed_at = status_timestamp()
+    document = {
+        "schemaVersion": 1,
+        "observedAt": observed_at,
+        "enabled": False,
+        "state": state,
+        "scope": "unknown",
+        "targetUrl": None,
+        "targetHost": None,
+        "targetPort": None,
+        "targetDatabase": None,
+        "targetTLS": None,
+        "targetUsernameConfigured": False,
+        "targetPasswordConfigured": False,
+        "settingsFingerprint": None,
+        "publishTargetKeyPrefix": None,
+        "publishEventStreamKey": None,
+        "publishPublisherId": None,
+        "batches": 0,
+        "totals": _batch_counts(RelayBatchResult()),
+        "lastBatch": None,
+        "lastSuccessAt": None,
+        "lastErrorAt": observed_at,
+        "lastError": error,
+        "lastErrorSamples": [],
+    }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "schemaVersion": 1,
-                "observedAt": observed_at,
-                "enabled": False,
-                "state": state,
-                "scope": "unknown",
-                "targetUrl": None,
-                "targetHost": None,
-                "targetPort": None,
-                "targetDatabase": None,
-                "targetTLS": None,
-                "targetUsernameConfigured": False,
-                "targetPasswordConfigured": False,
-                "settingsFingerprint": None,
-                "publishTargetKeyPrefix": None,
-                "publishEventStreamKey": None,
-                "publishPublisherId": None,
-                "batches": 0,
-                "totals": _batch_counts(RelayBatchResult()),
-                "lastBatch": None,
-                "lastSuccessAt": None,
-                "lastErrorAt": observed_at,
-                "lastError": error,
-                "lastErrorSamples": [],
-            },
-            sort_keys=True,
-        )
-        + "\n"
-    )
+    path.write_text(json.dumps(document, sort_keys=True) + "\n")
+    return document
 
 
 def _wire_status(status: RelayStatus) -> dict[str, object]:

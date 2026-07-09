@@ -9,14 +9,14 @@
 
 ## Symptom
 
-After a fresh Helper install, launchd services are running and the guest app is reachable through the host proxy, but `runtime-status.json` remains `critical`.
+After a fresh Helper install, launchd services are running and the guest app is reachable through the host proxy, but Runtime Control or the status diagnostics projection reports `critical`.
 
 Typical evidence:
 
 - `launchctl print system/ai.tirosh.vitalserver.helper.vm` shows the VM service running.
 - `launchctl print system/ai.tirosh.vitalserver.helper.proxy` shows the proxy service running.
 - `curl http://127.0.0.1/ready` or the browser reaches the VitalServer app.
-- `runtime-status.json` contains `guest-service-observation-read-failed-.../v1/stack/status`.
+- Runtime Control `failureReasons` contain `guest-service-observation-read-failed-.../v1/stack/status`. Status diagnostics may only show the last published status context; current failure reasons come from Runtime Control owner reads, not `runtime-status.json`.
 
 ## Cause
 
@@ -33,7 +33,7 @@ curl -sS -i --max-time 10 "http://${VM_IP}:18330/v1/stack/status"
 cat '/Library/Application Support/VitalServerHelper/status/runtime-status.json'
 ```
 
-If the direct Guest Control call succeeds but `runtime-status.json` still reports `guest-service-observation-read-failed`, compare the endpoint latency with the Host status-read timeout budget.
+If the direct Guest Control call succeeds but Runtime Control still reports `guest-service-observation-read-failed`, compare the endpoint latency with the Host status-read timeout budget. Treat `runtime-status.json` as diagnostics evidence only; current state must come from Runtime Control's explicit owner reads.
 
 ## Fix Direction
 

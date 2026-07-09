@@ -53,7 +53,7 @@ Examples:
 
 - `domain.observability.GuestObservabilitySnapshot`
 - `domain.runtime_config.RuntimeConfig`
-- `domain.runtime_state.GuestRuntimeState`
+- `domain.runtime_observation.GuestRuntimeObservation`
 - `domain.operations.GuestOperationResult`
 
 Outbound adapters may collect Linux values and create these domain objects.

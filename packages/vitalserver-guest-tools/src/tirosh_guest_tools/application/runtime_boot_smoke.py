@@ -28,6 +28,7 @@ from tirosh_guest_tools.contracts import (
     RuntimeConfigKey,
     RuntimeFileName,
     RuntimeService,
+    RuntimeDiagnosticsArtifactFileName,
 )
 from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
@@ -39,8 +40,8 @@ from tirosh_guest_tools.infrastructure.common import (
 )
 
 BOOTSTRAP_RESULT_SCHEMA_VERSION = 3
-RUNTIME_STATE_SCHEMA_VERSION = 1
-MAX_RUNTIME_STATE_AGE_SECONDS = 180
+RUNTIME_OBSERVATION_SCHEMA_VERSION = 1
+MAX_RUNTIME_OBSERVATION_AGE_SECONDS = 180
 COMPOSE_READY_TIMEOUT_SECONDS = 120.0
 COMPOSE_READY_POLL_SECONDS = 2.0
 HTTP_TIMEOUT_SECONDS = 5.0
@@ -51,7 +52,7 @@ LAB_REPLAY_SMOKE_VITAL_FILE = "/mnt/tirosh-vital-files/runtime-boot-smoke-replay
 
 REQUIRED_SYSTEMD_UNITS = (
     "docker.service",
-    RuntimeService.RUNTIME_STATE.value,
+    RuntimeService.RUNTIME_OBSERVATION.value,
     RuntimeService.COMPOSE.value,
     "tirosh-guest-observability.service",
     RuntimeService.GUEST_CONTROL_API.value,
@@ -126,7 +127,7 @@ def default_context() -> RuntimeBootSmokeContext:
         deploy_dir=DEPLOY_DIR,
         manifest_path=RUNTIME_DIR / RUNTIME_BOOT_SMOKE_MANIFEST,
         run_id=run_id,
-        max_runtime_state_age_seconds=MAX_RUNTIME_STATE_AGE_SECONDS,
+        max_runtime_observation_age_seconds=MAX_RUNTIME_OBSERVATION_AGE_SECONDS,
         compose_ready_timeout_seconds=COMPOSE_READY_TIMEOUT_SECONDS,
         dev_build=False,
     )
@@ -165,8 +166,11 @@ def run_runtime_boot_smoke(
         )
         execute_stage(
             run,
-            "runtime-state",
-            lambda active_run: validate_runtime_state(active_run, bootstrap_result),
+            "runtime-observation",
+            lambda active_run: validate_runtime_observation(
+                active_run,
+                bootstrap_result,
+            ),
         )
         execute_stage(
             run,
@@ -267,7 +271,10 @@ def execute_stage(
 def validate_bootstrap_result(
     run: RuntimeBootSmokeRun,
 ) -> tuple[str, dict[str, Any]]:
-    path = run.context.runtime_dir / RuntimeFileName.BOOTSTRAP_RESULT.value
+    path = (
+        run.context.runtime_dir
+        / RuntimeDiagnosticsArtifactFileName.BOOTSTRAP_RESULT.value
+    )
     document = run.operations.read_json(path)
     require_equal(
         document.get("schemaVersion"),
@@ -296,45 +303,51 @@ def validate_bootstrap_result(
     )
 
 
-def validate_runtime_state(
+def validate_runtime_observation(
     run: RuntimeBootSmokeRun,
     bootstrap_result: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    path = run.context.runtime_dir / RuntimeFileName.RUNTIME_STATE.value
+    path = (
+        run.context.runtime_dir
+        / RuntimeDiagnosticsArtifactFileName.RUNTIME_OBSERVATION.value
+    )
     document = run.operations.read_json(path)
     require_equal(
         document.get("schemaVersion"),
-        RUNTIME_STATE_SCHEMA_VERSION,
-        f"runtime state schema mismatch: {path}",
+        RUNTIME_OBSERVATION_SCHEMA_VERSION,
+        f"runtime observation schema mismatch: {path}",
     )
-    boot_id = require_non_empty_string(document.get("bootID"), "runtime state bootID")
+    boot_id = require_non_empty_string(
+        document.get("bootID"),
+        "runtime observation bootID",
+    )
     bootstrap_boot_id = bootstrap_result.get("bootID")
     if bootstrap_boot_id and boot_id != bootstrap_boot_id:
         raise RuntimeError(
-            "runtime state bootID does not match bootstrap result: "
+            "runtime observation bootID does not match bootstrap result: "
             f"runtime={boot_id} bootstrap={bootstrap_boot_id}"
         )
-    vm_ip = require_non_empty_string(document.get("vmIP"), "runtime state vmIP")
+    vm_ip = require_non_empty_string(document.get("vmIP"), "runtime observation vmIP")
     if vm_ip.startswith(("127.", "169.254.")):
-        raise RuntimeError(f"runtime state vmIP is not routable: {vm_ip}")
+        raise RuntimeError(f"runtime observation vmIP is not routable: {vm_ip}")
     updated_at = require_non_empty_string(
         document.get("updatedAt"),
-        "runtime state updatedAt",
+        "runtime observation updatedAt",
     )
     age_seconds = document_age_seconds(updated_at, run.operations.now())
-    if age_seconds > run.context.max_runtime_state_age_seconds:
+    if age_seconds > run.context.max_runtime_observation_age_seconds:
         raise RuntimeError(
-            "runtime state is stale: "
+            "runtime observation is stale: "
             f"ageSeconds={age_seconds:.1f} "
-            f"maxSeconds={run.context.max_runtime_state_age_seconds}"
+            f"maxSeconds={run.context.max_runtime_observation_age_seconds}"
         )
     probe_errors = document.get("probeErrors")
     if not isinstance(probe_errors, list):
-        raise RuntimeError("runtime state probeErrors must be an explicit list")
+        raise RuntimeError("runtime observation probeErrors must be an explicit list")
     if probe_errors:
-        raise RuntimeError(f"runtime state contains probe errors: {probe_errors}")
+        raise RuntimeError(f"runtime observation contains probe errors: {probe_errors}")
     return (
-        "runtime state is valid and fresh",
+        "runtime observation is valid and fresh",
         {
             "path": str(path),
             "bootID": boot_id,
@@ -831,10 +844,10 @@ def validate_disk_health(
     run: RuntimeBootSmokeRun,
     bootstrap_result: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    document = read_current_runtime_state_document(run, bootstrap_result)
+    document = read_current_runtime_observation_document(run, bootstrap_result)
     disk_health = document.get("diskHealth")
     if not isinstance(disk_health, dict):
-        raise RuntimeError("runtime state diskHealth is missing")
+        raise RuntimeError("runtime observation diskHealth is missing")
     if disk_health.get("rootFilesystemReadOnly") is not False:
         raise RuntimeError(
             "root filesystem is not explicitly writable: "
@@ -887,7 +900,7 @@ def validate_feature_readiness(
     run: RuntimeBootSmokeRun,
     bootstrap_result: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    document = read_current_runtime_state_document(run, bootstrap_result)
+    document = read_current_runtime_observation_document(run, bootstrap_result)
     runtime_config = run.operations.read_json(
         run.context.deploy_dir / RuntimeFileName.RUNTIME_CONFIG.value
     )
@@ -901,14 +914,16 @@ def validate_feature_readiness(
         raise RuntimeError(f"runtime config is missing keys: {missing_config}")
     http_probes = document.get("httpProbes")
     if not isinstance(http_probes, dict):
-        raise RuntimeError("runtime state httpProbes is missing")
+        raise RuntimeError("runtime observation httpProbes is missing")
     missing_http_probes = [
         name
         for name in ("guestHTTP", "redisUIHTTP", "swaggerUIHTTP")
         if name not in http_probes
     ]
     if missing_http_probes:
-        raise RuntimeError(f"runtime state http probes missing: {missing_http_probes}")
+        raise RuntimeError(
+            f"runtime observation http probes missing: {missing_http_probes}"
+        )
     return (
         "feature read contracts are available",
         {
@@ -954,19 +969,19 @@ def systemd_property(run: RuntimeBootSmokeRun, service: str, property_name: str)
     return value
 
 
-def runtime_state_document(runtime_state: dict[str, Any]) -> dict[str, Any]:
-    document = runtime_state.get("document")
+def runtime_observation_document(runtime_observation: dict[str, Any]) -> dict[str, Any]:
+    document = runtime_observation.get("document")
     if not isinstance(document, dict):
-        raise RuntimeError("runtime state document is missing from stage details")
+        raise RuntimeError("runtime observation document is missing from stage details")
     return document
 
 
-def read_current_runtime_state_document(
+def read_current_runtime_observation_document(
     run: RuntimeBootSmokeRun,
     bootstrap_result: dict[str, Any],
 ) -> dict[str, Any]:
-    return runtime_state_document(
-        validate_runtime_state(run, bootstrap_result)[1],
+    return runtime_observation_document(
+        validate_runtime_observation(run, bootstrap_result)[1],
     )
 
 

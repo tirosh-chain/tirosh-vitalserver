@@ -68,7 +68,8 @@ public struct RuntimeStatusOverallHealthPolicy {
         if RuntimeReadinessPolicy.isReady(status) {
             return value(vocabulary.healthyText, .healthy)
         }
-        let installationState = status.effectiveRuntimeInstallationState
+        let installationState = status.runtimeInstallationState
+            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
         if installationState == .missing {
             return value(vocabulary.notInstalledText, .critical)
         }

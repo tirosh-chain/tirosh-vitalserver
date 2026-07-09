@@ -23,11 +23,34 @@ PWA = ROOT / "apps/vitalserver-runtime-pwa"
 def main() -> int:
     results = [
         check_runtime_status_reader_uses_guest_control(),
+        check_command_worker_uses_guest_address_provider(),
         check_runtime_container_observation_does_not_expose_compose_services(),
         check_runtime_status_assembly_does_not_promote_runtime_state_services(),
+        check_runtime_status_assembly_uses_live_host_service_liveness(),
+        check_runtime_status_assembly_carries_explicit_installation_state(),
+        check_runtime_status_surfaces_use_explicit_installation_state(),
+        check_runtime_status_assembly_does_not_promote_status_http_snapshots(),
+        check_runtime_status_read_issues_do_not_create_action_needed(),
+        check_runtime_presentation_does_not_use_status_operation_progress(),
+        check_operation_state_reader_does_not_copy_status_updated_at(),
         check_runtime_status_document_has_no_container_observation(),
         check_runtime_event_contract_has_no_container_observation(),
         check_runtime_event_factory_does_not_write_container_observation(),
+        check_runtime_observed_events_do_not_read_status_document_previous_status(),
+        check_runtime_status_document_does_not_own_progress_state(),
+        check_runtime_progress_document_failure_does_not_own_current_status_issue(),
+        check_runtime_progress_artifact_sink_is_write_only(),
+        check_runtime_status_artifact_sink_is_write_only(),
+        check_runtime_diagnostics_artifact_file_names_are_separate(),
+        check_runtime_current_owner_file_names_are_separate(),
+        check_runtime_log_artifact_file_names_are_separate(),
+        check_runtime_generic_file_names_are_removed(),
+        check_runtime_settings_paths_use_installed_paths_defaults(),
+        check_runtime_workflow_state_artifact_writers_are_named_as_artifacts(),
+        check_runtime_status_document_does_not_own_current_health_state(),
+        check_runtime_status_document_failure_reasons_are_not_current_health(),
+        check_runtime_status_document_does_not_own_active_operation_state(),
+        check_runtime_data_restore_does_not_restore_runtime_status_projection(),
         check_host_failure_reasons_do_not_model_container_observation_reads(),
         check_runtime_state_document_has_no_container_services(),
         check_runtime_state_document_has_no_capabilities(),
@@ -36,7 +59,7 @@ def main() -> int:
         check_legacy_guest_request_result_file_names_are_removed(),
         check_swift_legacy_guest_result_documents_are_removed(),
         check_guest_request_file_poller_is_removed(),
-        check_redis_backup_file_bridge_is_runtime_state_watcher_only(),
+        check_redis_backup_file_bridge_is_absent_from_runtime_observation_writer(),
         check_redis_backup_has_guest_control_maintenance_api(),
         check_update_activation_has_guest_control_maintenance_api(),
         check_update_shutdown_has_guest_control_maintenance_api(),
@@ -48,6 +71,7 @@ def main() -> int:
         check_cli_datastore_repair_uses_guest_control_api(),
         check_cli_redis_backup_restore_use_guest_control_api(),
         check_runtime_data_backup_uses_guest_control_maintenance_api(),
+        check_runtime_command_result_preserves_explicit_execution_evidence(),
         check_product_surfaces_do_not_expose_dev_testkit(),
         check_runtime_control_api_exposes_v2_product_surface(),
         check_guest_control_lab_boundary_does_not_name_testkit(),
@@ -57,19 +81,31 @@ def main() -> int:
         check_runtime_config_does_not_enable_testkit(),
         check_product_packaging_uses_lab_not_testkit(),
         check_vitaldb_read_models_do_not_name_host_sqlite_as_source(),
+        check_vitaldb_observation_snapshot_preserves_explicit_read_state_contract(),
+        check_vitaldb_relationship_history_preserves_explicit_read_state_contract(),
         check_vitaldb_beds_use_explicit_bed_read_document(),
         check_vitaldb_host_sqlite_projection_requires_diagnostics_mode(),
+        check_runtime_event_sqlite_index_failure_does_not_fail_primary_append(),
         check_host_does_not_write_vitaldb_sqlite_projection(),
         check_host_health_does_not_promote_vitaldb_read_model_failures(),
         check_host_health_uses_guest_control_ready_for_guest_readiness(),
         check_host_proxy_runtime_state_read_is_vm_bootstrap_only(),
+        check_devtools_runtime_wait_uses_bootstrap_address_and_http_probe(),
+        check_devtools_runtime_health_uses_bootstrap_address_and_http_probe(),
+        check_dev_make_proxy_start_uses_guest_address_owner(),
         check_current_health_has_no_reported_vm_error_input(),
         check_managed_operation_guard_does_not_read_runtime_state(),
-        check_guest_bootstrap_current_boot_uses_vm_lifecycle(),
+        check_cli_host_centralizes_operation_lease_owner_adapter_selection(),
+        check_host_guest_address_has_runtime_control_api_owner_surface(),
+        check_host_vm_lifecycle_has_runtime_control_api_owner_surface(),
+        check_guest_bootstrap_result_is_not_current_state_input(),
         check_health_recovery_policies_do_not_accept_diagnostics_observations(),
         check_health_snapshot_contract_does_not_carry_container_observation(),
         check_runtime_status_document_does_not_store_vitaldb_observation(),
         check_runtime_status_contract_has_no_vitaldb_observation(),
+        check_recorder_ingress_status_read_result_preserves_explicit_read_contract(),
+        check_redis_relay_status_document_preserves_complete_owner_contract(),
+        check_redis_relay_status_read_result_preserves_explicit_read_contract(),
         check_recorder_ingress_status_is_guest_control_only(),
         check_recorder_ingress_does_not_read_runtime_state_memory_guard(),
         check_runtime_boot_smoke_uses_guest_control_stack_status(),
@@ -84,16 +120,20 @@ def main() -> int:
         check_guest_service_control_has_separate_capability(),
         check_guest_capability_checks_use_guest_control_api(),
         check_cli_consumes_guest_control_product_apis(),
-        check_cli_guest_control_default_url_uses_runtime_status(),
+        check_cli_guest_control_default_url_uses_guest_address_provider(),
         check_product_readmes_do_not_promote_legacy_sources(),
         check_testkit_package_is_dev_tooling_only(),
         check_runtime_proof_local_artifacts_and_private_samples_are_ignored(),
         check_product_docs_do_not_promote_testkit_runtime_surface(),
         check_runtime_proof_docs_describe_acceptance_targets(),
+        check_delivery_validation_docs_do_not_promote_legacy_runtime_state_files(),
+        check_runtime_update_docs_do_not_promote_status_files_as_current_owners(),
+        check_runtime_event_history_docs_do_not_promote_files_as_state_owners(),
         check_api_catalog_exposes_runtime_support_specs(),
         check_runtime_proof_troubleshooting_documents_acceptance_blockers(),
         check_maintenance_docs_do_not_promote_request_files_as_current_path(),
         check_observer_docs_use_guest_postgres_read_model_flow(),
+        check_redis_relay_status_docs_use_guest_control_api_flow(),
         check_redis_backup_restore_results_do_not_carry_request_id(),
         check_guest_tools_legacy_operation_result_model_removed(),
     ]
@@ -117,6 +157,11 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
         / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
         / "RuntimeStatusReader.swift"
     )
+    runtime_paths_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
+        / "RuntimePaths.swift"
+    )
     text = read(path)
     required = [
         "gateway.stackStatus()",
@@ -124,18 +169,93 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
         "RuntimeGuestServicesRead",
         "guestServiceResources",
         "guestServiceResourceReadIssues",
+        "guestAddressProvider = guestAddressProvider ?? ownerReaders.guestAddressProvider",
+        "guestAddressProvider.readGuestAddress()",
+        "guestAddressRead.loadedAddress",
+        "RuntimeHostStatusOwnerReaderBundle.live(",
+        "vmLifecycleReader.loadVMLifecycleRead()",
+        "vmLifecycleRead: vmLifecycleRead",
+        "redisRelayStatusRead(vmIP: guestAddressRead.loadedAddress)",
+        "guestControlGateway(baseURL).redisRelayStatus()",
+        "RuntimePackageArtifactFileNames.runtimeVersion",
+        "InstalledRuntimePaths.defaultInstalled.backupsDirectory",
     ]
     forbidden = [
         "containerServices",
         "composeServices",
         "service-stack-status",
         "serviceStackStatus",
-        "runtime-state.json",
-        "GuestRuntimeStateDocumentReader",
-        "paths.runtimeState",
+        "runtime-observation.json",
+        "GuestRuntimeObservationDocumentReader",
+        "paths.runtimeObservation",
+        "RuntimeStatusDocumentReader(",
+        "paths.runtimeStatus",
+        "RuntimeRedisRelayStatusReader(",
+        "paths.redisRelayStatus",
+        "RuntimeInstallStateDocumentReader(",
+        "paths.runtimeInstallState",
+        "RuntimeVersionStore(",
+        "RuntimeProxyLaunchDaemonPortReader(",
+        "RuntimeVMLifecycleStore(",
+        "RuntimeManagedBackupPolicy.nameFragment",
+        "paths.runtimeVersion",
+        "paths.backupsDirectory",
+        "paths.proxyLaunchDaemon",
+        "paths.vmLifecycle",
+        "paths.vmIPFile",
+        "RuntimeControlClientConstants.Paths.runtimeVersion",
+        "RuntimeControlClientConstants.Paths.backups",
+        "RuntimeVMIPFileGuestAddressProvider(",
+        "installStateRead:",
+        "statusRead:",
+        "statusRead.document?.vmIP",
+        "statusRead.document?.vmState",
+        "statusRead.document?.vmErrors",
     ]
     missing = [token for token in required if token not in text]
     present = [token for token in forbidden if token in text]
+    owner_readers_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "RuntimeHostStatusOwnerReaders.swift"
+    )
+    owner_readers_text = read(owner_readers_path)
+    owner_required = [
+        "proxyPortReader: RuntimeHostProxyPortReader(",
+        "plistPath: InstalledRuntimePaths.defaultInstalled.proxyLaunchDaemon.path",
+        "RuntimePackageArtifactFileNames.runtimeVersion",
+        "InstalledRuntimePaths.defaultInstalled.backupsDirectory",
+        "RuntimeProxyLaunchDaemonPortReader(",
+        "backup directory missing path=\\(backupsDirectory.path)",
+    ]
+    missing += [
+        f"{relative(owner_readers_path)}:{token}"
+        for token in owner_required
+        if token not in owner_readers_text
+    ]
+    owner_forbidden = [
+        "RuntimeProxyPortOwnerReader.live(",
+        "RuntimeControlClientConstants.Paths.proxyLaunchDaemon",
+        "RuntimeControlClientConstants.Paths.runtimeVersion",
+        "RuntimeControlClientConstants.Paths.backups",
+        "case .missing:\n            return RuntimeLatestBackupRead(path: nil, issue: nil)",
+    ]
+    present += [
+        f"{relative(owner_readers_path)}:{token}"
+        for token in owner_forbidden
+        if token in owner_readers_text
+    ]
+    proxy_owner_wrapper_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
+        / "RuntimeProxyPortOwnerReader.swift"
+    )
+    if proxy_owner_wrapper_path.exists():
+        present.append(
+            f"{relative(proxy_owner_wrapper_path)}:ambiguous proxy port owner wrapper must be removed"
+        )
+    if runtime_paths_path.exists():
+        present.append(f"{relative(runtime_paths_path)}:broad RuntimePaths file must be removed")
     if missing or present:
         return CheckResult(
             "runtime-status-reader-guest-control-source",
@@ -147,6 +267,41 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
         True,
         "product service liveness and controller resources are read from Guest Control API "
         f"path={relative(path)}",
+    )
+
+
+def check_command_worker_uses_guest_address_provider() -> CheckResult:
+    path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands"
+        / "MacRuntimeControlCommandWorker.swift"
+    )
+    text = read(path)
+    required = [
+        "private let guestAddressProvider",
+        "self.guestAddressProvider = guestAddressProvider",
+        "guestAddressProvider.readGuestAddress()",
+        "guestAddressRead.loadedAddress",
+    ]
+    forbidden = [
+        "RuntimeVMIPFileGuestAddressProvider(",
+        "RuntimeStatusDocumentReader(",
+        "read.document?.vmIP",
+        "read.document?.guestAddressRead",
+        "runtime status document does not report vmIP",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    if missing or present:
+        return CheckResult(
+            "command-worker-guest-address-provider",
+            False,
+            f"missing={missing} forbidden_present={present} path={relative(path)}",
+        )
+    return CheckResult(
+        "command-worker-guest-address-provider",
+        True,
+        "Host command worker derives Guest Control base URL from explicit Guest address reads",
     )
 
 
@@ -200,8 +355,8 @@ def check_runtime_status_assembly_does_not_promote_runtime_state_services(
     )
     text = read(path)
     forbidden = [
-        "GuestRuntimeStateRead",
-        "GuestRuntimeStateDocument",
+        "GuestRuntimeObservationRead",
+        "GuestRuntimeObservationDocument",
         "guestStateRead",
         "guestState?.",
         "guestState?.containerServices",
@@ -222,6 +377,799 @@ def check_runtime_status_assembly_does_not_promote_runtime_state_services(
         True,
         "runtime-state documents are not status assembly inputs "
         f"path={relative(path)}",
+    )
+
+
+def check_runtime_status_assembly_uses_live_host_service_liveness() -> CheckResult:
+    path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeStatusAssembly.swift"
+    )
+    text = read(path)
+    models_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlModels.swift"
+    )
+    models_text = read(models_path)
+    required = [
+        "let vmService = liveServiceState(liveServiceStates.vm)",
+        "let proxyService = liveServiceState(liveServiceStates.proxy)",
+        "let watchdogService = liveServiceState(liveServiceStates.watchdog)",
+    ]
+    forbidden = [
+        "statusDocument _: RuntimeStatusDocument?",
+        "document?.vmService",
+        "document?.proxyService",
+        "document?.watchdogService",
+        "source: .statusDocument",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    model_forbidden = [
+        'case statusDocument = "status-document"',
+    ]
+    present += [
+        f"{relative(models_path)}:{token}"
+        for token in model_forbidden
+        if token in models_text
+    ]
+    if missing or present:
+        return CheckResult(
+            "runtime-status-assembly-live-host-service-liveness",
+            False,
+            f"missing={missing} forbidden_present={present} path={relative(path)}",
+        )
+    return CheckResult(
+        "runtime-status-assembly-live-host-service-liveness",
+        True,
+        "Host managed service liveness is assembled from live host reads, not runtime-status.json "
+        f"path={relative(path)}",
+    )
+
+
+def check_runtime_status_assembly_carries_explicit_installation_state() -> CheckResult:
+    assembly_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeStatusAssembly.swift"
+    )
+    models_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlModels.swift"
+    )
+    assembly_text = read(assembly_path)
+    models_text = read(models_path)
+    required = [
+        "runtimeInstallationState: RuntimeFileState",
+        "runtimeInstallationState: runtimeExecutableState",
+        "runtimeInstallationState: liveDiagnostics.runtimeInstallationState",
+    ]
+    forbidden = [
+        "runtimeInstallationState: nil",
+        "runtimeInstallationState: liveDiagnostics.runtimeInstalled",
+        "runtimeInstallationState: status.runtimeInstalled",
+    ]
+    missing = [token for token in required if token not in assembly_text]
+    present = [token for token in forbidden if token in assembly_text]
+    model_required = [
+        "public var runtimeInstallationState: RuntimeFileState?",
+    ]
+    model_forbidden = [
+        "public var effectiveRuntimeInstallationState",
+        "runtimeInstallationState ?? (runtimeInstalled ? .executable : .missing)",
+    ]
+    model_missing = [
+        f"{relative(models_path)}:{token}"
+        for token in model_required
+        if token not in models_text
+    ]
+    present += [
+        f"{relative(models_path)}:{token}"
+        for token in model_forbidden
+        if token in models_text
+    ]
+    if missing or present or model_missing:
+        return CheckResult(
+            "runtime-status-explicit-installation-state",
+            False,
+            (
+                f"missing={missing} model_missing={model_missing} "
+                f"forbidden_present={present} path={relative(assembly_path)}"
+            ),
+        )
+    return CheckResult(
+        "runtime-status-explicit-installation-state",
+        True,
+        "RuntimeStatus production assembly carries explicit runtime installation file state",
+    )
+
+
+def check_runtime_status_surfaces_use_explicit_installation_state() -> CheckResult:
+    paths = {
+        relative(
+            MACOS_RUNTIME
+            / "Sources/Adapters/Inbound/RuntimeControlAPI/DevConsole/RuntimeControlDevConsole.html"
+        ): read(
+            MACOS_RUNTIME
+            / "Sources/Adapters/Inbound/RuntimeControlAPI/DevConsole/RuntimeControlDevConsole.html"
+        ),
+        relative(
+            PWA / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+        ): read(PWA / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"),
+        relative(
+            PWA / "src/domain/runtime-control/contracts/generated/runtime-control.ts"
+        ): read(PWA / "src/domain/runtime-control/contracts/generated/runtime-control.ts"),
+        relative(PWA / "src/pages/advanced/AdvancedPage.tsx"): read(
+            PWA / "src/pages/advanced/AdvancedPage.tsx"
+        ),
+        relative(ROOT / "docs/runtime/macos/runtime-control.openapi.json"): read(
+            ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+        ),
+        relative(ROOT / "docs/runtime/macos/runtime-control-api.md"): read(
+            ROOT / "docs/runtime/macos/runtime-control-api.md"
+        ),
+    }
+    required = [
+        (
+            "apps/vitalserver-macos-runtime/Sources/Adapters/Inbound/RuntimeControlAPI/DevConsole/RuntimeControlDevConsole.html",
+            "status.runtimeInstallationState === \"executable\"",
+        ),
+        (
+            "apps/vitalserver-runtime-pwa/src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts",
+            "runtimeInstallationState: z.string().optional()",
+        ),
+        (
+            "apps/vitalserver-runtime-pwa/src/domain/runtime-control/contracts/generated/runtime-control.ts",
+            "runtimeInstallationState?: string",
+        ),
+        (
+            "apps/vitalserver-runtime-pwa/src/pages/advanced/AdvancedPage.tsx",
+            "const runtimeInstallationState = status?.runtimeInstallationState",
+        ),
+        (
+            "docs/runtime/macos/runtime-control.openapi.json",
+            "\"runtimeInstallationState\"",
+        ),
+        (
+            "docs/runtime/macos/runtime-control.openapi.json",
+            "Clients must use runtimeInstallationState for runtime installation decisions.",
+        ),
+        (
+            "docs/runtime/macos/runtime-control-api.md",
+            "`RuntimeStatus.runtimeInstallationState`",
+        ),
+        (
+            "docs/runtime/macos/runtime-control-api.md",
+            "`runtimeInstalled`는 호환/display hint로만 남으며 설치 상태의 source of truth가 아닙니다.",
+        ),
+    ]
+    forbidden = [
+        (
+            "apps/vitalserver-macos-runtime/Sources/Adapters/Inbound/RuntimeControlAPI/DevConsole/RuntimeControlDevConsole.html",
+            "!status.runtimeInstalled",
+        ),
+        (
+            "apps/vitalserver-runtime-pwa/src/pages/advanced/AdvancedPage.tsx",
+            "const runtimeInstalled = status?.runtimeInstalled",
+        ),
+        (
+            "docs/runtime/macos/runtime-control-api.md",
+            "| Runtime installation | `RuntimeStatus.runtimeInstalled`",
+        ),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token in required
+        if token not in paths[path]
+    ]
+    present = [
+        f"{path}:{token}"
+        for path, token in forbidden
+        if token in paths[path]
+    ]
+    if missing or present:
+        return CheckResult(
+            "runtime-status-surfaces-explicit-installation-state",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "runtime-status-surfaces-explicit-installation-state",
+        True,
+        "Runtime Control API, PWA, DevConsole, and docs use explicit runtimeInstallationState",
+    )
+
+
+def check_runtime_status_assembly_does_not_promote_status_http_snapshots(
+) -> CheckResult:
+    path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeStatusAssembly.swift"
+    )
+    text = read(path)
+    forbidden = [
+        "guestHTTP: document?.guestHTTP",
+        "hostProxyHTTP: document?.hostProxyHTTP",
+        "redisUIHTTP: document?.redisUIHTTP",
+        "swaggerUIHTTP: document?.swaggerUIHTTP",
+        "vmIP: document?.vmIP",
+        "vmState: document?.vmState",
+        "vmErrors: document?.vmErrors",
+        "proxyPort: document?.proxyPort",
+        "proxyPortReadState: document?.proxyPortReadState",
+        "runtimeVersion: document?.runtimeVersion",
+        "latestBackup: document?.latestBackup",
+        "runtimeState: document.map",
+        "failureReasons: document?.failureReasons",
+        "operation: document?.operation",
+        "statusMessage: document?.message",
+        "updatedAt: document?.updatedAt",
+        "progress: document?.progress",
+        "statusRead.issue",
+        "guestAddressReadIssue",
+        'source: "guestAddress"',
+        ".guestHTTP(guestAddressRead.failureStatusText)",
+        "proxyPortReadIssue",
+        "proxyPortReadState?.failureReasons",
+        'source: "vmIP"',
+        'source: "proxyPort"',
+        "!failureReasons.isEmpty || !readIssues.isEmpty",
+        "RuntimeActiveOperationRead",
+        "RuntimeProgressRead",
+        "activeOperationRead: RuntimeActiveOperationRead",
+        "progressRead: RuntimeProgressRead",
+        "RuntimeInstallStateRead",
+        "operation: activeOperationRead.document?.operation",
+        "statusMessage: activeOperationRead.document?.message",
+        "updatedAt: activeOperationRead.document?.heartbeatAt",
+        "startedAt: activeOperationRead.document?.startedAt",
+        "progress: progressRead.document",
+        "statusDocumentError: statusRead.error",
+        "installStateRead:",
+        "installStateRead.document",
+        "installStateRead.error",
+    ]
+    required = [
+        "RuntimeVMLifecycleRead",
+        "RuntimeCurrentHealthRead",
+        "proxyPortReadState: RuntimeProxyPortReadState?",
+        "runtimeVersionRead: RuntimeVersionRead",
+        "latestBackupRead: RuntimeLatestBackupRead",
+        "vmLifecycleRead.issue",
+        "vmState(from: vmLifecycleRead.document)",
+        "vmErrors: vmLifecycleRead.document?.reportedVMErrors",
+        "vmIP: guestAddressRead.loadedAddress",
+        "isCurrentRuntimeStateReadIssue",
+        "readIssues.contains(where: isCurrentRuntimeStateReadIssue)",
+        "currentHealthRead: RuntimeCurrentHealthRead?",
+        "runtimeState: currentHealth.runtimeState",
+        "failureReasons: currentHealth.failureReasons",
+        "proxyPort: proxyPortReadState?.port",
+        "runtimeVersion: runtimeVersionRead.version",
+        "latestBackup: latestBackupRead.path",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    current_runtime_issue_sources = text_between(
+        text,
+        "private static func isCurrentRuntimeStateReadIssue",
+        "private static func currentFailureReasons",
+    )
+    if '"activeOperation"' in current_runtime_issue_sources:
+        present.append(
+            "activeOperation current runtime-state read issue source"
+        )
+    for diagnostics_only_source in ['"runtimeVersion"', '"latestBackup"']:
+        if diagnostics_only_source in current_runtime_issue_sources:
+            present.append(
+                f"{diagnostics_only_source} current runtime-state read issue source"
+            )
+    current_failure_reasons = text_between(
+        text,
+        "private static func currentFailureReasons",
+        "private static func appendServiceReason",
+    )
+    for diagnostics_only_input in [
+        "runtimeVersionRead",
+        "latestBackupRead",
+        "runtimeVersionRead.issue",
+        "latestBackupRead.issue",
+    ]:
+        if diagnostics_only_input in current_failure_reasons:
+            present.append(
+                f"{diagnostics_only_input} current failure reason input"
+            )
+    proxy_port_read_state_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/Shared/RuntimeProxyPortReadState.swift"
+    )
+    proxy_port_read_state_text = read(proxy_port_read_state_path)
+    if "failureReasons" in proxy_port_read_state_text:
+        present.append(
+            f"RuntimeProxyPortReadState.failureReasons path={relative(proxy_port_read_state_path)}"
+        )
+    if missing or present:
+        return CheckResult(
+            "runtime-status-assembly-no-status-http-snapshots",
+            False,
+            f"missing={missing} forbidden_present={present} path={relative(path)}",
+        )
+    return CheckResult(
+        "runtime-status-assembly-no-status-http-snapshots",
+        True,
+        "RuntimeStatus current health, HTTP, VM IP, VM lifecycle, proxy port, version, and backup fields come from "
+        "explicit owner reads, while active operation and progress stay out of RuntimeStatus",
+    )
+
+
+def check_runtime_status_read_issues_do_not_create_action_needed() -> CheckResult:
+    path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies"
+        / "RuntimeStatusActionNeededPolicy.swift"
+    )
+    text = read(path)
+    forbidden = [
+        "if !status.readIssues.isEmpty",
+    ]
+    present = [token for token in forbidden if token in text]
+    if present:
+        return CheckResult(
+            "runtime-status-read-issues-no-action-needed",
+            False,
+            f"forbidden_present={present} path={relative(path)}",
+        )
+    return CheckResult(
+        "runtime-status-read-issues-no-action-needed",
+        True,
+        "RuntimeStatus read issues remain diagnostics and do not create action-needed state",
+    )
+
+
+def check_runtime_presentation_does_not_use_status_operation_progress(
+) -> CheckResult:
+    checked = {
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Formatting"
+        / "RuntimePresentationFormatter.swift": [
+            "status.progress",
+            "status.statusMessage",
+        ],
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Refresh"
+        / "RuntimeStatusRefresher.swift": [
+            "progressDisplayMessage",
+            "synchronizeFileBackedOperation",
+            "fileBackedOperation",
+        ],
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/DevConsole"
+        / "RuntimeControlDevConsole.html": [
+            "status.operation",
+            "status.statusMessage",
+            "status.startedAt",
+            "status.updatedAt",
+        ],
+    }
+    present = [
+        (relative(path), token)
+        for path, forbidden in checked.items()
+        for token in forbidden
+        if token in read(path)
+    ]
+    if present:
+        return CheckResult(
+            "runtime-presentation-no-status-operation-progress",
+            False,
+            f"forbidden_present={present}",
+        )
+    refresher_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Refresh"
+        / "RuntimeStatusRefresher.swift"
+    )
+    refresher_text = read(refresher_path)
+    if "includeOperationStatePresentation" not in refresher_text:
+        return CheckResult(
+            "runtime-presentation-no-status-operation-progress",
+            False,
+            "RuntimeStatusRefresher must present operations from explicit RuntimeOperationState",
+        )
+    return CheckResult(
+        "runtime-presentation-no-status-operation-progress",
+        True,
+        "Runtime presentation surfaces do not use RuntimeStatus operation/progress fields",
+    )
+
+
+def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResult:
+    read_worker_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "MacRuntimeControlReadWorker.swift"
+    )
+    operation_resource_reader_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "RuntimeOperationStateResourceReader.swift"
+    )
+    status_document_readers_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "RuntimeStatusDocumentReaders.swift"
+    )
+    mac_runtime_environment_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition"
+        / "MacRuntimeControlEnvironment.swift"
+    )
+    swift_read_models_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl"
+        / "RuntimeControlReadModels.swift"
+    )
+    swift_client_contract_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl"
+        / "RuntimeClientContracts.swift"
+    )
+    api_read_handler_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlClientAPIReadHandler.swift"
+    )
+    http_read_routes_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlHTTPReadRoutes.swift"
+    )
+    pwa_schema_path = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas"
+        / "runtimeControlSchemas.ts"
+    )
+    pwa_generated_path = (
+        PWA
+        / "src/domain/runtime-control/contracts/generated"
+        / "runtime-control.ts"
+    )
+    swift_contract_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    checked = [
+        read_worker_path,
+        operation_resource_reader_path,
+        swift_read_models_path,
+        swift_client_contract_path,
+        api_read_handler_path,
+        http_read_routes_path,
+        pwa_schema_path,
+        pwa_generated_path,
+        openapi_path,
+    ]
+    present = [
+        f"{relative(path)}:runtimeStatusUpdatedAt"
+        for path in checked
+        if "runtimeStatusUpdatedAt" in read(path)
+    ]
+    if status_document_readers_path.exists():
+        present.append(
+            f"{relative(status_document_readers_path)}:status document reader adapter must be removed"
+        )
+    read_worker_text = read(read_worker_path)
+    operation_resource_reader_text = read(operation_resource_reader_path)
+    mac_runtime_environment_text = read(mac_runtime_environment_path)
+    read_models_text = read(swift_read_models_path)
+    client_contract_text = read(swift_client_contract_path)
+    swift_contract_tests_text = read(swift_contract_tests_path)
+    api_read_handler_text = read(api_read_handler_path)
+    http_read_routes_text = read(http_read_routes_path)
+    required = [
+        (
+            relative(read_worker_path),
+            "any RuntimeOperationStateResourceReading",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "RuntimeInstallOperationState.fromInstallStateRead",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "resourceReader.loadResourceSnapshot()",
+            read_worker_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "struct RuntimeOperationStateResourceSnapshot",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "func loadResourceSnapshot() -> RuntimeOperationStateResourceSnapshot",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "struct HostRuntimeOperationStateResourceReader",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "RuntimeInstallStateRead.unavailable()",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "any RuntimeOperationLeaseReading",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(mac_runtime_environment_path),
+            "let operationLeaseController = RuntimeControlOperationLeaseController()",
+            mac_runtime_environment_text,
+        ),
+        (
+            relative(mac_runtime_environment_path),
+            "operationLeaseReader: operationLeaseController",
+            mac_runtime_environment_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "fromInstallStateRead(_ read: RuntimeInstallStateRead)",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "public let state: RuntimeOperationResourceReadState",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "public static func loaded(_ document: RuntimeInstallStateDocument)",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "public static func unavailable()",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "public static func failed(_ error: String)",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "switch read.state",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "self.document = try container.decodeRequiredNullable(RuntimeInstallStateDocument.self, forKey: .document)",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "self.document = try container.decodeRequiredNullable(RuntimeOperationLeaseDocument.self, forKey: .document)",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "let activeOperation = try container.decodeRequiredNullable(RuntimeOperation.self, forKey: .activeOperation)",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "let lease = try container.decode(RuntimeOperationLeaseState.self, forKey: .lease)",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "loaded install operation state must include document",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "stale operation lease state must include staleReason",
+            read_models_text,
+        ),
+        (
+            relative(swift_contract_tests_path),
+            "testRuntimeOperationStateRequiresExplicitOwnerSubresourceFields",
+            swift_contract_tests_text,
+        ),
+        (
+            relative(swift_contract_tests_path),
+            "testRuntimeOperationStateRejectsInvalidLoadedFailedAndStaleSubresources",
+            swift_contract_tests_text,
+        ),
+        (
+            relative(swift_client_contract_path),
+            "func loadOperationState() -> RuntimeOperationState",
+            client_contract_text,
+        ),
+        (
+            relative(api_read_handler_path),
+            "client.loadOperationState()",
+            api_read_handler_text,
+        ),
+        (
+            relative(http_read_routes_path),
+            "case .operationState:\n            return try await RuntimeControlHTTPResponseFactory.json(handler.loadOperationState())",
+            http_read_routes_text,
+        ),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token, text in required
+        if token not in text
+    ]
+    forbidden = [
+        (
+            relative(swift_read_models_path),
+            "fromRuntimeStatusInstallRead",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "install.inProgress",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "var inProgress",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "return .install",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "if let document = read.document",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "if let error = read.error",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "let lease = try container.decodeIfPresent(RuntimeOperationLeaseState.self, forKey: .lease) ?? .unavailable()",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "self.document = try container.decodeIfPresent(RuntimeOperationLeaseDocument.self, forKey: .document)",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "public let issue: RuntimeStatusReadIssue?",
+            read_models_text,
+        ),
+        (
+            relative(swift_read_models_path),
+            "issue: RuntimeStatusReadIssue?",
+            read_models_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            'RuntimeStatusReadIssue(source: "runtimeInstallState"',
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "RuntimeInstallStateDocumentReader(",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "paths.runtimeInstallState",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "any RuntimeOperationLeaseRepository",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "any RuntimeOperationLeaseMutating",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(operation_resource_reader_path),
+            "paths.runtimeOperationLease",
+            operation_resource_reader_text,
+        ),
+        (
+            relative(mac_runtime_environment_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            mac_runtime_environment_text,
+        ),
+        (
+            relative(read_worker_path),
+            "loadOperationState(status:",
+            read_worker_text,
+        ),
+        (
+            relative(swift_client_contract_path),
+            "loadOperationState(status:",
+            client_contract_text,
+        ),
+        (
+            relative(api_read_handler_path),
+            "client.loadOperationState(status:",
+            api_read_handler_text,
+        ),
+        (
+            relative(read_worker_path),
+            "RuntimeInstallStateDocumentReader(",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "paths.runtimeInstallState",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "paths.runtimeOperationLease",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "RuntimeOperationLeaseRepository",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "RuntimeOperationLeaseMutating",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "loadInstallState()",
+            read_worker_text,
+        ),
+        (
+            relative(read_worker_path),
+            "loadOperationLease()",
+            read_worker_text,
+        ),
+    ]
+    present += [
+        f"{path}:{token}"
+        for path, token, text in forbidden
+        if token in text
+    ]
+    if present or missing:
+        return CheckResult(
+            "runtime-operation-state-no-status-updated-at",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "runtime-operation-state-no-status-updated-at",
+        True,
+        "RuntimeOperationState contract does not expose legacy RuntimeStatus snapshot freshness "
+        "and live operation-state reads do not consume install-state files or RuntimeStatus input",
     )
 
 
@@ -253,6 +1201,8 @@ def check_runtime_status_document_has_no_container_observation() -> CheckResult:
     }
     matches: list[str] = []
     for path, tokens in paths.items():
+        if path.name == "RuntimeProgressDocumentReader.swift" and not path.exists():
+            continue
         text = read(path)
         for token in tokens:
             if token in text:
@@ -325,6 +1275,1206 @@ def check_runtime_event_factory_does_not_write_container_observation(
     )
 
 
+def check_runtime_observed_events_do_not_read_status_document_previous_status(
+) -> CheckResult:
+    path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary/Support"
+        / "RuntimeLifecycle+ObservabilitySupport.swift"
+    )
+    factory_path = (
+        MACOS_RUNTIME
+        / "Sources/Application/UseCases/Observability/RuntimeEventFactory.swift"
+    )
+    publisher_path = (
+        MACOS_RUNTIME
+        / "Sources/Application/UseCases/Observability/RuntimeEventPublisher.swift"
+    )
+    text = read(path)
+    factory_text = read(factory_path)
+    publisher_text = read(publisher_path)
+    required = [
+        "previousStatus: {",
+    ]
+    forbidden = [
+        "statusReporter.loadStatusResult",
+        "previousRuntimeStatus",
+        "runtimeStatusValue",
+        "RuntimeStatusDocumentLoadResult",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    event_forbidden = [
+        "statusDocumentEvent",
+        "recordStatusDocumentEvent",
+        "RuntimeStatusDocument,",
+        "statusDocument.status",
+        "statusDocument.vmState",
+        "statusDocument.failureReasons",
+    ]
+    present += [
+        f"{relative(factory_path)}:{token}"
+        for token in event_forbidden
+        if token in factory_text
+    ]
+    present += [
+        f"{relative(publisher_path)}:{token}"
+        for token in event_forbidden
+        if token in publisher_text
+    ]
+    if missing or present:
+        return CheckResult(
+            "runtime-observed-events-no-status-document-previous-status",
+            False,
+            f"missing={missing} forbidden_present={present} path={relative(path)}",
+        )
+    return CheckResult(
+        "runtime-observed-events-no-status-document-previous-status",
+        True,
+        "Observed event previousStatus is not recreated from runtime-status.json snapshots",
+    )
+
+
+def check_runtime_status_document_does_not_own_progress_state() -> CheckResult:
+    paths = {
+        (
+            MACOS_RUNTIME
+            / "Sources/Contracts/Shared/RuntimeStatusDocument.swift"
+        ): [
+            "public let progress",
+            "progress: RuntimeProgressDocument",
+            "self.progress",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Domain/Models/RuntimeStatusDocumentBuilder.swift"
+        ): [
+            "public let progress",
+            "progress: RuntimeProgressDocument",
+            "progress: input.progress",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Application/UseCases/RuntimeOperationReporting"
+            / "BuildRuntimeStatusDocumentUseCase.swift"
+        ): [
+            "public let progress",
+            "progress: RuntimeProgressDocument",
+            "progress: input.progress",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/Persistence/RuntimeStatusReporter.swift"
+        ): [
+            "latestBackup: URL?,\n        progress:",
+            "latestBackup?.path,\n            progress:",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/Persistence/RuntimeStatusWriter.swift"
+        ): [
+            "message: String,\n        progress:",
+            "latestBackup: try latestBackup(),\n            progress:",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Application/UseCases/Observability"
+            / "RuntimeObservedStatusPublisher.swift"
+        ): [
+            "RuntimeProgressDocument?",
+            "writeStatus(status, operation, message, progress)",
+        ],
+    }
+    matches: list[str] = []
+    for path, tokens in paths.items():
+        if path.name == "RuntimeProgressDocumentReader.swift" and not path.exists():
+            continue
+        text = read(path)
+        for token in tokens:
+            if token in text:
+                matches.append(f"{relative(path)}:{token!r}")
+    if matches:
+        return CheckResult(
+            "runtime-status-document-no-progress-state",
+            False,
+            f"matches={matches[:10]}",
+        )
+    return CheckResult(
+        "runtime-status-document-no-progress-state",
+        True,
+        "runtime-status.json does not own current progress state",
+    )
+
+
+def check_runtime_status_document_does_not_own_current_health_state(
+) -> CheckResult:
+    paths = {
+        (
+            MACOS_RUNTIME
+            / "Sources/Contracts/Shared/RuntimeStatusDocument.swift"
+        ): [
+            "public let vmState",
+            "public let vmErrors",
+            "public let failureReasons",
+            "public let domainErrors",
+            "self.vmState",
+            "self.vmErrors",
+            "self.failureReasons",
+            "self.domainErrors",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Domain/Models/RuntimeStatusDocumentBuilder.swift"
+        ): [
+            "vmState: input.healthSnapshot",
+            "vmErrors: input.healthSnapshot",
+            "failureReasons: RuntimeStatusFailureReasonPolicy",
+            "domainErrors:",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Application/UseCases/RuntimeOperationReporting"
+            / "BuildRuntimeStatusDocumentUseCase.swift"
+        ): [
+            "vmState:",
+            "vmErrors:",
+            "failureReasons:",
+            "domainErrors:",
+        ],
+    }
+    matches: list[str] = []
+    for path, tokens in paths.items():
+        text = read(path)
+        for token in tokens:
+            if token in text:
+                matches.append(f"{relative(path)}:{token!r}")
+    if matches:
+        return CheckResult(
+            "runtime-status-document-no-current-health-state",
+            False,
+            f"matches={matches[:10]}",
+        )
+    return CheckResult(
+        "runtime-status-document-no-current-health-state",
+        True,
+        "runtime-status.json does not own VM health, VM errors, or failure reasons",
+    )
+
+
+def check_runtime_progress_document_failure_does_not_own_current_status_issue(
+) -> CheckResult:
+    paths = {
+        (
+            MACOS_RUNTIME
+            / "Sources/Contracts/RuntimeControl/RuntimeStatusAssembly.swift"
+        ): [
+            "[progressRead.issue]",
+            "progressRead.issue].compactMap",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+            / "RuntimeProgressDocumentReader.swift"
+        ): [
+            'RuntimeStatusReadIssue(source: "runtimeProgress"',
+        ],
+    }
+    matches: list[str] = []
+    for path, tokens in paths.items():
+        if path.name == "RuntimeProgressDocumentReader.swift" and not path.exists():
+            continue
+        text = read(path)
+        for token in tokens:
+            if token in text:
+                matches.append(f"{relative(path)}:{token!r}")
+    if matches:
+        return CheckResult(
+            "runtime-progress-document-failure-no-current-status-issue",
+            False,
+            f"matches={matches[:10]}",
+        )
+    return CheckResult(
+        "runtime-progress-document-failure-no-current-status-issue",
+        True,
+        "runtime-progress.json read failures do not own current status issues",
+    )
+
+
+def check_runtime_progress_artifact_sink_is_write_only(
+) -> CheckResult:
+    paths = [
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeProgressDocument.swift",
+        MACOS_RUNTIME / "Sources/Application/Ports/RuntimeProgressArtifactSink.swift",
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/Persistence"
+            / "JSONFileRuntimeProgressArtifactSink.swift"
+        ),
+    ]
+    forbidden = [
+        "RuntimeProgressDocumentLoadResult",
+        "func loadResult()",
+        "return .loaded",
+        "return .missing",
+        "return .failed",
+        "let runtimeProgress: String",
+        "runtimeProgress: String = RuntimeControlClientConstants.Paths.runtimeProgress",
+        "self.runtimeProgress",
+    ]
+    matches = [
+        f"{relative(path)}:{token}"
+        for path in paths
+        for token in forbidden
+        if token in read(path)
+    ]
+    docs_runtime_macos = ROOT / "docs/runtime/macos"
+    doc_forbidden = {
+        docs_runtime_macos / "observability.md": [
+            "Runtime Control API progress input",
+            "workflow progress, Host service liveness",
+            "| `status/runtime-progress.json` | HostCLI workflow | Helper UI, Runtime Control API |",
+            "Host workflow progress display/support artifact",
+            "write-only display artifact",
+        ],
+        docs_runtime_macos / "update.md": [
+            "| `runtime-progress.json` | host Updater/Supervisor | Helper UI |",
+            "`runtime-progress.json` display artifact",
+            "support/export diagnostics",
+            "support/export workflow progress artifact",
+            "support/export progress artifact",
+        ],
+        docs_runtime_macos / "runtime.md": [
+            "Workflow progress 표시는 `runtime-progress.json`에서 읽지만",
+            "support/export workflow progress artifact",
+        ],
+        docs_runtime_macos / "packaging.md": [
+            "Helper/API-visible progress artifact",
+            "Helper/API용 workflow progress artifact",
+            "support/export workflow progress artifact",
+            "support/export progress artifact",
+        ],
+        docs_runtime_macos / "state-machine-traceability.md": [
+            "support/export workflow progress artifact",
+        ],
+        docs_runtime_macos / "runtime-control.openapi.json": [
+            "lease owner may persist through a transitional local artifact",
+        ],
+    }
+    for path, tokens in doc_forbidden.items():
+        text = read(path)
+        for token in tokens:
+            if token in text:
+                matches.append(f"{relative(path)}:{token}")
+    artifact_sink_text = read(
+        MACOS_RUNTIME / "Sources/Application/Ports/RuntimeProgressArtifactSink.swift"
+    )
+    if "func save(_ document: RuntimeProgressDocument) throws" not in artifact_sink_text:
+        matches.append("RuntimeProgressArtifactSink.save")
+    if matches:
+        return CheckResult(
+            "runtime-progress-artifact-sink-write-only",
+            False,
+            f"matches={matches[:10]}",
+        )
+    return CheckResult(
+        "runtime-progress-artifact-sink-write-only",
+        True,
+        "runtime-progress.json artifact sink is a write-only diagnostics/export artifact sink",
+    )
+
+
+def check_runtime_status_artifact_sink_is_write_only(
+) -> CheckResult:
+    paths = [
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeStatusDocument.swift",
+        MACOS_RUNTIME / "Sources/Application/Ports/RuntimeStatusArtifactSink.swift",
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/Persistence"
+            / "JSONFileRuntimeStatusArtifactSink.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/Persistence"
+            / "RuntimeStatusReporter.swift"
+        ),
+    ]
+    forbidden = [
+        "RuntimeStatusDocumentLoadResult",
+        "func loadResult()",
+        "loadStatusResult",
+        "return .loaded",
+        "return .missing",
+        "return .failed",
+        "let runtimeStatus: String",
+        "runtimeStatus: String = RuntimeControlClientConstants.Paths.runtimeStatus",
+        "self.runtimeStatus",
+    ]
+    matches = [
+        f"{relative(path)}:{token}"
+        for path in paths
+        for token in forbidden
+        if token in read(path)
+    ]
+    docs_runtime_macos = ROOT / "docs/runtime/macos"
+    doc_forbidden = {
+        docs_runtime_macos / "observability.md": [
+            "- 최신 상태는 `runtime-status.json`에 반영합니다.",
+        ],
+        docs_runtime_macos / "update.md": [
+            "| `runtime-status.json` | host Updater/Supervisor | Helper UI |",
+        ],
+        ROOT / "site-docs/dev/backup-restore-contracts.md": [
+            "UI continuity용 optional state",
+            "UI continuity용 optional event history",
+            "UI continuity용 optional projection snapshot",
+            "optional continuity artifact",
+            "restore는 대체 상태를 만들지 않고",
+        ],
+        ROOT / "site-docs/dev/runtime-contracts.md": [
+            "`runtime-status.json` 파일이 아직 생성되지 않음",
+            "파일 권한 문제로 status를 읽지 못함",
+        ],
+    }
+    for path, tokens in doc_forbidden.items():
+        text = read(path)
+        for token in tokens:
+            if token in text:
+                matches.append(f"{relative(path)}:{token}")
+    artifact_sink_text = read(
+        MACOS_RUNTIME / "Sources/Application/Ports/RuntimeStatusArtifactSink.swift"
+    )
+    if "func save(_ document: RuntimeStatusDocument) throws" not in artifact_sink_text:
+        matches.append("RuntimeStatusArtifactSink.save")
+    if matches:
+        return CheckResult(
+            "runtime-status-artifact-sink-write-only",
+            False,
+            f"matches={matches[:10]}",
+        )
+    return CheckResult(
+        "runtime-status-artifact-sink-write-only",
+        True,
+        "runtime-status.json artifact sink is a write-only diagnostics/export artifact sink",
+    )
+
+
+def check_runtime_diagnostics_artifact_file_names_are_separate() -> CheckResult:
+    runtime_file_names_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeFileNames.swift"
+    )
+    diagnostics_file_names_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeDiagnosticsArtifactFileNames.swift"
+    )
+    product_paths = [
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/FileSystem/InstalledRuntimePaths.swift"
+        ),
+        MACOS_RUNTIME / "Sources/Bootstrap/Composition/Constants.swift",
+        (
+            MACOS_RUNTIME
+            / "Sources/Contracts/RuntimeControl/RuntimeLogExportSourceContracts.swift"
+        ),
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeDataBackupDocuments.swift",
+    ]
+    guest_contracts_path = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/contracts.py"
+    )
+    guest_product_paths = [
+        GUEST_TOOLS / "pyproject.toml",
+        GUEST_TOOLS / "src/tirosh_guest_tools/infrastructure/system_install.py",
+        GUEST_TOOLS / "src/tirosh_guest_tools/application/runtime_observation.py",
+        GUEST_TOOLS / "src/tirosh_guest_tools/application/runtime_boot_smoke.py",
+        (
+            GUEST_TOOLS
+            / "src/tirosh_guest_tools/adapters/outbound/observability/collectors.py"
+        ),
+        MACOS_RUNTIME / "Support/Guest/bin/tirosh-runtime-observation",
+        MACOS_RUNTIME / "Support/Guest/bin/tirosh-write-runtime-observation",
+        MACOS_RUNTIME / "Support/Guest/systemd/tirosh-runtime-observation.service",
+        (
+            MACOS_RUNTIME
+            / "Support/Guest/systemd/tirosh-vitalserver-container-logs.service"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Support/Guest/systemd/tirosh-vitalserver-sync-host-time.service"
+        ),
+    ]
+    diagnostics_artifacts = [
+        "runtimeStatus",
+        "runtimeProgress",
+        "runtimeOperationLease",
+        "runtimeEvents",
+        "runtimeObservabilityDB",
+        "runtimeObservation",
+        "bootstrapResult",
+    ]
+
+    diagnostics_file_names_text = read(diagnostics_file_names_path)
+    product_text = "\n".join(read(path) for path in product_paths)
+    guest_contracts_text = read(guest_contracts_path)
+    guest_product_text = "\n".join(read(path) for path in guest_product_paths)
+
+    forbidden = []
+    if runtime_file_names_path.exists():
+        forbidden.append(
+            f"{relative(runtime_file_names_path)}:generic RuntimeFileNames must be removed"
+        )
+    guest_forbidden = [
+        "RuntimeFileName.RUNTIME_STATE",
+        "RuntimeFileName.BOOTSTRAP_RESULT",
+        "RuntimeCommand.RUNTIME_STATE",
+        "RuntimeCommand.WRITE_RUNTIME_STATE",
+        "RuntimeService.RUNTIME_STATE",
+        "RuntimeStateAction",
+        "tirosh-runtime-state",
+        "tirosh-write-runtime-state",
+        "write_current_state",
+    ]
+    forbidden += [
+        f"guest-tools:{token}"
+        for token in guest_forbidden
+        if token in guest_contracts_text or token in guest_product_text
+    ]
+    missing = [
+        name
+        for name in diagnostics_artifacts
+        if f"public static let {name}" not in diagnostics_file_names_text
+    ]
+    guest_missing = [
+        token
+        for token in [
+            "class RuntimeDiagnosticsArtifactFileName",
+            'RUNTIME_OBSERVATION = "runtime-observation.json"',
+            'BOOTSTRAP_RESULT = "bootstrap-result.json"',
+            "RuntimeDiagnosticsArtifactFileName.RUNTIME_OBSERVATION",
+            "RuntimeDiagnosticsArtifactFileName.BOOTSTRAP_RESULT",
+            "RuntimeCommand.RUNTIME_OBSERVATION",
+            "RuntimeCommand.WRITE_RUNTIME_OBSERVATION",
+            "RuntimeService.RUNTIME_OBSERVATION",
+            "RuntimeObservationAction",
+            "tirosh-runtime-observation",
+            "tirosh-write-runtime-observation",
+            "write_runtime_observation_outputs",
+        ]
+        if token not in guest_contracts_text + guest_product_text
+    ]
+    missing_product_uses = [
+        name
+        for name in diagnostics_artifacts
+        if f"RuntimeDiagnosticsArtifactFileNames.{name}" not in product_text
+    ]
+
+    if forbidden or missing or missing_product_uses or guest_missing:
+        return CheckResult(
+            "runtime-diagnostics-artifact-file-names-separate",
+            False,
+            "forbidden_runtime_file_names="
+            f"{forbidden} missing_diagnostics_names={missing} "
+            f"missing_product_uses={missing_product_uses} "
+            f"guest_missing={guest_missing}",
+        )
+    return CheckResult(
+        "runtime-diagnostics-artifact-file-names-separate",
+        True,
+        "diagnostics/export artifact names are separate from current owner contract names",
+    )
+
+
+def check_runtime_current_owner_file_names_are_separate() -> CheckResult:
+    runtime_file_names_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeFileNames.swift"
+    )
+    bootstrap_evidence_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeBootstrapEvidenceFileNames.swift"
+    )
+    host_owner_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeHostOwnerFileNames.swift"
+    )
+    guest_address_read_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeGuestAddressReadResult.swift"
+    )
+    runtime_control_constants_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
+        / "RuntimeControlClientConstants.swift"
+    )
+    bootstrap_constants_path = MACOS_RUNTIME / "Sources/Bootstrap/Composition/Constants.swift"
+    product_paths = [
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/FileSystem/InstalledRuntimePaths.swift"
+        ),
+        bootstrap_constants_path,
+        (
+            MACOS_RUNTIME
+            / "Sources/Contracts/RuntimeControl/RuntimeLogExportSourceContracts.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Logs"
+            / "RuntimeLogCollectionSources.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Logs"
+            / "RuntimeLogExportSources.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+            / "RuntimeLogSourceReadStrategy.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Logs"
+            / "MacRuntimeControlLogExporter.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+            / "RuntimeFileReaders.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands"
+            / "RuntimeShellCommandFactory.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands"
+            / "RuntimeUninstallCommandFactory.swift"
+        ),
+    ]
+    bootstrap_evidence_text = read(bootstrap_evidence_path)
+    host_owner_text = read(host_owner_path)
+    guest_address_read_text = read(guest_address_read_path)
+    runtime_control_constants_text = read(runtime_control_constants_path)
+    bootstrap_constants_text = read(bootstrap_constants_path)
+    product_text = "\n".join(read(path) for path in product_paths)
+    guest_contracts_path = GUEST_TOOLS / "src/tirosh_guest_tools/contracts.py"
+    guest_runtime_state_path = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/application/runtime_observation.py"
+    )
+    guest_contracts_text = read(guest_contracts_path)
+    guest_runtime_state_text = read(guest_runtime_state_path)
+    forbidden = []
+    if runtime_file_names_path.exists():
+        forbidden.append(f"{relative(runtime_file_names_path)}:generic RuntimeFileNames must be removed")
+    forbidden += [
+        token
+        for token in [
+            "RuntimeFileNames.vmIP",
+            "RuntimeFileNames.vmLifecycle",
+        ]
+        if token in product_text
+    ]
+    if "RuntimeFileName.VM_IP" in guest_contracts_text + guest_runtime_state_text:
+        forbidden.append("guest-tools:RuntimeFileName.VM_IP")
+    if 'case vmIPFile = "vm-ip"' in guest_address_read_text:
+        forbidden.append(f"{relative(guest_address_read_path)}:case vmIPFile")
+    forbidden += [
+        f"{relative(runtime_control_constants_path)}:{token}"
+        for token in [
+            "static let vmIPFile",
+            "static let runtimeObservation",
+            "static let runtimeStatus",
+            "static let runtimeProgress",
+            "static let runtimeEvents",
+            "static let runtimeObservabilityDB",
+            "static let vmLifecycle",
+            "static let runtimeOperationLease",
+            "static let bootstrapResult",
+        ]
+        if token in runtime_control_constants_text
+    ]
+    forbidden += [
+        f"{relative(bootstrap_constants_path)}:{token}"
+        for token in [
+            "public static let runtimeStatus = RuntimeDiagnosticsArtifactFileNames.runtimeStatus",
+            "public static let vmIPFile = RuntimeBootstrapEvidenceFileNames.vmIP",
+            "public static let runtimeObservationFile = RuntimeDiagnosticsArtifactFileNames.runtimeObservation",
+            "public static let bootstrapResultFile = RuntimeDiagnosticsArtifactFileNames.bootstrapResult",
+        ]
+        if token in bootstrap_constants_text
+    ]
+    required = [
+        (
+            relative(bootstrap_evidence_path),
+            'public static let vmIP = "vm-ip"',
+            bootstrap_evidence_text,
+        ),
+        (
+            relative(host_owner_path),
+            'public static let vmLifecycle = "vm-lifecycle.json"',
+            host_owner_text,
+        ),
+        (
+            "production",
+            "RuntimeBootstrapEvidenceFileNames.vmIP",
+            product_text,
+        ),
+        (
+            "production",
+            "RuntimeHostOwnerFileNames.vmLifecycle",
+            product_text,
+        ),
+        (
+            relative(guest_contracts_path),
+            "class RuntimeBootstrapEvidenceFileName",
+            guest_contracts_text,
+        ),
+        (
+            relative(guest_contracts_path),
+            'VM_IP = "vm-ip"',
+            guest_contracts_text,
+        ),
+        (
+            relative(guest_runtime_state_path),
+            "RuntimeBootstrapEvidenceFileName.VM_IP",
+            guest_runtime_state_text,
+        ),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token, text in required
+        if token not in text
+    ]
+    if forbidden or missing:
+        return CheckResult(
+            "runtime-current-owner-file-names-separate",
+            False,
+            f"forbidden={forbidden} missing={missing}",
+        )
+    return CheckResult(
+        "runtime-current-owner-file-names-separate",
+        True,
+        "bootstrap address evidence and Host VM lifecycle names are not generic runtime file names",
+    )
+
+
+def check_runtime_log_artifact_file_names_are_separate() -> CheckResult:
+    runtime_file_names_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeFileNames.swift"
+    )
+    log_artifact_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeLogArtifactFileNames.swift"
+    )
+    product_paths = [
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/FileSystem/InstalledRuntimePaths.swift"
+        ),
+        MACOS_RUNTIME / "Sources/Bootstrap/Composition/Constants.swift",
+        (
+            MACOS_RUNTIME
+            / "Sources/Contracts/RuntimeControl/RuntimeLogCollectionSourceContracts.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Contracts/RuntimeControl/RuntimeLogExportSourceContracts.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Logs"
+            / "RuntimeLogCollectionSources.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Logs"
+            / "RuntimeLogExportSources.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+            / "RuntimeLogSourceReadStrategy.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Logs"
+            / "MacRuntimeControlLogExporter.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+            / "RuntimeFileReaders.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands"
+            / "RuntimeShellCommandFactory.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands"
+            / "RuntimeUninstallCommandFactory.swift"
+        ),
+    ]
+    log_artifacts = [
+        "bootstrapLog",
+        "datastoreRepairLog",
+        "redisBackupLog",
+        "redisRestoreLog",
+        "updateActivationLog",
+        "updateShutdownLog",
+        "containerLogs",
+        "managerCommandLog",
+        "managerHelperMessageLog",
+        "runtimeUninstallLog",
+    ]
+    log_artifact_text = read(log_artifact_path)
+    product_text = "\n".join(read(path) for path in product_paths)
+    forbidden = []
+    if runtime_file_names_path.exists():
+        forbidden.append(f"{relative(runtime_file_names_path)}:generic RuntimeFileNames must be removed")
+    forbidden += [
+        name
+        for name in log_artifacts
+        if f"RuntimeFileNames.{name}" in product_text
+    ]
+    log_path_forbidden = [
+        "RuntimeControlClientConstants.Paths.runtimeLogSources",
+        "RuntimeControlClientConstants.Paths.bootstrapLogSource",
+        "RuntimeControlClientConstants.Paths.containerLogSource",
+        "RuntimeControlClientConstants.Paths.updateActivationLogSource",
+        "RuntimeControlClientConstants.Paths.updateShutdownLogSource",
+        "RuntimeControlClientConstants.Paths.datastoreRepairLogSource",
+        "RuntimeControlClientConstants.Paths.redisBackupLogSource",
+        "RuntimeControlClientConstants.Paths.guestObservabilitySource",
+        "RuntimeControlClientConstants.Paths.commandLogFile",
+        "RuntimeControlClientConstants.Paths.helperMessageLogFile",
+        "RuntimeControlClientConstants.Paths.guestRunDirectory",
+        "RuntimeControlClientConstants.Paths.runtimeLogs",
+        "RuntimeControlClientConstants.Paths.guestLogs",
+        "RuntimeControlClientConstants.Paths.productLogs",
+        "RuntimeControlClientConstants.Paths.installLog",
+        "RuntimeControlClientConstants.Paths.uninstallLog",
+    ]
+    forbidden += [
+        token
+        for token in log_path_forbidden
+        if token in product_text
+    ]
+    installed_path_required = [
+        "InstalledRuntimePaths.defaultInstalled",
+        "installed.logsDirectory",
+        "installed.bootstrapLog",
+        "installed.containerLogs",
+        "installed.updateActivationLog",
+        "installed.updateShutdownLog",
+        "installed.datastoreRepairLog",
+        "installed.redisBackupLog",
+        "installed.managerCommandLog",
+        "installed.productLogsDirectory",
+        "InstalledRuntimePaths.defaultInstalled.runtimeUninstallLog",
+    ]
+    missing = [
+        name
+        for name in log_artifacts
+        if f"public static let {name}" not in log_artifact_text
+        or f"RuntimeLogArtifactFileNames.{name}" not in product_text
+    ]
+    missing += [
+        token
+        for token in installed_path_required
+        if token not in product_text
+    ]
+    if forbidden or missing:
+        return CheckResult(
+            "runtime-log-artifact-file-names-separate",
+            False,
+            f"forbidden={forbidden} missing={missing}",
+        )
+    return CheckResult(
+        "runtime-log-artifact-file-names-separate",
+        True,
+        "runtime log artifact names are separate from generic runtime file names",
+    )
+
+
+def check_runtime_generic_file_names_are_removed() -> CheckResult:
+    runtime_file_names_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeFileNames.swift"
+    )
+    package_artifact_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimePackageArtifactFileNames.swift"
+    )
+    host_contract_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeHostContractFileNames.swift"
+    )
+    workflow_artifact_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeWorkflowArtifactFileNames.swift"
+    )
+    package_artifact_text = read(package_artifact_path)
+    host_contract_text = read(host_contract_path)
+    workflow_artifact_text = read(workflow_artifact_path)
+
+    required = [
+        (relative(package_artifact_path), 'public static let rootfsBase = "rootfs-base.raw.gz"', package_artifact_text),
+        (relative(package_artifact_path), 'public static let runtimeVersion = "runtime-version.json"', package_artifact_text),
+        (relative(package_artifact_path), 'public static let backupManifest = "backup-manifest.json"', package_artifact_text),
+        (relative(package_artifact_path), 'public static let updateBundleManifest = "manifest.json"', package_artifact_text),
+        (relative(host_contract_path), 'public static let appliedVMConfig = "applied-vm-config.json"', host_contract_text),
+        (relative(host_contract_path), 'public static let hostTime = "host-time.json"', host_contract_text),
+        (
+            relative(workflow_artifact_path),
+            'public static let runtimeInstallState = "tirosh-vitalserver-install-state.json"',
+            workflow_artifact_text,
+        ),
+        (
+            relative(workflow_artifact_path),
+            'public static let runtimeUninstallState = "tirosh-vitalserver-uninstall-state.json"',
+            workflow_artifact_text,
+        ),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token, text in required
+        if token not in text
+    ]
+    forbidden = []
+    if runtime_file_names_path.exists():
+        forbidden.append(f"{relative(runtime_file_names_path)}:generic RuntimeFileNames file must be removed")
+    forbidden += find_tokens(
+        [MACOS_RUNTIME / "Sources"],
+        ["RuntimeFileNames."],
+    )
+    if missing or forbidden:
+        return CheckResult(
+            "runtime-generic-file-names-removed",
+            False,
+            f"missing={missing} forbidden={forbidden[:10]}",
+        )
+    return CheckResult(
+        "runtime-generic-file-names-removed",
+        True,
+        "generic RuntimeFileNames is removed in favor of role-specific file-name contracts",
+    )
+
+
+def check_runtime_settings_paths_use_installed_paths_defaults() -> CheckResult:
+    settings_reader_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Settings/RuntimeSettingsReader.swift"
+    )
+    text = read(settings_reader_path)
+    required = [
+        "InstalledRuntimePaths.defaultInstalled.vmConfig.path",
+        "InstalledRuntimePaths.defaultInstalled.appliedVMConfig.path",
+        "InstalledRuntimePaths.defaultInstalled.vmDisk.path",
+        "InstalledRuntimePaths.defaultInstalled.guestRuntimeSettings.path",
+        "InstalledRuntimePaths.defaultInstalled.runtimeControlSettings.path",
+        "InstalledRuntimePaths.defaultInstalled.proxyLaunchDaemon.path",
+    ]
+    forbidden = [
+        "RuntimeControlClientConstants.Paths.vmConfig",
+        "RuntimeControlClientConstants.Paths.appliedVMConfig",
+        "RuntimeControlClientConstants.Paths.vmDisk",
+        "RuntimeControlClientConstants.Paths.guestRuntimeSettings",
+        "RuntimeControlClientConstants.Paths.runtimeControlSettings",
+        "RuntimeControlClientConstants.Paths.proxyLaunchDaemon",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    if missing or present:
+        return CheckResult(
+            "runtime-settings-paths-installed-defaults",
+            False,
+            f"missing={missing} forbidden_present={present} path={relative(settings_reader_path)}",
+        )
+    return CheckResult(
+        "runtime-settings-paths-installed-defaults",
+        True,
+        "Runtime settings reader default config paths come from InstalledRuntimePaths",
+    )
+
+
+def check_runtime_workflow_state_artifact_writers_are_named_as_artifacts() -> CheckResult:
+    install_store_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Persistence/RuntimeInstallWorkflowStateArtifactStore.swift"
+    )
+    uninstall_store_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Persistence/RuntimeUninstallWorkflowStateArtifactStore.swift"
+    )
+    install_test_path = (
+        MACOS_RUNTIME
+        / "Tests/CLIHostTests/RuntimeInstallWorkflowStateArtifactStoreTests.swift"
+    )
+    uninstall_test_path = (
+        MACOS_RUNTIME
+        / "Tests/CLIHostTests/RuntimeUninstallWorkflowStateArtifactStoreTests.swift"
+    )
+    runtime_control_constants_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
+        / "RuntimeControlClientConstants.swift"
+    )
+    required = [
+        (
+            relative(install_store_path),
+            "public struct RuntimeInstallWorkflowStateArtifactStore",
+            read(install_store_path),
+        ),
+        (
+            relative(uninstall_store_path),
+            "public struct RuntimeUninstallWorkflowStateArtifactStore",
+            read(uninstall_store_path),
+        ),
+        (
+            relative(install_test_path),
+            "final class RuntimeInstallWorkflowStateArtifactStoreTests",
+            read(install_test_path),
+        ),
+        (
+            relative(uninstall_test_path),
+            "final class RuntimeUninstallWorkflowStateArtifactStoreTests",
+            read(uninstall_test_path),
+        ),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token, text in required
+        if token not in text
+    ]
+    forbidden = find_tokens(
+        [
+            MACOS_RUNTIME / "Sources",
+            MACOS_RUNTIME / "Tests",
+            ROOT / "docs",
+            ROOT / "site-docs",
+        ],
+        [
+            "RuntimeInstallStateStore",
+            "RuntimeUninstallStateStore",
+            "runtimeStateDocumentEncoder",
+            "Host-owned lifecycle document at `/private/tmp/tirosh-vitalserver-uninstall-state.json`",
+        ],
+    )
+    constants_text = read(runtime_control_constants_path)
+    for token in [
+        "runtimeInstallState = installed.runtimeInstallState.path",
+        "runtimeUninstallState = installed.runtimeUninstallState.path",
+    ]:
+        if token in constants_text:
+            forbidden.append(
+                f"{relative(runtime_control_constants_path)}:{token}: workflow artifacts must not be exposed through product RuntimeControlClient path constants"
+            )
+    if missing or forbidden:
+        return CheckResult(
+            "runtime-workflow-state-artifact-writers-named-as-artifacts",
+            False,
+            f"missing={missing} forbidden={forbidden[:10]}",
+        )
+    return CheckResult(
+        "runtime-workflow-state-artifact-writers-named-as-artifacts",
+        True,
+        "install/uninstall workflow state files are named as workflow artifacts, not current state stores",
+    )
+
+
+def check_runtime_status_document_does_not_own_active_operation_state(
+) -> CheckResult:
+    paths = {
+        (
+            MACOS_RUNTIME
+            / "Sources/Contracts/Shared/RuntimeStatusDocument.swift"
+        ): [
+            "public let operation",
+            "public let message",
+            "public let updatedAt",
+            "self.operation",
+            "self.message",
+            "self.updatedAt",
+            "operation: RuntimeOperation",
+            "operation: String",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Domain/Models/RuntimeStatusDocumentBuilder.swift"
+        ): [
+            "public let operation",
+            "public let message",
+            "public let updatedAt",
+            "operation: input.operation",
+            "message: input.message",
+            "updatedAt: input.updatedAt",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Application/UseCases/RuntimeOperationReporting"
+            / "BuildRuntimeStatusDocumentUseCase.swift"
+        ): [
+            "RuntimeStatusDocumentInput(\n            product: input.product,\n            status: input.status,\n            operation:",
+            "RuntimeStatusDocumentBuildInput: Equatable {\n    public let product: String\n    public let status: RuntimeStatusLevel\n    public let operation",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/Persistence/RuntimeStatusReporter.swift"
+        ): [
+            "public func writeStatus(\n        _ status: RuntimeStatusLevel,\n        operation:",
+            "message: String,\n        runtimeVersion:",
+            "updatedAt: String,\n        runtimeVersion:",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/Persistence/RuntimeStatusWriter.swift"
+        ): [
+            "public func writeStatus(\n        _ status: RuntimeStatusLevel,\n        operation:",
+            "message: String\n    ) throws -> RuntimeHealthSnapshot",
+            "timestamp(),\n            runtimeVersion:",
+        ],
+        (
+            MACOS_RUNTIME
+            / "Sources/Application/UseCases/Observability"
+            / "RuntimeObservedStatusPublisher.swift"
+        ): [
+            "public let writeStatus: (\n        RuntimeStatusLevel,\n        RuntimeOperation",
+            "writeStatus(status, operation, message)",
+        ],
+    }
+    matches: list[str] = []
+    for path, tokens in paths.items():
+        text = read(path)
+        for token in tokens:
+            if token in text:
+                matches.append(f"{relative(path)}:{token!r}")
+    if matches:
+        return CheckResult(
+            "runtime-status-document-no-active-operation-state",
+            False,
+            f"matches={matches[:10]}",
+        )
+    return CheckResult(
+        "runtime-status-document-no-active-operation-state",
+        True,
+        "runtime-status.json does not own active operation, message, or timestamps",
+    )
+
+
+def check_runtime_status_document_failure_reasons_are_not_current_health(
+) -> CheckResult:
+    paths = [
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeFailureReason.swift",
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Copy"
+            / "AppConstants+StatusText.swift"
+        ),
+    ]
+    forbidden = [
+        "case runtimeStatusDocumentMissing",
+        "case runtimeStatusDocumentStale",
+        "case runtimeStatusDocumentInvalid",
+        "runtimeStatusDocumentMissing",
+        "runtimeStatusDocumentStale",
+        "runtimeStatusDocumentInvalid",
+        "runtime-status-document-missing",
+        "runtime-status-document-stale",
+        "runtime-status-document-invalid",
+    ]
+    matches = find_tokens(paths, forbidden)
+    if matches:
+        return CheckResult(
+            "runtime-status-document-failure-reasons-not-current-health",
+            False,
+            f"matches={matches[:10]}",
+        )
+    return CheckResult(
+        "runtime-status-document-failure-reasons-not-current-health",
+        True,
+        "runtime-status.json diagnostics are not modeled as current health failure reasons",
+    )
+
+
+def check_runtime_data_restore_does_not_restore_runtime_status_projection(
+) -> CheckResult:
+    path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Persistence/RuntimeDataBackupStore.swift"
+    )
+    contracts_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeDataBackupDocuments.swift"
+    )
+    tests_path = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests/RuntimeDataBackupStoreTests.swift"
+    )
+    backup_docs_path = ROOT / "docs/runtime/macos/runtime-data-backup.md"
+    troubleshooting_path = (
+        ROOT / "docs/troubleshooting/079_runtime-data-restore-silent-failure.md"
+    )
+    text = read(path)
+    contracts_text = read(contracts_path)
+    tests_text = read(tests_path)
+    backup_docs_text = read(backup_docs_path)
+    troubleshooting_text = read(troubleshooting_path)
+    forbidden = [
+        "restoreOptionalFile(.runtimeStatusDocument",
+        "restoreRequiredFile(.runtimeStatusDocument",
+        "destination: paths.runtimeStatus",
+        "guard let source = try? artifactURL",
+        "guard let data = try? fileStore.readData(source)",
+    ]
+    present = [token for token in forbidden if token in text]
+    present += [
+        f"{relative(contracts_path)}:{token}"
+        for token in [
+            "requiredForUIContinuity",
+            "optionalForUIContinuity",
+            "optionalForSupportContinuity",
+        ]
+        if token in contracts_text
+    ]
+    if "optionalForDiagnosticsContinuity" not in contracts_text:
+        present.append(f"{relative(contracts_path)}:missing optionalForDiagnosticsContinuity")
+    if "restore must not write it back to current `runtime-status.json`" not in backup_docs_text:
+        present.append(f"{relative(backup_docs_path)}:missing runtime-status restore prohibition")
+    required = [
+        ("RuntimeDataBackupStore.optionalArtifactInvalid", "case optionalArtifactInvalid", text),
+        ("RuntimeDataBackupStore.optionalVerifiedArtifactThrows", "throws -> URL?", text),
+        (
+            "RuntimeDataBackupStore.restoreOptionalFileThrows",
+            "try optionalVerifiedArtifact(id, artifacts: artifacts, backup: backup)",
+            text,
+        ),
+        (
+            "RuntimeDataBackupStoreTests.optionalDiagnosticsArtifactFailure",
+            "testRestoreBackupFailsWhenArchivedOptionalDiagnosticsArtifactIsMissing",
+            tests_text,
+        ),
+        (
+            "TS-079.optionalArtifactValidationFailureDistinct",
+            "Optional artifact absence and optional artifact validation failure must stay distinct.",
+            troubleshooting_text,
+        ),
+    ]
+    for label, token, source_text in required:
+        if token not in source_text:
+            present.append(f"missing {label}")
+    for token in [
+        "| `runtime-status-document` | Host | Host runtime status document *(optional: 없으면 skip)* |",
+        "| `runtime-events-document` | Host | Host runtime event document *(optional: 없으면 skip)* |",
+        "| `runtime-observability-database` | Host | `runtime-observability.sqlite` snapshot *(optional: 없으면 skip)* |",
+    ]:
+        if token in backup_docs_text:
+            present.append(f"{relative(backup_docs_path)}:{token}")
+    if present:
+        return CheckResult(
+            "runtime-data-restore-no-runtime-status-projection-restore",
+            False,
+            f"forbidden_present={present} path={relative(path)}",
+        )
+    return CheckResult(
+        "runtime-data-restore-no-runtime-status-projection-restore",
+        True,
+        "runtime data restore does not restore runtime-status.json as current state",
+    )
+
+
 def check_host_failure_reasons_do_not_model_container_observation_reads(
 ) -> CheckResult:
     paths = [
@@ -368,13 +2518,13 @@ def check_host_failure_reasons_do_not_model_container_observation_reads(
 
 def check_runtime_state_document_has_no_container_services() -> CheckResult:
     checks = {
-        MACOS_RUNTIME / "Sources/Contracts/Shared/GuestRuntimeStateDocument.swift": [
+        MACOS_RUNTIME / "Sources/Contracts/Shared/GuestRuntimeObservationDocument.swift": [
             "containerServices",
             "RuntimeContainerServiceObservation",
             "vitalDBObservation",
             "VitalDBObservationDocument",
         ],
-        GUEST_TOOLS / "src/tirosh_guest_tools/domain/runtime_state.py": [
+        GUEST_TOOLS / "src/tirosh_guest_tools/domain/runtime_observation.py": [
             '"containerServices"',
             "container_services:",
             "RuntimeContainerService",
@@ -407,7 +2557,7 @@ def check_runtime_state_document_has_no_container_services() -> CheckResult:
         "runtime-state-document-no-container-services",
         True,
         (
-            "runtime-state.json no longer carries container service or "
+            "runtime-observation.json no longer carries container service or "
             "VitalDB observation state"
         ),
     )
@@ -415,8 +2565,8 @@ def check_runtime_state_document_has_no_container_services() -> CheckResult:
 
 def check_runtime_state_document_has_no_capabilities() -> CheckResult:
     paths = [
-        MACOS_RUNTIME / "Sources/Contracts/Shared/GuestRuntimeStateDocument.swift",
-        GUEST_TOOLS / "src/tirosh_guest_tools/domain/runtime_state.py",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/GuestRuntimeObservationDocument.swift",
+        GUEST_TOOLS / "src/tirosh_guest_tools/domain/runtime_observation.py",
         GUEST_TOOLS / "src/tirosh_guest_tools/application/runtime_boot_smoke.py",
         GUEST_TOOLS / "tests/test_runtime_boot_smoke.py",
     ]
@@ -424,7 +2574,7 @@ def check_runtime_state_document_has_no_capabilities() -> CheckResult:
         "GuestRuntimeCapabilities",
         "RuntimeCapabilities",
         '"capabilities": self.capabilities.as_json()',
-        "runtime state capabilities",
+        "runtime observation capabilities",
         "REQUIRED_CAPABILITIES",
     ]
     matches = find_tokens(paths, forbidden)
@@ -449,7 +2599,7 @@ def check_runtime_state_document_has_no_capabilities() -> CheckResult:
     return CheckResult(
         "runtime-state-document-no-capabilities",
         True,
-        "runtime-state.json no longer carries capability state; "
+        "runtime-observation.json no longer carries capability state; "
         "boot smoke checks Guest Control /v1/capabilities",
     )
 
@@ -489,7 +2639,7 @@ def check_runtime_guest_runtime_state_policy_is_removed() -> CheckResult:
     source_root = MACOS_RUNTIME / "Sources"
     forbidden = [
         "public struct RuntimeGuestRuntimeStateObservation",
-        "public enum RuntimeGuestRuntimeStateReadIssue",
+        "public enum RuntimeGuestRuntimeObservationReadIssue",
         "RuntimeGuestRuntimeStateObservationReader",
         "RuntimeGuestRuntimeStateObservationAssembler",
         "RuntimeGuestRuntimeStateInput",
@@ -519,7 +2669,7 @@ def check_runtime_guest_runtime_state_policy_is_removed() -> CheckResult:
     return CheckResult(
         "runtime-guest-runtime-state-policy-removed",
         True,
-        "Host health no longer keeps runtime-state.json guestHTTP/vmIP "
+        "Host health no longer keeps runtime-observation.json guestHTTP/vmIP "
         "promotion or runtime-state freshness observation paths",
     )
 
@@ -527,12 +2677,10 @@ def check_runtime_guest_runtime_state_policy_is_removed() -> CheckResult:
 def check_runtime_guest_file_gateway_is_maintenance_only() -> CheckResult:
     paths = [
         MACOS_RUNTIME / "Sources/Application/Ports/RuntimeGuestDocumentReaders.swift",
-        (
-            MACOS_RUNTIME
-            / "Sources/Adapters/Outbound/Persistence"
-            / "JSONFileRuntimeGuestDocumentReader.swift"
-        ),
-        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeFileNames.swift",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeDiagnosticsArtifactFileNames.swift",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeWorkflowArtifactFileNames.swift",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeBootstrapEvidenceFileNames.swift",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeLogArtifactFileNames.swift",
         MACOS_RUNTIME / "Sources/Bootstrap/Composition/Constants.swift",
         (
             MACOS_RUNTIME
@@ -588,29 +2736,30 @@ def check_runtime_guest_file_gateway_is_maintenance_only() -> CheckResult:
         "guestRuntimeStateDiagnosticsReader",
         "runtimeStateURL:",
         "typealias RuntimeGuestDocumentReader",
-    ]
-    required = [
         "RuntimeGuestBootstrapResultReader",
         "loadBootstrapResultDocument",
+        "JSONFileRuntimeGuestDocumentReader",
     ]
     present = [token for token in forbidden if token in text]
-    missing = [token for token in required if token not in text]
-    if present or missing:
+    if present:
         return CheckResult(
             "runtime-guest-file-gateway-maintenance-only",
             False,
-            f"forbidden_present={present} missing={missing}",
+            f"forbidden_present={present}",
         )
     return CheckResult(
         "runtime-guest-file-gateway-maintenance-only",
         True,
-        "document readers expose only role-specific bootstrap proof reads",
+        "runtime document readers do not expose Guest file-backed state gateways",
     )
 
 
 def check_legacy_guest_request_result_file_names_are_removed() -> CheckResult:
     paths = [
-        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeFileNames.swift",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeDiagnosticsArtifactFileNames.swift",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeWorkflowArtifactFileNames.swift",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeBootstrapEvidenceFileNames.swift",
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeLogArtifactFileNames.swift",
         MACOS_RUNTIME / "Sources/Bootstrap/Composition/Constants.swift",
         (
             MACOS_RUNTIME
@@ -752,9 +2901,9 @@ def check_guest_request_file_poller_is_removed() -> CheckResult:
     )
 
 
-def check_redis_backup_file_bridge_is_runtime_state_watcher_only() -> CheckResult:
+def check_redis_backup_file_bridge_is_absent_from_runtime_observation_writer() -> CheckResult:
     runtime_state_path = (
-        GUEST_TOOLS / "src/tirosh_guest_tools/application/runtime_state.py"
+        GUEST_TOOLS / "src/tirosh_guest_tools/application/runtime_observation.py"
     )
     redis_backup_path = (
         GUEST_TOOLS / "src/tirosh_guest_tools/application/redis_backup.py"
@@ -825,12 +2974,12 @@ def check_redis_backup_file_bridge_is_runtime_state_watcher_only() -> CheckResul
     }
     if present:
         return CheckResult(
-            "redis-backup-file-bridge-runtime-state-watcher-only",
+            "redis-backup-file-bridge-runtime-observation-writer",
             False,
             f"forbidden_present={present}",
         )
     return CheckResult(
-        "redis-backup-file-bridge-runtime-state-watcher-only",
+        "redis-backup-file-bridge-runtime-observation-writer",
         True,
         "redis backup no longer has a request/result file bridge or systemd "
         "sidecar service",
@@ -2055,9 +4204,17 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
             '"/vitaldb/recorders"',
             '"/vitaldb/beds"',
             '"/vitaldb/relationships"',
+            (
+                "Guest/Postgres-owned read model for bed-to-VRecorder assignments "
+                "and relationship anomalies"
+            ),
         ],
         relative(pwa_generated_path): [
             "canUseLab: boolean;",
+            (
+                "Guest/Postgres-owned read model for bed-to-VRecorder assignments "
+                "and relationship anomalies"
+            ),
         ],
         relative(swift_capabilities_path): [
             "public var canUseLab: Bool",
@@ -2112,6 +4269,7 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         "/runtime/services/stop",
         "/runtime/services/restart",
         "canUseTestTools",
+        "Raw VitalDB observation snapshots remain the source of truth",
     ]
     missing = {
         path: [token for token in tokens if token not in texts[path]]
@@ -2214,8 +4372,8 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
     api_text = read(api_path)
     runtime_text = read(runtime_path)
     usecase_text = read(usecase_path)
-    operation_repository_text = read(operation_repository_path)
-    vitaldb_repository_text = read(vitaldb_repository_path)
+    operation_artifact_sink_text = read(operation_repository_path)
+    vitaldb_artifact_sink_text = read(vitaldb_repository_path)
     api_tests_text = read(api_tests_path)
     usecase_tests_text = read(usecase_tests_path)
     lab_settings_text = read(lab_settings_path)
@@ -2313,8 +4471,8 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
         relative(api_path): api_text,
         relative(compose_path): compose_text,
         relative(usecase_path): usecase_text,
-        relative(operation_repository_path): operation_repository_text,
-        relative(vitaldb_repository_path): vitaldb_repository_text,
+        relative(operation_repository_path): operation_artifact_sink_text,
+        relative(vitaldb_repository_path): vitaldb_artifact_sink_text,
         relative(api_tests_path): api_tests_text,
         relative(usecase_tests_path): usecase_tests_text,
         relative(lab_settings_path): lab_settings_text,
@@ -2371,7 +4529,7 @@ def check_guest_service_operations_persist_status_snapshots() -> CheckResult:
             "def _save_operation_status_snapshot(",
             "self._service_control.get_service_status(service)",
             "self._service_control.get_stack_status()",
-            "self._operations.save_service_status_snapshot(service_status)",
+            "self._service_status_snapshots.save_service_status_snapshot(service_status)",
         ],
         relative(tests_path): [
             "test_restart_service_status_snapshot_failure_is_persisted_as_failed_operation",
@@ -2408,7 +4566,7 @@ def check_guest_service_operations_persist_status_snapshots() -> CheckResult:
         "guest-service-operations-persist-status-snapshots",
         True,
         "Guest service operations persist explicit service status snapshots "
-        "through the operation repository after successful commands",
+        "through the service status snapshot repository after successful commands",
     )
 
 
@@ -2426,6 +4584,10 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
         GUEST_TOOLS
         / "src/tirosh_guest_tools/application/guest_control/usecases.py"
     )
+    ports_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/application/guest_control/ports.py"
+    )
     repository_path = (
         GUEST_TOOLS
         / "src/tirosh_guest_tools/adapters/outbound/postgres"
@@ -2434,6 +4596,119 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
     api_path = (
         GUEST_TOOLS
         / "src/tirosh_guest_tools/adapters/inbound/guest_control_api.py"
+    )
+    swift_health_details_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies"
+        / "RuntimeStatusHealthDetailsPolicy.swift"
+    )
+    swift_advanced_health_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies"
+        / "RuntimeStatusAdvancedServiceHealthPolicy.swift"
+    )
+    swift_display_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/MacControlPanelHostTests/RuntimeStatusDisplayPolicyTests.swift"
+    )
+    swift_endpoint_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIEndpoint.swift"
+    )
+    swift_endpoint_routing_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIEndpointRouting.swift"
+    )
+    swift_http_types_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlHTTPTypes.swift"
+    )
+    swift_read_routes_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlHTTPReadRoutes.swift"
+    )
+    swift_client_handler_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlClientAPIReadHandler.swift"
+    )
+    swift_client_contracts_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeClientContracts.swift"
+    )
+    swift_command_worker_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands"
+        / "MacRuntimeControlCommandWorker.swift"
+    )
+    swift_client_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Client"
+        / "MacRuntimeControlClient.swift"
+    )
+    swift_api_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/InboundAdaptersTests/RuntimeControlAPI/RuntimeControlAPITests.swift"
+    )
+    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    pwa_types_path = (
+        PWA
+        / "src/domain/runtime-control/contracts/runtimeControlTypes.ts"
+    )
+    pwa_schemas_path = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+    )
+    pwa_gateway_path = PWA / "src/console/runtimeControlGateway.ts"
+    pwa_api_client_path = (
+        PWA
+        / "src/infrastructure/console-api/runtimeControlApiClient.ts"
+    )
+    pwa_api_client_tests_path = (
+        PWA
+        / "src/infrastructure/console-api/runtimeControlApiClient.test.ts"
+    )
+    pwa_advanced_page_path = (
+        PWA / "src/pages/advanced/AdvancedPage.tsx"
+    )
+    pwa_pages_tests_path = (
+        PWA / "src/pages/pages.test.tsx"
+    )
+    swift_status_assembly_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeStatusAssembly.swift"
+    )
+    swift_status_contract_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlModels.swift"
+    )
+    swift_status_contract_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    swift_status_assembly_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlStatusAssemblerTests.swift"
+    )
+    swift_observation_health_policy_path = (
+        MACOS_RUNTIME
+        / "Sources/Domain/Policies/RuntimeObservationHealthPolicy.swift"
+    )
+    swift_runtime_health_checker_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Health/RuntimeHealthChecker.swift"
+    )
+    swift_health_evaluator_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/DomainTests/Policies/RuntimeHealthEvaluatorTests.swift"
+    )
+    swift_recovery_planner_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/DomainTests/Policies/RuntimeRecoveryPlannerTests.swift"
     )
     tests_path = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
     policy_tests_path = (
@@ -2454,15 +4729,26 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             "GuestServiceObservedState",
             "requested_command == ServiceCommand.RESTART",
         ],
+        relative(ports_path): [
+            "class ServiceStatusSnapshotRepository",
+            "class GuestServiceResourceRepository",
+            "class OperationRepository",
+        ],
         relative(usecases_path): [
             "def get_guest_service_resource(",
             "def observe_guest_service(",
             "def update_guest_service_spec(",
             "def reconcile_guest_service(",
+            "service_status_snapshots: ServiceStatusSnapshotRepository",
+            "guest_service_resources: GuestServiceResourceRepository",
             "self._save_guest_service_spec(",
             "reconcile_guest_service(",
             "_guest_service_observed_state(",
-            "self._operations.save_guest_service_resource(resource)",
+            "self._service_status_snapshots.save_service_status_snapshot",
+            "self._guest_service_resources.save_guest_service_resource(resource)",
+            "self._guest_service_resources.get_guest_service_resource",
+            "final_decision = reconcile_guest_service(",
+            "conditions=final_decision.conditions",
         ],
         relative(repository_path): [
             "CREATE TABLE IF NOT EXISTS guest_service_resources",
@@ -2477,19 +4763,198 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             'parts[3] == "reconcile"',
             "def do_PUT(self) -> None:",
         ],
+        relative(swift_health_details_path): [
+            "status.guestServiceResources.first",
+            "status.guestServiceResourceReadIssues.first",
+            '"spec \\(resource.spec.state)"',
+            '"desired \\(desiredState)"',
+            '"status \\(resource.status.state)"',
+            '"observed \\(observedState)"',
+            '"status read failed \\(readError.kind): \\(readError.message)"',
+            "resource.conditions",
+            "joined(separator: \"; \")",
+            '"conditions \\(conditionText)"',
+            '"last operation \\(lastOperationId)"',
+        ],
+        relative(swift_advanced_health_path): [
+            "runtimeStatus.guestServiceResources.first",
+            "runtimeStatus.guestServiceResourceReadIssues.first",
+            '"spec \\(resource.spec.state)"',
+            '"desired \\(desiredState)"',
+            '"status \\(resource.status.state)"',
+            '"observed \\(observedState)"',
+            '"status read failed \\(readError.kind): \\(readError.message)"',
+            "resource.conditions",
+            "joined(separator: \"; \")",
+            '"conditions \\(conditionText)"',
+            '"last operation \\(lastOperationId)"',
+        ],
+        relative(pwa_advanced_page_path): [
+            "resource?.spec.state",
+            "resource?.spec.desiredState",
+            "resource?.status.readError",
+            "resource.status.readError.kind",
+            "resource.status.readError.message",
+            "resource?.status.state",
+            "resource?.status.observedState",
+            "resource.conditions",
+            ".join(\"; \")",
+            "resource?.lastOperationId",
+            'header: "Spec"',
+            'header: "Status read"',
+            'header: "Conditions"',
+            'header: "Last operation"',
+        ],
         relative(tests_path): [
             "test_guest_service_resource_get_is_side_effect_free",
             "test_observe_guest_service_reads_and_persists_loaded_status",
             "test_guest_service_controller_rejects_unknown_service",
             "test_guest_service_spec_update_rejects_invalid_desired_state",
             "test_guest_service_spec_update_persists_desired_state",
+            "test_observe_guest_service_uses_explicit_status_and_resource_repositories",
             "test_reconcile_guest_service_without_spec_is_blocked",
+            'resource.status.as_json()["observedState"] == "stopped"',
+            'resource.conditions[0].reason == "DesiredStateObserved"',
         ],
         relative(policy_tests_path): [
             "test_reconcile_blocks_missing_spec",
             "test_reconcile_blocks_failed_status_read",
             "test_reconcile_noops_when_desired_running_is_observed",
             "test_reconcile_restarts_when_restart_is_requested",
+        ],
+        relative(swift_display_tests_path): [
+            "spec configured | desired running | status loaded | observed running",
+            "conditions Reconciled=true DesiredStateObserved",
+            "ResourceFresh=true ObservedRecently",
+            "last operation op-",
+            "Resource read failed: resource document decode failed",
+            "Resource read failed: resource controller unavailable",
+        ],
+        relative(swift_endpoint_path): [
+            "case guestServiceResource",
+        ],
+        relative(swift_endpoint_routing_path): [
+            'path: "/runtime/guest/services/{service}/resource"',
+            "case .guestServiceResource:",
+            'components[4] == "resource"',
+        ],
+        relative(swift_http_types_path): [
+            "func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource",
+        ],
+        relative(swift_read_routes_path): [
+            "case .guestServiceResource:",
+            "handler.guestServiceResource(try request.runtimeGuestServiceName())",
+        ],
+        relative(swift_client_handler_path): [
+            "try await client.guestServiceResource(service)",
+        ],
+        relative(swift_client_contracts_path): [
+            "func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource",
+            '"guest-service-resource"',
+        ],
+        relative(swift_command_worker_path): [
+            "func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource",
+            "try gateway.serviceResource(service)",
+        ],
+        relative(swift_client_path): [
+            "func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource",
+            "try await commandWorker.guestServiceResource(service)",
+        ],
+        relative(swift_api_tests_path): [
+            'path: "/runtime/guest/services/recorder-ingress/resource"',
+            "client.guestServiceResourceRequests",
+            "func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource",
+        ],
+        relative(openapi_path): [
+            '"/runtime/guest/services/{service}/resource"',
+            '"operationId": "getRuntimeGuestServiceResource"',
+            '"$ref": "#/components/schemas/RuntimeGuestServiceResource"',
+        ],
+        relative(pwa_types_path): [
+            "export type RuntimeGuestServiceResource",
+            'components["schemas"]["RuntimeGuestServiceResource"]',
+        ],
+        relative(pwa_schemas_path): [
+            "export const runtimeGuestServiceResourceSchema",
+        ],
+        relative(pwa_gateway_path): [
+            "getGuestServiceResource(service: string): Promise<RuntimeGuestServiceResource>",
+        ],
+        relative(pwa_api_client_path): [
+            "runtimeGuestServiceResourceSchema",
+            "`/runtime/guest/services/${encodeURIComponent(service)}/resource`",
+        ],
+        relative(pwa_api_client_tests_path): [
+            '"/runtime/guest/services/app/resource"',
+            'client.getGuestServiceResource("app")',
+            'lastOperationId: "op-app"',
+        ],
+        relative(pwa_pages_tests_path): [
+            'name: "Spec"',
+            'name: "Status read"',
+            'name: "Conditions"',
+            'name: "Last operation"',
+            "serviceStatusReadFailed: docker inspect failed",
+            "scheduler Not reported Not reported configured Not reported loaded Not reported",
+            "Reconciled=true DesiredStateObserved: matched desired state; ResourceFresh=true ObservedRecently: resource observation is current",
+            "op-app-1",
+            "op-worker-2",
+        ],
+        relative(swift_status_assembly_path): [
+            "guestServiceFailureReasons(guestServicesRead)",
+            "let resourceByService = Dictionary(",
+            "read.resources.map { ($0.service, $0) }",
+            "resource?.spec.desiredState",
+            'desiredState == "stopped"',
+        ],
+        relative(swift_status_assembly_tests_path): [
+            "testMakeStatusUsesGuestServiceDesiredStateBeforeAddingFailureReason",
+            'desiredState: "stopped"',
+            'desiredState: "running"',
+            'XCTAssertFalse(status.failureReasons.contains(.guestService(service: "app", state: "stopped")))',
+            'XCTAssertTrue(status.failureReasons.contains(.guestService(service: "worker", state: "stopped")))',
+        ],
+        relative(swift_status_contract_path): [
+            "decodeRequiredArray(",
+            "loaded guest service reads must include",
+            "failed guest service reads must include guestServicesReadError",
+            "guestServicesReadState == .failed",
+        ],
+        relative(swift_status_contract_tests_path): [
+            "testRuntimeStatusRequiresGuestServiceArraysWhenReadStateIsLoaded",
+            "testRuntimeStatusRequiresGuestServiceReadErrorWhenReadStateIsFailed",
+            '"guestServicesReadState": "loaded"',
+            '"guestServicesReadState": "failed"',
+        ],
+        relative(swift_observation_health_policy_path): [
+            "guestServiceResources: [RuntimeGuestServiceResource]",
+            "guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]",
+            "let resourceByService = Dictionary(",
+            "resources.map { ($0.service, $0) }",
+            "resource?.spec.desiredState",
+            'desiredState == "stopped"',
+            "resourceReadIssueFailureReasons(guestServiceResourceReadIssues)",
+        ],
+        relative(swift_runtime_health_checker_path): [
+            "let guestServicesRead = guestServiceHealthRead(guestAddressRead)",
+            "guestServiceResources: guestServicesRead.resources",
+            "guestServiceResourceReadIssues: guestServicesRead.resourceReadIssues",
+            "resources.append(try gateway.serviceResource(service.service))",
+            "resourceReadIssues.append(RuntimeGuestServiceResourceReadIssue(",
+        ],
+        relative(swift_health_evaluator_tests_path): [
+            "testGuestServiceDesiredStoppedSuppressesStoppedStatusFailure",
+            "testGuestServiceResourceReadIssueProducesTypedFailureReason",
+            'guestServiceResource(service: "app", desiredState: "stopped")',
+            'guestServiceResource(service: "redis", desiredState: "running")',
+            'XCTAssertFalse(snapshot.failureReasons.contains(.guestService(service: "app", state: "stopped")))',
+            'XCTAssertTrue(snapshot.failureReasons.contains(.guestService(service: "redis", state: "stopped")))',
+            'guestServiceObservationReadFailed("app_resource_controller_unavailable")',
+        ],
+        relative(swift_recovery_planner_tests_path): [
+            "testDesiredStoppedGuestServiceDoesNotReconcileGuestStack",
+            'guestServiceResource(service: "app", desiredState: "stopped")',
+            "XCTAssertFalse(plan.reconcileGuestStack)",
         ],
     }
     texts = {path: read(ROOT / path) for path in required}
@@ -2505,6 +4970,29 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             "Postgres",
             "open(",
             "Path(",
+        ],
+        relative(usecases_path): [
+            "self._operations.save_service_status_snapshot",
+            "self._operations.save_guest_service_resource",
+            "self._operations.get_guest_service_resource",
+        ],
+        relative(swift_health_details_path): [
+            "resource.conditions.first",
+        ],
+        relative(swift_advanced_health_path): [
+            "resource.conditions.first",
+        ],
+        relative(pwa_advanced_page_path): [
+            "resource.conditions[0]",
+            "resource?.spec.desiredState ?? resource?.spec.state",
+            "resource?.status.observedState ??\n                resource?.status.state",
+            'row.resourceIssue || "OK"',
+        ],
+        relative(swift_status_assembly_path): [
+            "guestServicesRead.statuses.compactMap(guestServiceFailureReason)",
+        ],
+        relative(swift_runtime_health_checker_path): [
+            "try? gateway.serviceResource(service.service)",
         ],
     }
     present = [
@@ -3110,7 +5598,7 @@ def check_guest_capability_checks_use_guest_control_api() -> CheckResult:
     }
     forbidden = [
         "loadRuntimeState",
-        "RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>",
+        "RuntimeGuestDocumentLoadResult<GuestRuntimeObservationDocument>",
         "GuestRuntimeCapabilities",
         "runtimeStateReadFailed",
         "missingRuntimeState",
@@ -3229,32 +5717,59 @@ def check_cli_consumes_guest_control_product_apis() -> CheckResult:
     )
 
 
-def check_cli_guest_control_default_url_uses_runtime_status() -> CheckResult:
+def check_cli_guest_control_default_url_uses_guest_address_provider() -> CheckResult:
+    lifecycle_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "RuntimeLifecycle.swift"
+    )
+    lifecycle_composition_path = (
+        MACOS_RUNTIME
+        / "Sources/Bootstrap/DI"
+        / "RuntimeLifecycleComposition.swift"
+    )
     service_support_path = (
         MACOS_RUNTIME
         / "Sources/Hosts/CLI/ProcessBoundary/Support"
         / "RuntimeLifecycle+ServiceSupport.swift"
     )
+    lifecycle_text = read(lifecycle_path)
+    lifecycle_composition_text = read(lifecycle_composition_path)
     text = read(service_support_path)
     required = [
-        "JSONFileRuntimeStatusRepository(",
-        "installedPaths.runtimeStatus",
+        "let guestAddressProvider: any RuntimeGuestAddressProvider",
+        "self.guestAddressProvider = container.guestAddressProvider",
+        "guestAddressProvider ?? RuntimeControlAPIGuestAddressProvider()",
+        "readGuestAddress()",
+        "guestAddressRead.loadedAddress",
+        "guestAddressRead.failureStatusText",
         "guestControlAPIBaseURL(vmIP: vmIP)",
         '"http://\\(vmIP):18330"',
-        "runtime status document is missing",
-        "runtime status read failed",
     ]
     forbidden = [
-        "GuestRuntimeStateDocument",
-        "installedPaths.runtimeState",
+        "RuntimeGuestAddressOwnerProvider",
+        "RuntimeBootstrapGuestAddressProvider.live(",
+        "RuntimeVMIPFileGuestAddressProvider(",
+        "vmIPFile: installedPaths.vmIPFile",
+        "JSONFileRuntimeStatusArtifactSink(",
+        "installedPaths.runtimeStatus",
+        "document.vmIP",
+        "document.guestAddressRead",
+        "runtime status document is missing",
+        "runtime status read failed",
+        "GuestRuntimeObservationDocument",
+        "installedPaths.runtimeObservation",
         "runtimeStateVMIP",
         "try?",
     ]
-    missing = [token for token in required if token not in text]
+    combined = lifecycle_text + "\n" + lifecycle_composition_text + "\n" + text
+    missing = [token for token in required if token not in combined]
     present = [token for token in forbidden if token in text]
+    if "RuntimeBootstrapGuestAddressProvider.live(" in lifecycle_composition_text:
+        present.append("RuntimeLifecycleComposition:RuntimeBootstrapGuestAddressProvider.live(")
     if missing or present:
         return CheckResult(
-            "cli-guest-control-default-url-runtime-status",
+            "cli-guest-control-default-url-guest-address",
             False,
             (
                 f"missing={missing} forbidden_present={present} "
@@ -3262,9 +5777,9 @@ def check_cli_guest_control_default_url_uses_runtime_status() -> CheckResult:
             ),
         )
     return CheckResult(
-        "cli-guest-control-default-url-runtime-status",
+        "cli-guest-control-default-url-guest-address",
         True,
-        "CLI derives the default Guest Control URL from explicit runtime status reads",
+        "CLI derives the default Guest Control URL from explicit Guest address reads",
     )
 
 
@@ -3284,7 +5799,7 @@ def check_product_readmes_do_not_promote_legacy_sources() -> CheckResult:
         relative(MACOS_RUNTIME / "README.md"): [
             "source of truth는 watchdog/runtime",
             "runtime-observability.sqlite`입니다. UI와 Runtime",
-            "guest runtime-state.json\n  -> watchdog/runtime",
+            "guest runtime-observation.json\n  -> watchdog/runtime",
             "../../docs/macos-runtime/",
         ],
         relative(PWA / "README.md"): [
@@ -3489,7 +6004,7 @@ def check_product_docs_do_not_promote_testkit_runtime_surface() -> CheckResult:
             "test-kit router implementation",
             "test-kit state policy",
             "runtime status/progress/health/guest request/result",
-            "runtime-state.json, result JSON, guest logs",
+            "runtime-observation.json, result JSON, guest logs",
             "legacy `vm-ip`",
             "guest request-result 계약",
         ],
@@ -3575,6 +6090,7 @@ def check_product_docs_do_not_promote_testkit_runtime_surface() -> CheckResult:
         ],
         "site-docs/release/usage.md": [
             "Helper Test 탭의 `Manual .vital upload`",
+            "active operation이 `Installing`",
         ],
         "site-docs/release/runtime-status.md": [
             "guest runtime-state의 `containerServices` 계약",
@@ -3583,6 +6099,7 @@ def check_product_docs_do_not_promote_testkit_runtime_surface() -> CheckResult:
             "prepare-update-shutdown-result.json",
             "Guest shutdown request는 single-shot contract",
             "request file을 poweroff 직전까지",
+            "해당 active operation 상태",
         ],
         "docs/troubleshooting/070_golden-disk-runtime-boot-proof-gap.md": [
             "dev build에서 `testkit`만 누락",
@@ -3704,11 +6221,14 @@ def check_product_docs_do_not_promote_testkit_runtime_surface() -> CheckResult:
         ],
         "site-docs/release/usage.md": [
             "Helper Product Lab의 `.vital` replay/upload 흐름",
+            "Active operation은 별도 operation-state read model이 제공하는 작업 소유권 표시",
+            "Runtime Control status, operation-state, event",
         ],
         "site-docs/release/runtime-status.md": [
             "Guest Control API가 제공하는 service/stack status 계약",
             "Guest Control update-shutdown operation",
             "Guest shutdown command는 single-shot operation",
+            "Active operation은 operation-state owner가 제공하며",
         ],
         "docs/troubleshooting/070_golden-disk-runtime-boot-proof-gap.md": [
             "Product Lab 또는 다른 required product service",
@@ -3776,6 +6296,203 @@ def check_runtime_proof_docs_describe_acceptance_targets() -> CheckResult:
         True,
         "Runtime v2 docs describe review, Swift focused, HTTP E2E, and "
         "VM smoke acceptance gates",
+    )
+
+
+def check_delivery_validation_docs_do_not_promote_legacy_runtime_state_files(
+) -> CheckResult:
+    path = ROOT / "site-docs/dev/delivery-validation.md"
+    text = read(path)
+    required = [
+        "Host의 mutating runtime operation owner는 Runtime Control Host operation lease API입니다.",
+        "`runtime-operation-lease.json`은 diagnostics/export",
+        "artifact로 남을 수 있지만 active operation ownership의 source of truth가 아닙니다.",
+        "workflow state artifact는 diagnostics/export evidence로만 남길 수 있습니다.",
+        "workflow artifact를 source of truth로 사용하지 말고 typed owner contract를",
+        "Guest Control readiness/service status",
+        "runtime smoke phase가 소유",
+    ]
+    forbidden = [
+        "Host의 mutating runtime operation은 `runtime-operation-lease.json`을 source of truth로 사용합니다.",
+        "Lease acquire, heartbeat, release는 파일 lock으로 보호되어야 하며",
+        "operation 상태는 lease document, Guest Control operation document, workflow state document",
+        "workflow state document로 명시되어야",
+        "Guest bootstrap 완료, `runtime-observation.json` 생성, systemd/docker/http",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    if missing or present:
+        return CheckResult(
+            "delivery-validation-docs-no-legacy-runtime-state-files",
+            False,
+            f"missing={missing} forbidden_present={present} path={relative(path)}",
+        )
+    return CheckResult(
+        "delivery-validation-docs-no-legacy-runtime-state-files",
+        True,
+        "delivery validation docs point operation ownership and runtime proof at owner APIs",
+    )
+
+
+def check_runtime_update_docs_do_not_promote_status_files_as_current_owners(
+) -> CheckResult:
+    checks = {
+        ROOT / "docs/runtime/macos/update.md": {
+            "required": [
+                "explicit runtime health owner reads report healthy",
+                "`runtime-status.json` may only mirror this as diagnostics projection",
+                "diagnostics/status projection으로 갱신. current operation/health owner가 아님",
+                "Guest Control/Postgres read model 갱신",
+                "publish diagnostics/status projection",
+            ],
+            "forbidden": [
+                "health passed | `runtime-status.json` state `healthy`",
+                "runtime status | `status/runtime-status.json` | update/rollback 상태로 갱신",
+                "guest activation | VM 내부에서 Docker image load, compose recreate, runtime-state 갱신",
+                "write runtime status",
+                "-> runtime-state 갱신",
+            ],
+        },
+        ROOT / "docs/troubleshooting/067_initial-install-watchdog-degraded.md": {
+            "required": [
+                "install workflow/operation-state owner가 제공한 explicit state",
+                "`runtime-status.json`은 diagnostics/status projection이며 current operation owner가 아닙니다.",
+            ],
+            "forbidden": [
+                "초기 설치 상태는 install workflow가 작성한 `runtime-status.json` contract로만 판단합니다.",
+            ],
+        },
+        ROOT / "docs/troubleshooting/073_installed-bootstrap-missing-rootfs-input-metadata.md": {
+            "required": [
+                "Older diagnostics/status projections can show `vm-runtime-state-missing`",
+                "Current Runtime Control status must come from explicit owner reads",
+                "rather than treating `runtime-status.json` as the failure owner",
+            ],
+            "forbidden": [
+                "`runtime-status.json` can show `vm-runtime-state-missing`",
+            ],
+        },
+        ROOT / "docs/troubleshooting/054_helper-message-log-stale-session-history.md": {
+            "required": [
+                "Use Runtime Control status as the current install state source",
+                "`runtime-status.json` as diagnostics/export evidence only",
+            ],
+            "forbidden": [
+                "Use `runtime-status.json`, Runtime Control status, install logs, command logs, and runtime events to diagnose the current install.",
+            ],
+        },
+    }
+    missing: list[str] = []
+    present: list[str] = []
+    for path, tokens in checks.items():
+        text = read(path)
+        missing.extend(
+            f"{relative(path)}:{token}"
+            for token in tokens["required"]
+            if token not in text
+        )
+        present.extend(
+            f"{relative(path)}:{token}"
+            for token in tokens["forbidden"]
+            if token in text
+        )
+    if missing or present:
+        return CheckResult(
+            "runtime-update-docs-no-status-file-current-owner",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "runtime-update-docs-no-status-file-current-owner",
+        True,
+        "runtime update and initial-install docs keep status/progress files as diagnostics artifacts",
+    )
+
+
+def check_runtime_event_history_docs_do_not_promote_files_as_state_owners(
+) -> CheckResult:
+    observability_path = ROOT / "docs/runtime/macos/observability.md"
+    swift_read_models = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
+    )
+    swift_contract_tests = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    text = read(observability_path)
+    swift_read_models_text = read(swift_read_models)
+    swift_contract_tests_text = read(swift_contract_tests)
+    required = [
+        "Product consumers use the Runtime Control `/runtime/events` API contract",
+        "typed `RuntimeEventHistory` read model",
+        "they do not treat the file path as the owner contract",
+        "JSONL diagnostics read path",
+        "not treat the file path as the owner contract or successful fallback owner",
+        "RuntimeEventHistory.readError",
+        "JSONL/SQLite는 backing diagnostics artifact/index이며 current health/recovery owner가 아님",
+        "Runtime Control `/runtime/events` API + `RuntimeEventHistory` read model contract",
+        "operational event diagnostics artifact",
+        "current `failureReasons`는 explicit owner reads에서 조립",
+        "JSONL append를 durable diagnostics artifact",
+    ]
+    forbidden = [
+        "`runtime-events.jsonl`은 runtime operational event의 1차 SoT입니다.",
+        "SQLite read model은 조회용 index이므로 JSONL rotation이 있더라도 event SoT 역할을 대신하지 않습니다.",
+        "Runtime event log | `runtime-observability.sqlite`, fallback `runtime-events.jsonl`",
+        "/runtime/events via SQLite first, JSONL fallback",
+        "JSONL fallback",
+        "fallback으로 응답",
+        "read model fallback",
+        "`RuntimeEventHistoryOwnerReader` over `status/runtime-events.jsonl` and SQLite index",
+        "| `runtime-events.jsonl` | runtime/watchdog | 제품 상태 이벤트 | Yes, through `RuntimeEventHistoryOwnerReader` |",
+        "불가능하면 JSONL에서 읽은 최근 event history",
+        "SQLite read model을 우선 사용하고, 불가능하면 JSONL",
+        "| 언제 상태가 바뀌었나? | `runtime-observability.sqlite`, fallback `runtime-events.jsonl`, API `/runtime/events` |",
+        "장애로 판단되면 `failureReasons`와 `runtime-events.jsonl`에 제품 용어로 기록합니다.",
+        "JSONL append를 canonical source",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    for label, token in [
+        (
+            "RuntimeEventHistory.required-events-array",
+            "events = try container.decode([RuntimeEventDocument].self, forKey: .events)",
+        ),
+        (
+            "RuntimeEventHistory.required-nullable-next-cursor",
+            "nextCursor = try container.decodeRequiredNullable(String.self, forKey: .nextCursor)",
+        ),
+        (
+            "RuntimeEventHistory.required-nullable-matching-count",
+            "matchingCount = try container.decodeRequiredNullable(Int.self, forKey: .matchingCount)",
+        ),
+        (
+            "RuntimeEventHistory.explicit-null-next-cursor",
+            "try container.encodeNil(forKey: .nextCursor)",
+        ),
+    ]:
+        if token not in swift_read_models_text:
+            missing.append(label)
+    if "testRuntimeEventHistoryRequiresEventsAndPaginationKeys" not in swift_contract_tests_text:
+        missing.append("RuntimeControlContractsTests.required-event-history-document")
+    for token in [
+        "events = try container.decodeIfPresent([RuntimeEventDocument].self, forKey: .events) ?? []",
+        "try container.encodeIfPresent(nextCursor, forKey: .nextCursor)",
+        "try container.encodeIfPresent(matchingCount, forKey: .matchingCount)",
+    ]:
+        if token in swift_read_models_text:
+            present.append(f"{relative(swift_read_models)}:{token}")
+    if missing or present:
+        return CheckResult(
+            "runtime-event-history-docs-no-file-state-owner",
+            False,
+            f"missing={missing} forbidden_present={present} path={relative(observability_path)}",
+        )
+    return CheckResult(
+        "runtime-event-history-docs-no-file-state-owner",
+        True,
+        "runtime event docs route product history through Runtime Control API/read model and keep files as diagnostics/index artifacts",
     )
 
 
@@ -4014,14 +6731,20 @@ def check_maintenance_docs_do_not_promote_request_files_as_current_path(
 def check_observer_docs_use_guest_postgres_read_model_flow() -> CheckResult:
     packaging_path = ROOT / "docs/runtime/macos/packaging.md"
     observability_path = ROOT / "docs/runtime/macos/observability.md"
+    recorder_activity_troubleshooting_path = (
+        ROOT / "docs/troubleshooting/031_recorder-activity-history-window.md"
+    )
     texts = {
         relative(packaging_path): read(packaging_path),
         relative(observability_path): read(observability_path),
+        relative(recorder_activity_troubleshooting_path): read(
+            recorder_activity_troubleshooting_path
+        ),
     }
     forbidden = {
         relative(packaging_path): [
             (
-                "-> guest runtime-state.json\n"
+                "-> guest runtime-observation.json\n"
                 "  -> watchdog\n"
                 "  -> runtime-observability.sqlite\n"
                 "  -> Runtime Control API /vitaldb/*"
@@ -4030,10 +6753,20 @@ def check_observer_docs_use_guest_postgres_read_model_flow() -> CheckResult:
         relative(observability_path): [
             (
                 "-> vitaldb-observer snapshot\n"
-                "  -> guest runtime-state.json"
+                "  -> guest runtime-observation.json"
             ),
             "VitalDB observer snapshot",
             "compose service health summary를 recovery trigger와 연결",
+            "원본 snapshot은 canonical source로 유지",
+        ],
+        relative(recorder_activity_troubleshooting_path): [
+            "`runtime-observation.json`의 `vitalDBObservation`에 포함",
+            "Host watchdog은 기본 60초마다 `runtime-observation.json`을 읽어",
+            "guest runtime-state를 current source로 명시",
+            "Recorder packet activity의 durable SoT는 SQLite",
+            "-> guest runtime-state transfer",
+            "-> host observability projection",
+            "-> SQLite vitaldb_recorder_activity_buckets",
         ],
     }
     required = {
@@ -4046,6 +6779,14 @@ def check_observer_docs_use_guest_postgres_read_model_flow() -> CheckResult:
             "-> Guest/Postgres VitalDB read model",
             "-> Guest Control API /v1/vitaldb/*",
             "Guest Control API VitalDB read model read state",
+            "Guest/Postgres에 저장된 snapshot row는 relationship projection을 재생성하는 canonical evidence",
+        ],
+        relative(recorder_activity_troubleshooting_path): [
+            "Guest/Postgres read model의 1-minute bucket projection",
+            "-> Guest/Postgres read model writer",
+            "-> Postgres vitaldb observation/activity projection",
+            "-> Guest Control API /v1/vitaldb/*",
+            "Guest/Postgres read model을 current source로 명시",
         ],
     }
     matches = [
@@ -4070,6 +6811,102 @@ def check_observer_docs_use_guest_postgres_read_model_flow() -> CheckResult:
         True,
         "observer packaging docs route VitalDB observations through "
         "Guest/Postgres read models",
+    )
+
+
+def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
+    observability_path = ROOT / "docs/runtime/macos/observability.md"
+    guest_control_api_path = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/adapters/inbound/guest_control_api.py"
+    )
+    guest_control_usecases_path = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/application/guest_control/usecases.py"
+    )
+    postgres_operations_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/adapters/outbound/postgres/operation_repository.py"
+    )
+    redis_relay_loop_path = (
+        ROOT / "apps/vitalserver-redis-relay/vitalserver_redis_relay/relay_loop.py"
+    )
+    redis_relay_owner_path = (
+        ROOT / "apps/vitalserver-redis-relay/vitalserver_redis_relay/status_owner.py"
+    )
+    redis_relay_readme_path = ROOT / "apps/vitalserver-redis-relay/README.md"
+    compose_path = MACOS_RUNTIME / "Support/Guest/compose.yaml"
+    texts = {
+        relative(observability_path): read(observability_path),
+        relative(guest_control_api_path): read(guest_control_api_path),
+        relative(guest_control_usecases_path): read(guest_control_usecases_path),
+        relative(postgres_operations_path): read(postgres_operations_path),
+        relative(redis_relay_loop_path): read(redis_relay_loop_path),
+        relative(redis_relay_owner_path): read(redis_relay_owner_path),
+        relative(redis_relay_readme_path): read(redis_relay_readme_path),
+        relative(compose_path): read(compose_path),
+    }
+    forbidden = [
+        "Helper status, operator diagnostics",
+        "Host/Helper 제품 상태는 이 파일을 직접 읽습니다",
+        "RuntimeStatus는 redis-relay-status.json",
+        "RedisRelayStatusFileAdapter",
+        "TIROSH_REDIS_RELAY_STATUS_PATH",
+        "Migration gap: Redis Relay status is still a Guest-side file adapter",
+        "json.load(open(path))",
+        "Docker health checks use this status file",
+    ]
+    required = [
+        (relative(observability_path), "`PUT /v1/redis-relay/status` owner mutation"),
+        (relative(observability_path), "Guest/Postgres owner snapshot"),
+        (relative(observability_path), "Host RuntimeStatus는 shared status file을 직접 읽지 않습니다."),
+        (relative(guest_control_api_path), 'parts == ["v1", "redis-relay", "status"]'),
+        (relative(guest_control_api_path), "usecases.put_redis_relay_status"),
+        (relative(guest_control_api_path), "redis_relay=operations"),
+        (relative(guest_control_usecases_path), "def put_redis_relay_status"),
+        (relative(postgres_operations_path), "redis_relay_status_snapshots"),
+        (relative(postgres_operations_path), "def save_status"),
+        (relative(postgres_operations_path), "def status"),
+        (relative(redis_relay_loop_path), "GuestControlStatusOwnerPublisher"),
+        (relative(redis_relay_owner_path), 'method="PUT"'),
+        (relative(redis_relay_readme_path), "`PUT /v1/redis-relay/status` owner mutation"),
+        (relative(redis_relay_readme_path), "they do not read the diagnostics status file as product liveness"),
+        (relative(compose_path), "REDIS_RELAY_STATUS_OWNER_URL"),
+        (relative(compose_path), "host.docker.internal:host-gateway"),
+        (relative(compose_path), "sys.exit(0 if os.environ.get('REDIS_RELAY_STATUS_OWNER_URL') else 1)"),
+    ]
+    matches = [
+        f"{path}:{token}"
+        for path, text in texts.items()
+        for token in forbidden
+        if token in text
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token in required
+        if token not in texts[path]
+    ]
+    deleted_paths = [
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/adapters/outbound/redis_relay/status_file.py",
+        GUEST_TOOLS / "src/tirosh_guest_tools/adapters/outbound/redis_relay/__init__.py",
+    ]
+    existing_deleted_paths = [relative(path) for path in deleted_paths if path.exists()]
+    if matches or missing:
+        return CheckResult(
+            "redis-relay-status-docs-guest-control-api-flow",
+            False,
+            f"matches={matches} missing={missing} deleted_paths_present={existing_deleted_paths}",
+        )
+    if existing_deleted_paths:
+        return CheckResult(
+            "redis-relay-status-docs-guest-control-api-flow",
+            False,
+            f"deleted_paths_present={existing_deleted_paths}",
+        )
+    return CheckResult(
+        "redis-relay-status-docs-guest-control-api-flow",
+        True,
+        "Redis Relay status is published through Guest Control owner mutation "
+        "and read from Guest/Postgres snapshot; file remains diagnostics only",
     )
 
 
@@ -4176,6 +7013,104 @@ def check_guest_tools_legacy_operation_result_model_removed() -> CheckResult:
     )
 
 
+def check_runtime_command_result_preserves_explicit_execution_evidence() -> CheckResult:
+    swift_read_models = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
+    )
+    swift_contract_tests = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    pwa_schema = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+    )
+    pwa_schema_tests = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts"
+    )
+    pwa_generated = (
+        PWA
+        / "src/domain/runtime-control/contracts/generated/runtime-control.ts"
+    )
+    openapi = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    texts = {
+        relative(swift_read_models): read(swift_read_models),
+        relative(swift_contract_tests): read(swift_contract_tests),
+        relative(pwa_schema): read(pwa_schema),
+        relative(pwa_schema_tests): read(pwa_schema_tests),
+        relative(pwa_generated): read(pwa_generated),
+        relative(openapi): read(openapi),
+    }
+    required = {
+        relative(swift_read_models): [
+            "outputIssues = try container.decode([RuntimeCommandOutputIssue].self, forKey: .outputIssues)",
+            "executionIssue = try container.decodeRequiredNullable(",
+            "try container.encode(outputIssues, forKey: .outputIssues)",
+            "try container.encodeNil(forKey: .executionIssue)",
+        ],
+        relative(swift_contract_tests): [
+            "testRuntimeCommandResultPreservesOutputIssuesAndRequiresCompletePayload",
+        ],
+        relative(pwa_schema): [
+            "outputIssues: z.array(",
+            "executionIssue: z",
+            ".nullable()",
+        ],
+        relative(pwa_schema_tests): [
+            "outputIssues: []",
+            "executionIssue: null",
+        ],
+        relative(pwa_generated): [
+            "outputIssues: components[\"schemas\"][\"RuntimeCommandOutputIssue\"][];",
+            "executionIssue: components[\"schemas\"][\"RuntimeProcessExecutionIssue\"] | null;",
+        ],
+        relative(openapi): [
+            "\"RuntimeCommandOutputIssue\"",
+            "\"RuntimeProcessExecutionIssue\"",
+            "\"outputIssues\"",
+            "\"executionIssue\"",
+        ],
+    }
+    missing = {
+        path: [token for token in tokens if token not in texts[path]]
+        for path, tokens in required.items()
+        if any(token not in texts[path] for token in tokens)
+    }
+    forbidden = {
+        relative(swift_read_models): [
+            "outputIssues = try container.decodeIfPresent([RuntimeCommandOutputIssue].self, forKey: .outputIssues) ?? []",
+            "executionIssue = try container.decodeIfPresent(RuntimeProcessExecutionIssue.self, forKey: .executionIssue)",
+        ],
+        relative(swift_contract_tests): [
+            "testRuntimeCommandResultPreservesOutputIssuesAndDecodesLegacyPayload",
+        ],
+        relative(pwa_generated): [
+            "result?: components[\"schemas\"][\"RuntimeCommandResult\"];",
+            "outputIssues?:",
+            "executionIssue?:",
+        ],
+    }
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden.items()
+        for token in tokens
+        if token in texts[path]
+    ]
+    if missing or present:
+        return CheckResult(
+            "runtime-command-result-explicit-execution-evidence",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "runtime-command-result-explicit-execution-evidence",
+        True,
+        "RuntimeCommandResult preserves output decode issues and process execution issues across Swift, OpenAPI, and PWA contracts",
+    )
+
+
 def check_vitaldb_read_models_do_not_name_host_sqlite_as_source() -> CheckResult:
     paths = [
         MACOS_RUNTIME / "Sources/Contracts/RuntimeControl",
@@ -4206,6 +7141,151 @@ def check_vitaldb_read_models_do_not_name_host_sqlite_as_source() -> CheckResult
     )
 
 
+def check_vitaldb_observation_snapshot_preserves_explicit_read_state_contract() -> CheckResult:
+    swift_read_models = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
+    )
+    swift_contract_tests = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    pwa_schema = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+    )
+    read_models_text = read(swift_read_models)
+    tests_text = read(swift_contract_tests)
+    schema_text = read(pwa_schema)
+
+    required = {
+        relative(swift_read_models): [
+            "self.observation = try container.decodeRequiredNullable(",
+            "VitalDBObservationDocument.self,",
+            "self.readError = try container.decodeRequiredNullable(String.self, forKey: .readError)",
+            "loaded VitalDB observation snapshots must include observation",
+            "failed VitalDB observation snapshots must include readError",
+        ],
+        relative(swift_contract_tests): [
+            "testVitalDBObservationSnapshotRequiresExplicitNullableFieldsAndValidReadState",
+        ],
+        relative(pwa_schema): [
+            "observation: vitalDBObservationSchema.nullable()",
+            "readError: requiredNullableString",
+            "loaded VitalDB observation snapshots must include observation",
+            "failed VitalDB observation snapshots must include readError",
+        ],
+    }
+    texts = {
+        relative(swift_read_models): read_models_text,
+        relative(swift_contract_tests): tests_text,
+        relative(pwa_schema): schema_text,
+    }
+    missing = {
+        path: [token for token in tokens if token not in texts[path]]
+        for path, tokens in required.items()
+        if any(token not in texts[path] for token in tokens)
+    }
+    forbidden = [
+        "self.observation = try container.decodeIfPresent(VitalDBObservationDocument.self, forKey: .observation)",
+        "self.readError = try container.decodeIfPresent(String.self, forKey: .readError)",
+    ]
+    present = [
+        f"{relative(swift_read_models)}:{token}"
+        for token in forbidden
+        if token in read_models_text
+    ]
+    if missing or present:
+        return CheckResult(
+            "vitaldb-observation-snapshot-explicit-read-state-contract",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "vitaldb-observation-snapshot-explicit-read-state-contract",
+        True,
+        "RuntimeVitalDBObservationSnapshot requires explicit nullable fields and read-state invariants",
+    )
+
+
+def check_vitaldb_relationship_history_preserves_explicit_read_state_contract() -> CheckResult:
+    swift_contract = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/Shared/RuntimeVitalRelationshipContracts.swift"
+    )
+    swift_contract_tests = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    pwa_schema = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+    )
+    pwa_schema_tests = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts"
+    )
+    texts = {
+        relative(swift_contract): read(swift_contract),
+        relative(swift_contract_tests): read(swift_contract_tests),
+        relative(pwa_schema): read(pwa_schema),
+        relative(pwa_schema_tests): read(pwa_schema_tests),
+    }
+    required = {
+        relative(swift_contract): [
+            "state = try container.decode(RuntimeVitalRelationshipHistoryState.self, forKey: .state)",
+            "assignments = try container.decode([RuntimeVitalBedAssignmentRecord].self, forKey: .assignments)",
+            "events = try container.decode([RuntimeVitalRelationshipEventRecord].self, forKey: .events)",
+            "readError = try container.decodeRequiredNullable(String.self, forKey: .readError)",
+            "partially loaded VitalDB relationship history must include readError",
+            "failed VitalDB relationship history must include readError",
+        ],
+        relative(swift_contract_tests): [
+            "testVitalRelationshipHistoryPreservesExplicitPartialStateAndRequiresCompletePayload",
+        ],
+        relative(pwa_schema): [
+            "partially loaded VitalDB relationship history must include readError",
+            "failed VitalDB relationship history must include readError",
+        ],
+        relative(pwa_schema_tests): [
+            'state: "partiallyLoaded"',
+            'state: "readFailed"',
+        ],
+    }
+    missing = {
+        path: [token for token in tokens if token not in texts[path]]
+        for path, tokens in required.items()
+        if any(token not in texts[path] for token in tokens)
+    }
+    forbidden = {
+        relative(swift_contract): [
+            "assignments = try container.decodeIfPresent([RuntimeVitalBedAssignmentRecord].self, forKey: .assignments) ?? []",
+            "events = try container.decodeIfPresent([RuntimeVitalRelationshipEventRecord].self, forKey: .events) ?? []",
+            "state = try container.decodeIfPresent(RuntimeVitalRelationshipHistoryState.self, forKey: .state)",
+        ],
+        relative(swift_contract_tests): [
+            "testVitalRelationshipHistoryPreservesExplicitPartialStateAndDecodesLegacyPayload",
+        ],
+    }
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden.items()
+        for token in tokens
+        if token in texts[path]
+    ]
+    if missing or present:
+        return CheckResult(
+            "vitaldb-relationship-history-explicit-read-state-contract",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "vitaldb-relationship-history-explicit-read-state-contract",
+        True,
+        "RuntimeVitalRelationshipHistory requires explicit arrays, state, nullable readError, and failure invariants",
+    )
+
+
 def check_vitaldb_host_sqlite_projection_requires_diagnostics_mode() -> CheckResult:
     product_reader_path = (
         MACOS_RUNTIME
@@ -4217,8 +7297,26 @@ def check_vitaldb_host_sqlite_projection_requires_diagnostics_mode() -> CheckRes
         / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
         / "RuntimeVitalDBHostDiagnosticsProjectionReader.swift"
     )
+    event_history_reader_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "RuntimeEventHistoryOwnerReader.swift"
+    )
+    current_observation_provider_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "RuntimeVitalDBCurrentObservationProvider.swift"
+    )
+    observability_paths_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
+        / "RuntimeObservabilityPaths.swift"
+    )
     product_reader = read(product_reader_path)
     diagnostics_reader = read(diagnostics_reader_path)
+    event_history_reader = read(event_history_reader_path)
+    current_observation_provider = read(current_observation_provider_path)
+    observability_paths = read(observability_paths_path)
     required = [
         "enum RuntimeVitalDBHostProjectionReadMode",
         "case diagnostics",
@@ -4229,38 +7327,184 @@ def check_vitaldb_host_sqlite_projection_requires_diagnostics_mode() -> CheckRes
         "host SQLite relationship projection is disabled",
         "RuntimeVitalDBProjectionReadCollector",
     ]
+    current_observation_required = [
+        "guestControlGateway(baseURL).latestVitalDBObservation()",
+        "source: .guestControlAPI",
+        "guestControl=baseURLUnavailable",
+    ]
+    observability_paths_required = [
+        "InstalledRuntimePaths.defaultInstalled.runtimeEvents.path",
+        "InstalledRuntimePaths.defaultInstalled.runtimeObservabilityDB.path",
+    ]
+    product_reader_required = [
+        "guestVitalDBReadModelProvider: .live()",
+        "guestVitalDBBedReadModelProvider: .live()",
+        "guestVitalDBActivityProvider: .live()",
+        "guestVitalDBRelationshipProvider: .live()",
+        "Guest VitalDB bed read model is unavailable.",
+        "Guest VitalDB activity read model is unavailable.",
+        "Guest VitalDB relationship read model is unavailable.",
+    ]
+    event_required = [
+        "CompositeRuntimeEventRepository(",
+        "JSONLRuntimeEventRepository(",
+        "SQLiteRuntimeEventRepository(",
+        "RuntimeObservabilityPaths",
+        "paths.runtimeEvents",
+        "paths.runtimeObservabilityDB",
+    ]
     reader_forbidden = [
         "RuntimeVitalDBHostDiagnosticsProjectionReader",
         "RuntimeVitalDBProjectionReadCollector(",
         "SQLiteVitalDBObservationRepository(url:",
+        "JSONLRuntimeEventRepository(",
+        "SQLiteRuntimeEventRepository(",
+        "CompositeRuntimeEventRepository(",
+        "paths.runtimeEvents",
+        "paths.runtimeObservabilityDB",
         "hostProjectionReadMode:",
         "makeVitalDBProjectionRepository:",
         "guard hostProjectionReadMode == .diagnostics else",
+        "currentObservationProvider: .live(fileStore:",
+    ]
+    event_forbidden = ["RuntimePaths"]
+    diagnostics_forbidden = ["RuntimePaths"]
+    observability_paths_forbidden = [
+        "RuntimeControlClientConstants.Paths.runtimeEvents",
+        "RuntimeControlClientConstants.Paths.runtimeObservabilityDB",
+    ]
+    current_observation_forbidden = [
+        "fileStore",
+        "RuntimeFileStore",
+        "RuntimeFileReading",
+        "RuntimeFileWriting",
+        "runtime-observation.json",
+        "runtime-status.json",
+        "SQLiteVitalDBObservationRepository",
     ]
     forbidden = [
         "fallback projection only when Guest current observation is unavailable",
         "Guest current observation is unavailable",
     ]
     missing = [token for token in required if token not in diagnostics_reader]
+    missing += [
+        f"{relative(event_history_reader_path)}:{token}"
+        for token in event_required
+        if token not in event_history_reader
+    ]
+    missing += [
+        f"{relative(current_observation_provider_path)}:{token}"
+        for token in current_observation_required
+        if token not in current_observation_provider
+    ]
+    missing += [
+        f"{relative(observability_paths_path)}:{token}"
+        for token in observability_paths_required
+        if token not in observability_paths
+    ]
+    missing += [
+        f"{relative(product_reader_path)}:{token}"
+        for token in product_reader_required
+        if token not in product_reader
+    ]
     present = [
         token
         for token in forbidden
         if token in product_reader or token in diagnostics_reader
     ]
     reader_present = [token for token in reader_forbidden if token in product_reader]
-    if missing or present or reader_present:
+    owner_present = [
+        f"{relative(event_history_reader_path)}:{token}"
+        for token in event_forbidden
+        if token in event_history_reader
+    ] + [
+        f"{relative(diagnostics_reader_path)}:{token}"
+        for token in diagnostics_forbidden
+        if token in diagnostics_reader
+    ] + [
+        f"{relative(observability_paths_path)}:{token}"
+        for token in observability_paths_forbidden
+        if token in observability_paths
+    ] + [
+        f"{relative(current_observation_provider_path)}:{token}"
+        for token in current_observation_forbidden
+        if token in current_observation_provider
+    ]
+    if missing or present or reader_present or owner_present:
         return CheckResult(
             "vitaldb-host-sqlite-explicit-diagnostics-only",
             False,
             (
                 f"missing={missing} forbidden_present={present} "
-                f"reader_forbidden={reader_present}"
+                f"reader_forbidden={reader_present} owner_forbidden={owner_present}"
             ),
         )
     return CheckResult(
         "vitaldb-host-sqlite-explicit-diagnostics-only",
         True,
         "Host SQLite VitalDB projection reads require explicit diagnostics mode",
+    )
+
+
+def check_runtime_event_sqlite_index_failure_does_not_fail_primary_append() -> CheckResult:
+    repository_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Persistence"
+        / "CompositeRuntimeEventRepository.swift"
+    )
+    tests_path = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests"
+        / "SQLiteRuntimeObservabilityStoreTests.swift"
+    )
+    repository = read(repository_path)
+    tests = read(tests_path)
+    required = [
+        (relative(repository_path), "try primary.append(event)", repository),
+        (relative(repository_path), "try secondary.append(event)", repository),
+        (relative(repository_path), "CompositeRuntimeEventRepositoryError.secondaryAppendFailed", repository),
+        (
+            relative(tests_path),
+            "testCompositeRepositoryLogsSecondaryAppendFailureWithoutFailingPrimaryAppend",
+            tests,
+        ),
+        (relative(tests_path), "try repository.append(event(id: \"event-1\"", tests),
+        (relative(tests_path), "XCTAssertEqual(page.state, .partiallyLoaded)", tests),
+    ]
+    forbidden = [
+        (relative(repository_path), "throw appendError", repository),
+        (relative(repository_path), "let appendError =", repository),
+        (
+            relative(repository_path),
+            "throw CompositeRuntimeEventRepositoryError.secondaryAppendFailed",
+            repository,
+        ),
+        (
+            relative(tests_path),
+            "XCTAssertThrowsError(\n            try repository.append(event(id: \"event-1\"",
+            tests,
+        ),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token, text in required
+        if token not in text
+    ]
+    present = [
+        f"{path}:{token}"
+        for path, token, text in forbidden
+        if token in text
+    ]
+    if missing or present:
+        return CheckResult(
+            "runtime-event-sqlite-index-failure-no-primary-append-failure",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "runtime-event-sqlite-index-failure-no-primary-append-failure",
+        True,
+        "Runtime event SQLite index append failures stay diagnostics and do not fail the primary event append",
     )
 
 
@@ -4417,6 +7661,15 @@ def check_current_health_has_no_reported_vm_error_input(
     policy_path = (
         MACOS_RUNTIME / "Sources/Domain/Policies/RuntimeVMHealthPolicy.swift"
     )
+    lifecycle_document_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeVMLifecycleDocument.swift"
+    )
+    vm_error_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeVMError.swift"
+    )
+    failure_reason_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeFailureReason.swift"
+    )
     tests_path = (
         MACOS_RUNTIME
         / "Tests/DomainTests/Policies/RuntimeHealthEvaluatorTests.swift"
@@ -4424,8 +7677,23 @@ def check_current_health_has_no_reported_vm_error_input(
     usecase_text = read(usecase_path)
     evaluator_text = read(evaluator_path)
     policy_text = read(policy_path)
+    lifecycle_document_text = read(lifecycle_document_path)
+    vm_error_text = read(vm_error_path)
+    failure_reason_text = read(failure_reason_path)
+    reported_vm_errors_text = text_between(
+        lifecycle_document_text,
+        "var reportedVMErrors: [RuntimeVMError]",
+        "\n}\n",
+    )
     tests_text = read(tests_path)
     required = {
+        relative(lifecycle_document_path): [
+            "var reportedVMErrors: [RuntimeVMError]",
+            "case .diskAttachmentInvalid:",
+            "case .guestFilesystemReadOnly:",
+            "case .guestDiskIO:",
+            "case .guestKernelPanic:",
+        ],
         relative(tests_path): [
             "testVMLifecycleTerminalReasonReportsStoragePreservingVMError",
             "RuntimeVMLifecycleDocument(",
@@ -4443,11 +7711,53 @@ def check_current_health_has_no_reported_vm_error_input(
             "input.reportedVMErrors",
             "currentHealthVMErrors",
         ],
+        f"{relative(lifecycle_document_path)}:reportedVMErrors": [
+            "runtimeObservation",
+            "BootstrapResult",
+            "guestBootstrap",
+            ".runtimeStateMissing",
+            ".runtimeStateInvalid",
+            ".runtimeStateStale",
+            ".guestBootstrapResultMissing",
+            ".guestBootstrapResultUnavailable",
+        ],
+        relative(vm_error_path): [
+            "case runtimeStateMissing",
+            "case runtimeStateInvalid",
+            "case runtimeStateStale",
+            "case guestBootstrapResultMissing",
+            "case guestBootstrapResultUnavailable",
+            'case "vm-runtime-state-missing"',
+            'case "vm-runtime-state-invalid"',
+            'case "vm-runtime-state-stale"',
+            'case "vm-guest-bootstrap-result-missing"',
+            'case "vm-guest-bootstrap-result-unavailable"',
+        ],
+        relative(failure_reason_path): [
+            "case guestRuntimeStateStale",
+            "case guestRuntimeStateMissing",
+            "case guestRuntimeStateInvalid",
+            "case guestRuntimeStateLoadFailed",
+            "case guestRuntimeStateMetadataReadFailed",
+            "case guestBootstrapResultMissing",
+            "case guestBootstrapResultUnavailable",
+            'case "guest-bootstrap-result-missing"',
+            'case "guest-bootstrap-result-unavailable"',
+            'case "vm-runtime-state-missing"',
+            'case "guest-runtime-state-stale"',
+            'case "guest-runtime-state-invalid"',
+            'hasPrefix("guest-runtime-state-load-failed-")',
+            'hasPrefix("guest-runtime-state-metadata-read-failed-")',
+        ],
     }
     texts = {
         relative(usecase_path): usecase_text,
         relative(evaluator_path): evaluator_text,
         relative(policy_path): policy_text,
+        relative(lifecycle_document_path): lifecycle_document_text,
+        relative(vm_error_path): vm_error_text,
+        relative(failure_reason_path): failure_reason_text,
+        f"{relative(lifecycle_document_path)}:reportedVMErrors": reported_vm_errors_text,
         relative(tests_path): tests_text,
     }
     missing = {
@@ -4522,6 +7832,20 @@ def check_health_snapshot_contract_does_not_carry_container_observation(
             MACOS_RUNTIME
             / "Sources/Adapters/Outbound/Health/RuntimeHealthChecker.swift"
         ),
+        (
+            "apps/vitalserver-macos-runtime/Sources/Domain/Policies/"
+            "RuntimeHealthSnapshotPolicy.swift"
+        ): read(
+            MACOS_RUNTIME
+            / "Sources/Domain/Policies/RuntimeHealthSnapshotPolicy.swift"
+        ),
+        (
+            "apps/vitalserver-macos-runtime/Sources/Domain/Policies/"
+            "RuntimeWatchdogRecoveryPolicy.swift"
+        ): read(
+            MACOS_RUNTIME
+            / "Sources/Domain/Policies/RuntimeWatchdogRecoveryPolicy.swift"
+        ),
     }
     forbidden = [
         "public let containerObservation",
@@ -4532,6 +7856,16 @@ def check_health_snapshot_contract_does_not_carry_container_observation(
         "RuntimeFileModifiedAtReadResult",
         "RuntimeFileMetadataReadState",
         "RuntimeFileModifiedAtReader",
+        "RuntimeGuestBootstrapResultReader",
+        "loadBootstrapResultDocument",
+        "GuestBootstrapEvaluator",
+        "guestBootstrapResult",
+        "guestBootstrapAssessment",
+        "return .failed(vmIP: nil, message: guestAddressRead.failureStatusText)",
+        "return .readFailed(guestAddressRead.failureStatusText)",
+        'readError: "guestControl=\\(guestAddressRead.failureStatusText)"',
+        "hasGuestAddressFailure",
+        "snapshot.guestAddressRead.state",
     ]
     matches: list[str] = []
     for label, text in checks.items():
@@ -4548,7 +7882,8 @@ def check_health_snapshot_contract_does_not_carry_container_observation(
         "health-snapshot-contract-no-container-observation",
         True,
         "Runtime health input/snapshot contracts do not carry container "
-        "diagnostics or runtime-state file metadata",
+        "diagnostics, runtime-state file metadata, bootstrap-result file state, "
+        "or Guest address file read failures as current health failures",
     )
 
 
@@ -4644,10 +7979,22 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
             "public var vitalDBObservation",
             "case vitalDBObservation",
             "guestRuntimeStateError",
-        ],
-        relative(swift_assembly_path): [
-            "vitalDBObservation: nil",
-            "guestRuntimeStateError:",
+            "case operation",
+            "case statusMessage",
+            "case updatedAt",
+            "case startedAt",
+            "case progress",
+            "case statusDocumentError",
+            "case installStateDocument",
+            "case installStateDocumentError",
+            "public var operation:",
+            "public var statusMessage:",
+            "public var updatedAt:",
+            "public var startedAt:",
+            "public var progress:",
+            "public var statusDocumentError:",
+            "public var installStateDocument:",
+            "public var installStateDocumentError:",
         ],
         relative(swift_overview_path): [
             "statusWithoutLegacyVitalDBObservation",
@@ -4666,13 +8013,46 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
             if token in text:
                 matches.append(f"{path_text}:{token}")
 
+    swift_assembly = read(swift_assembly_path)
+    swift_runtime_status_assembly_block = text_between(
+        swift_assembly,
+        "return RuntimeStatus(",
+        "\n        )",
+    )
+    for token in [
+        "vitalDBObservation: nil",
+        "guestRuntimeStateError:",
+        "operation: nil",
+        "statusMessage: nil",
+        "updatedAt: nil",
+        "startedAt: nil",
+        "progress: nil",
+        "statusDocumentError:",
+        "installStateDocument:",
+        "installStateDocumentError:",
+        "RuntimeInstallStateRead",
+    ]:
+        if token in swift_runtime_status_assembly_block:
+            matches.append(f"{relative(swift_assembly_path)}:RuntimeStatus.{token}")
+
     pwa_schema = read(pwa_schema_path)
     pwa_status_block = text_between(
         pwa_schema,
         "export const runtimeStatusSchema",
-        "const runtimeVitalRecorderSummarySchema",
+        "const runtimeInstallOperationStateSchema",
     )
-    for token in ["vitalDBObservation", "guestRuntimeStateError"]:
+    for token in [
+        "vitalDBObservation",
+        "guestRuntimeStateError",
+        "operation:",
+        "statusMessage:",
+        "updatedAt:",
+        "startedAt:",
+        "progress:",
+        "statusDocumentError:",
+        "installStateDocument:",
+        "installStateDocumentError:",
+    ]:
         if token in pwa_status_block:
             matches.append(f"{relative(pwa_schema_path)}:runtimeStatusSchema.{token}")
 
@@ -4682,7 +8062,18 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
         "RuntimeStatus: {",
         "RuntimeEventHistory:",
     )
-    for token in ["vitalDBObservation", "guestRuntimeStateError"]:
+    for token in [
+        "vitalDBObservation",
+        "guestRuntimeStateError",
+        "operation?:",
+        "statusMessage?:",
+        "updatedAt?:",
+        "startedAt?:",
+        "progress?:",
+        "statusDocumentError?:",
+        "installStateDocument?:",
+        "installStateDocumentError?:",
+    ]:
         if token in pwa_generated_status_block:
             matches.append(f"{relative(pwa_generated_path)}:RuntimeStatus.{token}")
 
@@ -4692,7 +8083,18 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
         '"RuntimeStatus": {',
         '"RuntimeEventHistory":',
     )
-    for token in ['"vitalDBObservation"', '"guestRuntimeStateError"']:
+    for token in [
+        '"vitalDBObservation"',
+        '"guestRuntimeStateError"',
+        '"operation"',
+        '"statusMessage"',
+        '"updatedAt"',
+        '"startedAt"',
+        '"progress"',
+        '"statusDocumentError"',
+        '"installStateDocument"',
+        '"installStateDocumentError"',
+    ]:
         if token in openapi_status_block:
             matches.append(f"{relative(openapi_path)}:RuntimeStatus.{token}")
 
@@ -4705,8 +8107,9 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
     return CheckResult(
         "runtime-status-contract-no-vitaldb-observation",
         True,
-        "RuntimeStatus contract does not carry legacy VitalDB or "
-        "runtime-state error fields",
+        "RuntimeStatus contract does not carry legacy VitalDB, runtime-state, "
+        "operation, progress, message, timestamp, status document diagnostics, "
+        "or install-state owner fields",
     )
 
 
@@ -4714,6 +8117,10 @@ def check_host_health_uses_guest_control_ready_for_guest_readiness() -> CheckRes
     health_checker_path = (
         MACOS_RUNTIME
         / "Sources/Adapters/Outbound/Health/RuntimeHealthChecker.swift"
+    )
+    health_checker_composition_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary/RuntimeHealthCheckerComposition.swift"
     )
     gateway_path = (
         MACOS_RUNTIME
@@ -4746,6 +8153,7 @@ def check_host_health_uses_guest_control_ready_for_guest_readiness() -> CheckRes
         / "Tests/ApplicationTests/EvaluateRuntimeHealthUseCaseTests.swift"
     )
     health_checker = read(health_checker_path)
+    health_checker_composition = read(health_checker_composition_path)
     gateway = read(gateway_path)
     protocol = read(protocol_path)
     contract = read(contract_path)
@@ -4755,9 +8163,14 @@ def check_host_health_uses_guest_control_ready_for_guest_readiness() -> CheckRes
     health_tests = read(health_tests_path)
     required = {
         relative(health_checker_path): [
+            "guestAddressProvider: any RuntimeGuestAddressProvider",
+            "self.guestAddressProvider = guestAddressProvider",
             "guestControlReadiness()",
             "guestControlGateway(baseURL).ready()",
-            "readVMIPFile()",
+            "readGuestAddress()",
+        ],
+        relative(health_checker_composition_path): [
+            "guestAddressProvider ?? RuntimeControlAPIGuestAddressProvider()",
         ],
         relative(gateway_path): [
             "func ready() throws -> RuntimeGuestControlReadiness",
@@ -4798,6 +8211,7 @@ def check_host_health_uses_guest_control_ready_for_guest_readiness() -> CheckRes
     }
     texts = {
         relative(health_checker_path): health_checker,
+        relative(health_checker_composition_path): health_checker_composition,
         relative(gateway_path): gateway,
         relative(protocol_path): protocol,
         relative(contract_path): contract,
@@ -4813,7 +8227,7 @@ def check_host_health_uses_guest_control_ready_for_guest_readiness() -> CheckRes
     }
     forbidden = {
         relative(health_usecase_path): [
-            "currentHealthGuestRuntimeStateReadFailures",
+            "currentHealthGuestRuntimeObservationReadFailures",
             "RuntimeGuestRuntimeStatePolicy.inputAssessment",
             "RuntimeGuestRuntimeStateInput",
             "RuntimeGuestRuntimeStateInputPlan",
@@ -4828,6 +8242,14 @@ def check_host_health_uses_guest_control_ready_for_guest_readiness() -> CheckRes
         ],
         relative(status_reader_path): [
             "RuntimeControlClientConstants.Product.guestHealthURL(vmIP: vmIP)",
+        ],
+        relative(health_checker_path): [
+            "RuntimeVMIPFileGuestAddressProvider(",
+            "context.installedPaths.vmIPFile",
+        ],
+        relative(health_checker_composition_path): [
+            "RuntimeBootstrapGuestAddressProvider.live(",
+            "vmIPFile: installedPaths.vmIPFile",
         ],
     }
     present = [
@@ -4853,15 +8275,26 @@ def check_host_proxy_runtime_state_read_is_vm_bootstrap_only() -> CheckResult:
     path = MACOS_RUNTIME / "Support/Packaging/proxy-run.template"
     text = read(path)
     required = [
-        'state_file="${vm_home}/data/run/runtime-state.json"',
+        'vm_ip_file="${vm_home}/data/run/vm-ip"',
         "read_vm_ip()",
-        "read_guest_http()",
-        "waiting for VM runtime bootstrap",
-        "waiting for VM runtime state",
         "upstream_ready()",
         "proxy_ready()",
+        "publish_guest_address_owner()",
+        "load_guest_address_owner()",
+        'owner_address_state="loaded"',
+        "waiting for Runtime Control guest address owner",
+        "VITALSERVER_RUNTIME_CONTROL_API_BASE_URL",
+        "/host/runtime/guest-address",
+        "--data \"{\\\"address\\\":\\\"${address}\\\"}\"",
     ]
     forbidden = [
+        'state_file="${vm_home}/data/run/runtime-observation.json"',
+        "read_state_value()",
+        "read_guest_http()",
+        "waiting for VM runtime bootstrap",
+        "waiting for VM runtime observation",
+        'publish_guest_address_owner "${vm_ip}" || true',
+        "guestHTTP",
         "containerServices",
         "composeServices",
         "recorderIngress",
@@ -4884,8 +8317,177 @@ def check_host_proxy_runtime_state_read_is_vm_bootstrap_only() -> CheckResult:
     return CheckResult(
         "host-proxy-runtime-state-bootstrap-only",
         True,
-        "Host proxy reads runtime-state only for VM IP/bootstrap HTTP discovery, "
-        "not product service state",
+        "Host proxy avoids runtime-state reads and uses explicit Guest address "
+        "owner reads plus HTTP readiness probes",
+    )
+
+
+def check_devtools_runtime_wait_uses_bootstrap_address_and_http_probe() -> CheckResult:
+    path = (
+        ROOT
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
+        / "adapters/macos_release/runtime_lifecycle.py"
+    )
+    legacy_runtime_state_path = (
+        ROOT
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
+        / "adapters/macos_release/runtime_state.py"
+    )
+    text = read(path)
+    required = [
+        "adapters.macos_release.runtime_paths import",
+        "runtime_vm_ip_file(",
+        "read_runtime_bootstrap_vm_ip(",
+        "probe_guest_runtime_http(",
+        "Waiting for VM IP bootstrap file",
+        "Waiting for VM HTTP through bootstrap address",
+        "VM HTTP ready: upstream=http://",
+        "recorder-ingress/health",
+    ]
+    forbidden = [
+        "read_runtime_state_vm_ip",
+        "read_runtime_state_guest_http",
+        "runtime_state_file",
+        "Waiting for runtime-state VM IP",
+        "Waiting for runtime-state guestHTTP",
+        "VM HTTP ready: guestHTTP",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    if legacy_runtime_state_path.exists():
+        present.append(
+            f"{relative(legacy_runtime_state_path)}:devtools runtime-state reader helpers must be removed"
+        )
+    if missing or present:
+        return CheckResult(
+            "devtools-runtime-wait-bootstrap-address-http-probe",
+            False,
+            f"missing={missing} forbidden_present={present} path={relative(path)}",
+        )
+    return CheckResult(
+        "devtools-runtime-wait-bootstrap-address-http-probe",
+        True,
+        "devtools runtime wait reads vm-ip bootstrap address and direct HTTP "
+        "probes instead of runtime-state vmIP/guestHTTP",
+    )
+
+
+def check_devtools_runtime_health_uses_bootstrap_address_and_http_probe() -> CheckResult:
+    lifecycle_path = (
+        ROOT
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
+        / "adapters/macos_release/runtime_lifecycle.py"
+    )
+    installed_path = (
+        ROOT
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
+        / "adapters/macos_release/installed_runtime.py"
+    )
+    texts = {
+        relative(lifecycle_path): read(lifecycle_path),
+        relative(installed_path): read(installed_path),
+    }
+    required = [
+        (relative(lifecycle_path), "read_runtime_bootstrap_vm_ip(vm_home)"),
+        (relative(lifecycle_path), "probe_guest_runtime_http(vm_ip)"),
+        (relative(lifecycle_path), "VM IP bootstrap address is unavailable"),
+        (relative(installed_path), "read_runtime_bootstrap_vm_ip(vm_home)"),
+        (relative(installed_path), "probe_guest_runtime_http(vm_ip)"),
+    ]
+    forbidden = {
+        path: [
+            "read_runtime_state(",
+            "read_runtime_state_string(",
+            "read_runtime_state_vm_ip",
+            "read_runtime_state_guest_http",
+            "reported guestHTTP",
+            "runtime observation guestHTTP",
+        ]
+        for path in texts
+    }
+    missing = [
+        f"{path}:{token}"
+        for path, token in required
+        if token not in texts[path]
+    ]
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden.items()
+        for token in tokens
+        if token in texts[path]
+    ]
+    if missing or present:
+        return CheckResult(
+            "devtools-runtime-health-bootstrap-address-http-probe",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "devtools-runtime-health-bootstrap-address-http-probe",
+        True,
+        "devtools runtime health/status reads vm-ip bootstrap address and "
+        "direct HTTP probes instead of runtime-state vmIP/guestHTTP",
+    )
+
+
+def check_dev_make_proxy_start_uses_guest_address_owner() -> CheckResult:
+    make_path = ROOT / "make/vm/runtime.mk"
+    cli_path = (
+        ROOT
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/cli.py"
+    )
+    lifecycle_path = (
+        ROOT
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
+        / "adapters/macos_release/runtime_lifecycle.py"
+    )
+    texts = {
+        relative(make_path): read(make_path),
+        relative(cli_path): read(cli_path),
+        relative(lifecycle_path): read(lifecycle_path),
+    }
+    required = [
+        (relative(make_path), "macos-runtime-guest-address-proxy-upstream"),
+        (relative(make_path), "VITALSERVER_RUNTIME_CONTROL_API_BASE_URL"),
+        (relative(cli_path), "macos-runtime-guest-address-proxy-upstream"),
+        (relative(cli_path), "RuntimeGuestAddressOwnerInput"),
+        (relative(lifecycle_path), "print_runtime_guest_address_proxy_upstream"),
+        (relative(lifecycle_path), "runtime_control_guest_address_request"),
+        (relative(lifecycle_path), "/host/runtime/guest-address"),
+        (relative(lifecycle_path), 'method="PUT"'),
+        (relative(lifecycle_path), 'method="GET"'),
+    ]
+    forbidden = {
+        relative(make_path): [
+            'cat "$(VM_HOME)/data/run/vm-ip"',
+            "Set VM_PROXY_UPSTREAM or run make devtools/wait/ip first.",
+        ],
+        relative(lifecycle_path): [
+            "return f\"{bootstrap_address}:80\"",
+        ],
+    }
+    missing = [
+        f"{path}:{token}"
+        for path, token in required
+        if token not in texts[path]
+    ]
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden.items()
+        for token in tokens
+        if token in texts[path]
+    ]
+    if missing or present:
+        return CheckResult(
+            "dev-make-proxy-start-guest-address-owner",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "dev-make-proxy-start-guest-address-owner",
+        True,
+        "dev runtime/proxy/start derives upstream from Runtime Control Guest "
+        "address owner instead of reading vm-ip directly",
     )
 
 
@@ -4896,19 +8498,74 @@ def check_managed_operation_guard_does_not_read_runtime_state() -> CheckResult:
         / "RuntimeManagedOperationGuardComposition.swift"
     )
     text = read(path)
+    usecase_path = (
+        MACOS_RUNTIME
+        / "Sources/Application/UseCases/RuntimeHealth"
+        / "GuardManagedRuntimeOperationUseCase.swift"
+    )
+    usecase_text = read(usecase_path)
+    watchdog_path = (
+        MACOS_RUNTIME
+        / "Sources/Application/UseCases/RuntimeHealth"
+        / "WatchdogRuntimeUseCase.swift"
+    )
+    watchdog_text = read(watchdog_path)
+    runner_composition_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "RuntimeWatchdogRunnerComposition.swift"
+    )
+    runner_composition_text = read(runner_composition_path)
+    runner_workflow_path = (
+        MACOS_RUNTIME
+        / "Sources/Workflow/RuntimeWatchdog"
+        / "RuntimeWatchdogRunner.swift"
+    )
+    runner_workflow_text = read(runner_workflow_path)
     required = [
-        "lifecycle.bootID",
-        "lifecycleBootID",
-        "RuntimeVMLifecycleStore",
+        "loadOperationLease",
     ]
     forbidden = [
         "loadRuntimeStateDocument",
-        "GuestRuntimeStateDocument",
+        "GuestRuntimeObservationDocument",
         "runtimeState.bootID",
         "runtimeBootID",
+        "statusReporter:",
+        "loadStatus:",
+        "loadStatusResult",
+        "RuntimeGuestBootstrapResultReader",
+        "loadBootstrapResultDocument",
+        "activeGuestBootstrap",
+        "RuntimeGuestBootstrapOperation",
     ]
     missing = [token for token in required if token not in text]
     present = [token for token in forbidden if token in text]
+    for token in [
+        "loadStatus:",
+        "RuntimeStatusDocumentLoadResult",
+        "RuntimeGuestBootstrapResultReader",
+        "loadBootstrapResultDocument",
+        "activeGuestBootstrap",
+    ]:
+        if token in usecase_text:
+            present.append(f"{relative(usecase_path)}:{token}")
+    for token in [
+        "statusManagedOperationGuardPlan",
+        "statusReadFailureGuardPlan",
+        "RuntimeStatusDocumentLoadResult",
+        "guestBootstrapManagedOperationGuardPlan",
+    ]:
+        if token in watchdog_text:
+            present.append(f"{relative(watchdog_path)}:{token}")
+    for token in [
+        "currentRuntimeStatus",
+        "RuntimeStatusDocumentLoadResult",
+        "loadStatusResult",
+    ]:
+        if token in runner_composition_text:
+            present.append(f"{relative(runner_composition_path)}:{token}")
+        if token in runner_workflow_text:
+            present.append(f"{relative(runner_workflow_path)}:{token}")
     if missing or present:
         return CheckResult(
             "managed-operation-guard-no-runtime-state-read",
@@ -4918,51 +8575,1512 @@ def check_managed_operation_guard_does_not_read_runtime_state() -> CheckResult:
     return CheckResult(
         "managed-operation-guard-no-runtime-state-read",
         True,
-        "watchdog managed-operation guard uses VM lifecycle/bootstrap contracts "
-        "instead of runtime-state reads",
+        "watchdog managed-operation guard uses operation leases instead of "
+        "runtime-state, runtime-status, or bootstrap-result reads",
     )
 
 
-def check_guest_bootstrap_current_boot_uses_vm_lifecycle() -> CheckResult:
-    evaluator_path = (
+def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
+) -> CheckResult:
+    operations_path = (
         MACOS_RUNTIME
-        / "Sources/Domain/Policies/GuestBootstrapEvaluator.swift"
+        / "Sources/Hosts/CLI/ProcessBoundary/Lifecycle"
+        / "RuntimeLifecycle+OperationsComposition.swift"
     )
-    health_usecase_path = (
+    runtime_lifecycle_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "RuntimeLifecycle.swift"
+    )
+    bundle_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary/Lifecycle"
+        / "RuntimeLifecycle+BundleComposition.swift"
+    )
+    data_backup_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "RuntimeDataBackupComposition.swift"
+    )
+    endpoint_routing_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIEndpointRouting.swift"
+    )
+    command_routes_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlHTTPCommandRoutes.swift"
+    )
+    api_handler_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlClientAPIReadHandler.swift"
+    )
+    mac_api_handler_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition"
+        / "MacRuntimeControlAPIHandler.swift"
+    )
+    mac_local_api_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition"
+        / "MacRuntimeControlLocalAPI.swift"
+    )
+    mac_environment_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition"
+        / "MacRuntimeControlEnvironment.swift"
+    )
+    mac_lease_controller_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition"
+        / "RuntimeControlOperationLeaseController.swift"
+    )
+    json_file_operation_lease_repository_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Persistence"
+        / "JSONFileRuntimeOperationLeaseRepository.swift"
+    )
+    mac_runtime_client_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Client"
+        / "MacRuntimeControlClient.swift"
+    )
+    runtime_control_constants_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
+        / "RuntimeControlClientConstants.swift"
+    )
+    log_export_sources_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Logs"
+        / "RuntimeLogExportSources.swift"
+    )
+    log_export_contract_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl"
+        / "RuntimeLogExportSourceContracts.swift"
+    )
+    api_owner_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/RuntimeControlAPI"
+        / "RuntimeControlAPIOperationLeaseOwner.swift"
+    )
+    api_owner_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests"
+        / "RuntimeControlAPIOperationLeaseOwnerTests.swift"
+    )
+    host_client_contract_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl"
+        / "RuntimeClientContracts.swift"
+    )
+    api_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/InboundAdaptersTests/RuntimeControlAPI"
+        / "RuntimeControlAPITests.swift"
+    )
+    runtime_control_docs_path = ROOT / "docs/runtime/macos/runtime-control-api.md"
+    operation_lease_race_troubleshooting_path = (
+        ROOT / "docs/troubleshooting/053_update-watchdog-operation-lease-race.md"
+    )
+    update_shutdown_troubleshooting_path = (
+        ROOT / "docs/troubleshooting/061_update-shutdown-service-failed-without-result.md"
+    )
+    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    operations_text = read(operations_path)
+    runtime_lifecycle_text = read(runtime_lifecycle_path)
+    bundle_text = read(bundle_path)
+    data_backup_text = read(data_backup_path)
+    endpoint_routing_text = read(endpoint_routing_path)
+    command_routes_text = read(command_routes_path)
+    api_handler_text = read(api_handler_path)
+    mac_api_handler_text = read(mac_api_handler_path)
+    mac_local_api_text = read(mac_local_api_path)
+    mac_environment_text = read(mac_environment_path)
+    mac_lease_controller_text = read(mac_lease_controller_path)
+    mac_runtime_client_text = read(mac_runtime_client_path)
+    runtime_control_constants_text = read(runtime_control_constants_path)
+    log_export_sources_text = read(log_export_sources_path)
+    log_export_contract_text = read(log_export_contract_path)
+    api_owner_text = read(api_owner_path)
+    api_owner_tests_text = read(api_owner_tests_path)
+    host_client_contract_text = read(host_client_contract_path)
+    api_tests_text = read(api_tests_path)
+    runtime_control_docs_text = read(runtime_control_docs_path)
+    operation_lease_race_troubleshooting_text = read(
+        operation_lease_race_troubleshooting_path
+    )
+    update_shutdown_troubleshooting_text = read(update_shutdown_troubleshooting_path)
+    openapi_text = read(openapi_path)
+    required = [
+        (
+            relative(operations_path),
+            "func runtimeOperationLeaseOwner() -> any RuntimeOperationLeaseOwner",
+            operations_text,
+        ),
+        (
+            relative(operations_path),
+            "runtimeOperationLeaseOwnerFactory()",
+            operations_text,
+        ),
+        (
+            relative(runtime_lifecycle_path),
+            "RuntimeControlAPIOperationLeaseOwner()",
+            runtime_lifecycle_text,
+        ),
+        (
+            relative(api_owner_path),
+            'path: "/runtime/operation-state"',
+            api_owner_text,
+        ),
+        (
+            relative(api_owner_path),
+            'path: "/host/runtime/operation-lease/acquire"',
+            api_owner_text,
+        ),
+        (
+            relative(api_owner_path),
+            'path: "/host/runtime/operation-lease/heartbeat"',
+            api_owner_text,
+        ),
+        (
+            relative(api_owner_path),
+            'path: "/host/runtime/operation-lease/release"',
+            api_owner_text,
+        ),
+        (
+            relative(api_owner_tests_path),
+            "testAcquireHeartbeatAndReleasePostOwnerMutationRoutes",
+            api_owner_tests_text,
+        ),
+        (
+            relative(api_owner_tests_path),
+            "testHTTPFailureDoesNotBecomeMissingLease",
+            api_owner_tests_text,
+        ),
+        (
+            relative(bundle_path),
+            "runtimeOperationLeaseOwner().acquire",
+            bundle_text,
+        ),
+        (
+            relative(bundle_path),
+            "runtimeOperationLeaseOwner().heartbeat",
+            bundle_text,
+        ),
+        (
+            relative(bundle_path),
+            "runtimeOperationLeaseOwner().release",
+            bundle_text,
+        ),
+        (
+            relative(data_backup_path),
+            "lifecycle.runtimeOperationLeaseOwner()",
+            data_backup_text,
+        ),
+        (
+            relative(endpoint_routing_path),
+            'path: "/host/runtime/operation-lease/acquire", scope: .hostAffordance',
+            endpoint_routing_text,
+        ),
+        (
+            relative(endpoint_routing_path),
+            'path: "/host/runtime/operation-lease/heartbeat", scope: .hostAffordance',
+            endpoint_routing_text,
+        ),
+        (
+            relative(endpoint_routing_path),
+            'path: "/host/runtime/operation-lease/release", scope: .hostAffordance',
+            endpoint_routing_text,
+        ),
+        (
+            relative(command_routes_path),
+            "handler.acquireOperationLease(acquireRequest)",
+            command_routes_text,
+        ),
+        (
+            relative(command_routes_path),
+            "handler.heartbeatOperationLease(heartbeatRequest)",
+            command_routes_text,
+        ),
+        (
+            relative(command_routes_path),
+            "handler.releaseOperationLease(releaseRequest)",
+            command_routes_text,
+        ),
+        (
+            relative(api_handler_path),
+            "hostClient.acquireOperationLease(request.document)",
+            api_handler_text,
+        ),
+        (
+            relative(api_handler_path),
+            "hostClient.heartbeatOperationLease(",
+            api_handler_text,
+        ),
+        (
+            relative(api_handler_path),
+            "hostClient.releaseOperationLease(operationId: request.operationId)",
+            api_handler_text,
+        ),
+        (
+            relative(mac_api_handler_path),
+            "operationLeaseClient.acquireOperationLease(request.document)",
+            mac_api_handler_text,
+        ),
+        (
+            relative(mac_api_handler_path),
+            "operationLeaseClient.heartbeatOperationLease(",
+            mac_api_handler_text,
+        ),
+        (
+            relative(mac_api_handler_path),
+            "operationLeaseClient.releaseOperationLease(operationId: request.operationId)",
+            mac_api_handler_text,
+        ),
+        (
+            relative(mac_api_handler_path),
+            "protocol RuntimeOperationLeaseMutationClient",
+            mac_api_handler_text,
+        ),
+        (
+            relative(mac_environment_path),
+            "RuntimeControlOperationLeaseController()",
+            mac_environment_text,
+        ),
+        (
+            relative(mac_environment_path),
+            "operationLeaseReader: operationLeaseController",
+            mac_environment_text,
+        ),
+        (
+            relative(mac_environment_path),
+            "operationLeaseClient: operationLeaseController",
+            mac_environment_text,
+        ),
+        (
+            relative(mac_lease_controller_path),
+            "final class RuntimeControlOperationLeaseController",
+            mac_lease_controller_text,
+        ),
+        (
+            relative(mac_lease_controller_path),
+            "RuntimeOperationLeaseOwner",
+            mac_lease_controller_text,
+        ),
+        (
+            relative(mac_lease_controller_path),
+            "RuntimeOperationLeaseMutationClient",
+            mac_lease_controller_text,
+        ),
+        (
+            relative(host_client_contract_path),
+            "func acquireOperationLease(_ document: RuntimeOperationLeaseDocument)",
+            host_client_contract_text,
+        ),
+        (
+            relative(api_tests_path),
+            'path: "/host/runtime/operation-lease/acquire"',
+            api_tests_text,
+        ),
+        (
+            relative(api_tests_path),
+            "testRuntimeControlClientReadHandlerAdaptsHostAffordances",
+            api_tests_text,
+        ),
+        (
+            relative(runtime_control_docs_path),
+            "Host operation lease mutation은 Host affordance API",
+            runtime_control_docs_text,
+        ),
+        (
+            relative(operation_lease_race_troubleshooting_path),
+            "Current operation 표시는 Runtime Control operation-state API와 Host operation lease owner에서 오고",
+            operation_lease_race_troubleshooting_text,
+        ),
+        (
+            relative(operation_lease_race_troubleshooting_path),
+            "`runtime-operation-lease.json`은 active owner가 아니라 diagnostics/export artifact로만 남을 수 있습니다.",
+            operation_lease_race_troubleshooting_text,
+        ),
+        (
+            relative(update_shutdown_troubleshooting_path),
+            "/runtime/operation-state",
+            update_shutdown_troubleshooting_text,
+        ),
+        (
+            relative(update_shutdown_troubleshooting_path),
+            "Runtime Control operation-state에 active operation lease와 `expiresAt`이 있는지",
+            update_shutdown_troubleshooting_text,
+        ),
+        (
+            relative(openapi_path),
+            '"/host/runtime/operation-lease/acquire"',
+            openapi_text,
+        ),
+        (
+            relative(openapi_path),
+            '"/host/runtime/operation-lease/heartbeat"',
+            openapi_text,
+        ),
+        (
+            relative(openapi_path),
+            '"/host/runtime/operation-lease/release"',
+            openapi_text,
+        ),
+        (
+            relative(openapi_path),
+            '"RuntimeOperationLeaseMutationResponse"',
+            openapi_text,
+        ),
+        (
+            relative(log_export_contract_path),
+            "diagnostics/status/\\(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease)",
+            log_export_contract_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "return installed.runtimeOperationLease",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "let installed = InstalledRuntimePaths.defaultInstalled",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "return installed.runtimeStatus",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "return installed.runtimeEvents",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "return installed.runtimeObservation",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "return installed.vmLifecycle",
+            log_export_sources_text,
+        ),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token, text in required
+        if token not in text
+    ]
+    if json_file_operation_lease_repository_path.exists():
+        missing.append(
+            f"{relative(json_file_operation_lease_repository_path)}:file-backed operation lease owner must be removed"
+        )
+    forbidden = [
+        (
+            relative(operations_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            operations_text,
+        ),
+        (
+            relative(operations_path),
+            "installedPaths.runtimeOperationLease",
+            operations_text,
+        ),
+        (
+            relative(runtime_lifecycle_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            runtime_lifecycle_text,
+        ),
+        (
+            relative(runtime_lifecycle_path),
+            "installedPaths.runtimeOperationLease",
+            runtime_lifecycle_text,
+        ),
+        (
+            relative(bundle_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            bundle_text,
+        ),
+        (
+            relative(data_backup_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            data_backup_text,
+        ),
+        (
+            relative(bundle_path),
+            "installedPaths.runtimeOperationLease",
+            bundle_text,
+        ),
+        (
+            relative(data_backup_path),
+            "installedPaths.runtimeOperationLease",
+            data_backup_text,
+        ),
+        (
+            relative(api_handler_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            api_handler_text,
+        ),
+        (
+            relative(api_handler_path),
+            "runtimeOperationLease",
+            api_handler_text,
+        ),
+        (
+            relative(mac_api_handler_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            mac_api_handler_text,
+        ),
+        (
+            relative(mac_api_handler_path),
+            "runtimeOperationLease",
+            mac_api_handler_text,
+        ),
+        (
+            relative(mac_runtime_client_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            mac_runtime_client_text,
+        ),
+        (
+            relative(mac_runtime_client_path),
+            "operationLeaseOwner",
+            mac_runtime_client_text,
+        ),
+        (
+            relative(runtime_control_constants_path),
+            "runtimeOperationLease = installed.runtimeOperationLease.path",
+            runtime_control_constants_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.runtimeOperationLease",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.runtimeStatus",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.runtimeEvents",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.runtimeObservabilityDB",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.runtimeObservation",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.vmLifecycle",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.vmIPFile",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.vmConfig",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.runtimeVersion",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.guestRuntimeConfig",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.proxyLaunchDaemon",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.proxyNginxConfig",
+            log_export_sources_text,
+        ),
+        (
+            relative(log_export_sources_path),
+            "RuntimeControlClientConstants.Paths.proxyNginxPid",
+            log_export_sources_text,
+        ),
+        (
+            relative(mac_local_api_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            mac_local_api_text,
+        ),
+        (
+            relative(mac_local_api_path),
+            "InstalledRuntimePaths.defaultInstalled.runtimeOperationLease",
+            mac_local_api_text,
+        ),
+        (
+            relative(mac_environment_path),
+            "JSONFileRuntimeOperationLeaseRepository(",
+            mac_environment_text,
+        ),
+        (
+            relative(mac_environment_path),
+            "InstalledRuntimePaths.defaultInstalled.runtimeOperationLease",
+            mac_environment_text,
+        ),
+        (
+            relative(operation_lease_race_troubleshooting_path),
+            "Current operation 표시는 `runtime-operation-lease.json` owner contract",
+            operation_lease_race_troubleshooting_text,
+        ),
+        (
+            relative(operation_lease_race_troubleshooting_path),
+            "managed operation 소유권은 `runtime-status.json`이 아니라 별도 durable lease 문서",
+            operation_lease_race_troubleshooting_text,
+        ),
+        (
+            relative(operation_lease_race_troubleshooting_path),
+            'cat "/Library/Application Support/TiroshVitalServer/status/runtime-operation-lease.json"',
+            operation_lease_race_troubleshooting_text,
+        ),
+        (
+            relative(update_shutdown_troubleshooting_path),
+            'cat "/Library/Application Support/VitalServerHelper/status/runtime-operation-lease.json"',
+            update_shutdown_troubleshooting_text,
+        ),
+    ]
+    present = [
+        f"{path}:{token}"
+        for path, token, text in forbidden
+        if token in text
+    ]
+    if missing or present:
+        return CheckResult(
+            "cli-host-centralized-operation-lease-owner-adapter",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "cli-host-centralized-operation-lease-owner-adapter",
+        True,
+        "Host CLI operation lease adapter selection is centralized behind the owner contract",
+    )
+
+
+def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResult:
+    endpoint_routing_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIEndpointRouting.swift"
+    )
+    read_routes_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlHTTPReadRoutes.swift"
+    )
+    command_routes_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlHTTPCommandRoutes.swift"
+    )
+    requests_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIRequests.swift"
+    )
+    read_models_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
+    )
+    api_handler_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition"
+        / "MacRuntimeControlAPIHandler.swift"
+    )
+    mac_environment_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition"
+        / "MacRuntimeControlEnvironment.swift"
+    )
+    controller_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition"
+        / "RuntimeControlVMLifecycleController.swift"
+    )
+    outbound_client_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/RuntimeControlAPI"
+        / "RuntimeControlAPIVMLifecycleOwner.swift"
+    )
+    resource_reader_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "RuntimeVMLifecycleResourceReaders.swift"
+    )
+    mac_client_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Client"
+        / "MacRuntimeControlClient.swift"
+    )
+    legacy_store_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Persistence"
+        / "RuntimeVMLifecycleStore.swift"
+    )
+    legacy_store_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests"
+        / "RuntimeVMLifecycleStoreTests.swift"
+    )
+    status_owner_readers_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "RuntimeHostStatusOwnerReaders.swift"
+    )
+    health_checker_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Health"
+        / "RuntimeHealthChecker.swift"
+    )
+    lifecycle_composition_path = (
+        MACOS_RUNTIME
+        / "Sources/Bootstrap/DI"
+        / "RuntimeLifecycleComposition.swift"
+    )
+    api_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/InboundAdaptersTests/RuntimeControlAPI"
+        / "RuntimeControlAPITests.swift"
+    )
+    controller_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/MacControlPanelHostTests"
+        / "RuntimeControlVMLifecycleControllerTests.swift"
+    )
+    outbound_client_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests"
+        / "RuntimeControlAPIVMLifecycleOwnerTests.swift"
+    )
+    watchdog_composition_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "RuntimeWatchdogRunnerComposition.swift"
+    )
+    cli_lifecycle_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "RuntimeLifecycle.swift"
+    )
+    launcher_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/Entrypoint"
+        / "Launcher.swift"
+    )
+    vm_delegate_composition_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "VirtualMachineDelegate.swift"
+    )
+    vm_termination_composition_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "VirtualMachineTerminationHandler.swift"
+    )
+    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    api_docs_path = ROOT / "docs/runtime/macos/runtime-control-api.md"
+    guest_control_docs_path = ROOT / "docs/runtime/macos/runtime-guest-control.md"
+    texts = {
+        relative(endpoint_routing_path): read(endpoint_routing_path),
+        relative(read_routes_path): read(read_routes_path),
+        relative(command_routes_path): read(command_routes_path),
+        relative(requests_path): read(requests_path),
+        relative(read_models_path): read(read_models_path),
+        relative(api_handler_path): read(api_handler_path),
+        relative(mac_environment_path): read(mac_environment_path),
+        relative(controller_path): read(controller_path),
+        relative(outbound_client_path): read(outbound_client_path),
+        relative(resource_reader_path): read(resource_reader_path),
+        relative(mac_client_path): read(mac_client_path),
+        relative(status_owner_readers_path): read(status_owner_readers_path),
+        relative(health_checker_path): read(health_checker_path),
+        relative(lifecycle_composition_path): read(lifecycle_composition_path),
+        relative(api_tests_path): read(api_tests_path),
+        relative(controller_tests_path): read(controller_tests_path),
+        relative(outbound_client_tests_path): read(outbound_client_tests_path),
+        relative(watchdog_composition_path): read(watchdog_composition_path),
+        relative(cli_lifecycle_path): read(cli_lifecycle_path),
+        relative(launcher_path): read(launcher_path),
+        relative(vm_delegate_composition_path): read(vm_delegate_composition_path),
+        relative(vm_termination_composition_path): read(vm_termination_composition_path),
+        relative(openapi_path): read(openapi_path),
+        relative(api_docs_path): read(api_docs_path),
+        relative(guest_control_docs_path): read(guest_control_docs_path),
+    }
+    required = [
+        (relative(endpoint_routing_path), 'path: "/host/runtime/vm-lifecycle", scope: .hostAffordance'),
+        (relative(read_routes_path), "handler.loadVMLifecycleResource()"),
+        (relative(command_routes_path), "handler.putVMLifecycleResource(lifecycleRequest)"),
+        (relative(requests_path), "public struct RuntimeVMLifecyclePutRequest"),
+        (relative(read_models_path), "public enum RuntimeHostResourceReadState"),
+        (relative(read_models_path), "case missing"),
+        (relative(read_models_path), "public struct RuntimeVMLifecycleResourceState"),
+        (relative(api_handler_path), "protocol RuntimeVMLifecycleResourceClient"),
+        (relative(api_handler_path), "vmLifecycleClient.putVMLifecycleResource(request.document)"),
+        (relative(mac_environment_path), "RuntimeControlVMLifecycleController("),
+        (relative(controller_path), "final class RuntimeControlVMLifecycleController"),
+        (relative(controller_path), '.missing(readError: "VM lifecycle document missing")'),
+        (relative(outbound_client_path), "public struct RuntimeControlAPIVMLifecycleOwner"),
+        (relative(outbound_client_path), 'path: "/host/runtime/vm-lifecycle"'),
+        (relative(outbound_client_path), "invalidVMLifecycleState"),
+        (relative(resource_reader_path), "public protocol RuntimeVMLifecycleResourceReading"),
+        (relative(resource_reader_path), "public struct RuntimeControlAPIVMLifecycleResourceReader"),
+        (relative(resource_reader_path), "public struct RuntimeControlAPIVMLifecycleResourceWriter"),
+        (relative(resource_reader_path), "public struct UnavailableRuntimeVMLifecycleResourceReader"),
+        (relative(resource_reader_path), "enum RuntimeVMLifecycleResourceReadMapper"),
+        (relative(mac_environment_path), "vmLifecycleResourceReader: vmLifecycleController"),
+        (relative(mac_client_path), "statusReader: Self.liveStatusReader()"),
+        (relative(mac_client_path), "vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading"),
+        (relative(mac_client_path), "vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()"),
+        (relative(status_owner_readers_path), "RuntimeVMLifecycleResourceReadMapper.statusRead"),
+        (relative(health_checker_path), "RuntimeVMLifecycleResourceReadMapper.loadResult"),
+        (relative(lifecycle_composition_path), "vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()"),
+        (relative(launcher_path), "RuntimeControlAPIVMLifecycleResourceWriter()"),
+        (relative(launcher_path), "writeVMLifecycleResource"),
+        (relative(vm_delegate_composition_path), "lifecycleWriter: any RuntimeVMLifecycleResourceWriting"),
+        (relative(vm_termination_composition_path), "lifecycleWriter: any RuntimeVMLifecycleResourceWriting"),
+        (relative(api_tests_path), "testRouterServesAndUpdatesHostVMLifecycleResourceWithoutLoadingStatus"),
+        (relative(controller_tests_path), "testLoadReportsMissingDistinctly"),
+        (relative(outbound_client_tests_path), "testHTTPFailureDoesNotBecomeMissingResource"),
+        (relative(watchdog_composition_path), "RuntimeControlAPIVMLifecycleOwner().putVMLifecycleResource"),
+        (relative(cli_lifecycle_path), "RuntimeControlAPIVMLifecycleOwner()"),
+        (relative(cli_lifecycle_path), "skipped VM lifecycle stopped write after process stop"),
+        (relative(openapi_path), '"/host/runtime/vm-lifecycle"'),
+        (relative(openapi_path), '"RuntimeVMLifecycleResourceState"'),
+        (relative(api_docs_path), "`GET /host/runtime/vm-lifecycle`"),
+        (relative(api_docs_path), "`PUT /host/runtime/vm-lifecycle`"),
+        (relative(guest_control_docs_path), "`GET`/`PUT /host/runtime/vm-lifecycle`"),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token in required
+        if token not in texts[path]
+    ]
+    if missing:
+        return CheckResult(
+            "host-vm-lifecycle-runtime-control-api-owner-surface",
+            False,
+            f"missing={missing}",
+        )
+    if legacy_store_path.exists() or legacy_store_tests_path.exists():
+        return CheckResult(
+            "host-vm-lifecycle-runtime-control-api-owner-surface",
+            False,
+            "legacy RuntimeVMLifecycleStore file-backed current state adapter still exists",
+        )
+    if "RuntimeVMLifecycleStore(" in texts[relative(watchdog_composition_path)]:
+        return CheckResult(
+            "host-vm-lifecycle-runtime-control-api-owner-surface",
+            False,
+            "RuntimeWatchdogRunnerComposition still writes VM lifecycle through RuntimeVMLifecycleStore",
+        )
+    for path in [relative(status_owner_readers_path), relative(health_checker_path)]:
+        if "RuntimeVMLifecycleStore(" in texts[path]:
+            return CheckResult(
+                "host-vm-lifecycle-runtime-control-api-owner-surface",
+                False,
+                f"{path} still reads VM lifecycle through RuntimeVMLifecycleStore",
+            )
+    for path in [
+        relative(launcher_path),
+        relative(vm_delegate_composition_path),
+        relative(vm_termination_composition_path),
+    ]:
+        if "RuntimeVMLifecycleStore(" in texts[path]:
+            return CheckResult(
+                "host-vm-lifecycle-runtime-control-api-owner-surface",
+                False,
+                f"{path} still writes VM lifecycle through RuntimeVMLifecycleStore",
+            )
+    if "RuntimeVMLifecycleStore(" in texts[relative(cli_lifecycle_path)]:
+        return CheckResult(
+            "host-vm-lifecycle-runtime-control-api-owner-surface",
+            False,
+            "RuntimeLifecycle still writes VM lifecycle through RuntimeVMLifecycleStore",
+        )
+    for token in [
+        "initialDocument:",
+        "initialDocument: RuntimeVMLifecycleDocument?",
+    ]:
+        if token in texts[relative(controller_path)]:
+            return CheckResult(
+                "host-vm-lifecycle-runtime-control-api-owner-surface",
+                False,
+                f"VM lifecycle controller can still seed current owner state during construction: {token}",
+            )
+    return CheckResult(
+        "host-vm-lifecycle-runtime-control-api-owner-surface",
+        True,
+        "Host VM lifecycle has a Runtime Control API owner resource surface with explicit missing/failed/loaded states",
+    )
+
+
+def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckResult:
+    endpoint_routing_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlAPIEndpointRouting.swift"
+    )
+    read_routes_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlHTTPReadRoutes.swift"
+    )
+    command_routes_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlHTTPCommandRoutes.swift"
+    )
+    requests_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlAPIRequests.swift"
+    )
+    read_models_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
+    )
+    api_handler_path = (
+        MACOS_RUNTIME / "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlAPIHandler.swift"
+    )
+    mac_environment_path = (
+        MACOS_RUNTIME / "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlEnvironment.swift"
+    )
+    controller_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/MacControlPanel/Composition/RuntimeControlGuestAddressController.swift"
+    )
+    outbound_client_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/RuntimeControlAPI/RuntimeControlAPIGuestAddressOwner.swift"
+    )
+    resource_reader_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeGuestAddressResourceReaders.swift"
+    )
+    mac_client_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Client"
+        / "MacRuntimeControlClient.swift"
+    )
+    bootstrap_provider_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
+        / "RuntimeBootstrapGuestAddressProvider.swift"
+    )
+    vm_ip_provider_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Health/RuntimeVMIPFileGuestAddressProvider.swift"
+    )
+    status_owner_readers_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeHostStatusOwnerReaders.swift"
+    )
+    api_tests_path = (
+        MACOS_RUNTIME / "Tests/InboundAdaptersTests/RuntimeControlAPI/RuntimeControlAPITests.swift"
+    )
+    controller_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/MacControlPanelHostTests/RuntimeControlGuestAddressControllerTests.swift"
+    )
+    outbound_client_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests/RuntimeControlAPIGuestAddressOwnerTests.swift"
+    )
+    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    api_docs_path = ROOT / "docs/runtime/macos/runtime-control-api.md"
+    guest_control_docs_path = ROOT / "docs/runtime/macos/runtime-guest-control.md"
+    vm_ip_troubleshooting_path = ROOT / "docs/troubleshooting/017_vm-ip-waiting-bootstrap.md"
+    texts = {
+        relative(endpoint_routing_path): read(endpoint_routing_path),
+        relative(read_routes_path): read(read_routes_path),
+        relative(command_routes_path): read(command_routes_path),
+        relative(requests_path): read(requests_path),
+        relative(read_models_path): read(read_models_path),
+        relative(api_handler_path): read(api_handler_path),
+        relative(mac_environment_path): read(mac_environment_path),
+        relative(controller_path): read(controller_path),
+        relative(outbound_client_path): read(outbound_client_path),
+        relative(resource_reader_path): read(resource_reader_path),
+        relative(mac_client_path): read(mac_client_path),
+        relative(status_owner_readers_path): read(status_owner_readers_path),
+        relative(api_tests_path): read(api_tests_path),
+        relative(controller_tests_path): read(controller_tests_path),
+        relative(outbound_client_tests_path): read(outbound_client_tests_path),
+        relative(openapi_path): read(openapi_path),
+        relative(api_docs_path): read(api_docs_path),
+        relative(guest_control_docs_path): read(guest_control_docs_path),
+        relative(vm_ip_troubleshooting_path): read(vm_ip_troubleshooting_path),
+    }
+    required = [
+        (relative(endpoint_routing_path), 'path: "/host/runtime/guest-address", scope: .hostAffordance'),
+        (relative(read_routes_path), "handler.loadGuestAddressResource()"),
+        (relative(command_routes_path), "handler.putGuestAddressResource(guestAddressRequest)"),
+        (relative(requests_path), "public struct RuntimeGuestAddressPutRequest"),
+        (relative(read_models_path), "public struct RuntimeGuestAddressResourceState"),
+        (relative(api_handler_path), "protocol RuntimeGuestAddressResourceClient"),
+        (relative(api_handler_path), "guestAddressClient.putGuestAddressResource(address: request.address)"),
+        (relative(mac_environment_path), "RuntimeControlGuestAddressController("),
+        (relative(controller_path), "final class RuntimeControlGuestAddressController"),
+        (relative(controller_path), '.missing(readError: "Guest address resource missing")'),
+        (relative(outbound_client_path), "public struct RuntimeControlAPIGuestAddressOwner"),
+        (relative(outbound_client_path), 'path: "/host/runtime/guest-address"'),
+        (relative(outbound_client_path), "invalidGuestAddressState"),
+        (relative(resource_reader_path), "public struct RuntimeControlAPIGuestAddressProvider"),
+        (relative(resource_reader_path), "RuntimeGuestAddressResourceReadMapper.readResult"),
+        (relative(mac_environment_path), "guestAddressProvider: guestAddressController"),
+        (relative(mac_client_path), "statusReader: Self.liveStatusReader()"),
+        (relative(mac_client_path), "guestAddressProvider: any RuntimeGuestAddressProvider"),
+        (relative(mac_client_path), "guestAddressProvider: RuntimeControlAPIGuestAddressProvider()"),
+        (relative(status_owner_readers_path), "UnavailableRuntimeGuestAddressProvider("),
+        (relative(api_tests_path), "testRouterServesAndUpdatesHostGuestAddressResourceWithoutLoadingStatus"),
+        (relative(controller_tests_path), "testPutAndLoadPreserveExplicitOwnerAddress"),
+        (relative(outbound_client_tests_path), "testHTTPFailureDoesNotBecomeMissingResource"),
+        (relative(openapi_path), '"/host/runtime/guest-address"'),
+        (relative(openapi_path), '"RuntimeGuestAddressResourceState"'),
+        (relative(api_docs_path), "`GET /host/runtime/guest-address`"),
+        (relative(api_docs_path), "`PUT /host/runtime/guest-address`"),
+        (relative(guest_control_docs_path), "`GET`/`PUT /host/runtime/guest-address`"),
+        (relative(vm_ip_troubleshooting_path), "Runtime Control Guest address owner (`GET /host/runtime/guest-address`)"),
+        (relative(vm_ip_troubleshooting_path), "may be published through `PUT /host/runtime/guest-address`"),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token in required
+        if token not in texts[path]
+    ]
+    if missing:
+        return CheckResult(
+            "host-guest-address-runtime-control-api-owner-surface",
+            False,
+            f"missing={missing}",
+        )
+    legacy_files = [
+        relative(path)
+        for path in [bootstrap_provider_path, vm_ip_provider_path]
+        if path.exists()
+    ]
+    if legacy_files:
+        return CheckResult(
+            "host-guest-address-runtime-control-api-owner-surface",
+            False,
+            f"legacy vm-ip Guest address providers still exist: {legacy_files}",
+        )
+    for path in [relative(status_owner_readers_path), relative(api_handler_path), relative(mac_environment_path)]:
+        if "RuntimeVMIPFileGuestAddressProvider(" in texts[path]:
+            return CheckResult(
+                "host-guest-address-runtime-control-api-owner-surface",
+                False,
+                f"{path} still selects vm-ip file provider as current Guest address owner",
+            )
+        if "RuntimeBootstrapGuestAddressProvider.live(" in texts[path]:
+            return CheckResult(
+                "host-guest-address-runtime-control-api-owner-surface",
+                False,
+                f"{path} still seeds current Guest address owner from vm-ip bootstrap evidence",
+            )
+    for token in [
+        "seedProvider:",
+        "seedProvider: (any RuntimeGuestAddressProvider)?",
+    ]:
+        if token in texts[relative(controller_path)]:
+            return CheckResult(
+                "host-guest-address-runtime-control-api-owner-surface",
+                False,
+                f"Guest address controller can still seed current owner state during construction: {token}",
+            )
+    for token in [
+        "explicit Guest address provider (`vm/data/run/vm-ip`)",
+        "Current Host reads should prefer",
+    ]:
+        if token in texts[relative(vm_ip_troubleshooting_path)]:
+            return CheckResult(
+                "host-guest-address-runtime-control-api-owner-surface",
+                False,
+                f"{relative(vm_ip_troubleshooting_path)} still describes vm-ip evidence as the current provider: {token}",
+            )
+    return CheckResult(
+        "host-guest-address-runtime-control-api-owner-surface",
+        True,
+        "Host Guest address has a Runtime Control API owner resource surface with explicit missing/failed/loaded states",
+    )
+
+
+def check_guest_bootstrap_result_is_not_current_state_input() -> CheckResult:
+    guard_composition_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary"
+        / "RuntimeManagedOperationGuardComposition.swift"
+    )
+    guard_usecase_path = (
         MACOS_RUNTIME
         / "Sources/Application/UseCases/RuntimeHealth"
-        / "EvaluateRuntimeHealthUseCase.swift"
+        / "GuardManagedRuntimeOperationUseCase.swift"
     )
-    evaluator = read(evaluator_path)
-    health_usecase = read(health_usecase_path)
-    required = {
-        relative(evaluator_path): [
-            "currentBootID: String?",
-            "bootstrapBootID == currentBootID",
-        ],
-        relative(health_usecase_path): [
-            "currentBootID: observation.vmLifecycle?.bootID",
-        ],
-    }
+    watchdog_path = (
+        MACOS_RUNTIME
+        / "Sources/Application/UseCases/RuntimeHealth"
+        / "WatchdogRuntimeUseCase.swift"
+    )
+    guard_composition = read(guard_composition_path)
     texts = {
-        relative(evaluator_path): evaluator,
-        relative(health_usecase_path): health_usecase,
+        relative(guard_composition_path): guard_composition,
+        relative(guard_usecase_path): read(guard_usecase_path),
+        relative(watchdog_path): read(watchdog_path),
     }
+    deleted_paths = [
+        (
+            MACOS_RUNTIME
+            / "Sources/Domain/Policies/GuestBootstrapEvaluator.swift"
+        ),
+        (
+            MACOS_RUNTIME
+            / "Sources/Adapters/Outbound/Persistence"
+            / "JSONFileRuntimeGuestDocumentReader.swift"
+        ),
+    ]
     forbidden = {
-        relative(evaluator_path): [
-            "guestState: GuestRuntimeStateDocument?",
-            "guestState?.bootID",
-            "guestBootID",
+        path: [
+            "GuestBootstrapEvaluator",
+            "GuestBootstrapAssessment",
+            "RuntimeGuestBootstrapResultReader",
+            "JSONFileRuntimeGuestDocumentReader",
+            "loadBootstrapResultDocument",
+            "guestBootstrapManagedOperationGuardPlan",
+            "activeGuestBootstrap",
+            "RuntimeGuestBootstrapOperation",
+        ]
+        for path in texts
+    }
+    existing_deleted_paths = [relative(path) for path in deleted_paths if path.exists()]
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden.items()
+        for token in tokens
+        if token in texts[path]
+    ]
+    if existing_deleted_paths or present:
+        return CheckResult(
+            "guest-bootstrap-result-not-current-state-input",
+            False,
+            f"deleted_paths_present={existing_deleted_paths} forbidden_present={present}",
+        )
+    return CheckResult(
+        "guest-bootstrap-result-not-current-state-input",
+        True,
+        "bootstrap-result artifacts are not wired into current health, guard, "
+        "or watchdog state decisions",
+    )
+
+
+def check_recorder_ingress_status_read_result_preserves_explicit_read_contract() -> CheckResult:
+    swift_contract = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/Shared/RuntimeHealthObservationReads.swift"
+    )
+    swift_contract_tests = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    pwa_schema = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+    )
+    pwa_schema_tests = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts"
+    )
+    openapi = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    texts = {
+        relative(swift_contract): read(swift_contract),
+        relative(swift_contract_tests): read(swift_contract_tests),
+        relative(pwa_schema): read(pwa_schema),
+        relative(pwa_schema_tests): read(pwa_schema_tests),
+        relative(openapi): read(openapi),
+    }
+    swift_recorder_ingress_text = text_between(
+        texts[relative(swift_contract)],
+        "public struct RuntimeRecorderIngressStatusReadResult",
+        "public enum RuntimeRedisRelayStatusReadState",
+    )
+    required = {
+        relative(swift_contract): [
+            "let readState = try container.decode(RuntimeRecorderIngressStatusReadState.self, forKey: .readState)",
+            "let httpStatus = try container.decode(String.self, forKey: .httpStatus)",
+            "let document = try container.decodeRequiredNullable(",
+            "let readError = try container.decodeRequiredNullable(String.self, forKey: .readError)",
+            "loaded recorder ingress status reads must include document",
+            "recorder ingress status reads must include readError",
         ],
-        relative(health_usecase_path): [
-            "loadedGuestRuntimeState",
-            "guestState: observation.loadedGuestRuntimeState",
+        relative(swift_contract_tests): [
+            "testRecorderIngressStatusReadResultEncodesExplicitReadEvidence",
+            "loaded recorder ingress status reads must include document",
+            "readFailed recorder ingress status reads must include readError",
+        ],
+        relative(pwa_schema): [
+            "loaded recorder ingress status reads must include document",
+            "recorder ingress status reads must include readError",
+        ],
+        relative(pwa_schema_tests): [
+            'readState: "readFailed"',
+            'readError: ""',
+        ],
+        relative(openapi): [
+            "\"RuntimeRecorderIngressStatusReadResult\"",
+            "\"readState\"",
+            "\"httpStatus\"",
+            "\"document\"",
+            "\"readError\"",
         ],
     }
     missing = {
         path: [token for token in tokens if token not in texts[path]]
         for path, tokens in required.items()
         if any(token not in texts[path] for token in tokens)
+    }
+    forbidden = {
+        relative(swift_contract): [
+            "let httpStatus = try container.decodeIfPresent(String.self, forKey: .httpStatus) ?? \"\"",
+            "let document = try container.decodeIfPresent(RuntimeRecorderIngressStatusDocument.self, forKey: .document)",
+            "let readError = try container.decodeIfPresent(String.self, forKey: .readError)",
+            "readState: try container.decodeIfPresent(",
+        ],
+        relative(swift_contract_tests): [
+            "legacy read failed",
+            "XCTAssertEqual(legacy.httpStatus, \"\")",
+        ],
+    }
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden.items()
+        for token in tokens
+        if token in (swift_recorder_ingress_text if path == relative(swift_contract) else texts[path])
+    ]
+    if missing or present:
+        return CheckResult(
+            "recorder-ingress-status-read-result-explicit-contract",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "recorder-ingress-status-read-result-explicit-contract",
+        True,
+        "Recorder ingress status read results require explicit read state, http status, nullable document, and nullable read error",
+    )
+
+
+def check_redis_relay_status_read_result_preserves_explicit_read_contract() -> CheckResult:
+    swift_contract = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/Shared/RuntimeHealthObservationReads.swift"
+    )
+    swift_contract_tests = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    texts = {
+        relative(swift_contract): read(swift_contract),
+        relative(swift_contract_tests): read(swift_contract_tests),
+    }
+    swift_redis_relay_text = text_between(
+        texts[relative(swift_contract)],
+        "public struct RuntimeRedisRelayStatusReadResult",
+        "public struct RuntimeHostProxyListenerObservation",
+    )
+    required = {
+        relative(swift_contract): [
+            "let readState = try container.decode(RuntimeRedisRelayStatusReadState.self, forKey: .readState)",
+            "let document = try container.decodeRequiredNullable(RuntimeRedisRelayStatus.self, forKey: .document)",
+            "let readError = try container.decodeRequiredNullable(String.self, forKey: .readError)",
+            "loaded Redis Relay status reads must include document",
+            "Redis Relay status reads must include readError",
+        ],
+        relative(swift_contract_tests): [
+            "testRedisRelayStatusReadResultEncodesExplicitReadEvidence",
+            "loaded Redis Relay status reads must include document",
+            "readFailed Redis Relay status reads must include readError",
+        ],
+    }
+    missing = {
+        path: [token for token in tokens if token not in texts[path]]
+        for path, tokens in required.items()
+        if any(token not in texts[path] for token in tokens)
+    }
+    forbidden = {
+        relative(swift_contract): [
+            "let document = try container.decodeIfPresent(RuntimeRedisRelayStatus.self, forKey: .document)",
+            "let readError = try container.decodeIfPresent(String.self, forKey: .readError)",
+            "readState: try container.decodeIfPresent(",
+        ],
+        relative(swift_contract_tests): [
+            "legacy Redis Relay status",
+        ],
+    }
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden.items()
+        for token in tokens
+        if token in (swift_redis_relay_text if path == relative(swift_contract) else texts[path])
+    ]
+    if missing or present:
+        return CheckResult(
+            "redis-relay-status-read-result-explicit-contract",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "redis-relay-status-read-result-explicit-contract",
+        True,
+        "Redis Relay status read results require explicit read state, nullable document, and nullable read error",
+    )
+
+
+def check_redis_relay_status_document_preserves_complete_owner_contract() -> CheckResult:
+    swift_contract = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/Shared/RuntimeRedisRelayStatus.swift"
+    )
+    swift_contract_tests = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
+    gateway_tests = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests/HTTPRuntimeGuestControlGatewayTests.swift"
+    )
+    pwa_schema = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+    )
+    pwa_schema_tests = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts"
+    )
+    pwa_generated = (
+        PWA
+        / "src/domain/runtime-control/contracts/generated/runtime-control.ts"
+    )
+    openapi = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    guest_postgres_repository = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/adapters/outbound/postgres/operation_repository.py"
+    )
+    guest_domain_models = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/domain/guest_control/models.py"
+    )
+    guest_api = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/adapters/inbound/guest_control_api.py"
+    )
+    guest_usecase = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/application/guest_control/usecases.py"
+    )
+    guest_postgres_tests = (
+        GUEST_TOOLS
+        / "tests/test_guest_control_postgres_repository.py"
+    )
+    guest_api_tests = GUEST_TOOLS / "tests/test_guest_control_api.py"
+    guest_usecase_tests = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
+    texts = {
+        relative(swift_contract): read(swift_contract),
+        relative(swift_contract_tests): read(swift_contract_tests),
+        relative(gateway_tests): read(gateway_tests),
+        relative(pwa_schema): read(pwa_schema),
+        relative(pwa_schema_tests): read(pwa_schema_tests),
+        relative(pwa_generated): read(pwa_generated),
+        relative(openapi): read(openapi),
+        relative(guest_postgres_repository): read(guest_postgres_repository),
+        relative(guest_domain_models): read(guest_domain_models),
+        relative(guest_api): read(guest_api),
+        relative(guest_usecase): read(guest_usecase),
+        relative(guest_postgres_tests): read(guest_postgres_tests),
+        relative(guest_api_tests): read(guest_api_tests),
+        relative(guest_usecase_tests): read(guest_usecase_tests),
+    }
+    required = {
+        relative(swift_contract): [
+            "public var schemaVersion: Int",
+            "schemaVersion: try container.decode(Int.self, forKey: .schemaVersion)",
+            "observedAt: try container.decode(String.self, forKey: .observedAt)",
+            "enabled: try container.decode(Bool.self, forKey: .enabled)",
+            "state: try container.decode(String.self, forKey: .state)",
+            "scope: try container.decode(String.self, forKey: .scope)",
+            "targetUrl: try container.decodeRequiredNullable(String.self, forKey: .targetUrl)",
+            "targetUsernameConfigured: try container.decode(",
+            "targetPasswordConfigured: try container.decode(",
+            "settingsFingerprint: try container.decodeRequiredNullable(",
+            "batches: try container.decode(Int.self, forKey: .batches)",
+            "totals: try container.decode(RuntimeRedisRelayBatch.self, forKey: .totals)",
+            "lastBatch: try container.decodeRequiredNullable(RuntimeRedisRelayBatch.self, forKey: .lastBatch)",
+            "lastSuccessAt: try container.decodeRequiredNullable(String.self, forKey: .lastSuccessAt)",
+            "lastErrorAt: try container.decodeRequiredNullable(String.self, forKey: .lastErrorAt)",
+            "lastError: try container.decodeRequiredNullable(String.self, forKey: .lastError)",
+            "scanned: try container.decode(Int.self, forKey: .scanned)",
+            "copied: try container.decode(Int.self, forKey: .copied)",
+            "published: try container.decode(Int.self, forKey: .published)",
+            "duplicates: try container.decode(Int.self, forKey: .duplicates)",
+            "errors: try container.decode(Int.self, forKey: .errors)",
+            "try encodeNil(forKey: key)",
+        ],
+        relative(swift_contract_tests): [
+            "testRedisRelayStatusRequiresCompleteOwnerDocumentPayload",
+            "XCTAssertTrue(encodedJSON[\"targetUrl\"] is NSNull)",
+            "XCTAssertTrue(String(describing: error).contains(\"copied\"))",
+        ],
+        relative(gateway_tests): [
+            "\"schemaVersion\": 1",
+            "\"published\": 8",
+            "\"duplicates\": 0",
+            "\"lastBatch\": null",
+            "\"lastSuccessAt\": null",
+            "\"lastErrorAt\": null",
+            "\"lastError\": null",
+        ],
+        relative(pwa_schema): [
+            "const runtimeRedisRelayBatchSchema = z",
+            "published: z.number().int()",
+            "duplicates: z.number().int()",
+            "const runtimeRedisRelayStatusSchema = z",
+            "targetUrl: requiredNullableString",
+            "settingsFingerprint: requiredNullableString",
+            "lastBatch: runtimeRedisRelayBatchSchema.nullable()",
+            "redisRelayStatus: runtimeRedisRelayStatusSchema.nullable().optional()",
+        ],
+        relative(pwa_schema_tests): [
+            "requires complete Redis Relay status owner documents on RuntimeStatus",
+            "published: 0",
+            "duplicates: 0",
+            "toThrow(/published/)",
+        ],
+        relative(pwa_generated): [
+            "RuntimeRedisRelayBatch: {",
+            "published: number;",
+            "duplicates: number;",
+            "RuntimeRedisRelayStatus: {",
+            "redisRelayStatus?: components[\"schemas\"][\"RuntimeRedisRelayStatus\"] | null;",
+        ],
+        relative(openapi): [
+            "\"RuntimeRedisRelayBatch\"",
+            "\"RuntimeRedisRelayStatus\"",
+            "\"published\"",
+            "\"duplicates\"",
+            "\"redisRelayStatus\"",
+            "\"$ref\": \"#/components/schemas/RuntimeRedisRelayStatus\"",
+        ],
+        relative(guest_postgres_repository): [
+            "validate_redis_relay_status_document(document)",
+            "except RedisRelayStatusContractError as error:",
+            "kind=\"redis-relay-contract-invalid\"",
+        ],
+        relative(guest_domain_models): [
+            "class RedisRelayStatusContractError",
+            "REDIS_RELAY_REQUIRED_NULLABLE_STRING_FIELDS",
+            "\"targetUrl\"",
+            "\"settingsFingerprint\"",
+            "\"lastSuccessAt\"",
+            "\"lastErrorAt\"",
+            "\"lastError\"",
+            "REDIS_RELAY_BATCH_COUNTER_FIELDS",
+            "\"published\"",
+            "\"duplicates\"",
+            "validate_redis_relay_batch(totals, field=\"totals\")",
+            "validate_redis_relay_batch(last_batch, field=\"lastBatch\")",
+        ],
+        relative(guest_api): [
+            "except RedisRelayStatusContractError as error:",
+            "code=\"redisRelayStatusInvalid\"",
+        ],
+        relative(guest_usecase): [
+            "validate_redis_relay_status_document(document)",
+            "self._redis_relay.save_status(document)",
+        ],
+        relative(guest_postgres_tests): [
+            "redis_relay_status_document()",
+            "test_postgres_repository_rejects_incomplete_redis_relay_status_document",
+            "test_postgres_repository_rejects_incomplete_stored_redis_relay_status_document",
+            "targetUrl",
+            "totals.published",
+            "lastBatch",
+        ],
+        relative(guest_api_tests): [
+            "def redis_relay_status_document(",
+            "\"schemaVersion\": 1",
+            "\"published\": copied",
+            "\"duplicates\": 0",
+            "\"lastBatch\": None",
+            "body = json.dumps(redis_relay_status_document()).encode(\"utf-8\")",
+            "test_redis_relay_status_route_rejects_incomplete_owner_snapshot",
+            "\"code\": \"redisRelayStatusInvalid\"",
+            "assert operations.redis_relay_status is None",
+        ],
+        relative(guest_usecase_tests): [
+            "def redis_relay_status_document(",
+            "\"schemaVersion\": 1",
+            "\"published\": copied",
+            "\"duplicates\": 0",
+            "\"lastBatch\": None",
+            "usecases.put_redis_relay_status(redis_relay_status_document())",
+            "\"document\": redis_relay_status_document(copied=1)",
+            "test_redis_relay_status_owner_mutation_rejects_incomplete_snapshot",
+            "RedisRelayStatusContractError",
+            "totals.published",
+        ],
+    }
+    missing = {
+        path: [token for token in tokens if token not in texts[path]]
+        for path, tokens in required.items()
+        if any(token not in texts[path] for token in tokens)
+    }
+    repository_path = relative(guest_postgres_repository)
+    if texts[repository_path].count("validate_redis_relay_status_document(document)") < 2:
+        missing.setdefault(repository_path, []).append(
+            "validate_redis_relay_status_document(document) in save_status and status"
+        )
+    forbidden = {
+        relative(swift_contract): [
+            "try container.decodeIfPresent(Int.self, forKey: .scanned) ?? 0",
+            "try container.decodeIfPresent(Int.self, forKey: .copied) ?? 0",
+            "try container.decodeIfPresent(Int.self, forKey: .published) ?? 0",
+            "try container.decodeIfPresent(Int.self, forKey: .duplicates) ?? 0",
+            "try container.decodeIfPresent(String.self, forKey: .observedAt) ?? \"\"",
+            "try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false",
+            "try container.decodeIfPresent(String.self, forKey: .state) ?? \"unknown\"",
+            "try container.decodeIfPresent(String.self, forKey: .scope) ?? \"unknown\"",
+            "try container.decodeIfPresent(Int.self, forKey: .batches) ?? 0",
+            "try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .totals)",
+            "?? RuntimeRedisRelayBatch()",
+        ],
+        relative(guest_postgres_repository): [
+            "observed_at = document.get(\"observedAt\")",
+            "Redis relay status document is missing observedAt.",
+        ],
+        relative(guest_api_tests): [
+            "\"totals\": {\"copied\": 8}",
+            "\"totals\": {\"copied\": 1}",
+        ],
+        relative(guest_usecase_tests): [
+            "\"totals\": {\"copied\": 8}",
+            "\"totals\": {\"copied\": 1}",
+        ],
     }
     present = [
         f"{path}:{token}"
@@ -4972,15 +10090,14 @@ def check_guest_bootstrap_current_boot_uses_vm_lifecycle() -> CheckResult:
     ]
     if missing or present:
         return CheckResult(
-            "guest-bootstrap-current-boot-vm-lifecycle",
+            "redis-relay-status-document-complete-owner-contract",
             False,
             f"missing={missing} forbidden_present={present}",
         )
     return CheckResult(
-        "guest-bootstrap-current-boot-vm-lifecycle",
+        "redis-relay-status-document-complete-owner-contract",
         True,
-        "Guest bootstrap current-boot checks use VM lifecycle bootID, not "
-        "runtime-state bootID",
+        "Redis Relay status documents require complete owner-provided fields and explicit nullable values",
     )
 
 
@@ -5056,7 +10173,7 @@ def check_recorder_ingress_does_not_read_runtime_state_memory_guard(
         "runtime-state-memory-guard-reader",
         "runtimeStatePath",
         "containerServices",
-        "/run/tirosh/runtime/runtime-state.json",
+        "/run/tirosh/runtime/runtime-observation.json",
     ]
     matches = find_tokens(scan_roots, forbidden)
     if existing or matches:
@@ -5068,7 +10185,7 @@ def check_recorder_ingress_does_not_read_runtime_state_memory_guard(
     return CheckResult(
         "recorder-ingress-no-runtime-state-memory-guard",
         True,
-        "recorder-ingress no longer reads runtime-state.json as a replay "
+        "recorder-ingress no longer reads runtime-observation.json as a replay "
         "memory guard input",
     )
 
@@ -5089,8 +10206,8 @@ def check_runtime_boot_smoke_uses_guest_control_stack_status() -> CheckResult:
     ]
     forbidden = [
         "observed_compose_services",
-        "runtime state containerServices is missing or empty",
-        "runtime state is missing compose services",
+        "runtime observation containerServices is missing or empty",
+        "runtime observation is missing compose services",
         "invalid_compose_service_uptime",
         "MAX_RUNTIME_SMOKE_SERVICE_UPTIME_SECONDS",
         "testkit-recorder-flow",
@@ -5182,11 +10299,46 @@ def check_vitaldb_beds_use_explicit_bed_read_document() -> CheckResult:
         PWA
         / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
     )
+    runtime_view_model = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/ViewModels/RuntimeViewModel.swift"
+    )
+    runtime_refresher = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Refresh/RuntimeObservabilityRefresher.swift"
+    )
+    runtime_beds_panel = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Views/RuntimeBedsPanel.swift"
+    )
+    runtime_recorders_panel = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Views/RuntimeRecordersPanel.swift"
+    )
+    swift_read_models = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
+    )
+    swift_contract_tests = (
+        MACOS_RUNTIME
+        / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
+    )
     openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
     route_text = read(read_routes)
     page_text = read(beds_page)
     types_text = read(runtime_control_types)
     schema_text = read(schema_path)
+    runtime_view_model_text = read(runtime_view_model)
+    runtime_refresher_text = read(runtime_refresher)
+    runtime_beds_panel_text = read(runtime_beds_panel)
+    runtime_recorders_panel_text = read(runtime_recorders_panel)
+    swift_read_models_text = read(swift_read_models)
+    swift_activity_history_text = text_between(
+        swift_read_models_text,
+        "public struct RuntimeVitalRecorderActivityHistory",
+        "public enum RuntimeVitalRecorderActivityHistorySource",
+    )
+    swift_contract_tests_text = read(swift_contract_tests)
     openapi_text = read(openapi_path)
 
     missing = []
@@ -5200,6 +10352,66 @@ def check_vitaldb_beds_use_explicit_bed_read_document() -> CheckResult:
         missing.append("vitalDBBedsSchema.document")
     if '"$ref": "#/components/schemas/RuntimeVitalBedHistory"' not in openapi_text:
         missing.append("OpenAPI.RuntimeVitalBedHistory")
+    if "@Published var vitalBeds = RuntimeVitalBedHistory()" not in runtime_view_model_text:
+        missing.append("RuntimeViewModel.vitalBeds")
+    if "let beds = await snapshots.loadVitalBeds()" not in runtime_refresher_text:
+        missing.append("RuntimeObservabilityRefresher.loadVitalBeds")
+    if "vitalBeds = refreshed.beds" not in runtime_view_model_text:
+        missing.append("RuntimeViewModel.assign-refreshed-beds")
+    if "viewModel.vitalBeds.beds" not in runtime_beds_panel_text:
+        missing.append("RuntimeBedsPanel.vitalBeds")
+    if "viewModel.vitalBeds.beds" not in runtime_recorders_panel_text:
+        missing.append("RuntimeRecordersPanel.linked-bed-vitalBeds")
+    if "recorders = try container.decode([RuntimeVitalRecorderRecord].self, forKey: .recorders)" not in swift_read_models_text:
+        missing.append("RuntimeVitalRecorderHistory.required-recorders-array")
+    if "beds = try container.decode([RuntimeVitalBedRecord].self, forKey: .beds)" not in swift_read_models_text:
+        missing.append("RuntimeVitalRecorderHistory.required-beds-array")
+    for label, token in [
+        (
+            "RuntimeVitalRecorderHistory.required-state",
+            "state = try container.decode(RuntimeVitalRecorderHistoryState.self, forKey: .state)",
+        ),
+        (
+            "RuntimeVitalRecorderHistory.required-summary",
+            "summary = try container.decode(RuntimeVitalRecorderHistorySummary.self, forKey: .summary)",
+        ),
+        (
+            "RuntimeVitalRecorderHistory.required-activity-history",
+            "activityHistory = try container.decode(",
+        ),
+        (
+            "RuntimeVitalRecorderActivityHistory.required-nullable-earliest-bucket",
+            "earliestBucketStartedAt = try container.decodeRequiredNullable(",
+        ),
+        (
+            "RuntimeVitalRecorderActivityHistory.required-nullable-latest-bucket",
+            "latestBucketStartedAt = try container.decodeRequiredNullable(",
+        ),
+        (
+            "RuntimeVitalRecorderActivityHistory.required-nullable-read-error",
+            "readError = try container.decodeRequiredNullable(String.self, forKey: .readError)",
+        ),
+        (
+            "RuntimeVitalRecorderHistory.required-nullable-recorder-ingress",
+            "recorderIngressStatusRead = try container.decodeRequiredNullable(",
+        ),
+        (
+            "RuntimeVitalBedHistory.required-nullable-updated-at",
+            "updatedAt = try container.decodeRequiredNullable(String.self, forKey: .updatedAt)",
+        ),
+        (
+            "RuntimeVitalBedHistory.explicit-null-encoding",
+            "try container.encodeNil(forKey: .readError)",
+        ),
+    ]:
+        if token not in swift_read_models_text:
+            missing.append(label)
+    if "testVitalRecorderHistoryRequiresCompleteReadDocumentPayload" not in swift_contract_tests_text:
+        missing.append("RuntimeControlContractsTests.required-vital-recorder-document")
+    if "testVitalRecorderActivityHistoryRequiresExplicitNullableFields" not in swift_contract_tests_text:
+        missing.append("RuntimeControlContractsTests.required-vital-recorder-activity-history")
+    if "testVitalBedHistoryPreservesExplicitNullableFieldsAndRequiresCompletePayload" not in swift_contract_tests_text:
+        missing.append("RuntimeControlContractsTests.required-vital-bed-document")
 
     forbidden = []
     if "handler.loadVitalDBRecorders().beds" in route_text:
@@ -5208,6 +10420,24 @@ def check_vitaldb_beds_use_explicit_bed_read_document() -> CheckResult:
         forbidden.append("BedsPage.useVitalDBRecorders")
     if "export const vitalDBBedsSchema = z.array" in schema_text:
         forbidden.append("vitalDBBedsSchema.array")
+    if "vitalRecorders.beds" in runtime_beds_panel_text:
+        forbidden.append("RuntimeBedsPanel.vitalRecorders.beds")
+    if "vitalRecorders.beds" in runtime_recorders_panel_text:
+        forbidden.append("RuntimeRecordersPanel.vitalRecorders.beds")
+    if "recorders = try container.decodeIfPresent([RuntimeVitalRecorderRecord].self, forKey: .recorders) ?? []" in swift_read_models_text:
+        forbidden.append("RuntimeVitalRecorderHistory.recorders-missing-defaults-empty")
+    if "beds = try container.decodeIfPresent([RuntimeVitalBedRecord].self, forKey: .beds) ?? []" in swift_read_models_text:
+        forbidden.append("RuntimeVitalRecorderHistory.beds-missing-defaults-empty")
+    if "summary = try container.decodeIfPresent(RuntimeVitalRecorderHistorySummary.self, forKey: .summary)" in swift_read_models_text:
+        forbidden.append("RuntimeVitalRecorderHistory.summary-missing-computed")
+    if "activityHistory = try container.decodeIfPresent(" in swift_read_models_text:
+        forbidden.append("RuntimeVitalRecorderHistory.activity-history-missing-not-provided")
+    if "earliestBucketStartedAt = try container.decodeIfPresent(String.self, forKey: .earliestBucketStartedAt)" in swift_activity_history_text:
+        forbidden.append("RuntimeVitalRecorderActivityHistory.earliest-bucket-missing-defaults-nil")
+    if "latestBucketStartedAt = try container.decodeIfPresent(String.self, forKey: .latestBucketStartedAt)" in swift_activity_history_text:
+        forbidden.append("RuntimeVitalRecorderActivityHistory.latest-bucket-missing-defaults-nil")
+    if "state = try container.decodeIfPresent(RuntimeVitalRecorderHistoryState.self, forKey: .state)" in swift_read_models_text:
+        forbidden.append("RuntimeVitalRecorderHistory.state-missing-computed")
 
     if missing or forbidden:
         return CheckResult(

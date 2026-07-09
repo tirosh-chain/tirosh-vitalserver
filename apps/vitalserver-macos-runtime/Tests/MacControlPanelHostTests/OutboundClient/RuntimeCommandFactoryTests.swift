@@ -534,7 +534,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
 
         XCTAssertTrue(command.hasPrefix("/bin/bash -lc "))
         XCTAssertTrue(command.contains("rm -f"))
-        XCTAssertTrue(command.contains("/private/tmp/\(RuntimeFileNames.managerCommandLog)"))
+        XCTAssertTrue(command.contains("/private/tmp/\(RuntimeLogArtifactFileNames.managerCommandLog)"))
         XCTAssertTrue(command.contains("{ echo hello; }"))
         XCTAssertTrue(command.contains("2>&1"))
         XCTAssertTrue(command.contains("exit $status"))

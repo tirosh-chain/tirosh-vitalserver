@@ -69,7 +69,6 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case swaggerUIHTTP(String)
     case guestHTTP(String)
     case guestHTTPProbeFailed(String)
-    case guestRuntimeStateStale
     case recorderIngressHTTP(String)
     case containerService(service: String, state: String)
     case guestService(service: String, state: String)
@@ -77,18 +76,9 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case guestServiceObservationReadFailed(String)
     case vitalDBAnomaly(kind: String, subject: String)
     case proxyPortInUse(port: Int, listeners: String)
-    case guestBootstrapResultMissing
-    case guestBootstrapResultUnavailable
     case guestBootstrapMissingRuntimePackages
     case guestBootstrapDockerRuntimeFailed
     case guestBootstrapFailed
-    case guestRuntimeStateMissing
-    case runtimeStatusDocumentMissing
-    case runtimeStatusDocumentStale
-    case runtimeStatusDocumentInvalid
-    case guestRuntimeStateInvalid
-    case guestRuntimeStateLoadFailed(String)
-    case guestRuntimeStateMetadataReadFailed(String)
     case observabilityEventStoreUnavailable
     case observabilityEventStoreCorrupt
     case vmLifecycleDocumentInvalid
@@ -127,12 +117,6 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .vmService(state)
         case .missingIPAddress:
             self = .guestHTTP(RuntimeHTTPStatusText.missingVMIP)
-        case .runtimeStateMissing:
-            self = .guestRuntimeStateMissing
-        case .runtimeStateInvalid:
-            self = .guestRuntimeStateInvalid
-        case .runtimeStateStale:
-            self = .guestRuntimeStateStale
         case .launchFailed(let reason):
             self = .vmLaunchFailed(reason)
         case .invalidConfiguration(let subject):
@@ -151,10 +135,6 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .guestHTTP(status)
         case .guestHTTPProbeFailed(let status):
             self = .guestHTTPProbeFailed(status)
-        case .guestBootstrapResultMissing:
-            self = .guestBootstrapResultMissing
-        case .guestBootstrapResultUnavailable:
-            self = .guestBootstrapResultUnavailable
         case .guestBootstrapMissingRuntimePackages:
             self = .guestBootstrapMissingRuntimePackages
         case .guestBootstrapDockerRuntimeFailed:
@@ -180,32 +160,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .guestBootstrapMissingRuntimePackages
         case "guest-bootstrap-docker-runtime-failed":
             self = .guestBootstrapDockerRuntimeFailed
-        case "guest-bootstrap-result-missing":
-            self = .guestBootstrapResultMissing
-        case "guest-bootstrap-result-unavailable":
-            self = .guestBootstrapResultUnavailable
         case "guest-bootstrap-failed":
             self = .guestBootstrapFailed
-        case "vm-runtime-state-missing":
-            self = .guestRuntimeStateMissing
-        case "guest-runtime-state-stale":
-            self = .guestRuntimeStateStale
-        case "runtime-status-document-missing":
-            self = .runtimeStatusDocumentMissing
-        case "runtime-status-document-stale":
-            self = .runtimeStatusDocumentStale
-        case "runtime-status-document-invalid":
-            self = .runtimeStatusDocumentInvalid
-        case "guest-runtime-state-invalid":
-            self = .guestRuntimeStateInvalid
-        case let value where value.hasPrefix("guest-runtime-state-load-failed-"):
-            self = .guestRuntimeStateLoadFailed(
-                String(value.dropFirst("guest-runtime-state-load-failed-".count))
-            )
-        case let value where value.hasPrefix("guest-runtime-state-metadata-read-failed-"):
-            self = .guestRuntimeStateMetadataReadFailed(
-                String(value.dropFirst("guest-runtime-state-metadata-read-failed-".count))
-            )
         case "observability-event-store-unavailable":
             self = .observabilityEventStoreUnavailable
         case "observability-event-store-corrupt":
@@ -325,8 +281,6 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "guest-http-\(status)"
         case .guestHTTPProbeFailed(let status):
             return "guest-http-probe-failed-\(status)"
-        case .guestRuntimeStateStale:
-            return "guest-runtime-state-stale"
         case .recorderIngressHTTP(let status):
             return "recorder-ingress-http-\(status)"
         case .containerService(let service, let state):
@@ -341,30 +295,12 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "vitaldb-anomaly-\(kind)-subject-\(subject)"
         case .proxyPortInUse(let port, let listeners):
             return "proxy-port-\(port)-in-use-by-\(listeners)"
-        case .guestBootstrapResultMissing:
-            return "guest-bootstrap-result-missing"
-        case .guestBootstrapResultUnavailable:
-            return "guest-bootstrap-result-unavailable"
         case .guestBootstrapMissingRuntimePackages:
             return "guest-bootstrap-missing-runtime-packages"
         case .guestBootstrapDockerRuntimeFailed:
             return "guest-bootstrap-docker-runtime-failed"
         case .guestBootstrapFailed:
             return "guest-bootstrap-failed"
-        case .guestRuntimeStateMissing:
-            return "vm-runtime-state-missing"
-        case .runtimeStatusDocumentMissing:
-            return "runtime-status-document-missing"
-        case .runtimeStatusDocumentStale:
-            return "runtime-status-document-stale"
-        case .runtimeStatusDocumentInvalid:
-            return "runtime-status-document-invalid"
-        case .guestRuntimeStateInvalid:
-            return "guest-runtime-state-invalid"
-        case .guestRuntimeStateLoadFailed(let reason):
-            return "guest-runtime-state-load-failed-\(reason)"
-        case .guestRuntimeStateMetadataReadFailed(let reason):
-            return "guest-runtime-state-metadata-read-failed-\(reason)"
         case .observabilityEventStoreUnavailable:
             return "observability-event-store-unavailable"
         case .observabilityEventStoreCorrupt:
@@ -622,13 +558,9 @@ public extension RuntimeFailureReason {
             return .vmLifecycle
         case .proxyService, .hostProxyHTTP, .proxyPortInUse:
             return .hostProxy
-        case .guestLogSyncService, .watchdogService, .runtimeStatusDocumentMissing, .runtimeStatusDocumentStale,
-             .runtimeStatusDocumentInvalid, .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
+        case .guestLogSyncService, .watchdogService, .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
              .guestServiceObservationMissing, .guestServiceObservationReadFailed:
             return .observability
-        case .guestRuntimeStateMissing, .guestRuntimeStateInvalid,
-             .guestRuntimeStateLoadFailed, .guestRuntimeStateMetadataReadFailed:
-            return .guestAgent
         case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale,
              .vmPidFileStale, .vmProcessExited, .vmLaunchFailed,
              .launchdServiceCrashed, .launchdServiceThrottled:
@@ -650,10 +582,7 @@ public extension RuntimeFailureReason {
             return .auxiliaryUI
         case .guestHTTP, .guestHTTPProbeFailed:
             return .guestNetworking
-        case .guestRuntimeStateStale:
-            return .guestAgent
-        case .guestBootstrapResultMissing, .guestBootstrapResultUnavailable,
-             .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
+        case .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .guestBootstrap
         case .recorderIngressHTTP, .containerService, .guestService:
             return .container
@@ -666,8 +595,8 @@ public extension RuntimeFailureReason {
 
     var domainSeverity: RuntimeDomainErrorSeverity {
         switch self {
-        case .redisUIHTTP, .swaggerUIHTTP, .guestLogSyncService, .watchdogService, .guestRuntimeStateStale,
-             .runtimeStatusDocumentStale, .observabilityEventStoreUnavailable,
+        case .redisUIHTTP, .swaggerUIHTTP, .guestLogSyncService, .watchdogService,
+             .observabilityEventStoreUnavailable,
              .vmLifecycleDocumentStale, .vmPidFileStale, .hostProxyListenerScanUnavailable,
              .hostProxyListenerScanInspectionFailed,
              .hostProxyListenerScanFailed,
@@ -698,13 +627,9 @@ public extension RuntimeFailureReason {
             return .restartWatchdogService
         case .guestLogSyncService:
             return .inspectLogs
-        case .runtimeStatusDocumentMissing, .runtimeStatusDocumentStale, .runtimeStatusDocumentInvalid,
-             .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
+        case .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
              .guestServiceObservationMissing, .guestServiceObservationReadFailed:
             return .inspectLogs
-        case .guestRuntimeStateMissing, .guestRuntimeStateInvalid,
-             .guestRuntimeStateLoadFailed, .guestRuntimeStateMetadataReadFailed:
-            return .restartGuestAgent
         case .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
             return .restartVMService
         case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale:
@@ -731,18 +656,12 @@ public extension RuntimeFailureReason {
             return .inspectLogs
         case .guestHTTP, .guestHTTPProbeFailed:
             return .waitForGuest
-        case .guestRuntimeStateStale:
-            return .restartGuestAgent
         case .recorderIngressHTTP, .containerService, .guestService:
             return .reconcileGuestStack
         case .vitalDBAnomaly:
             return .inspectVitalDBObservation
         case .proxyPortInUse:
             return .freeProxyPort
-        case .guestBootstrapResultMissing:
-            return .waitForGuest
-        case .guestBootstrapResultUnavailable:
-            return .inspectLogs
         case .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .repairGuestBootstrap
         case .unknown:
@@ -752,15 +671,6 @@ public extension RuntimeFailureReason {
 
     var requiresDataPreservationBeforeRecovery: Bool {
         recoveryAction == .backupAndRecreateVM
-    }
-
-    var isGuestRuntimeStateReadFailure: Bool {
-        switch self {
-        case .guestRuntimeStateLoadFailed, .guestRuntimeStateMetadataReadFailed:
-            return true
-        default:
-            return false
-        }
     }
 
     private var vmError: RuntimeVMError? {

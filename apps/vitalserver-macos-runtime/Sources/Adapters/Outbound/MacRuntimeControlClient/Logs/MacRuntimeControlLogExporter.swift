@@ -28,7 +28,7 @@ struct MacRuntimeControlLogExporter: RuntimeLogExporting, @unchecked Sendable {
     init(
         fileManager: FileManager = .default,
         logCollector: RuntimeLogCollecting = MacRuntimeControlLogCollector(),
-        productLogsDirectory: URL = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.productLogs),
+        productLogsDirectory: URL = InstalledRuntimePaths.defaultInstalled.productLogsDirectory,
         supplementalLogItems: [RuntimeLogExportSupplementalSource] = RuntimeLogExportSupplementalSource.defaultItems(),
         rotatedSupplementalSets: [RuntimeLogExportRotatedSupplementalSet] = RuntimeLogExportRotatedSupplementalSet.defaultSets(),
         temporaryDirectory: URL? = nil,

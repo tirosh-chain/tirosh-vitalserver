@@ -500,153 +500,6 @@ public struct RuntimeRedisRelaySettings: Codable, Equatable, Sendable {
     }
 }
 
-public struct RuntimeRedisRelayBatch: Codable, Equatable, Sendable {
-    public var scanned: Int
-    public var copied: Int
-    public var unchanged: Int
-    public var skipped: Int
-    public var denied: Int
-    public var missing: Int
-    public var errors: Int
-
-    public init(
-        scanned: Int = 0,
-        copied: Int = 0,
-        unchanged: Int = 0,
-        skipped: Int = 0,
-        denied: Int = 0,
-        missing: Int = 0,
-        errors: Int = 0
-    ) {
-        self.scanned = scanned
-        self.copied = copied
-        self.unchanged = unchanged
-        self.skipped = skipped
-        self.denied = denied
-        self.missing = missing
-        self.errors = errors
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case scanned
-        case copied
-        case unchanged
-        case skipped
-        case denied
-        case missing
-        case errors
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            scanned: try container.decodeIfPresent(Int.self, forKey: .scanned) ?? 0,
-            copied: try container.decodeIfPresent(Int.self, forKey: .copied) ?? 0,
-            unchanged: try container.decodeIfPresent(Int.self, forKey: .unchanged) ?? 0,
-            skipped: try container.decodeIfPresent(Int.self, forKey: .skipped) ?? 0,
-            denied: try container.decodeIfPresent(Int.self, forKey: .denied) ?? 0,
-            missing: try container.decodeIfPresent(Int.self, forKey: .missing) ?? 0,
-            errors: try container.decodeIfPresent(Int.self, forKey: .errors) ?? 0
-        )
-    }
-}
-
-public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
-    public var observedAt: String
-    public var enabled: Bool
-    public var state: String
-    public var scope: String
-    public var targetUrl: String?
-    public var targetUsernameConfigured: Bool
-    public var targetPasswordConfigured: Bool
-    public var settingsFingerprint: String?
-    public var batches: Int
-    public var totals: RuntimeRedisRelayBatch
-    public var lastBatch: RuntimeRedisRelayBatch?
-    public var lastSuccessAt: String?
-    public var lastErrorAt: String?
-    public var lastError: String?
-
-    public init(
-        observedAt: String,
-        enabled: Bool,
-        state: String,
-        scope: String,
-        targetUrl: String? = nil,
-        targetUsernameConfigured: Bool = false,
-        targetPasswordConfigured: Bool = false,
-        settingsFingerprint: String? = nil,
-        batches: Int = 0,
-        totals: RuntimeRedisRelayBatch = RuntimeRedisRelayBatch(),
-        lastBatch: RuntimeRedisRelayBatch? = nil,
-        lastSuccessAt: String? = nil,
-        lastErrorAt: String? = nil,
-        lastError: String? = nil
-    ) {
-        self.observedAt = observedAt
-        self.enabled = enabled
-        self.state = state
-        self.scope = scope
-        self.targetUrl = targetUrl
-        self.targetUsernameConfigured = targetUsernameConfigured
-        self.targetPasswordConfigured = targetPasswordConfigured
-        self.settingsFingerprint = settingsFingerprint
-        self.batches = batches
-        self.totals = totals
-        self.lastBatch = lastBatch
-        self.lastSuccessAt = lastSuccessAt
-        self.lastErrorAt = lastErrorAt
-        self.lastError = lastError
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case observedAt
-        case enabled
-        case state
-        case scope
-        case targetUrl
-        case targetUsernameConfigured
-        case targetPasswordConfigured
-        case settingsFingerprint
-        case batches
-        case totals
-        case lastBatch
-        case lastSuccessAt
-        case lastErrorAt
-        case lastError
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            observedAt: try container.decodeIfPresent(String.self, forKey: .observedAt) ?? "",
-            enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false,
-            state: try container.decodeIfPresent(String.self, forKey: .state) ?? "unknown",
-            scope: try container.decodeIfPresent(String.self, forKey: .scope) ?? "unknown",
-            targetUrl: try container.decodeIfPresent(String.self, forKey: .targetUrl),
-            targetUsernameConfigured: try container.decodeIfPresent(
-                Bool.self,
-                forKey: .targetUsernameConfigured
-            ) ?? false,
-            targetPasswordConfigured: try container.decodeIfPresent(
-                Bool.self,
-                forKey: .targetPasswordConfigured
-            ) ?? false,
-            settingsFingerprint: try container.decodeIfPresent(
-                String.self,
-                forKey: .settingsFingerprint
-            ),
-            batches: try container.decodeIfPresent(Int.self, forKey: .batches) ?? 0,
-            totals: try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .totals)
-                ?? RuntimeRedisRelayBatch(),
-            lastBatch: try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .lastBatch),
-            lastSuccessAt: try container.decodeIfPresent(String.self, forKey: .lastSuccessAt),
-            lastErrorAt: try container.decodeIfPresent(String.self, forKey: .lastErrorAt),
-            lastError: try container.decodeIfPresent(String.self, forKey: .lastError)
-        )
-    }
-}
-
 public struct RuntimeAppliedVMSettings: Codable, Equatable, Sendable {
     public let cpuCount: Int
     public let memoryGiB: Int
@@ -737,6 +590,17 @@ public enum RuntimeSettingsInitialValues {
     }
 }
 
+public enum RuntimeControlLocalAPIConnectionDefaults {
+    public static let headerName = "X-Runtime-Control-Token"
+    public static let token = "vitalserver-helper-dev"
+
+    public static func baseURL(
+        runtimeControlPort: Int = RuntimeSettingsInitialValues.runtimeControlPort
+    ) -> String {
+        RuntimeSettingsInitialValues.remoteConsoleURL(runtimeControlPort: runtimeControlPort)
+    }
+}
+
 public struct RuntimeSettingsReadIssue: Codable, Equatable, Sendable {
     public var source: String
     public var message: String
@@ -768,7 +632,6 @@ public struct RuntimeStatusReadIssue: Codable, Equatable, Sendable {
 }
 
 public enum RuntimeServiceStateSource: String, Codable, Equatable, Sendable {
-    case statusDocument = "status-document"
     case liveLaunchd = "live-launchd"
 }
 
@@ -798,14 +661,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         case sleepPreventionServiceStateSource
         case watchdogServiceStateSource
         case runtimeState
-        case operation
-        case statusMessage
-        case statusDocumentError
-        case installStateDocument
-        case installStateDocumentError
         case readIssues
-        case updatedAt
-        case startedAt
         case runtimeVersion
         case latestBackup
         case vmState
@@ -837,7 +693,6 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         case proxyPort
         case proxyPortReadState
         case failureReasons
-        case progress
         case redisRelayStatus
     }
 
@@ -859,14 +714,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var sleepPreventionServiceStateSource: RuntimeServiceStateSource?
     public var watchdogServiceStateSource: RuntimeServiceStateSource?
     public var runtimeState: RuntimeState?
-    public var operation: RuntimeOperation?
-    public var statusMessage: String?
-    public var statusDocumentError: String?
-    public var installStateDocument: RuntimeInstallStateDocument?
-    public var installStateDocumentError: String?
     public var readIssues: [RuntimeStatusReadIssue]
-    public var updatedAt: String?
-    public var startedAt: String?
     public var runtimeVersion: String?
     public var latestBackup: String?
     public var vmState: RuntimeVMState?
@@ -898,7 +746,6 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var proxyPort: Int?
     public var proxyPortReadState: RuntimeProxyPortReadState?
     public var failureReasons: [RuntimeFailureReason]
-    public var progress: RuntimeProgressDocument?
     public var redisRelayStatus: RuntimeRedisRelayStatus?
 
     public init(
@@ -920,14 +767,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         sleepPreventionServiceStateSource: RuntimeServiceStateSource? = nil,
         watchdogServiceStateSource: RuntimeServiceStateSource? = nil,
         runtimeState: RuntimeState? = nil,
-        operation: RuntimeOperation? = nil,
-        statusMessage: String? = nil,
-        statusDocumentError: String? = nil,
-        installStateDocument: RuntimeInstallStateDocument? = nil,
-        installStateDocumentError: String? = nil,
         readIssues: [RuntimeStatusReadIssue] = [],
-        updatedAt: String? = nil,
-        startedAt: String? = nil,
         runtimeVersion: String? = nil,
         latestBackup: String? = nil,
         vmState: RuntimeVMState? = nil,
@@ -959,7 +799,6 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         proxyPort: Int? = nil,
         proxyPortReadState: RuntimeProxyPortReadState? = nil,
         failureReasons: [RuntimeFailureReason] = [],
-        progress: RuntimeProgressDocument? = nil,
         redisRelayStatus: RuntimeRedisRelayStatus? = nil
     ) {
         self.runtimeInstalled = runtimeInstalled
@@ -980,14 +819,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.sleepPreventionServiceStateSource = sleepPreventionServiceStateSource
         self.watchdogServiceStateSource = watchdogServiceStateSource
         self.runtimeState = runtimeState
-        self.operation = operation
-        self.statusMessage = statusMessage
-        self.statusDocumentError = statusDocumentError
-        self.installStateDocument = installStateDocument
-        self.installStateDocumentError = installStateDocumentError
         self.readIssues = readIssues
-        self.updatedAt = updatedAt
-        self.startedAt = startedAt
         self.runtimeVersion = runtimeVersion
         self.latestBackup = latestBackup
         self.vmState = vmState
@@ -1019,12 +851,61 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.proxyPort = proxyPort
         self.proxyPortReadState = proxyPortReadState
         self.failureReasons = failureReasons
-        self.progress = progress
         self.redisRelayStatus = redisRelayStatus
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let guestServicesReadState = try container.decodeIfPresent(
+            RuntimeGuestServicesReadState.self,
+            forKey: .guestServicesReadState
+        ) ?? .unavailable
+        let guestServiceStatuses: [RuntimeGuestControlServiceStatus]
+        let guestServiceResources: [RuntimeGuestServiceResource]
+        let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
+        switch guestServicesReadState {
+        case .loaded:
+            guestServiceStatuses = try Self.decodeRequiredArray(
+                [RuntimeGuestControlServiceStatus].self,
+                forKey: .guestServiceStatuses,
+                from: container
+            )
+            guestServiceResources = try Self.decodeRequiredArray(
+                [RuntimeGuestServiceResource].self,
+                forKey: .guestServiceResources,
+                from: container
+            )
+            guestServiceResourceReadIssues = try Self.decodeRequiredArray(
+                [RuntimeGuestServiceResourceReadIssue].self,
+                forKey: .guestServiceResourceReadIssues,
+                from: container
+            )
+        case .unavailable, .failed:
+            guestServiceStatuses = try container.decodeIfPresent(
+                [RuntimeGuestControlServiceStatus].self,
+                forKey: .guestServiceStatuses
+            ) ?? []
+            guestServiceResources = try container.decodeIfPresent(
+                [RuntimeGuestServiceResource].self,
+                forKey: .guestServiceResources
+            ) ?? []
+            guestServiceResourceReadIssues = try container.decodeIfPresent(
+                [RuntimeGuestServiceResourceReadIssue].self,
+                forKey: .guestServiceResourceReadIssues
+            ) ?? []
+        }
+        let guestServicesReadError = try container.decodeIfPresent(
+            String.self,
+            forKey: .guestServicesReadError
+        )
+        if guestServicesReadState == .failed,
+           guestServicesReadError?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            throw DecodingError.dataCorruptedError(
+                forKey: .guestServicesReadError,
+                in: container,
+                debugDescription: "failed guest service reads must include guestServicesReadError"
+            )
+        }
         self.init(
             runtimeInstalled: try container.decodeIfPresent(Bool.self, forKey: .runtimeInstalled) ?? false,
             runtimeInstallationState: try container.decodeIfPresent(RuntimeFileState.self, forKey: .runtimeInstallationState),
@@ -1044,14 +925,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
             sleepPreventionServiceStateSource: try container.decodeIfPresent(RuntimeServiceStateSource.self, forKey: .sleepPreventionServiceStateSource),
             watchdogServiceStateSource: try container.decodeIfPresent(RuntimeServiceStateSource.self, forKey: .watchdogServiceStateSource),
             runtimeState: try container.decodeIfPresent(RuntimeState.self, forKey: .runtimeState),
-            operation: try container.decodeIfPresent(RuntimeOperation.self, forKey: .operation),
-            statusMessage: try container.decodeIfPresent(String.self, forKey: .statusMessage),
-            statusDocumentError: try container.decodeIfPresent(String.self, forKey: .statusDocumentError),
-            installStateDocument: try container.decodeIfPresent(RuntimeInstallStateDocument.self, forKey: .installStateDocument),
-            installStateDocumentError: try container.decodeIfPresent(String.self, forKey: .installStateDocumentError),
             readIssues: try container.decodeIfPresent([RuntimeStatusReadIssue].self, forKey: .readIssues) ?? [],
-            updatedAt: try container.decodeIfPresent(String.self, forKey: .updatedAt),
-            startedAt: try container.decodeIfPresent(String.self, forKey: .startedAt),
             runtimeVersion: try container.decodeIfPresent(String.self, forKey: .runtimeVersion),
             latestBackup: try container.decodeIfPresent(String.self, forKey: .latestBackup),
             vmState: try container.decodeIfPresent(RuntimeVMState.self, forKey: .vmState),
@@ -1063,13 +937,13 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
             runtimeControlStartedAt: try container.decodeIfPresent(String.self, forKey: .runtimeControlStartedAt),
             redisUIHTTP: try container.decodeIfPresent(String.self, forKey: .redisUIHTTP),
             swaggerUIHTTP: try container.decodeIfPresent(String.self, forKey: .swaggerUIHTTP),
-            guestServicesReadState: try container.decodeIfPresent(RuntimeGuestServicesReadState.self, forKey: .guestServicesReadState) ?? .unavailable,
+            guestServicesReadState: guestServicesReadState,
             guestServices: try container.decodeIfPresent([String].self, forKey: .guestServices),
-            guestServiceStatuses: try container.decodeIfPresent([RuntimeGuestControlServiceStatus].self, forKey: .guestServiceStatuses) ?? [],
-            guestServiceResources: try container.decodeIfPresent([RuntimeGuestServiceResource].self, forKey: .guestServiceResources) ?? [],
-            guestServiceResourceReadIssues: try container.decodeIfPresent([RuntimeGuestServiceResourceReadIssue].self, forKey: .guestServiceResourceReadIssues) ?? [],
+            guestServiceStatuses: guestServiceStatuses,
+            guestServiceResources: guestServiceResources,
+            guestServiceResourceReadIssues: guestServiceResourceReadIssues,
             guestStackProbeErrors: try container.decodeIfPresent([GuestRuntimeProbeError].self, forKey: .guestStackProbeErrors) ?? [],
-            guestServicesReadError: try container.decodeIfPresent(String.self, forKey: .guestServicesReadError),
+            guestServicesReadError: guestServicesReadError,
             cpuUsagePercent: try container.decodeIfPresent(Double.self, forKey: .cpuUsagePercent),
             memory: try container.decodeIfPresent(ResourceUsage.self, forKey: .memory),
             vitalServerMemory: try container.decodeIfPresent(RuntimeContainerMemoryUsage.self, forKey: .vitalServerMemory),
@@ -1083,13 +957,25 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
             proxyPort: try container.decodeIfPresent(Int.self, forKey: .proxyPort),
             proxyPortReadState: try container.decodeIfPresent(RuntimeProxyPortReadState.self, forKey: .proxyPortReadState),
             failureReasons: try container.decodeIfPresent([RuntimeFailureReason].self, forKey: .failureReasons) ?? [],
-            progress: try container.decodeIfPresent(RuntimeProgressDocument.self, forKey: .progress),
             redisRelayStatus: try container.decodeIfPresent(RuntimeRedisRelayStatus.self, forKey: .redisRelayStatus)
         )
     }
 
-    public var effectiveRuntimeInstallationState: RuntimeFileState {
-        runtimeInstallationState ?? (runtimeInstalled ? .executable : .missing)
+    private static func decodeRequiredArray<T: Decodable>(
+        _ type: [T].Type,
+        forKey key: CodingKeys,
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> [T] {
+        guard container.contains(key) else {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "loaded guest service reads must include \(key.stringValue)"
+                )
+            )
+        }
+        return try container.decode(type, forKey: key)
     }
 
 }

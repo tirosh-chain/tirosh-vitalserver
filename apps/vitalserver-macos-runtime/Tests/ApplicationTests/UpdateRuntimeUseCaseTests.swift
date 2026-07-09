@@ -183,7 +183,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             ])
         )
 
-        XCTAssertEqual(plan.stagedRootfs, stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase))
+        XCTAssertEqual(plan.stagedRootfs, stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase))
         XCTAssertEqual(
             plan.manifestLogMessage,
             "bundle apply manifest version=test runtimeVersion=1.0.0 artifacts=1 migrations=0"
@@ -496,7 +496,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     func testApplyBundleStepExecutionPlansKeepStepInterpretationOutOfWorkflow() {
         let useCase = ApplyRuntimeBundleUseCase()
         let stagedBundle = URL(fileURLWithPath: "/tmp/staged")
-        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
         let rootfsBase = URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz")
         let artifact = UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10)
         let migration = UpdateBundleMigration(name: "001-test", sha256: "def", size: 20)
@@ -637,11 +637,11 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     func testRollbackStepExecutionPlansKeepStepInterpretationOutOfWorkflow() {
         let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
-        let backupRootfs = backup.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let backupRootfs = backup.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
         let preflight = RollbackPreflightContext(
             backup: backup,
             backupRootfs: backupRootfs,
-            backupVersion: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
+            backupVersion: backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion),
             restoresRootfsBase: true,
             restartPolicy: restartPolicy()
         )
@@ -669,7 +669,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 step: .rollbackRestoreRuntimeVersion,
                 preflight: preflight
             ),
-            .backupVersionExists(backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+            .backupVersionExists(backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion))
         )
         XCTAssertEqual(
             useCase.rollbackStepRequiredInput(
@@ -701,12 +701,12 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 nginxDirectory: nginxDirectory,
                 deployDirectory: deployDirectory,
                 observation: RollbackRuntimeStepRequiredInputObservation(
-                    requiredInput: .backupVersionExists(backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)),
+                    requiredInput: .backupVersionExists(backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion)),
                     backupVersionState: .file
                 )
             ),
             .restoreRuntimeVersion(.restoreBackupVersion(
-                source: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
+                source: backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion),
                 destination: runtimeVersion
             ))
         )
@@ -731,7 +731,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 step: .rollbackRestoreRuntimeVersion,
                 preflight: preflight
             ),
-            .backupVersionExists(backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+            .backupVersionExists(backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion))
         )
         XCTAssertEqual(
             useCase.rollbackStepRequiredInput(
@@ -779,7 +779,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
 
         XCTAssertEqual(plan.backup, backup)
         XCTAssertEqual(plan.backupRootfs, backup.appendingPathComponent("rootfs-base.raw.gz"))
-        XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+        XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion))
         XCTAssertTrue(plan.restoresRootfsBase)
     }
 
@@ -794,7 +794,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
 
         XCTAssertEqual(plan.backup, backup)
         XCTAssertNil(plan.backupRootfs)
-        XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+        XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion))
         XCTAssertFalse(plan.restoresRootfsBase)
     }
 
@@ -803,7 +803,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
         let backupPlan = useCase.rollbackBackupPlan(
             backup: backup,
-            manifest: backupManifest(rootfsBase: RuntimeFileNames.rootfsBase)
+            manifest: backupManifest(rootfsBase: RuntimePackageArtifactFileNames.rootfsBase)
         )
         let noRootfsPlan = useCase.rollbackBackupPlan(
             backup: backup,
@@ -844,7 +844,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
         XCTAssertEqual(
             useCase.rollbackBackupRootfsObservationRequirement(backupPlan: backupPlan),
-            .fileExists(backup.appendingPathComponent(RuntimeFileNames.rootfsBase))
+            .fileExists(backup.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase))
         )
         XCTAssertEqual(
             useCase.rollbackBackupRootfsDecision(
@@ -958,7 +958,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     func testRollbackVersionRestoreDecisionPreservesMissingBackupVersionAsExplicitMarkerWrite() {
         let useCase = RollbackRuntimeUseCase()
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
-        let backupVersion = backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)
+        let backupVersion = backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion)
         let runtimeVersion = URL(fileURLWithPath: "/runtime/version.json")
 
         XCTAssertEqual(

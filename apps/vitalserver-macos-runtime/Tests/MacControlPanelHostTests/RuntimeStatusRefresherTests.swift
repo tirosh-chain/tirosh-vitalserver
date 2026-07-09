@@ -8,7 +8,7 @@ import Errors
 @MainActor
 final class RuntimeStatusRefresherTests: XCTestCase {
     func testRefreshHealthStatusLoadsHealthSnapshotAndFormatsMessage() async {
-        let healthStatus = RuntimeStatus(runtimeInstalled: true, statusMessage: "Runtime is healthy.")
+        let healthStatus = RuntimeStatus(runtimeInstalled: true)
         let snapshots = StubStatusSnapshotLoader(healthStatus: healthStatus)
         let refresher = RuntimeStatusRefresher(snapshots: snapshots)
 
@@ -19,32 +19,21 @@ final class RuntimeStatusRefresherTests: XCTestCase {
         XCTAssertEqual(snapshots.loadOperationStateCount, 1)
         XCTAssertEqual(result.status, healthStatus)
         XCTAssertNil(result.operationState.activeOperation)
-        XCTAssertEqual(result.message, "Runtime is healthy.")
+        XCTAssertNil(result.message)
         XCTAssertNil(result.operationDetail)
         XCTAssertNil(result.selectedLogSource)
     }
 
-    func testRefreshStatusSynchronizesFileBackedUpdatePresentationWhenIdle() async {
+    func testRefreshStatusIncludesOperationStatePresentationWhenIdle() async {
         let status = RuntimeStatus(
             runtimeInstalled: true,
-            runtimeState: .updating,
-            operation: .applyBundle,
-            progress: RuntimeProgressDocument(
-                operation: .applyBundle,
-                phase: .running,
-                step: nil,
-                stepStatus: nil,
-                message: "Applying bundle",
-                reasonCodes: [],
-                startedAt: nil,
-                updatedAt: "2026-05-30T00:00:00Z"
-            )
+            runtimeInstallationState: .executable,
+            runtimeState: .updating
         )
         let snapshots = StubStatusSnapshotLoader(
             status: status,
             operationState: RuntimeOperationState(
                 activeOperation: .applyBundle,
-                runtimeStatusUpdatedAt: status.updatedAt,
                 install: .unavailable()
             )
         )
@@ -54,34 +43,32 @@ final class RuntimeStatusRefresherTests: XCTestCase {
 
         XCTAssertEqual(result.status, status)
         XCTAssertEqual(result.operationState.activeOperation, .applyBundle)
-        XCTAssertEqual(result.message, "Applying bundle")
-        XCTAssertEqual(result.operationDetail, "Applying bundle")
+        XCTAssertEqual(result.message, "Apply Bundle in progress")
+        XCTAssertEqual(result.operationDetail, "Apply Bundle in progress")
         XCTAssertEqual(result.selectedLogSource, .command)
     }
 
-    func testRefreshStatusDoesNotOverridePresentationWhileBusy() async {
+    func testRefreshStatusDoesNotUseLegacyStatusMessageWhileBusy() async {
         let status = RuntimeStatus(
             runtimeInstalled: true,
-            runtimeState: .updating,
-            operation: .applyBundle,
-            statusMessage: "Status document message"
+            runtimeInstallationState: .executable,
+            runtimeState: .updating
         )
         let snapshots = StubStatusSnapshotLoader(status: status)
         let refresher = RuntimeStatusRefresher(snapshots: snapshots)
 
         let result = await refresher.refreshStatus(settings: RuntimeSettings(), isBusy: true)
 
-        XCTAssertEqual(result.message, "Status document message")
+        XCTAssertNil(result.message)
         XCTAssertNil(result.operationDetail)
         XCTAssertNil(result.selectedLogSource)
     }
 
-    func testHealthCheckStatusPrefixesCompletedMessageWithoutFileBackedOverride() async {
+    func testHealthCheckStatusPrefixesCompletedMessageWithoutOperationStateOverride() async {
         let status = RuntimeStatus(
             runtimeInstalled: true,
-            runtimeState: .updating,
-            operation: .applyBundle,
-            statusMessage: "Still updating"
+            runtimeInstallationState: .executable,
+            runtimeState: .updating
         )
         let snapshots = StubStatusSnapshotLoader(healthStatus: status)
         let refresher = RuntimeStatusRefresher(snapshots: snapshots)
@@ -91,25 +78,20 @@ final class RuntimeStatusRefresherTests: XCTestCase {
             completedMessage: "Health check completed"
         )
 
-        XCTAssertEqual(result.message, "Health check completed\n\nStill updating")
+        XCTAssertEqual(result.message, "Health check completed")
         XCTAssertNil(result.operationDetail)
         XCTAssertNil(result.selectedLogSource)
     }
 
-    func testOperationDetailPrefersProgressMessage() async {
-        let status = RuntimeStatus(
-            progress: RuntimeProgressDocument(
-                operation: .repairServices,
-                phase: .running,
-                step: nil,
-                stepStatus: nil,
-                message: "Restarting services",
-                reasonCodes: [],
-                startedAt: nil,
-                updatedAt: "2026-05-30T00:00:00Z"
+    func testOperationDetailUsesOperationStateInsteadOfLegacyProgressMessage() async {
+        let status = RuntimeStatus()
+        let snapshots = StubStatusSnapshotLoader(
+            status: status,
+            operationState: RuntimeOperationState(
+                activeOperation: .applyBundle,
+                install: .unavailable()
             )
         )
-        let snapshots = StubStatusSnapshotLoader(status: status)
         let refresher = RuntimeStatusRefresher(snapshots: snapshots)
 
         let result = await refresher.operationDetail(
@@ -119,7 +101,7 @@ final class RuntimeStatusRefresherTests: XCTestCase {
 
         XCTAssertEqual(result.status, status)
         XCTAssertNil(result.message)
-        XCTAssertEqual(result.operationDetail, "Restarting services")
+        XCTAssertEqual(result.operationDetail, "Apply Bundle in progress")
         XCTAssertNil(result.selectedLogSource)
     }
 }
@@ -142,7 +124,6 @@ private final class StubStatusSnapshotLoader: RuntimeStatusSnapshotLoading {
         self.healthStatus = healthStatus
         self.operationState = operationState ?? RuntimeOperationState(
             activeOperation: nil,
-            runtimeStatusUpdatedAt: status.updatedAt,
             install: .unavailable()
         )
     }
@@ -157,7 +138,7 @@ private final class StubStatusSnapshotLoader: RuntimeStatusSnapshotLoading {
         return healthStatus
     }
 
-    func loadOperationState(status: RuntimeStatus) async -> RuntimeOperationState {
+    func loadOperationState() async -> RuntimeOperationState {
         loadOperationStateCount += 1
         return operationState
     }

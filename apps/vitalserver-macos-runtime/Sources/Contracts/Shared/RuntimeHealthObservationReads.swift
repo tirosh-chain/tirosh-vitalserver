@@ -87,18 +87,18 @@ public struct RuntimeRecorderIngressStatusReadResult: Codable, Equatable, Sendab
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let httpStatus = try container.decodeIfPresent(String.self, forKey: .httpStatus) ?? ""
-        let document = try container.decodeIfPresent(RuntimeRecorderIngressStatusDocument.self, forKey: .document)
-        let readError = try container.decodeIfPresent(String.self, forKey: .readError)
-        self.init(
-            readState: try container.decodeIfPresent(
-                RuntimeRecorderIngressStatusReadState.self,
-                forKey: .readState
-            ),
-            httpStatus: httpStatus,
-            document: document,
-            readError: readError
+        let readState = try container.decode(RuntimeRecorderIngressStatusReadState.self, forKey: .readState)
+        let httpStatus = try container.decode(String.self, forKey: .httpStatus)
+        let document = try container.decodeRequiredNullable(
+            RuntimeRecorderIngressStatusDocument.self,
+            forKey: .document
         )
+        let readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        try Self.validateDecoded(readState: readState, document: document, readError: readError)
+        self.readState = readState
+        self.httpStatus = httpStatus
+        self.document = document
+        self.readError = readError
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -114,6 +114,154 @@ public struct RuntimeRecorderIngressStatusReadResult: Codable, Equatable, Sendab
             try container.encode(readError, forKey: .readError)
         } else {
             try container.encodeNil(forKey: .readError)
+        }
+    }
+
+    private static func validateDecoded(
+        readState: RuntimeRecorderIngressStatusReadState,
+        document: RuntimeRecorderIngressStatusDocument?,
+        readError: String?
+    ) throws {
+        switch readState {
+        case .loaded:
+            if document == nil {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.document],
+                        debugDescription: "loaded recorder ingress status reads must include document"
+                    )
+                )
+            }
+            if !readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "loaded recorder ingress status reads must not include readError"
+                    )
+                )
+            }
+        case .commandFailed, .emptyResponse, .outputInvalid, .invalidResponse, .readFailed:
+            if readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "\(readState.rawValue) recorder ingress status reads must include readError"
+                    )
+                )
+            }
+        case .notRead:
+            break
+        }
+    }
+}
+
+public enum RuntimeRedisRelayStatusReadState: String, Codable, Equatable, Sendable {
+    case notRead
+    case loaded
+    case invalidResponse
+    case readFailed
+}
+
+public struct RuntimeRedisRelayStatusReadResult: Codable, Equatable, Sendable {
+    public let readState: RuntimeRedisRelayStatusReadState
+    public let document: RuntimeRedisRelayStatus?
+    public let readError: String?
+
+    public init(
+        readState: RuntimeRedisRelayStatusReadState? = nil,
+        document: RuntimeRedisRelayStatus?,
+        readError: String?
+    ) {
+        self.readState = readState ?? RuntimeRedisRelayStatusReadResult.readState(
+            document: document,
+            readError: readError
+        )
+        self.document = document
+        self.readError = readError
+    }
+
+    private static func readState(
+        document: RuntimeRedisRelayStatus?,
+        readError: String?
+    ) -> RuntimeRedisRelayStatusReadState {
+        if document != nil, readError == nil {
+            return .loaded
+        }
+        guard let readError, !readError.isEmpty else {
+            return .notRead
+        }
+        if readError.hasPrefix("decode-failed") {
+            return .invalidResponse
+        }
+        return .readFailed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case readState
+        case document
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let readState = try container.decode(RuntimeRedisRelayStatusReadState.self, forKey: .readState)
+        let document = try container.decodeRequiredNullable(RuntimeRedisRelayStatus.self, forKey: .document)
+        let readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        try Self.validateDecoded(readState: readState, document: document, readError: readError)
+        self.readState = readState
+        self.document = document
+        self.readError = readError
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(readState, forKey: .readState)
+        if let document {
+            try container.encode(document, forKey: .document)
+        } else {
+            try container.encodeNil(forKey: .document)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+
+    private static func validateDecoded(
+        readState: RuntimeRedisRelayStatusReadState,
+        document: RuntimeRedisRelayStatus?,
+        readError: String?
+    ) throws {
+        switch readState {
+        case .loaded:
+            if document == nil {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.document],
+                        debugDescription: "loaded Redis Relay status reads must include document"
+                    )
+                )
+            }
+            if !readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "loaded Redis Relay status reads must not include readError"
+                    )
+                )
+            }
+        case .invalidResponse, .readFailed:
+            if readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "\(readState.rawValue) Redis Relay status reads must include readError"
+                    )
+                )
+            }
+        case .notRead:
+            break
         }
     }
 }
@@ -153,10 +301,10 @@ public struct RuntimeHealthObservationReads {
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     public let containerLogsMetadata: RuntimeContainerLogsMetadata
     public let proxyListenerObservation: RuntimeHostProxyListenerObservation?
-    public let guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>
     public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
+    public let guestServiceResources: [RuntimeGuestServiceResource]
+    public let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     public let observedAt: Date
-    public let guestBootstrapFreshnessGraceSeconds: TimeInterval
 
     public init(
         vmExecutable: RuntimeFileState,
@@ -177,10 +325,10 @@ public struct RuntimeHealthObservationReads {
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument> = .notReported,
         containerLogsMetadata: RuntimeContainerLogsMetadata,
         proxyListenerObservation: RuntimeHostProxyListenerObservation?,
-        guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>,
         guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
-        observedAt: Date,
-        guestBootstrapFreshnessGraceSeconds: TimeInterval
+        guestServiceResources: [RuntimeGuestServiceResource] = [],
+        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
+        observedAt: Date
     ) {
         self.vmExecutable = vmExecutable
         self.proxyExecutable = proxyExecutable
@@ -200,9 +348,38 @@ public struct RuntimeHealthObservationReads {
         self.vitalDBObservation = vitalDBObservation
         self.containerLogsMetadata = containerLogsMetadata
         self.proxyListenerObservation = proxyListenerObservation
-        self.guestBootstrapResult = guestBootstrapResult
         self.guestServiceStatuses = guestServiceStatuses
+        self.guestServiceResources = guestServiceResources
+        self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
         self.observedAt = observedAt
-        self.guestBootstrapFreshnessGraceSeconds = guestBootstrapFreshnessGraceSeconds
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeRequiredNullable<T: Decodable>(
+        _ type: T.Type,
+        forKey key: Key
+    ) throws -> T? {
+        guard contains(key) else {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: codingPath + [key],
+                    debugDescription: "Missing required nullable field '\(key.stringValue)'"
+                )
+            )
+        }
+        return try decodeIfPresent(type, forKey: key)
+    }
+}
+
+private extension Optional where Wrapped == String {
+    var isBlankOrMissing: Bool {
+        switch self {
+        case .none:
+            return true
+        case let .some(value):
+            return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 }

@@ -7,7 +7,7 @@ VM이 실제로 어떻게 준비되고 실행되는지 정리합니다. boot ass
 | 질문 | 답 |
 |---|---|
 | runtime source of truth는? | Swift CLI `vitalserver-vm` |
-| 운영 상태 파일은? | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
+| 운영 상태 파일은? | `/Library/Application Support/VitalServerHelper/status/runtime-status.json`은 diagnostics/status projection artifact입니다. Current Runtime Control 상태 owner가 아닙니다. |
 | VM config는 어디 있나? | runtime directory의 `vm-config.json` |
 | guest 초기화는 누가 하나? | cloud-init이 `Support/Guest/bootstrap.sh` 실행 |
 | `.vital` 파일은 어디에 두나? | macOS shared directory |
@@ -22,7 +22,8 @@ runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. She
 | install/status/health/configure/update/rollback/watchdog | Swift `RuntimeLifecycle` facade, `Runtime*Workflow`, focused runner |
 | runtime 상태/progress/health 계약 | Swift `Core` contracts, typed enum 상태값 |
 | guest update activation/datastore repair operation | Guest Control maintenance API, Guest operation document |
-| runtime 상태 파일 | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
+| runtime 상태 파일 | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` diagnostics/status projection artifact |
+| runtime progress 파일 | `/Library/Application Support/VitalServerHelper/status/runtime-progress.json` diagnostics/export workflow progress artifact |
 | host proxy runner | `Support/Packaging/proxy-run.template`에서 생성, nginx start/reload loop |
 | Linux guest 내부 구성 | `Support/Guest/bootstrap.sh`, `prepare-airgap-rootfs.sh`, `compose.yaml` |
 
@@ -114,7 +115,7 @@ VM_ROOTFS_SIZE=32G make devtools/download
 
 `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
 
-`8G`는 packaging 효율과 air-gapped runtime package 설치 여유를 함께 고려한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 rootfs runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. Docker/containerd runtime state는 별도 `runtime-data.img`를 `/mnt/runtime`에 mount해서 사용합니다. 설치 후 rootfs disk 크기는 증가만 허용하고, runtime data disk는 rootfs update로 덮어쓰지 않습니다.
+`8G`는 packaging 효율과 air-gapped runtime package 설치 여유를 함께 고려한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 rootfs runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. Docker/containerd runtime observation는 별도 `runtime-data.img`를 `/mnt/runtime`에 mount해서 사용합니다. 설치 후 rootfs disk 크기는 증가만 허용하고, runtime data disk는 rootfs update로 덮어쓰지 않습니다.
 
 ## 5. Cloud-Init
 
@@ -163,7 +164,7 @@ make devtools/stage
 | `bootstrap.sh` | Linux guest 초기 entrypoint. mount/package 확인 후 `bin/`, `systemd/`, Compose stack 연결 |
 | `python-wheels/*` | Guest tools package. runtime env/state, Compose, health, update, repair, Redis backup, observability 명령 |
 | `guest-tools.toml` | Guest tools 운영 설정. interval/path/compose project 같은 package 설정을 명시 |
-| `systemd/*` | runtime state writer, Compose stack, Guest command workers, observability daemon unit |
+| `systemd/*` | runtime observation writer, Compose stack, Guest command workers, observability daemon unit |
 | `compose.yaml` | VM 내부 VitalServer/Redis/UI/edge nginx Compose stack |
 | `nginx/vitalserver.conf` | Compose edge nginx container 설정 |
 | `runtime-config.json` | Host-owned VitalServer container/runtime 계약. Guest는 누락/타입 오류를 default로 보정하지 않고 실패로 드러냄 |
@@ -286,7 +287,7 @@ PoC에서는 VM IP를 확인한 뒤 아래처럼 host proxy upstream을 지정�
 make runtime/up
 ```
 
-`make runtime/up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 `vm-ip` bootstrap address와 guest HTTP readiness evidence를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
+`make runtime/up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 `vm-ip` bootstrap address를 Runtime Control Guest address owner에 publish한 뒤 owner read와 direct HTTP probes가 통과하면 host nginx upstream을 owner address로 설정합니다.
 
 VM IP만 확인하거나 proxy를 다시 붙이고 싶을 때는 아래 target을 사용합니다.
 
@@ -334,9 +335,9 @@ runtime health는 사용자 화면, watchdog, update wait가 같이 사용하는
   -> VM IP missing, VM service not loaded, expired bootstrapping이면 VM runtime restart로 승격
 ```
 
-guest runtime state writer도 VitalServer 상태를 `/ready` 기준으로 기록합니다. `/`는 VitalServer app이 정상이어도 login 또는 UI route로 `302` redirect를 반환할 수 있으므로 readiness source가 아닙니다.
+guest runtime observation writer도 VitalServer 상태를 `/ready` 기준으로 기록합니다. `/`는 VitalServer app이 정상이어도 login 또는 UI route로 `302` redirect를 반환할 수 있으므로 readiness source가 아닙니다.
 
-watchdog auto-recovery는 update/rollback과 동시에 실행되면 안 됩니다. `runtime-status.json`이 `apply-bundle`, `activate-guest-update`, `rollback` 진행 중임을 나타내면 watchdog은 recovery를 건너뜁니다. 상태가 오래 갱신되지 않아 stale로 판단되면 watchdog은 다시 일반 recovery 정책으로 돌아갑니다. 일반 recovery에서도 HTTP probe read failure는 Guest stack reconcile이나 VM restart로 추정하지 않고 typed blocker로 남깁니다.
+watchdog auto-recovery는 update/rollback과 동시에 실행되면 안 됩니다. 이 suppression은 `runtime-status.json`의 status projection이나 `bootstrap-result.json`이 아니라 Host operation lease를 기준으로 합니다. Runtime Control의 current operation/progress detail은 explicit operation-state/API owner contract에서 읽고, `runtime-progress.json`은 diagnostics/export workflow progress artifact로만 남깁니다. Lease가 없거나 stale이면 watchdog은 status/progress/bootstrap 문서에서 operation을 추론하지 않고 일반 recovery 정책으로 돌아갑니다. 일반 recovery에서도 HTTP probe read failure는 Guest stack reconcile이나 VM restart로 추정하지 않고 typed blocker로 남깁니다.
 
 ## 11. DHCP Reservation
 
@@ -368,7 +369,7 @@ Golden image는 여러 병원과 여러 Mac mini/Mac Studio에 복제될 수 있
 
 공통으로 배포해도 되는 값은 OS, kernel, initrd, base rootfs, container image, compose/nginx template입니다.
 
-Redis data, Vital 파일, bed/VR mapping 같은 runtime state는 image에 넣지 않고 운영 volume에만 저장합니다.
+Redis data, Vital 파일, bed/VR mapping 같은 runtime observation는 image에 넣지 않고 운영 volume에만 저장합니다.
 
 ## 13. Runtime Data Disk
 
@@ -377,7 +378,7 @@ Redis data, Vital 파일, bed/VR mapping 같은 runtime state는 image에 넣지
 | Disk | 파일 | Guest mount | 역할 |
 |---|---|---|---|
 | rootfs | `runtime/vm-disk.img` | `/` | OS, guest tools, bootstrap, product baseline |
-| runtime data | `runtime/runtime-data.img` | `/mnt/runtime` | Docker data-root, containerd root, service runtime state |
+| runtime data | `runtime/runtime-data.img` | `/mnt/runtime` | Docker data-root, containerd root, service runtime observation |
 | shared data | VirtioFS share | `/mnt/tirosh` | deploy bundle, run documents, Host/Guest exchange |
 
 Fresh install은 `runtime-data.img`가 없으면 16 GiB sparse disk를 생성합니다. Guest bootstrap은 Docker를 시작하기 전에 `tirosh-vitalserver-runtime-data-prepare`를 실행해 `LABEL=vital-runtime` filesystem을 mount하고, Docker `data-root`를 `/mnt/runtime/docker`로 설정합니다. Runtime boot smoke는 `/mnt/runtime` mount와 `docker info`의 `DockerRootDir`이 이 contract와 일치하지 않으면 실패합니다.

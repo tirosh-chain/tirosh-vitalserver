@@ -37,7 +37,7 @@ If the helper message timestamps are older than the current install time, treat 
 
 ## Actions
 
-- Use `runtime-status.json`, Runtime Control status, install logs, command logs, and runtime events to diagnose the current install.
+- Use Runtime Control status as the current install state source, then correlate install logs, command logs, runtime events, and `runtime-status.json` as diagnostics/export evidence only.
 - Do not infer fresh install failure from `Helper message` alone.
 - If the file contains old update or uninstall history, restart the updated Helper app build that resets this session log on startup.
 

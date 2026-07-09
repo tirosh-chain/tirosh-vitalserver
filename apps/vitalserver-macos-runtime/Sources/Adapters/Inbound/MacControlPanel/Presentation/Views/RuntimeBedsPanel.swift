@@ -109,20 +109,20 @@ struct RuntimeBedsPanel: View {
     private var summaryMetrics: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 18) {
-                summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
+                summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalBeds.beds.count)")
                 summaryMetric(AppConstants.Labels.onlineBeds, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleBeds, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
-                summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalRecorders.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
-                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalRecorders.updatedAt))
+                summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalBeds.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalBeds.updatedAt))
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], alignment: .leading, spacing: 8) {
-                summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
+                summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalBeds.beds.count)")
                 summaryMetric(AppConstants.Labels.onlineBeds, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleBeds, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
-                summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalRecorders.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
-                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalRecorders.updatedAt))
+                summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalBeds.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalBeds.updatedAt))
             }
         }
     }
@@ -130,8 +130,8 @@ struct RuntimeBedsPanel: View {
     private var filteredBeds: [RuntimeVitalBedRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let beds = showingHiddenBeds
-            ? viewModel.vitalRecorders.beds
-            : viewModel.vitalRecorders.beds.filter { $0.visibility != .hidden }
+            ? viewModel.vitalBeds.beds
+            : viewModel.vitalBeds.beds.filter { $0.visibility != .hidden }
         guard !query.isEmpty else {
             return beds
         }
@@ -499,7 +499,7 @@ struct RuntimeBedsPanel: View {
     }
 
     private func count(_ status: RuntimeVitalBedStatus) -> Int {
-        viewModel.vitalRecorders.beds.filter { $0.status == status }.count
+        viewModel.vitalBeds.beds.filter { $0.status == status }.count
     }
 
     private func bedAnomalyText(_ bed: RuntimeVitalBedRecord) -> String {

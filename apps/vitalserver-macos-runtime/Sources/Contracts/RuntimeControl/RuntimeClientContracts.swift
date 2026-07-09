@@ -33,7 +33,7 @@ public protocol RuntimeControlClient {
 
     func loadSettings() -> RuntimeSettings
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
-    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState
+    func loadOperationState() -> RuntimeOperationState
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
@@ -70,6 +70,7 @@ public protocol RuntimeControlClient {
     func guestStackStatus() async throws -> RuntimeGuestControlStackStatus
     func listGuestServices() async throws -> RuntimeGuestControlServiceList
     func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource
     func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation
     func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation
     func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation
@@ -155,6 +156,10 @@ public extension RuntimeControlClient {
 
     func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
         throw RuntimeControlClientUnsupportedError.unavailable("guest-service-status")
+    }
+
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-service-resource")
     }
 
     func loadLabScenarios() async throws -> RuntimeLabScenarioList {
@@ -257,4 +262,29 @@ public protocol RuntimeHostClient {
     func restoreRuntimeDataBackup(backupURL: URL) async throws -> RuntimeCommandResult
     func deleteBackup(url: URL) async throws -> RuntimeCommandResult
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult
+    func acquireOperationLease(_ document: RuntimeOperationLeaseDocument) async throws -> RuntimeOperationLeaseMutationResponse
+    func heartbeatOperationLease(operationId: String, heartbeatAt: String, expiresAt: String?) async throws -> RuntimeOperationLeaseMutationResponse
+    func releaseOperationLease(operationId: String) async throws -> RuntimeOperationLeaseMutationResponse
+}
+
+public extension RuntimeHostClient {
+    func acquireOperationLease(
+        _ document: RuntimeOperationLeaseDocument
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlClientUnsupportedError.unavailable("operation-lease-acquire")
+    }
+
+    func heartbeatOperationLease(
+        operationId: String,
+        heartbeatAt: String,
+        expiresAt: String?
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlClientUnsupportedError.unavailable("operation-lease-heartbeat")
+    }
+
+    func releaseOperationLease(
+        operationId: String
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlClientUnsupportedError.unavailable("operation-lease-release")
+    }
 }

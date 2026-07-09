@@ -30,6 +30,10 @@ struct RuntimeControlHTTPReadRoutes {
             )
         case .operationState:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadOperationState())
+        case .guestAddress:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadGuestAddressResource())
+        case .vmLifecycle:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadVMLifecycleResource())
         case .events:
             let query = try request.runtimeEventQuery()
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadEvents(query: query))
@@ -97,6 +101,10 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.guestServiceStatus(try request.runtimeGuestServiceName())
             )
+        case .guestServiceResource:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.guestServiceResource(try request.runtimeGuestServiceName())
+            )
         case .logText:
             let logRequest = try request.decodedBody(RuntimeLogTextRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadLogText(request: logRequest))
@@ -148,6 +156,11 @@ struct RuntimeControlHTTPReadRoutes {
              .deleteUpdateBackup,
              .deleteRuntimeDataBackup,
              .exportLogs,
+             .acquireOperationLease,
+             .heartbeatOperationLease,
+             .releaseOperationLease,
+             .putGuestAddress,
+             .putVMLifecycle,
              .uninstall,
              .restoreRedisBackup,
              .restoreRuntimeDataBackup:

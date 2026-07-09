@@ -154,8 +154,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         }
         let recorderIngress = String(compose[serviceStart.lowerBound..<nextService.lowerBound])
 
-        XCTAssertFalse(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_STATE_PATH"))
-        XCTAssertFalse(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS"))
+        XCTAssertFalse(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_OBSERVATION_PATH"))
+        XCTAssertFalse(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_OBSERVATION_MAX_AGE_MS"))
         XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH: \"${RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH:-50000}\""))
         XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS: \"${RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS:-3}\""))
         XCTAssertFalse(recorderIngress.contains("target: /run/tirosh/runtime"))
@@ -299,7 +299,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         )
         XCTAssertTrue(bootstrap.contains("tirosh-vitalserver-bootstrap"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.GUEST_OBSERVED"))
-        XCTAssertTrue(systemInstall.contains("RuntimeCommand.RUNTIME_STATE"))
+        XCTAssertTrue(systemInstall.contains("RuntimeCommand.RUNTIME_OBSERVATION"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RUNTIME_BOOT_SMOKE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RUNTIME_DATA_PREPARE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_ACTIVATE_UPDATE"))
@@ -317,25 +317,32 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_FAILURE"))
         let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
         let syncHostTimeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-sync-host-time")
+        let runtimeObservationWrapper = try readGuestSupportFile("bin/tirosh-runtime-observation")
+        let writeRuntimeObservationWrapper = try readGuestSupportFile("bin/tirosh-write-runtime-observation")
         let runtimeBootSmokeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-runtime-boot-smoke")
         let guestControlAPIWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-guest-control-api")
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
+        let runtimeObservationService = try readGuestSupportFile("systemd/tirosh-runtime-observation.service")
         let syncHostTimeService = try readGuestSupportFile("systemd/tirosh-vitalserver-sync-host-time.service")
-        let activationService = try readGuestSupportFile("systemd/tirosh-vitalserver-activate-update.service")
         let guestControlAPIService = try readGuestSupportFile("systemd/tirosh-vitalserver-guest-control-api.service")
         XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))
         XCTAssertTrue(syncHostTimeWrapper.contains("tirosh-vitalserver-sync-host-time"))
+        XCTAssertTrue(runtimeObservationWrapper.contains("tirosh-runtime-observation"))
+        XCTAssertTrue(writeRuntimeObservationWrapper.contains("tirosh-write-runtime-observation"))
         XCTAssertTrue(runtimeBootSmokeWrapper.contains("tirosh-vitalserver-runtime-boot-smoke"))
         XCTAssertTrue(guestControlAPIWrapper.contains("tirosh-vitalserver-guest-control-api"))
         XCTAssertTrue(service.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-compose up"))
         XCTAssertTrue(service.contains("TimeoutStopSec=150"))
+        XCTAssertTrue(runtimeObservationService.contains("ExecStart=/usr/local/bin/tirosh-runtime-observation watch"))
         XCTAssertTrue(syncHostTimeService.contains("Before=docker.service"))
         XCTAssertTrue(syncHostTimeService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-sync-host-time"))
         XCTAssertTrue(guestControlAPIService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-guest-control-api"))
         XCTAssertFalse(guestControlAPIService.contains("tirosh-vitalserver-compose.service"))
-        XCTAssertTrue(
-            activationService.contains(
-                "Conflicts=tirosh-vitalserver-compose.service"
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: guestSupport
+                    .appendingPathComponent("systemd/tirosh-vitalserver-activate-update.service")
+                    .path
             )
         )
         XCTAssertFalse(

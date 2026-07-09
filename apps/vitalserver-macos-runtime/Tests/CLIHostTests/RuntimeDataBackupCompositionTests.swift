@@ -34,7 +34,7 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             sleeper: RuntimeDataBackupResultSleeper {},
             commandRunner: RuntimeDataBackupCommandRunner(),
             serviceManager: RuntimeDataBackupServiceManager(),
-            guestBootstrapResultReader: RuntimeDataBackupGuestDocumentReader(),
+            runtimeOperationLeaseOwnerFactory: { RuntimeDataBackupOperationLeaseOwner() },
             guestControlGatewayFactory: { guestControlGateway },
             fileStore: fileStore
         )
@@ -43,7 +43,7 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
         let archivedRedis = backup.appendingPathComponent("artifacts/redis-data.tar.gz")
         let manifest = try JSONDecoder().decode(
             RuntimeDataBackupManifest.self,
-            from: try fileStore.readData(backup.appendingPathComponent(RuntimeFileNames.backupManifest))
+            from: try fileStore.readData(backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest))
         )
 
         XCTAssertEqual(try fileStore.readData(archivedRedis), Data("redis-archive".utf8))
@@ -80,7 +80,6 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             sleeper: RuntimeDataBackupResultSleeper {},
             commandRunner: RuntimeDataBackupCommandRunner(),
             serviceManager: RuntimeDataBackupServiceManager(),
-            guestBootstrapResultReader: RuntimeDataBackupGuestDocumentReader(),
             guestControlGatewayFactory: {
                 RuntimeDataBackupGuestControlGateway(
                     backupArchive: "/mnt/tirosh/backups/redis/unused.tar.gz"
@@ -134,7 +133,7 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             sleeper: RuntimeDataBackupResultSleeper {},
             commandRunner: RuntimeDataBackupCommandRunner(),
             serviceManager: RuntimeDataBackupServiceManager(),
-            guestBootstrapResultReader: RuntimeDataBackupGuestDocumentReader(),
+            runtimeOperationLeaseOwnerFactory: { RuntimeDataBackupOperationLeaseOwner() },
             guestControlGatewayFactory: { guestControlGateway },
             fileStore: fileStore
         )
@@ -175,7 +174,6 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             sleeper: RuntimeDataBackupResultSleeper {},
             commandRunner: RuntimeDataBackupCommandRunner(),
             serviceManager: RuntimeDataBackupServiceManager(),
-            guestBootstrapResultReader: RuntimeDataBackupGuestDocumentReader(),
             guestControlGatewayFactory: {
                 RuntimeDataBackupGuestControlGateway(
                     backupArchive: "/mnt/tirosh/backups/redis/unused.tar.gz"
@@ -282,6 +280,47 @@ private struct RuntimeDataBackupServiceManager: RuntimeServiceManager {
     }
 }
 
+private final class RuntimeDataBackupOperationLeaseOwner: RuntimeOperationLeaseOwner {
+    private var document: RuntimeOperationLeaseDocument?
+
+    func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
+        if let document {
+            return .loaded(document)
+        }
+        return .missing
+    }
+
+    func acquire(_ document: RuntimeOperationLeaseDocument) throws {
+        self.document = document
+    }
+
+    func heartbeat(operationId: String, heartbeatAt: String, expiresAt: String?) throws {
+        guard let document, document.operationId == operationId else {
+            throw RuntimeOperationLeaseOwnerError.readFailed(
+                "operation lease missing operationId=\(operationId)"
+            )
+        }
+        self.document = RuntimeOperationLeaseDocument(
+            operationId: document.operationId,
+            operation: document.operation,
+            ownerPID: document.ownerPID,
+            startedAt: document.startedAt,
+            heartbeatAt: heartbeatAt,
+            expiresAt: expiresAt,
+            message: document.message
+        )
+    }
+
+    func release(operationId: String) throws {
+        guard document?.operationId == operationId else {
+            throw RuntimeOperationLeaseOwnerError.readFailed(
+                "operation lease missing operationId=\(operationId)"
+            )
+        }
+        document = nil
+    }
+}
+
 private final class RuntimeDataBackupGuestControlGateway: RuntimeGuestControlGateway {
     private let backupArchive: String
     private(set) var createdBackups = 0
@@ -370,8 +409,4 @@ private final class RuntimeDataBackupGuestControlGateway: RuntimeGuestControlGat
             result: result
         )
     }
-}
-
-private struct RuntimeDataBackupGuestDocumentReader: RuntimeGuestBootstrapResultReader {
-    func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> { .missing }
 }

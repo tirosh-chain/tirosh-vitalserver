@@ -47,6 +47,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case guestStackStatus
     case guestServices
     case guestServiceStatus
+    case guestServiceResource
     case startGuestService
     case stopGuestService
     case restartGuestService
@@ -72,4 +73,11 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case deleteUpdateBackup
     case deleteRuntimeDataBackup
     case exportLogs
+    case acquireOperationLease
+    case heartbeatOperationLease
+    case releaseOperationLease
+    case guestAddress
+    case putGuestAddress
+    case vmLifecycle
+    case putVMLifecycle
 }

@@ -11,12 +11,9 @@ final class RuntimeObservedStatusPublisherTests: XCTestCase {
         )
         var writeCalls = 0
         let publisher = RuntimeObservedStatusPublisher(
-            writeStatus: { status, operation, message, progress in
+            writeStatus: { status in
                 writeCalls += 1
                 XCTAssertEqual(status, .healthy)
-                XCTAssertEqual(operation, .health)
-                XCTAssertEqual(message, "runtime healthy")
-                XCTAssertNil(progress)
                 return self.runtimeHealthSnapshot(vitalDBObservation: observation)
             }
         )
@@ -24,35 +21,6 @@ final class RuntimeObservedStatusPublisherTests: XCTestCase {
         try publisher.publishStatus(.healthy, operation: .health, message: "runtime healthy")
 
         XCTAssertEqual(writeCalls, 1)
-    }
-
-    func testPublishStatusPassesProgressToWriter() throws {
-        let progress = RuntimeProgressDocument(
-            operation: .watchdog,
-            phase: .running,
-            step: .startRuntimeServices,
-            stepStatus: .started,
-            message: "checking runtime",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-07-01T00:00:00Z"
-        )
-        var receivedProgress: RuntimeProgressDocument?
-        let publisher = RuntimeObservedStatusPublisher(
-            writeStatus: { _, _, _, progress in
-                receivedProgress = progress
-                return self.runtimeHealthSnapshot(vitalDBObservation: nil)
-            }
-        )
-
-        try publisher.publishStatus(
-            .degraded,
-            operation: .watchdog,
-            message: "runtime degraded",
-            progress: progress
-        )
-
-        XCTAssertEqual(receivedProgress, progress)
     }
 
     private func runtimeHealthSnapshot(

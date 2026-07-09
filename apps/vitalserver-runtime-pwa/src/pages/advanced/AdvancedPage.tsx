@@ -552,14 +552,6 @@ function Diagnostics({
         },
         { label: "Runtime version", value: status?.runtimeVersion ?? "Unknown" },
         { label: "VM IP", value: status?.vmIP ?? "Waiting" },
-        ...(status?.statusDocumentError
-          ? [
-              {
-                label: "Status document",
-                value: `Read failed: ${status.statusDocumentError}`
-              }
-            ]
-          : []),
         {
           label: "Failure reasons",
           value: status?.failureReasons?.length
@@ -600,7 +592,7 @@ function operationStateDetail(
 
 function VMHealth({ overview }: { overview: RuntimeControlOverview | undefined }) {
   const status = overview?.status;
-  const runtimeInstalled = status?.runtimeInstalled;
+  const runtimeInstallationState = status?.runtimeInstallationState;
   const vmServiceLoaded = status?.vmServiceLoaded;
   const vmIP = status?.vmIP?.trim();
   const vmErrors = status?.vmErrors?.filter((error) => error.trim().length > 0);
@@ -611,12 +603,8 @@ function VMHealth({ overview }: { overview: RuntimeControlOverview | undefined }
         {
           label: "Runtime installation",
           value: (
-            <StatusBadge tone={booleanTone(runtimeInstalled)}>
-              {runtimeInstalled === undefined
-                ? NOT_REPORTED
-                : runtimeInstalled
-                  ? "Installed"
-                  : "Missing"}
+            <StatusBadge tone={runtimeInstallationTone(runtimeInstallationState)}>
+              {formatRuntimeInstallationState(runtimeInstallationState)}
             </StatusBadge>
           )
         },
@@ -833,14 +821,21 @@ function GuestServiceControls({
               service,
               state: serviceStatus?.state ?? NOT_REPORTED,
               health: serviceStatus?.health ?? NOT_REPORTED,
-              desired: resource?.spec.desiredState ?? resource?.spec.state ?? NOT_REPORTED,
-              observed:
-                resource?.status.observedState ??
-                resource?.status.state ??
-                NOT_REPORTED,
-              condition: resource?.conditions[0]
-                ? `${resource.conditions[0].reason}: ${resource.conditions[0].message}`
+              spec: resource?.spec.state ?? NOT_REPORTED,
+              desired: resource?.spec.desiredState ?? NOT_REPORTED,
+              statusRead: resource?.status.readError
+                ? `${resource.status.readError.kind}: ${resource.status.readError.message}`
+                : resource?.status.state ?? NOT_REPORTED,
+              observed: resource?.status.observedState ?? NOT_REPORTED,
+              conditions: resource?.conditions.length
+                ? resource.conditions
+                    .map(
+                      (condition) =>
+                        `${condition.type}=${condition.status} ${condition.reason}: ${condition.message}`
+                    )
+                    .join("; ")
                 : NOT_REPORTED,
+              lastOperation: resource?.lastOperationId ?? NOT_REPORTED,
               resourceIssue: resourceIssueByService.get(service)?.message ?? ""
             };
           })}
@@ -849,13 +844,21 @@ function GuestServiceControls({
             { key: "service", header: "Service", render: (row) => row.service },
             { key: "state", header: "State", render: (row) => row.state },
             { key: "health", header: "Health", render: (row) => row.health },
+            { key: "spec", header: "Spec", render: (row) => row.spec },
             { key: "desired", header: "Desired", render: (row) => row.desired },
+            { key: "statusRead", header: "Status read", render: (row) => row.statusRead },
             { key: "observed", header: "Observed", render: (row) => row.observed },
-            { key: "condition", header: "Condition", render: (row) => row.condition },
+            { key: "conditions", header: "Conditions", render: (row) => row.conditions },
+            {
+              key: "lastOperation",
+              header: "Last operation",
+              render: (row) => row.lastOperation
+            },
             {
               key: "resourceIssue",
               header: "Resource read",
-              render: (row) => row.resourceIssue || "OK"
+              render: (row) =>
+                row.resourceIssue || (resourceByService.has(row.service) ? "OK" : NOT_REPORTED)
             },
             {
               key: "actions",
@@ -968,6 +971,36 @@ function booleanTone(
     return "warning";
   }
   return "neutral";
+}
+
+function runtimeInstallationTone(
+  value: string | null | undefined
+): "success" | "warning" | "neutral" {
+  if (value === "executable") {
+    return "success";
+  }
+  return "warning";
+}
+
+function formatRuntimeInstallationState(value: string | null | undefined): string {
+  if (!value) {
+    return NOT_REPORTED;
+  }
+  if (value === "executable") {
+    return "Executable";
+  }
+  if (value === "present") {
+    return "Present but not executable";
+  }
+  if (value === "missing") {
+    return "Missing";
+  }
+  if (value.startsWith("inspect-failed")) {
+    return value.includes(":")
+      ? `Inspect failed: ${value.split(":").slice(1).join(":").trim()}`
+      : "Inspect failed";
+  }
+  return value;
 }
 
 function vmStateTone(

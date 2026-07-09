@@ -32,7 +32,9 @@ struct RuntimeVitalDBGuestRelationshipProvider {
 
             do {
                 let gateway = try guestControlGateway(baseURL)
-                return Self.makeHistory(try gateway.vitalDBRelationships())
+                return RuntimeVitalDBRelationshipHistoryAssembler.makeHistory(
+                    read: try gateway.vitalDBRelationships()
+                )
             } catch {
                 return .failed(readError: "guestControl=\(error)")
             }
@@ -47,35 +49,4 @@ struct RuntimeVitalDBGuestRelationshipProvider {
         }
     }
 
-    private static func makeHistory(
-        _ read: RuntimeGuestControlVitalDBRelationshipRead
-    ) -> RuntimeVitalRelationshipHistory {
-        switch read.state {
-        case .loaded:
-            return RuntimeVitalRelationshipHistory(
-                assignments: read.assignments,
-                events: read.events,
-                state: .loaded,
-                readError: read.readError
-            )
-        case .partiallyLoaded:
-            return RuntimeVitalRelationshipHistory(
-                assignments: read.assignments,
-                events: read.events,
-                state: .partiallyLoaded,
-                readError: read.readError
-            )
-        case .readFailed:
-            return RuntimeVitalRelationshipHistory(
-                assignments: read.assignments,
-                events: read.events,
-                state: .readFailed,
-                readError: read.readError ?? "Guest VitalDB relationship read model failed."
-            )
-        case .unavailable, .failed:
-            return .failed(
-                readError: read.readError ?? "Guest VitalDB relationship read model is \(read.state.rawValue)."
-            )
-        }
-    }
 }

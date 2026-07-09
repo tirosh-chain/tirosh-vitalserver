@@ -23,7 +23,7 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
                 config: installedPaths.vmConfig,
                 pidFile: installedPaths.pidFile
             ),
-            runtimeStatusRepository: MissingRuntimeStatusRepository()
+            runtimeStatusArtifactSink: MissingRuntimeStatusArtifactSink()
         )
 
         _ = lifecycle.runtimeInstallComposition()
@@ -40,7 +40,7 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
         _ = lifecycle.runtimeRollbackComposition()
     }
 
-    func testWriteRuntimeProgressRecordsEventWhenStatusDocumentIsMissing() throws {
+    func testWriteRuntimeProgressRecordsEventAndProgressWhenStatusDocumentIsMissing() throws {
         let productRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("runtime-lifecycle-progress-\(UUID().uuidString)")
         defer {
@@ -59,19 +59,23 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
                 config: installedPaths.vmConfig,
                 pidFile: installedPaths.pidFile
             ),
-            runtimeStatusRepository: MissingRuntimeStatusRepository()
+            runtimeStatusArtifactSink: MissingRuntimeStatusArtifactSink()
         )
 
-        XCTAssertThrowsError(try lifecycle.writeRuntimeProgress(
+        try lifecycle.writeRuntimeProgress(
             .updating,
             operation: .applyBundle,
             step: .stopRuntimeServices,
             stepStatus: .started,
             phase: .running,
             message: "step started: stop-runtime-services"
-        ))
+        )
 
         let eventRead = JSONLRuntimeEventRepository(url: installedPaths.runtimeEvents).allResult()
+        let progress = try JSONDecoder().decode(
+            RuntimeProgressDocument.self,
+            from: Data(contentsOf: installedPaths.runtimeProgress)
+        )
 
         XCTAssertTrue(eventRead.issues.isEmpty)
         XCTAssertEqual(eventRead.events.count, 1)
@@ -80,11 +84,17 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
         XCTAssertEqual(eventRead.events.first?.operation, .applyBundle)
         XCTAssertEqual(eventRead.events.first?.progress?.step, .stopRuntimeServices)
         XCTAssertEqual(eventRead.events.first?.progress?.stepStatus, .started)
+        XCTAssertEqual(progress.operation, .applyBundle)
+        XCTAssertEqual(progress.phase, .running)
+        XCTAssertEqual(progress.step, .stopRuntimeServices)
+        XCTAssertEqual(progress.stepStatus, .started)
+        XCTAssertEqual(progress.message, "step started: stop-runtime-services")
     }
 
     func testRuntimeDataRestoreFailureWritesFailedProgress() throws {
         let fileStore = RuntimeFileStoreSpy()
-        let statusRepository = CapturingRuntimeStatusRepository()
+        let statusArtifactSink = CapturingRuntimeStatusArtifactSink()
+        let progressArtifactSink = CapturingRuntimeProgressArtifactSink()
         let productRoot = URL(fileURLWithPath: "/runtime-data-restore-progress")
         let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
         fileStore.directories.formUnion([
@@ -98,7 +108,8 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
                 config: installedPaths.vmConfig,
                 pidFile: installedPaths.pidFile
             ),
-            runtimeStatusRepository: statusRepository,
+            runtimeStatusArtifactSink: statusArtifactSink,
+            runtimeProgressArtifactSink: progressArtifactSink,
             fileStore: fileStore
         )
         try lifecycle.writeRuntimeStatus(
@@ -112,39 +123,37 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
         fileStore.directories.insert(missingBackup)
         XCTAssertThrowsError(try lifecycle.restoreRuntimeDataBackup(missingBackup))
 
-        guard let status = statusRepository.document else {
+        guard let status = statusArtifactSink.document else {
             return XCTFail("expected runtime status document after restore failure")
         }
-        XCTAssertEqual(status.status, .recovering)
-        XCTAssertEqual(status.operation, .runtimeDataRestore)
-        XCTAssertEqual(status.progress?.operation, .runtimeDataRestore)
-        XCTAssertEqual(status.progress?.step, .restoreRuntimeDataBackup)
-        XCTAssertEqual(status.progress?.stepStatus, .failed)
-        XCTAssertEqual(status.progress?.phase, .failed)
-        XCTAssertTrue(status.message.contains("VitalServer restore failed"))
-        XCTAssertTrue(status.progress?.message.contains("missing-backup") == true)
+        guard let progress = progressArtifactSink.document else {
+            return XCTFail("expected runtime progress document after restore failure")
+        }
+        XCTAssertEqual(status.status, .healthy)
+        XCTAssertEqual(progress.operation, .runtimeDataRestore)
+        XCTAssertEqual(progress.step, .restoreRuntimeDataBackup)
+        XCTAssertEqual(progress.stepStatus, .failed)
+        XCTAssertEqual(progress.phase, .failed)
+        XCTAssertTrue(progress.message.contains("missing-backup"))
     }
 }
 
-private final class CapturingRuntimeStatusRepository: RuntimeStatusRepository {
+private final class CapturingRuntimeStatusArtifactSink: RuntimeStatusArtifactSink {
     var document: RuntimeStatusDocument?
-
-    func loadResult() -> RuntimeStatusDocumentLoadResult {
-        if let document {
-            return .loaded(document)
-        }
-        return .missing
-    }
 
     func save(_ document: RuntimeStatusDocument) throws {
         self.document = document
     }
 }
 
-private struct MissingRuntimeStatusRepository: RuntimeStatusRepository {
-    func loadResult() -> RuntimeStatusDocumentLoadResult {
-        .missing
-    }
+private final class CapturingRuntimeProgressArtifactSink: RuntimeProgressArtifactSink {
+    var document: RuntimeProgressDocument?
 
+    func save(_ document: RuntimeProgressDocument) throws {
+        self.document = document
+    }
+}
+
+private struct MissingRuntimeStatusArtifactSink: RuntimeStatusArtifactSink {
     func save(_: RuntimeStatusDocument) throws {}
 }

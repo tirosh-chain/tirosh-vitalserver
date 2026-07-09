@@ -11,7 +11,7 @@
   - `VitalDB anomaly Backend Unavailable on _ready_`
   - `VitalDB anomaly Backend Unavailable on _redis-ui_`
   - `VitalDB anomaly Backend Unavailable on _swagger_`
-- Current `runtime-status.json` may already be `healthy` with empty `failureReasons`.
+- Runtime Control current status may already be healthy with no current `failureReasons`.
 - Runtime probes for `/ready`, `/redis-ui/`, and `/swagger/` may already return HTTP `200`.
 
 ## Impact

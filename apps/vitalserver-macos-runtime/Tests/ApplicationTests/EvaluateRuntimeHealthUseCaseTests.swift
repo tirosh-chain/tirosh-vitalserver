@@ -28,6 +28,28 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
         XCTAssertEqual(observation.swaggerUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
     }
 
+    func testObservationKeepsProxyPortReadFailureOutOfCurrentHealthReasons() {
+        let useCase = EvaluateRuntimeHealthUseCase()
+        let observation = useCase.observation(from: healthReads(
+            proxyPortReadState: .commandFailed(exitCode: 2, reason: "proxy launch daemon plist read denied"),
+            hostProxyHTTP: nil,
+            redisUIHTTP: nil,
+            swaggerUIHTTP: nil
+        ))
+
+        let snapshot = useCase.snapshot(observation: observation)
+
+        XCTAssertNil(observation.proxyPort)
+        XCTAssertEqual(
+            observation.proxyPortReadState,
+            .commandFailed(exitCode: 2, reason: "proxy launch daemon plist read denied")
+        )
+        XCTAssertFalse(
+            observation.configurationFailureReasons.contains(RuntimeFailureReason.hostProxyConfigInvalid)
+        )
+        XCTAssertFalse(snapshot.failureReasons.contains(RuntimeFailureReason.hostProxyConfigInvalid))
+    }
+
     func testObservationPrefersGuestControlReadinessOverRuntimeStateReadFailure() {
         let observation = EvaluateRuntimeHealthUseCase().observation(from: healthReads(
             guestControlReadiness: .loaded(
@@ -40,7 +62,7 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
             observation.guestReadiness,
             .reported(vmIP: "192.168.64.44", guestHTTP: .reportedStatus("200"))
         )
-        XCTAssertFalse(observation.configurationFailureReasons.contains(.guestRuntimeStateLoadFailed("runtime-state_unreadable")))
+        XCTAssertFalse(observation.configurationFailureReasons.contains(.unknown("guest-runtime-state-load-failed-runtime-state_unreadable")))
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
             vmExecutable: observation.vmExecutable,
             proxyExecutable: observation.proxyExecutable,
@@ -59,8 +81,7 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
             guestServiceStatuses: observation.guestServiceStatuses,
             vitalDBObservation: observation.vitalDBObservation,
             configurationFailureReasons: [],
-            proxyPortFailureReasons: [],
-            guestBootstrapAssessment: .noFailure
+            proxyPortFailureReasons: []
         )).guestHTTP, "200")
     }
 
@@ -95,58 +116,13 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
         )
     }
 
-    func testBootstrapResultFromDifferentBootDoesNotCreateVMFailure() {
-        let snapshot = EvaluateRuntimeHealthUseCase().snapshot(observation: observation(
-            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-            vmLifecycle: runtimeLifecycle(bootID: "current-boot"),
-            guestBootstrapResult: .loaded(bootstrapResult(
-                status: .failed,
-                bootID: "old-boot",
-                reasonCodes: [.guestBootstrapMissingRuntimePackages]
-            ))
-        ))
-
-        XCTAssertFalse(snapshot.failureReasons.contains(RuntimeFailureReason.guestBootstrapMissingRuntimePackages))
-        XCTAssertTrue(snapshot.failureReasons.contains(RuntimeFailureReason.guestHTTP(RuntimeHTTPStatusText.bootstrapPending)))
-    }
-
-    func testFreshBootstrapFailureIsEvaluatedByUseCaseNotAdapter() {
-        let snapshot = EvaluateRuntimeHealthUseCase().snapshot(observation: observation(
-            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-            vmLifecycle: runtimeLifecycle(bootID: "current-boot"),
-            guestBootstrapResult: .loaded(bootstrapResult(
-                status: .failed,
-                bootID: "current-boot",
-                reasonCodes: [.guestBootstrapMissingRuntimePackages]
-            ))
-        ))
-
-        XCTAssertTrue(snapshot.failureReasons.contains(RuntimeFailureReason.guestBootstrapMissingRuntimePackages))
-        XCTAssertTrue(snapshot.vmErrors.contains(RuntimeVMError.guestBootstrapMissingRuntimePackages))
-    }
-
-    func testFreshBootstrapDockerRuntimeFailureIsEvaluatedByUseCaseNotAdapter() {
-        let snapshot = EvaluateRuntimeHealthUseCase().snapshot(observation: observation(
-            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-            vmLifecycle: runtimeLifecycle(bootID: "current-boot"),
-            guestBootstrapResult: .loaded(bootstrapResult(
-                status: .failed,
-                bootID: "current-boot",
-                reasonCodes: [.guestBootstrapDockerRuntimeFailed]
-            ))
-        ))
-
-        XCTAssertTrue(snapshot.failureReasons.contains(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed))
-        XCTAssertTrue(snapshot.vmErrors.contains(RuntimeVMError.guestBootstrapDockerRuntimeFailed))
-    }
-
     func testObservationKeepsRuntimeStateLoadFailureOutOfCurrentHealthWhenGuestControlIsNotReported() {
         let useCase = EvaluateRuntimeHealthUseCase()
         let observation = useCase.observation(from: healthReads())
 
         XCTAssertEqual(observation.guestReadiness, RuntimeGuestReadinessInput.notReported)
         XCTAssertFalse(observation.configurationFailureReasons.contains(
-            RuntimeFailureReason.guestRuntimeStateLoadFailed("runtime-state_unreadable")
+            RuntimeFailureReason.unknown("guest-runtime-state-load-failed-runtime-state_unreadable")
         ))
     }
 
@@ -156,7 +132,7 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
 
         XCTAssertEqual(observation.guestReadiness, RuntimeGuestReadinessInput.notReported)
         XCTAssertFalse(observation.configurationFailureReasons.contains(
-            .guestRuntimeStateMetadataReadFailed("stat_permission_denied")
+            .unknown("guest-runtime-state-metadata-read-failed-stat_permission_denied")
         ))
     }
 
@@ -170,8 +146,8 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
 
         XCTAssertEqual(observation.guestReadiness, .notReported)
         XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
-        XCTAssertFalse(snapshot.failureReasons.contains(.guestRuntimeStateMissing))
-        XCTAssertFalse(snapshot.failureReasons.contains(.guestRuntimeStateStale))
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("vm-runtime-state-missing")))
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-stale")))
         XCTAssertEqual(observation.vitalDBObservation, .notReported)
         XCTAssertFalse(snapshot.failureReasons.contains {
             if case .vitalDBAnomaly = $0 {
@@ -184,8 +160,7 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
 
 private func observation(
     guestHTTP: String = "200",
-    vmLifecycle: RuntimeVMLifecycleDocument? = runtimeLifecycle(bootID: "current-boot"),
-    guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> = .missing
+    vmLifecycle: RuntimeVMLifecycleDocument? = runtimeLifecycle(bootID: "current-boot")
 ) -> RuntimeHealthObservation {
     RuntimeHealthObservation(
         vmExecutable: .executable,
@@ -208,9 +183,7 @@ private func observation(
         vitalDBObservation: .notReported,
         configurationFailureReasons: [],
         proxyPortFailureReasons: [],
-        guestBootstrapResult: guestBootstrapResult,
-        observedAt: date("2026-05-21T12:35:00Z"),
-        guestBootstrapFreshnessGraceSeconds: 60
+        observedAt: date("2026-05-21T12:35:00Z")
     )
 }
 
@@ -241,25 +214,7 @@ private func healthReads(
         vitalDBObservation: vitalDBObservation,
         containerLogsMetadata: RuntimeContainerLogsMetadata(present: false, bytes: nil, updatedAt: nil, error: nil),
         proxyListenerObservation: nil,
-        guestBootstrapResult: .missing,
-        observedAt: date("2026-05-21T12:35:00Z"),
-        guestBootstrapFreshnessGraceSeconds: 60
-    )
-}
-
-private func bootstrapResult(
-    status: GuestBootstrapStatus,
-    bootID: String?,
-    reasonCodes: [RuntimeFailureReason]?
-) -> GuestBootstrapResultDocument {
-    GuestBootstrapResultDocument(
-        schemaVersion: 2,
-        bootID: bootID,
-        operation: .unknown("bootstrap"),
-        status: status,
-        message: nil,
-        reasonCodes: reasonCodes,
-        updatedAt: "2026-05-21T12:34:57Z"
+        observedAt: date("2026-05-21T12:35:00Z")
     )
 }
 

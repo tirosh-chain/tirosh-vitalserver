@@ -6,8 +6,8 @@ import Errors
 
 @MainActor
 enum RuntimeControlLocalAPIConstants {
-    static let defaultPort: UInt16 = 18_321
-    static let token = "vitalserver-helper-dev"
+    static let defaultPort = UInt16(RuntimeSettingsInitialValues.runtimeControlPort)
+    static let token = RuntimeControlLocalAPIConnectionDefaults.token
     static let pwaResourceDirectory = "runtime-control-pwa"
     static var port: UInt16 {
         validatedPort(UserDefaultsRuntimeControlLocalAPISettingsStore.shared.runtimeControlPort)
@@ -34,6 +34,9 @@ enum MacRuntimeControlLocalAPI {
     static func make(
         client: MacRuntimeControlClient,
         readWorker: MacRuntimeControlReadWorker,
+        operationLeaseClient: any RuntimeOperationLeaseMutationClient,
+        guestAddressClient: any RuntimeGuestAddressResourceClient,
+        vmLifecycleClient: any RuntimeVMLifecycleResourceClient,
         port: Int,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
         servesDevConsole: Bool = GeneratedRelease.testEnabled,
@@ -43,8 +46,11 @@ enum MacRuntimeControlLocalAPI {
         scheduleHelperTermination: @escaping @MainActor () -> Void = {}
     ) -> RuntimeControlLocalHTTPServer {
         let apiHandler = MacRuntimeControlAPIHandler(
-            commandClient: client,
-            hostClient: client,
+                commandClient: client,
+                hostClient: client,
+                operationLeaseClient: operationLeaseClient,
+                guestAddressClient: guestAddressClient,
+                vmLifecycleClient: vmLifecycleClient,
             readWorker: readWorker,
             localAPISettings: localAPISettings,
             runtimeControlStartedAt: startedAt,

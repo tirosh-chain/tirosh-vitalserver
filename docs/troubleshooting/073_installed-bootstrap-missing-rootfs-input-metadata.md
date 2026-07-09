@@ -13,9 +13,11 @@ Fresh install completes provisioning, but the runtime becomes `critical` shortly
 watchdog cannot recover missing installed artifacts
 ```
 
-`runtime-status.json` can show `vm-runtime-state-missing`, stale VM lifecycle,
-and failed host proxy HTTP while the VM launchd service is still running. Older
-builds could also report missing container observation, but v2 keeps container
+Older diagnostics/status projections can show `vm-runtime-state-missing`, stale
+VM lifecycle, and failed host proxy HTTP while the VM launchd service is still
+running. Current Runtime Control status must come from explicit owner reads
+rather than treating `runtime-status.json` as the failure owner. Older builds
+could also report missing container observation, but v2 keeps container
 observation as diagnostics evidence instead of a typed Host failure reason.
 
 After the metadata is present, the next visible failure can be Docker image load failing with:

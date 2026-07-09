@@ -11,7 +11,7 @@ Helper Advanced > Service liveness shows services as healthy or reachable, but i
 
 ## Cause
 
-Guest `runtime-state.json` reports two different time facts for each compose service:
+Guest `runtime-observation.json` reports two different time facts for each compose service:
 
 - `startedAt`: Docker/container timestamp from the guest clock.
 - `uptimeSeconds`: explicit duration computed by the guest state owner.
@@ -20,7 +20,7 @@ The presentation formatter treated `runtimeStateUpdatedAt` as a host-safe observ
 
 ## Fix Direction
 
-- Treat `uptimeSeconds` as the explicit duration owned by the guest runtime-state writer.
+- Treat `uptimeSeconds` as the explicit duration owned by the guest runtime observation writer.
 - Use `startedAt` only when `uptimeSeconds` is missing.
 - Do not extrapolate uptime from `runtimeStateUpdatedAt` in presentation code.
 - Extend runtime boot smoke to require explicit, non-negative, bounded service `uptimeSeconds` for fresh smoke compose services.
@@ -32,5 +32,5 @@ Do not combine timestamps from different clock owners to create domain state. Ho
 Validation coverage should stay split by responsibility:
 
 - Swift compile/tests verify presentation policy uses explicit `uptimeSeconds`.
-- `runtime-smoke` verifies actual guest `runtime-state.json` contains sane explicit service uptime for the fresh boot proof.
+- `runtime-smoke` verifies actual guest `runtime-observation.json` contains sane explicit service uptime for the fresh boot proof.
 - `verify` combines the package build and runtime smoke gates before install handoff.

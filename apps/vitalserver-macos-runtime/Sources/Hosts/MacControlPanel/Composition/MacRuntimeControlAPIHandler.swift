@@ -6,9 +6,35 @@ import RuntimeControl
 import Errors
 
 @MainActor
+protocol RuntimeOperationLeaseMutationClient: AnyObject {
+    func acquireOperationLease(_ document: RuntimeOperationLeaseDocument) async throws -> RuntimeOperationLeaseMutationResponse
+    func heartbeatOperationLease(
+        operationId: String,
+        heartbeatAt: String,
+        expiresAt: String?
+    ) async throws -> RuntimeOperationLeaseMutationResponse
+    func releaseOperationLease(operationId: String) async throws -> RuntimeOperationLeaseMutationResponse
+}
+
+@MainActor
+protocol RuntimeVMLifecycleResourceClient: AnyObject {
+    func loadVMLifecycleResource() async throws -> RuntimeVMLifecycleResourceState
+    func putVMLifecycleResource(_ document: RuntimeVMLifecycleDocument) async throws -> RuntimeVMLifecycleResourceState
+}
+
+@MainActor
+protocol RuntimeGuestAddressResourceClient: AnyObject {
+    func loadGuestAddressResource() async throws -> RuntimeGuestAddressResourceState
+    func putGuestAddressResource(address: String) async throws -> RuntimeGuestAddressResourceState
+}
+
+@MainActor
 struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let commandClient: any RuntimeControlClient
     private let hostClient: any RuntimeHostClient
+    private let operationLeaseClient: any RuntimeOperationLeaseMutationClient
+    private let guestAddressClient: any RuntimeGuestAddressResourceClient
+    private let vmLifecycleClient: any RuntimeVMLifecycleResourceClient
     private let readWorker: MacRuntimeControlReadWorker
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
     private let localAPIStatus: RuntimeControlLocalAPIStatusRead
@@ -18,6 +44,9 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     init(
         commandClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
+        operationLeaseClient: any RuntimeOperationLeaseMutationClient,
+        guestAddressClient: any RuntimeGuestAddressResourceClient,
+        vmLifecycleClient: any RuntimeVMLifecycleResourceClient,
         readWorker: MacRuntimeControlReadWorker,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
         runtimeControlStartedAt: Date = Date(),
@@ -26,6 +55,9 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     ) {
         self.commandClient = commandClient
         self.hostClient = hostClient
+        self.operationLeaseClient = operationLeaseClient
+        self.guestAddressClient = guestAddressClient
+        self.vmLifecycleClient = vmLifecycleClient
         self.readWorker = readWorker
         self.localAPISettings = localAPISettings
         self.localAPIStatus = RuntimeControlLocalAPIStatusRead.reachable(
@@ -49,13 +81,15 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadOperationState() async throws -> RuntimeOperationState {
-        let settings = await readWorker.loadSettings()
-        let status = await readWorker.loadStatus(settings: settings)
-        let localStatus = RuntimeControlLocalAPIStatusAssembler.applyingLocalAPIStatus(
-            to: status,
-            read: localAPIStatus
-        )
-        return await readWorker.loadOperationState(status: localStatus)
+        await readWorker.loadOperationState()
+    }
+
+    func loadGuestAddressResource() async throws -> RuntimeGuestAddressResourceState {
+        try await guestAddressClient.loadGuestAddressResource()
+    }
+
+    func loadVMLifecycleResource() async throws -> RuntimeVMLifecycleResourceState {
+        try await vmLifecycleClient.loadVMLifecycleResource()
     }
 
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
@@ -309,6 +343,40 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
 
     func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult {
         try await hostClient.exportLogs(to: try localFileURL(destination))
+    }
+
+    func acquireOperationLease(
+        _ request: RuntimeOperationLeaseAcquireRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        try await operationLeaseClient.acquireOperationLease(request.document)
+    }
+
+    func heartbeatOperationLease(
+        _ request: RuntimeOperationLeaseHeartbeatRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        try await operationLeaseClient.heartbeatOperationLease(
+            operationId: request.operationId,
+            heartbeatAt: request.heartbeatAt,
+            expiresAt: request.expiresAt
+        )
+    }
+
+    func releaseOperationLease(
+        _ request: RuntimeOperationLeaseReleaseRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        try await operationLeaseClient.releaseOperationLease(operationId: request.operationId)
+    }
+
+    func putVMLifecycleResource(
+        _ request: RuntimeVMLifecyclePutRequest
+    ) async throws -> RuntimeVMLifecycleResourceState {
+        try await vmLifecycleClient.putVMLifecycleResource(request.document)
+    }
+
+    func putGuestAddressResource(
+        _ request: RuntimeGuestAddressPutRequest
+    ) async throws -> RuntimeGuestAddressResourceState {
+        try await guestAddressClient.putGuestAddressResource(address: request.address)
     }
 
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse {

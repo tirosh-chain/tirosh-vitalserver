@@ -12,7 +12,7 @@ from tirosh_guest_tools.adapters.outbound.compose.guest_control import (
 from tirosh_guest_tools.application import compose as compose_app
 from tirosh_guest_tools.domain.guest_control.models import ServiceNotFoundError
 from tirosh_guest_tools.domain.operations import ComposeAction
-from tirosh_guest_tools.domain.runtime_state import RuntimeResourceUsage
+from tirosh_guest_tools.domain.runtime_observation import RuntimeResourceUsage
 
 
 def test_compose_adapter_maps_service_status(monkeypatch: Any) -> None:
@@ -155,9 +155,21 @@ def test_compose_adapter_reports_container_memory_probe_errors(
         return {}
 
     monkeypatch.setattr(guest_control, "container_memory_usages", memory_probe)
-    monkeypatch.setattr(guest_control.runtime_collector, "cpu_usage_percent", lambda errors: None)
-    monkeypatch.setattr(guest_control.runtime_collector, "memory_usage", lambda errors: None)
-    monkeypatch.setattr(guest_control.runtime_collector, "disk_usage", lambda path, errors: None)
+    monkeypatch.setattr(
+        guest_control.runtime_collector,
+        "cpu_usage_percent",
+        lambda errors: None,
+    )
+    monkeypatch.setattr(
+        guest_control.runtime_collector,
+        "memory_usage",
+        lambda errors: None,
+    )
+    monkeypatch.setattr(
+        guest_control.runtime_collector,
+        "disk_usage",
+        lambda path, errors: None,
+    )
 
     document = ComposeGuestControlAdapter().get_stack_status().as_json()
 
@@ -316,7 +328,7 @@ def test_compose_adapter_reconciles_guest_services(monkeypatch: Any) -> None:
     )
     monkeypatch.setattr(
         guest_control,
-        "write_current_state",
+        "write_runtime_observation_outputs",
         lambda: wrote_state.append(True),
     )
 
@@ -325,6 +337,6 @@ def test_compose_adapter_reconciles_guest_services(monkeypatch: Any) -> None:
     assert actions == [ComposeAction.UP]
     assert systemctl_calls == [
         ("restart", "tirosh-vitalserver-container-logs.service"),
-        ("restart", "tirosh-runtime-state.service"),
+        ("restart", "tirosh-runtime-observation.service"),
     ]
     assert wrote_state == [True]

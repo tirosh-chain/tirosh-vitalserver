@@ -19,7 +19,7 @@ VitalServer Helper 또는 Remote Console에서 아래 증상이 함께 나타납
 
 ## Impact
 
-Runtime 자체가 곧바로 중단되는 증상은 아닐 수 있습니다. 다만 운영자가 runtime 상태를 확인하거나 support bundle을 만들 수 없고, 실제 event가 있음에도 Remote Console이 비어 보이므로 장애 원인 판단이 어려워집니다.
+Runtime 자체가 곧바로 중단되는 증상은 아닐 수 있습니다. 다만 운영자가 runtime 상태를 확인하거나 diagnostics export bundle을 만들 수 없고, 실제 event가 있음에도 Remote Console이 비어 보이므로 장애 원인 판단이 어려워집니다.
 
 Settings의 read issue는 network exposure, VitalServer Helper backup retention 같은 일부 값이 UI에서 stale/default처럼 보일 수 있습니다. Export logs 실패는 현장 로그 수집을 막습니다. Observability event 0건 표시는 runtime event persistence 실패와 runtime event read 실패를 구분하지 못하게 만듭니다.
 
@@ -93,7 +93,7 @@ touch \
 
 현장 임시 조치:
 
-1. support bundle이 급하면 root 권한으로 필요한 로그와 status 파일을 직접 수집합니다.
+1. diagnostics export bundle이 급하면 root 권한으로 필요한 로그와 status 파일을 직접 수집합니다.
 2. `runtime-config.json`의 권한을 무작정 `644`로 풀지 않습니다. 현재 파일에는 `adminPassword`가 포함될 수 있습니다.
 3. Observability 0건이면 JSONL/SQLite row count를 먼저 확인해 event 미생성인지 read 실패인지 구분합니다.
 
@@ -115,7 +115,7 @@ touch \
 - Helper read model: secret-free, user-readable 또는 Helper-owned
 - runtime write store: root/service-owned, read API는 read-only path 제공
 - helper message log: Helper-owned append-only file, Logs 탭은 file tail만 표시
-- support bundle: best-effort collection과 redaction manifest 제공
+- diagnostics export bundle: best-effort collection과 redaction manifest 제공
 
 읽기 API에서 `initialize`, migration, catch-up, projection rebuild 같은 쓰기 작업을 암묵 수행하지 않습니다. 쓰기가 필요한 유지보수는 watchdog/launcher 같은 owner process가 수행하고, Helper/Remote Console read path는 실패를 명시적으로 드러냅니다.
 

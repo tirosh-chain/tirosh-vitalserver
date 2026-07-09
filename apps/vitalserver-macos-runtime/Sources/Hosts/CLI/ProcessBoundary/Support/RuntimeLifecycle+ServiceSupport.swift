@@ -26,35 +26,15 @@ extension RuntimeLifecycle {
     }
 
     private func defaultGuestControlBaseURL() throws -> String {
-        switch JSONFileRuntimeStatusRepository(
-            url: installedPaths.runtimeStatus,
-            fileStore: fileStore
-        ).loadResult() {
-        case .loaded(let document):
-            guard let vmIP = document.vmIP?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !vmIP.isEmpty
-            else {
-                if let guestAddressRead = document.guestAddressRead,
-                   guestAddressRead.state != .notReported
-                {
-                    throw LauncherError.runtimeOperationFailed(
-                        "guest control API is unavailable: \(guestAddressRead.failureStatusText)"
-                    )
-                }
-                throw LauncherError.runtimeOperationFailed(
-                    "guest control API is unavailable: \(RuntimeHTTPStatusText.missingVMIP)"
-                )
-            }
+        let guestAddressRead = guestAddressProvider.readGuestAddress()
+        if let vmIP = guestAddressRead.loadedAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !vmIP.isEmpty
+        {
             return guestControlAPIBaseURL(vmIP: vmIP)
-        case .missing:
-            throw LauncherError.runtimeOperationFailed(
-                "guest control API is unavailable: runtime status document is missing"
-            )
-        case .failed(let message):
-            throw LauncherError.runtimeOperationFailed(
-                "guest control API is unavailable: runtime status read failed: \(message)"
-            )
         }
+        throw LauncherError.runtimeOperationFailed(
+            "guest control API is unavailable: \(guestAddressRead.failureStatusText)"
+        )
     }
 
     private func guestControlAPIBaseURL(vmIP: String) -> String {

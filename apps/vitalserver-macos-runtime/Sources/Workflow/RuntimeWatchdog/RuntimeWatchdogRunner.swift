@@ -110,10 +110,6 @@ public struct RuntimeWatchdogRunner {
         printLine: (String) -> Void
     ) throws {
         let snapshot = completeReachableVMLifecycleIfNeeded(snapshot, operations: operations, log: log)
-        let plan = useCase.observedStatusPlan(
-            plan,
-            currentStatus: operations.currentRuntimeStatus()
-        )
         if let logMessage = plan.logMessage {
             log(logMessage)
         }
@@ -329,7 +325,6 @@ public struct RuntimeWatchdogActions {
     public let rotateRuntimeLogs: () -> RuntimeBestEffortOperationResult
     public let collectGuestLogs: () -> RuntimeBestEffortOperationResult
     public let activeManagedOperation: () -> RuntimeOperation?
-    public let currentRuntimeStatus: () -> RuntimeStatusDocumentLoadResult
     public let healthSnapshot: () -> RuntimeHealthSnapshot
     public let proxyLivenessHTTP: (Int?) -> String
     public let automaticRecoveryEnabled: () throws -> Bool
@@ -355,7 +350,6 @@ public struct RuntimeWatchdogActions {
         rotateRuntimeLogs: @escaping () -> RuntimeBestEffortOperationResult,
         collectGuestLogs: @escaping () -> RuntimeBestEffortOperationResult,
         activeManagedOperation: @escaping () -> RuntimeOperation?,
-        currentRuntimeStatus: @escaping () -> RuntimeStatusDocumentLoadResult,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         proxyLivenessHTTP: @escaping (Int?) -> String,
         automaticRecoveryEnabled: @escaping () throws -> Bool,
@@ -380,7 +374,6 @@ public struct RuntimeWatchdogActions {
         self.rotateRuntimeLogs = rotateRuntimeLogs
         self.collectGuestLogs = collectGuestLogs
         self.activeManagedOperation = activeManagedOperation
-        self.currentRuntimeStatus = currentRuntimeStatus
         self.healthSnapshot = healthSnapshot
         self.proxyLivenessHTTP = proxyLivenessHTTP
         self.automaticRecoveryEnabled = automaticRecoveryEnabled

@@ -7,14 +7,18 @@ import pytest
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
     begin_runtime_boot_smoke_run,
     force_stop_runtime,
+    print_runtime_guest_address_proxy_upstream,
     require_no_running_runtime,
     running_vm_processes_for_home,
     wait_for_rootfs_ready,
     wait_for_runtime_boot_smoke,
+    wait_for_runtime_http,
+    wait_for_runtime_ip,
     wait_for_runtime_stopped,
 )
 from tirosh_vitalserver.devtools.application.inputs import (
     RuntimeBootSmokeRunInput,
+    RuntimeGuestAddressOwnerInput,
     RuntimeVmHomeInput,
     RuntimeWaitInput,
 )
@@ -30,6 +34,134 @@ def test_wait_for_runtime_stopped_accepts_stopped_lifecycle(tmp_path):
     )
 
     assert result == 0
+
+
+def test_wait_for_runtime_ip_reads_vm_ip_bootstrap_file_not_runtime_observation(
+    capsys,
+    tmp_path,
+):
+    run_dir = tmp_path / "data/run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
+    (run_dir / "runtime-observation.json").write_text(
+        json.dumps({"vmIP": "192.168.64.99"}),
+        encoding="utf-8",
+    )
+
+    result = wait_for_runtime_ip(
+        RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "Waiting for VM IP bootstrap file:" in output
+    assert "VM IP: 192.168.64.8" in output
+    assert "runtime-observation" not in output
+
+
+def test_wait_for_runtime_http_uses_direct_probe_not_runtime_observation_guest_http(
+    capsys,
+    monkeypatch,
+    tmp_path,
+):
+    run_dir = tmp_path / "data/run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
+    (run_dir / "runtime-observation.json").write_text(
+        json.dumps({"guestHTTP": "503"}),
+        encoding="utf-8",
+    )
+    observed_addresses: list[str] = []
+
+    def probe(address: str) -> tuple[bool, str]:
+        observed_addresses.append(address)
+        return True, "root=200 recorder-ingress=200"
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".probe_guest_runtime_http",
+        probe,
+    )
+
+    result = wait_for_runtime_http(
+        RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert observed_addresses == ["192.168.64.8"]
+    assert "VM HTTP ready: upstream=http://192.168.64.8:80" in output
+    assert "guestHTTP" not in output
+    assert "runtime-observation" not in output
+
+
+def test_runtime_proxy_upstream_publishes_bootstrap_and_prints_owner_address(
+    capsys,
+    monkeypatch,
+    tmp_path,
+):
+    run_dir = tmp_path / "data/run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
+    calls: list[tuple[str, str, dict[str, str] | None]] = []
+
+    def request(
+        input: RuntimeGuestAddressOwnerInput,
+        *,
+        method: str,
+        path: str,
+        body: dict[str, str] | None,
+    ) -> dict[str, object]:
+        calls.append((method, path, body))
+        if method == "PUT":
+            return loaded_guest_address_state("192.168.64.8")
+        return loaded_guest_address_state("192.168.64.10")
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".runtime_control_guest_address_request",
+        request,
+    )
+
+    result = print_runtime_guest_address_proxy_upstream(
+        guest_address_owner_input(tmp_path)
+    )
+
+    assert result == 0
+    assert capsys.readouterr().out == "192.168.64.10:80\n"
+    assert calls == [
+        ("PUT", "/host/runtime/guest-address", {"address": "192.168.64.8"}),
+        ("GET", "/host/runtime/guest-address", None),
+    ]
+
+
+def test_runtime_proxy_upstream_does_not_fallback_to_vm_ip_when_owner_missing(
+    monkeypatch,
+    tmp_path,
+):
+    run_dir = tmp_path / "data/run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
+
+    def request(
+        input: RuntimeGuestAddressOwnerInput,
+        *,
+        method: str,
+        path: str,
+        body: dict[str, str] | None,
+    ) -> dict[str, object]:
+        if method == "PUT":
+            return loaded_guest_address_state("192.168.64.8")
+        return {"state": "missing", "readError": "Guest address resource missing"}
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".runtime_control_guest_address_request",
+        request,
+    )
+
+    with pytest.raises(SystemExit, match="Guest address owner is not loaded"):
+        print_runtime_guest_address_proxy_upstream(guest_address_owner_input(tmp_path))
 
 
 def test_wait_for_runtime_stopped_rejects_stopping_lifecycle_with_running_process(
@@ -301,7 +433,9 @@ def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
     write_runtime_boot_smoke_manifest(
         tmp_path,
         run_id="runtime-run-test",
-        stage_statuses={"runtime-state": ("failed", "runtime state is invalid")},
+        stage_statuses={
+            "runtime-observation": ("failed", "runtime observation is invalid")
+        },
     )
 
     with pytest.raises(SystemExit) as error:
@@ -876,6 +1010,27 @@ def write_rootfs_apt_plan(
     )
 
 
+def guest_address_owner_input(vm_home) -> RuntimeGuestAddressOwnerInput:
+    return RuntimeGuestAddressOwnerInput(
+        config=vm_home / "config.toml",
+        vm_home=vm_home,
+        runtime_control_api_base_url="http://127.0.0.1:18321",
+        runtime_control_api_token="token",
+        runtime_control_api_token_header="X-Runtime-Control-Token",
+        runtime_control_api_timeout=2.0,
+    )
+
+
+def loaded_guest_address_state(address: str) -> dict[str, object]:
+    return {
+        "state": "loaded",
+        "read": {
+            "state": "loaded",
+            "address": address,
+        },
+    }
+
+
 def write_runtime_boot_smoke_manifest(
     vm_home,
     *,
@@ -888,7 +1043,7 @@ def write_runtime_boot_smoke_manifest(
     stages = []
     for name in (
         "bootstrap-result",
-        "runtime-state",
+        "runtime-observation",
         "systemd-units",
         "runtime-data",
         "http",

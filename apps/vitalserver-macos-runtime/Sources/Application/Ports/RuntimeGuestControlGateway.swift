@@ -30,6 +30,7 @@ public protocol RuntimeGuestControlGateway {
     func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead
     func vitalDBRelationships() throws -> RuntimeGuestControlVitalDBRelationshipRead
     func recorderIngressStatus() throws -> RuntimeRecorderIngressStatusReadResult
+    func redisRelayStatus() throws -> RuntimeRedisRelayStatusReadResult
 }
 
 public enum RuntimeGuestControlGatewayCapabilityError: Error, CustomStringConvertible {
@@ -98,6 +99,10 @@ public extension RuntimeGuestControlGateway {
 
     func recorderIngressStatus() throws -> RuntimeRecorderIngressStatusReadResult {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("recorder-ingress-status")
+    }
+
+    func redisRelayStatus() throws -> RuntimeRedisRelayStatusReadResult {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("redis-relay-status")
     }
 
     func createRedisBackup() throws -> RuntimeGuestControlServiceOperation {

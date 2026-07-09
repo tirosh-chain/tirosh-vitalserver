@@ -122,6 +122,7 @@ public protocol RuntimeControlAPIReadHandler {
     func guestStackStatus() async throws -> RuntimeGuestControlStackStatus
     func listGuestServices() async throws -> RuntimeGuestControlServiceList
     func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse
     func loadBackups() async throws -> [RuntimeBackup]
     func loadRedisBackups() async throws -> [RuntimeBackup]
@@ -144,10 +145,33 @@ public protocol RuntimeControlAPIReadHandler {
     func restoreRuntimeDataBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult
+    func acquireOperationLease(_ request: RuntimeOperationLeaseAcquireRequest) async throws -> RuntimeOperationLeaseMutationResponse
+    func heartbeatOperationLease(_ request: RuntimeOperationLeaseHeartbeatRequest) async throws -> RuntimeOperationLeaseMutationResponse
+    func releaseOperationLease(_ request: RuntimeOperationLeaseReleaseRequest) async throws -> RuntimeOperationLeaseMutationResponse
+    func loadGuestAddressResource() async throws -> RuntimeGuestAddressResourceState
+    func putGuestAddressResource(_ request: RuntimeGuestAddressPutRequest) async throws -> RuntimeGuestAddressResourceState
+    func loadVMLifecycleResource() async throws -> RuntimeVMLifecycleResourceState
+    func putVMLifecycleResource(_ request: RuntimeVMLifecyclePutRequest) async throws -> RuntimeVMLifecycleResourceState
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse
 }
 
 public extension RuntimeControlAPIReadHandler {
+    func loadGuestAddressResource() async throws -> RuntimeGuestAddressResourceState {
+        .unavailable(readError: "Guest address owner is unavailable")
+    }
+
+    func putGuestAddressResource(_ request: RuntimeGuestAddressPutRequest) async throws -> RuntimeGuestAddressResourceState {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-address-put")
+    }
+
+    func loadVMLifecycleResource() async throws -> RuntimeVMLifecycleResourceState {
+        .unavailable(readError: "VM lifecycle owner is unavailable")
+    }
+
+    func putVMLifecycleResource(_ request: RuntimeVMLifecyclePutRequest) async throws -> RuntimeVMLifecycleResourceState {
+        throw RuntimeControlClientUnsupportedError.unavailable("vm-lifecycle-put")
+    }
+
     func loadLabScenarios() async throws -> RuntimeLabScenarioList {
         RuntimeLabScenarioList.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
@@ -252,6 +276,18 @@ public extension RuntimeControlAPIReadHandler {
         throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
     }
 
+    func acquireOperationLease(_ request: RuntimeOperationLeaseAcquireRequest) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+    }
+
+    func heartbeatOperationLease(_ request: RuntimeOperationLeaseHeartbeatRequest) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+    }
+
+    func releaseOperationLease(_ request: RuntimeOperationLeaseReleaseRequest) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+    }
+
     func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
         throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
     }
@@ -261,6 +297,10 @@ public extension RuntimeControlAPIReadHandler {
     }
 
     func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
+        throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+    }
+
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
         throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
     }
 

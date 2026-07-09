@@ -19,7 +19,6 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
     let fileStore: RuntimeFileStore
     let now: () -> Date
     let activeManagedOperation: () -> RuntimeOperation?
-    let currentRuntimeStatus: () -> RuntimeStatusDocumentLoadResult
     let healthSnapshot: () -> RuntimeHealthSnapshot
     let httpStatusCode: (String) -> String
     let proxyLivenessURL: (Int) -> String
@@ -54,7 +53,6 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         fileStore: RuntimeFileStore,
         now: @escaping () -> Date,
         activeManagedOperation: @escaping () -> RuntimeOperation?,
-        currentRuntimeStatus: @escaping () -> RuntimeStatusDocumentLoadResult,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         httpStatusCode: @escaping (String) -> String,
         proxyLivenessURL: @escaping (Int) -> String,
@@ -88,7 +86,6 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         self.fileStore = fileStore
         self.now = now
         self.activeManagedOperation = activeManagedOperation
-        self.currentRuntimeStatus = currentRuntimeStatus
         self.healthSnapshot = healthSnapshot
         self.httpStatusCode = httpStatusCode
         self.proxyLivenessURL = proxyLivenessURL
@@ -129,7 +126,6 @@ public struct RuntimeWatchdogRunnerComposition {
                 rotateRuntimeLogs: operations.rotateRuntimeLogs,
                 collectGuestLogs: operations.collectGuestLogs,
                 activeManagedOperation: operations.activeManagedOperation,
-                currentRuntimeStatus: operations.currentRuntimeStatus,
                 healthSnapshot: operations.healthSnapshot,
                 proxyLivenessHTTP: { port in
                     guard let port else {
@@ -147,15 +143,17 @@ public struct RuntimeWatchdogRunnerComposition {
                 recordLifecycleEvent: operations.recordLifecycleEvent,
                 markVMLifecycleRunning: { lifecycle, message in
                     let timestamp = operations.now()
-                    try RuntimeVMLifecycleStore(
-                        url: context.installedPaths.vmLifecycle,
-                        fileStore: operations.fileStore,
-                        now: { timestamp }
-                    ).write(
+                    _ = try RuntimeControlAPIVMLifecycleOwner().putVMLifecycleResource(RuntimeVMLifecycleDocument(
                         state: .running,
                         operation: lifecycle.operation,
+                        operationID: lifecycle.operationID,
+                        bootID: lifecycle.bootID,
+                        startedAt: lifecycle.startedAt,
+                        updatedAt: ISO8601DateFormatter().string(from: timestamp),
+                        deadlineAt: nil,
+                        terminalReason: nil,
                         message: message
-                    )
+                    ))
                 },
                 recoveryWaitSeconds: operations.recoveryWaitSeconds,
                 sleep: operations.sleep

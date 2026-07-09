@@ -16,7 +16,7 @@ enum RuntimeShellCommandFactory {
     }
 
     static func commandWithLog(_ shellCommand: String) -> String {
-        let logFile = shellQuote(RuntimeControlClientConstants.Paths.commandLogFile)
+        let logFile = shellQuote(InstalledRuntimePaths.defaultInstalled.managerCommandLog.path)
         let script = [
             "rm -f \(logFile)",
             "{ \(shellCommand); } > \(logFile) 2>&1",

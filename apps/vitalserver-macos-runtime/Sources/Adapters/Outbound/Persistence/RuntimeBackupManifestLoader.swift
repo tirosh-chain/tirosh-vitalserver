@@ -9,7 +9,7 @@ public struct RuntimeBackupManifestLoader {
     public let readData: (URL) throws -> Data
 
     public init(
-        manifestFileName: String = RuntimeFileNames.backupManifest,
+        manifestFileName: String = RuntimePackageArtifactFileNames.backupManifest,
         pathState: @escaping (URL) -> RuntimePathState,
         readData: @escaping (URL) throws -> Data
     ) {
@@ -20,7 +20,7 @@ public struct RuntimeBackupManifestLoader {
 
     public init(
         fileStore: RuntimeFileReading,
-        manifestFileName: String = RuntimeFileNames.backupManifest
+        manifestFileName: String = RuntimePackageArtifactFileNames.backupManifest
     ) {
         self.init(
             manifestFileName: manifestFileName,

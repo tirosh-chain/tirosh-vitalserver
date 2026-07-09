@@ -6,21 +6,22 @@ import Errors
 final class RuntimeControlStatusAssemblerTests: XCTestCase {
     func testMakeStatusDoesNotPublishResourceFieldsWithoutGuestStackResourceRead() {
         let status = RuntimeControlStatusAssembler.makeStatus(
-            statusRead: RuntimeStatusDocumentRead(
-                document: statusDocument(proxyPort: 19090),
-                error: nil,
-                issue: nil
-            ),
+            proxyPortReadState: .loaded(19090),
             liveDiagnostics: liveDiagnostics()
         )
 
         XCTAssertEqual(status.runtimeInstalled, true)
         XCTAssertEqual(status.runtimeInstallationState, RuntimeFileState.executable)
-        XCTAssertEqual(status.vmServiceStateSource, RuntimeServiceStateSource.statusDocument)
+        XCTAssertEqual(status.vmServiceStateSource, RuntimeServiceStateSource.liveLaunchd)
         XCTAssertEqual(status.proxyServiceStateSource, RuntimeServiceStateSource.liveLaunchd)
         XCTAssertEqual(status.runtimeState, RuntimeState.healthy)
-        XCTAssertEqual(status.operation, RuntimeOperation.health)
-        XCTAssertNil(status.startedAt)
+        XCTAssertNil(status.vmIP)
+        XCTAssertNil(status.vmState)
+        XCTAssertNil(status.vmErrors)
+        XCTAssertNil(status.guestHTTP)
+        XCTAssertNil(status.hostProxyHTTP)
+        XCTAssertNil(status.redisUIHTTP)
+        XCTAssertNil(status.swaggerUIHTTP)
         XCTAssertNil(status.cpuUsagePercent)
         XCTAssertNil(status.memory)
         XCTAssertNil(status.systemDisk)
@@ -32,13 +33,201 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.readIssues, [RuntimeStatusReadIssue]())
     }
 
-    func testMakeStatusPreservesGuestServicesReadWithoutMixingItWithFileReadIssues() {
+    func testMakeStatusDoesNotExposeActiveOperationFields() {
         let status = RuntimeControlStatusAssembler.makeStatus(
-            statusRead: RuntimeStatusDocumentRead(
-                document: statusDocument(proxyPort: 19090),
-                error: nil,
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.runtimeState, .healthy)
+        XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusDoesNotPromoteStatusDocumentOperationFields() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.runtimeState, .healthy)
+        XCTAssertFalse(status.readIssues.contains { $0.source == "activeOperation" })
+    }
+
+    func testMakeStatusDoesNotExposeStatusDocumentReadIssueAsStatusField() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.readIssues, [])
+        XCTAssertEqual(status.runtimeState, .healthy)
+    }
+
+    func testMakeStatusBuildsCurrentHealthFromExplicitOwnerReads() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            proxyPortReadState: .missing("proxy launch daemon missing"),
+            guestServicesRead: .loaded(
+                services: ["app"],
+                statuses: [RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "exited",
+                    health: "unhealthy",
+                    observedAt: "2026-07-08T00:00:00Z"
+                )],
+                resources: [],
+                resourceReadIssues: [],
+                probeErrors: [],
+                cpuUsagePercent: nil,
+                memory: nil,
+                systemDisk: nil
+            ),
+            vmLifecycleRead: RuntimeVMLifecycleRead(
+                document: RuntimeVMLifecycleDocument(
+                    state: .failed,
+                    startedAt: "2026-07-08T00:00:00Z",
+                    updatedAt: "2026-07-08T00:00:05Z",
+                    terminalReason: .launchFailed
+                ),
                 issue: nil
             ),
+            liveDiagnostics: liveDiagnostics(vm: .notLoaded)
+        )
+
+        XCTAssertEqual(status.runtimeState, .critical)
+        XCTAssertTrue(status.failureReasons.contains(.vmService("not loaded")))
+        XCTAssertFalse(status.failureReasons.contains(.hostProxyConfigInvalid))
+        XCTAssertTrue(status.failureReasons.contains(.guestService(service: "app", state: "exited")))
+        XCTAssertTrue(status.failureReasons.contains(.vmLaunchFailed("launch-failed")))
+    }
+
+    func testMakeStatusDoesNotExposeProgressFields() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusDoesNotPromoteProgressReadFailureToCurrentStatusIssue() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertFalse(status.readIssues.contains(RuntimeStatusReadIssue(
+            source: "runtimeProgress",
+            message: "decode failed"
+        )))
+        XCTAssertEqual(status.runtimeState, .healthy)
+    }
+
+    func testMakeStatusUsesExplicitGuestAddressReadForCurrentVMIP() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            guestAddressRead: .loaded(address: "192.168.64.44", source: .runtimeControlAPI),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.vmIP, "192.168.64.44")
+        XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusUsesExplicitVersionAndLatestBackupReads() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            runtimeVersionRead: RuntimeVersionRead(version: "2.0.0", issue: nil),
+            latestBackupRead: RuntimeLatestBackupRead(path: "/backups/20260708T010000Z-before-2.0.0", issue: nil),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.runtimeVersion, "2.0.0")
+        XCTAssertEqual(status.latestBackup, "/backups/20260708T010000Z-before-2.0.0")
+        XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusDoesNotPromoteVersionOrLatestBackupReadIssuesIntoCurrentHealth() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            runtimeVersionRead: RuntimeVersionRead(
+                version: nil,
+                issue: RuntimeStatusReadIssue(
+                    source: "runtimeVersion",
+                    message: "runtime version document missing path=/runtime/runtime-version.json"
+                )
+            ),
+            latestBackupRead: RuntimeLatestBackupRead(
+                path: nil,
+                issue: RuntimeStatusReadIssue(
+                    source: "latestBackup",
+                    message: "backup directory inspection failed path=/runtime/backups reason=permission denied"
+                )
+            ),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertNil(status.runtimeVersion)
+        XCTAssertNil(status.latestBackup)
+        XCTAssertTrue(status.readIssues.contains(RuntimeStatusReadIssue(
+            source: "runtimeVersion",
+            message: "runtime version document missing path=/runtime/runtime-version.json"
+        )))
+        XCTAssertTrue(status.readIssues.contains(RuntimeStatusReadIssue(
+            source: "latestBackup",
+            message: "backup directory inspection failed path=/runtime/backups reason=permission denied"
+        )))
+        XCTAssertEqual(status.runtimeState, .healthy)
+        XCTAssertEqual(status.failureReasons, [])
+    }
+
+    func testMakeStatusDoesNotPromoteGuestAddressReadFailureAsCurrentIssue() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            guestAddressRead: .readFailed("permission denied"),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertNil(status.vmIP)
+        XCTAssertFalse(status.readIssues.contains(RuntimeStatusReadIssue(
+            source: "guestAddress",
+            message: "guest-address-read-failed:permission denied"
+        )))
+        XCTAssertFalse(status.failureReasons.contains(.guestHTTP("guest-address-read-failed:permission denied")))
+        XCTAssertEqual(status.runtimeState, .healthy)
+    }
+
+    func testMakeStatusUsesExplicitVMLifecycleReadForCurrentVMState() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            vmLifecycleRead: RuntimeVMLifecycleRead(
+                document: RuntimeVMLifecycleDocument(
+                    state: .failed,
+                    startedAt: "2026-07-08T00:00:00Z",
+                    updatedAt: "2026-07-08T00:01:00Z",
+                    terminalReason: .guestDiskIO
+                ),
+                issue: nil
+            ),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.vmState, .failed)
+        XCTAssertEqual(status.vmErrors, [.guestDiskIO])
+        XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusPreservesVMLifecycleReadFailureAsIssue() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            vmLifecycleRead: RuntimeVMLifecycleRead(
+                document: nil,
+                issue: RuntimeStatusReadIssue(
+                    source: "vmLifecycle",
+                    message: "permission denied"
+                )
+            ),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertNil(status.vmState)
+        XCTAssertNil(status.vmErrors)
+        XCTAssertTrue(status.readIssues.contains(RuntimeStatusReadIssue(
+            source: "vmLifecycle",
+            message: "permission denied"
+        )))
+    }
+
+    func testMakeStatusPreservesGuestServicesReadWithoutMixingItWithFileReadIssues() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
             guestServicesRead: .loaded(
                 services: ["app", "postgres"],
                 statuses: [
@@ -130,11 +319,6 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
 
     func testMakeStatusPublishesGuestStackResourceRead() {
         let status = RuntimeControlStatusAssembler.makeStatus(
-            statusRead: RuntimeStatusDocumentRead(
-                document: statusDocument(proxyPort: 19090),
-                error: nil,
-                issue: nil
-            ),
             guestServicesRead: .loaded(
                 services: ["app", "recorder-ingress", "redis"],
                 statuses: [
@@ -175,13 +359,67 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.redisMemory, RuntimeContainerMemoryUsage(usedBytes: 3, limitBytes: 10))
     }
 
+    func testMakeStatusUsesGuestServiceDesiredStateBeforeAddingFailureReason() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            guestServicesRead: .loaded(
+                services: ["app", "worker"],
+                statuses: [
+                    RuntimeGuestControlServiceStatus(
+                        service: "app",
+                        state: "stopped",
+                        health: "unknown",
+                        observedAt: "2026-07-01T00:00:00+00:00"
+                    ),
+                    RuntimeGuestControlServiceStatus(
+                        service: "worker",
+                        state: "stopped",
+                        health: "unknown",
+                        observedAt: "2026-07-01T00:00:00+00:00"
+                    ),
+                ],
+                resources: [
+                    RuntimeGuestServiceResource(
+                        service: "app",
+                        spec: RuntimeGuestServiceSpec(
+                            state: "configured",
+                            desiredState: "stopped"
+                        ),
+                        status: RuntimeGuestServiceStatusRead(
+                            state: "loaded",
+                            observedState: "stopped",
+                            observedAt: "2026-07-01T00:00:00+00:00"
+                        ),
+                        conditions: [],
+                        lastOperationId: "op-app-stop"
+                    ),
+                    RuntimeGuestServiceResource(
+                        service: "worker",
+                        spec: RuntimeGuestServiceSpec(
+                            state: "configured",
+                            desiredState: "running"
+                        ),
+                        status: RuntimeGuestServiceStatusRead(
+                            state: "loaded",
+                            observedState: "stopped",
+                            observedAt: "2026-07-01T00:00:00+00:00"
+                        ),
+                        conditions: [],
+                        lastOperationId: "op-worker-start"
+                    ),
+                ],
+                cpuUsagePercent: nil,
+                memory: nil,
+                systemDisk: nil
+            ),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertFalse(status.failureReasons.contains(.guestService(service: "app", state: "stopped")))
+        XCTAssertTrue(status.failureReasons.contains(.guestService(service: "worker", state: "stopped")))
+    }
+
     func testMakeStatusPreservesGuestServicesReadFailureSeparately() {
         let status = RuntimeControlStatusAssembler.makeStatus(
-            statusRead: RuntimeStatusDocumentRead(
-                document: statusDocument(proxyPort: 19090),
-                error: nil,
-                issue: nil
-            ),
             guestServicesRead: .failed("guest control API timed out"),
             liveDiagnostics: liveDiagnostics()
         )
@@ -195,11 +433,6 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
 
     func testMakeStatusDoesNotPublishContainerObservationAsProductStatus() {
         let status = RuntimeControlStatusAssembler.makeStatus(
-            statusRead: RuntimeStatusDocumentRead(
-                document: statusDocument(proxyPort: 19090),
-                error: nil,
-                issue: nil
-            ),
             guestServicesRead: .unavailable,
             liveDiagnostics: liveDiagnostics()
         )
@@ -210,28 +443,40 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertNil(status.guestServicesReadError)
     }
 
-    func testMakeStatusPreservesMissingProxyPortAsExplicitReadIssue() {
+    func testMakeStatusUsesExplicitProxyPortReadForCurrentProxyPort() {
         let status = RuntimeControlStatusAssembler.makeStatus(
-            statusRead: RuntimeStatusDocumentRead(
-                document: statusDocument(proxyPort: nil),
-                error: nil,
-                issue: nil
-            ),
+            proxyPortReadState: .loaded(19090),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.proxyPort, 19090)
+        XCTAssertEqual(status.proxyPortReadState, .loaded(19090))
+        XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusDoesNotPromoteStatusDocumentOrProxyPortReadFailure() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            proxyPortReadState: .missing("proxy launch daemon plist missing path=/runtime/proxy.plist"),
             liveDiagnostics: liveDiagnostics()
         )
 
         XCTAssertNil(status.proxyPort)
-        XCTAssertTrue(status.readIssues.contains(RuntimeStatusReadIssue(
+        XCTAssertEqual(
+            status.proxyPortReadState,
+            .missing("proxy launch daemon plist missing path=/runtime/proxy.plist")
+        )
+        XCTAssertFalse(status.readIssues.contains(RuntimeStatusReadIssue(
             source: "proxyPort",
-            message: "proxy port is missing from runtime status document"
+            message: "proxy launch daemon plist missing path=/runtime/proxy.plist"
         )))
+        XCTAssertFalse(status.failureReasons.contains(.hostProxyConfigInvalid))
+        XCTAssertEqual(status.runtimeState, .healthy)
     }
 
-    func testLiveDiagnosticsAssemblerPrefersStatusDocumentManagedServicesAndReadsMissingServicesLive() {
+    func testLiveDiagnosticsAssemblerUsesLiveLaunchdForManagedServices() {
         let diagnostics = RuntimeLiveDiagnosticsAssembler.makeDiagnostics(
             runtimeLauncherPath: "/product/launcher",
             runtimeExecutableState: .executable,
-            statusDocument: statusDocument(proxyPort: 19090),
             liveServiceStates: RuntimeLiveServiceStateReads(
                 vm: .notLoaded,
                 proxy: .readFailed("launchctl proxy failed"),
@@ -242,19 +487,28 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         )
 
         XCTAssertEqual(diagnostics.runtimeInstalled, true)
-        XCTAssertEqual(diagnostics.vmService, RuntimeServiceStateRead(state: .loaded, source: .statusDocument))
-        XCTAssertEqual(diagnostics.proxyService, RuntimeServiceStateRead(state: .loaded, source: .statusDocument))
-        XCTAssertEqual(diagnostics.watchdogService, RuntimeServiceStateRead(state: .loaded, source: .statusDocument))
+        XCTAssertEqual(diagnostics.vmService, RuntimeServiceStateRead(state: .notLoaded, source: .liveLaunchd))
+        XCTAssertEqual(
+            diagnostics.proxyService,
+            RuntimeServiceStateRead(state: .readFailed("launchctl proxy failed"), source: .liveLaunchd)
+        )
+        XCTAssertEqual(diagnostics.watchdogService, RuntimeServiceStateRead(state: .unknown("weird"), source: .liveLaunchd))
         XCTAssertEqual(diagnostics.guestLogSyncService, RuntimeServiceStateRead(state: .loaded, source: .liveLaunchd))
         XCTAssertEqual(diagnostics.sleepPreventionService, RuntimeServiceStateRead(state: .notLoaded, source: .liveLaunchd))
-        XCTAssertTrue(diagnostics.readIssues.isEmpty)
+        XCTAssertTrue(diagnostics.readIssues.contains(RuntimeStatusReadIssue(
+            source: "proxyService",
+            message: "launchctl proxy failed"
+        )))
+        XCTAssertTrue(diagnostics.readIssues.contains(RuntimeStatusReadIssue(
+            source: "watchdogService",
+            message: "unknown service state: weird"
+        )))
     }
 
     func testLiveDiagnosticsAssemblerReportsLiveServiceReadIssuesAndRuntimeInstallationIssue() {
         let diagnostics = RuntimeLiveDiagnosticsAssembler.makeDiagnostics(
             runtimeLauncherPath: "/product/launcher",
             runtimeExecutableState: .present,
-            statusDocument: nil,
             liveServiceStates: RuntimeLiveServiceStateReads(
                 vm: .readFailed("launchctl vm failed"),
                 proxy: .permissionDenied("launchctl proxy denied"),
@@ -315,13 +569,9 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         ])
     }
 
-    func testHealthStatusAssemblerPreservesMissingProxyPortAsExplicitHTTPStatusWithoutProbeReads() {
-        let existingIssue = RuntimeStatusReadIssue(
-            source: "proxyPort",
-            message: "proxy port is missing from runtime status document"
-        )
+    func testHealthStatusAssemblerMarksMissingProxyPortAsDisplayStatusWithoutReadIssue() {
         let status = RuntimeHealthStatusAssembler.applyingHealthProbeReads(
-            to: RuntimeStatus(readIssues: [existingIssue], vmIP: "192.168.64.8", proxyPort: nil),
+            to: RuntimeStatus(vmIP: "192.168.64.8", proxyPort: nil),
             reads: RuntimeHealthProbeReads(
                 guestHTTP: nil,
                 hostProxyHTTP: nil,
@@ -333,16 +583,12 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.hostProxyHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(status.redisUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(status.swaggerUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
-        XCTAssertEqual(status.readIssues, [existingIssue])
+        XCTAssertEqual(status.readIssues, [])
     }
 
-    func testHealthStatusAssemblerPreservesMissingVMIPAsExplicitGuestHTTPStatusWithoutProbeRead() {
-        let existingIssue = RuntimeStatusReadIssue(
-            source: "vmIP",
-            message: "vm ip is missing from runtime status document"
-        )
+    func testHealthStatusAssemblerMarksMissingVMIPAsDisplayStatusWithoutReadIssue() {
         let status = RuntimeHealthStatusAssembler.applyingHealthProbeReads(
-            to: RuntimeStatus(readIssues: [existingIssue], proxyPort: 19090),
+            to: RuntimeStatus(proxyPort: 19090),
             reads: RuntimeHealthProbeReads(
                 guestHTTP: nil,
                 hostProxyHTTP: RuntimeHTTPStatusRead(status: "200", issue: nil),
@@ -355,15 +601,15 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.hostProxyHTTP, "200")
         XCTAssertEqual(status.redisUIHTTP, "200")
         XCTAssertEqual(status.swaggerUIHTTP, "200")
-        XCTAssertEqual(status.readIssues, [existingIssue])
+        XCTAssertEqual(status.readIssues, [])
     }
 
     func testLocalAPIStatusAssemblerAppliesExplicitHostReadWithoutChangingOtherStatusFields() {
         let status = RuntimeControlLocalAPIStatusAssembler.applyingLocalAPIStatus(
             to: RuntimeStatus(
                 runtimeInstalled: true,
+                runtimeInstallationState: .executable,
                 runtimeState: .degraded,
-                statusMessage: "ready",
                 runtimeControlHTTP: "500",
                 runtimeControlStartedAt: "stale"
             ),
@@ -375,7 +621,6 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
 
         XCTAssertEqual(status.runtimeInstalled, true)
         XCTAssertEqual(status.runtimeState, .degraded)
-        XCTAssertEqual(status.statusMessage, "ready")
         XCTAssertEqual(status.runtimeControlHTTP, "204")
         XCTAssertEqual(status.runtimeControlStartedAt, "2026-05-30T00:02:00Z")
     }
@@ -462,11 +707,6 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         )
 
         let status = RuntimeControlStatusAssembler.makeStatus(
-            statusRead: RuntimeStatusDocumentRead(
-                document: statusDocument(proxyPort: 80),
-                error: nil,
-                issue: nil
-            ),
             redisRelayStatusRead: RuntimeRedisRelayStatusRead(
                 document: redisRelayStatus,
                 error: nil,
@@ -478,45 +718,20 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.redisRelayStatus, redisRelayStatus)
     }
 
-    private func statusDocument(proxyPort: Int?) -> RuntimeStatusDocument {
-        RuntimeStatusDocument(
-            product: "VitalServerHelper",
-            status: .healthy,
-            operation: .health,
-            message: "ready",
-            updatedAt: "2026-06-01T00:00:02Z",
-            productRoot: "/product",
-            runtimeHome: "/product/vm",
-            runtimeVersion: "0.1.0",
-            vmService: .loaded,
-            proxyService: .loaded,
-            watchdogService: .loaded,
-            vmState: .running,
-            vmErrors: [],
-            vmIP: "192.168.64.2",
-            proxyPort: proxyPort,
-            proxyPortReadState: proxyPort.map(RuntimeProxyPortReadState.loaded),
-            hostProxyHTTP: "200",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200",
-            rootfsBase: .present,
-            vmDisk: .present,
-            failureReasons: [],
-            latestBackup: nil
-        )
-    }
-
-    private func liveDiagnostics() -> RuntimeLiveDiagnostics {
+    private func liveDiagnostics(
+        vm: RuntimeServiceState = .loaded,
+        proxy: RuntimeServiceState = .loaded,
+        watchdog: RuntimeServiceState = .loaded
+    ) -> RuntimeLiveDiagnostics {
         RuntimeLiveDiagnostics(
             runtimeInstalled: true,
             runtimeInstallationState: .executable,
             runtimeInstallationIssue: nil,
-            vmService: RuntimeServiceStateRead(state: .loaded, source: .statusDocument),
-            proxyService: RuntimeServiceStateRead(state: .loaded, source: .liveLaunchd),
+            vmService: RuntimeServiceStateRead(state: vm, source: .liveLaunchd),
+            proxyService: RuntimeServiceStateRead(state: proxy, source: .liveLaunchd),
             guestLogSyncService: RuntimeServiceStateRead(state: .loaded, source: .liveLaunchd),
             sleepPreventionService: RuntimeServiceStateRead(state: .loaded, source: .liveLaunchd),
-            watchdogService: RuntimeServiceStateRead(state: .loaded, source: .statusDocument),
+            watchdogService: RuntimeServiceStateRead(state: watchdog, source: .liveLaunchd),
             readIssues: []
         )
     }

@@ -32,11 +32,11 @@ VitalServer backup은 하나의 restore unit이지만 artifact마다 schema owne
 | `guest-runtime-settings`         | Host  | Runtime settings contract                   | runtime settings document                        |
 | `proxy-launch-daemon-settings`   | Host  | macOS launchd plist contract                | proxy LaunchDaemon plist                         |
 | `start-on-boot-state`            | Host  | `RuntimeDataBackupStartOnBootStateDocument` | launchctl enabled/disabled state                 |
-| `runtime-status-document`        | Host  | Host runtime status document                | UI continuity용 optional state                   |
-| `runtime-events-document`        | Host  | Host runtime event JSONL contract           | UI continuity용 optional event history           |
-| `runtime-observability-database` | Host  | SQLite observability projection schema      | UI continuity용 optional projection snapshot     |
+| `runtime-status-document`        | Host  | Host diagnostics/status projection document | optional diagnostics/export context              |
+| `runtime-events-document`        | Host  | Host runtime event JSONL contract           | optional diagnostics/export event history        |
+| `runtime-observability-database` | Host  | SQLite observability projection schema      | optional diagnostics/migration projection snapshot |
 
-Required recovery artifact는 Redis data, VM config, guest config, guest settings, proxy LaunchDaemon settings, start-on-boot state입니다. Status, events, observability SQLite는 optional continuity artifact입니다. Backup에 없으면 restore는 대체 상태를 만들지 않고 required artifact만 복원합니다.
+Required recovery artifact는 Redis data, VM config, guest config, guest settings, proxy LaunchDaemon settings, start-on-boot state입니다. Status, events, observability SQLite는 optional diagnostics/export artifact입니다. Backup에 없으면 restore는 대체 current state를 만들지 않고 required artifact만 복원합니다. Restore된 status projection은 Runtime Control current `runtimeState`, `failureReasons`, active operation, workflow progress, service liveness, HTTP probe, VM IP, VM lifecycle, runtime version, latest backup owner가 아닙니다.
 
 ## 3. Compatibility Gate
 

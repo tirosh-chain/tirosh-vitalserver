@@ -33,7 +33,7 @@ extension RuntimeLifecycle {
                 ],
                 staleGuestRunDocuments: [
                     installedPaths.vmIPFile,
-                    installedPaths.runtimeState,
+                    installedPaths.runtimeObservation,
                     installedPaths.bootstrapResult,
                 ],
                 vitalFilesDirectory: { settings in

@@ -226,7 +226,7 @@ public extension RuntimeControlHTTPRequest {
               components[2] == "services",
               let decoded = String(components[3]).removingPercentEncoding,
               !decoded.isEmpty,
-              components[4] == "status"
+              components[4] == "status" || components[4] == "resource"
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("service")
         }

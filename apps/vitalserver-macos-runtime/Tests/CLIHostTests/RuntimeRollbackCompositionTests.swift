@@ -13,8 +13,8 @@ final class RuntimeRollbackCompositionTests: XCTestCase {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let backup = URL(fileURLWithPath: "/product/backups/before-1.2.3")
         fileStore.directories.insert(backup)
-        fileStore.files[backup.appendingPathComponent(RuntimeFileNames.backupManifest)] = try JSONEncoder().encode(backupManifest())
-        fileStore.files[backup.appendingPathComponent(RuntimeFileNames.rootfsBase)] = Data("rootfs".utf8)
+        fileStore.files[backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)] = try JSONEncoder().encode(backupManifest())
+        fileStore.files[backup.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)] = Data("rootfs".utf8)
         var events: [String] = []
 
         let workflow = RuntimeRollbackComposition.make(
@@ -72,7 +72,7 @@ private func backupManifest() -> BackupManifest {
         product: "ai.tirosh.vitalserver.helper",
         createdAt: "2026-05-31T00:00:00Z",
         reason: "before-1.2.3",
-        rootfsBase: RuntimeFileNames.rootfsBase,
+        rootfsBase: RuntimePackageArtifactFileNames.rootfsBase,
         vmDisk: "vm-disk.img",
         vmDiskPreserved: true
     )

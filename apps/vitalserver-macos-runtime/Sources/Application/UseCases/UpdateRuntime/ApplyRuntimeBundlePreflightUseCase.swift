@@ -229,7 +229,7 @@ public struct ApplyRuntimeBundlePreflightUseCase {
     ) -> ApplyRuntimeBundlePreflightManifestPlan {
         ApplyRuntimeBundlePreflightManifestPlan(
             stagedRootfs: manifest.artifacts.contains { $0.type == .rootfsBase }
-                ? stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
+                ? stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
                 : nil,
             manifestLogMessage: "bundle apply manifest version=\(manifest.version) runtimeVersion=\(manifest.runtimeVersion) artifacts=\(manifest.artifacts.count) migrations=\(manifest.migrations.count)",
             backupReason: "before-\(manifest.version)",

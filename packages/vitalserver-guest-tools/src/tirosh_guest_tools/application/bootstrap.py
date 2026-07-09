@@ -23,7 +23,7 @@ class GuestBootstrapStep(StrEnum):
     REQUIRE_RUNTIME_PACKAGES = "require-runtime-packages"
     INSTALL_RUNTIME_FILES = "install-runtime-files"
     PREPARE_RUNTIME_DATA = "prepare-runtime-data"
-    WRITE_INITIAL_RUNTIME_STATE = "write-initial-runtime-state"
+    WRITE_INITIAL_RUNTIME_OBSERVATION = "write-initial-runtime-observation"
     START_DOCKER = "start-docker"
     START_AVAHI = "start-avahi"
     START_GUEST_BACKGROUND_SERVICES = "start-guest-background-services"
@@ -35,7 +35,7 @@ class GuestBootstrapStep(StrEnum):
     START_COMPOSE = "start-compose"
     START_CONTAINER_LOGS = "start-container-logs"
     WAIT_EDGE_READY = "wait-edge-ready"
-    RESTART_RUNTIME_STATE = "restart-runtime-state"
+    RESTART_RUNTIME_OBSERVATION = "restart-runtime-observation"
     WRITE_COMPLETED_RESULT = "write-completed-result"
     RUN_RUNTIME_BOOT_SMOKE = "run-runtime-boot-smoke"
 
@@ -114,7 +114,7 @@ class GuestBootstrapOperations:
     missing_runtime_packages: Callable[[], list[str]]
     install_runtime_files: Callable[[GuestBootstrapContext], None]
     prepare_runtime_data: Callable[[], None]
-    write_initial_runtime_state: Callable[[], None]
+    write_initial_runtime_observation: Callable[[], None]
     start_docker: Callable[[], None]
     start_avahi: Callable[[], None]
     start_guest_background_services: Callable[[], None]
@@ -126,9 +126,9 @@ class GuestBootstrapOperations:
     start_compose: Callable[[], None]
     start_container_logs: Callable[[], None]
     probe_edge_readiness: Callable[[str, float], EdgeReadinessProbeResult]
-    write_runtime_state_once: Callable[[], None]
+    write_runtime_observation_once: Callable[[], None]
     write_edge_diagnostics: Callable[[], None]
-    restart_runtime_state: Callable[[], None]
+    restart_runtime_observation: Callable[[], None]
     runtime_boot_smoke_enabled: Callable[[Path], bool]
     run_runtime_boot_smoke: Callable[[], None]
 
@@ -206,8 +206,8 @@ class GuestBootstrapWorkflow:
             (GuestBootstrapStep.INSTALL_RUNTIME_FILES, self.install_runtime_files),
             (GuestBootstrapStep.PREPARE_RUNTIME_DATA, self.prepare_runtime_data),
             (
-                GuestBootstrapStep.WRITE_INITIAL_RUNTIME_STATE,
-                self.operations.write_initial_runtime_state,
+                GuestBootstrapStep.WRITE_INITIAL_RUNTIME_OBSERVATION,
+                self.operations.write_initial_runtime_observation,
             ),
             (GuestBootstrapStep.START_DOCKER, self.start_docker),
             (GuestBootstrapStep.START_AVAHI, self.operations.start_avahi),
@@ -233,8 +233,8 @@ class GuestBootstrapWorkflow:
             (GuestBootstrapStep.START_CONTAINER_LOGS, self.start_container_logs),
             (GuestBootstrapStep.WAIT_EDGE_READY, self.wait_for_vitalserver_edge),
             (
-                GuestBootstrapStep.RESTART_RUNTIME_STATE,
-                self.operations.restart_runtime_state,
+                GuestBootstrapStep.RESTART_RUNTIME_OBSERVATION,
+                self.operations.restart_runtime_observation,
             ),
             (GuestBootstrapStep.WRITE_COMPLETED_RESULT, self.write_completed_result),
             (
@@ -392,7 +392,7 @@ class GuestBootstrapWorkflow:
             )
             if result.ready:
                 print(f"VitalServer edge is ready: {result.status_code}")
-                self.operations.write_runtime_state_once()
+                self.operations.write_runtime_observation_once()
                 return
             last_failure = result.failure
             self.operations.sleep(self.context.edge_ready_poll_seconds)

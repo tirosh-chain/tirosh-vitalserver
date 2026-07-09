@@ -13,17 +13,17 @@ Golden rootfs build가 통과했는데도 설치 또는 재설치 후 Runtime이
 initializing에서 전환되지 않음
 overall health가 degraded 또는 critical로 전환됨
 guest bootstrap result가 running에서 멈춤
-runtime-state.json이 missing, invalid, stale로 관측됨
+runtime-observation.json이 missing, invalid, stale로 관측됨
 service 상태가 Not Reported와 active/failed 사이를 오감
 edge /ready는 한때 성공했지만 Runtime Control status가 정상으로 수렴하지 않음
 ```
 
-TS-069는 stale `rootfs-ready`/manifest를 proof로 믿는 문제를 막았습니다. 하지만 현재 golden disk 검증은 주로 rootfs 준비 VM 안에서 Docker/Compose/edge readiness를 검증합니다. 실제 Runtime boot path에서 Host가 의존하는 `bootstrap-result.json`, `runtime-state.json`, systemd service 상태, runtime health convergence까지는 아직 release proof로 묶이지 않았습니다.
+TS-069는 stale `rootfs-ready`/manifest를 proof로 믿는 문제를 막았습니다. 하지만 현재 golden disk 검증은 주로 rootfs 준비 VM 안에서 Docker/Compose/edge readiness를 검증합니다. 실제 Runtime boot path에서 runtime smoke가 검증해야 하는 `bootstrap-result.json`, diagnostics artifacts, systemd service 상태, Guest Control readiness, runtime health convergence까지는 아직 release proof로 묶이지 않았습니다.
 
 ## Impact
 
 - build는 성공했지만 설치 직후 Runtime이 초기화 상태에서 멈출 수 있습니다.
-- rootfs smoke는 성공했는데 실제 bootstrap service ordering, runtime-state writer, observability writer, command poller 같은 운영 service 문제가 뒤늦게 드러납니다.
+- rootfs smoke는 성공했는데 실제 bootstrap service ordering, runtime observation writer, observability writer, command poller 같은 운영 service 문제가 뒤늦게 드러납니다.
 - Runtime Control UI는 명시 상태 없이 Not Reported, degraded, critical을 반복 표시할 수 있습니다.
 - golden disk가 실제 운영 boot proof를 제공하지 않으면 VM 관련 장애가 설치 후에야 발견됩니다.
 
@@ -39,11 +39,11 @@ Rootfs smoke와 Runtime boot proof가 다른 책임을 갖는데, 현재 golden 
 - `bootstrap-result.json` missing
 - `bootstrap-result.json.status=running` stale
 - `bootstrap-result.json.status=failed` with reasonCodes
-- `runtime-state.json` missing
-- `runtime-state.json` invalid JSON
-- `runtime-state.json.updatedAt` stale
-- `runtime-state.json.bootID` missing
-- `runtime-state.json.containerServices` missing or empty
+- `runtime-observation.json` missing
+- `runtime-observation.json` invalid JSON
+- `runtime-observation.json.updatedAt` stale
+- `runtime-observation.json.bootID` missing
+- `runtime-observation.json.containerServices` missing or empty
 - required systemd unit inactive/failed/activating timeout
 - compose service exited/restarting/unhealthy
 - compose service가 fresh runtime-state에 아직 나타나지 않았지만 readiness window 안에 나타날 수 있는 상태
@@ -54,7 +54,7 @@ Rootfs smoke와 Runtime boot proof가 다른 책임을 갖는데, 현재 golden 
 - Observability read model or event store is unavailable
 - VitalServer backup directory is missing but reported as an empty backup list
 - TestKit service is expected in dev builds but not available after boot
-- Runtime boot smoke가 `runtime state is missing compose services: ['testkit']`로 실패했지만 최신 `runtime-state.json`에는 testkit이 뒤늦게 나타나는 경우
+- Runtime boot smoke가 `runtime state is missing compose services: ['testkit']`로 실패했지만 최신 `runtime-observation.json`에는 testkit이 뒤늦게 나타나는 경우
 
 AGENTS.md 기준으로 Host는 Guest 내부 상태를 로그나 추측으로 만들면 안 됩니다. Guest가 명시 contract를 제공하고, golden disk pipeline은 그 contract가 실제 Runtime boot에서 제공되는지 검증해야 합니다.
 
@@ -64,7 +64,7 @@ AGENTS.md 기준으로 Host는 Guest 내부 상태를 로그나 추측으로 만
 
 ```sh
 sed -n '1,200p' .tmp/vitalserver-vm-dev/data/run/bootstrap-result.json
-sed -n '1,260p' .tmp/vitalserver-vm-dev/data/run/runtime-state.json
+sed -n '1,260p' .tmp/vitalserver-vm-dev/data/run/runtime-observation.json
 sed -n '1,200p' .tmp/vitalserver-vm-dev/run/vm-lifecycle.json
 tail -n 240 .tmp/vitalserver-vm-dev/logs/launcher.log
 ```
@@ -73,22 +73,22 @@ Guest 안에서 확인할 수 있으면 아래 상태가 Runtime boot proof의 �
 
 ```sh
 systemctl is-active docker
-systemctl is-active tirosh-runtime-state.service
+systemctl is-active tirosh-runtime-observation.service
 systemctl is-active tirosh-vitalserver-compose.service
 systemctl is-active tirosh-guest-observability.service
 systemctl is-active tirosh-vitalserver-guest-control-api.service
 curl -fsS -I --max-time 5 http://127.0.0.1/ready
 curl -fsS -I --max-time 5 http://127.0.0.1/health
-tirosh-runtime-state once
+tirosh-runtime-observation once
 ```
 
 ## Actions
 
 단기 조치:
 
-1. Runtime이 initializing/degraded/critical에서 멈추면 `bootstrap-result.json`과 `runtime-state.json`을 먼저 확인합니다.
+1. Runtime이 initializing/degraded/critical에서 멈추면 `bootstrap-result.json`과 `runtime-observation.json`을 먼저 확인합니다.
 2. `bootstrap-result.status=running`이면 stale인지 bootID/updatedAt 기준으로 판단합니다.
-3. `runtime-state.json`이 없거나 invalid면 runtime-state writer/service 문제로 분리합니다.
+3. `runtime-observation.json`이 없거나 invalid면 runtime observation writer/service 문제로 분리합니다.
 4. systemd service가 inactive/failed이면 edge HTTP 결과만으로 정상 boot로 보지 않습니다.
 5. launcher log의 kernel panic/Oops/RCU stall은 TS-069와 같은 terminal guest failure로 처리합니다.
 6. dev build에서 Product Lab 또는 다른 required product service만 누락된 runtime boot smoke 실패가 나오면 같은 run의 manifest timestamp와 Guest Control `/v1/stack/status` 응답을 비교합니다. 해당 service가 몇 초 뒤 등장했다면 late-ready service를 readiness window 동안 재조회해야 하는 검증 race입니다.
@@ -147,7 +147,7 @@ Runtime boot smoke는 최소 아래를 통과해야 합니다.
 | Proof | Required result |
 |---|---|
 | `bootstrap-result.json` | schema valid, `status=completed`, current bootID 또는 current runId |
-| `runtime-state.json` | schema valid, fresh `updatedAt`, non-empty `bootID` |
+| `runtime-observation.json` | schema valid, fresh `updatedAt`, non-empty `bootID` |
 | VM IP | non-loopback `vmIP` present |
 | HTTP | `/ready` and `/health` return 2xx |
 | systemd | docker, runtime-state, compose, observability, Guest Control API active |
@@ -174,12 +174,12 @@ P0 negative validation은 실제 VM 또는 command-level integration으로 반�
 |---|---|---|
 | bootstrap result remains running | write `bootstrap-result.status=running` and stale updatedAt | runtime smoke rejects stale bootstrap |
 | bootstrap result failed | write `status=failed` with reasonCodes | runtime smoke rejects and reports reasonCodes |
-| runtime state missing | remove `runtime-state.json` | runtime smoke rejects missing state |
+| runtime state missing | remove `runtime-observation.json` | runtime smoke rejects missing state |
 | runtime state invalid | write invalid JSON | runtime smoke rejects invalid state |
 | runtime state stale | write old `updatedAt` | runtime smoke rejects stale state |
 | runtime state missing bootID | write state without `bootID` | runtime smoke rejects incomplete contract |
 | compose service failed | stop/fail compose unit or report exited service | runtime smoke rejects service failure |
-| runtime-state service inactive | stop `tirosh-runtime-state.service` | runtime smoke rejects systemd failure |
+| runtime observation service inactive | stop `tirosh-runtime-observation.service` | runtime smoke rejects systemd failure |
 | observability service inactive | stop `tirosh-guest-observability.service` | runtime smoke rejects systemd failure |
 | guest HTTP unavailable | block/stop edge | runtime smoke rejects `/ready` or `/health` failure |
 | disk health read-only | inject diskHealth rootFilesystemReadOnly=true | runtime smoke rejects storage failure |
@@ -206,7 +206,7 @@ P1 negative validation:
 | update activation command unavailable | scenario smoke fails before applying update bundle |
 | Settings no-restart field causes VM restart | scenario smoke rejects configure policy regression |
 | Settings restart-required field is shown as applied before restart | scenario smoke rejects saved/applied state collapse |
-| Export logs archive missing required runtime files | scenario smoke rejects incomplete support bundle |
+| Export logs archive missing required runtime files | scenario smoke rejects incomplete diagnostics export bundle |
 
 ## Implementation Direction
 
@@ -285,7 +285,7 @@ Implemented command-level negative coverage:
 | runtime state invalid | unit test |
 | runtime state stale | unit test |
 | runtime state missing bootID | unit test |
-| runtime-state service inactive | unit test |
+| runtime observation service inactive | unit test |
 | guest HTTP unavailable | unit test |
 | disk health read-only | unit test |
 | capability missing | unit test |

@@ -49,6 +49,7 @@ public extension RuntimeControlAPIEndpoint {
              .guestStackStatus,
              .guestServices,
              .guestServiceStatus,
+             .guestServiceResource,
              .startGuestService,
              .stopGuestService,
              .restartGuestService,
@@ -72,7 +73,14 @@ public extension RuntimeControlAPIEndpoint {
              .deleteBackup,
              .deleteUpdateBackup,
              .deleteRuntimeDataBackup,
-             .exportLogs:
+             .exportLogs,
+             .acquireOperationLease,
+             .heartbeatOperationLease,
+             .releaseOperationLease,
+             .guestAddress,
+             .putGuestAddress,
+             .vmLifecycle,
+             .putVMLifecycle:
             return .unsupported
         }
     }
@@ -106,7 +114,8 @@ public extension RuntimeControlAPIEndpoint {
              .labSession,
              .guestStackStatus,
              .guestServices,
-             .guestServiceStatus:
+             .guestServiceStatus,
+             .guestServiceResource:
             return .browserSafe
         case .exportLogs:
             return .nativeShellOnly
@@ -151,7 +160,14 @@ public extension RuntimeControlAPIEndpoint {
              .rollbackBackup,
              .deleteBackup,
              .deleteUpdateBackup,
-             .deleteRuntimeDataBackup:
+             .deleteRuntimeDataBackup,
+             .acquireOperationLease,
+             .heartbeatOperationLease,
+             .releaseOperationLease,
+             .guestAddress,
+             .putGuestAddress,
+             .vmLifecycle,
+             .putVMLifecycle:
             return .localServerMediated
         }
     }

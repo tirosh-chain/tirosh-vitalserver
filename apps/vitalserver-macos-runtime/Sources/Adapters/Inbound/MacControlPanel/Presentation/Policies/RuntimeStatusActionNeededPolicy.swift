@@ -46,7 +46,8 @@ public struct RuntimeStatusActionNeededPolicy {
         if RuntimeReadinessPolicy.isReady(status) || isManagedOperationInProgress(status.runtimeState) {
             return nil
         }
-        let installationState = status.effectiveRuntimeInstallationState
+        let installationState = status.runtimeInstallationState
+            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
         if installationState == .missing {
             return RuntimeStatusActionNeededDecision(
                 title: vocabulary.runtimeNotInstalledTitle,
@@ -69,13 +70,6 @@ public struct RuntimeStatusActionNeededPolicy {
                 title: userFacingProblemTitle(status),
                 recommendedAction: userFacingAction(for: primaryReason.recoveryAction),
                 severity: primaryReason.domainSeverity == .critical ? .critical : .warning
-            )
-        }
-        if !status.readIssues.isEmpty {
-            return RuntimeStatusActionNeededDecision(
-                title: vocabulary.vitalServerNeedsAttentionTitle,
-                recommendedAction: vocabulary.openLogsAction,
-                severity: .warning
             )
         }
         return nil

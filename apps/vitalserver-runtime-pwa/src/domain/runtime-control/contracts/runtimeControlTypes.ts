@@ -77,6 +77,9 @@ export type RuntimeGuestControlStackStatus =
 export type RuntimeGuestControlServiceStatus =
   components["schemas"]["RuntimeGuestControlServiceStatus"];
 
+export type RuntimeGuestServiceResource =
+  components["schemas"]["RuntimeGuestServiceResource"];
+
 export type RuntimeStatus = z.infer<typeof runtimeStatusSchema>;
 
 export type RuntimeOperationState = z.infer<typeof runtimeOperationStateSchema>;

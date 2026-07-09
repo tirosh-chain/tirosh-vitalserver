@@ -359,6 +359,14 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         )
     }
 
+    public func redisRelayStatus() throws -> RuntimeRedisRelayStatusReadResult {
+        try decode(
+            RuntimeRedisRelayStatusReadResult.self,
+            method: "GET",
+            path: "/v1/redis-relay/status"
+        )
+    }
+
     public func labScenarios() throws -> RuntimeLabScenarioList {
         try decode(RuntimeLabScenarioList.self, method: "GET", path: "/v1/lab/scenarios")
     }

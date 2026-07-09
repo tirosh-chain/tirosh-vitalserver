@@ -12,15 +12,15 @@ final class RuntimeLogExporterTests: XCTestCase {
     func testDefaultExportSupplementalSourcesIncludeDiagnosticStateFiles() {
         let destinations = Set(RuntimeLogExportSupplementalSource.defaultItems().map(\.relativeDestination))
 
-        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeStatus)"))
-        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeOperationLease)"))
-        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeEvents)"))
-        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"))
-        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-wal"))
-        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-shm"))
-        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.runtimeState)"))
-        XCTAssertTrue(destinations.contains("diagnostics/runtime/\(RuntimeFileNames.vmLifecycle)"))
-        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.vmIP)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)-wal"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)-shm"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/\(RuntimeHostOwnerFileNames.vmLifecycle)"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeBootstrapEvidenceFileNames.vmIP)"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/runtime-version.json"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/runtime-config.json"))
@@ -32,11 +32,11 @@ final class RuntimeLogExporterTests: XCTestCase {
 
     func testDefaultRotatedExportSupplementalSourcesIncludeRuntimeEventHistory() {
         let runtimeEventSet = RuntimeLogExportRotatedSupplementalSet.defaultSets().first {
-            $0.sourceFilePrefix == "\(RuntimeFileNames.runtimeEvents)."
+            $0.sourceFilePrefix == "\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)."
         }
 
         XCTAssertEqual(runtimeEventSet?.relativeDestinationDirectory, "diagnostics/status")
-        XCTAssertEqual(runtimeEventSet?.destinationFilePrefix, "\(RuntimeFileNames.runtimeEvents).")
+        XCTAssertEqual(runtimeEventSet?.destinationFilePrefix, "\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents).")
     }
 
     func testExportUsesExplicitStagingIdentityAndGeneratedTimestamp() async throws {
@@ -566,9 +566,9 @@ final class RuntimeLogExporterTests: XCTestCase {
             rotatedSupplementalSets: [
                 RuntimeLogExportRotatedSupplementalSet(
                     sourceDirectory: sourceDirectory,
-                    sourceFilePrefix: "\(RuntimeFileNames.runtimeEvents).",
+                    sourceFilePrefix: "\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents).",
                     relativeDestinationDirectory: "diagnostics/status",
-                    destinationFilePrefix: "\(RuntimeFileNames.runtimeEvents)."
+                    destinationFilePrefix: "\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)."
                 ),
             ],
             archiveRunner: { _, arguments in

@@ -20,14 +20,6 @@ public enum RuntimeActiveOperationPolicy {
         }
     }
 
-    public static func isUpdateProgressInProgress(_ progress: RuntimeProgressDocument?) -> Bool {
-        if let progress,
-           isUpdateOperation(progress.operation) {
-            return !isTerminal(progress.phase)
-        }
-        return false
-    }
-
     public static func isUpdateInProgress(_ status: RuntimeStatus, operation: RuntimeOperation?) -> Bool {
         guard status.runtimeState != .recovering else {
             return false
@@ -50,27 +42,11 @@ public enum RuntimeActiveOperationPolicy {
         }
     }
 
-    public static func isRecoveryProgressInProgress(_ progress: RuntimeProgressDocument?) -> Bool {
-        if let progress,
-           isRecoveryOperation(progress.operation) {
-            return !isTerminal(progress.phase)
-        }
-        return false
-    }
-
     public static func isRecoveryInProgress(_ status: RuntimeStatus, operation: RuntimeOperation?) -> Bool {
         guard status.runtimeState == .recovering else {
             return false
         }
         return isRecoveryOperation(operation) || isUpdateOperation(operation)
-    }
-
-    public static func isInstallProgressInProgress(_ progress: RuntimeProgressDocument?) -> Bool {
-        if let progress,
-           isInstallOperation(progress.operation) {
-            return !isTerminal(progress.phase)
-        }
-        return false
     }
 
     public static func isInitializationInProgress(_ status: RuntimeStatus) -> Bool {

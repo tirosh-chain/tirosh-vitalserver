@@ -312,6 +312,55 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         XCTAssertEqual(history.readError, "events=events unavailable")
     }
 
+    func testRelationshipHistoryAssemblerMapsGuestControlReadStates() {
+        let loaded = RuntimeVitalDBRelationshipHistoryAssembler.makeHistory(
+            read: RuntimeGuestControlVitalDBRelationshipRead(
+                state: .loaded,
+                assignments: [
+                    RuntimeVitalBedAssignmentRecord(
+                        assignmentID: "assignment-1",
+                        bedID: "bed-a",
+                        bedName: "A",
+                        vrcode: "VR_A",
+                        startedAt: "2026-06-01T00:00:00Z",
+                        endedAt: nil,
+                        lastSeenAt: "2026-06-01T00:00:05Z",
+                        lastObservedAt: "2026-06-01T00:00:10Z",
+                        status: .online,
+                        patientConnected: true,
+                        observationCount: 2
+                    ),
+                ],
+                events: [
+                    RuntimeVitalRelationshipEventRecord(
+                        eventID: "event-1",
+                        observedAt: "2026-06-01T00:00:10Z",
+                        eventType: .handoff,
+                        severity: .info,
+                        bedID: "bed-a",
+                        bedName: "A",
+                        vrcode: "VR_A",
+                        previousVrcode: nil,
+                        previousBedID: nil,
+                        message: "assigned"
+                    ),
+                ]
+            )
+        )
+
+        XCTAssertEqual(loaded.state, .loaded)
+        XCTAssertEqual(loaded.assignments.map(\.assignmentID), ["assignment-1"])
+        XCTAssertEqual(loaded.events.map(\.eventID), ["event-1"])
+        XCTAssertNil(loaded.readError)
+
+        let unavailable = RuntimeVitalDBRelationshipHistoryAssembler.makeHistory(
+            read: RuntimeGuestControlVitalDBRelationshipRead(state: .unavailable)
+        )
+
+        XCTAssertEqual(unavailable.state, .readFailed)
+        XCTAssertEqual(unavailable.readError, "Guest VitalDB relationship read model is unavailable.")
+    }
+
     private func observation(
         _ observedAt: String,
         vrcode: String

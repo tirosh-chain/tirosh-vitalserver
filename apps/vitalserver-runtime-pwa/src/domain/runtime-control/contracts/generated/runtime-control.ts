@@ -378,6 +378,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/guest/services/{service}/resource": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Guest product service controller resource
+         * @description Reads one controller-owned Guest service resource from the Runtime v2 Guest Control API through the Host Runtime Control boundary, preserving spec, desired state, observed state, conditions, and last operation identity.
+         */
+        get: operations["getRuntimeGuestServiceResource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/guest/services/start": {
         parameters: {
             query?: never;
@@ -649,7 +669,7 @@ export interface paths {
         put?: never;
         /**
          * Create VitalServer backup
-         * @description Creates a recoverable VitalServer backup, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.
+         * @description Creates a recoverable VitalServer backup, including Redis data, runtime settings, Host diagnostics/export artifacts, and runtime observability SQLite.
          */
         post: operations["createRuntimeDataBackup"];
         delete?: never;
@@ -782,7 +802,7 @@ export interface paths {
         put?: never;
         /**
          * Restore selected VitalServer backup
-         * @description Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified VitalServer backup.
+         * @description Restores Redis data, runtime settings, Host diagnostics/export artifacts, start-on-boot state, and runtime observability SQLite from a verified VitalServer backup.
          */
         post: operations["restoreRuntimeDataBackup"];
         delete?: never;
@@ -890,6 +910,114 @@ export interface paths {
         put?: never;
         /** Apply selected update bundle */
         post: operations["applyHostUpdateBundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/runtime/operation-lease/acquire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acquire Host runtime operation lease
+         * @description Mutates the Host-owned operation lease through the local Runtime Control API. Diagnostics/export artifacts may mirror lease context, but callers must use this owner contract instead of selecting a file path or repository.
+         */
+        post: operations["acquireHostRuntimeOperationLease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/runtime/operation-lease/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Host runtime operation lease heartbeat
+         * @description Updates heartbeat metadata for the Host-owned operation lease through the local Runtime Control API. Missing or failed owner access must surface as an error, not as an empty operation state.
+         */
+        post: operations["heartbeatHostRuntimeOperationLease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/runtime/operation-lease/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release Host runtime operation lease
+         * @description Releases the Host-owned operation lease through the local Runtime Control API. Clients receive an explicit mutation response and must not infer release state from file absence.
+         */
+        post: operations["releaseHostRuntimeOperationLease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/runtime/guest-address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Host Guest address resource
+         * @description Reads the Host-owned Guest address resource through Runtime Control API. Loaded, missing, unavailable, and failed states remain distinct; clients must not infer Guest address from runtime-status.json, runtime-observation.json, or file absence.
+         */
+        get: operations["getHostRuntimeGuestAddress"];
+        /**
+         * Update Host Guest address resource
+         * @description Updates the Host-owned Guest address resource through Runtime Control API. This is the owner mutation boundary; callers provide an explicit address rather than relying on file fallback or status projection.
+         */
+        put: operations["putHostRuntimeGuestAddress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/runtime/vm-lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Host VM lifecycle resource
+         * @description Reads the Host-owned VM lifecycle resource through Runtime Control API. Loaded, missing, unavailable, and failed states remain distinct; clients must not infer VM lifecycle state from runtime-status.json or file absence.
+         */
+        get: operations["getHostRuntimeVMLifecycle"];
+        /**
+         * Update Host VM lifecycle resource
+         * @description Updates the Host-owned VM lifecycle resource through Runtime Control API. This is the owner mutation boundary; callers provide an explicit lifecycle document rather than relying on file fallback or status projection.
+         */
+        put: operations["putHostRuntimeVMLifecycle"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1173,7 +1301,7 @@ export interface paths {
         };
         /**
          * Read Vital Recorder and bed relationship history
-         * @description Derived read model for bed-to-VRecorder assignments and relationship anomalies. Raw VitalDB observation snapshots remain the source of truth.
+         * @description Guest/Postgres-owned read model for bed-to-VRecorder assignments and relationship anomalies. Runtime Control consumers must not treat raw VitalDB observation snapshots or Host SQLite projections as the relationship owner.
          */
         get: operations["getVitalDBRelationships"];
         put?: never;
@@ -1329,7 +1457,6 @@ export interface components {
         RuntimeOperationState: {
             /** @description Operation selected by the operation-state owner for client display and refresh decisions. Clients must not recompute it from RuntimeStatus, install, or lease subresources. */
             activeOperation: components["schemas"]["RuntimeOperation"] | null;
-            runtimeStatusUpdatedAt: string | null;
             install: components["schemas"]["RuntimeInstallOperationState"];
             lease: components["schemas"]["RuntimeOperationLeaseState"];
         };
@@ -1355,6 +1482,65 @@ export interface components {
             heartbeatAt: string;
             expiresAt: string | null;
             message: string | null;
+        };
+        RuntimeOperationLeaseAcquireRequest: {
+            document: components["schemas"]["RuntimeOperationLeaseDocument"];
+        };
+        RuntimeOperationLeaseHeartbeatRequest: {
+            operationId: string;
+            heartbeatAt: string;
+            expiresAt?: string | null;
+        };
+        RuntimeOperationLeaseReleaseRequest: {
+            operationId: string;
+        };
+        /** @enum {string} */
+        RuntimeOperationLeaseMutationState: "acquired" | "heartbeatRecorded" | "released";
+        RuntimeOperationLeaseMutationResponse: {
+            operationId: string;
+            state: components["schemas"]["RuntimeOperationLeaseMutationState"];
+        };
+        /** @enum {string} */
+        RuntimeHostResourceReadState: "loaded" | "missing" | "unavailable" | "failed";
+        /** @description Host-owned Guest address resource state exposed through Runtime Control API. Missing, unavailable, failed, and loaded states are distinct. */
+        RuntimeGuestAddressResourceState: {
+            state: components["schemas"]["RuntimeHostResourceReadState"];
+            read: components["schemas"]["RuntimeGuestAddressReadResult"] | null;
+            readError: string | null;
+        };
+        RuntimeGuestAddressPutRequest: {
+            address: string;
+        };
+        /**
+         * @description Known VM lifecycle states. Unknown string values are preserved by the Swift contract.
+         * @enum {string}
+         */
+        RuntimeVMLifecycleState: "starting" | "bootstrapping" | "running" | "stopping" | "stopped" | "failed";
+        /**
+         * @description Known terminal VM lifecycle reasons. Unknown string values are preserved by the Swift contract.
+         * @enum {string}
+         */
+        RuntimeVMLifecycleTerminalReason: "launch-failed" | "disk-attachment-invalid" | "guest-filesystem-read-only" | "guest-disk-io" | "guest-kernel-panic";
+        RuntimeVMLifecycleDocument: {
+            schemaVersion: number;
+            state: components["schemas"]["RuntimeVMLifecycleState"];
+            operation: components["schemas"]["RuntimeOperation"] | null;
+            operationID: string | null;
+            bootID: string | null;
+            startedAt: string;
+            updatedAt: string;
+            deadlineAt: string | null;
+            terminalReason: components["schemas"]["RuntimeVMLifecycleTerminalReason"] | null;
+            message: string | null;
+        };
+        /** @description Host-owned VM lifecycle resource state exposed through Runtime Control API. Missing, unavailable, failed, and loaded states are distinct. */
+        RuntimeVMLifecycleResourceState: {
+            state: components["schemas"]["RuntimeHostResourceReadState"];
+            document: components["schemas"]["RuntimeVMLifecycleDocument"] | null;
+            readError: string | null;
+        };
+        RuntimeVMLifecyclePutRequest: {
+            document: components["schemas"]["RuntimeVMLifecycleDocument"];
         };
         /** @enum {string} */
         RuntimeOperationResourceReadState: "loaded" | "unavailable" | "failed" | "stale";
@@ -1852,7 +2038,7 @@ export interface components {
          * @description Source that produced the explicit Guest address read result.
          * @enum {string}
          */
-        RuntimeGuestAddressSource: "vm-ip";
+        RuntimeGuestAddressSource: "runtime-control-api";
         /**
          * @description Explicit Guest address read state. Missing, invalid, stale, and read-failed are distinct from a loaded address.
          * @enum {string}
@@ -1864,7 +2050,40 @@ export interface components {
             source?: components["schemas"]["RuntimeGuestAddressSource"] | null;
             reason?: string | null;
         };
+        RuntimeRedisRelayBatch: {
+            scanned: number;
+            copied: number;
+            published: number;
+            unchanged: number;
+            duplicates: number;
+            skipped: number;
+            denied: number;
+            missing: number;
+            errors: number;
+        };
+        RuntimeRedisRelayStatus: {
+            schemaVersion: number;
+            observedAt: string;
+            enabled: boolean;
+            state: string;
+            scope: string;
+            targetUrl: string | null;
+            targetUsernameConfigured: boolean;
+            targetPasswordConfigured: boolean;
+            settingsFingerprint: string | null;
+            batches: number;
+            totals: components["schemas"]["RuntimeRedisRelayBatch"];
+            lastBatch: components["schemas"]["RuntimeRedisRelayBatch"] | null;
+            lastSuccessAt: string | null;
+            lastErrorAt: string | null;
+            lastError: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         RuntimeStatus: {
+            /** @description Explicit Host runtime executable file state. Missing, present-but-not-executable, inspect failure, and executable are distinct; runtimeInstalled is a compatibility display hint only. */
+            runtimeInstallationState?: string;
+            /** @description Compatibility display hint derived from runtimeInstallationState == executable. Clients must use runtimeInstallationState for runtime installation decisions. */
             runtimeInstalled?: boolean;
             vmServiceLoaded?: boolean;
             proxyServiceLoaded?: boolean;
@@ -1874,12 +2093,6 @@ export interface components {
             sleepPreventionServiceLoaded?: boolean | null;
             watchdogServiceLoaded?: boolean;
             runtimeState?: components["schemas"]["RuntimeState"];
-            operation?: string | null;
-            statusMessage?: string | null;
-            statusDocumentError?: string | null;
-            updatedAt?: string | null;
-            /** @description ISO-8601 UTC timestamp for the representative VitalServer runtime start time. Clients should derive live uptime from this value. */
-            startedAt?: string | null;
             runtimeVersion?: string | null;
             vmState?: components["schemas"]["RuntimeVMState"];
             vmErrors?: components["schemas"]["RuntimeVMError"][] | null;
@@ -1912,9 +2125,8 @@ export interface components {
             dataDirectoryStatsError?: string | null;
             proxyPort?: number;
             failureReasons?: string[];
-            progress?: {
-                [key: string]: unknown;
-            } | null;
+            /** @description Latest Redis Relay status owner snapshot read through Guest Control/Postgres. Missing field means the Host did not report this optional status; null means no loaded snapshot. */
+            redisRelayStatus?: components["schemas"]["RuntimeRedisRelayStatus"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -2219,13 +2431,27 @@ export interface components {
             runtimeDataBackupsPath?: string;
         };
         RuntimeControlCommandResponse: {
-            result?: components["schemas"]["RuntimeCommandResult"];
+            result: components["schemas"]["RuntimeCommandResult"];
         };
         RuntimeCommandResult: {
-            exitCode?: number;
-            stdout?: string;
-            stderr?: string;
+            exitCode: number;
+            stdout: string;
+            stderr: string;
+            outputIssues: components["schemas"]["RuntimeCommandOutputIssue"][];
+            executionIssue: components["schemas"]["RuntimeProcessExecutionIssue"] | null;
         };
+        RuntimeCommandOutputIssue: {
+            stream: components["schemas"]["RuntimeCommandOutputStream"];
+            message: string;
+        };
+        /** @enum {string} */
+        RuntimeCommandOutputStream: "stdout" | "stderr";
+        RuntimeProcessExecutionIssue: {
+            kind: components["schemas"]["RuntimeProcessExecutionIssueKind"];
+            message: string;
+        };
+        /** @enum {string} */
+        RuntimeProcessExecutionIssueKind: "processLaunchFailed" | "outputFilePreparationFailed";
         RuntimeControlErrorResponse: {
             code?: components["schemas"]["RuntimeControlAPIErrorCode"];
             message?: string;
@@ -2846,6 +3072,29 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getRuntimeGuestServiceResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guest product service controller resource */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestServiceResource"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     startRuntimeGuestService: {
         parameters: {
             query?: never;
@@ -3455,6 +3704,178 @@ export interface operations {
         };
         responses: {
             200: components["responses"]["CommandResult"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    acquireHostRuntimeOperationLease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeOperationLeaseAcquireRequest"];
+            };
+        };
+        responses: {
+            /** @description Operation lease acquisition result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeOperationLeaseMutationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    heartbeatHostRuntimeOperationLease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeOperationLeaseHeartbeatRequest"];
+            };
+        };
+        responses: {
+            /** @description Operation lease heartbeat result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeOperationLeaseMutationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    releaseHostRuntimeOperationLease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeOperationLeaseReleaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Operation lease release result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeOperationLeaseMutationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    getHostRuntimeGuestAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guest address resource state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestAddressResourceState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    putHostRuntimeGuestAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeGuestAddressPutRequest"];
+            };
+        };
+        responses: {
+            /** @description Guest address resource state after update */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestAddressResourceState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    getHostRuntimeVMLifecycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description VM lifecycle resource state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVMLifecycleResourceState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    putHostRuntimeVMLifecycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeVMLifecyclePutRequest"];
+            };
+        };
+        responses: {
+            /** @description VM lifecycle resource state after update */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVMLifecycleResourceState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             501: components["responses"]["NotImplemented"];
         };
     };

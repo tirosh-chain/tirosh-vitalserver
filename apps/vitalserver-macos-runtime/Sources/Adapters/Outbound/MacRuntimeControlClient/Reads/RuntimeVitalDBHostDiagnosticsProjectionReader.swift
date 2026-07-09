@@ -9,12 +9,12 @@ enum RuntimeVitalDBHostProjectionReadMode: Equatable, Sendable {
 
 struct RuntimeVitalDBHostDiagnosticsProjectionReader {
     let mode: RuntimeVitalDBHostProjectionReadMode
-    let paths: RuntimePaths
+    let paths: RuntimeObservabilityPaths
     let makeVitalDBProjectionRepository: (URL) -> RuntimeVitalDBObservationProjectionReading
 
     init(
         mode: RuntimeVitalDBHostProjectionReadMode = .disabled,
-        paths: RuntimePaths,
+        paths: RuntimeObservabilityPaths,
         makeVitalDBProjectionRepository: @escaping (URL) -> RuntimeVitalDBObservationProjectionReading = {
             SQLiteVitalDBObservationRepository(url: $0)
         }

@@ -9,20 +9,20 @@ protocol RuntimeSettingsReading: Sendable {
 }
 
 struct RuntimeSettingsPaths {
-    var vmConfig = RuntimeControlClientConstants.Paths.vmConfig
-    var appliedVMConfig = RuntimeControlClientConstants.Paths.appliedVMConfig
-    var vmDisk = RuntimeControlClientConstants.Paths.vmDisk
-    var guestRuntimeSettings = RuntimeControlClientConstants.Paths.guestRuntimeSettings
-    var runtimeControlSettings = RuntimeControlClientConstants.Paths.runtimeControlSettings
-    var proxyLaunchDaemon = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
+    var vmConfig = InstalledRuntimePaths.defaultInstalled.vmConfig.path
+    var appliedVMConfig = InstalledRuntimePaths.defaultInstalled.appliedVMConfig.path
+    var vmDisk = InstalledRuntimePaths.defaultInstalled.vmDisk.path
+    var guestRuntimeSettings = InstalledRuntimePaths.defaultInstalled.guestRuntimeSettings.path
+    var runtimeControlSettings = InstalledRuntimePaths.defaultInstalled.runtimeControlSettings.path
+    var proxyLaunchDaemon = InstalledRuntimePaths.defaultInstalled.proxyLaunchDaemon.path
 
     init(
-        vmConfig: String = RuntimeControlClientConstants.Paths.vmConfig,
-        appliedVMConfig: String = RuntimeControlClientConstants.Paths.appliedVMConfig,
-        vmDisk: String = RuntimeControlClientConstants.Paths.vmDisk,
-        guestRuntimeSettings: String = RuntimeControlClientConstants.Paths.guestRuntimeSettings,
-        runtimeControlSettings: String = RuntimeControlClientConstants.Paths.runtimeControlSettings,
-        proxyLaunchDaemon: String = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
+        vmConfig: String = InstalledRuntimePaths.defaultInstalled.vmConfig.path,
+        appliedVMConfig: String = InstalledRuntimePaths.defaultInstalled.appliedVMConfig.path,
+        vmDisk: String = InstalledRuntimePaths.defaultInstalled.vmDisk.path,
+        guestRuntimeSettings: String = InstalledRuntimePaths.defaultInstalled.guestRuntimeSettings.path,
+        runtimeControlSettings: String = InstalledRuntimePaths.defaultInstalled.runtimeControlSettings.path,
+        proxyLaunchDaemon: String = InstalledRuntimePaths.defaultInstalled.proxyLaunchDaemon.path
     ) {
         self.vmConfig = vmConfig
         self.appliedVMConfig = appliedVMConfig
@@ -65,7 +65,10 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
                 path: paths.runtimeControlSettings,
                 fileStore: fileStore
             ),
-            proxyPort: proxyPort(plistPath: paths.proxyLaunchDaemon),
+            proxyPort: RuntimeProxyLaunchDaemonPortReader(
+                plistPath: paths.proxyLaunchDaemon,
+                fileStore: fileStore
+            ).loadSettingsResult(),
             startOnBoot: RuntimeSettingsStartOnBootReader(runCommand: runCommand).startOnBootEnabled()
         )
     }
@@ -84,37 +87,6 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
             let size = try fileStore.fileSize(url)
             let bytesPerGiB = 1024 * 1024 * 1024
             return .loaded(max(Int((size + UInt64(bytesPerGiB - 1)) / UInt64(bytesPerGiB)), 1))
-        } catch {
-            return .failed(error.localizedDescription)
-        }
-    }
-
-    private func proxyPort(plistPath: String) -> RuntimeSettingsReadResult<Int> {
-        let url = URL(fileURLWithPath: plistPath)
-        switch runtimeSettingsReadableFileState(url, fileStore: fileStore) {
-        case .loaded:
-            break
-        case .missing:
-            return .missing
-        case .failed(let message):
-            return .failed(message)
-        }
-        do {
-            let data = try fileStore.readData(url)
-            let plist = try PropertyListSerialization.propertyList(
-                from: data,
-                options: [],
-                format: nil
-            )
-            guard let document = plist as? [String: Any],
-                  let environment = document["EnvironmentVariables"] as? [String: Any],
-                  let rawPort = environment["VITALSERVER_PROXY_PORT"] as? String,
-                  let port = Int(rawPort),
-                  (1...65_535).contains(port)
-            else {
-                return .failed("VITALSERVER_PROXY_PORT is missing or invalid")
-            }
-            return .loaded(port)
         } catch {
             return .failed(error.localizedDescription)
         }

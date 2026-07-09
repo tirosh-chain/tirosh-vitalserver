@@ -38,21 +38,21 @@ Redis-only backup/restore는 고급 repair 기능입니다. Surgical recovery나
 
 ### 2-1. 필수 artifact
 
-| Artifact | Owner | Restore 대상 |
-|---|---|---|
-| `redis-data` | Guest | Guest Control `redis-restore` maintenance operation을 통한 Redis Docker volume |
-| `runtime-vm-config` | Host | 설치된 VM config document |
-| `guest-runtime-config` | Host | 배포된 guest runtime config document |
-| `guest-runtime-settings` | Host | runtime settings document |
-| `proxy-launch-daemon-settings` | Host | proxy LaunchDaemon plist |
-| `start-on-boot-state` | Host | managed service의 launchctl enabled/disabled state |
-| `runtime-status-document` | Host | Host runtime status document *(optional: 없으면 skip)* |
-| `runtime-events-document` | Host | Host runtime event document *(optional: 없으면 skip)* |
-| `runtime-observability-database` | Host | `runtime-observability.sqlite` snapshot *(optional: 없으면 skip)* |
+| Artifact | Owner | Role | Restore behavior |
+|---|---|---|---|
+| `redis-data` | Guest | Required recovery data | Guest Control `redis-restore` maintenance operation을 통한 Redis Docker volume |
+| `runtime-vm-config` | Host | Required Host config | 설치된 VM config document |
+| `guest-runtime-config` | Host | Required Host-provided Guest config | 배포된 guest runtime config document |
+| `guest-runtime-settings` | Host | Required settings contract | runtime settings document |
+| `proxy-launch-daemon-settings` | Host | Required Host service config | proxy LaunchDaemon plist |
+| `start-on-boot-state` | Host | Required generated Host config state | managed service의 launchctl enabled/disabled state |
+| `runtime-status-document` | Host | Optional diagnostics/export artifact | Captured in manifest when available; restore must not write it back to current `runtime-status.json` |
+| `runtime-events-document` | Host | Optional diagnostics/observability continuity artifact | Best-effort restore for event history continuity only; not current health/recovery state |
+| `runtime-observability-database` | Host | Optional diagnostics/observability continuity artifact | Best-effort restore for event/query continuity only; not current health/VitalDB product source |
 
 ### 2-2. Optional artifact restore 정책
 
-Restore process는 `runtime-status-document`, `runtime-events-document`, `runtime-observability-database`를 best-effort artifact로 취급합니다. Backup에 없으면 restore는 기존 Host-side file을 유지하고 required artifact만 복원합니다.
+Restore process는 `runtime-events-document`, `runtime-observability-database`를 best-effort artifact로 취급합니다. Backup에 없으면 restore는 기존 Host-side file을 유지하고 required artifact만 복원합니다. `runtime-status-document`는 diagnostics/export artifact로 backup manifest에 남길 수 있지만 restore가 현재 `runtime-status.json` 위치에 되살리면 안 됩니다. Current runtime status는 Runtime Control owner reads와 새 status projection writer가 다시 제공해야 합니다.
 
 ## 3. Artifact schema 소유권
 
@@ -72,9 +72,9 @@ Manifest가 모든 artifact를 하나의 file format으로 합치거나 artifact
 | `guest-runtime-settings` | Runtime settings contract | Host UI와 Guest runtime이 함께 소비합니다. Settings schema 변경은 missing/invalid/default 의미를 명시적으로 보존해야 합니다. |
 | `proxy-launch-daemon-settings` | macOS launchd plist contract | Host LaunchDaemon setup이 소비합니다. Service label/path 의미가 깨지는 변경은 compatibility review가 필요합니다. |
 | `start-on-boot-state` | Host generated start-on-boot state document | 현재 schema는 `RuntimeDataBackupStartOnBootStateDocument.schemaVersion`입니다. Restore는 service state를 추정하지 말고 unsupported document schema를 거부해야 합니다. |
-| `runtime-status-document` | Host runtime status document | Optional UI continuity artifact입니다. Missing은 unavailable을 뜻하며 restore는 status를 합성하지 않습니다. Breaking status schema는 skip하거나 backup compatibility로 gate해야 합니다. |
-| `runtime-events-document` | Host runtime event JSONL contract | Optional observability continuity artifact입니다. Decode/schema change를 empty event list로 숨기면 안 됩니다. |
-| `runtime-observability-database` | Host SQLite observability projection schema | Optional UI continuity artifact입니다. SQLite schema change가 old snapshot을 unreadable하게 만들 수 있으므로, 현재 Helper가 DB를 열기 전에 gate 또는 migration이 필요합니다. |
+| `runtime-status-document` | Host runtime status document | Optional diagnostics/export artifact입니다. Missing은 unavailable을 뜻하며 restore는 status를 합성하거나 현재 status 위치에 복원하지 않습니다. Breaking status schema는 current runtime state로 승격하지 말고 diagnostics/export compatibility로만 다룹니다. |
+| `runtime-events-document` | Host runtime event JSONL contract | Optional diagnostics/observability continuity artifact입니다. Decode/schema change를 empty event list로 숨기면 안 됩니다. |
+| `runtime-observability-database` | Host SQLite observability projection schema | Optional diagnostics/observability continuity artifact입니다. SQLite schema change가 old snapshot을 unreadable하게 만들 수 있으므로, 현재 Helper가 DB를 열기 전에 gate 또는 migration이 필요합니다. |
 
 ## 4. Compatibility 계약
 

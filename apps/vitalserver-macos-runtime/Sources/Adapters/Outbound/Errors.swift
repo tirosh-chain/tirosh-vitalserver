@@ -391,7 +391,7 @@ public enum RuntimeMigrationRunnerError: Error, CustomStringConvertible {
 }
 
 
-public enum RuntimeOperationLeaseRepositoryError: Error, Equatable, CustomStringConvertible {
+public enum RuntimeOperationLeaseOwnerError: Error, Equatable, CustomStringConvertible {
     case existingOperation(operationId: String, operation: String)
     case readFailed(String)
     case createFailed(String)
@@ -427,13 +427,7 @@ public enum RuntimeServiceControllerError: Error, CustomStringConvertible, Equat
     }
 }
 
-
-public enum RuntimeStatusReporterError: Error, Equatable {
-    case missingStatusDocumentForProgress
-    case statusDocumentReadFailed(String)
-}
-
-public enum RuntimeStatusRepositoryError: Error, Equatable, CustomStringConvertible {
+public enum RuntimeArtifactSinkError: Error, Equatable, CustomStringConvertible {
     case missingRequiredRoot(path: String)
     case requiredRootInspectionFailed(path: String, reason: String)
     case unexpectedRequiredRootState(path: String, state: String)
@@ -514,22 +508,8 @@ public enum RuntimeInstallSettingsCleanupError: Error, CustomStringConvertible, 
 }
 
 
-public enum JSONFileRuntimeGuestDocumentReaderError: Error, CustomStringConvertible, Equatable {
-    case pathInspectionFailed(path: String, reason: String)
-    case unexpectedPathState(path: String, state: String)
 
-    public var description: String {
-        switch self {
-        case .pathInspectionFailed(let path, let reason):
-            return "runtime guest document reader path inspection failed: \(path) reason=\(reason)"
-        case .unexpectedPathState(let path, let state):
-            return "runtime guest document reader path state is unexpected: \(path) state=\(state)"
-        }
-    }
-}
-
-
-public enum RuntimeVMLifecycleStoreError: Error, Equatable, CustomStringConvertible {
+public enum RuntimeVMLifecycleResourceWriteError: Error, Equatable, CustomStringConvertible {
     case readFailed(String)
     case invalidStartedAt(String)
     case missingDocumentForState(RuntimeVMLifecycleState)
@@ -537,11 +517,11 @@ public enum RuntimeVMLifecycleStoreError: Error, Equatable, CustomStringConverti
     public var description: String {
         switch self {
         case .readFailed(let reason):
-            return "VM lifecycle document read failed: \(reason)"
+            return "VM lifecycle resource read failed: \(reason)"
         case .invalidStartedAt(let value):
-            return "VM lifecycle document startedAt is invalid: \(value)"
+            return "VM lifecycle resource startedAt is invalid: \(value)"
         case .missingDocumentForState(let state):
-            return "VM lifecycle document is missing for state transition: \(state.rawValue)"
+            return "VM lifecycle resource is missing for state transition: \(state.rawValue)"
         }
     }
 }

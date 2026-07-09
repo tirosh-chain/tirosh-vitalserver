@@ -130,7 +130,7 @@ Implemented on `feature/issue-44`.
 - Package receipt state now distinguishes `present`, `absent`, `readFailed`, and `forgetFailed`.
 - Fresh-install state now distinguishes install settings defaulted/loaded/readFailed/invalid, install artifact present/absent/inspectFailed, package receipt present/absent/readFailed, launchd state, and host proxy port clear/occupied/inspectFailed.
 - Core has uninstall and fresh-install readiness policies that consume explicit Host-owned states and return blockers.
-- Uninstall writes a Host-owned lifecycle document at `/private/tmp/tirosh-vitalserver-uninstall-state.json`.
+- Uninstall writes `/private/tmp/tirosh-vitalserver-uninstall-state.json` as workflow diagnostics/export evidence, not as a Runtime Control current state owner.
 - Uninstall now records separate lifecycle states for service stop blocked, file removal blocked, receipt forget blocked, failed, and completed.
 - Uninstall now re-reads service/process state after stop returns and blocks file removal unless stopped state is explicit. A missing pid file after a successful service stop is still a blocker unless a concrete pid was observed and exited.
 - Clean uninstall verifies cleanup artifact states before forgetting receipts; command success is not treated as proof that files disappeared.

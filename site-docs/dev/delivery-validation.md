@@ -96,7 +96,7 @@ Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
 확인해야 하며, `rootfs-base` 압축은 apt plan proof와 smoke proof가 모두 통과한 경우에만 허용됩니다.
 
 `runtime-smoke`는 compile 뒤의 별도 runtime boot proof입니다. 이 단계는 clean golden runtime으로 VM을
-부팅하고 `runtime-boot-smoke-manifest.json`의 `bootstrap-result`, `runtime-state`, `systemd-units`,
+부팅하고 `runtime-boot-smoke-manifest.json`의 `bootstrap-result`, `runtime-observation`, `systemd-units`,
 `http`, `compose-services`, `disk-health`, `capabilities`, `command-dispatch`, `feature-readiness` stage가
 모두 passed인지 확인합니다. Devtools direct start 경로도 `data/deploy/host-time.json`을 써야 하며,
 Guest가 이 Host-owned time contract를 적용하지 못하면 smoke failure입니다.
@@ -193,9 +193,10 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | Helper UI clean uninstall | `--clean` 사용. graceful stop 실패 시 cleanup 진행을 위해 force stop으로 전환하되 fresh install readiness를 성공으로 추정하지 않음 |
 | Reset for Reinstall | `--force-clean-uninstaller` 사용. fresh install blocker 제거와 readiness 검증을 recovery contract로 수행 |
 
-검증할 때는 성공 case만 보지 않습니다. `guest-runtime-state-stale`, VM stop timeout, pid file
-missing, launchd loaded/running mismatch, progress `missing-marker`처럼 서로 다른 상태가 서로
-섞이지 않는지 확인합니다.
+검증할 때는 성공 case만 보지 않습니다. VM lifecycle `stopping`/`failed`, Guest Control operation
+timeout, pid file missing, launchd loaded/running mismatch, progress `missing-marker`처럼 서로 다른
+상태가 서로 섞이지 않는지 확인합니다. Legacy `guest-runtime-state-*` raw string이 보이면 older
+diagnostics evidence로만 다루고 current recovery reason으로 승격하지 않습니다.
 
 Product update shutdown에서 Guest Control update-shutdown operation이 accepted 상태 이후 progress나
 failure 없이 사라지면 정상 pending으로 보지 않습니다. Guest Control API는 operation read에서
@@ -219,16 +220,16 @@ Guest는 final sync와 `systemctl --no-block poweroff` 요청이 성공한 뒤�
 `ready`/`poweroff-requested` operation state를 기록해야 합니다. Poweroff 요청 전에 ready를 먼저 쓰면 Host가
 실제 요청 실패나 sync hang을 성공 상태로 오해할 수 있습니다.
 Guest가 poweroff target에 도달했더라도 VM process가 종료되지 않을 수 있습니다. `Failed to execute
-shutdown binary`, VM lifecycle `stopping`, `guest-runtime-state-stale`이 함께 보이면 Host는 guest
-shutdown success를 추정하지 말고 bounded wait 실패로 처리한 뒤 VM runtime services force-stop 경로로
-빠져나와야 합니다. Settings restart도 update shutdown과 같은 VM stop 위험을 가지므로, guest shutdown
-wait 또는 poweroff wait 실패 시 force-stop 후 runtime start/health wait로 이어지는 escape hatch가
-필요합니다.
+shutdown binary`, VM lifecycle `stopping`, Guest Control operation timeout 또는 missing VM IP가 함께
+보이면 Host는 guest shutdown success를 추정하지 말고 bounded wait 실패로 처리한 뒤 VM runtime
+services force-stop 경로로 빠져나와야 합니다. Settings restart도 update shutdown과 같은 VM stop
+위험을 가지므로, guest shutdown wait 또는 poweroff wait 실패 시 force-stop 후 runtime start/health
+wait로 이어지는 escape hatch가 필요합니다.
 
 Guest time은 Host-owned `host-time.json` contract에서 동기화합니다. Bootstrap에서 한 번만 맞추면
 rollback, restart, snapshot 기반 VM disk 재사용 뒤 Guest clock이 rootfs/golden 이미지 생성 시점으로
 되돌아갈 수 있습니다. Guest는 매 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로
-`host-time.json`을 읽고 clock을 맞춘 뒤 Docker, runtime-state, observability, compose 서비스를
+`host-time.json`을 읽고 clock을 맞춘 뒤 Docker, runtime-observation, observability, compose 서비스를
 시작해야 합니다. UI나 observer는 timestamp를 현재 시간으로 보정하지 않습니다.
 
 Release package와 DMG build도 expensive compile 단계에 들어가기 전에 Host-owned preflight를 통과해야
@@ -273,15 +274,16 @@ Redis restore처럼 Guest Control maintenance API로 dispatch되는 작업은 �
 operation state를 남기고, invalid command도 failed operation으로 보존해서 같은 invalid trigger가 반복
 실행되지 않게 합니다.
 
-Host의 mutating runtime operation은 `runtime-operation-lease.json`을 source of truth로 사용합니다.
-Lease acquire, heartbeat, release는 파일 lock으로 보호되어야 하며, `missing`을 읽은 뒤 atomic write만
-수행하는 방식은 충분하지 않습니다. 두 Host process가 동시에 들어오면 둘 다 `missing`을 보고 서로의
-lease를 덮을 수 있기 때문입니다. Lock 실패는 busy/failed state로 드러나야 하며, operation이 없다고
-추정하고 다음 단계로 진행하면 안 됩니다.
+Host의 mutating runtime operation owner는 Runtime Control Host operation lease API입니다.
+Lease acquire, heartbeat, release는 `/host/runtime/operation-lease/*` owner boundary를 통해 수행해야
+하며, CLI는 local-server-mediated owner API를 사용할 수 없으면 파일 fallback으로 lease를 추정하지 않고
+unavailable/read failure를 그대로 드러내야 합니다. `runtime-operation-lease.json`은 diagnostics/export
+artifact로 남을 수 있지만 active operation ownership의 source of truth가 아닙니다.
 
 Lock은 state를 대신하지 않습니다. Lock은 같은 owner 영역의 동시 write를 막는 장치이고, operation
-상태는 lease document, Guest Control operation document, workflow state document로 명시되어야 합니다. UI나
-watchdog은 lock 파일, pid file, progress marker를 source of truth로 사용하지 말고 typed document를
+상태는 Host operation lease API, Guest Control operation document, workflow owner contract로 명시되어야
+합니다. workflow state artifact는 diagnostics/export evidence로만 남길 수 있습니다. UI나 watchdog은 lock
+파일, pid file, progress marker, workflow artifact를 source of truth로 사용하지 말고 typed owner contract를
 읽어야 합니다.
 JSONL event append처럼 read-modify-write로 보이는 기록도 lock 대상입니다. Event 유실은 operation
 상태를 직접 바꾸지는 않지만, 장애 원인 분석에 필요한 관측 기록을 사라지게 만들 수 있습니다.
@@ -313,21 +315,22 @@ directory처럼 VM restart 전에는 적용되지 않는 값은 Status/Info에�
 
 Fresh install에서 `vm-lifecycle.json`이 `bootstrapping`에 머물고 guest `bootstrap-result.json`이
 `running`인 채 오래 유지되면 `bootstrap.log`를 먼저 확인합니다. Redis 또는 첫 container start 단계에서
-`runc`/Docker가 실패했는데 bootstrap result가 `failed`로 바뀌지 않으면 Host는 실제 bootstrap 실패를
-보지 못하고 stale runtime state, host proxy failure, recorder ingress failure만 표시합니다. Guest bootstrap
+`runc`/Docker가 실패했는데 bootstrap result가 `failed`로 바뀌지 않으면 runtime smoke와 diagnostics가
+실제 bootstrap failure reason을 증명할 수 없습니다. Product current health는 이 파일을 VM failure
+owner로 읽지 않고 Guest Control readiness/service status와 VM lifecycle을 사용합니다. Guest bootstrap
 script는 시작 시 `running` result를 쓰더라도 실패 trap에서 최종 `completed`가 아닌 상태를 반드시
 `failed`로 덮어써야 합니다. `running`은 한 번 썼다는 marker가 아니라 아직 완료되지 않은 operation
-state입니다.
-Watchdog의 guest bootstrap guard는 Host가 소유한 `vm-lifecycle.json`의 waiting deadline을 넘어서는
-`running` bootstrap result를 active operation으로 취급하면 안 됩니다. VM이 kernel panic이나 early
-termination으로 guest trap을 실행하지 못하면 bootstrap result가 `running`에 머물 수 있으므로,
-deadline 이후에는 Host lifecycle stale/failure 관측이 recovery 또는 critical 상태로 드러나야 합니다.
+proof입니다.
+Watchdog active-operation guard는 `running` bootstrap result를 active operation으로 취급하지 않습니다.
+VM이 kernel panic이나 early termination으로 guest trap을 실행하지 못하면 bootstrap result가
+`running`에 머물 수 있으므로, deadline 이후에는 Host lifecycle stale/failure 관측이 recovery 또는
+critical 상태로 드러나야 합니다.
 VM build는 제품 compile로 취급합니다. `make dist/dmg/dev/compile`, `make dist/pkg/dev/compile`,
 `make devtools/golden-rootfs/compile`은 golden rootfs proof를 새로 요구하며, kernel panic,
 guest boot failure, rootfs proof failure를 우회하지 않습니다. 다만 compile passed는 installed
-runtime passed를 뜻하지 않습니다. Guest bootstrap 완료, `runtime-state.json` 생성, systemd/docker/http
-계약은 DMG dev에서는 `make dist/dmg/dev/verify` 또는 `make dist/dmg/dev/all`의 runtime smoke phase가
-소유하고, PKG dev에서는 `make dist/pkg/dev/runtime-smoke`가 소유합니다.
+runtime passed를 뜻하지 않습니다. Guest bootstrap 완료, Guest Control readiness/service status,
+systemd/docker/http 계약은 DMG dev에서는 `make dist/dmg/dev/verify` 또는 `make dist/dmg/dev/all`의
+runtime smoke phase가 소유하고, PKG dev에서는 `make dist/pkg/dev/runtime-smoke`가 소유합니다.
 DMG dev fast packaging은 `make dist/dmg/dev`가 소유하고, clean compile은 `make dist/dmg/dev/compile`이
 소유합니다. `compile` target의 cache policy는 실행 변수로 바꾸지 않습니다.
 설치/배포 전 표준 게이트는 `make dist/dmg/dev/all` 또는 `make dist/pkg/dev/verify`처럼 compile과
@@ -608,15 +611,16 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
   recovery는 억제하고 backup/recreate 판단으로 연결합니다. 억제 status/event message는 reason만
   남기지 말고 `action=backup-and-recreate-vm`을 함께 기록해 자동 restart가 아닌 데이터 보존형 조치임을
   UI와 로그에서 구분할 수 있어야 합니다.
-- Guest runtime-state read issue는 단순 `guest-runtime-state-invalid`로 축약하지 않습니다. load failure와
-  metadata read failure는 각각 `guest-runtime-state-load-failed-*`,
-  `guest-runtime-state-metadata-read-failed-*` reason으로 유지하고, runtime state input만 invalid로
-  평가합니다. Watchdog은 stale runtime-state에서 파생된 container observation read issue와 실제
-  observation source failure를 typed helper로 구분해야 합니다.
-- VM/Host error raw string이 이미 category와 recovery action을 가진다면 `unknown(...)`으로 보관하지
-  않습니다. Guest runtime state missing, VM disk attachment invalid, VM launch failure, VM configuration
-  invalid, Host resource unavailable 같은 상태는 `RuntimeFailureReason` typed case로 승격하고, raw string
-  parsing은 이전 status/event 문서를 읽기 위한 contract 호환 경로로만 둡니다.
+- Guest runtime-state read issue는 current health/recovery reason으로 승격하지 않습니다. 과거
+  `guest-runtime-state-load-failed-*`, `guest-runtime-state-metadata-read-failed-*`,
+  `vm-runtime-state-*`, `guest-bootstrap-result-*` raw string은 older status/event evidence를
+  decode할 때 `unknown(raw)` diagnostics로 보존할 수 있지만, live `RuntimeFailureReason` typed
+  case나 watchdog recovery input으로 만들지 않습니다.
+- VM/Host error raw string이 현재 explicit owner contract에서 온 domain error라면 typed case로
+  유지합니다. VM disk attachment invalid, VM launch failure, VM configuration invalid, Host resource
+  unavailable 같은 상태는 explicit owner read에서 온 경우에만 `RuntimeFailureReason` typed case가
+  됩니다. File-state legacy raw string parsing은 이전 status/event 문서 보존용이며 live product
+  state를 복구하지 않습니다.
 - Watchdog VM restart 중 graceful stop이 typed VM stop failure 또는 launchd service graceful-stop failure로
   실패하면 Host가 VM process를 force-stop하고 launchd 상태를 unload한 뒤 VM runtime restart를 한 번
   재시도합니다. 이 fallback은 stop failure를 empty success로 숨기지 않고 로그와 command failure 경로에

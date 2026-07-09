@@ -548,6 +548,8 @@ git diff --check
 
 Q1 후보 #86을 재분류해 active inventory에서 삭제했다. `RuntimeLifecycle+Workflows.runtimeStatusPrinter()`의 `vmIP: { statusReporter.loadStatus()?.vmIP ?? "not reported" }`는 `RuntimeStatusPrinter`가 `printStatus()`에서 사람에게 출력하는 display label이다. 이 값은 Host command, recovery, update, API contract, observability persistence 입력으로 소비되지 않는다. AGENTS.md의 allowed fallback인 display labels에 해당한다.
 
+후속 정리: 이후 `RuntimeStatusPrinter`는 `runtime-status.json`에서 VM IP/status를 읽지 않고 explicit current status input을 표시하도록 바뀌었다. Status file은 diagnostics presence로만 표시한다.
+
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
 | Deleted as allowed display label | 1 | 86 | `RuntimeStatusPrinter`의 출력 전용 label이며 state owner contract나 operation transition을 만들지 않는다. |

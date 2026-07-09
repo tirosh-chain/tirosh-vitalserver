@@ -28,7 +28,7 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.logArchiveDirectory.path, "/Library/Application Support/VitalServerHelper/logs/archive")
         XCTAssertEqual(paths.vmIPFile.path, "/Library/Application Support/VitalServerHelper/vm/data/run/vm-ip")
         XCTAssertEqual(paths.vmLifecycle.path, "/Library/Application Support/VitalServerHelper/vm/run/vm-lifecycle.json")
-        XCTAssertEqual(paths.runtimeState.path, "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-state.json")
+        XCTAssertEqual(paths.runtimeObservation.path, "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-observation.json")
         XCTAssertEqual(paths.bootstrapResult.path, "/Library/Application Support/VitalServerHelper/vm/data/run/bootstrap-result.json")
         XCTAssertEqual(paths.updateActivationLog.path, "/Library/Application Support/VitalServerHelper/vm/data/run/activate-update.log")
         XCTAssertEqual(paths.centralUpdateActivationLog.path, "/Library/Application Support/VitalServerHelper/logs/guest/activate-update.log")

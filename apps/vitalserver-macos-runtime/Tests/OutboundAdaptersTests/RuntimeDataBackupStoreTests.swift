@@ -28,7 +28,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -52,7 +52,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
                 .appendingPathComponent("20260610T000000Z-manual-backup")
                 .path
         )
-        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+        let manifestURL = backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)
         let manifest = try JSONDecoder().decode(
             RuntimeDataBackupManifest.self,
             from: Data(contentsOf: manifestURL)
@@ -64,7 +64,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             manifest.restoreCompatibilityVersion,
             RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion
         )
-        XCTAssertEqual(manifest.artifacts.map(\.id), RuntimeDataBackupArtifactID.requiredForUIContinuity)
+        XCTAssertEqual(manifest.artifacts.map(\.id), RuntimeDataBackupArtifactID.manifestArtifactOrder)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeStatusDocument }, 1)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeEventsDocument }, 1)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeObservabilityDatabase }, 1)
@@ -93,7 +93,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -132,7 +132,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -151,7 +151,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
 
         let manifest = try JSONDecoder().decode(
             RuntimeDataBackupManifest.self,
-            from: Data(contentsOf: backup.appendingPathComponent(RuntimeFileNames.backupManifest))
+            from: Data(contentsOf: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest))
         )
 
         let runtimeStatusArtifact = manifest.artifacts.first { $0.id == .runtimeStatusDocument }!
@@ -179,7 +179,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -208,7 +208,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: paths.runtimeObservabilityDatabase), "changed-sqlite")
     }
 
-    func testRestoreBackupRestoresHostArtifactsAndReturnsRedisAndStartOnBootArtifacts() throws {
+    func testRestoreBackupRestoresRequiredHostArtifactsAndKeepsStatusDiagnosticsCurrent() throws {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
@@ -217,7 +217,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -249,7 +249,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: paths.guestRuntimeConfig), "{}")
         XCTAssertEqual(try String(contentsOf: paths.guestRuntimeSettings), "{}")
         XCTAssertEqual(try String(contentsOf: paths.proxyLaunchDaemon), "plist")
-        XCTAssertEqual(try String(contentsOf: paths.runtimeStatus), "{}")
+        XCTAssertEqual(try String(contentsOf: paths.runtimeStatus), "changed-status")
         XCTAssertEqual(try String(contentsOf: paths.runtimeEvents), "{}\n")
         XCTAssertEqual(try String(contentsOf: paths.runtimeObservabilityDatabase), "sqlite")
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.runtimeObservabilityDatabase.path + "-wal"))
@@ -258,6 +258,33 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertEqual(result.startOnBootState.services, [
             RuntimeDataBackupStartOnBootServiceState(label: "ai.tirosh.service", disabled: true)
         ])
+    }
+
+    func testRestoreBackupFailsWhenArchivedOptionalDiagnosticsArtifactIsMissing() throws {
+        let paths = try makePaths()
+        let store = makeStore(paths: paths)
+        let backup = try makeBackup(paths: paths, store: store)
+        let manifest = try JSONDecoder().decode(
+            RuntimeDataBackupManifest.self,
+            from: Data(contentsOf: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest))
+        )
+        let runtimeEventsArtifact = try XCTUnwrap(
+            manifest.artifacts.first { $0.id == .runtimeEventsDocument }
+        )
+        let backupPath = try XCTUnwrap(runtimeEventsArtifact.backupPath)
+        let artifactURL = backup.appendingPathComponent(backupPath)
+        try FileManager.default.removeItem(at: artifactURL)
+
+        XCTAssertThrowsError(try store.restoreBackup(backup)) { error in
+            XCTAssertEqual(
+                error as? RuntimeDataBackupStoreError,
+                .optionalArtifactInvalid(
+                    id: .runtimeEventsDocument,
+                    path: artifactURL.path,
+                    reason: "artifact source is missing"
+                )
+            )
+        }
     }
 
     func testRestoreBackupRejectsMissingRestoreCompatibilityVersion() throws {
@@ -282,7 +309,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             XCTAssertEqual(
                 error as? RuntimeDataBackupStoreError,
                 .manifestInvalid(
-                    path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path,
+                    path: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest).path,
                     errors: ["restoreCompatibilityVersion is missing"]
                 )
             )
@@ -311,7 +338,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             XCTAssertEqual(
                 error as? RuntimeDataBackupStoreError,
                 .manifestInvalid(
-                    path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path,
+                    path: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest).path,
                     errors: ["restoreCompatibilityVersion must be 1"]
                 )
             )
@@ -346,9 +373,9 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             guestRuntimeConfig: data.appendingPathComponent("deploy/runtime-config.json"),
             guestRuntimeSettings: data.appendingPathComponent("deploy/runtime-settings.json"),
             proxyLaunchDaemon: temporaryRoot.appendingPathComponent("proxy.plist"),
-            runtimeStatus: status.appendingPathComponent(RuntimeFileNames.runtimeStatus),
-            runtimeEvents: status.appendingPathComponent(RuntimeFileNames.runtimeEvents),
-            runtimeObservabilityDatabase: status.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+            runtimeStatus: status.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus),
+            runtimeEvents: status.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents),
+            runtimeObservabilityDatabase: status.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         )
     }
 
@@ -357,7 +384,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -388,7 +415,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         backup: URL,
         transform: (RuntimeDataBackupManifest) -> RuntimeDataBackupManifest
     ) throws {
-        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+        let manifestURL = backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)
         let manifest = try JSONDecoder().decode(
             RuntimeDataBackupManifest.self,
             from: Data(contentsOf: manifestURL)

@@ -218,7 +218,7 @@ public enum RuntimeUninstallComposition {
             ),
             writer: RuntimeUninstallStateWriter(
                 writeState: { state, clean, message, blockers in
-                    try RuntimeUninstallStateStore(
+                    try RuntimeUninstallWorkflowStateArtifactStore(
                         url: context.installedPaths.runtimeUninstallState,
                         fileStore: operations.fileStore,
                         now: operations.now

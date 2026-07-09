@@ -1,5 +1,5 @@
 public enum RuntimeGuestAddressSource: String, Codable, Equatable, Sendable {
-    case vmIPFile = "vm-ip"
+    case runtimeControlAPI = "runtime-control-api"
 }
 
 public enum RuntimeGuestAddressReadState: String, Codable, Equatable, Sendable {

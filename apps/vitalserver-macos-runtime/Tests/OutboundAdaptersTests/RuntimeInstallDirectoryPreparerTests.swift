@@ -11,7 +11,7 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
         let guestRunDirectory = URL(fileURLWithPath: "/product/run/guest")
         let logsDirectory = URL(fileURLWithPath: "/product/logs")
         let vmIPFile = URL(fileURLWithPath: "/product/run/guest/vm-ip")
-        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-state.json")
+        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-observation.json")
         let bootstrapResult = URL(fileURLWithPath: "/product/run/guest/bootstrap-result.json")
         var createdDirectories: [URL] = []
         var pathStates: [URL: RuntimePathState] = [
@@ -68,7 +68,7 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
     }
 
     func testPrepareFailsWhenStaleGuestDocumentInspectionFails() {
-        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-state.json")
+        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-observation.json")
         let preparer = RuntimeInstallDirectoryPreparer<TestInstallDirectorySettings>(
             context: RuntimeInstallDirectoryPreparationContext(
                 fixedDirectories: [],
@@ -93,7 +93,7 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
     }
 
     func testPrepareFailsWhenStaleGuestDocumentPathIsDirectory() {
-        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-state.json")
+        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-observation.json")
         let preparer = RuntimeInstallDirectoryPreparer<TestInstallDirectorySettings>(
             context: RuntimeInstallDirectoryPreparationContext(
                 fixedDirectories: [],

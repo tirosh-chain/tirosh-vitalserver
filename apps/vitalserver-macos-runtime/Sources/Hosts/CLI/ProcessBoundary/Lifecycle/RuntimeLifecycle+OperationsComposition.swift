@@ -19,7 +19,14 @@ extension RuntimeLifecycle {
             ),
             operations: RuntimeStatusPrinterCompositionOperations(
                 latestBackupPath: { try latestBackup()?.path },
-                runtimeStatusDocument: statusReporter.loadStatusResult,
+                currentStatus: {
+                    let snapshot = runtimeHealthSnapshot()
+                    let decision = RefreshRuntimeHealthUseCase().decision(snapshot: snapshot)
+                    return RuntimeStatusPrinterCurrentStatus(
+                        status: decision.status,
+                        vmIP: snapshot.vmIP
+                    )
+                },
                 runtimeVersionValue: runtimeVersionValue,
                 installedProxyPort: healthChecker.installedProxyPort,
                 hostProxyHTTPStatus: { url in
@@ -79,14 +86,14 @@ extension RuntimeLifecycle {
 
     func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuardComposition {
         RuntimeManagedOperationGuardComposition.make(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            statusReporter: statusReporter,
-            operationLeaseRepository: JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease),
-            guestBootstrapResultReader: guestBootstrapResultReader,
+            operationLeaseReader: runtimeOperationLeaseOwner(),
             now: { clock.now },
             log: log
         )
+    }
+
+    func runtimeOperationLeaseOwner() -> any RuntimeOperationLeaseOwner {
+        runtimeOperationLeaseOwnerFactory()
     }
 
     func runtimeWatchdogRunner() -> RuntimeWatchdogRunnerComposition {
@@ -100,7 +107,6 @@ extension RuntimeLifecycle {
                 activeManagedOperation: {
                     runtimeManagedOperationGuard().activeOperation()
                 },
-                currentRuntimeStatus: statusReporter.loadStatusResult,
                 healthSnapshot: {
                     runtimeHealthSnapshot()
                 },

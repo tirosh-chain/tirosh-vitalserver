@@ -28,6 +28,7 @@ from tirosh_guest_tools.application.guest_control.runtime import (
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
+    RedisRelayStatusContractError,
     ServiceNotFoundError,
 )
 
@@ -52,12 +53,15 @@ def build_default_usecases() -> GuestControlUseCases:
         service_control=ComposeGuestControlAdapter(),
         product_lab=ProductLabServiceAdapter(),
         recorder_ingress=RecorderIngressStatusServiceAdapter(),
+        redis_relay=operations,
         vitaldb_read_model=vitaldb_read_model,
         redis_backup=RedisBackupMaintenanceAdapter(),
         datastore_repair=DatastoreRepairMaintenanceAdapter(),
         update_activation=UpdateActivationMaintenanceAdapter(),
         update_shutdown=UpdateShutdownMaintenanceAdapter(),
         operations=operations,
+        service_status_snapshots=operations,
+        guest_service_resources=operations,
         operation_ids=UUIDOperationIdFactory(),
         clock=SystemClock(),
     )
@@ -340,6 +344,19 @@ def route_request(
 
     if method == "GET" and parts == ["v1", "recorder-ingress", "status"]:
         return HTTPStatus.OK, usecases.get_recorder_ingress_status()
+
+    if method == "GET" and parts == ["v1", "redis-relay", "status"]:
+        return HTTPStatus.OK, usecases.get_redis_relay_status()
+
+    if method == "PUT" and parts == ["v1", "redis-relay", "status"]:
+        try:
+            return HTTPStatus.OK, usecases.put_redis_relay_status(_json_body(body))
+        except RedisRelayStatusContractError as error:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=error.message,
+                code="redisRelayStatusInvalid",
+            ) from error
 
     if method == "GET" and parts == ["v1", "vitaldb", "observations", "latest"]:
         return HTTPStatus.OK, usecases.get_latest_vitaldb_observation()

@@ -19,6 +19,7 @@ import type {
   RuntimeEventHistory,
   RuntimeGuestControlServiceOperation,
   RuntimeGuestControlStackStatus,
+  RuntimeGuestServiceResource,
   RuntimeGuestServiceControlRequest,
   RuntimeLabBedCreateRequest,
   RuntimeLabBedDeleteRequest,
@@ -55,6 +56,7 @@ import {
   runtimeEventHistorySchema,
   runtimeGuestControlStackStatusSchema,
   runtimeGuestControlServiceOperationSchema,
+  runtimeGuestServiceResourceSchema,
   runtimeLabBedListSchema,
   runtimeLabRecorderListSchema,
   runtimeLabScenarioListSchema,
@@ -214,6 +216,13 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get(
       "/runtime/guest/stack/status",
       runtimeGuestControlStackStatusSchema
+    );
+  }
+
+  getGuestServiceResource(service: string): Promise<RuntimeGuestServiceResource> {
+    return this.get(
+      `/runtime/guest/services/${encodeURIComponent(service)}/resource`,
+      runtimeGuestServiceResourceSchema
     );
   }
 

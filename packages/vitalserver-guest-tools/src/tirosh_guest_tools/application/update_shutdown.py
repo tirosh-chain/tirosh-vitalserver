@@ -153,7 +153,7 @@ def quiesce_shutdown_sidecars() -> None:
         "guest shutdown sidecar quiesce started",
         extra={"fields": {"step": "guest-sidecar-quiesce"}},
     )
-    stop_sidecar_service(RuntimeService.RUNTIME_STATE)
+    stop_sidecar_service(RuntimeService.RUNTIME_OBSERVATION)
     stop_sidecar_service(RuntimeService.CONTAINER_LOGS)
     logger.info(
         "guest shutdown sidecar quiesce completed",

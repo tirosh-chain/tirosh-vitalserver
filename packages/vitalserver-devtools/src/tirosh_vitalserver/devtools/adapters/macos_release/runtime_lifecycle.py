@@ -18,13 +18,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     sign_runtime_cli_with_entitlements,
     sync_release,
 )
-from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
-    RuntimeStateReadError,
-    read_runtime_state,
-    read_runtime_state_guest_http,
-    read_runtime_state_string,
-    read_runtime_state_vm_ip,
-    runtime_state_file,
+from tirosh_vitalserver.devtools.adapters.macos_release.runtime_paths import (
     vm_home_path,
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
@@ -35,6 +29,7 @@ from tirosh_vitalserver.devtools.application.inputs import (
     RuntimeBootSmokeRunInput,
     RuntimeBuildInput,
     RuntimeControlInput,
+    RuntimeGuestAddressOwnerInput,
     RuntimeHealthInput,
     RuntimeSignInput,
     RuntimeSyncReleaseInput,
@@ -99,7 +94,7 @@ ROOTFS_TERMINAL_LOG_PATTERNS = (
 
 RUNTIME_BOOT_SMOKE_REQUIRED_STAGES = (
     "bootstrap-result",
-    "runtime-state",
+    "runtime-observation",
     "systemd-units",
     "runtime-data",
     "http",
@@ -838,50 +833,210 @@ def begin_runtime_boot_smoke_run(input: RuntimeBootSmokeRunInput) -> int:
     return 0
 
 
+class RuntimeBootstrapAddressReadError(Exception):
+    pass
+
+
+def runtime_vm_ip_file(vm_home: str | Path) -> Path:
+    return vm_home_path(vm_home) / "data/run/vm-ip"
+
+
+def read_runtime_bootstrap_vm_ip(vm_home: str | Path) -> str:
+    address_file = runtime_vm_ip_file(vm_home)
+    if not address_file.exists():
+        raise RuntimeBootstrapAddressReadError(
+            f"missing VM IP bootstrap file: {address_file}"
+        )
+    if not address_file.is_file():
+        raise RuntimeBootstrapAddressReadError(
+            f"invalid VM IP bootstrap path: not a file: {address_file}"
+        )
+    try:
+        value = address_file.read_text(encoding="utf-8")
+    except OSError as error:
+        raise RuntimeBootstrapAddressReadError(
+            f"failed to read VM IP bootstrap file: {address_file}: {error}"
+        ) from error
+    value = value.strip()
+    if not value:
+        raise RuntimeBootstrapAddressReadError(
+            f"invalid VM IP bootstrap file: empty address: {address_file}"
+        )
+    return value
+
+
+def print_runtime_guest_address_proxy_upstream(
+    input: RuntimeGuestAddressOwnerInput,
+) -> int:
+    bootstrap_address = read_runtime_bootstrap_vm_ip(input.vm_home)
+    runtime_control_guest_address_request(
+        input,
+        method="PUT",
+        path="/host/runtime/guest-address",
+        body={"address": bootstrap_address},
+    )
+    state = runtime_control_guest_address_request(
+        input,
+        method="GET",
+        path="/host/runtime/guest-address",
+        body=None,
+    )
+    address = loaded_guest_address_from_owner_state(state)
+    print(f"{address}:80")
+    return 0
+
+
+def runtime_control_guest_address_request(
+    input: RuntimeGuestAddressOwnerInput,
+    *,
+    method: str,
+    path: str,
+    body: dict[str, str] | None,
+) -> dict[str, object]:
+    base_url = input.runtime_control_api_base_url.rstrip("/")
+    request_body = None
+    headers = {
+        "Accept": "application/json",
+        input.runtime_control_api_token_header: input.runtime_control_api_token,
+    }
+    if body is not None:
+        request_body = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(
+        f"{base_url}{path}",
+        data=request_body,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=input.runtime_control_api_timeout,
+        ) as response:
+            payload = response.read()
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise SystemExit(
+            "error: Runtime Control Guest address owner request failed: "
+            f"method={method} path={path} status={error.code} detail={detail}"
+        ) from error
+    except urllib.error.URLError as error:
+        raise SystemExit(
+            "error: Runtime Control Guest address owner is unavailable: "
+            f"method={method} path={path} reason={error.reason}"
+        ) from error
+    except TimeoutError as error:
+        raise SystemExit(
+            "error: Runtime Control Guest address owner request timed out: "
+            f"method={method} path={path}"
+        ) from error
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            "error: Runtime Control Guest address owner returned invalid JSON: "
+            f"method={method} path={path} error={error}"
+        ) from error
+    if not isinstance(decoded, dict):
+        raise SystemExit(
+            "error: Runtime Control Guest address owner returned invalid payload: "
+            f"method={method} path={path}"
+        )
+    return decoded
+
+
+def loaded_guest_address_from_owner_state(state: dict[str, object]) -> str:
+    resource_state = state.get("state")
+    read = state.get("read")
+    if resource_state != "loaded" or not isinstance(read, dict):
+        raise SystemExit(
+            "error: Runtime Control Guest address owner is not loaded: "
+            f"state={resource_state!r} readError={state.get('readError')!r}"
+        )
+    read_state = read.get("state")
+    address = read.get("address")
+    if read_state != "loaded" or not isinstance(address, str) or not address.strip():
+        raise SystemExit(
+            "error: Runtime Control Guest address owner returned invalid loaded "
+            f"read: state={read_state!r} address={address!r}"
+        )
+    return address.strip()
+
+
+def probe_guest_runtime_http(vm_ip: str) -> tuple[bool, str]:
+    root_url = f"http://{vm_ip}:80/"
+    recorder_url = f"http://{vm_ip}:80/recorder-ingress/health"
+    root_ready, root_status = probe_http_request(root_url, method="HEAD")
+    if not root_ready:
+        return False, f"root={root_status}"
+    recorder_ready, recorder_status = probe_http_request(recorder_url, method="GET")
+    if not recorder_ready:
+        return False, f"root={root_status} recorder-ingress={recorder_status}"
+    return True, f"root={root_status} recorder-ingress={recorder_status}"
+
+
+def probe_http_request(url: str, *, method: str) -> tuple[bool, str]:
+    request = urllib.request.Request(url, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            status = response.status
+    except urllib.error.HTTPError as error:
+        status = error.code
+    except urllib.error.URLError as error:
+        return False, f"unreachable:{error.reason}"
+    except TimeoutError:
+        return False, "timeout"
+    except OSError as error:
+        return False, f"failed:{error}"
+    return 200 <= status < 400, str(status)
+
+
 def print_runtime_ip(input: RuntimeVmHomeInput) -> int:
     try:
-        print(read_runtime_state_vm_ip(input.vm_home))
-    except RuntimeStateReadError as error:
+        print(read_runtime_bootstrap_vm_ip(input.vm_home))
+    except RuntimeBootstrapAddressReadError as error:
         raise SystemExit(str(error)) from error
     return 0
 
 
 def wait_for_runtime_ip(input: RuntimeWaitInput) -> int:
-    state_file = runtime_state_file(input.vm_home)
-    print(f"Waiting for runtime-state VM IP: {state_file}")
+    address_file = runtime_vm_ip_file(input.vm_home)
+    print(f"Waiting for VM IP bootstrap file: {address_file}")
     deadline = time.monotonic() + input.timeout
     last_error = "not-started"
     while time.monotonic() < deadline:
         try:
-            vm_ip = read_runtime_state_vm_ip(input.vm_home)
+            vm_ip = read_runtime_bootstrap_vm_ip(input.vm_home)
             print(f"VM IP: {vm_ip}")
             return 0
-        except RuntimeStateReadError as error:
+        except RuntimeBootstrapAddressReadError as error:
             last_error = str(error)
         time.sleep(2)
     raise SystemExit(
-        f"error: timed out waiting for VM IP in runtime state: {state_file} "
+        f"error: timed out waiting for VM IP bootstrap file: {address_file} "
         f"last={last_error}\nCheck {launcher_log(input.vm_home)}"
     )
 
 
 def wait_for_runtime_http(input: RuntimeWaitInput) -> int:
-    state_file = runtime_state_file(input.vm_home)
-    print(f"Waiting for runtime-state guestHTTP: {state_file}")
+    address_file = runtime_vm_ip_file(input.vm_home)
+    print(f"Waiting for VM HTTP through bootstrap address: {address_file}")
     deadline = time.monotonic() + input.timeout
     last_status = "not-started"
     while time.monotonic() < deadline:
         try:
-            status = read_runtime_state_guest_http(input.vm_home)
-            if successful_http_status(status):
-                print(f"VM HTTP ready: guestHTTP={status}")
+            vm_ip = read_runtime_bootstrap_vm_ip(input.vm_home)
+            ready, status = probe_guest_runtime_http(vm_ip)
+            if ready:
+                print(f"VM HTTP ready: upstream=http://{vm_ip}:80 status={status}")
                 return 0
             last_status = status
-        except RuntimeStateReadError as error:
+        except RuntimeBootstrapAddressReadError as error:
             last_status = str(error)
         time.sleep(2)
     raise SystemExit(
-        f"error: timed out waiting for VM HTTP in runtime state: {state_file} "
+        "error: timed out waiting for VM HTTP through bootstrap address: "
+        f"{address_file} "
         f"last={last_status}\n"
         f"Check guest bootstrap in {launcher_log(input.vm_home)}"
     )
@@ -1043,24 +1198,22 @@ def check_runtime_health(input: RuntimeHealthInput) -> int:
     print("\nVM IP:")
     vm_ip = ""
     try:
-        runtime_state = read_runtime_state(vm_home)
-        vm_ip = read_runtime_state_string(runtime_state, "vmIP", vm_home)
-        guest_http = read_runtime_state_string(runtime_state, "guestHTTP", vm_home)
+        vm_ip = read_runtime_bootstrap_vm_ip(vm_home)
         print(f"  {vm_ip}")
-    except RuntimeStateReadError as error:
-        guest_http = ""
+    except RuntimeBootstrapAddressReadError as error:
         print(f"  unavailable: {error}")
         status = 1
 
     print("\nGuest HTTP:")
-    if guest_http:
-        if successful_http_status(guest_http):
-            print(f"  ok reported guestHTTP={guest_http}")
+    if vm_ip:
+        ok, code = probe_guest_runtime_http(vm_ip)
+        if ok:
+            print(f"  ok http://{vm_ip}:80 -> {code}")
         else:
-            print(f"  failed reported guestHTTP={guest_http}")
+            print(f"  failed http://{vm_ip}:80 -> {code}")
             status = 1
     else:
-        print("  skipped because runtime state guestHTTP is unavailable")
+        print("  skipped because VM IP bootstrap address is unavailable")
 
     print("\nHost proxy:")
     status |= subprocess.run(

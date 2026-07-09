@@ -12,15 +12,16 @@ public enum RuntimeHealthCheckerComposition {
         serviceManager: RuntimeServiceManager,
         commandRunner: RuntimeCommandRunner,
         httpProber: RuntimeHTTPProber,
-        guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader,
         plistBuddyPath: String,
         lsofPath: String,
         curlPath: String,
         guestAddressProvider: (any RuntimeGuestAddressProvider)? = nil,
+        vmLifecycleResourceReader: (any RuntimeVMLifecycleResourceReading)? = nil,
         guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
         guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) -> RuntimeHealthChecker {
+        let resolvedGuestAddressProvider = guestAddressProvider ?? RuntimeControlAPIGuestAddressProvider()
         return RuntimeHealthChecker(
             context: context(
                 installedPaths: installedPaths,
@@ -32,8 +33,8 @@ public enum RuntimeHealthCheckerComposition {
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestBootstrapResultReader: guestBootstrapResultReader,
-            guestAddressProvider: guestAddressProvider,
+            guestAddressProvider: resolvedGuestAddressProvider,
+            vmLifecycleResourceReader: vmLifecycleResourceReader,
             guestControlGateway: guestControlGateway,
             guestControlGatewayForBaseURL: guestControlGatewayForBaseURL,
             now: now

@@ -180,6 +180,16 @@ class RuntimeVmHomeInput:
 
 
 @dataclass(frozen=True)
+class RuntimeGuestAddressOwnerInput:
+    config: Path
+    vm_home: Path
+    runtime_control_api_base_url: str
+    runtime_control_api_token: str
+    runtime_control_api_token_header: str
+    runtime_control_api_timeout: float
+
+
+@dataclass(frozen=True)
 class RuntimeWaitInput:
     config: Path
     vm_home: Path

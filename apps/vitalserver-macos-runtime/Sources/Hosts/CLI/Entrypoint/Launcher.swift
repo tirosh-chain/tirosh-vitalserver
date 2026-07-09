@@ -120,14 +120,15 @@ struct Launcher {
         let fileStore = SystemRuntimeFileStore()
         let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
-        let lifecycleStore = RuntimeVMLifecycleStore(url: paths.installed.vmLifecycle, fileStore: fileStore)
-        try lifecycleStore.write(
+        let lifecycleWriter = RuntimeControlAPIVMLifecycleResourceWriter()
+        try lifecycleWriter.writeVMLifecycleResource(
             state: .starting,
             operation: .startServices,
+            terminalReason: nil,
             message: "VM process start requested",
             bootWindowSeconds: Constants.Runtime.vmBootLifecycleDeadlineSeconds
         )
-        try removeStaleRuntimeState(paths: paths, fileStore: fileStore)
+        try removeStaleGuestBootstrapArtifacts(paths: paths, fileStore: fileStore)
         try ProcessState.writeCurrentPid(pidFile: paths.pidFile, fileStore: fileStore)
 
         let configurationFactory = VMConfigurationFactory.hostCLI(fileStore: fileStore)
@@ -164,13 +165,13 @@ struct Launcher {
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
         let delegate = VirtualMachineDelegate.hostCLI(
             pidFile: paths.pidFile,
-            lifecycleStore: lifecycleStore,
+            lifecycleWriter: lifecycleWriter,
             fileStore: fileStore
         )
         let terminationHandler = VirtualMachineTerminationHandler.hostCLI(
             virtualMachine: virtualMachine,
             pidFile: paths.pidFile,
-            lifecycleStore: lifecycleStore,
+            lifecycleWriter: lifecycleWriter,
             fileStore: fileStore
         )
         virtualMachine.delegate = delegate
@@ -182,9 +183,10 @@ struct Launcher {
             case .success:
                 do {
                     try writeAppliedVMConfig(config, to: paths.installed.appliedVMConfig, fileStore: fileStore)
-                    try lifecycleStore.write(
+                    try lifecycleWriter.writeVMLifecycleResource(
                         state: .bootstrapping,
                         operation: .startServices,
+                        terminalReason: nil,
                         message: "VM process started; waiting for guest runtime",
                         bootWindowSeconds: Constants.Runtime.vmBootLifecycleDeadlineSeconds
                     )
@@ -195,11 +197,12 @@ struct Launcher {
             case let .failure(error):
                 ProcessState.removePidFile(paths.pidFile, fileStore: fileStore)
                 do {
-                    try lifecycleStore.write(
+                    try lifecycleWriter.writeVMLifecycleResource(
                         state: .failed,
                         operation: .startServices,
                         terminalReason: vmStartFailureReason(error),
-                        message: error.localizedDescription
+                        message: error.localizedDescription,
+                        bootWindowSeconds: nil
                     )
                 } catch {
                     fputs("failed to write VM lifecycle failed state: \(error)\n", stderr)
@@ -227,14 +230,14 @@ struct Launcher {
         try fileStore.writeData(try encoder.encode(config), to: url, options: .atomic)
     }
 
-    private func removeStaleRuntimeState(
+    private func removeStaleGuestBootstrapArtifacts(
         paths: LauncherPaths,
         fileStore: RuntimeFileReading & RuntimeFileWriting
     ) throws {
-        for url in [paths.installed.runtimeState, paths.installed.vmIPFile] {
+        for url in [paths.installed.runtimeObservation, paths.installed.vmIPFile] {
             if fileStore.fileExists(url) {
                 try fileStore.removeItem(at: url)
-                print("removed stale runtime state: \(url.path)")
+                print("removed stale guest bootstrap artifact: \(url.path)")
             }
         }
     }

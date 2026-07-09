@@ -22,6 +22,7 @@ import type {
   RuntimeLabVitalFileUploadResponse,
   RuntimeLabVitalFileReplayRequest,
   RuntimeGuestControlServiceOperation,
+  RuntimeGuestServiceResource,
   RuntimeGuestServiceControlRequest,
   RuntimeLogExportResult,
   RuntimeLogTextRequest,
@@ -80,6 +81,7 @@ export type RuntimeControlGateway = {
     request: RuntimeLabVitalFileReplayRequest
   ): Promise<RuntimeLabSessionResponse>;
   getGuestStackStatus(): Promise<RuntimeGuestControlStackStatus>;
+  getGuestServiceResource(service: string): Promise<RuntimeGuestServiceResource>;
   startGuestService(
     request: RuntimeGuestServiceControlRequest
   ): Promise<RuntimeGuestControlServiceOperation>;

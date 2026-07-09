@@ -218,6 +218,27 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertEqual(plan.actionReasons, [])
     }
 
+    func testDesiredStoppedGuestServiceDoesNotReconcileGuestStack() {
+        let plan = RuntimeRecoveryPlanner.plan(input(
+            vmLifecycle: runningLifecycle(),
+            guestServiceStatuses: .loaded([
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "stopped",
+                    health: "unknown",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ]),
+            guestServiceResources: [
+                guestServiceResource(service: "app", desiredState: "stopped"),
+            ]
+        ))
+
+        XCTAssertTrue(plan.canRecover)
+        XCTAssertFalse(plan.reconcileGuestStack)
+        XCTAssertEqual(plan.actionReasons, [])
+    }
+
     func testMissingGuestServiceStatusesDoNotCreateVMRestartReason() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             vmLifecycle: runningLifecycle(),
@@ -279,7 +300,8 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         guestHTTP: String = "200",
         hostProxyReadinessHTTP: String = "200",
         hostProxyLivenessHTTP: String = "204",
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
+        guestServiceResources: [RuntimeGuestServiceResource] = []
     ) -> RuntimeRecoveryInput {
         RuntimeRecoveryInput(
             vmExecutable: vmExecutable,
@@ -294,7 +316,20 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
             guestHTTP: guestHTTP,
             hostProxyReadinessHTTP: hostProxyReadinessHTTP,
             hostProxyLivenessHTTP: hostProxyLivenessHTTP,
-            guestServiceStatuses: guestServiceStatuses
+            guestServiceStatuses: guestServiceStatuses,
+            guestServiceResources: guestServiceResources
+        )
+    }
+
+    private func guestServiceResource(
+        service: String,
+        desiredState: String
+    ) -> RuntimeGuestServiceResource {
+        RuntimeGuestServiceResource(
+            service: service,
+            spec: RuntimeGuestServiceSpec(state: desiredState, desiredState: desiredState),
+            status: RuntimeGuestServiceStatusRead(state: desiredState),
+            conditions: []
         )
     }
 

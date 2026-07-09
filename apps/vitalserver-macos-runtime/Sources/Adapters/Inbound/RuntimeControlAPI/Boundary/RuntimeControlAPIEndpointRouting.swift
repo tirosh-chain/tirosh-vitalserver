@@ -93,6 +93,8 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .get, path: "/runtime/guest/services", scope: .runtimeControl)
         case .guestServiceStatus:
             return .init(method: .get, path: "/runtime/guest/services/{service}/status", scope: .runtimeControl)
+        case .guestServiceResource:
+            return .init(method: .get, path: "/runtime/guest/services/{service}/resource", scope: .runtimeControl)
         case .startGuestService:
             return .init(method: .post, path: "/runtime/guest/services/start", scope: .runtimeControl)
         case .stopGuestService:
@@ -143,6 +145,20 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .delete, path: "/host/backups/vitalserver-helper", scope: .hostAffordance)
         case .exportLogs:
             return .init(method: .post, path: "/host/logs/export", scope: .hostAffordance)
+        case .acquireOperationLease:
+            return .init(method: .post, path: "/host/runtime/operation-lease/acquire", scope: .hostAffordance)
+        case .heartbeatOperationLease:
+            return .init(method: .post, path: "/host/runtime/operation-lease/heartbeat", scope: .hostAffordance)
+        case .releaseOperationLease:
+            return .init(method: .post, path: "/host/runtime/operation-lease/release", scope: .hostAffordance)
+        case .guestAddress:
+            return .init(method: .get, path: "/host/runtime/guest-address", scope: .hostAffordance)
+        case .putGuestAddress:
+            return .init(method: .put, path: "/host/runtime/guest-address", scope: .hostAffordance)
+        case .vmLifecycle:
+            return .init(method: .get, path: "/host/runtime/vm-lifecycle", scope: .hostAffordance)
+        case .putVMLifecycle:
+            return .init(method: .put, path: "/host/runtime/vm-lifecycle", scope: .hostAffordance)
         }
     }
 
@@ -191,6 +207,14 @@ public extension RuntimeControlAPIEndpoint {
                 && components[2] == "services"
                 && !components[3].isEmpty
                 && components[4] == "status"
+        case .guestServiceResource:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 5
+                && components[0] == "runtime"
+                && components[1] == "guest"
+                && components[2] == "services"
+                && !components[3].isEmpty
+                && components[4] == "resource"
         case .labSession:
             let components = path.split(separator: "/", omittingEmptySubsequences: true)
             return components.count == 3

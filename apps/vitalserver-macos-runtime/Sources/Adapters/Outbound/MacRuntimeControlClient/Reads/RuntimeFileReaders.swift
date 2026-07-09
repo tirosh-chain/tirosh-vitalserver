@@ -99,7 +99,7 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
     }
 
     func preferredLogsPath() -> String {
-        return RuntimeControlClientConstants.Paths.productLogs
+        return InstalledRuntimePaths.defaultInstalled.productLogsDirectory.path
     }
 
     func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {

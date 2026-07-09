@@ -15,6 +15,7 @@ public enum RuntimeDataBackupStoreError: Error, Equatable, CustomStringConvertib
     case artifactPathInvalid(id: RuntimeDataBackupArtifactID, path: String)
     case artifactChecksumMismatch(id: RuntimeDataBackupArtifactID, path: String)
     case artifactSizeMismatch(id: RuntimeDataBackupArtifactID, path: String)
+    case optionalArtifactInvalid(id: RuntimeDataBackupArtifactID, path: String, reason: String)
     case restoreDestinationInspectionFailed(id: RuntimeDataBackupArtifactID, path: String, reason: String)
     case restoreDestinationUnexpectedState(id: RuntimeDataBackupArtifactID, path: String, state: String)
     case restoreWriteFailed(id: RuntimeDataBackupArtifactID, path: String, reason: String)
@@ -41,6 +42,8 @@ public enum RuntimeDataBackupStoreError: Error, Equatable, CustomStringConvertib
             return "runtime data backup artifact checksum mismatch id=\(id.rawValue) path=\(path)"
         case .artifactSizeMismatch(let id, let path):
             return "runtime data backup artifact size mismatch id=\(id.rawValue) path=\(path)"
+        case .optionalArtifactInvalid(let id, let path, let reason):
+            return "optional runtime data backup artifact is invalid id=\(id.rawValue) path=\(path) reason=\(reason)"
         case .restoreDestinationInspectionFailed(let id, let path, let reason):
             return "runtime data restore destination inspection failed id=\(id.rawValue) path=\(path) reason=\(reason)"
         case .restoreDestinationUnexpectedState(let id, let path, let state):
@@ -212,7 +215,6 @@ public struct RuntimeDataBackupStore {
             backup: backup,
             destination: paths.proxyLaunchDaemon
         )
-        try restoreOptionalFile(.runtimeStatusDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeStatus)
         try restoreOptionalFile(.runtimeEventsDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeEvents)
         try restoreOptionalSQLiteSnapshot(artifacts: artifacts, backup: backup, destination: paths.runtimeObservabilityDatabase)
 
@@ -575,7 +577,7 @@ public struct RuntimeDataBackupStore {
         backup: URL,
         destination: URL
     ) throws {
-        guard let source = optionalVerifiedArtifact(id, artifacts: artifacts, backup: backup) else {
+        guard let source = try optionalVerifiedArtifact(id, artifacts: artifacts, backup: backup) else {
             return
         }
 
@@ -602,7 +604,7 @@ public struct RuntimeDataBackupStore {
         backup: URL,
         destination: URL
     ) throws {
-        guard optionalVerifiedArtifact(
+        guard try optionalVerifiedArtifact(
             .runtimeObservabilityDatabase,
             artifacts: artifacts,
             backup: backup
@@ -644,27 +646,74 @@ public struct RuntimeDataBackupStore {
         _ id: RuntimeDataBackupArtifactID,
         artifacts: [RuntimeDataBackupArtifactID: RuntimeDataBackupArtifact],
         backup: URL
-    ) -> URL? {
-        guard let artifact = artifacts[id],
-              (artifact.role == .optional || RuntimeDataBackupArtifactID.optionalForUIContinuity.contains(id)),
-              artifact.state == .archived,
-              let backupPath = artifact.backupPath else {
+    ) throws -> URL? {
+        guard let artifact = artifacts[id] else {
             return nil
         }
-
-        guard let source = try? artifactURL(id: id, backupPath: backupPath, backup: backup),
-              case .file = fileStore.pathState(at: source) else {
+        guard artifact.role == .optional || RuntimeDataBackupArtifactID.optionalForDiagnosticsContinuity.contains(id) else {
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: artifact.backupPath ?? backup.path,
+                reason: "manifest role is \(artifact.role.rawValue)"
+            )
+        }
+        guard artifact.state != .missing else {
             return nil
         }
+        guard artifact.state == .archived else {
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: artifact.backupPath ?? backup.path,
+                reason: "manifest state is \(artifact.state.rawValue)"
+            )
+        }
+        guard let backupPath = artifact.backupPath else {
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: backup.path,
+                reason: "backupPath is missing"
+            )
+        }
 
-        guard let data = try? fileStore.readData(source) else {
-            return nil
+        let source = try artifactURL(id: id, backupPath: backupPath, backup: backup)
+        switch fileStore.pathState(at: source) {
+        case .file:
+            break
+        case .missing:
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: source.path,
+                reason: "artifact source is missing"
+            )
+        case .inspectFailed(let reason):
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: source.path,
+                reason: "artifact source inspection failed: \(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: source.path,
+                reason: "artifact source state is \(fileStore.pathState(at: source).rawValue)"
+            )
+        }
+
+        let data: Data
+        do {
+            data = try fileStore.readData(source)
+        } catch {
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: source.path,
+                reason: "artifact source read failed: \(error.localizedDescription)"
+            )
         }
         if artifact.sizeBytes != UInt64(data.count) {
-            return nil
+            throw RuntimeDataBackupStoreError.artifactSizeMismatch(id: id, path: source.path)
         }
         if artifact.sha256 != sha256(data) {
-            return nil
+            throw RuntimeDataBackupStoreError.artifactChecksumMismatch(id: id, path: source.path)
         }
 
         return source

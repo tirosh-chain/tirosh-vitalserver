@@ -50,30 +50,6 @@ public struct RuntimeEventFactory {
         )
     }
 
-    public func statusDocumentEvent(
-        _ statusDocument: RuntimeStatusDocument,
-        operation: RuntimeOperation,
-        message: String,
-        eventType: RuntimeEventType,
-        progress: RuntimeProgressDocument? = nil
-    ) -> RuntimeEventDocument {
-        RuntimeEventDocument(
-            id: id(),
-            eventType: eventType,
-            timestamp: timestamp(),
-            product: product,
-            status: statusDocument.status,
-            previousStatus: statusDocument.status,
-            operation: operation,
-            message: message,
-            runtimeVersion: runtimeVersion(),
-            vmState: statusDocument.vmState,
-            vmErrors: statusDocument.vmErrors,
-            failureReasons: statusDocument.failureReasons,
-            progress: progress
-        )
-    }
-
     public func documentEvent(
         source: String = "host-runtime",
         eventType: RuntimeEventType,

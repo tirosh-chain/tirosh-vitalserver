@@ -49,7 +49,7 @@ class ComposeSettings:
 @dataclass(frozen=True)
 class IntervalSettings:
     command_poll_seconds: int
-    runtime_state_seconds: int
+    runtime_observation_seconds: int
     observability_seconds: float
 
 
@@ -144,9 +144,9 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
                 "commandPollSeconds",
                 minimum=1,
             ),
-            runtime_state_seconds=toml_int_value(
+            runtime_observation_seconds=toml_int_value(
                 toml_table(document, "intervals"),
-                "runtimeStateSeconds",
+                "runtimeObservationSeconds",
                 minimum=1,
             ),
             observability_seconds=toml_float_value(

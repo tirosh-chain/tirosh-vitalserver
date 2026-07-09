@@ -119,6 +119,31 @@ struct RuntimeControlHTTPCommandRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.exportLogs(destination: exportRequest.destination)
             )
+        case .acquireOperationLease:
+            let acquireRequest = try request.decodedBody(RuntimeOperationLeaseAcquireRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.acquireOperationLease(acquireRequest)
+            )
+        case .heartbeatOperationLease:
+            let heartbeatRequest = try request.decodedBody(RuntimeOperationLeaseHeartbeatRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.heartbeatOperationLease(heartbeatRequest)
+            )
+        case .releaseOperationLease:
+            let releaseRequest = try request.decodedBody(RuntimeOperationLeaseReleaseRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.releaseOperationLease(releaseRequest)
+            )
+        case .putGuestAddress:
+            let guestAddressRequest = try request.decodedBody(RuntimeGuestAddressPutRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.putGuestAddressResource(guestAddressRequest)
+            )
+        case .putVMLifecycle:
+            let lifecycleRequest = try request.decodedBody(RuntimeVMLifecyclePutRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.putVMLifecycleResource(lifecycleRequest)
+            )
         case .uninstall:
             let uninstallRequest = try request.decodedBody(RuntimeUninstallRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(
@@ -130,6 +155,8 @@ struct RuntimeControlHTTPCommandRoutes {
              .status,
              .statusStream,
              .operationState,
+             .guestAddress,
+             .vmLifecycle,
              .events,
              .eventStream,
              .vitalDBObservation,
@@ -152,6 +179,7 @@ struct RuntimeControlHTTPCommandRoutes {
              .guestStackStatus,
              .guestServices,
              .guestServiceStatus,
+             .guestServiceResource,
              .logText,
              .logStream,
              .backups,

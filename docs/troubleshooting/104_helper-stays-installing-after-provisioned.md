@@ -47,7 +47,7 @@ The operation-state presentation contract treated any loaded `provisioned` insta
 
 ## Fix Direction
 
-Keep the install-state document visible, but do not promote `state=provisioned` to `activeOperation=install`.
+Keep the install-state document as diagnostics/export evidence only; do not promote install-state artifacts to `activeOperation=install` or Runtime Control current operation detail. Active operation must come from the explicit operation lease/API owner.
 
 Runtime readiness and lifecycle state must then drive the UI:
 

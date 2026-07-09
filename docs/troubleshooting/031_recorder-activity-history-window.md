@@ -25,25 +25,25 @@ Recorder activity가 실제 장시간 트래픽 추세를 보여주지 못합니
 
 ## Cause
 
-현재 activity chart는 `/vitaldb/recorders`가 제공하는 `activityTimeline[].buckets`를 합쳐 표시합니다.
+현재 activity chart는 Runtime Control의 Guest/Postgres read model 기반 recorder activity read를 표시합니다.
 
-이 값은 두 계층의 조합입니다.
+당시 문제를 만든 legacy 흐름은 두 계층의 조합이었습니다.
 
 1. `vitaldb-observer`는 Redis audit list에서 최근 `recorderActivityWindowSeconds` 구간을 읽어 rolling activity bucket을 만듭니다.
-2. macOS runtime은 여러 observer snapshot을 SQLite observation history에 저장하고, Remote Console은 이 history를 합쳐 장시간 chart를 구성합니다.
+2. macOS runtime은 여러 observer snapshot을 Host SQLite observation history에 저장하고, Remote Console은 이 history를 합쳐 장시간 chart를 구성했습니다.
 
-따라서 장시간 그래프가 나오려면 SQLite observation history가 지속적으로 쌓이고 조회되어야 합니다. SQLite history가 비어 있거나, read/decode 실패가 빈 목록으로 숨겨지거나, 최신 status observation만 fallback으로 붙으면 UI는 최신 rolling window만 보게 됩니다.
+따라서 장시간 그래프가 나오려면 durable activity projection이 지속적으로 쌓이고 조회되어야 합니다. Projection history가 비어 있거나, read/decode 실패가 빈 목록으로 숨겨지거나, 최신 observation만 fallback으로 붙으면 UI는 최신 rolling window만 보게 됩니다.
 
-2026-05-30 코드 검토에서 확인한 구체 흐름:
+2026-05-30 코드 검토에서 확인한 legacy 흐름:
 
 1. `recorder-ingress`가 recorder의 Socket.IO `send_data`를 감지해 Redis list `vitalserver:audit_events`에 audit event를 기록합니다.
 2. `vitaldb-observer`는 Redis list의 최근 event를 읽고 `VITALDB_OBSERVER_RECORDER_ACTIVITY_WINDOW_SECONDS` 기본값인 300초 rolling activity를 계산합니다.
-3. Guest의 `tirosh-runtime-state` systemd service가 기본 5초마다 `vitaldb-observer`의 `/api/v1/observations`를 호출하고, 결과를 `runtime-state.json`의 `vitalDBObservation`에 포함합니다.
-4. Host watchdog은 기본 60초마다 `runtime-state.json`을 읽어 `RuntimeHealthSnapshot`을 만들고, status/event 기록 시 `vitalDBObservation`을 함께 전달합니다.
-5. `RuntimeObservationRecorder`가 event를 JSONL/SQLite event store에 기록한 뒤, event에 포함된 `vitalDBObservation`을 `SQLiteRuntimeObservabilityStore.append`로 `vitaldb_observation_snapshots`에 저장합니다.
-6. Runtime Control API의 `/vitaldb/recorders`는 `vitaldb_observation_snapshots`를 읽어 `RuntimeVitalRecorderHistory`를 구성합니다.
+3. Guest runtime observation writer가 `vitaldb-observer`의 `/api/v1/observations`를 호출한 뒤 Host-readable runtime-state bridge에 observation을 포함했습니다.
+4. Host watchdog/status/event path가 이 Host-readable bridge를 읽고 observation을 event/status projection에 전달했습니다.
+5. `RuntimeObservationRecorder`가 event를 JSONL/SQLite event store에 기록한 뒤, event에 포함된 observation을 Host SQLite projection에 저장했습니다.
+6. Runtime Control API의 `/vitaldb/recorders`는 Host SQLite projection을 읽어 `RuntimeVitalRecorderHistory`를 구성했습니다.
 
-현재 구조상 SQLite observation history는 독립적인 projection loop가 아니라 watchdog event recording의 부수효과입니다. 따라서 watchdog이 돌지 않거나, guest state가 stale 처리되거나, event recording은 성공했지만 observation append가 실패하면 장시간 history가 끊깁니다.
+이 legacy 구조에서 Host SQLite observation history는 독립적인 projection loop가 아니라 watchdog event recording의 부수효과였습니다. 따라서 watchdog이 돌지 않거나, guest state가 stale 처리되거나, event recording은 성공했지만 observation append가 실패하면 장시간 history가 끊겼습니다.
 
 또한 두 failure가 명시적으로 드러나지 않습니다.
 
@@ -93,11 +93,11 @@ docker exec vitalserver-vitaldb-observer env \
 
 수정 방향:
 
-1. Recorder packet activity의 durable SoT는 SQLite의 1-minute bucket projection이어야 합니다.
-2. Packet collection부터 SQLite insert까지의 흐름은 명시적인 pipeline이어야 합니다.
-3. `/vitaldb/recorders`와 Remote Console은 rolling snapshot을 재해석하지 말고 SQLite bucket projection을 조회해야 합니다.
+1. Recorder packet activity의 durable SoT는 Guest/Postgres read model의 1-minute bucket projection이어야 합니다.
+2. Packet collection부터 Postgres read model write까지의 흐름은 명시적인 pipeline이어야 합니다.
+3. `/vitaldb/recorders`, `/vitaldb/recorders/{vrcode}/activity`, Remote Console은 rolling snapshot을 재해석하지 말고 Guest/Postgres bucket projection을 조회해야 합니다.
 4. Runtime status/event recording은 activity history persistence의 부수효과가 되면 안 됩니다.
-5. SQLite bucket projection append/read 실패는 best-effort 로그로만 끝내지 말고 runtime status/event/API에서 확인 가능한 projection failure로 남겨야 합니다.
+5. Activity projection append/read 실패는 best-effort 로그로만 끝내지 말고 Guest Control/API read state에서 확인 가능한 projection failure로 남겨야 합니다.
 6. `Total packets`는 선택한 visible buckets 합계로 계산하고, history coverage가 부족하면 장시간 합계처럼 표시하지 않아야 합니다.
 
 목표 구조:
@@ -106,10 +106,10 @@ docker exec vitalserver-vitaldb-observer env \
 Recorder send_data
   -> recorder-ingress raw audit event
   -> vitaldb-observer 1-minute RecorderActivityBucket observation
-  -> guest runtime-state transfer
-  -> host observability projection
-  -> SQLite vitaldb_recorder_activity_buckets
-  -> Runtime Control API /vitaldb/recorders
+  -> Guest/Postgres read model writer
+  -> Postgres vitaldb observation/activity projection
+  -> Guest Control API /v1/vitaldb/*
+  -> Runtime Control API /vitaldb/recorders and /vitaldb/recorders/{vrcode}/activity
   -> Remote Console chart
 ```
 
@@ -117,7 +117,7 @@ Recorder send_data
 
 - latest rolling activity를 장시간 history처럼 재사용
 - watchdog/status/event 기록의 부수효과로 activity history를 저장
-- SQLite read/write 실패를 빈 배열, fallback observation, 최신 snapshot으로 숨김
+- read/write 실패를 빈 배열, fallback observation, 최신 snapshot으로 숨김
 - Host/UI가 activity history를 추정하거나 보정
 
 ## Implementation Notes
@@ -128,7 +128,7 @@ Recorder send_data
 - `VitalDBObservationDocument`에 포함된 recorder activity bucket을 projection 단계에서 `vrcode + bucketStartedAt + bucketSeconds` 기준으로 upsert합니다.
 - 같은 1분 bucket이 여러 observer snapshot에 반복 포함되면 message/byte/room count는 가장 큰 aggregate를 유지하고, first/last observed time을 갱신합니다.
 - `RuntimeVitalRecorderHistory`는 projection bucket이 제공되면 snapshot 안의 rolling activity를 사용하지 않고 SQLite projection bucket만 activity timeline으로 변환합니다.
-- `RuntimeObservationRecorder`는 event 기록만 담당하도록 정리했습니다. VitalDB observation persistence는 status writer의 명시적 projection 경로로 이동했습니다.
+- `RuntimeObservationRecorder`는 event 기록만 담당하도록 정리했습니다. VitalDB observation persistence는 명시적 projection 경로로 이동했습니다.
 - Remote Console의 `Packets` 지표는 chart y-axis 최대값이 아니라 최신 non-zero bucket 값을 보여주도록 수정했습니다.
 
 - `/vitaldb/recorders` response에 `activityHistory` metadata를 추가해 SQLite projection source, bucket coverage, read error를 명시했습니다.
@@ -137,10 +137,10 @@ Recorder send_data
 2026-05-31 hotfix 원칙:
 
 - `/vitaldb/recorders`의 current recorder status는 SQLite projection에서 추정하지 않습니다.
-- current status source는 Guest owner가 제공하는 `runtime-state.json.vitalDBObservation`입니다.
-- Host `runtime-status.json.vitalDBObservation`은 guest runtime-state를 읽을 수 없을 때의 명시 fallback입니다.
+- current status source는 Guest owner가 제공하는 Product API/Postgres read model입니다.
+- Host `runtime-status.json`은 recorder/VitalDB current status fallback이 아닙니다. Guest read가 unavailable/failed이면 그 상태를 API read state로 보존하고, Host status projection이나 Host SQLite projection으로 product recorder state를 만들지 않습니다.
 - SQLite observation/bucket projection은 history source입니다. Projection이 current status보다 오래됐을 때 더 최신처럼 선택하면 안 됩니다.
-- `runtime-state.json` read/decode 실패는 빈 current status로 숨기지 않고 `/vitaldb/recorders.activityHistory.readError`에 보존합니다.
+- Guest/Postgres read 실패는 빈 current status로 숨기지 않고 `/vitaldb/recorders.activityHistory.readError` 또는 explicit read state에 보존합니다.
 - `vitaldb-observer`는 Redis `utime_*` fractional timestamp와 observer `observedAt` second precision 사이의 subsecond skew만 허용합니다. 큰 future timestamp는 stale로 남깁니다.
 
 ## Prevention
@@ -163,4 +163,4 @@ latest rolling window를 장시간 history처럼 보이게 만들면 안 됩니�
 - 2026-05-30: 패킷 수집부터 SQLite 조회까지의 흐름을 확인했습니다. SQLite 삽입은 존재하지만 watchdog event recording에 종속되어 있고, append/read 실패가 명시 상태로 드러나지 않는 구조를 추가 원인으로 등록했습니다.
 - 2026-05-30: recorder activity 1-minute bucket projection을 SQLite에 명시적으로 추가하고, `/vitaldb/recorders` read model이 projection bucket을 activity timeline으로 사용하도록 전환했습니다.
 - 2026-05-30: SQLite activity projection read failure를 `/vitaldb/recorders.activityHistory.readError`로 노출하고, Remote Console에서 불완전한 activity history를 표시하도록 수정했습니다.
-- 2026-05-31: VRecorder 상태 변화가 30-60초 늦게 보이는 증상을 확인했습니다. `/vitaldb/recorders`가 host watchdog이 쌓는 SQLite/status projection을 current status처럼 사용하던 구조를 분리하고, guest runtime-state를 current source로 명시했습니다.
+- 2026-05-31: VRecorder 상태 변화가 30-60초 늦게 보이는 증상을 확인했습니다. `/vitaldb/recorders`가 Host watchdog이 쌓는 SQLite/status projection을 current status처럼 사용하던 구조를 분리하고, Guest/Postgres read model을 current source로 명시했습니다.

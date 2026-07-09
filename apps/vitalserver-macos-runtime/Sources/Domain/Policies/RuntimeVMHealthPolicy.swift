@@ -42,7 +42,6 @@ public enum RuntimeVMHealthPolicy {
             errors.append(.serviceNotLoaded(input.vmService.rawValue))
         }
         errors.append(contentsOf: guestReadinessErrors(input.guestReadiness))
-        errors.append(contentsOf: guestBootstrapErrors(input))
         return uniqueErrors(
             errors
                 + (input.vmLifecycle?.reportedVMErrors ?? [])
@@ -69,41 +68,6 @@ public enum RuntimeVMHealthPolicy {
                 errors.append(.guestHTTPProbeFailed(status))
             }
             return errors
-        }
-    }
-
-    private static func guestBootstrapErrors(_ input: RuntimeHealthInput) -> [RuntimeVMError] {
-        if case .failed(let reason) = input.guestBootstrapAssessment {
-            return [vmError(for: reason)]
-        }
-        guard case .reported(_, let guestHTTP) = input.guestReadiness,
-              !guestHTTP.isSuccessful else {
-            return []
-        }
-        switch input.guestBootstrapAssessment {
-        case .missing:
-            return isBootstrapping(input.vmLifecycle) ? [] : [.guestBootstrapResultMissing]
-        case .unavailable:
-            return [.guestBootstrapResultUnavailable]
-        case .notCurrentBoot, .noFailure, .failed:
-            return []
-        }
-    }
-
-    private static func isBootstrapping(_ lifecycle: RuntimeVMLifecycleDocument?) -> Bool {
-        lifecycle?.state == .starting || lifecycle?.state == .bootstrapping
-    }
-
-    private static func vmError(for failureReason: RuntimeFailureReason) -> RuntimeVMError {
-        switch failureReason {
-        case .guestBootstrapMissingRuntimePackages:
-            return .guestBootstrapMissingRuntimePackages
-        case .guestBootstrapDockerRuntimeFailed:
-            return .guestBootstrapDockerRuntimeFailed
-        case .guestBootstrapFailed:
-            return .guestBootstrapFailed
-        default:
-            return .unknown(failureReason.rawValue)
         }
     }
 

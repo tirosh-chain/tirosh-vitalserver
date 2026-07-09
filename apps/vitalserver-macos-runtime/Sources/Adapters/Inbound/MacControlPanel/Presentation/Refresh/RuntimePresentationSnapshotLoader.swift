@@ -32,11 +32,11 @@ struct RuntimePresentationSnapshotLoader {
         return controlClient.loadStatus(settings: settings)
     }
 
-    func loadOperationState(status: RuntimeStatus) async -> RuntimeOperationState {
+    func loadOperationState() async -> RuntimeOperationState {
         if let snapshotReader {
-            return await snapshotReader.loadOperationState(status: status)
+            return await snapshotReader.loadOperationState()
         }
-        return controlClient.loadOperationState(status: status)
+        return controlClient.loadOperationState()
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
@@ -65,6 +65,13 @@ struct RuntimePresentationSnapshotLoader {
             return await snapshotReader.loadVitalDBRecorderSummaries()
         }
         return controlClient.loadVitalDBRecorderSummaries()
+    }
+
+    func loadVitalBeds() async -> RuntimeVitalBedHistory {
+        if let snapshotReader {
+            return await snapshotReader.loadVitalDBBeds()
+        }
+        return controlClient.loadVitalDBBeds()
     }
 
     func loadVitalRecorderActivityWindow(

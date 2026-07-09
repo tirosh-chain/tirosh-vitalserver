@@ -53,8 +53,8 @@ Overall health는 Helper runtime을 현재 사용할 수 있는지 요약합니�
 실제 관측 상태는 Recorders/Beds 화면에서 확인합니다.
 
 처음 설치할 때는 VM 생성, service 등록, guest 준비, health 확인이 순서대로 진행됩니다. `Installing`은
-설치 작업 자체를 뜻하고, `Initializing`은 설치/provision 산출물이 준비된 뒤 runtime service와 guest가 사용 가능 상태로 올라오는 중이라는 뜻입니다. 이 구간에 Advanced의 일부 service나 HTTP endpoint가
-아직 준비되지 않아도 해당 active operation 상태를 우선 표시합니다.
+runtime state가 설치 작업 구간임을 뜻하고, `Initializing`은 설치/provision 산출물이 준비된 뒤 runtime service와 guest가 사용 가능 상태로 올라오는 중이라는 뜻입니다. 이 구간에 Advanced의 일부 service나 HTTP endpoint가
+아직 준비되지 않아도 RuntimeStatus의 runtime state와 별도 operation-state read model을 함께 확인합니다. Active operation은 operation-state owner가 제공하며, RuntimeStatus나 status projection에서 다시 계산하지 않습니다.
 
 ## 3. Runtime service
 
@@ -204,9 +204,9 @@ Status의 data directory는 saved settings가 아니라 현재 VM runtime에 적
 | `vm-lifecycle.json` | VM이 `stopping`, `stopped`, `failed` 중 어디에 머물렀는지 확인 |
 | `launchd.out.log`의 guest shutdown 로그 | Docker/containerd stop, filesystem remount, poweroff 실패 여부 확인 |
 | Guest Control update-shutdown operation | Settings apply인데 update shutdown operation이 반복 실행되거나 terminal state 없이 남는지 확인 |
-| failure reasons | `host-proxy-http-*`, `recorder-ingress-http-failed`, `guest-runtime-state-stale`이 연쇄인지 확인 |
+| failure reasons | `host-proxy-http-*`, `recorder-ingress-http-failed`, `guest-http-*`, VM lifecycle/storage reason이 연쇄인지 확인 |
 
-증상이 `configure` 직후 VM stop 요청, guest runtime state stale, host proxy HTTP 실패 순서로 이어지면 Host proxy만 복구할 문제가 아닐 수 있습니다. VM shutdown 과정에서 guest service 또는 filesystem I/O가 아직 남아 있으면 디스크 오류가 드러나거나 악화될 수 있습니다.
+증상이 `configure` 직후 VM stop 요청, Guest readiness/VM lifecycle 지연, host proxy HTTP 실패 순서로 이어지면 Host proxy만 복구할 문제가 아닐 수 있습니다. VM shutdown 과정에서 guest service 또는 filesystem I/O가 아직 남아 있으면 디스크 오류가 드러나거나 악화될 수 있습니다.
 
 예방 원칙은 Settings restart, Update, Stop/Repair service가 같은 VM shutdown contract를 사용하게 하는 것입니다. Host는 VM 내부 상태를 추측하지 않고, guest가 명시적으로 shutdown 준비와 poweroff
 요청 상태를 보고한 뒤 Host service stop/restart를 진행해야 합니다.
@@ -217,6 +217,6 @@ Settings apply가 guest shutdown worker를 공유하더라도 update bundle 적�
 `running`/`prepared` 상태로 남고 같은 operation ID가 반복 로그에 나타나면, 이전 update shutdown command가 VM reboot 뒤 다시 실행된 것입니다. Guest shutdown command는 single-shot operation이므로 Guest Control API가 accepted/running/terminal state를 보존하고 같은 command를 다시 dispatch하지 않아야 합니다.
 operation trigger를 poweroff 직전까지 재사용 가능한 상태로 남겨두면 Settings restart, watchdog restart, service start가 모두 update shutdown 경로를 다시 밟아 guest services를 내려버릴 수 있습니다.
 
-`launchd.out.log`에 `Failed to execute shutdown binary`가 있고 `vm-lifecycle.json`이 `stopping`에 머물러 있으면 Guest는 poweroff target까지 갔지만 Host VM process가 종료되지 않은 상태입니다. 이때 Status는 `guest-runtime-state-stale`, `missing-vm-ip`, `host-proxy-http-*`를 연쇄로 표시할 수 있습니다.
+`launchd.out.log`에 `Failed to execute shutdown binary`가 있고 `vm-lifecycle.json`이 `stopping`에 머물러 있으면 Guest는 poweroff target까지 갔지만 Host VM process가 종료되지 않은 상태입니다. 이때 Status는 `guest-http-*`, `missing-vm-ip`, `host-proxy-http-*`, VM lifecycle/storage reason을 연쇄로 표시할 수 있습니다. Legacy `guest-runtime-state-*` raw string이 남아 있으면 historical diagnostics로만 보고, current recovery owner로 승격하지 않습니다.
 원인은 proxy 단독 장애가 아니라 VM stop 교착이므로, Settings restart 또는 watchdog recovery가 VM
 runtime services force-stop 후 start/health wait로 빠져나왔는지 확인합니다.

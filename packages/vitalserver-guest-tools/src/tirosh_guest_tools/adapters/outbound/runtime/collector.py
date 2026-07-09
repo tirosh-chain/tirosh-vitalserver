@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_guest_tools.adapters.outbound.runtime.probes import append_probe_error
-from tirosh_guest_tools.domain.runtime_state import (
-    GuestRuntimeState,
+from tirosh_guest_tools.domain.runtime_observation import (
+    GuestRuntimeObservation,
     ProbeError,
     RuntimeDiskHealth,
     RuntimeHTTPProbeStatus,
@@ -26,14 +26,14 @@ REDIS_UI_URL = "http://127.0.0.1/redis-ui/"
 SWAGGER_UI_URL = "http://127.0.0.1/swagger/"
 
 
-def collect_runtime_state(
+def collect_runtime_observation(
     *,
     guest_http: RuntimeHTTPProbeStatus | str | None = None,
     redis_ui_http: RuntimeHTTPProbeStatus | str | None = None,
     swagger_ui_http: RuntimeHTTPProbeStatus | str | None = None,
-) -> GuestRuntimeState:
+) -> GuestRuntimeObservation:
     probe_errors: list[ProbeError] = []
-    return GuestRuntimeState(
+    return GuestRuntimeObservation(
         updated_at=datetime.now(UTC).isoformat(),
         vm_ip=first_non_loopback_ip(probe_errors),
         boot_id=boot_id(probe_errors),

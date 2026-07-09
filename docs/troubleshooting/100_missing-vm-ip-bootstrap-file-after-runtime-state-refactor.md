@@ -22,7 +22,7 @@ guest-service-observation-read-failed-missing-vm-ip
 At the same time, Guest evidence can show the runtime is actually serving:
 
 ```text
-/Library/Application Support/VitalServerHelper/vm/data/run/runtime-state.json
+/Library/Application Support/VitalServerHelper/vm/data/run/runtime-observation.json
   vmIP: 192.168.64.x
   guestHTTP: 200
   redisUIHTTP: 200
@@ -35,14 +35,14 @@ document remains `bootstrapping` until its deadline expires.
 
 ## Cause
 
-The Host health checker no longer reads `runtime-state.json.vmIP` as a VM
+The Host health checker no longer reads `runtime-observation.json.vmIP` as a VM
 address fallback. It expects the explicit bootstrap address contract:
 
 ```text
 /Library/Application Support/VitalServerHelper/vm/data/run/vm-ip
 ```
 
-A runtime-state refactor removed Host fallback reads from `runtime-state.json`,
+A runtime-state refactor removed Host fallback reads from `runtime-observation.json`,
 but Guest runtime-state writing did not continue producing the separate `vm-ip`
 file. This left Host health with no Guest Control API base address even though
 the Guest-owned runtime-state document contained a valid VM IP.
@@ -53,12 +53,12 @@ This is a contract mismatch, not a Guest service outage.
 
 Restore the short-term bootstrap file contract by making the Guest runtime-state
 writer emit `vm-ip` from the same explicit VM IP observation used for
-`runtime-state.json`.
+`runtime-observation.json`.
 
 When the Guest cannot observe a VM IP, remove any existing `vm-ip` file instead
 of leaving a stale address behind.
 
-Do not reintroduce Host fallback reads from `runtime-state.json.vmIP`; that would
+Do not reintroduce Host fallback reads from `runtime-observation.json.vmIP`; that would
 make Host health depend on a broader Guest state document after the control-plane
 boundary was intentionally narrowed.
 
@@ -79,11 +79,11 @@ Keep bootstrap address ownership explicit:
 Runtime smoke should assert both files during the transition:
 
 ```text
-data/run/runtime-state.json
+data/run/runtime-observation.json
 data/run/vm-ip
 ```
 
-`runtime-state.json` can remain diagnostics and product runtime evidence, but it
+`runtime-observation.json` can remain diagnostics and product runtime evidence, but it
 must not be promoted back into Host bootstrap address state.
 
 ## Checks
@@ -91,13 +91,13 @@ must not be promoted back into Host bootstrap address state.
 On an installed runtime:
 
 ```sh
-cat "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-state.json"
+cat "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-observation.json"
 cat "/Library/Application Support/VitalServerHelper/vm/data/run/vm-ip"
 cat "/Library/Application Support/VitalServerHelper/vm/run/vm-lifecycle.json"
 cat "/Library/Application Support/VitalServerHelper/status/runtime-status.json"
 ```
 
-If `runtime-state.json.vmIP` is present but `vm-ip` is missing, this case
+If `runtime-observation.json.vmIP` is present but `vm-ip` is missing, this case
 applies.
 
 ## Related Cases
@@ -108,7 +108,7 @@ applies.
 
 ## Follow-up
 
-- 2026-07-08: Fresh install produced healthy Guest `runtime-state.json` and Host
+- 2026-07-08: Fresh install produced healthy Guest `runtime-observation.json` and Host
   proxy 200, but no `vm-ip` file. Watchdog kept reporting `missing-vm-ip` and
   failed to mark VM lifecycle `running`.
 - 2026-07-08: Short-term recovery restores Guest-owned `vm-ip` production. The
@@ -116,9 +116,9 @@ applies.
   permanent file contract.
 - 2026-07-08: Host health now reads Guest address through a typed provider. The
   compatibility provider reads only `vm-ip`, reports missing/invalid/read-failed
-  distinctly, and does not fall back to `runtime-state.json.vmIP`. The host proxy
-  runner also stopped parsing `runtime-state.json.vmIP`; it waits on the same
-  `vm-ip` bootstrap discovery file while `runtime-state.json.guestHTTP` remains
+  distinctly, and does not fall back to `runtime-observation.json.vmIP`. The host proxy
+  runner also stopped parsing `runtime-observation.json.vmIP`; it waits on the same
+  `vm-ip` bootstrap discovery file while `runtime-observation.json.guestHTTP` remains
   bootstrap readiness evidence.
 - 2026-07-08: Runtime status documents now preserve `guestAddressRead` from the
   health snapshot so API/UI/status consumers can distinguish missing, invalid,

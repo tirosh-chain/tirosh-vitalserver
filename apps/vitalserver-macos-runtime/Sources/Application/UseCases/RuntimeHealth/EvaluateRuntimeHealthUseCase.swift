@@ -19,12 +19,12 @@ public struct RuntimeHealthObservation {
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
     public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
+    public let guestServiceResources: [RuntimeGuestServiceResource]
+    public let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     public let configurationFailureReasons: [RuntimeFailureReason]
     public let proxyPortFailureReasons: [RuntimeFailureReason]
-    public let guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>
     public let observedAt: Date
-    public let guestBootstrapFreshnessGraceSeconds: TimeInterval
 
     public init(
         vmExecutable: RuntimeFileState,
@@ -43,12 +43,12 @@ public struct RuntimeHealthObservation {
         redisUIHTTP: String,
         swaggerUIHTTP: String,
         guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
+        guestServiceResources: [RuntimeGuestServiceResource] = [],
+        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>,
         configurationFailureReasons: [RuntimeFailureReason],
         proxyPortFailureReasons: [RuntimeFailureReason],
-        guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>,
-        observedAt: Date,
-        guestBootstrapFreshnessGraceSeconds: TimeInterval
+        observedAt: Date
     ) {
         self.vmExecutable = vmExecutable
         self.proxyExecutable = proxyExecutable
@@ -66,12 +66,12 @@ public struct RuntimeHealthObservation {
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
         self.guestServiceStatuses = guestServiceStatuses
+        self.guestServiceResources = guestServiceResources
+        self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
         self.vitalDBObservation = vitalDBObservation
         self.configurationFailureReasons = configurationFailureReasons
         self.proxyPortFailureReasons = proxyPortFailureReasons
-        self.guestBootstrapResult = guestBootstrapResult
         self.observedAt = observedAt
-        self.guestBootstrapFreshnessGraceSeconds = guestBootstrapFreshnessGraceSeconds
     }
 }
 
@@ -117,14 +117,13 @@ public struct EvaluateRuntimeHealthUseCase {
             redisUIHTTP: httpStatusText(reads.redisUIHTTP),
             swaggerUIHTTP: httpStatusText(reads.swaggerUIHTTP),
             guestServiceStatuses: reads.guestServiceStatuses,
+            guestServiceResources: reads.guestServiceResources,
+            guestServiceResourceReadIssues: reads.guestServiceResourceReadIssues,
             vitalDBObservation: reads.vitalDBObservation,
-            configurationFailureReasons: reads.proxyPortReadState.failureReasons
-                + vmLifecycle.failureReasons
+            configurationFailureReasons: vmLifecycle.failureReasons
                 + guestReadinessInput.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(reads.proxyListenerObservation),
-            guestBootstrapResult: reads.guestBootstrapResult,
-            observedAt: reads.observedAt,
-            guestBootstrapFreshnessGraceSeconds: reads.guestBootstrapFreshnessGraceSeconds
+            observedAt: reads.observedAt
         )
     }
 
@@ -195,15 +194,11 @@ public struct EvaluateRuntimeHealthUseCase {
             redisUIHTTP: observation.redisUIHTTP,
             swaggerUIHTTP: observation.swaggerUIHTTP,
             guestServiceStatuses: observation.guestServiceStatuses,
+            guestServiceResources: observation.guestServiceResources,
+            guestServiceResourceReadIssues: observation.guestServiceResourceReadIssues,
             vitalDBObservation: observation.vitalDBObservation,
             configurationFailureReasons: observation.configurationFailureReasons,
-            proxyPortFailureReasons: observation.proxyPortFailureReasons,
-            guestBootstrapAssessment: GuestBootstrapEvaluator.assessCurrentBoot(
-                observation.guestBootstrapResult,
-                currentBootID: observation.vmLifecycle?.bootID,
-                now: observation.observedAt,
-                graceSeconds: observation.guestBootstrapFreshnessGraceSeconds
-            )
+            proxyPortFailureReasons: observation.proxyPortFailureReasons
         ))
     }
 

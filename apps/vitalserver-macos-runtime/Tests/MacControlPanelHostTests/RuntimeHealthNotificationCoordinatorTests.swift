@@ -19,12 +19,12 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         let coordinator = RuntimeHealthNotificationCoordinator(notifier: notifier)
 
         coordinator.handleTransition(to: startingStatus())
-        coordinator.handleTransition(to: criticalStatus(message: "proxy failed"))
+        coordinator.handleTransition(to: criticalStatus())
 
         XCTAssertEqual(notifier.notifications, [
             CapturedNotification(
                 title: AppConstants.Notifications.criticalTitle,
-                body: "proxy failed"
+                body: AppConstants.Notifications.criticalBody
             ),
         ])
     }
@@ -34,12 +34,12 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         let coordinator = RuntimeHealthNotificationCoordinator(notifier: notifier)
 
         coordinator.handleTransition(to: startingStatus())
-        coordinator.handleTransition(to: degradedStatus(message: "recovering"))
+        coordinator.handleTransition(to: degradedStatus())
 
         XCTAssertEqual(notifier.notifications, [
             CapturedNotification(
                 title: AppConstants.Notifications.needsAttentionTitle,
-                body: "recovering"
+                body: AppConstants.Notifications.needsAttentionBody
             ),
         ])
     }
@@ -48,7 +48,7 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         let notifier = CapturingHealthNotifier()
         let coordinator = RuntimeHealthNotificationCoordinator(notifier: notifier)
 
-        coordinator.handleTransition(to: criticalStatus(message: nil))
+        coordinator.handleTransition(to: criticalStatus())
         coordinator.handleTransition(to: readyStatus())
         coordinator.handleTransition(to: startingStatus())
         coordinator.handleTransition(to: readyStatus())
@@ -68,29 +68,31 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
     private func startingStatus() -> RuntimeStatus {
         var status = RuntimeStatus()
         status.runtimeInstalled = true
+        status.runtimeInstallationState = .executable
         status.runtimeState = RuntimeState.installing
         return status
     }
 
-    private func criticalStatus(message: String?) -> RuntimeStatus {
+    private func criticalStatus() -> RuntimeStatus {
         var status = RuntimeStatus()
         status.runtimeInstalled = true
+        status.runtimeInstallationState = .executable
         status.runtimeState = RuntimeState.critical
-        status.statusMessage = message
         return status
     }
 
-    private func degradedStatus(message: String?) -> RuntimeStatus {
+    private func degradedStatus() -> RuntimeStatus {
         var status = RuntimeStatus()
         status.runtimeInstalled = true
+        status.runtimeInstallationState = .executable
         status.runtimeState = RuntimeState.degraded
-        status.statusMessage = message
         return status
     }
 
     private func readyStatus() -> RuntimeStatus {
         var status = RuntimeStatus()
         status.runtimeInstalled = true
+        status.runtimeInstallationState = .executable
         status.vmServiceLoaded = true
         status.proxyServiceLoaded = true
         status.watchdogServiceLoaded = true

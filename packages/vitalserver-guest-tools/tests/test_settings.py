@@ -37,7 +37,7 @@ stopTimeoutSeconds = 45
 
 [intervals]
 commandPollSeconds = 7
-runtimeStateSeconds = 11
+runtimeObservationSeconds = 11
 observabilitySeconds = 13
 
 [containerLogs]
@@ -69,6 +69,7 @@ fileEnabled = true
     assert settings.compose.project_name == "custom-project"
     assert settings.compose.stop_timeout_seconds == 45
     assert settings.intervals.command_poll_seconds == 7
+    assert settings.intervals.runtime_observation_seconds == 11
     assert settings.container_logs.tail_lines == "250"
     assert settings.observability.vitaldb_observer_url.endswith("/observations")
     assert settings.logging.level == "warning"
@@ -108,7 +109,7 @@ level = "debug"
     settings = load_settings(settings_file)
 
     assert settings.intervals.command_poll_seconds == 9
-    assert settings.intervals.runtime_state_seconds == 5
+    assert settings.intervals.runtime_observation_seconds == 5
     assert settings.logging.level == "debug"
     assert settings.logging.format == "json"
 

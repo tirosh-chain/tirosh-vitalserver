@@ -14,7 +14,7 @@
 - `rg --files apps/vitalserver-macos-runtime/Sources -g '*.swift'`로 전체 Swift 파일 목록을 확정했습니다.
 - `find ... wc -l` 기준으로 8개 target, 234개 Swift 파일, 34,748라인을 검토 범위로 잡았습니다.
 - 모든 target에 대해 import graph, port protocol, optional/non-throwing read API, status/event/projection/query path, UI/API boundary 책임을 스캔했습니다.
-- 고위험 파일은 라인 단위로 추가 확인했습니다. 특히 `RuntimeStatusWriter`, `RuntimeStatusReader`, `SQLiteRuntimeObservabilityStore`, `CompositeRuntimeEventRepository`, `RuntimeControlHTTPBoundary`, `MacRuntimeControlAPIHandler`, `RuntimeViewModel`, `RuntimeControlReadModels`, `RuntimeGuestGateway`, `RuntimeEventRepository`, `RuntimeStatusRepository`를 확인했습니다.
+- 고위험 파일은 라인 단위로 추가 확인했습니다. 특히 `RuntimeStatusWriter`, `RuntimeStatusReader`, `SQLiteRuntimeObservabilityStore`, `CompositeRuntimeEventRepository`, `RuntimeControlHTTPBoundary`, `MacRuntimeControlAPIHandler`, `RuntimeViewModel`, `RuntimeControlReadModels`, `RuntimeGuestGateway`, `RuntimeEventRepository`, `RuntimeStatusArtifactSink`를 확인했습니다.
 
 검토한 경계:
 
@@ -45,7 +45,7 @@
 | --- | ---: | --- | --- |
 | `Contracts` | 25 | Document/query contract 중심입니다. unknown enum/value 보존은 외부 contract 호환 목적이면 허용됩니다. 현재 구조적 조치 대상은 아닙니다. | Monitor |
 | `Core/Application`, `Core/Guest`, `Core/Health` | 21 | 대부분 pure policy/evaluator입니다. 의존성 방향과 테스트 가능성은 좋습니다. | Monitor |
-| `Core/Ports/RuntimeStatusRepository.swift` | 1 | `loadResult()`로 missing/read failure/loaded를 contract에 보존합니다. | Done |
+| `Core/Ports/RuntimeStatusArtifactSink.swift` | 1 | `loadResult()`로 missing/read failure/loaded를 contract에 보존합니다. | Done |
 | `Core/Ports/RuntimeEventRepository.swift` | 1 | `RuntimeEventRecording`을 write-only port로 분리하고 `RuntimeEventHistoryReading.query()`는 `RuntimeEventPage.readError`로 read failure를 contract에 보존합니다. `recent(limit:)`는 Core port contract에서 제거되어 concrete legacy/test convenience로만 남아 있습니다. | Done |
 | `Core/Ports/RuntimeGuestGateway.swift` | 1 | optional convenience API를 제거하고 명시 result API만 남겼습니다. | Done |
 | `Core/Ports/RuntimeStorageUsageProvider.swift` | 1 | `RuntimeStorageUsageResult`로 unavailable과 read failure를 구분합니다. | Done |
@@ -55,7 +55,7 @@
 | `HostInfrastructure/SQLiteRuntimeObservabilityStore.swift` | 1 | VitalDB consumer는 `SQLiteVitalDBObservationRepository` facade를 통해 read/write하고, event consumer는 `SQLiteRuntimeEventRepository`를 통해 접근합니다. relationship anomaly 판단은 `VitalDBRelationshipProjectionPlanner`로 분리했습니다. 저수준 SQLite prepare/bind/step helper는 `SQLiteRuntimeObservabilityDatabase`로 분리했고, store에는 SQLite state가 필요한 assignment/handoff projection만 남겼습니다. | Done |
 | `HostInfrastructure/CompositeRuntimeEventRepository.swift` | 1 | query-time JSONL→SQLite catchup/rebuild를 제거했습니다. SQLite projection catchup은 `RuntimeEventSQLiteProjectionCatchUp`이 명시적으로 수행합니다. SQLite query unavailable 시 JSONL primary fallback은 TS-033 범위로 남겼습니다. | Done |
 | `HostInfrastructure/JSONLRuntimeEventRepository.swift` | 1 | `query(_:)`는 parse/read issue를 `RuntimeEventPage.readError`로 보존합니다. Failure를 숨기던 `all()` convenience는 제거했고, bulk read consumer는 `allResult()`를 명시적으로 사용합니다. | Done |
-| `HostInfrastructure/JSONFileRuntimeStatusRepository.swift` | 1 | `RuntimeStatusRepository.loadResult()` 구현으로 optional contract 노출을 제거했습니다. | Done |
+| `HostInfrastructure/JSONFileRuntimeStatusArtifactSink.swift` | 1 | `RuntimeStatusArtifactSink.loadResult()` 구현으로 optional contract 노출을 제거했습니다. | Done |
 | `HostInfrastructure` remaining files | 10 | path/file/storage 구현과 SQLite facade/helper입니다. 현재 큰 방향 문제는 없습니다. | Monitor |
 | `MacHostRuntimeAdapter/RuntimeStatusReader.swift` | 1 | status document, guest state, live diagnostics assembly를 status/health status reader에 한정하고 event/VitalDB read는 `SystemRuntimeObservabilityReader`로 분리했습니다. | Done |
 | `MacHostRuntimeAdapter/MacHostRuntimeClient.swift`, `MacHostRuntimeReadWorker.swift` | 2 | status reader와 observability reader를 별도 collaborator로 보유합니다. | Done |
@@ -161,7 +161,7 @@ RuntimeGuestGateway.loadRuntimeState()
 이 구조에서는 명시 result API를 만들어놓고도 consumer가 convenience optional API를 쓰면 read/decode failure가 다시 사라질 수 있습니다.
 
 ```text
-RuntimeStatusRepository.load()
+RuntimeStatusArtifactSink.load()
   -> RuntimeStatusDocument?
 
 RuntimeEventHistoryReading.query()
@@ -181,7 +181,7 @@ CompositeRuntimeEventRepository.query()
   -> secondary query()
 ```
 
-이 구조에서는 read path가 write path와 repair path를 수행했습니다. 현재는 `RuntimeEventSQLiteProjectionCatchUp`이 SQLite projection catchup/rebuild를 명시적으로 담당하고, repository query는 SQLite read와 TS-033 범위의 JSONL fallback만 수행합니다.
+이 구조에서는 read path가 write path와 repair path를 수행했습니다. 현재는 `RuntimeEventSQLiteProjectionCatchUp`이 SQLite projection catchup/rebuild를 명시적으로 담당하고, repository query는 backing read failure를 `RuntimeEventHistory.readError`로 보존해야 합니다. JSONL 파일은 diagnostics/backing artifact이며 current event owner나 성공 fallback owner가 아닙니다.
 
 ```text
 RuntimeControlHTTPBoundary.makeOverview()
@@ -288,7 +288,7 @@ rg -n "import (HostInfrastructure|MacHostRuntimeAdapter|HostCLI|RuntimeControlAP
    - ViewModel은 화면 state와 사용자 intent delegation만 유지
 
 7. Core read port contract 정리
-   - `RuntimeStatusRepository.load() -> RuntimeStatusDocument?`를 `loadResult()` 또는 throwing API로 변경
+   - `RuntimeStatusArtifactSink.load() -> RuntimeStatusDocument?`를 `loadResult()` 또는 throwing API로 변경
    - `RuntimeEventHistoryReading.query()`는 `RuntimeEventPage.readError`로 read failure를 표현
    - infrastructure의 best-effort 동작은 이름에 `BestEffort`를 붙여 운영성 없는 경로로 격리
 
@@ -334,7 +334,7 @@ rg -n "import (HostInfrastructure|MacHostRuntimeAdapter|HostCLI|RuntimeControlAP
 - 2026-05-30: `CompositeRuntimeEventRepository.query()`가 read path에서 SQLite event index catchup/rebuild를 수행하는 구조를 확인했습니다.
 - 2026-05-30: 테스트 중 일부가 snapshot activity fallback과 query-triggered SQLite rebuild를 현재 기대 동작으로 고정하고 있음을 확인했습니다.
 - 2026-05-30: 전체 Swift source 범위를 8개 target, 206개 파일, 33,450라인으로 확정하고 target별 import graph와 상태/이벤트/관측/query 경로를 재검토했습니다.
-- 2026-05-30: `RuntimeStatusRepository.load()`와 `RuntimeEventHistoryReading.query()` 같은 Core read port가 read failure를 contract로 표현하지 못하는 구조를 확인했습니다.
+- 2026-05-30: `RuntimeStatusArtifactSink.load()`와 `RuntimeEventHistoryReading.query()` 같은 Core read port가 read failure를 contract로 표현하지 못하는 구조를 확인했습니다.
 - 2026-05-30: `RuntimeControlHTTPBoundary.makeOverview()`가 status와 VitalDB observation을 직접 합성하며 boundary 책임을 넘어서는 구조를 확인했습니다.
 - 2026-05-30: `MacRuntimeControlApp`의 ViewModel/API handler가 `Core`를 직접 import해 UI/application composition의 의존성 경계가 느슨해진 것을 확인했습니다.
 - 2026-05-30: `RuntimeStatusWriter`에서 VitalDB SQLite projection side effect를 제거하고 `RuntimeVitalDBObservationProjector`로 분리했습니다. Status write는 status document만 쓰고, lifecycle이 반환된 snapshot의 observation projection을 명시적으로 호출합니다.
@@ -342,7 +342,7 @@ rg -n "import (HostInfrastructure|MacHostRuntimeAdapter|HostCLI|RuntimeControlAP
 - 2026-05-30: `SQLiteRuntimeObservabilityStore`의 VitalDB read API를 throwing `load...` 중심으로 정리하고, 실패를 숨기는 호출은 `bestEffort...` 이름으로만 남겼습니다.
 - 2026-05-30: `SystemRuntimeStatusReader.loadBaseStatus()` 내부의 status document read, guest state read, launchd live diagnostics, base status assembly를 private reader/diagnostics/assembler 타입으로 분리했습니다.
 - 2026-05-30: Runtime Control overview 합성을 `RuntimeControlOverviewAssembler`로 분리하고, HTTP boundary는 route/stream response에서 assembler를 호출하도록 정리했습니다.
-- 2026-05-30: `RuntimeStatusRepository` Core port에서 optional `load()`를 제거하고 `loadResult()`를 contract로 승격했습니다. `RuntimeStatusReporter.writeProgress`와 watchdog active operation guard가 missing과 read failure를 구분합니다.
+- 2026-05-30: `RuntimeStatusArtifactSink` Core port에서 optional `load()`를 제거하고 `loadResult()`를 contract로 승격했습니다. `RuntimeStatusReporter.writeProgress`와 watchdog active operation guard가 missing과 read failure를 구분합니다.
 - 2026-05-30: `RuntimeGuestGateway`의 optional convenience API를 제거하고 document result API만 남겼습니다. `RuntimeHealthChecker`는 guest runtime state read failure를 `guestRuntimeStateInvalid`로 보존합니다.
 - 2026-05-30: `RuntimeEventQuery`, `RuntimeEventCursor`, `RuntimeEventPage`를 `Core` port 파일에서 `Contracts`로 이동했습니다. `RuntimeControl`, `RuntimeControlAPI`, `MacRuntimeControlApp` source target의 `Core` 직접 import와 RuntimeControl/RuntimeControlAPI target의 `Core` dependency를 제거했습니다.
 - 2026-05-30: `RuntimeViewModelSnapshotLoader`를 추가해 ViewModel 내부의 readWorker/controlClient/localAPISettings snapshot source 선택 책임을 분리했습니다. ViewModel은 refresh orchestration과 화면 state update만 수행하고, snapshot read source fallback은 named loader가 담당합니다.
@@ -357,7 +357,7 @@ rg -n "import (HostInfrastructure|MacHostRuntimeAdapter|HostCLI|RuntimeControlAP
 - 2026-05-30: `RuntimeObservedEventPublisher`와 `RuntimeObservedEventTypePolicy`를 추가했습니다. `RuntimeLifecycle+Workflows`는 더 이상 observed event의 previous status 조회나 VM/domain event type 판정을 직접 수행하지 않습니다.
 - 2026-05-30: `RuntimeEventSQLiteProjectionCatchUp`을 추가하고 `CompositeRuntimeEventRepository.query()`에서 JSONL→SQLite catchup/rebuild side effect를 제거했습니다. 기존 query-triggered rebuild 테스트는 explicit projection catchup contract 테스트로 변경했습니다.
 - 2026-05-30: `RuntimeViewModelObservabilityRefresher`를 추가해 runtime event query/count/container observation 선택과 VitalDB recorder/relationship refresh orchestration을 ViewModel 밖으로 분리했습니다. ViewModel은 refresh 결과를 화면 state에 적용하는 쪽으로 축소했습니다.
-- 2026-05-30: `RuntimeEventPage.readError`와 `RuntimeEventHistory.readError`를 추가해 SQLite/JSONL runtime event read issue를 빈 이벤트 목록이나 `matchingCount == nil` sentinel로만 숨기지 않도록 했습니다. JSONL fallback은 TS-033 범위로 유지하되, fallback 발생 원인은 UI/API read model에 보존됩니다.
+- 2026-05-30: `RuntimeEventPage.readError`와 `RuntimeEventHistory.readError`를 추가해 SQLite/JSONL runtime event read issue를 빈 이벤트 목록이나 `matchingCount == nil` sentinel로만 숨기지 않도록 했습니다. JSONL은 diagnostics/backing artifact로 유지하고, backing read failure 원인은 UI/API read model에 보존됩니다.
 - 2026-05-30: `SQLiteVitalDBObservationRepository`를 추가해 VitalDB observation snapshot/activity/relationship consumer가 `SQLiteRuntimeObservabilityStore`를 직접 잡지 않도록 했습니다. event path는 `SQLiteRuntimeEventRepository`, VitalDB path는 새 repository facade로 분리됩니다.
 - 2026-05-30: `VitalDBRelationshipProjectionPlanner`를 추가해 unlinked bed/recorder, duplicate assignment, stale link 같은 현재 observation 기반 relationship anomaly 판단을 SQLite SQL writer 밖으로 분리했습니다. 기존 assignment/handoff projection은 SQLite state가 필요해 store에 남겼습니다.
 - 2026-05-30: `RuntimeObservationRecorder`가 `RuntimeEventRepository` 전체가 아니라 write-only `RuntimeEventRecording` port에만 의존하도록 축소했습니다. `RuntimeEventRepository` protocol에서도 failure를 숨기는 `recent(limit:)` convenience를 제거해 event recording path와 query/read path를 분리했습니다.

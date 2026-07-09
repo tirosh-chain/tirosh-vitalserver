@@ -268,7 +268,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1"])
     }
 
-    func testCompositeRepositoryReportsSecondaryAppendFailureWithoutLosingPrimaryEvent() throws {
+    func testCompositeRepositoryLogsSecondaryAppendFailureWithoutFailingPrimaryAppend() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer {
@@ -286,17 +286,13 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        XCTAssertThrowsError(
-            try repository.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
-        ) { error in
-            guard case .secondaryAppendFailed(let eventID, _) = error as? CompositeRuntimeEventRepositoryError else {
-                XCTFail("Unexpected error: \(error)")
-                return
-            }
-            XCTAssertEqual(eventID, "event-1")
-        }
+        try repository.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
 
         XCTAssertEqual(jsonl.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1"])
+        let page = repository.query(RuntimeEventQuery(limit: 10))
+        XCTAssertEqual(page.state, .partiallyLoaded)
+        XCTAssertEqual(page.events.map(\.id), ["event-1"])
+        XCTAssertNotNil(page.readError)
         XCTAssertTrue(logs.contains { $0.contains("runtime event sqlite append failed eventID=event-1") })
     }
 

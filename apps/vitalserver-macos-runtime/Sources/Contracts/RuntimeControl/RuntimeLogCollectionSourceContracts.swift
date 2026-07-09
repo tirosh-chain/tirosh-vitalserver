@@ -121,9 +121,9 @@ public enum RuntimeLogCollectionSourceContract {
         [
             .init(
                 sourceID: .containerLogs,
-                sourceFilePrefix: "\(RuntimeFileNames.containerLogs).",
+                sourceFilePrefix: "\(RuntimeLogArtifactFileNames.containerLogs).",
                 destinationScope: .guestLogs,
-                destinationFilePrefix: "\(RuntimeFileNames.containerLogs).",
+                destinationFilePrefix: "\(RuntimeLogArtifactFileNames.containerLogs).",
                 archivePrefix: "guest-container-logs.log."
             ),
         ]
@@ -174,12 +174,12 @@ public enum RuntimeLogCollectionSourceContract {
 
     private static func guestLogs() -> [RuntimeLogCollectionFileContract] {
         [
-            guestLog(.bootstrapLog, fileName: RuntimeFileNames.bootstrapLog, archivePrefix: "guest-bootstrap.log"),
-            guestLog(.containerLog, fileName: RuntimeFileNames.containerLogs, archivePrefix: "guest-container-logs.log"),
-            guestLog(.updateActivationLog, fileName: RuntimeFileNames.updateActivationLog, archivePrefix: "guest-activate-update.log"),
-            guestLog(.updateShutdownLog, fileName: RuntimeFileNames.updateShutdownLog, archivePrefix: "guest-prepare-update-shutdown.log"),
-            guestLog(.datastoreRepairLog, fileName: RuntimeFileNames.datastoreRepairLog, archivePrefix: "guest-repair-datastore.log"),
-            guestLog(.redisBackupLog, fileName: RuntimeFileNames.redisBackupLog, archivePrefix: "guest-redis-backup.log"),
+            guestLog(.bootstrapLog, fileName: RuntimeLogArtifactFileNames.bootstrapLog, archivePrefix: "guest-bootstrap.log"),
+            guestLog(.containerLog, fileName: RuntimeLogArtifactFileNames.containerLogs, archivePrefix: "guest-container-logs.log"),
+            guestLog(.updateActivationLog, fileName: RuntimeLogArtifactFileNames.updateActivationLog, archivePrefix: "guest-activate-update.log"),
+            guestLog(.updateShutdownLog, fileName: RuntimeLogArtifactFileNames.updateShutdownLog, archivePrefix: "guest-prepare-update-shutdown.log"),
+            guestLog(.datastoreRepairLog, fileName: RuntimeLogArtifactFileNames.datastoreRepairLog, archivePrefix: "guest-repair-datastore.log"),
+            guestLog(.redisBackupLog, fileName: RuntimeLogArtifactFileNames.redisBackupLog, archivePrefix: "guest-redis-backup.log"),
         ]
     }
 
@@ -187,7 +187,7 @@ public enum RuntimeLogCollectionSourceContract {
         [
             .init(
                 sourceID: .commandLog,
-                sourceFileName: RuntimeFileNames.managerCommandLog,
+                sourceFileName: RuntimeLogArtifactFileNames.managerCommandLog,
                 destinationScope: .productLogs,
                 destinationFileName: "command.log",
                 archivePrefix: "command.log"

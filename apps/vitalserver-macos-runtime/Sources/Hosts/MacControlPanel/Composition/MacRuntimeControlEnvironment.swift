@@ -10,6 +10,9 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     let viewModel: RuntimeViewModel
     private let client: MacRuntimeControlClient
     private let readWorker: MacRuntimeControlReadWorker
+    private let operationLeaseController: RuntimeControlOperationLeaseController
+    private let guestAddressController: RuntimeControlGuestAddressController
+    private let vmLifecycleController: RuntimeControlVMLifecycleController
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
     private let servesDevConsole: Bool
     private var apiServer: RuntimeControlLocalHTTPServer?
@@ -25,12 +28,18 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         viewModel: RuntimeViewModel,
         client: MacRuntimeControlClient,
         readWorker: MacRuntimeControlReadWorker,
+        operationLeaseController: RuntimeControlOperationLeaseController,
+        guestAddressController: RuntimeControlGuestAddressController,
+        vmLifecycleController: RuntimeControlVMLifecycleController,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
         servesDevConsole: Bool
     ) {
         self.viewModel = viewModel
         self.client = client
         self.readWorker = readWorker
+        self.operationLeaseController = operationLeaseController
+        self.guestAddressController = guestAddressController
+        self.vmLifecycleController = vmLifecycleController
         self.localAPISettings = localAPISettings
         self.servesDevConsole = servesDevConsole
         self.localAPISettings.onPortChanged = { [weak self] port in
@@ -48,12 +57,27 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     }
 
     static func live() -> MacRuntimeControlEnvironment {
-        let readWorker = MacRuntimeControlReadWorker(releaseInfo: .generated)
+        let operationLeaseController = RuntimeControlOperationLeaseController()
+        let vmLifecycleController = RuntimeControlVMLifecycleController()
+        let guestAddressController = RuntimeControlGuestAddressController()
+        let readWorker = MacRuntimeControlReadWorker(
+            releaseInfo: .generated,
+            operationLeaseReader: operationLeaseController,
+            guestAddressProvider: guestAddressController,
+            vmLifecycleResourceReader: vmLifecycleController
+        )
         let commandWorker = MacRuntimeControlCommandWorker(
             guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
-            guestMaintenanceController: RuntimeGuestMaintenanceControlUseCase()
+            guestMaintenanceController: RuntimeGuestMaintenanceControlUseCase(),
+            guestAddressProvider: guestAddressController
         )
-        let client = MacRuntimeControlClient(releaseInfo: .generated, commandWorker: commandWorker)
+        let client = MacRuntimeControlClient(
+            releaseInfo: .generated,
+            operationLeaseReader: operationLeaseController,
+            guestAddressProvider: guestAddressController,
+            vmLifecycleResourceReader: vmLifecycleController,
+            commandWorker: commandWorker
+        )
         let localAPISettings = RuntimeControlLocalAPISettingsCoordinator(
             store: UserDefaultsRuntimeControlLocalAPISettingsStore.shared
         )
@@ -70,6 +94,9 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             viewModel: viewModel,
             client: client,
             readWorker: readWorker,
+            operationLeaseController: operationLeaseController,
+            guestAddressController: guestAddressController,
+            vmLifecycleController: vmLifecycleController,
             localAPISettings: localAPISettings,
             servesDevConsole: GeneratedRelease.testEnabled
         )
@@ -139,6 +166,9 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         MacRuntimeControlLocalAPI.make(
             client: client,
             readWorker: readWorker,
+            operationLeaseClient: operationLeaseController,
+            guestAddressClient: guestAddressController,
+            vmLifecycleClient: vmLifecycleController,
             port: port,
             localAPISettings: localAPISettings,
             servesDevConsole: servesDevConsole,

@@ -9,7 +9,9 @@ from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
 )
-from tirosh_guest_tools.application.runtime_state import write_current_state
+from tirosh_guest_tools.application.runtime_observation import (
+    write_runtime_observation_outputs,
+)
 from tirosh_guest_tools.contracts import (
     RuntimeFileName,
     RuntimeService,
@@ -56,8 +58,8 @@ def activate_runtime() -> None:
     run(compose_command(["down", "--remove-orphans"]))
     run_compose_action(ComposeAction.UP)
     systemctl("restart", RuntimeService.CONTAINER_LOGS.value, check=False)
-    systemctl("restart", RuntimeService.RUNTIME_STATE.value, check=False)
-    write_current_state()
+    systemctl("restart", RuntimeService.RUNTIME_OBSERVATION.value, check=False)
+    write_runtime_observation_outputs()
     run(["sync"], check=False)
 
 

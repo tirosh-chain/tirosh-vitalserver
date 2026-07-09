@@ -25,15 +25,15 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadRuntimeEventsLimitDelegatesToQueryReader() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let runtimeEvents = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let runtimeEvents = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         let event = runtimeEvent(id: "event-limit", timestamp: "2026-05-31T00:00:00Z")
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try (encoder.encode(event) + Data("\n".utf8)).write(to: runtimeEvents)
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
+            paths: RuntimeObservabilityPaths(
                 runtimeEvents: runtimeEvents.path,
-                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
+                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB).path
             )
         )
 
@@ -47,8 +47,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
-                runtimeEvents: directory.appendingPathComponent(RuntimeFileNames.runtimeEvents).path,
+            paths: RuntimeObservabilityPaths(
+                runtimeEvents: directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents).path,
                 runtimeObservabilityDB: "/dev/null/events.sqlite"
             )
         )
@@ -62,7 +62,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testProductObservationSnapshotDoesNotReadHostSQLiteProjection() {
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .unavailable(readIssues: ["guestControl=unavailable"])
             }
@@ -77,7 +77,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testProductReadsReportGuestReadModelUnavailableWithoutHostSQLiteFallback() {
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .unavailable(readIssues: ["guestControl=unavailable"])
             }
@@ -105,7 +105,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testVitalDBRecordersDoNotUseCurrentObservationProviderWhenGuestReadModelProviderIsMissing() {
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .loaded(
                     VitalDBObservationDocument(
@@ -132,7 +132,6 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testLiveCurrentObservationProviderReadsGuestControlAPI() {
         let provider = RuntimeVitalDBCurrentObservationProvider.live(
-            paths: RuntimePaths(),
             guestControlBaseURL: { "http://127.0.0.1:18330" },
             guestControlGateway: { _ in
                 GuestVitalDBObservationGatewayStub(
@@ -158,7 +157,6 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testLiveCurrentObservationProviderPreservesGuestControlUnavailableRead() {
         let provider = RuntimeVitalDBCurrentObservationProvider.live(
-            paths: RuntimePaths(),
             guestControlBaseURL: { "http://127.0.0.1:18330" },
             guestControlGateway: { _ in
                 GuestVitalDBObservationGatewayStub(
@@ -328,7 +326,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBRecordersUsesGuestReadModelBeforeSQLiteProjection() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -339,7 +337,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             ]
         ))
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: database.path),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: database.path),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .unavailable()
             },
@@ -377,7 +375,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testLoadVitalDBRecordersDoesNotReadSQLiteProjectionWhenGuestReadModelExists() {
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .unavailable()
             },
@@ -411,8 +409,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBObservationSnapshotDoesNotUseGuestRuntimeStateAsCurrentObservation() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -433,8 +431,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 ]
             )
         )
-        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
-            runtimeState: runtimeState.path,
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths(
             runtimeObservabilityDB: database.path
         ))
 
@@ -448,8 +445,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBObservationSnapshotDoesNotUseRuntimeStatusAsCurrentObservation() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -470,9 +467,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 ]
             )
         )
-        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
-            runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-            runtimeStatus: runtimeStatus.path,
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths(
             runtimeObservabilityDB: database.path
         ))
 
@@ -486,8 +481,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBObservationSnapshotIgnoresRuntimeStatePathIssues() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -495,8 +490,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             recorderOnlineThresholdSeconds: 60
         ))
         try FileManager.default.createDirectory(at: runtimeState, withIntermediateDirectories: true)
-        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
-            runtimeState: runtimeState.path,
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths(
             runtimeObservabilityDB: database.path
         ))
 
@@ -510,8 +504,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBObservationSnapshotIgnoresRuntimeStatusPathIssues() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -519,9 +513,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             recorderOnlineThresholdSeconds: 60
         ))
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path,
+            paths: RuntimeObservabilityPaths(
                 runtimeObservabilityDB: database.path
             ),
             fileStore: ObservabilityPathStateFileStore(pathStates: [
@@ -539,10 +531,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBObservationReportsMissingCurrentObservationSourcesWhenProjectionIsEmpty() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
-            runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-            runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths(
             runtimeObservabilityDB: database.path
         ))
 
@@ -564,7 +554,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         )
         let reader = RuntimeVitalDBHostDiagnosticsProjectionReader(
             mode: .diagnostics,
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             makeVitalDBProjectionRepository: { _ in
                 FailingVitalDBProjectionRepository(
                     observationError: ProjectionReadFailure(message: "observations unavailable"),
@@ -593,7 +583,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testDiagnosticsProjectionReaderPreservesInjectedPartialProjectionReadFailure() {
         let reader = RuntimeVitalDBHostDiagnosticsProjectionReader(
             mode: .diagnostics,
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             makeVitalDBProjectionRepository: { _ in
                 FailingVitalDBProjectionRepository(
                     assignments: [
@@ -631,8 +621,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBRecordersDoesNotUseGuestRuntimeStateOrSQLiteProjectionWhenGuestReadIsUnavailable() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -664,8 +654,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 ]
             )
         )
-        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
-            runtimeState: runtimeState.path,
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths(
             runtimeObservabilityDB: database.path
         ))
 
@@ -681,8 +670,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBRecordersReportsCurrentObservationNotProvided() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -693,9 +682,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             ]
         ))
         try Data("not-json".utf8).write(to: runtimeState)
-        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimePaths(
-            runtimeState: runtimeState.path,
-            runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+        let reader = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths(
             runtimeObservabilityDB: database.path
         ))
 
@@ -714,11 +701,9 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBRecordersReturnsNilStatusFallbackWhenStatusFileIsMissing() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+            paths: RuntimeObservabilityPaths(
                 runtimeObservabilityDB: database.path
             )
         )
@@ -733,6 +718,53 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertTrue(
             history.activityHistory.readError?.contains("currentObservation=guestControl=") == true
         )
+    }
+
+    func testLoadVitalDBBedsDoesNotUseSQLiteProjectionWhenGuestBedReadIsUnavailable() throws {
+        let directory = try temporaryDirectory()
+        defer { cleanup(directory) }
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
+        let repository = makeVitalDBProjectionRepository(url: database)
+        try repository.append(VitalDBObservationDocument(
+            observedAt: "2026-05-31T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR_PROJECTED", online: true),
+            ],
+            beds: [
+                VitalDBBedObservation(
+                    bedID: "bed-projected",
+                    name: "Projected Bed",
+                    vrcode: "VR_PROJECTED",
+                    online: true
+                ),
+            ]
+        ))
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: database.path),
+            currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
+                .unavailable()
+            },
+            guestVitalDBBedReadModelProvider: .live(
+                guestControlBaseURL: { "http://127.0.0.1:18330" },
+                guestControlGateway: { _ in
+                    GuestVitalDBObservationGatewayStub(
+                        read: RuntimeGuestControlVitalDBObservationRead(state: .unavailable),
+                        bedRead: RuntimeGuestControlVitalDBBedRead(
+                            state: .unavailable,
+                            readError: "Guest Bed read model is unavailable."
+                        )
+                    )
+                }
+            )
+        )
+
+        let history = reader.loadVitalDBBeds()
+
+        XCTAssertEqual(history.state, .readFailed)
+        XCTAssertEqual(history.beds, [])
+        XCTAssertEqual(history.readError, "Guest Bed read model is unavailable.")
     }
 
     func testLoadVitalDBRecordersPreservesInjectedRecorderIngressStatusWithoutCreatingRecorders() {
@@ -758,7 +790,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             readError: nil
         )
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .loaded(currentObservation, source: .guestControlAPI)
             },
@@ -800,7 +832,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             readError: nil
         )
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .loaded(currentObservation, source: .guestControlAPI)
             },
@@ -821,7 +853,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testLoadVitalDBRecordersDoesNotReadRecorderIngressStatusFromRuntimeStatusWhenProviderIsInjected() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         try writeLegacyRuntimeStatus(
             to: runtimeStatus,
             observation: VitalDBObservationDocument(
@@ -831,8 +863,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             )
         )
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(
-                runtimeStatus: runtimeStatus.path,
+            paths: RuntimeObservabilityPaths(
                 runtimeObservabilityDB: "/projection.sqlite"
             ),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
@@ -903,7 +934,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testLoadVitalDBRecorderActivityWindowUsesGuestActivityReadModel() {
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .unavailable()
             },
@@ -942,7 +973,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testLoadVitalDBRecorderActivityWindowPreservesLoadedEmptyRead() {
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .unavailable()
             },
@@ -970,7 +1001,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
 
     func testLoadVitalDBRecorderActivityWindowPreservesGuestReadFailure() {
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/projection.sqlite"),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .unavailable()
             },
@@ -999,7 +1030,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testDiagnosticsProjectionReaderProjectsAssignmentsAndRelationshipEvents() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -1019,7 +1050,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         ))
         let reader = RuntimeVitalDBHostDiagnosticsProjectionReader(
             mode: .diagnostics,
-            paths: RuntimePaths(runtimeObservabilityDB: database.path),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: database.path),
             makeVitalDBProjectionRepository: { _ in repository }
         )
 
@@ -1039,7 +1070,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testDiagnosticsProjectionReaderReportsPartialStateWhenOnlyEventsProjectionFails() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -1055,7 +1086,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         try executeSQLite(database, sql: "DROP TABLE vitaldb_relationship_events")
         let reader = RuntimeVitalDBHostDiagnosticsProjectionReader(
             mode: .diagnostics,
-            paths: RuntimePaths(runtimeObservabilityDB: database.path),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: database.path),
             makeVitalDBProjectionRepository: { _ in repository }
         )
 
@@ -1073,7 +1104,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
     func testVitalDBRelationshipsUsesGuestReadModelInsteadOfSQLiteProjection() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
-        let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         let repository = makeVitalDBProjectionRepository(url: database)
         try repository.append(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -1087,7 +1118,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             ]
         ))
         let reader = SystemRuntimeObservabilityReader(
-            paths: RuntimePaths(runtimeObservabilityDB: database.path),
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: database.path),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .unavailable()
             },

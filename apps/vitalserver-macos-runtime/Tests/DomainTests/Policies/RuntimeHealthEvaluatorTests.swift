@@ -54,41 +54,23 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ])
     }
 
-    func testReadinessFailuresIncludeProxyPortAndBootstrapReasons() {
+    func testReadinessFailuresIncludeProxyPortReasons() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             hostProxyHTTP: "502",
             guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
             redisUIHTTP: "failed",
             swaggerUIHTTP: "404",
-            proxyPortFailureReasons: [.proxyPortInUse(port: 80, listeners: "nginx-1234")],
-            guestBootstrapAssessment: .failed(.guestBootstrapMissingRuntimePackages)
+            proxyPortFailureReasons: [.proxyPortInUse(port: 80, listeners: "nginx-1234")]
         ))
 
         XCTAssertEqual(snapshot.failureReasons, [
             .guestHTTP(RuntimeHTTPStatusText.bootstrapPending),
-            .guestBootstrapMissingRuntimePackages,
             .hostProxyHTTP("502"),
             .proxyPortInUse(port: 80, listeners: "nginx-1234"),
         ])
         XCTAssertEqual(snapshot.vmErrors, [
             .guestHTTP(RuntimeHTTPStatusText.bootstrapPending),
-            .guestBootstrapMissingRuntimePackages,
         ])
-    }
-
-    func testExplicitBootstrapFailureIsReportedWhenGuestReadinessIsNotReported() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestReadiness: .notReported,
-            guestBootstrapAssessment: .failed(.guestBootstrapMissingRuntimePackages)
-        ))
-
-        XCTAssertEqual(snapshot.failureReasons, [
-            .guestBootstrapMissingRuntimePackages,
-        ])
-        XCTAssertEqual(snapshot.vmErrors, [
-            .guestBootstrapMissingRuntimePackages,
-        ])
-        XCTAssertEqual(snapshot.vmState, .failed)
     }
 
     func testAuxiliaryUIFailuresDoNotTriggerRuntimeRecovery() {
@@ -196,6 +178,55 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ])
     }
 
+    func testGuestServiceDesiredStoppedSuppressesStoppedStatusFailure() {
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+            guestServiceStatuses: .loaded([
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "stopped",
+                    health: "unknown",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+                RuntimeGuestControlServiceStatus(
+                    service: "redis",
+                    state: "stopped",
+                    health: "unknown",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ]),
+            guestServiceResources: [
+                guestServiceResource(service: "app", desiredState: "stopped"),
+                guestServiceResource(service: "redis", desiredState: "running"),
+            ]
+        ))
+
+        XCTAssertFalse(snapshot.failureReasons.contains(.guestService(service: "app", state: "stopped")))
+        XCTAssertTrue(snapshot.failureReasons.contains(.guestService(service: "redis", state: "stopped")))
+    }
+
+    func testGuestServiceResourceReadIssueProducesTypedFailureReason() {
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+            guestServiceStatuses: .loaded([
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ]),
+            guestServiceResourceReadIssues: [
+                RuntimeGuestServiceResourceReadIssue(
+                    service: "app",
+                    message: "resource controller unavailable"
+                ),
+            ]
+        ))
+
+        XCTAssertEqual(snapshot.failureReasons, [
+            .guestServiceObservationReadFailed("app_resource_controller_unavailable"),
+        ])
+    }
+
     func testCriticalVitalDBAnomalyIsPreservedWithoutRuntimeFailureReason() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-25T00:00:00Z",
@@ -285,45 +316,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.vitalDBObservation?.anomalies, [duplicateIP, staleRecorder])
     }
 
-    func testExplicitBootstrapFailureIsReportedEvenWhenGuestHTTPIsHealthy() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestHTTP: "200",
-            guestBootstrapAssessment: .failed(.guestBootstrapFailed)
-        ))
-
-        XCTAssertFalse(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
-        XCTAssertEqual(snapshot.vmErrors, [.guestBootstrapFailed])
-        XCTAssertEqual(snapshot.failureReasons, [.guestBootstrapFailed])
-    }
-
-    func testNotCurrentBootBootstrapResultIsIgnoredWhenGuestHTTPIsHealthy() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestHTTP: "200",
-            guestBootstrapAssessment: .notCurrentBoot
-        ))
-
-        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
-        XCTAssertEqual(snapshot.failureReasons, [])
-    }
-
-    func testMissingBootstrapResultIsObservableWhenGuestHTTPFailsOutsideBootstrapLifecycle() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestHTTP: "failed",
-            guestBootstrapAssessment: .missing
-        ))
-
-        XCTAssertEqual(snapshot.vmErrors, [
-            .guestHTTPProbeFailed("failed"),
-            .guestBootstrapResultMissing,
-        ])
-        XCTAssertEqual(snapshot.failureReasons, [
-            .guestHTTPProbeFailed("failed"),
-            .guestBootstrapResultMissing,
-        ])
-        XCTAssertEqual(snapshot.vmState, .unreachable)
-    }
-
-    func testMissingBootstrapResultDoesNotFailWhileLifecycleIsBootstrapping() {
+    func testBootstrappingLifecycleUsesGuestHTTPWithoutBootstrapResultFileInput() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             vmLifecycle: RuntimeVMLifecycleDocument(
                 state: .bootstrapping,
@@ -331,30 +324,12 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
                 updatedAt: "2026-05-31T00:00:01Z",
                 deadlineAt: "2026-05-31T00:10:00Z"
             ),
-            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-            guestBootstrapAssessment: .missing
+            guestHTTP: RuntimeHTTPStatusText.bootstrapPending
         ))
 
         XCTAssertEqual(snapshot.vmErrors, [.guestHTTP(RuntimeHTTPStatusText.bootstrapPending)])
         XCTAssertEqual(snapshot.failureReasons, [.guestHTTP(RuntimeHTTPStatusText.bootstrapPending)])
         XCTAssertEqual(snapshot.vmState, .starting)
-    }
-
-    func testUnavailableBootstrapResultIsObservableWhenGuestHTTPFails() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestHTTP: "failed",
-            guestBootstrapAssessment: .unavailable("permission denied")
-        ))
-
-        XCTAssertEqual(snapshot.vmErrors, [
-            .guestHTTPProbeFailed("failed"),
-            .guestBootstrapResultUnavailable,
-        ])
-        XCTAssertEqual(snapshot.failureReasons, [
-            .guestHTTPProbeFailed("failed"),
-            .guestBootstrapResultUnavailable,
-        ])
-        XCTAssertEqual(snapshot.vmState, .unreachable)
     }
 
     func testVMHealthPolicyDefinesHostAndGuestFailureModes() {
@@ -417,9 +392,10 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         swaggerUIHTTP: String = "200",
         vitalDBObservation: VitalDBObservationDocument? = nil,
         guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
+        guestServiceResources: [RuntimeGuestServiceResource] = [],
+        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         vitalDBObservationInput: RuntimeObservationInput<VitalDBObservationDocument>? = nil,
-        proxyPortFailureReasons: [RuntimeFailureReason] = [],
-        guestBootstrapAssessment: GuestBootstrapAssessment = .noFailure
+        proxyPortFailureReasons: [RuntimeFailureReason] = []
     ) -> RuntimeHealthInput {
         RuntimeHealthInput(
             vmExecutable: vmExecutable,
@@ -440,11 +416,24 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
             guestServiceStatuses: guestServiceStatuses,
+            guestServiceResources: guestServiceResources,
+            guestServiceResourceReadIssues: guestServiceResourceReadIssues,
             vitalDBObservation: vitalDBObservationInput
                 ?? vitalDBObservation.map(RuntimeObservationInput.loaded)
                 ?? .notReported,
-            proxyPortFailureReasons: proxyPortFailureReasons,
-            guestBootstrapAssessment: guestBootstrapAssessment
+            proxyPortFailureReasons: proxyPortFailureReasons
+        )
+    }
+
+    private func guestServiceResource(
+        service: String,
+        desiredState: String
+    ) -> RuntimeGuestServiceResource {
+        RuntimeGuestServiceResource(
+            service: service,
+            spec: RuntimeGuestServiceSpec(state: desiredState, desiredState: desiredState),
+            status: RuntimeGuestServiceStatusRead(state: desiredState),
+            conditions: []
         )
     }
 

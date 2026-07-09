@@ -83,8 +83,7 @@ struct RuntimeRecorderIngressGuestStatusReadProvider: RuntimeRecorderIngressStat
 }
 
 struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked Sendable {
-    let paths: RuntimePaths
-    private let fileStore: RuntimeFileStore
+    private let eventHistoryReader: any RuntimeEventHistoryReading
     private let currentObservationProvider: RuntimeVitalDBCurrentObservationProvider
     private let guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider?
     private let guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider?
@@ -93,8 +92,9 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     private let recorderIngressStatusReadProvider: (any RuntimeRecorderIngressStatusReadProviding)?
 
     init(
-        paths: RuntimePaths,
+        paths: RuntimeObservabilityPaths,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        eventHistoryReader: (any RuntimeEventHistoryReading)? = nil,
         currentObservationProvider: RuntimeVitalDBCurrentObservationProvider,
         guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider? = nil,
         guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider? = nil,
@@ -102,8 +102,10 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider? = nil,
         recorderIngressStatusReadProvider: (any RuntimeRecorderIngressStatusReadProviding)? = nil
     ) {
-        self.paths = paths
-        self.fileStore = fileStore
+        self.eventHistoryReader = eventHistoryReader ?? SystemRuntimeObservabilityReader.liveEventHistoryReader(
+            paths: paths,
+            fileStore: fileStore
+        )
         self.currentObservationProvider = currentObservationProvider
         self.guestVitalDBReadModelProvider = guestVitalDBReadModelProvider
         self.guestVitalDBBedReadModelProvider = guestVitalDBBedReadModelProvider
@@ -113,13 +115,14 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     }
 
     static func live(
-        paths: RuntimePaths,
+        paths: RuntimeObservabilityPaths,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) -> SystemRuntimeObservabilityReader {
         SystemRuntimeObservabilityReader(
             paths: paths,
             fileStore: fileStore,
-            currentObservationProvider: .live(paths: paths, fileStore: fileStore),
+            eventHistoryReader: liveEventHistoryReader(paths: paths, fileStore: fileStore),
+            currentObservationProvider: .live(),
             guestVitalDBReadModelProvider: .live(),
             guestVitalDBBedReadModelProvider: .live(),
             guestVitalDBActivityProvider: .live(),
@@ -128,15 +131,19 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         )
     }
 
+    static func liveEventHistoryReader(
+        paths: RuntimeObservabilityPaths,
+        fileStore: RuntimeFileStore
+    ) -> any RuntimeEventHistoryReading {
+        RuntimeEventHistoryOwnerReader.live(paths: paths, fileStore: fileStore)
+    }
+
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
         loadRuntimeEvents(query: RuntimeEventQuery(limit: limit))
     }
 
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
-        let primary = JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents), fileStore: fileStore)
-        let secondary = SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
-        let repository = CompositeRuntimeEventRepository(primary: primary, secondary: secondary)
-        let page = repository.query(query)
+        let page = eventHistoryReader.query(query)
         return RuntimeEventHistory(
             events: page.events,
             nextCursor: page.nextCursor.map(RuntimeEventCursorWireCodec.encode),

@@ -73,6 +73,38 @@ const redisRelayScopeSchema = z.enum([
   "waveform_trend_only",
   "vital_reconstruction"
 ]);
+const runtimeRedisRelayBatchSchema = z
+  .object({
+    scanned: z.number().int(),
+    copied: z.number().int(),
+    published: z.number().int(),
+    unchanged: z.number().int(),
+    duplicates: z.number().int(),
+    skipped: z.number().int(),
+    denied: z.number().int(),
+    missing: z.number().int(),
+    errors: z.number().int()
+  })
+  .passthrough();
+const runtimeRedisRelayStatusSchema = z
+  .object({
+    schemaVersion: z.number().int(),
+    observedAt: z.string(),
+    enabled: z.boolean(),
+    state: z.string(),
+    scope: z.string(),
+    targetUrl: requiredNullableString,
+    targetUsernameConfigured: z.boolean(),
+    targetPasswordConfigured: z.boolean(),
+    settingsFingerprint: requiredNullableString,
+    batches: z.number().int(),
+    totals: runtimeRedisRelayBatchSchema,
+    lastBatch: runtimeRedisRelayBatchSchema.nullable(),
+    lastSuccessAt: requiredNullableString,
+    lastErrorAt: requiredNullableString,
+    lastError: requiredNullableString
+  })
+  .passthrough();
 const runtimeRecorderIngressSettingsSchema = z
   .object({
     sendDataMaxPendingItems: z.number().int(),
@@ -128,7 +160,7 @@ const runtimeGuestServicesReadStateSchema = z.enum([
   "loaded",
   "failed"
 ]);
-const runtimeGuestAddressSourceSchema = z.enum(["vm-ip"]);
+const runtimeGuestAddressSourceSchema = z.enum(["runtime-control-api"]);
 const runtimeGuestAddressReadStateSchema = z.enum([
   "notReported",
   "loaded",
@@ -195,7 +227,7 @@ const runtimeGuestServiceConditionSchema = z
     observedAt: z.string()
   })
   .passthrough();
-const runtimeGuestServiceResourceSchema = z
+export const runtimeGuestServiceResourceSchema = z
   .object({
     service: z.string(),
     spec: runtimeGuestServiceSpecSchema,
@@ -252,12 +284,26 @@ export const runtimeCommandResponseSchema = z
   .object({
     result: z
       .object({
-        exitCode: z.number().optional(),
-        stdout: z.string().optional(),
-        stderr: z.string().optional()
+        exitCode: z.number(),
+        stdout: z.string(),
+        stderr: z.string(),
+        outputIssues: z.array(
+          z
+            .object({
+              stream: z.enum(["stdout", "stderr"]),
+              message: z.string()
+            })
+            .passthrough()
+        ),
+        executionIssue: z
+          .object({
+            kind: z.enum(["processLaunchFailed", "outputFilePreparationFailed"]),
+            message: z.string()
+          })
+          .passthrough()
+          .nullable()
       })
       .passthrough()
-      .optional()
   })
   .passthrough();
 
@@ -570,7 +616,41 @@ const runtimeRecorderIngressStatusReadResultSchema = z
     document: runtimeRecorderIngressStatusDocumentSchema.nullable(),
     readError: requiredNullableString
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((read, context) => {
+    if (read.readState === "loaded") {
+      if (read.document == null) {
+        context.addIssue({
+          code: "custom",
+          path: ["document"],
+          message: "loaded recorder ingress status reads must include document"
+        });
+      }
+      if (!isBlank(read.readError)) {
+        context.addIssue({
+          code: "custom",
+          path: ["readError"],
+          message: "loaded recorder ingress status reads must not include readError"
+        });
+      }
+    }
+
+    if (
+      read.readState === "commandFailed" ||
+      read.readState === "emptyResponse" ||
+      read.readState === "outputInvalid" ||
+      read.readState === "invalidResponse" ||
+      read.readState === "readFailed"
+    ) {
+      if (isBlank(read.readError)) {
+        context.addIssue({
+          code: "custom",
+          path: ["readError"],
+          message: `${read.readState} recorder ingress status reads must include readError`
+        });
+      }
+    }
+  });
 
 const vitalDBRecorderActivityBucketSchema = z
   .object({
@@ -695,17 +775,13 @@ const runtimeControlConditionSchema = z
 export const runtimeStatusSchema = z
   .object({
     runtimeInstalled: z.boolean().optional(),
+    runtimeInstallationState: z.string().optional(),
     vmServiceLoaded: z.boolean().optional(),
     proxyServiceLoaded: z.boolean().optional(),
     guestLogSyncServiceLoaded: z.boolean().optional(),
     sleepPreventionServiceLoaded: nullableBoolean,
     watchdogServiceLoaded: z.boolean().optional(),
     runtimeState: runtimeStateSchema.optional(),
-    operation: nullableString,
-    statusMessage: nullableString,
-    statusDocumentError: nullableString,
-    updatedAt: nullableString,
-    startedAt: nullableString,
     runtimeVersion: nullableString,
     vmState: vmStateSchema.optional(),
     vmErrors: z.array(z.string()).nullable().optional(),
@@ -742,7 +818,7 @@ export const runtimeStatusSchema = z
     dataDirectoryStatsError: nullableString,
     proxyPort: z.number().optional(),
     failureReasons: z.array(z.string()).optional(),
-    progress: unknownRecord.nullable().optional()
+    redisRelayStatus: runtimeRedisRelayStatusSchema.nullable().optional()
   })
   .passthrough()
   .superRefine((status, context) => {
@@ -829,7 +905,6 @@ const runtimeOperationLeaseStateSchema = z
 export const runtimeOperationStateSchema = z
   .object({
     activeOperation: requiredNullableString,
-    runtimeStatusUpdatedAt: requiredNullableString,
     install: runtimeInstallOperationStateSchema,
     lease: runtimeOperationLeaseStateSchema
   })
@@ -1130,7 +1205,23 @@ export const vitalDBRelationshipsSchema = z
     events: z.array(vitalDBRelationshipEventSchema),
     readError: requiredNullableString
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((history, context) => {
+    if (history.state === "partiallyLoaded" && isBlank(history.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: "partially loaded VitalDB relationship history must include readError"
+      });
+    }
+    if (history.state === "readFailed" && isBlank(history.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: "failed VitalDB relationship history must include readError"
+      });
+    }
+  });
 
 export const runtimeLogTextResponseSchema = z
   .object({

@@ -939,10 +939,10 @@ struct RuntimeRecordersPanel: View {
 
     private func linkedBed(for recorder: RuntimeVitalRecorderRecord) -> RuntimeVitalBedRecord? {
         if let bedID = recorder.bedID,
-           let bed = viewModel.vitalRecorders.beds.first(where: { $0.bedID == bedID }) {
+           let bed = viewModel.vitalBeds.beds.first(where: { $0.bedID == bedID }) {
             return bed
         }
-        return viewModel.vitalRecorders.beds.first { $0.vrcode == recorder.vrcode }
+        return viewModel.vitalBeds.beds.first { $0.vrcode == recorder.vrcode }
     }
 
     private func patientText(_ connected: Bool?) -> String {

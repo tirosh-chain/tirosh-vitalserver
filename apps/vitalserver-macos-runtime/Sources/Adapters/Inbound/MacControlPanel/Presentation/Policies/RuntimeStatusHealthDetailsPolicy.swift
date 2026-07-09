@@ -96,8 +96,14 @@ public struct RuntimeStatusHealthDetailsPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,
                 value: value(
-                    vocabulary.installStateText(status.effectiveRuntimeInstallationState),
-                    installStateSeverity(status.effectiveRuntimeInstallationState)
+                    vocabulary.installStateText(
+                        status.runtimeInstallationState
+                            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
+                    ),
+                    installStateSeverity(
+                        status.runtimeInstallationState
+                            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
+                    )
                 )
             ),
             RuntimeStatusHealthDetailItem(
@@ -274,12 +280,25 @@ public struct RuntimeStatusHealthDetailsPolicy {
             parts.append(vocabulary.notReportedText)
         }
         if let resource {
-            let desired = resource.spec.desiredState ?? resource.spec.state
-            let observed = resource.status.observedState ?? resource.status.state
-            parts.append("desired \(desired)")
-            parts.append("observed \(observed)")
-            if let condition = resource.conditions.first {
-                parts.append("\(condition.reason): \(condition.message)")
+            parts.append("spec \(resource.spec.state)")
+            if let desiredState = resource.spec.desiredState {
+                parts.append("desired \(desiredState)")
+            }
+            parts.append("status \(resource.status.state)")
+            if let observedState = resource.status.observedState {
+                parts.append("observed \(observedState)")
+            }
+            if let readError = resource.status.readError {
+                parts.append("status read failed \(readError.kind): \(readError.message)")
+            }
+            let conditionText = resource.conditions
+                .map { "\($0.type)=\($0.status) \($0.reason): \($0.message)" }
+                .joined(separator: "; ")
+            if !conditionText.isEmpty {
+                parts.append("conditions \(conditionText)")
+            }
+            if let lastOperationId = resource.lastOperationId {
+                parts.append("last operation \(lastOperationId)")
             }
         }
         return parts.joined(separator: " | ")

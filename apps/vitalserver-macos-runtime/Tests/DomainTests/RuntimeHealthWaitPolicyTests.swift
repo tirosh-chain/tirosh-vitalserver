@@ -87,7 +87,7 @@ private func healthSnapshot(
         proxyService: .loaded,
         watchdogService: .loaded,
         vmState: reasons.isEmpty ? .running : .unreachable,
-        guestAddressRead: vmIP.map { .loaded(address: $0, source: .vmIPFile) }
+        guestAddressRead: vmIP.map { .loaded(address: $0, source: .runtimeControlAPI) }
             ?? .missing("vm-ip file missing"),
         vmIP: vmIP,
         proxyPort: 18080,

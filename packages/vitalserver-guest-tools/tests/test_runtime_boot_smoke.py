@@ -34,7 +34,7 @@ def test_runtime_boot_smoke_writes_manifest_for_success(tmp_path: Path) -> None:
     assert document["runId"] == "runtime-run-test"
     assert document["status"] == "passed"
     assert stage_status(document, "bootstrap-result") == "passed"
-    assert stage_status(document, "runtime-state") == "passed"
+    assert stage_status(document, "runtime-observation") == "passed"
     assert stage_status(document, "systemd-units") == "passed"
     assert stage_status(document, "runtime-data") == "passed"
     assert (
@@ -132,11 +132,13 @@ def test_runtime_boot_smoke_uses_operation_timeout_for_guest_restart(
             "bootstrap result is not completed",
         ),
         (
-            lambda context: (context.runtime_dir / "runtime-state.json").unlink(),
+            lambda context: (context.runtime_dir / "runtime-observation.json").unlink(),
             "No such file or directory",
         ),
         (
-            lambda context: (context.runtime_dir / "runtime-state.json").write_text(
+            lambda context: (
+                context.runtime_dir / "runtime-observation.json"
+            ).write_text(
                 "{",
                 encoding="utf-8",
             ),
@@ -144,21 +146,21 @@ def test_runtime_boot_smoke_uses_operation_timeout_for_guest_restart(
         ),
         (
             lambda context: update_json(
-                context.runtime_dir / "runtime-state.json",
+                context.runtime_dir / "runtime-observation.json",
                 {"updatedAt": timestamp(NOW - timedelta(minutes=10))},
             ),
-            "runtime state is stale",
+            "runtime observation is stale",
         ),
         (
             lambda context: update_json(
-                context.runtime_dir / "runtime-state.json",
+                context.runtime_dir / "runtime-observation.json",
                 {"bootID": ""},
             ),
-            "runtime state bootID is missing",
+            "runtime observation bootID is missing",
         ),
         (
             lambda context: update_json(
-                context.runtime_dir / "runtime-state.json",
+                context.runtime_dir / "runtime-observation.json",
                 {"diskHealth": {"rootFilesystemReadOnly": True, "kernelErrors": []}},
             ),
             "root filesystem is not explicitly writable",
@@ -189,7 +191,7 @@ def test_runtime_boot_smoke_rejects_inactive_systemd_unit(tmp_path: Path) -> Non
     with pytest.raises(SystemExit):
         run_runtime_boot_smoke(
             context=context,
-            operations=fake_operations(inactive_service="tirosh-runtime-state.service"),
+            operations=fake_operations(inactive_service="tirosh-runtime-observation.service"),
         )
 
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
@@ -556,7 +558,7 @@ def runtime_boot_context(
         deploy_dir=deploy_dir,
         manifest_path=runtime_dir / RUNTIME_BOOT_SMOKE_MANIFEST,
         run_id="runtime-run-test",
-        max_runtime_state_age_seconds=180,
+        max_runtime_observation_age_seconds=180,
         compose_ready_timeout_seconds=compose_ready_timeout_seconds,
         dev_build=dev_build,
     )
@@ -578,7 +580,7 @@ def write_valid_runtime_documents(
         },
     )
     write_json(
-        context.runtime_dir / "runtime-state.json",
+        context.runtime_dir / "runtime-observation.json",
         {
             "schemaVersion": 1,
             "bootID": "boot-test",

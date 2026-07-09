@@ -15,12 +15,14 @@ Helper Status에서 VM service와 watchdog은 running인데 VM IP, VitalServer, 
 tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/logs/launchd.out.log"
 tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/logs/launchd.err.log"
 cat "/Library/Application Support/TiroshVitalServer/vm/data/run/bootstrap.log"
-cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json"
+cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-observation.json"
 ```
+
+Current Host reads should consume the Runtime Control Guest address owner (`GET /host/runtime/guest-address`) and Runtime Control status. The `vm/data/run/vm-ip` file is bootstrap evidence that may be published through `PUT /host/runtime/guest-address`; it is not the current VM IP owner or a routing fallback. `runtime-observation.json` and `runtime-status.json` are useful diagnostics artifacts, but they are not current VM IP or active operation owners.
 
 원인:
 
-VM 자체는 부팅됐지만 guest bootstrap이 실패하면 `runtime-state.json`이 생성되지 않습니다. 이 경우 UI는 VM IP를 알 수 없어 Waiting으로 남습니다. 한 사례에서는 bootstrap preflight가 arm64 VM에서 `qemu-x86_64-static`을 필수로 요구해 실패했습니다. 현재 container image는 `linux/arm64`로 제공하므로 qemu-user-static은 runtime 필수 조건이 아닙니다.
+VM 자체는 부팅됐지만 guest bootstrap이 실패하면 `runtime-observation.json`이 생성되지 않습니다. 이 경우 UI는 VM IP를 알 수 없어 Waiting으로 남습니다. 한 사례에서는 bootstrap preflight가 arm64 VM에서 `qemu-x86_64-static`을 필수로 요구해 실패했습니다. 현재 container image는 `linux/arm64`로 제공하므로 qemu-user-static은 runtime 필수 조건이 아닙니다.
 
 다른 사례에서는 clean install 직후 guest bootstrap log에 아래 메시지가 남았습니다.
 
@@ -30,9 +32,9 @@ The virtual environment was not created successfully because ensurepip is not av
 Failing command: /opt/tirosh/guest-tools/venv/bin/python3
 ```
 
-이 경우 VM은 boot되고 DHCP IP도 받지만 guest-tools venv가 생성되지 않습니다. 따라서 `tirosh-runtime-state`, command poller, observability service가 실행될 수 없고 host에는 `vm-runtime-state-missing`, `guest-http-missing-vm-ip`, `host-proxy-http-failed`가 연쇄적으로 보입니다. 원인은 host proxy가 아니라 guest bootstrap prerequisite 실패입니다.
+이 경우 VM은 boot되고 DHCP IP도 받지만 guest-tools venv가 생성되지 않습니다. 따라서 `tirosh-runtime-observation`, command poller, observability service가 실행될 수 없고 host에는 `vm-runtime-state-missing`, `guest-http-missing-vm-ip`, `host-proxy-http-failed`가 연쇄적으로 보입니다. 원인은 host proxy가 아니라 guest bootstrap prerequisite 실패입니다.
 
-또 다른 사례에서는 Guest-owned `runtime-state.json`에는 `vmIP`와 HTTP 200 상태가 기록됐지만, Host-owned `runtime-status.json`이 stale `recovering/install` 상태에 머물렀습니다. watchdog은 stale install status를 active managed operation으로 보고 스스로 실행을 skip했기 때문에 VM lifecycle을 `running`으로 전환하지 못했고, Helper에는 `guest-http-missing-vm-ip`가 계속 표시됐습니다. 이 경우 IP가 없는 것이 아니라 Host status owner가 Guest state를 아직 반영하지 못한 상태입니다.
+또 다른 과거 사례에서는 Guest diagnostics artifact에는 `vmIP`와 HTTP 200 상태가 기록됐지만, Host status projection이 stale `recovering/install` 상태에 머물렀습니다. 당시 watchdog은 stale install status를 active managed operation처럼 보고 스스로 실행을 skip했기 때문에 VM lifecycle을 `running`으로 전환하지 못했고, Helper에는 `guest-http-missing-vm-ip`가 계속 표시됐습니다. 현재 구현에서는 active operation 판단을 status projection에서 복원하지 않고 Host operation lease owner contract를 봐야 합니다.
 
 조치:
 
@@ -44,4 +46,4 @@ Clean install/pkg install에서는 host-side 파일 배치와 launchd 시작 이
 
 - 2026-06-02: `python3 -m venv --help`는 ensurepip 존재를 보장하지 않는다는 clean install 로그를 확인했습니다. Guest bootstrap과 air-gapped rootfs 준비 스크립트가 실제 임시 venv를 생성하는 smoke check를 수행하도록 수정했습니다.
 - 2026-06-02: pkg install 경계를 `runtime install-provision`으로 분리했습니다. Runtime install provision은 `.healthy` status를 쓰지 않고, readiness는 runtime health owner가 별도로 보고합니다.
-- 2026-06-02: `install-provision` 완료 status가 `.recovering`이면 watchdog 보호 정책과 충돌해 stale install 상태가 active operation처럼 남을 수 있음을 확인했습니다. Provision 완료 status는 health 미확정 상태로 남기고, watchdog/health가 Guest-owned state를 읽어 최종 상태를 갱신해야 합니다.
+- 2026-06-02: `install-provision` 완료 status가 `.recovering`이면 watchdog 보호 정책과 충돌해 stale install 상태가 active operation처럼 남을 수 있음을 확인했습니다. Provision 완료 status는 health 미확정 상태로 남기고, watchdog/health가 explicit Guest address, Guest Control readiness, VM lifecycle, and Host operation lease owner reads를 통해 최종 상태를 갱신해야 합니다.

@@ -195,14 +195,8 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
     }
 
-    func testInstallInitializationBootstrappingDeferralKeepsInitializingStatus() throws {
+    func testInstallInitializationBootstrappingDeferralUsesCurrentHealthDecision() throws {
         let harness = WatchdogHarness(
-            currentRuntimeStatus: .loaded(status(
-                level: .initializing,
-                operation: .install,
-                updatedAt: "2026-05-31T00:00:00Z",
-                progress: progress(operation: .install, phase: .running)
-            )),
             snapshots: [
                 healthSnapshot(
                     vmLifecycle: RuntimeVMLifecycleDocument(
@@ -225,7 +219,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.proxyLivenessPorts, [])
         XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
         XCTAssertTrue(harness.restartedServices.isEmpty)
-        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.initializing])
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.degraded])
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
     }
 
@@ -342,7 +336,6 @@ private final class WatchdogHarness {
     var collectGuestLogsResult: RuntimeBestEffortOperationResult = .completed
 
     private let activeOperation: RuntimeOperation?
-    private let currentRuntimeStatus: RuntimeStatusDocumentLoadResult
     private let automaticRecoveryEnabled: Bool
     private let automaticRecoveryReadError: Error?
     private let lifecycleMarkError: Error?
@@ -353,7 +346,6 @@ private final class WatchdogHarness {
 
     init(
         activeOperation: RuntimeOperation? = nil,
-        currentRuntimeStatus: RuntimeStatusDocumentLoadResult = .missing,
         automaticRecoveryEnabled: Bool = true,
         automaticRecoveryReadError: Error? = nil,
         lifecycleMarkError: Error? = nil,
@@ -363,7 +355,6 @@ private final class WatchdogHarness {
         snapshots: [RuntimeHealthSnapshot] = [healthSnapshot()]
     ) {
         self.activeOperation = activeOperation
-        self.currentRuntimeStatus = currentRuntimeStatus
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
         self.automaticRecoveryReadError = automaticRecoveryReadError
         self.lifecycleMarkError = lifecycleMarkError
@@ -388,9 +379,6 @@ private final class WatchdogHarness {
                 },
                 activeManagedOperation: {
                     self.activeOperation
-                },
-                currentRuntimeStatus: {
-                    self.currentRuntimeStatus
                 },
                 healthSnapshot: {
                     self.healthCalls += 1
@@ -507,7 +495,7 @@ private func healthSnapshot(
         vmLifecycle: vmLifecycle,
         vmState: vmState,
         vmErrors: vmErrors,
-        guestAddressRead: guestAddressRead ?? vmIP.map { .loaded(address: $0, source: .vmIPFile) }
+        guestAddressRead: guestAddressRead ?? vmIP.map { .loaded(address: $0, source: .runtimeControlAPI) }
             ?? .missing("vm-ip file missing"),
         vmIP: vmIP,
         proxyPort: proxyPort,
@@ -524,53 +512,5 @@ private func runningLifecycle() -> RuntimeVMLifecycleDocument {
         state: .running,
         startedAt: "2026-05-31T00:00:00Z",
         updatedAt: "2026-05-31T00:00:01Z"
-    )
-}
-
-private func status(
-    level: RuntimeStatusLevel,
-    operation: RuntimeOperation,
-    updatedAt: String,
-    progress: RuntimeProgressDocument? = nil
-) -> RuntimeStatusDocument {
-    RuntimeStatusDocument(
-        product: "VitalServerHelper",
-        status: level,
-        operation: operation,
-        message: "status",
-        updatedAt: updatedAt,
-        productRoot: "/product",
-        runtimeHome: "/product/vm",
-        runtimeVersion: "0.1.0",
-        vmService: .loaded,
-        proxyService: .loaded,
-        watchdogService: .loaded,
-        vmIP: "192.168.64.2",
-        proxyPort: 80,
-        hostProxyHTTP: "200",
-        guestHTTP: "200",
-        redisUIHTTP: "200",
-        swaggerUIHTTP: "200",
-        rootfsBase: .present,
-        vmDisk: .present,
-        failureReasons: [],
-        latestBackup: nil,
-        progress: progress
-    )
-}
-
-private func progress(
-    operation: RuntimeOperation,
-    phase: RuntimeProgressPhase
-) -> RuntimeProgressDocument {
-    RuntimeProgressDocument(
-        operation: operation,
-        phase: phase,
-        step: nil,
-        stepStatus: nil,
-        message: "progress",
-        reasonCodes: [],
-        startedAt: nil,
-        updatedAt: "2026-05-31T00:00:00Z"
     )
 }

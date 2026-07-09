@@ -23,8 +23,8 @@ from tirosh_guest_tools.adapters.outbound.runtime.config import (
     print_runtime_config_exports,
 )
 from tirosh_guest_tools.adapters.outbound.runtime.health import check_runtime_health
-from tirosh_guest_tools.adapters.outbound.runtime.state_writer import (
-    write_runtime_state,
+from tirosh_guest_tools.adapters.outbound.runtime.observation_writer import (
+    write_runtime_observation,
 )
 from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
 from tirosh_guest_tools.application.compose import run_compose_action
@@ -52,7 +52,9 @@ from tirosh_guest_tools.application.redis_restore import (
 from tirosh_guest_tools.application.rootfs_smoke import run_rootfs_smoke
 from tirosh_guest_tools.application.runtime_boot_smoke import run_runtime_boot_smoke
 from tirosh_guest_tools.application.runtime_data_prepare import prepare_runtime_data
-from tirosh_guest_tools.application.runtime_state import run_runtime_state_action
+from tirosh_guest_tools.application.runtime_observation import (
+    run_runtime_observation_action,
+)
 from tirosh_guest_tools.application.update_activation import (
     LOG_FILE as ACTIVATE_UPDATE_LOG_FILE,
 )
@@ -68,7 +70,7 @@ from tirosh_guest_tools.application.update_shutdown import (
 from tirosh_guest_tools.domain.operations import (
     ComposeAction,
     ContainerLogAction,
-    RuntimeStateAction,
+    RuntimeObservationAction,
 )
 from tirosh_guest_tools.infrastructure.bootstrap_operations import (
     default_bootstrap_context,
@@ -144,16 +146,18 @@ def runtime_env() -> int:
     return 0
 
 
-def write_runtime_state_command() -> int:
-    parser = argparse.ArgumentParser(description="Write guest runtime state JSON.")
-    parser.add_argument("runtime_state", type=Path)
+def write_runtime_observation_command() -> int:
+    parser = argparse.ArgumentParser(
+        description="Write guest runtime observation artifact JSON."
+    )
+    parser.add_argument("runtime_observation", type=Path)
     parser.add_argument("guest_http", nargs="?")
     parser.add_argument("redis_ui_http", nargs="?")
     parser.add_argument("swagger_ui_http", nargs="?")
     args = parser.parse_args()
 
-    write_runtime_state(
-        args.runtime_state,
+    write_runtime_observation(
+        args.runtime_observation,
         guest_http=args.guest_http,
         redis_ui_http=args.redis_ui_http,
         swagger_ui_http=args.swagger_ui_http,
@@ -161,16 +165,18 @@ def write_runtime_state_command() -> int:
     return 0
 
 
-def runtime_state() -> int:
-    parser = argparse.ArgumentParser(description="Write or watch guest runtime state.")
+def runtime_observation() -> int:
+    parser = argparse.ArgumentParser(
+        description="Write or watch guest runtime observation outputs."
+    )
     parser.add_argument(
         "action",
         nargs="?",
-        choices=[action.value for action in RuntimeStateAction],
-        default=RuntimeStateAction.WATCH.value,
+        choices=[action.value for action in RuntimeObservationAction],
+        default=RuntimeObservationAction.WATCH.value,
     )
     args = parser.parse_args()
-    run_runtime_state_action(args.action)
+    run_runtime_observation_action(args.action)
     return 0
 
 

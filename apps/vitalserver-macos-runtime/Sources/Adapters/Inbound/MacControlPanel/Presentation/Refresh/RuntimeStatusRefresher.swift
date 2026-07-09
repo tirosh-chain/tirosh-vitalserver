@@ -4,14 +4,13 @@ import Errors
 @MainActor
 public protocol RuntimeStatusSnapshotLoading {
     func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus
-    func loadOperationState(status: RuntimeStatus) async -> RuntimeOperationState
+    func loadOperationState() async -> RuntimeOperationState
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
 }
 
 public protocol RuntimeStatusPresentationFormatting {
     func statusDisplayMessage(_ status: RuntimeStatus) -> String?
     func updateOperationDisplayMessage(_ status: RuntimeStatus, operationState: RuntimeOperationState) -> String?
-    func progressDisplayMessage(_ status: RuntimeStatus) -> String?
 }
 
 public struct RuntimeStatusRefreshResult {
@@ -54,12 +53,12 @@ public struct RuntimeStatusRefresher {
         isBusy: Bool
     ) async -> RuntimeStatusRefreshResult {
         let status = await snapshots.loadStatus(settings: settings)
-        let operationState = await snapshots.loadOperationState(status: status)
+        let operationState = await snapshots.loadOperationState()
         return presentation(
             status: status,
             operationState: operationState,
             isBusy: isBusy,
-            synchronizeFileBackedOperation: true
+            includeOperationStatePresentation: true
         )
     }
 
@@ -68,12 +67,12 @@ public struct RuntimeStatusRefresher {
         isBusy: Bool
     ) async -> RuntimeStatusRefreshResult {
         let status = await snapshots.loadHealthStatus(settings: settings)
-        let operationState = await snapshots.loadOperationState(status: status)
+        let operationState = await snapshots.loadOperationState()
         return presentation(
             status: status,
             operationState: operationState,
             isBusy: isBusy,
-            synchronizeFileBackedOperation: true
+            includeOperationStatePresentation: true
         )
     }
 
@@ -82,12 +81,12 @@ public struct RuntimeStatusRefresher {
         completedMessage: String
     ) async -> RuntimeStatusRefreshResult {
         let status = await snapshots.loadHealthStatus(settings: settings)
-        let operationState = await snapshots.loadOperationState(status: status)
+        let operationState = await snapshots.loadOperationState()
         return presentation(
             status: status,
             operationState: operationState,
             isBusy: true,
-            synchronizeFileBackedOperation: false,
+            includeOperationStatePresentation: false,
             messagePrefix: completedMessage
         )
     }
@@ -97,12 +96,12 @@ public struct RuntimeStatusRefresher {
         pendingDetail: String
     ) async -> RuntimeStatusRefreshResult {
         let status = await snapshots.loadStatus(settings: settings)
-        let operationState = await snapshots.loadOperationState(status: status)
+        let operationState = await snapshots.loadOperationState()
         return RuntimeStatusRefreshResult(
             status: status,
             operationState: operationState,
             message: nil,
-            operationDetail: formatter.progressDisplayMessage(status) ?? pendingDetail,
+            operationDetail: formatter.updateOperationDisplayMessage(status, operationState: operationState) ?? pendingDetail,
             selectedLogSource: nil
         )
     }
@@ -111,7 +110,7 @@ public struct RuntimeStatusRefresher {
         status: RuntimeStatus,
         operationState: RuntimeOperationState,
         isBusy: Bool,
-        synchronizeFileBackedOperation: Bool,
+        includeOperationStatePresentation: Bool,
         messagePrefix: String? = nil
     ) -> RuntimeStatusRefreshResult {
         let displayMessage = formatter.statusDisplayMessage(status)
@@ -119,7 +118,7 @@ public struct RuntimeStatusRefresher {
         var operationDetail: String?
         var selectedLogSource: RuntimeLogSource?
 
-        if synchronizeFileBackedOperation,
+        if includeOperationStatePresentation,
            !isBusy,
            let updateMessage = formatter.updateOperationDisplayMessage(status, operationState: operationState) {
             selectedLogSource = .command

@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 
 from tirosh_guest_tools.application.compose import run_compose_action
-from tirosh_guest_tools.application.runtime_state import write_current_state
+from tirosh_guest_tools.application.runtime_observation import (
+    write_runtime_observation_outputs,
+)
 from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.infrastructure.common import (
@@ -46,7 +48,7 @@ def restart_runtime_compose() -> None:
     )
     repair_appendonly_file()
     run_compose_action(ComposeAction.UP)
-    write_current_state()
+    write_runtime_observation_outputs()
 
 
 def repair_appendonly_file() -> None:

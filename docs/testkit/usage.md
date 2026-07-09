@@ -234,7 +234,7 @@ uv run vitalserver-testkit stream-recorder \
 
 장시간 soak test는 `elapsed_seconds`, `messages_sent`, `bytes_sent`만으로 성공/실패를 판단하지 않습니다. 같은 run에서 아래 runtime evidence를 함께 보존해야 합니다.
 
-- guest `runtime-state.json`의 app container `oomKilled`, `restartCount`, `finishedAt`, `memoryLimitBytes`
+- guest `runtime-observation.json`의 app container `oomKilled`, `restartCount`, `finishedAt`, `memoryLimitBytes`
 - `/recorder-ingress/status`의 `sendDataEventsObserved`, `sendDataBytesObserved`, `lastSendDataObservedAt`
 - Redis memory와 guest HTTP status
 - `guest-runtime-state-stale`, `guestHTTP: 502`, recorder-ingress upstream failure 같은 연쇄 증상

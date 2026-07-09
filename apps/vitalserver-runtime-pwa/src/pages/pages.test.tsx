@@ -76,7 +76,15 @@ import { SettingsPage } from "./settings/SettingsPage";
 import { StatusPage } from "./status/StatusPage";
 import { UpdatePage } from "./update/UpdatePage";
 
-const commandResult = { result: { exitCode: 0, stdout: "ok", stderr: "" } };
+const commandResult = {
+  result: {
+    exitCode: 0,
+    stdout: "ok",
+    stderr: "",
+    outputIssues: [],
+    executionIssue: null
+  }
+};
 
 function Wrapper({ children }: PropsWithChildren) {
   return (
@@ -1137,9 +1145,51 @@ describe("runtime console pages", () => {
                   reason: "DesiredStateObserved",
                   message: "matched desired state",
                   observedAt: "2026-05-31T01:00:00Z"
+                },
+                {
+                  type: "ResourceFresh",
+                  status: "true",
+                  reason: "ObservedRecently",
+                  message: "resource observation is current",
+                  observedAt: "2026-05-31T01:00:01Z"
                 }
               ],
               lastOperationId: "op-app-1"
+            },
+            {
+              service: "worker",
+              spec: {
+                state: "configured",
+                desiredState: "running",
+                updatedAt: "2026-05-31T01:00:00Z"
+              },
+              status: {
+                state: "failed",
+                observedState: null,
+                observedAt: null,
+                serviceStatus: null,
+                readError: {
+                  kind: "serviceStatusReadFailed",
+                  message: "docker inspect failed"
+                }
+              },
+              conditions: [],
+              lastOperationId: "op-worker-2"
+            },
+            {
+              service: "scheduler",
+              spec: {
+                state: "configured",
+                desiredState: null,
+                updatedAt: "2026-05-31T01:00:00Z"
+              },
+              status: {
+                state: "loaded",
+                observedState: null,
+                observedAt: null
+              },
+              conditions: [],
+              lastOperationId: null
             }
           ],
           guestServiceResourceReadIssues: [
@@ -1155,13 +1205,30 @@ describe("runtime console pages", () => {
     renderPage(<AdvancedPage />);
 
     expect(screen.getByRole("columnheader", { name: "Desired" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Spec" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Status read" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Observed" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Conditions" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Last operation" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Resource read" })).toBeInTheDocument();
-    const appRow = screen.getByRole("row", { name: /app running healthy running running/i });
-    expect(within(appRow).getByText("DesiredStateObserved: matched desired state")).toBeInTheDocument();
+    const appRow = screen.getByRole("row", { name: /app running healthy configured running loaded running/i });
+    expect(
+      within(appRow).getByText(
+        "Reconciled=true DesiredStateObserved: matched desired state; ResourceFresh=true ObservedRecently: resource observation is current"
+      )
+    ).toBeInTheDocument();
+    expect(within(appRow).getByText("op-app-1")).toBeInTheDocument();
     expect(within(appRow).getByText("OK")).toBeInTheDocument();
+    const workerRow = screen.getByRole("row", {
+      name: /worker Not reported Not reported configured running serviceStatusReadFailed: docker inspect failed Not reported Not reported op-worker-2 OK/i
+    });
+    expect(workerRow).toBeInTheDocument();
+    const schedulerRow = screen.getByRole("row", {
+      name: /scheduler Not reported Not reported configured Not reported loaded Not reported Not reported Not reported OK/i
+    });
+    expect(schedulerRow).toBeInTheDocument();
     const postgresRow = screen.getByRole("row", {
-      name: /postgres Not reported Not reported Not reported Not reported Not reported resource document decode failed/i
+      name: /postgres Not reported Not reported Not reported Not reported Not reported Not reported Not reported Not reported resource document decode failed/i
     });
     expect(postgresRow).toBeInTheDocument();
   });
@@ -1589,7 +1656,6 @@ function overview() {
 function operationState() {
   return {
     activeOperation: "apply-bundle",
-    runtimeStatusUpdatedAt: "2026-05-31T01:00:00Z",
     install: {
       state: "unavailable",
       document: null,

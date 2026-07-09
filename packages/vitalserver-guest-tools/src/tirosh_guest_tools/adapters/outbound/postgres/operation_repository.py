@@ -20,9 +20,12 @@ from tirosh_guest_tools.domain.guest_control.models import (
     OperationEvent,
     OperationFailure,
     OperationState,
+    RedisRelayDependencyError,
+    RedisRelayStatusContractError,
     ServiceCommand,
     ServiceOperation,
     ServiceStatus,
+    validate_redis_relay_status_document,
 )
 
 GUEST_SCHEMA_ADVISORY_LOCK = "66060002000"
@@ -61,6 +64,13 @@ CREATE TABLE IF NOT EXISTS guest_service_resources (
 );
 CREATE INDEX IF NOT EXISTS guest_service_resources_updated_at_idx
     ON guest_service_resources (updated_at);
+CREATE TABLE IF NOT EXISTS redis_relay_status_snapshots (
+    snapshot_id text PRIMARY KEY,
+    document jsonb NOT NULL,
+    observed_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS redis_relay_status_snapshots_observed_at_idx
+    ON redis_relay_status_snapshots (observed_at);
 
 UPDATE guest_service_resources
 SET document = jsonb_set(
@@ -230,6 +240,64 @@ class PostgresOperationRepository:
                 kind="postgresOperationDocumentInvalid",
             )
         return operation_from_json(document)
+
+    def save_status(self, document: dict[str, Any]) -> None:
+        try:
+            observed_at = validate_redis_relay_status_document(document)
+        except RedisRelayStatusContractError as error:
+            raise RedisRelayDependencyError(
+                error.message,
+                kind="redis-relay-contract-invalid",
+            ) from error
+        sql = (
+            "INSERT INTO redis_relay_status_snapshots "
+            "(snapshot_id, document, observed_at) VALUES ("
+            "'current', "
+            f"{jsonb_literal(document)}, "
+            f"{sql_literal(observed_at)}::timestamptz"
+            ") ON CONFLICT (snapshot_id) DO UPDATE SET "
+            "document = EXCLUDED.document, "
+            "observed_at = EXCLUDED.observed_at;"
+        )
+        run_psql(sql, stage="redis relay status snapshot save")
+
+    def status(self) -> dict[str, Any]:
+        completed = run_psql(
+            "SELECT document::text FROM redis_relay_status_snapshots "
+            "WHERE snapshot_id = 'current';",
+            stage="redis relay status snapshot read",
+        )
+        stdout = completed.stdout or ""
+        text = stdout.strip()
+        if not text:
+            raise RedisRelayDependencyError(
+                "Redis relay status snapshot is missing.",
+                kind="redis-relay-status-missing",
+            )
+        try:
+            document = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise RedisRelayDependencyError(
+                "postgres redis relay status snapshot is invalid JSON.",
+                kind="redis-relay-contract-invalid",
+            ) from error
+        if not isinstance(document, dict):
+            raise RedisRelayDependencyError(
+                "postgres redis relay status snapshot is not an object.",
+                kind="redis-relay-contract-invalid",
+            )
+        try:
+            validate_redis_relay_status_document(document)
+        except RedisRelayStatusContractError as error:
+            raise RedisRelayDependencyError(
+                error.message,
+                kind="redis-relay-contract-invalid",
+            ) from error
+        return {
+            "readState": "loaded",
+            "document": document,
+            "readError": None,
+        }
 
 
 def run_psql(

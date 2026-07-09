@@ -128,6 +128,37 @@ final class RuntimeSectionTests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeControlAPIHandlerDelegatesOperationLeaseOwnerMutationsToOperationLeaseClient() async throws {
+        let client = HostFakeRuntimeControlClient()
+        let store = InMemoryRuntimeControlLocalAPISettingsStore(runtimeControlPort: 18_321)
+        let handler = makeRuntimeControlAPIHandler(client: client, localAPISettingsStore: store)
+        let lease = RuntimeOperationLeaseDocument(
+            operationId: "operation-1",
+            operation: .applyBundle,
+            ownerPID: 123,
+            startedAt: "2026-07-09T00:00:00Z",
+            heartbeatAt: "2026-07-09T00:00:00Z",
+            expiresAt: "2026-07-09T00:05:00Z",
+            message: "applying bundle"
+        )
+
+        let acquire = try await handler.acquireOperationLease(.init(document: lease))
+        let heartbeat = try await handler.heartbeatOperationLease(.init(
+            operationId: lease.operationId,
+            heartbeatAt: "2026-07-09T00:01:00Z",
+            expiresAt: "2026-07-09T00:06:00Z"
+        ))
+        let release = try await handler.releaseOperationLease(.init(operationId: lease.operationId))
+
+        XCTAssertEqual(acquire, RuntimeOperationLeaseMutationResponse(operationId: lease.operationId, state: .acquired))
+        XCTAssertEqual(heartbeat, RuntimeOperationLeaseMutationResponse(operationId: lease.operationId, state: .heartbeatRecorded))
+        XCTAssertEqual(release, RuntimeOperationLeaseMutationResponse(operationId: lease.operationId, state: .released))
+        XCTAssertEqual(client.acquiredOperationLeases, [lease])
+        XCTAssertEqual(client.heartbeatOperationLeaseRequests.map(\.operationId), [lease.operationId])
+        XCTAssertEqual(client.releasedOperationLeaseIDs, [lease.operationId])
+    }
+
+    @MainActor
     func testRuntimeControlAPIServerIsIndependentFromDevConsole() {
         XCTAssertTrue(MacRuntimeControlEnvironment.shouldStartRuntimeControlAPIServer())
         XCTAssertFalse(MacRuntimeControlEnvironment.shouldServeRuntimeControlDevConsole(testEnabled: false))
@@ -142,6 +173,9 @@ final class RuntimeSectionTests: XCTestCase {
         MacRuntimeControlAPIHandler(
             commandClient: client,
             hostClient: client,
+            operationLeaseClient: client,
+            guestAddressClient: client,
+            vmLifecycleClient: client,
             readWorker: MacRuntimeControlReadWorker(
                 releaseInfo: RuntimeReleaseInfo(
                     helperVersion: "helper",
@@ -160,14 +194,25 @@ final class RuntimeSectionTests: XCTestCase {
 }
 
 @MainActor
-private final class HostFakeRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
+private final class HostFakeRuntimeControlClient:
+    RuntimeControlClient,
+    RuntimeHostClient,
+    RuntimeOperationLeaseMutationClient,
+    RuntimeGuestAddressResourceClient,
+    RuntimeVMLifecycleResourceClient
+{
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
     var applySettingsResult = RuntimeCommandResult(exitCode: 0, stdout: "settings applied", stderr: "")
+    var acquiredOperationLeases: [RuntimeOperationLeaseDocument] = []
+    var heartbeatOperationLeaseRequests: [RuntimeOperationLeaseHeartbeatRequest] = []
+    var releasedOperationLeaseIDs: [String] = []
+    var guestAddressResource: RuntimeGuestAddressResourceState = .missing()
+    var vmLifecycleResource: RuntimeVMLifecycleResourceState = .missing()
 
     func loadSettings() -> RuntimeSettings { RuntimeSettings() }
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus { RuntimeStatus() }
-    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
-        RuntimeOperationState(activeOperation: nil, runtimeStatusUpdatedAt: status.updatedAt, install: .unavailable())
+    func loadOperationState() -> RuntimeOperationState {
+        RuntimeOperationState(activeOperation: nil, install: .unavailable())
     }
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus { RuntimeStatus() }
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory { RuntimeEventHistory(events: []) }
@@ -225,6 +270,50 @@ private final class HostFakeRuntimeControlClient: RuntimeControlClient, RuntimeH
     }
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         RuntimeLogExportResult(destination: destination)
+    }
+    func acquireOperationLease(
+        _ document: RuntimeOperationLeaseDocument
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        acquiredOperationLeases.append(document)
+        return RuntimeOperationLeaseMutationResponse(operationId: document.operationId, state: .acquired)
+    }
+    func heartbeatOperationLease(
+        operationId: String,
+        heartbeatAt: String,
+        expiresAt: String?
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        heartbeatOperationLeaseRequests.append(RuntimeOperationLeaseHeartbeatRequest(
+            operationId: operationId,
+            heartbeatAt: heartbeatAt,
+            expiresAt: expiresAt
+        ))
+        return RuntimeOperationLeaseMutationResponse(operationId: operationId, state: .heartbeatRecorded)
+    }
+    func releaseOperationLease(
+        operationId: String
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        releasedOperationLeaseIDs.append(operationId)
+        return RuntimeOperationLeaseMutationResponse(operationId: operationId, state: .released)
+    }
+
+    func loadGuestAddressResource() async throws -> RuntimeGuestAddressResourceState {
+        guestAddressResource
+    }
+
+    func putGuestAddressResource(address: String) async throws -> RuntimeGuestAddressResourceState {
+        guestAddressResource = .loaded(.loaded(address: address, source: .runtimeControlAPI))
+        return guestAddressResource
+    }
+
+    func loadVMLifecycleResource() async throws -> RuntimeVMLifecycleResourceState {
+        vmLifecycleResource
+    }
+
+    func putVMLifecycleResource(
+        _ document: RuntimeVMLifecycleDocument
+    ) async throws -> RuntimeVMLifecycleResourceState {
+        vmLifecycleResource = .loaded(document)
+        return vmLifecycleResource
     }
 }
 

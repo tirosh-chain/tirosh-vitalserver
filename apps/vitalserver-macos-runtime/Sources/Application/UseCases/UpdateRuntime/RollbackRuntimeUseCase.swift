@@ -208,7 +208,7 @@ public struct RollbackRuntimeUseCase {
         return RollbackRuntimeBackupPlan(
             backup: backup,
             backupRootfs: backupRootfs,
-            backupVersion: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
+            backupVersion: backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion),
             restoresRootfsBase: backupRootfs != nil
         )
     }

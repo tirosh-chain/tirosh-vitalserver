@@ -58,7 +58,7 @@ def default_bootstrap_operations() -> GuestBootstrapOperations:
         missing_runtime_packages=missing_runtime_packages,
         install_runtime_files=install_runtime_files,
         prepare_runtime_data=prepare_runtime_data,
-        write_initial_runtime_state=write_initial_runtime_state,
+        write_initial_runtime_observation=write_initial_runtime_observation,
         start_docker=start_docker,
         start_avahi=start_avahi,
         start_guest_background_services=start_guest_background_services,
@@ -70,9 +70,9 @@ def default_bootstrap_operations() -> GuestBootstrapOperations:
         start_compose=start_compose,
         start_container_logs=start_container_logs,
         probe_edge_readiness=probe_edge_readiness,
-        write_runtime_state_once=write_initial_runtime_state,
+        write_runtime_observation_once=write_initial_runtime_observation,
         write_edge_diagnostics=write_edge_diagnostics,
-        restart_runtime_state=restart_runtime_state,
+        restart_runtime_observation=restart_runtime_observation,
         runtime_boot_smoke_enabled=runtime_boot_smoke_enabled,
         run_runtime_boot_smoke=run_runtime_boot_smoke,
     )
@@ -190,8 +190,8 @@ def missing_runtime_packages() -> list[str]:
 def install_runtime_files(context: GuestBootstrapContext) -> None:
     command_names = (
         "tirosh-runtime-env",
-        "tirosh-write-runtime-state",
-        "tirosh-runtime-state",
+        "tirosh-write-runtime-observation",
+        "tirosh-runtime-observation",
         "tirosh-vitalserver-compose",
         "tirosh-vitalserver-sync-host-time",
         "tirosh-vitalserver-health",
@@ -208,7 +208,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
     )
     service_files = (
         "tirosh-guest-observability.service",
-        "tirosh-runtime-state.service",
+        "tirosh-runtime-observation.service",
         "tirosh-vitalserver-compose.service",
         "tirosh-vitalserver-sync-host-time.service",
         "tirosh-vitalserver-container-logs.service",
@@ -245,7 +245,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
     ):
         systemctl("disable", "--now", service, check=False)
     for service in (
-        RuntimeService.RUNTIME_STATE.value,
+        RuntimeService.RUNTIME_OBSERVATION.value,
         RuntimeService.SYNC_HOST_TIME.value,
         RuntimeService.COMPOSE.value,
         RuntimeService.CONTAINER_LOGS.value,
@@ -255,8 +255,8 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         systemctl("enable", service)
 
 
-def write_initial_runtime_state() -> None:
-    run(["/usr/local/bin/tirosh-runtime-state", "once"])
+def write_initial_runtime_observation() -> None:
+    run(["/usr/local/bin/tirosh-runtime-observation", "once"])
 
 
 def start_docker() -> None:
@@ -382,8 +382,8 @@ def write_edge_diagnostics() -> None:
     run(["df", "-h", "/"], check=False)
 
 
-def restart_runtime_state() -> None:
-    systemctl("restart", RuntimeService.RUNTIME_STATE.value)
+def restart_runtime_observation() -> None:
+    systemctl("restart", RuntimeService.RUNTIME_OBSERVATION.value)
 
 
 def runtime_boot_smoke_enabled(deploy_dir: Path) -> bool:

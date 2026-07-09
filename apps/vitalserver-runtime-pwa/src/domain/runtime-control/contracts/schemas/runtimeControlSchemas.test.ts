@@ -23,23 +23,46 @@ describe("runtime control contract schemas", () => {
         result: {
           exitCode: 0,
           stdout: "ok",
-          stderr: ""
+          stderr: "",
+          outputIssues: [],
+          executionIssue: null
         }
       })
     ).toEqual({
       result: {
         exitCode: 0,
         stdout: "ok",
-        stderr: ""
+        stderr: "",
+        outputIssues: [],
+        executionIssue: null
       }
     });
+    expect(() =>
+      runtimeCommandResponseSchema.parse({
+        result: {
+          exitCode: 0,
+          stdout: "ok",
+          stderr: "",
+          executionIssue: null
+        }
+      })
+    ).toThrow();
+    expect(() =>
+      runtimeCommandResponseSchema.parse({
+        result: {
+          exitCode: 0,
+          stdout: "ok",
+          stderr: "",
+          outputIssues: []
+        }
+      })
+    ).toThrow();
   });
 
   it("preserves operation state read meanings", () => {
     expect(
       runtimeOperationStateSchema.parse({
         activeOperation: "apply-bundle",
-        runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
         install: {
           state: "failed",
           document: null,
@@ -71,7 +94,6 @@ describe("runtime control contract schemas", () => {
     expect(() =>
       runtimeOperationStateSchema.parse({
         activeOperation: null,
-        runtimeStatusUpdatedAt: null,
         install: {
           state: "failed",
           document: null,
@@ -134,13 +156,13 @@ describe("runtime control contract schemas", () => {
         fullRuntimeOverview({
           status: {
             runtimeState: "healthy",
-            statusMessage: "loaded"
+            runtimeVersion: "loaded"
           }
         })
       ).status
     ).toMatchObject({
       runtimeState: "healthy",
-      statusMessage: "loaded"
+      runtimeVersion: "loaded"
     });
   });
 
@@ -181,6 +203,18 @@ describe("runtime control contract schemas", () => {
     ).toThrow(/guestServiceResources/);
   });
 
+  it("preserves explicit RuntimeStatus installation state separately from legacy installed bool", () => {
+    expect(
+      runtimeStatusSchema.parse({
+        runtimeInstalled: true,
+        runtimeInstallationState: "present"
+      })
+    ).toMatchObject({
+      runtimeInstalled: true,
+      runtimeInstallationState: "present"
+    });
+  });
+
   it("requires an explicit read error when RuntimeStatus says Guest service reads failed", () => {
     expect(() =>
       runtimeStatusSchema.parse({
@@ -200,6 +234,109 @@ describe("runtime control contract schemas", () => {
       guestServicesReadState: "failed",
       guestServicesReadError: "guest control api timed out"
     });
+  });
+
+  it("requires complete Redis Relay status owner documents on RuntimeStatus", () => {
+    const redisRelayStatus = {
+      schemaVersion: 1,
+      observedAt: "2026-07-01T00:00:00Z",
+      enabled: true,
+      state: "running",
+      scope: "vital_reconstruction",
+      targetUrl: null,
+      targetUsernameConfigured: false,
+      targetPasswordConfigured: false,
+      settingsFingerprint: null,
+      batches: 0,
+      totals: {
+        scanned: 0,
+        copied: 0,
+        published: 0,
+        unchanged: 0,
+        duplicates: 0,
+        skipped: 0,
+        denied: 0,
+        missing: 0,
+        errors: 0
+      },
+      lastBatch: null,
+      lastSuccessAt: null,
+      lastErrorAt: null,
+      lastError: null
+    };
+
+    expect(
+      runtimeStatusSchema.parse({
+        runtimeState: "healthy",
+        redisRelayStatus
+      }).redisRelayStatus
+    ).toMatchObject({
+      state: "running",
+      targetUrl: null,
+      totals: {
+        copied: 0,
+        published: 0,
+        duplicates: 0
+      }
+    });
+
+    expect(() =>
+      runtimeStatusSchema.parse({
+        runtimeState: "healthy",
+        redisRelayStatus: {
+          ...redisRelayStatus,
+          targetUrl: undefined
+        }
+      })
+    ).toThrow(/targetUrl/);
+
+    expect(() =>
+      runtimeStatusSchema.parse({
+        runtimeState: "healthy",
+        redisRelayStatus: {
+          ...redisRelayStatus,
+          totals: {
+            scanned: 0,
+            copied: 0,
+            unchanged: 0,
+            duplicates: 0,
+            skipped: 0,
+            denied: 0,
+            missing: 0,
+            errors: 0
+          }
+        }
+      })
+    ).toThrow(/published/);
+  });
+
+  it("accepts only Runtime Control API as the current Guest address source", () => {
+    expect(
+      runtimeStatusSchema.parse({
+        runtimeState: "healthy",
+        guestAddressRead: {
+          state: "loaded",
+          address: "192.168.64.2",
+          source: "runtime-control-api",
+          reason: null
+        }
+      }).guestAddressRead
+    ).toMatchObject({
+      state: "loaded",
+      source: "runtime-control-api"
+    });
+
+    expect(() =>
+      runtimeStatusSchema.parse({
+        runtimeState: "healthy",
+        guestAddressRead: {
+          state: "loaded",
+          address: "192.168.64.2",
+          source: "vm-ip",
+          reason: null
+        }
+      })
+    ).toThrow();
   });
 
   it("accepts unknown VM states in overview responses", () => {
@@ -906,6 +1043,28 @@ describe("runtime control contract schemas", () => {
         recorderIngressStatusRead: {
           readState: "loaded",
           httpStatus: "200",
+          document: null,
+          readError: null
+        }
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorderIngressStatusRead: {
+          readState: "readFailed",
+          httpStatus: "failed",
+          document: null,
+          readError: ""
+        }
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorderIngressStatusRead: {
+          readState: "loaded",
+          httpStatus: "200",
           document: {
             ...fullRecorderIngressStatusDocument(),
             redisIpVerifyFailures: undefined
@@ -953,6 +1112,18 @@ describe("runtime control contract schemas", () => {
     expect(() =>
       vitalDBRelationshipsSchema.parse(fullRelationships({
         readError: undefined
+      }))
+    ).toThrow();
+    expect(() =>
+      vitalDBRelationshipsSchema.parse(fullRelationships({
+        state: "partiallyLoaded",
+        readError: null
+      }))
+    ).toThrow();
+    expect(() =>
+      vitalDBRelationshipsSchema.parse(fullRelationships({
+        state: "readFailed",
+        readError: ""
       }))
     ).toThrow();
 

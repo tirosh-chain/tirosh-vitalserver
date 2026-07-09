@@ -78,7 +78,7 @@ def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
     )
     monkeypatch.setattr(
         update_activation,
-        "write_current_state",
+        "write_runtime_observation_outputs",
         lambda: events.append("write-state"),
     )
     update_activation.activate_runtime()
@@ -95,7 +95,7 @@ def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
         compose_down,
         "compose:up",
         f"systemctl:restart:{RuntimeService.CONTAINER_LOGS.value}",
-        f"systemctl:restart:{RuntimeService.RUNTIME_STATE.value}",
+        f"systemctl:restart:{RuntimeService.RUNTIME_OBSERVATION.value}",
         "write-state",
         "run:sync",
     ]

@@ -598,12 +598,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try Data(repeating: 1, count: 7).write(to: nested.appendingPathComponent(".hidden.vital"))
 
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            )
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
         let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
 
@@ -614,7 +609,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testStatusReaderLoadsGuestServicesThroughGuestStackStatus() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let vmIPFile = directory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
+        try "192.168.64.2\n".write(to: vmIPFile, atomically: true, encoding: .utf8)
         try writeRuntimeStatusDocument(
             runtimeStatus,
             extraFields: """
@@ -649,12 +646,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             ]
         )
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.2"),
             guestControlGateway: { gateway }
         )
 
@@ -683,9 +676,54 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(gateway.resourceRequests, ["app", "postgres"])
     }
 
+    func testStatusReaderLoadsRedisRelayStatusThroughGuestControlAPI() throws {
+        let directory = try temporaryDirectory()
+        let vmIPFile = directory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
+        try "192.168.64.2\n".write(to: vmIPFile, atomically: true, encoding: .utf8)
+        let redisRelayStatus = RuntimeRedisRelayStatus(
+            observedAt: "2026-07-01T00:00:00Z",
+            enabled: true,
+            state: "running",
+            scope: "vital_reconstruction",
+            targetUrl: "redis://relay.example:6379/0",
+            targetUsernameConfigured: true,
+            targetPasswordConfigured: true,
+            settingsFingerprint: "relay-settings",
+            batches: 3,
+            totals: RuntimeRedisRelayBatch(copied: 8)
+        )
+        let gateway = FakeRuntimeGuestControlGateway(
+            services: ["app"],
+            statuses: [
+                    "app": RuntimeGuestControlServiceStatus(
+                        service: "app",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00+00:00"
+                    ),
+            ],
+            redisRelayStatusReadResult: RuntimeRedisRelayStatusReadResult(
+                document: redisRelayStatus,
+                readError: nil
+            )
+        )
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.2"),
+            guestControlGateway: { gateway }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.redisRelayStatus, redisRelayStatus)
+        XCTAssertEqual(gateway.redisRelayStatusCount, 1)
+    }
+
     func testStatusReaderPreservesGuestStackStatusReadFailure() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let vmIPFile = directory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
+        try "192.168.64.2\n".write(to: vmIPFile, atomically: true, encoding: .utf8)
         try writeRuntimeStatusDocument(
             runtimeStatus,
             extraFields: """
@@ -698,12 +736,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             stackStatusFailure: RuntimeGuestControlGatewayTestError(message: "stack status timed out")
         )
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.2"),
             guestControlGateway: { gateway }
         )
 
@@ -729,12 +763,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             ]
         )
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            guestAddressProvider: stubGuestAddressProvider(read: .missing("Guest address resource missing")),
             guestControlGateway: { gateway }
         )
 
@@ -751,7 +781,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testStatusReaderDoesNotUseRuntimeStateVMIPForGuestServices() throws {
         let directory = try temporaryDirectory()
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         try #"{"vmIP":"192.168.64.2","guestHTTP":"200"}"#.write(to: runtimeState, atomically: true, encoding: .utf8)
         let gateway = FakeRuntimeGuestControlGateway(
             services: ["app"],
@@ -765,12 +795,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             ]
         )
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: runtimeState.path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            guestAddressProvider: stubGuestAddressProvider(read: .missing("Guest address resource missing")),
             guestControlGateway: { gateway }
         )
 
@@ -780,16 +806,45 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(gateway.stackStatusCount, 0)
     }
 
+    func testStatusReaderDoesNotUseRuntimeStatusVMIPForGuestServices() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "vmIP": "192.168.64.2",
+            """
+        )
+        let gateway = FakeRuntimeGuestControlGateway(
+            services: ["app"],
+            statuses: [
+                "app": RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                ),
+            ]
+        )
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            guestAddressProvider: stubGuestAddressProvider(read: .missing("Guest address resource missing")),
+            guestControlGateway: { gateway }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertNil(status.vmIP)
+        XCTAssertEqual(status.guestServicesReadState, .unavailable)
+        XCTAssertEqual(gateway.stackStatusCount, 0)
+    }
+
+
     func testStatusReaderReportsDataDirectoryStatsReadFailure() throws {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryReadFailureFileStore(readableDirectory: dataDirectory)
         )
 
@@ -803,12 +858,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(pathStates: [dataDirectory.path: .missing])
         )
 
@@ -822,12 +872,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(
                 pathStates: [dataDirectory.path: .inspectFailed("permission denied")]
             )
@@ -846,12 +891,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files")
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(
                 pathStates: [dataDirectory.path: .file]
             )
@@ -871,12 +911,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
         let staleEntry = dataDirectory.appendingPathComponent("stale.vital")
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(
                 pathStates: [
                     dataDirectory.path: .directory,
@@ -900,12 +935,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderReportsDataStorageUsageReadFailure() throws {
         let directory = try temporaryDirectory()
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             storageUsageProvider: StubStorageUsageProvider(result: .failed("volume read failed"))
         )
 
@@ -918,12 +948,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderClearsDataStorageUsageReadFailureAfterSuccessfulRead() throws {
         let directory = try temporaryDirectory()
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             storageUsageProvider: StubStorageUsageProvider(
                 result: .loaded(ResourceUsage(usedBytes: 4, totalBytes: 10))
             )
@@ -937,33 +962,25 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNil(status.dataStorageError)
     }
 
-    func testStatusReaderReportsMissingRuntimeStatusDocumentAsReadIssue() throws {
+    func testStatusReaderDoesNotPromoteMissingRuntimeStatusDocumentToReadIssue() throws {
         let directory = try temporaryDirectory()
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            )
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.readIssues.map(\.source), ["runtimeStatus"])
-        XCTAssertNil(status.statusDocumentError)
+        XCTAssertEqual(
+            status.readIssues.map(\.source),
+            ["vmLifecycle", "runtimeVersion", "latestBackup"]
+        )
     }
 
     func testStatusReaderIgnoresGuestRuntimeStateInspectionFailure() throws {
         let directory = try temporaryDirectory()
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: runtimeState.path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(pathStates: [
                 runtimeState.path: .inspectFailed("permission denied"),
             ])
@@ -974,16 +991,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertFalse(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
 
-    func testStatusReaderPreservesRuntimeStatusInspectionFailure() throws {
+    func testStatusReaderIgnoresRuntimeStatusInspectionFailure() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(pathStates: [
                 runtimeStatus.path: .inspectFailed("permission denied"),
             ])
@@ -991,26 +1003,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertEqual(
-            status.statusDocumentError,
-            "runtime status document path inspection failed path=\(runtimeStatus.path) reason=permission denied"
-        )
-        XCTAssertTrue(status.readIssues.contains {
-            $0.source == "runtimeStatus"
-                && $0.message == status.statusDocumentError
-        })
+        XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeStatus" })
     }
 
     func testStatusReaderIgnoresUnexpectedGuestRuntimeStatePathState() throws {
         let directory = try temporaryDirectory()
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: runtimeState.path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(pathStates: [
                 runtimeState.path: .directory,
             ])
@@ -1025,12 +1025,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         let launcher = directory.appendingPathComponent("launcher")
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: launcher.path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: launcher.path,
             runtimeExecutableState: { _ in .inspectFailed("permission denied") }
         )
 
@@ -1048,12 +1043,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         let launcher = directory.appendingPathComponent("launcher")
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: launcher.path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: launcher.path,
             runtimeExecutableState: { _ in .present }
         )
 
@@ -1069,7 +1059,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testStatusReaderPreservesMissingProxyPortWithoutSettingsFallback() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
         try """
         {
           "schemaVersion": 2,
@@ -1092,11 +1083,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         }
         """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            proxyPortReader: RuntimeHostProxyPortReader(
+                plistPath: proxyLaunchDaemon.path,
+                fileStore: SystemRuntimeFileStore()
             )
         )
         var settings = RuntimeSettings()
@@ -1105,38 +1095,216 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let status = reader.loadStatus(settings: settings)
 
         XCTAssertNil(status.proxyPort)
-        XCTAssertNil(status.statusDocumentError)
-        XCTAssertTrue(status.readIssues.contains {
-            $0.source == "proxyPort"
-                && $0.message == "proxy port is missing from runtime status document"
-        })
+        XCTAssertEqual(
+            status.proxyPortReadState,
+            .missing("proxy launch daemon plist missing path=\(proxyLaunchDaemon.path)")
+        )
+        XCTAssertFalse(status.readIssues.contains { $0.source == "proxyPort" })
     }
 
-    func testStatusReaderReportsStatusDocumentReadFailure() throws {
+    func testStatusReaderUsesProxyLaunchDaemonForCurrentProxyPort() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
-        try Data("not-json".utf8).write(to: runtimeStatus)
-
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
+        try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
+        try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 19090)
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            proxyPortReader: RuntimeHostProxyPortReader(
+                plistPath: proxyLaunchDaemon.path,
+                fileStore: SystemRuntimeFileStore()
             )
         )
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertNil(status.runtimeState)
-        XCTAssertNotNil(status.statusDocumentError)
-        XCTAssertTrue(status.readIssues.contains { $0.source == "runtimeStatus" })
+        XCTAssertEqual(status.proxyPort, 19090)
+        XCTAssertEqual(status.proxyPortReadState, .loaded(19090))
+        XCTAssertFalse(status.readIssues.contains { $0.source == "proxyPort" })
     }
 
-    func testStatusReaderLoadsRuntimeInstallStateDocumentSeparatelyFromRuntimeStatus() throws {
+    func testStatusReaderPreservesProxyLaunchDaemonReadFailure() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
-        let runtimeInstallState = directory.appendingPathComponent(RuntimeFileNames.runtimeInstallState)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let proxyLaunchDaemon = URL(fileURLWithPath: "/runtime/proxy.plist")
+        try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            proxyPortReader: RuntimeHostProxyPortReader(
+                plistPath: proxyLaunchDaemon.path,
+                fileStore: SettingsReadFailureFileStore(existingPaths: [proxyLaunchDaemon.path])
+            )
+        )
+        var settings = RuntimeSettings()
+        settings.proxyPort = 19090
+
+        let status = reader.loadStatus(settings: settings)
+
+        XCTAssertNil(status.proxyPort)
+        XCTAssertEqual(status.proxyPortReadState, .readFailed("proxy plist denied"))
+        XCTAssertFalse(status.readIssues.contains { $0.source == "proxyPort" })
+    }
+
+    func testStatusReaderUsesRuntimeVersionAndBackupDirectoryForCurrentStatus() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let runtimeVersion = directory.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion)
+        let backupsDirectory = directory.appendingPathComponent("backups")
+        let olderBackup = backupsDirectory.appendingPathComponent("20260707T010000Z-before-1.9.0")
+        let latestBackup = backupsDirectory.appendingPathComponent("20260708T010000Z-before-2.0.0")
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "latestBackup": "/backups/stale",
+            """
+        )
+        try """
+        {
+          "product": "VitalServerHelper",
+          "runtimeVersion": "2.0.0",
+          "appliedAt": "2026-07-08T00:00:00Z",
+          "bundle": "bundle.tar.gz",
+          "rootfsBase": "rootfs-base.raw.gz",
+          "vmDisk": "vm-disk.img"
+        }
+        """.write(to: runtimeVersion, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: olderBackup, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: latestBackup, withIntermediateDirectories: true)
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            runtimeVersionFile: runtimeVersion,
+            backupsDirectory: backupsDirectory
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.runtimeVersion, "2.0.0")
+        XCTAssertEqual(
+            status.latestBackup.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path },
+            latestBackup.resolvingSymlinksInPath().path
+        )
+        XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeVersion" })
+        XCTAssertFalse(status.readIssues.contains { $0.source == "latestBackup" })
+    }
+
+    func testStatusReaderReportsMissingBackupDirectoryDistinctFromEmptyBackupList() throws {
+        let directory = try temporaryDirectory()
+        let runtimeVersion = directory.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion)
+        let backupsDirectory = directory.appendingPathComponent("missing-backups")
+        try """
+        {
+          "product": "VitalServerHelper",
+          "runtimeVersion": "2.0.0",
+          "appliedAt": "2026-07-08T00:00:00Z",
+          "bundle": "bundle.tar.gz",
+          "rootfsBase": "rootfs-base.raw.gz",
+          "vmDisk": "vm-disk.img"
+        }
+        """.write(to: runtimeVersion, atomically: true, encoding: .utf8)
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            runtimeVersionFile: runtimeVersion,
+            backupsDirectory: backupsDirectory
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertNil(status.latestBackup)
+        XCTAssertTrue(status.readIssues.contains(RuntimeStatusReadIssue(
+            source: "latestBackup",
+            message: "backup directory missing path=\(backupsDirectory.path)"
+        )))
+    }
+
+    func testStatusReaderDoesNotUseOperationLeaseForCurrentStatusFields() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let operationLease = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease)
+        try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
+        try """
+        {
+          "schemaVersion": 1,
+          "operationId": "apply-1",
+          "operation": "apply-bundle",
+          "ownerPID": 123,
+          "startedAt": "2026-07-08T00:00:00Z",
+          "heartbeatAt": "2026-07-08T00:00:05Z",
+          "expiresAt": null,
+          "message": "applying bundle"
+        }
+        """.write(to: operationLease, atomically: true, encoding: .utf8)
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertFalse(status.readIssues.contains { $0.source == "activeOperation" })
+    }
+
+    func testStatusReaderDoesNotUseRuntimeProgressDocumentForCurrentStatusFields() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let runtimeProgress = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeProgress)
+        try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
+        try writeRuntimeProgressDocument(runtimeProgress)
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeProgress" })
+    }
+
+    func testStatusReaderDoesNotPromoteStatusOrFailedProgressDocumentAsCurrentIssue() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let runtimeProgress = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeProgress)
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "progress": {
+                "operation": "apply-bundle",
+                "phase": "running",
+                "step": "activate-guest-update",
+                "stepStatus": "started",
+                "message": "legacy embedded progress",
+                "reasonCodes": [],
+                "startedAt": null,
+                "updatedAt": "2026-07-08T00:00:08Z"
+              },
+            """
+        )
+        try Data("not-json".utf8).write(to: runtimeProgress)
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeProgress" })
+    }
+
+    func testStatusReaderIgnoresRuntimeStatusDecodeFailure() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        try Data("not-json".utf8).write(to: runtimeStatus)
+
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.runtimeState, .critical)
+        XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeStatus" })
+    }
+
+    func testStatusReaderDoesNotReadRuntimeInstallStateDocumentForCurrentStatus() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let runtimeInstallState = directory.appendingPathComponent(RuntimeWorkflowArtifactFileNames.runtimeInstallState)
         try """
         {
           "schemaVersion": 2,
@@ -1170,59 +1338,37 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         """.write(to: runtimeInstallState, atomically: true, encoding: .utf8)
 
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path,
-                runtimeInstallState: runtimeInstallState.path
-            )
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.runtimeState, .initializing)
-        XCTAssertNil(status.statusDocumentError)
-        XCTAssertEqual(status.installStateDocument?.state, .provisioned)
-        XCTAssertEqual(status.installStateDocument?.mode, .provision)
-        XCTAssertNil(status.installStateDocumentError)
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isInitializationInProgress(status))
+        XCTAssertEqual(status.runtimeState, .critical)
+        XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeInstallState" })
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInitializationInProgress(status))
     }
 
-    func testStatusReaderReportsRuntimeInstallStateReadFailure() throws {
+    func testStatusReaderIgnoresRuntimeInstallStateReadFailure() throws {
         let directory = try temporaryDirectory()
-        let runtimeInstallState = directory.appendingPathComponent(RuntimeFileNames.runtimeInstallState)
+        let runtimeInstallState = directory.appendingPathComponent(RuntimeWorkflowArtifactFileNames.runtimeInstallState)
         try Data("not-json".utf8).write(to: runtimeInstallState)
 
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
-                runtimeInstallState: runtimeInstallState.path
-            )
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertNil(status.installStateDocument)
-        XCTAssertNotNil(status.installStateDocumentError)
-        XCTAssertTrue(status.readIssues.contains { $0.source == "runtimeInstallState" })
+        XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeInstallState" })
     }
 
     func testStatusReaderIgnoresGuestRuntimeStateReadFailure() throws {
         let directory = try temporaryDirectory()
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         try Data("not-json".utf8).write(to: runtimeState)
 
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: runtimeState.path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            )
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
         let status = reader.loadStatus(settings: RuntimeSettings())
@@ -1232,9 +1378,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertFalse(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
 
-    func testStatusReaderDoesNotInferVMStateOrErrorsWhenStatusDocumentDoesNotProvideThem() throws {
+    func testStatusReaderDoesNotPromoteStatusDocumentVMStateOrErrors() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         try """
         {
           "schemaVersion": 2,
@@ -1249,6 +1395,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "vmService": "loaded",
           "proxyService": "loaded",
           "watchdogService": "loaded",
+          "vmState": "failed",
+          "vmErrors": ["vm-guest-disk-io-error"],
           "vmIP": "192.168.64.33",
           "proxyPort": 19090,
           "hostProxyHTTP": "200",
@@ -1260,23 +1408,48 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
 
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
-            )
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
         XCTAssertNil(status.vmState)
         XCTAssertNil(status.vmErrors)
+        XCTAssertTrue(status.readIssues.contains { $0.source == "vmLifecycle" })
     }
 
-    func testStatusReaderPreservesLaunchdReadFailureAsServiceStateIssue() throws {
+    func testStatusReaderUsesVMLifecycleForCurrentVMStateAndErrors() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "vmState": "running",
+              "vmErrors": [],
+            """
+        )
+        let vmLifecycle = runtimeVMLifecycleDocument(
+            state: "failed",
+            terminalReason: "guest-disk-io"
+        )
+
+        let reader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            vmLifecycleResourceReader: StubRuntimeVMLifecycleResourceReader(
+                resource: .loaded(vmLifecycle)
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.vmState, .failed)
+        XCTAssertEqual(status.vmErrors, [.guestDiskIO])
+        XCTAssertFalse(status.readIssues.contains { $0.source == "vmLifecycle" })
+    }
+
+    func testStatusReaderPreservesLaunchdReadFailureEvenWhenStatusDocumentHasServiceState() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         try writeRuntimeStatusDocument(
             runtimeStatus,
             extraFields: """
@@ -1287,12 +1460,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         )
 
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             runSyncCommand: { _, _ in
                 RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Operation not permitted")
             }
@@ -1300,18 +1468,30 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.vmServiceState, .loaded)
-        XCTAssertEqual(status.proxyServiceState, .loaded)
-        XCTAssertEqual(status.watchdogServiceState, .loaded)
-        XCTAssertEqual(status.vmServiceStateSource, .statusDocument)
-        XCTAssertEqual(status.proxyServiceStateSource, .statusDocument)
-        XCTAssertEqual(status.watchdogServiceStateSource, .statusDocument)
+        XCTAssertEqual(status.vmServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertEqual(status.proxyServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertEqual(status.watchdogServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertEqual(status.vmServiceStateSource, .liveLaunchd)
+        XCTAssertEqual(status.proxyServiceStateSource, .liveLaunchd)
+        XCTAssertEqual(status.watchdogServiceStateSource, .liveLaunchd)
         XCTAssertEqual(status.guestLogSyncServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
         XCTAssertEqual(status.guestLogSyncServiceStateSource, .liveLaunchd)
         XCTAssertEqual(status.sleepPreventionServiceStateSource, .liveLaunchd)
         XCTAssertFalse(status.guestLogSyncServiceLoaded)
         XCTAssertTrue(status.readIssues.contains {
+            $0.source == "vmService"
+                && $0.message == "exitCode=1 stderr=Operation not permitted"
+        })
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "proxyService"
+                && $0.message == "exitCode=1 stderr=Operation not permitted"
+        })
+        XCTAssertTrue(status.readIssues.contains {
             $0.source == "guestLogSyncService"
+                && $0.message == "exitCode=1 stderr=Operation not permitted"
+        })
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "watchdogService"
                 && $0.message == "exitCode=1 stderr=Operation not permitted"
         })
     }
@@ -1319,12 +1499,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderMarksServiceStatesAsLiveLaunchdWhenStatusDocumentIsMissing() throws {
         let directory = try temporaryDirectory()
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             runSyncCommand: { _, _ in
                 RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service")
             }
@@ -1341,7 +1516,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testHealthStatusPreservesHTTPProbeReadFailureAsStatusReadIssue() async throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let vmIPFile = directory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
+        let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
+        try "192.168.64.33\n".write(to: vmIPFile, atomically: true, encoding: .utf8)
+        try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 19090)
         try writeRuntimeStatusDocument(
             runtimeStatus,
             extraFields: """
@@ -1353,11 +1532,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         )
 
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.33"),
+            proxyPortReader: RuntimeHostProxyPortReader(
+                plistPath: proxyLaunchDaemon.path,
+                fileStore: SystemRuntimeFileStore()
             ),
             guestControlGateway: {
                 FakeRuntimeGuestControlGateway(
@@ -1394,7 +1573,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testHealthStatusPreservesGuestControlReadinessDependencyFailure() async throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let vmIPFile = directory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
+        try "192.168.64.33\n".write(to: vmIPFile, atomically: true, encoding: .utf8)
         try writeRuntimeStatusDocument(
             runtimeStatus,
             extraFields: """
@@ -1422,12 +1603,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             )
         )
         let reader = SystemRuntimeStatusReader(
-            paths: RuntimePaths(
-                launcher: directory.appendingPathComponent("launcher").path,
-                uninstaller: directory.appendingPathComponent("uninstaller").path,
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path
-            ),
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.33"),
             guestControlGateway: { gateway },
             runCommand: { _, _ in
                 RuntimeCommandResult(exitCode: 0, stdout: "200", stderr: "")
@@ -1449,7 +1626,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testObservabilityReaderDoesNotUseStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         try """
         {
           "schemaVersion": 2,
@@ -1495,10 +1672,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
 
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: runtimeStatus.path,
-                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
+            paths: RuntimeObservabilityPaths(
+                runtimeObservabilityDB: directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB).path
             )
         )
 
@@ -1511,8 +1686,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testObservabilityReaderDoesNotUseGuestRuntimeStateAsCurrentObservation() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
-        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         try """
         {
           "schemaVersion": 2,
@@ -1586,20 +1761,18 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         }
         """.write(to: runtimeState, atomically: true, encoding: .utf8)
 
-        let paths = RuntimePaths(
-            launcher: directory.appendingPathComponent("launcher").path,
-            uninstaller: directory.appendingPathComponent("uninstaller").path,
-            runtimeState: runtimeState.path,
-            runtimeStatus: runtimeStatus.path,
-            runtimeObservabilityDB: directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB).path
+        let observabilityPaths = RuntimeObservabilityPaths(
+            runtimeObservabilityDB: directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB).path
         )
-        let statusReader = SystemRuntimeStatusReader(paths: paths)
-        let observabilityReader = SystemRuntimeObservabilityReader.live(paths: paths)
+        let statusReader = SystemRuntimeStatusReader(
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+        )
+        let observabilityReader = SystemRuntimeObservabilityReader.live(paths: observabilityPaths)
 
         let status = statusReader.loadStatus(settings: RuntimeSettings())
         let history = observabilityReader.loadVitalDBRecorders()
 
-        XCTAssertEqual(status.runtimeState, .healthy)
+        XCTAssertEqual(status.runtimeState, .critical)
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
         XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
@@ -1607,11 +1780,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testObservabilityReaderReportsVitalRelationshipReadFailure() throws {
         let directory = try temporaryDirectory()
-        let observabilityDB = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let observabilityDB = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         try Data("not-sqlite".utf8).write(to: observabilityDB)
 
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
+            paths: RuntimeObservabilityPaths(
                 runtimeObservabilityDB: observabilityDB.path
             )
         )
@@ -1627,14 +1800,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testObservabilityReaderDoesNotCreateSQLiteProjectionWhenReadingEvents() throws {
         let directory = try temporaryDirectory()
-        let runtimeEvents = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
-        let runtimeObservabilityDB = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let runtimeEvents = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
+        let runtimeObservabilityDB = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         let event = runtimeEvent(id: "jsonl-event", timestamp: "2026-05-30T00:00:00Z")
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try (encoder.encode(event) + Data("\n".utf8)).write(to: runtimeEvents)
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
+            paths: RuntimeObservabilityPaths(
                 runtimeEvents: runtimeEvents.path,
                 runtimeObservabilityDB: runtimeObservabilityDB.path
             )
@@ -1651,13 +1824,13 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testObservabilityReaderPreservesRuntimeEventReadIssueWhenServingJSONLFallback() throws {
         let directory = try temporaryDirectory()
-        let runtimeEvents = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let runtimeEvents = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         let event = runtimeEvent(id: "jsonl-event", timestamp: "2026-05-30T00:00:00Z")
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try (encoder.encode(event) + Data("\n".utf8)).write(to: runtimeEvents)
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
+            paths: RuntimeObservabilityPaths(
                 runtimeEvents: runtimeEvents.path,
                 runtimeObservabilityDB: "/dev/null/events.sqlite"
             )
@@ -1682,17 +1855,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let events = client.loadRuntimeEvents(query: RuntimeEventQuery(limit: 1))
         let observation = client.loadVitalDBObservationSnapshot().observation
 
-        XCTAssertEqual(status.statusMessage, "status-reader")
+        XCTAssertEqual(status.runtimeVersion, "status-reader")
         XCTAssertEqual(events.matchingCount, 7)
         XCTAssertEqual(observation?.observedAt, "2026-05-30T00:00:00Z")
     }
 
     func testObservabilityReaderReportsLatestObservationReadFailure() throws {
-        let directory = try temporaryDirectory()
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
-                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+            paths: RuntimeObservabilityPaths(
                 runtimeObservabilityDB: "/dev/null/vital-observability.sqlite"
             )
         )
@@ -1760,6 +1930,33 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         """.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    private func writeRuntimeProgressDocument(_ url: URL) throws {
+        try """
+        {
+          "operation": "apply-bundle",
+          "phase": "running",
+          "step": "activate-guest-update",
+          "stepStatus": "started",
+          "message": "activation started",
+          "reasonCodes": ["activation"],
+          "startedAt": null,
+          "updatedAt": "2026-07-08T00:00:08Z"
+        }
+        """.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func runtimeVMLifecycleDocument(
+        state: String,
+        terminalReason: String? = nil
+    ) -> RuntimeVMLifecycleDocument {
+        RuntimeVMLifecycleDocument(
+            state: RuntimeVMLifecycleState(rawValue: state),
+            startedAt: "2026-07-01T00:00:00Z",
+            updatedAt: "2026-07-01T00:01:00Z",
+            terminalReason: terminalReason.map(RuntimeVMLifecycleTerminalReason.init(rawValue:))
+        )
+    }
+
     private func writeProxyLaunchDaemon(_ url: URL, proxyPort: Int) throws {
         let document = [
             "EnvironmentVariables": [
@@ -1805,11 +2002,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
 private final class StubStatusReader: RuntimeStatusReading {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        RuntimeStatus(statusMessage: "status-reader")
+        RuntimeStatus(runtimeVersion: "status-reader")
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        RuntimeStatus(statusMessage: "status-reader-health")
+        RuntimeStatus(runtimeVersion: "status-reader-health")
     }
 }
 
@@ -2026,9 +2223,11 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
     private let probeErrors: [GuestRuntimeProbeError]
     private let readiness: RuntimeGuestControlReadiness
     private let readinessFailure: Error?
+    private let redisRelayStatusReadResult: RuntimeRedisRelayStatusReadResult
     private(set) var readyCount = 0
     private(set) var listServicesCount = 0
     private(set) var stackStatusCount = 0
+    private(set) var redisRelayStatusCount = 0
     private(set) var statusRequests: [String] = []
     private(set) var resourceRequests: [String] = []
 
@@ -2046,7 +2245,11 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
         readiness: RuntimeGuestControlReadiness = RuntimeGuestControlReadiness(
             status: "ready"
         ),
-        readinessFailure: Error? = nil
+        readinessFailure: Error? = nil,
+        redisRelayStatusReadResult: RuntimeRedisRelayStatusReadResult = RuntimeRedisRelayStatusReadResult(
+            document: nil,
+            readError: nil
+        )
     ) {
         self.services = services
         self.statuses = statuses
@@ -2060,6 +2263,7 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
         self.probeErrors = probeErrors
         self.readiness = readiness
         self.readinessFailure = readinessFailure
+        self.redisRelayStatusReadResult = redisRelayStatusReadResult
     }
 
     func ready() throws -> RuntimeGuestControlReadiness {
@@ -2096,6 +2300,11 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
             systemDisk: systemDisk,
             probeErrors: probeErrors
         )
+    }
+
+    func redisRelayStatus() throws -> RuntimeRedisRelayStatusReadResult {
+        redisRelayStatusCount += 1
+        return redisRelayStatusReadResult
     }
 
     func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {
@@ -2188,5 +2397,29 @@ private struct RuntimeGuestControlGatewayTestError: Error, CustomStringConvertib
 
     var description: String {
         message
+    }
+}
+
+private func stubGuestAddressProvider(address: String) -> any RuntimeGuestAddressProvider {
+    stubGuestAddressProvider(read: .loaded(address: address, source: .runtimeControlAPI))
+}
+
+private func stubGuestAddressProvider(read: RuntimeGuestAddressReadResult) -> any RuntimeGuestAddressProvider {
+    StubRuntimeGuestAddressProvider(read: read)
+}
+
+private struct StubRuntimeGuestAddressProvider: RuntimeGuestAddressProvider {
+    let read: RuntimeGuestAddressReadResult
+
+    func readGuestAddress() -> RuntimeGuestAddressReadResult {
+        read
+    }
+}
+
+private struct StubRuntimeVMLifecycleResourceReader: RuntimeVMLifecycleResourceReading {
+    let resource: RuntimeVMLifecycleResourceState
+
+    func loadVMLifecycleResource() -> RuntimeVMLifecycleResourceState {
+        resource
     }
 }

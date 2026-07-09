@@ -147,6 +147,14 @@ class RecorderIngressReadModelPort(Protocol):
         raise NotImplementedError
 
 
+class RedisRelayReadModelPort(Protocol):
+    def status(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def save_status(self, document: dict[str, Any]) -> None:
+        raise NotImplementedError
+
+
 class RedisBackupPort(Protocol):
     def create_backup(self) -> RedisBackupResult:
         raise NotImplementedError
@@ -185,6 +193,19 @@ class UpdateShutdownPort(Protocol):
         raise NotImplementedError
 
 
+class ServiceStatusSnapshotRepository(Protocol):
+    def save_service_status_snapshot(self, status: ServiceStatus) -> None:
+        raise NotImplementedError
+
+
+class GuestServiceResourceRepository(Protocol):
+    def save_guest_service_resource(self, resource: GuestServiceResource) -> None:
+        raise NotImplementedError
+
+    def get_guest_service_resource(self, service: str) -> GuestServiceResource | None:
+        raise NotImplementedError
+
+
 class OperationRepository(Protocol):
     def check_ready(self) -> None:
         raise NotImplementedError
@@ -196,15 +217,6 @@ class OperationRepository(Protocol):
         raise NotImplementedError
 
     def append_event(self, event: OperationEvent) -> None:
-        raise NotImplementedError
-
-    def save_service_status_snapshot(self, status: ServiceStatus) -> None:
-        raise NotImplementedError
-
-    def save_guest_service_resource(self, resource: GuestServiceResource) -> None:
-        raise NotImplementedError
-
-    def get_guest_service_resource(self, service: str) -> GuestServiceResource | None:
         raise NotImplementedError
 
     def get(self, operation_id: str) -> ServiceOperation | None:

@@ -41,20 +41,11 @@ extension RuntimeLifecycle {
         }
     }
 
-    func runtimeStatusValue() -> String? {
-        switch statusReporter.loadStatusResult() {
-        case .loaded(let document):
-            document.status.rawValue
-        case .missing, .failed:
-            nil
-        }
-    }
-
     func runtimeObservedEventPublisher() -> RuntimeObservedEventPublisher {
         let healthUseCase = RefreshRuntimeHealthUseCase()
         return RuntimeObservedEventPublisher(
             previousStatus: {
-                previousRuntimeStatus()
+                nil
             },
             recordEvent: { status, previousStatus, operation, message, snapshot, eventType in
                 try runtimeEventPublisher().recordObservedEvent(
@@ -80,18 +71,6 @@ extension RuntimeLifecycle {
                 healthUseCase.observedEventType(snapshot: snapshot, defaultEventType: defaultEventType)
             }
         )
-    }
-
-    private func previousRuntimeStatus() -> RuntimeStatusLevel? {
-        switch statusReporter.loadStatusResult() {
-        case .loaded(let document):
-            return document.status
-        case .missing:
-            return nil
-        case .failed(let reason):
-            log("previous runtime status unavailable reason=\(reason)")
-            return nil
-        }
     }
 
     func runtimeEventPublisher() -> RuntimeEventPublisher {
@@ -139,13 +118,8 @@ extension RuntimeLifecycle {
 
     func runtimeObservedStatusPublisher() -> RuntimeObservedStatusPublisher {
         RuntimeObservedStatusPublisher(
-            writeStatus: { status, operation, message, progress in
-                try runtimeStatusWriter().writeStatus(
-                    status,
-                    operation: operation,
-                    message: message,
-                    progress: progress
-                )
+            writeStatus: { status in
+                try runtimeStatusWriter().writeStatus(status)
             }
         )
     }
@@ -153,14 +127,12 @@ extension RuntimeLifecycle {
     func writeRuntimeStatus(
         _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,
-        message: String,
-        progress: RuntimeProgressDocument? = nil
+        message: String
     ) throws {
         try runtimeObservedStatusPublisher().publishStatus(
             status,
             operation: operation,
-            message: message,
-            progress: progress
+            message: message
         )
     }
 
@@ -185,7 +157,6 @@ extension RuntimeLifecycle {
         )
         do {
             try runtimeStatusWriter().writeProgress(
-                status,
                 operation: operation,
                 step: step,
                 stepStatus: stepStatus,

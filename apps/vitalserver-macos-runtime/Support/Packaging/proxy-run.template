@@ -9,8 +9,11 @@ product_root="$(dirname "${nginx_prefix}")"
 runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"
 proxy_nginx_access_log="${VITALSERVER_PROXY_NGINX_ACCESS_LOG:-${runtime_logs}/proxy-nginx.access.log}"
 proxy_nginx_error_log="${VITALSERVER_PROXY_NGINX_ERROR_LOG:-${runtime_logs}/proxy-nginx.error.log}"
+runtime_control_api_base_url="${VITALSERVER_RUNTIME_CONTROL_API_BASE_URL:-http://127.0.0.1:18321}"
+runtime_control_api_token="${VITALSERVER_RUNTIME_CONTROL_API_TOKEN:-vitalserver-helper-dev}"
+runtime_control_api_token_header="${VITALSERVER_RUNTIME_CONTROL_API_TOKEN_HEADER:-X-Runtime-Control-Token}"
+runtime_control_api_timeout="${VITALSERVER_RUNTIME_CONTROL_API_TIMEOUT_SECONDS:-2}"
 
-state_file="${vm_home}/data/run/runtime-state.json"
 vm_ip_file="${vm_home}/data/run/vm-ip"
 template="${vm_home}/Support/Proxy/vitalserver.conf.template"
 config="${nginx_prefix}/vitalserver.conf"
@@ -106,73 +109,156 @@ apply_config() {
   return 1
 }
 
-read_state_value() {
-  local key="$1"
-  local value=""
-
-  if [ -s "${state_file}" ] && [ -x /usr/bin/plutil ]; then
-    value="$(/usr/bin/plutil -extract "${key}" raw -o - "${state_file}" 2>/dev/null || true)"
-  fi
-  if [ -z "${value}" ] && [ -s "${state_file}" ]; then
-    value="$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "${state_file}" | head -n 1)"
-  fi
-
-  printf "%s" "${value}" | tr -d '[:space:]'
-}
-
-guest_address_state="not-read"
-guest_address_reason=""
+bootstrap_address_state="not-read"
+bootstrap_address_reason=""
+owner_address_state="not-read"
+owner_address_reason=""
 vm_ip=""
+last_published_guest_address=""
+last_guest_address_publish_message=""
 
 read_vm_ip() {
-  guest_address_state=""
-  guest_address_reason=""
+  bootstrap_address_state=""
+  bootstrap_address_reason=""
   vm_ip=""
 
   if [ ! -e "${vm_ip_file}" ]; then
-    guest_address_state="missing"
-    guest_address_reason="vm-ip file missing path=${vm_ip_file}"
+    bootstrap_address_state="missing"
+    bootstrap_address_reason="vm-ip file missing path=${vm_ip_file}"
     return
   fi
   if [ ! -f "${vm_ip_file}" ]; then
-    guest_address_state="invalid"
-    guest_address_reason="vm-ip path is not a regular file path=${vm_ip_file}"
+    bootstrap_address_state="invalid"
+    bootstrap_address_reason="vm-ip path is not a regular file path=${vm_ip_file}"
     return
   fi
 
   local value=""
   if ! value="$(cat "${vm_ip_file}" 2>/dev/null)"; then
-    guest_address_state="read-failed"
-    guest_address_reason="vm-ip file read failed path=${vm_ip_file}"
+    bootstrap_address_state="read-failed"
+    bootstrap_address_reason="vm-ip file read failed path=${vm_ip_file}"
     return
   fi
 
   value="$(printf "%s" "${value}" | tr -d '[:space:]')"
   if [ -z "${value}" ]; then
-    guest_address_state="invalid"
-    guest_address_reason="vm-ip file empty path=${vm_ip_file}"
+    bootstrap_address_state="invalid"
+    bootstrap_address_reason="vm-ip file empty path=${vm_ip_file}"
     return
   fi
 
-  guest_address_state="loaded"
+  bootstrap_address_state="loaded"
   vm_ip="${value}"
 }
 
-read_guest_http() {
-  read_state_value guestHTTP
-}
+publish_guest_address_owner() {
+  local address="$1"
+  local publish_mode="${VITALSERVER_RUNTIME_CONTROL_GUEST_ADDRESS_PUBLISH:-1}"
+  local publish_key=""
 
-successful_http_status() {
-  local value="$1"
-
-  case "${value}" in
-    2* | 3*)
-      return 0
-      ;;
-    *)
+  if [ "${publish_mode}" = "0" ]; then
+    return 0
+  fi
+  if [ "${address}" = "${last_published_guest_address}" ]; then
+    return 0
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    publish_key="missing-curl"
+    if [ "${last_guest_address_publish_message}" != "${publish_key}" ]; then
+      log_err "guest address owner publish unavailable: curl is missing"
+      last_guest_address_publish_message="${publish_key}"
+    fi
+    return 1
+  fi
+  case "${address}" in
+    *\"* | *\\*)
+      publish_key="invalid-json-address:${address}"
+      if [ "${last_guest_address_publish_message}" != "${publish_key}" ]; then
+        log_err "guest address owner publish skipped: address contains invalid JSON string characters"
+        last_guest_address_publish_message="${publish_key}"
+      fi
       return 1
       ;;
   esac
+
+  local response=""
+  local endpoint="${runtime_control_api_base_url%/}/host/runtime/guest-address"
+  if response="$(
+    curl -fsS \
+      --max-time "${runtime_control_api_timeout}" \
+      -X PUT \
+      -H "Accept: application/json" \
+      -H "Content-Type: application/json" \
+      -H "${runtime_control_api_token_header}: ${runtime_control_api_token}" \
+      --data "{\"address\":\"${address}\"}" \
+      "${endpoint}" 2>&1
+  )"; then
+    last_published_guest_address="${address}"
+    publish_key="published:${address}"
+    if [ "${last_guest_address_publish_message}" != "${publish_key}" ]; then
+      log_out "published VM guest address to Runtime Control owner: address=${address}"
+      last_guest_address_publish_message="${publish_key}"
+    fi
+    return 0
+  fi
+
+  publish_key="failed:${address}:${response}"
+  if [ "${last_guest_address_publish_message}" != "${publish_key}" ]; then
+    log_err "guest address owner publish failed: endpoint=${endpoint} address=${address} error=${response}"
+    last_guest_address_publish_message="${publish_key}"
+  fi
+  return 1
+}
+
+parse_json_string_field() {
+  local key="$1"
+  local document="$2"
+
+  printf "%s" "${document}" \
+    | tr ',' '\n' \
+    | sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" \
+    | head -n 1 \
+    | tr -d '[:space:]'
+}
+
+load_guest_address_owner() {
+  owner_address_state=""
+  owner_address_reason=""
+  vm_ip=""
+
+  if ! command -v curl >/dev/null 2>&1; then
+    owner_address_state="unavailable"
+    owner_address_reason="curl is missing"
+    return
+  fi
+
+  local response=""
+  local endpoint="${runtime_control_api_base_url%/}/host/runtime/guest-address"
+  if ! response="$(
+    curl -fsS \
+      --max-time "${runtime_control_api_timeout}" \
+      -H "Accept: application/json" \
+      -H "${runtime_control_api_token_header}: ${runtime_control_api_token}" \
+      "${endpoint}" 2>&1
+  )"; then
+    owner_address_state="read-failed"
+    owner_address_reason="endpoint=${endpoint} error=${response}"
+    return
+  fi
+
+  local address=""
+  address="$(parse_json_string_field "address" "${response}")"
+  if [ -z "${address}" ]; then
+    owner_address_state="$(parse_json_string_field "state" "${response}")"
+    if [ -z "${owner_address_state}" ]; then
+      owner_address_state="invalid"
+    fi
+    owner_address_reason="Runtime Control guest address owner is not loaded"
+    return
+  fi
+
+  owner_address_state="loaded"
+  vm_ip="${address}"
 }
 
 upstream_ready() {
@@ -195,22 +281,28 @@ last_upstream=""
 last_wait_message=""
 while true; do
   read_vm_ip
-  if [ "${guest_address_state}" = "loaded" ]; then
-    upstream="${vm_ip}:80"
-    guest_http="$(read_guest_http)"
-
-    if ! successful_http_status "${guest_http}"; then
+  if [ "${bootstrap_address_state}" = "loaded" ]; then
+    if ! publish_guest_address_owner "${vm_ip}"; then
       if nginx_is_running; then
-        log_err "VM runtime bootstrap is not ready; stopping proxy upstream=${upstream} guestHTTP=${guest_http:-missing}"
+        log_err "VM guest address owner publish failed; stopping proxy with stale upstream"
         stop_nginx
       fi
-      wait_key="bootstrap:${upstream}:${guest_http:-missing}"
+      wait_key="guest-address-publish:${vm_ip}"
       if [ "${last_wait_message}" != "${wait_key}" ]; then
-        log_err "waiting for VM runtime bootstrap: upstream=http://${upstream}/; waiting for VM runtime state guestHTTP=${guest_http:-missing}"
+        log_err "waiting for Runtime Control guest address owner publish: address=${vm_ip}"
         last_wait_message="${wait_key}"
       fi
       last_upstream=""
-    elif upstream_ready "${upstream}"; then
+      sleep "${VITALSERVER_PROXY_RELOAD_INTERVAL:-2}"
+      continue
+    fi
+  fi
+
+  load_guest_address_owner
+  if [ "${owner_address_state}" = "loaded" ]; then
+    upstream="${vm_ip}:80"
+
+    if upstream_ready "${upstream}"; then
       if [ "${upstream}" != "${last_upstream}" ] || ! nginx_is_running; then
         if apply_config "${upstream}"; then
           last_upstream="${upstream}"
@@ -239,13 +331,17 @@ while true; do
       last_upstream=""
     fi
   elif nginx_is_running; then
-    log_err "VM guest address is ${guest_address_state}; stopping proxy with stale upstream: ${guest_address_reason}"
+    log_err "Runtime Control guest address owner is ${owner_address_state}; stopping proxy with stale upstream: ${owner_address_reason}"
     stop_nginx
     last_upstream=""
   else
-    wait_key="guest-address:${guest_address_state}:${guest_address_reason}"
+    wait_key="guest-address-owner:${owner_address_state}:${owner_address_reason}"
     if [ "${last_wait_message}" != "${wait_key}" ]; then
-      log_err "waiting for VM guest address: state=${guest_address_state} reason=${guest_address_reason}"
+      if [ "${bootstrap_address_state}" = "loaded" ]; then
+        log_err "waiting for Runtime Control guest address owner: state=${owner_address_state} reason=${owner_address_reason}"
+      else
+        log_err "waiting for Runtime Control guest address owner: state=${owner_address_state} reason=${owner_address_reason}; bootstrapAddressState=${bootstrap_address_state} bootstrapAddressReason=${bootstrap_address_reason}"
+      fi
       last_wait_message="${wait_key}"
     fi
   fi

@@ -20,8 +20,9 @@ struct RuntimeLifecycle {
     let statusReporter: RuntimeStatusReporter
     let healthChecker: RuntimeHealthChecker
     let serviceController: RuntimeServiceController
-    let guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader
+    let guestAddressProvider: any RuntimeGuestAddressProvider
     let guestControlGatewayFactory: (() throws -> any RuntimeGuestControlGateway)?
+    let runtimeOperationLeaseOwnerFactory: () -> any RuntimeOperationLeaseOwner
     let fileStore: RuntimeFileStore
 
     init(
@@ -31,8 +32,10 @@ struct RuntimeLifecycle {
         commandRunner: RuntimeCommandRunner = SystemRuntimeCommandRunner(),
         httpProber: RuntimeHTTPProber? = nil,
         serviceManager: RuntimeServiceManager? = nil,
-        runtimeStatusRepository: RuntimeStatusRepository? = nil,
-        guestBootstrapResultReader: (any RuntimeGuestBootstrapResultReader)? = nil,
+        runtimeStatusArtifactSink: RuntimeStatusArtifactSink? = nil,
+        runtimeProgressArtifactSink: RuntimeProgressArtifactSink? = nil,
+        guestAddressProvider: (any RuntimeGuestAddressProvider)? = nil,
+        runtimeOperationLeaseOwnerFactory: (() -> any RuntimeOperationLeaseOwner)? = nil,
         guestControlGatewayFactory: (() throws -> any RuntimeGuestControlGateway)? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) {
@@ -46,8 +49,9 @@ struct RuntimeLifecycle {
             commandRunner: commandRunner,
             httpProber: httpProber,
             serviceManager: serviceManager,
-            runtimeStatusRepository: runtimeStatusRepository,
-            guestBootstrapResultReader: guestBootstrapResultReader,
+            runtimeStatusArtifactSink: runtimeStatusArtifactSink,
+            runtimeProgressArtifactSink: runtimeProgressArtifactSink,
+            guestAddressProvider: guestAddressProvider,
             fileStore: fileStore,
             plistBuddyPath: Constants.Commands.plistBuddy,
             lsofPath: Constants.Commands.lsof,
@@ -92,8 +96,9 @@ struct RuntimeLifecycle {
         self.httpProber = container.httpProber
         self.fileStore = container.fileStore
         self.statusReporter = container.statusReporter
-        self.guestBootstrapResultReader = container.guestBootstrapResultReader
+        self.guestAddressProvider = container.guestAddressProvider
         self.guestControlGatewayFactory = guestControlGatewayFactory
+        self.runtimeOperationLeaseOwnerFactory = runtimeOperationLeaseOwnerFactory ?? Self.defaultRuntimeOperationLeaseOwner
         self.healthChecker = container.healthChecker
         self.serviceController = container.serviceController
     }
@@ -112,10 +117,6 @@ struct RuntimeLifecycle {
 
     var logsDirectory: URL {
         installedPaths.centralRuntimeLogsDirectory
-    }
-
-    var runtimeStatus: URL {
-        installedPaths.runtimeStatus
     }
 
     var rootfsBase: URL {
@@ -585,6 +586,42 @@ private extension RuntimeLifecycle {
 }
 
 private extension RuntimeLifecycle {
+    static func defaultRuntimeOperationLeaseOwner() -> any RuntimeOperationLeaseOwner {
+        do {
+            return try RuntimeControlAPIOperationLeaseOwner()
+        } catch {
+            return UnavailableRuntimeOperationLeaseOwner(reason: error.localizedDescription)
+        }
+    }
+}
+
+private struct UnavailableRuntimeOperationLeaseOwner: RuntimeOperationLeaseOwner {
+    let reason: String
+
+    func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
+        .failed("runtime control API operation lease owner unavailable: \(reason)")
+    }
+
+    func acquire(_ document: RuntimeOperationLeaseDocument) throws {
+        throw RuntimeOperationLeaseOwnerError.readFailed(
+            "runtime control API operation lease owner unavailable: \(reason)"
+        )
+    }
+
+    func heartbeat(operationId: String, heartbeatAt: String, expiresAt: String?) throws {
+        throw RuntimeOperationLeaseOwnerError.readFailed(
+            "runtime control API operation lease owner unavailable: \(reason)"
+        )
+    }
+
+    func release(operationId: String) throws {
+        throw RuntimeOperationLeaseOwnerError.readFailed(
+            "runtime control API operation lease owner unavailable: \(reason)"
+        )
+    }
+}
+
+private extension RuntimeLifecycle {
     static func prepareServiceForStop(
         _ service: RuntimeManagedService,
         paths: LauncherPaths,
@@ -609,10 +646,23 @@ private extension RuntimeLifecycle {
         )
         log("VM process stopped before launchd unload")
         do {
-            try RuntimeVMLifecycleStore(
-                url: paths.installed.vmLifecycle,
-                fileStore: fileStore
-            ).write(state: .stopped, message: "VM process stopped before launchd unload")
+            let owner = try RuntimeControlAPIVMLifecycleOwner()
+            let read = try owner.loadVMLifecycleResource()
+            guard read.state == .loaded, let current = read.document else {
+                log("skipped VM lifecycle stopped write after process stop state=\(read.state.rawValue) error=\(read.readError ?? "none")")
+                return
+            }
+            _ = try owner.putVMLifecycleResource(RuntimeVMLifecycleDocument(
+                state: .stopped,
+                operation: current.operation,
+                operationID: current.operationID,
+                bootID: current.bootID,
+                startedAt: current.startedAt,
+                updatedAt: ISO8601DateFormatter().string(from: Date()),
+                deadlineAt: nil,
+                terminalReason: nil,
+                message: "VM process stopped before launchd unload"
+            ))
         } catch {
             log("failed to write VM lifecycle stopped state after process stop error=\(error)")
         }

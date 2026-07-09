@@ -30,12 +30,10 @@ public enum RuntimeWatchdogRecoveryPolicy {
         if let missingFailureReasonIssue = RuntimeHealthSnapshotPolicy.missingFailureReasonIssue(snapshot) {
             return .unrecoverable(reason: missingFailureReasonIssue)
         }
-        if let bootstrapObservationIssue = bootstrapObservationIssue(snapshot.failureReasons) {
-            return .unrecoverable(reason: bootstrapObservationIssue.rawValue)
-        }
         if let observationSourceIssue = observationSourceIssue(
             snapshot.failureReasons,
-            guestServiceStatuses: snapshot.guestServiceStatuses
+            guestServiceStatuses: snapshot.guestServiceStatuses,
+            guestServiceResources: snapshot.guestServiceResources
         ) {
             return .unrecoverable(reason: observationSourceIssue.rawValue)
         }
@@ -56,7 +54,8 @@ public enum RuntimeWatchdogRecoveryPolicy {
             guestHTTP: snapshot.guestHTTP,
             hostProxyReadinessHTTP: snapshot.hostProxyHTTP,
             hostProxyLivenessHTTP: hostProxyLivenessHTTP,
-            guestServiceStatuses: snapshot.guestServiceStatuses
+            guestServiceStatuses: snapshot.guestServiceStatuses,
+            guestServiceResources: snapshot.guestServiceResources
         ))
 
         guard plan.canRecover else {
@@ -107,18 +106,14 @@ public enum RuntimeWatchdogRecoveryPolicy {
         reasons.isEmpty ? "no failure reason reported" : reasons.map(\.rawValue).joined(separator: ", ")
     }
 
-    private static func bootstrapObservationIssue(_ reasons: [RuntimeFailureReason]) -> RuntimeFailureReason? {
-        reasons.first { reason in
-            reason == .guestBootstrapResultMissing || reason == .guestBootstrapResultUnavailable
-        }
-    }
-
     private static func observationSourceIssue(
         _ reasons: [RuntimeFailureReason],
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>,
+        guestServiceResources: [RuntimeGuestServiceResource]
     ) -> RuntimeFailureReason? {
         if RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
-            guestServiceStatuses: guestServiceStatuses
+            guestServiceStatuses: guestServiceStatuses,
+            guestServiceResources: guestServiceResources
         ) {
             return nil
         }

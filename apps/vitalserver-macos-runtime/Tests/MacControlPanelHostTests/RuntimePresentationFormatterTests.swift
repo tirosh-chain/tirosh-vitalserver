@@ -114,81 +114,34 @@ final class RuntimePresentationFormatterTests: XCTestCase {
 
     func testStatusDisplayMessageIncludesFailureReasons() {
         let status = RuntimeStatus(
-            statusMessage: "runtime is degraded",
             failureReasons: [.hostProxyHTTP("503"), .guestHTTP("000")]
         )
 
         XCTAssertEqual(
             formatter.statusDisplayMessage(status),
-            "runtime is degraded\nFailure reasons: Host proxy HTTP 503 (Restart host proxy service), Guest HTTP 000 (Wait for guest readiness)"
+            "Failure reasons: Host proxy HTTP 503 (Restart host proxy service), Guest HTTP 000 (Wait for guest readiness)"
         )
     }
 
-    func testProgressDisplayMessageUsesTypedStepAndStatus() {
-        let progress = RuntimeProgressDocument(
-            operation: .applyBundle,
-            phase: .running,
-            step: .replaceRootfsBase,
-            stepStatus: .started,
-            message: "replacing rootfs",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-05-23T09:00:00Z"
-        )
-        let status = RuntimeStatus(progress: progress)
-
-        XCTAssertEqual(formatter.progressDisplayMessage(status), "Running: Replace Rootfs Base")
-    }
-
-    func testUpdateOperationDisplayMessageUsesProgressMessageWhenOperationStateIsActive() {
-        let progress = RuntimeProgressDocument(
-            operation: .applyBundle,
-            phase: .running,
-            step: .startRuntimeServices,
-            stepStatus: .started,
-            message: "starting runtime services",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-05-27T01:36:00Z"
-        )
-        let status = RuntimeStatus(
-            runtimeState: .updating,
-            operation: .applyBundle,
-            progress: progress
-        )
+    func testUpdateOperationDisplayMessageUsesOperationStateWhenStatusProgressExists() {
+        let status = RuntimeStatus(runtimeState: .updating)
         let operationState = RuntimeOperationState(
             activeOperation: .applyBundle,
-            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
             install: .unavailable()
         )
 
         XCTAssertTrue(formatter.updateOperationInProgress(operationState))
         XCTAssertEqual(
             formatter.updateOperationDisplayMessage(status, operationState: operationState),
-            "Running: Start Runtime Services"
+            "Apply Bundle in progress"
         )
     }
 
     func testCompletedUpdateProgressIsNotRestoredAsActive() {
-        let progress = RuntimeProgressDocument(
-            operation: .activateGuestUpdate,
-            phase: .completed,
-            step: nil,
-            stepStatus: nil,
-            message: "completed",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-05-27T01:37:33Z"
-        )
-        let status = RuntimeStatus(
-            runtimeState: .healthy,
-            operation: .activateGuestUpdate,
-            progress: progress
-        )
+        let status = RuntimeStatus(runtimeState: .healthy)
 
         let operationState = RuntimeOperationState(
             activeOperation: nil,
-            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
             install: .unavailable()
         )
 
@@ -197,43 +150,25 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testUpdateOperationDisplayMessageUsesOperationStateResource() {
-        let progress = RuntimeProgressDocument(
-            operation: .applyBundle,
-            phase: .running,
-            step: .startRuntimeServices,
-            stepStatus: .started,
-            message: "starting runtime services",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-05-27T01:36:00Z"
-        )
-        let status = RuntimeStatus(
-            runtimeState: .healthy,
-            operation: .watchdog,
-            progress: progress
-        )
+        let status = RuntimeStatus(runtimeState: .healthy)
         let operationState = RuntimeOperationState(
             activeOperation: .applyBundle,
-            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
             install: .unavailable()
         )
 
         XCTAssertTrue(formatter.updateOperationInProgress(operationState))
         XCTAssertEqual(
             formatter.updateOperationDisplayMessage(status, operationState: operationState),
-            "Running: Start Runtime Services"
+            "Apply Bundle in progress"
         )
     }
 
     func testUpdateOperationDisplayMessageDoesNotInferFromLegacyStatusOperation() {
         let status = RuntimeStatus(
-            runtimeState: .updating,
-            operation: .applyBundle,
-            statusMessage: "updating"
+            runtimeState: .updating
         )
         let operationState = RuntimeOperationState(
             activeOperation: nil,
-            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
             install: .unavailable()
         )
 
@@ -244,7 +179,6 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     func testActiveOperationTextUsesOperationStateResource() {
         let operationState = RuntimeOperationState(
             activeOperation: .applyBundle,
-            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
             install: .unavailable()
         )
 
@@ -254,7 +188,6 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     func testActiveOperationTextUsesInstallOperationState() {
         let operationState = RuntimeOperationState(
             activeOperation: nil,
-            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
             install: .loaded(RuntimeInstallStateDocument(
                 state: .stepStarted,
                 mode: .full,

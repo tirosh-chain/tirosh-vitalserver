@@ -311,12 +311,6 @@ public extension AppConstants {
                 return "VM service \(titleCasedStatus(state))"
             case .missingIPAddress:
                 return "Missing VM IP"
-            case .runtimeStateMissing:
-                return "Guest runtime state missing"
-            case .runtimeStateInvalid:
-                return "Guest runtime state invalid"
-            case .runtimeStateStale:
-                return "Guest runtime state stale"
             case .launchFailed(let reason):
                 return "VM launch failed (\(titleCasedStatus(reason)))"
             case .invalidConfiguration(let subject):
@@ -335,10 +329,6 @@ public extension AppConstants {
                 return "Guest HTTP \(status)"
             case .guestHTTPProbeFailed(let status):
                 return "Guest HTTP probe failed (\(status))"
-            case .guestBootstrapResultMissing:
-                return "Guest bootstrap result missing"
-            case .guestBootstrapResultUnavailable:
-                return "Guest bootstrap result unavailable"
             case .guestBootstrapMissingRuntimePackages:
                 return "Guest bootstrap missing runtime packages"
             case .guestBootstrapDockerRuntimeFailed:
@@ -378,8 +368,6 @@ public extension AppConstants {
                 return "Guest HTTP \(status)"
             case .guestHTTPProbeFailed(let status):
                 return "Guest HTTP probe failed (\(status))"
-            case .guestRuntimeStateStale:
-                return "Guest runtime state stale"
             case .recorderIngressHTTP(let status):
                 return "Recorder ingress HTTP \(status)"
             case .containerService(let service, let state):
@@ -394,30 +382,12 @@ public extension AppConstants {
                 return "VitalDB anomaly \(titleCasedStatus(kind)) on \(subject)"
             case .proxyPortInUse(let port, let listeners):
                 return "Host proxy port \(port) in use by \(listeners)"
-            case .guestBootstrapResultMissing:
-                return "Guest bootstrap result missing"
-            case .guestBootstrapResultUnavailable:
-                return "Guest bootstrap result unavailable"
             case .guestBootstrapMissingRuntimePackages:
                 return "Guest bootstrap missing runtime packages"
             case .guestBootstrapDockerRuntimeFailed:
                 return "Guest bootstrap Docker runtime failed"
             case .guestBootstrapFailed:
                 return "Guest bootstrap failed"
-            case .guestRuntimeStateMissing:
-                return "Guest runtime state missing"
-            case .runtimeStatusDocumentMissing:
-                return "Runtime status missing"
-            case .runtimeStatusDocumentStale:
-                return "Runtime status stale"
-            case .runtimeStatusDocumentInvalid:
-                return "Runtime status invalid"
-            case .guestRuntimeStateInvalid:
-                return "Guest runtime state invalid"
-            case .guestRuntimeStateLoadFailed(let reason):
-                return "Guest runtime state load failed (\(titleCasedStatus(reason)))"
-            case .guestRuntimeStateMetadataReadFailed(let reason):
-                return "Guest runtime state metadata read failed (\(titleCasedStatus(reason)))"
             case .observabilityEventStoreUnavailable:
                 return "Observability store unavailable"
             case .observabilityEventStoreCorrupt:

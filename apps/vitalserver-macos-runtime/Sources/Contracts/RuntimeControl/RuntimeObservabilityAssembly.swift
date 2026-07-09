@@ -239,6 +239,38 @@ public enum RuntimeVitalDBBedHistoryAssembler {
 
 public enum RuntimeVitalDBRelationshipHistoryAssembler {
     public static func makeHistory(
+        read: RuntimeGuestControlVitalDBRelationshipRead
+    ) -> RuntimeVitalRelationshipHistory {
+        switch read.state {
+        case .loaded:
+            return RuntimeVitalRelationshipHistory(
+                assignments: read.assignments,
+                events: read.events,
+                state: .loaded,
+                readError: read.readError
+            )
+        case .partiallyLoaded:
+            return RuntimeVitalRelationshipHistory(
+                assignments: read.assignments,
+                events: read.events,
+                state: .partiallyLoaded,
+                readError: read.readError
+            )
+        case .readFailed:
+            return RuntimeVitalRelationshipHistory(
+                assignments: read.assignments,
+                events: read.events,
+                state: .readFailed,
+                readError: read.readError ?? "Guest VitalDB relationship read model failed."
+            )
+        case .unavailable, .failed:
+            return .failed(
+                readError: read.readError ?? "Guest VitalDB relationship read model is \(read.state.rawValue)."
+            )
+        }
+    }
+
+    public static func makeHistory(
         reads: RuntimeVitalDBRelationshipProjectionReads
     ) -> RuntimeVitalRelationshipHistory {
         var readErrors: [String] = []

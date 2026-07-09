@@ -231,7 +231,7 @@ def test_prepare_update_shutdown_reports_ordered_stop_failure_details(
     ]
 
 
-def test_quiesce_shutdown_sidecars_stops_runtime_state_and_container_logs(
+def test_quiesce_shutdown_sidecars_stops_runtime_observation_and_container_logs(
     monkeypatch: Any,
 ) -> None:
     events: list[str] = []
@@ -254,14 +254,14 @@ def test_quiesce_shutdown_sidecars_stops_runtime_state_and_container_logs(
     update_shutdown.quiesce_shutdown_sidecars()
 
     assert events == [
-        f"systemctl:stop:{RuntimeService.RUNTIME_STATE.value}",
-        f"state:{RuntimeService.RUNTIME_STATE.value}:inactive",
+        f"systemctl:stop:{RuntimeService.RUNTIME_OBSERVATION.value}",
+        f"state:{RuntimeService.RUNTIME_OBSERVATION.value}:inactive",
         f"systemctl:stop:{RuntimeService.CONTAINER_LOGS.value}",
         f"state:{RuntimeService.CONTAINER_LOGS.value}:inactive",
     ]
 
 
-def test_quiesce_shutdown_sidecars_fails_when_sidecar_remains_active(
+def test_quiesce_shutdown_sidecars_fails_when_observation_sidecar_remains_active(
     monkeypatch: Any,
 ) -> None:
     events: list[str] = []
@@ -278,7 +278,7 @@ def test_quiesce_shutdown_sidecars_fails_when_sidecar_remains_active(
         lambda command, **kwargs: _record_service_state(
             events,
             command,
-            {RuntimeService.RUNTIME_STATE.value: "active"},
+            {RuntimeService.RUNTIME_OBSERVATION.value: "active"},
         ),
     )
 
@@ -289,8 +289,8 @@ def test_quiesce_shutdown_sidecars_fails_when_sidecar_remains_active(
         update_shutdown.quiesce_shutdown_sidecars()
 
     assert events == [
-        f"systemctl:stop:{RuntimeService.RUNTIME_STATE.value}",
-        f"state:{RuntimeService.RUNTIME_STATE.value}:active",
+        f"systemctl:stop:{RuntimeService.RUNTIME_OBSERVATION.value}",
+        f"state:{RuntimeService.RUNTIME_OBSERVATION.value}:active",
     ]
 
 

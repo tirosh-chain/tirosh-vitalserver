@@ -110,7 +110,6 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/status": { runtimeState: "healthy" },
       "/runtime/operation-state": {
         activeOperation: "apply-bundle",
-        runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
         install: {
           state: "unavailable",
           document: null,
@@ -209,6 +208,7 @@ describe("RuntimeControlApiClient", () => {
         ],
         probeErrors: []
       },
+      "/runtime/guest/services/app/resource": guestServiceResource(),
       "/runtime/guest/services/start": guestServiceOperation("start"),
       "/runtime/guest/services/stop": guestServiceOperation("stop"),
       "/runtime/guest/services/restart": guestServiceOperation("restart"),
@@ -285,6 +285,12 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getGuestStackStatus()).resolves.toMatchObject({
       state: "loaded",
       services: [{ service: "app" }]
+    });
+    await expect(client.getGuestServiceResource("app")).resolves.toMatchObject({
+      service: "app",
+      spec: { desiredState: "running" },
+      status: { observedState: "running" },
+      lastOperationId: "op-app"
     });
     await expect(client.startGuestService({ service: "app" })).resolves.toMatchObject({ command: "start" });
     await expect(client.stopGuestService({ service: "app" })).resolves.toMatchObject({ command: "stop" });
@@ -564,7 +570,15 @@ function fullRuntimeOverview() {
 }
 
 function commandResponse() {
-  return { result: { exitCode: 0, stdout: "ok", stderr: "" } };
+  return {
+    result: {
+      exitCode: 0,
+      stdout: "ok",
+      stderr: "",
+      outputIssues: [],
+      executionIssue: null
+    }
+  };
 }
 
 function guestServiceOperation(command: "start" | "stop" | "restart") {
@@ -576,6 +590,38 @@ function guestServiceOperation(command: "start" | "stop" | "restart") {
     createdAt: "2026-07-01T00:00:00+00:00",
     updatedAt: "2026-07-01T00:00:01+00:00",
     failure: null
+  };
+}
+
+function guestServiceResource() {
+  return {
+    service: "app",
+    spec: {
+      state: "configured",
+      desiredState: "running",
+      updatedAt: "2026-07-01T00:00:00+00:00"
+    },
+    status: {
+      state: "loaded",
+      observedState: "running",
+      observedAt: "2026-07-01T00:00:01+00:00",
+      serviceStatus: {
+        service: "app",
+        state: "running",
+        health: "healthy",
+        observedAt: "2026-07-01T00:00:01+00:00"
+      }
+    },
+    conditions: [
+      {
+        type: "Reconciled",
+        status: "true",
+        reason: "DesiredStateObserved",
+        message: "matched desired state",
+        observedAt: "2026-07-01T00:00:01+00:00"
+      }
+    ],
+    lastOperationId: "op-app"
   };
 }
 

@@ -94,21 +94,25 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
-    func testBootstrapObservationIssueBlocksAutomaticRecovery() {
+    func testBootstrapResultFailureReasonDoesNotBlockAutomaticRecovery() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 vmLifecycle: runningLifecycle(),
                 guestHTTP: "503",
-                failureReasons: [.guestHTTP("503"), .guestBootstrapResultMissing]
+                failureReasons: [.guestHTTP("503"), .unknown("guest-bootstrap-result-missing")]
             ),
             hostProxyLivenessHTTP: "204",
             automaticRecoveryEnabled: true
         )
 
-        XCTAssertEqual(
-            decision,
-            .unrecoverable(reason: "guest-bootstrap-result-missing")
-        )
+        guard case .recover(let reason, let plan) = decision else {
+            return XCTFail("Expected recovery plan, got \(decision)")
+        }
+        XCTAssertEqual(reason, "guest-http-503, guest-bootstrap-result-missing")
+        XCTAssertFalse(plan.restartVM)
+        XCTAssertFalse(plan.restartProxy)
+        XCTAssertTrue(plan.reconcileGuestStack)
+        XCTAssertEqual(plan.actionReasonCodes, ["guest-http-unhealthy-503"])
     }
 
     func testObservationSourceIssueBlocksAutomaticRecovery() {
@@ -224,7 +228,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 hostProxyHTTP: "failed",
                 guestHTTP: RuntimeHTTPStatusText.missingVMIP,
                 failureReasons: [
-                    .guestRuntimeStateStale,
+                    .guestHTTP(RuntimeHTTPStatusText.missingVMIP),
                     .vmLifecycleDocumentStale,
                     .hostProxyHTTP("failed"),
                     .unknown("recorder-ingress-http-failed"),
@@ -237,7 +241,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         XCTAssertEqual(
             decision,
             .recover(
-                reason: "guest-runtime-state-stale, vm-lifecycle-document-stale, host-proxy-http-failed, recorder-ingress-http-failed",
+                reason: "guest-http-missing-vm-ip, vm-lifecycle-document-stale, host-proxy-http-failed, recorder-ingress-http-failed",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
                     restartVM: true,
@@ -254,7 +258,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
-    func testStaleGuestRuntimeStateCanRecoverWithVMAndProxyRestart() {
+    func testMissingGuestAddressCanRecoverWithVMAndProxyRestart() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 vmLifecycle: runningLifecycle(),
@@ -262,7 +266,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 hostProxyHTTP: "http-probe-command-failed exitCode=7",
                 guestHTTP: RuntimeHTTPStatusText.missingVMIP,
                 failureReasons: [
-                    .guestRuntimeStateStale,
+                    .guestHTTP(RuntimeHTTPStatusText.missingVMIP),
                     .hostProxyHTTP("http-probe-command-failed exitCode=7"),
                     .recorderIngressHTTP("failed"),
                 ]
@@ -274,7 +278,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         XCTAssertEqual(
             decision,
             .recover(
-                reason: "guest-runtime-state-stale, host-proxy-http-http-probe-command-failed exitCode=7, recorder-ingress-http-failed",
+                reason: "guest-http-missing-vm-ip, host-proxy-http-http-probe-command-failed exitCode=7, recorder-ingress-http-failed",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
                     restartVM: true,

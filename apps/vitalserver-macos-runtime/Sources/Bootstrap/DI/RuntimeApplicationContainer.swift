@@ -12,10 +12,10 @@ public struct RuntimeApplicationContainer {
     public let commandRunner: RuntimeCommandRunner
     public let httpProber: RuntimeHTTPProber
     public let serviceManager: RuntimeServiceManager
+    public let guestAddressProvider: any RuntimeGuestAddressProvider
     public let statusReporter: RuntimeStatusReporter
     public let healthChecker: RuntimeHealthChecker
     public let serviceController: RuntimeServiceController
-    public let guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader
     public let fileStore: RuntimeFileStore
 
     public init(
@@ -25,8 +25,9 @@ public struct RuntimeApplicationContainer {
         commandRunner: RuntimeCommandRunner = SystemRuntimeCommandRunner(),
         httpProber: RuntimeHTTPProber? = nil,
         serviceManager: RuntimeServiceManager? = nil,
-        runtimeStatusRepository: RuntimeStatusRepository? = nil,
-        guestBootstrapResultReader: (any RuntimeGuestBootstrapResultReader)? = nil,
+        runtimeStatusArtifactSink: RuntimeStatusArtifactSink? = nil,
+        runtimeProgressArtifactSink: RuntimeProgressArtifactSink? = nil,
+        guestAddressProvider: (any RuntimeGuestAddressProvider)? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         plistBuddyPath: String,
         lsofPath: String,
@@ -43,8 +44,9 @@ public struct RuntimeApplicationContainer {
             commandRunner: commandRunner,
             httpProber: httpProber,
             serviceManager: serviceManager,
-            runtimeStatusRepository: runtimeStatusRepository,
-            guestBootstrapResultReader: guestBootstrapResultReader,
+            runtimeStatusArtifactSink: runtimeStatusArtifactSink,
+            runtimeProgressArtifactSink: runtimeProgressArtifactSink,
+            guestAddressProvider: guestAddressProvider,
             fileStore: fileStore,
             plistBuddyPath: plistBuddyPath,
             lsofPath: lsofPath,
@@ -62,10 +64,10 @@ public struct RuntimeApplicationContainer {
         self.commandRunner = commandRunner
         self.httpProber = composition.httpProber
         self.serviceManager = composition.serviceManager
+        self.guestAddressProvider = composition.guestAddressProvider
         self.statusReporter = composition.statusReporter
         self.healthChecker = composition.healthChecker
         self.serviceController = composition.serviceController
-        self.guestBootstrapResultReader = composition.guestBootstrapResultReader
         self.fileStore = fileStore
     }
 }

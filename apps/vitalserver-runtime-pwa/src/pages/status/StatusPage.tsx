@@ -88,15 +88,6 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                 </StatusBadge>
               )
             },
-            ...(status?.statusDocumentError
-              ? [
-                  {
-                    label: "Status document",
-                    value: "Read failed",
-                    detail: status.statusDocumentError
-                  }
-                ]
-              : []),
             {
               label: "VitalServer",
               value: vitalServerURL ? (
@@ -108,7 +99,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
               ),
               detail: serviceStatusDetail(
                 status?.hostProxyHTTP,
-                status?.startedAt
+                status?.runtimeControlStartedAt
               )
             },
             {

@@ -1,0 +1,13 @@
+[Unit]
+Description=Write Tirosh VM runtime observation to shared runtime directory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tirosh-runtime-observation watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

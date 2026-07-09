@@ -157,12 +157,17 @@ internal/vm/wait/stopped:
 internal/vm/proxy/start:
 	@upstream="$(VM_PROXY_UPSTREAM)"; \
 	if [ -z "$$upstream" ]; then \
-		if [ ! -s "$(VM_HOME)/data/run/vm-ip" ]; then \
-			printf "Set VM_PROXY_UPSTREAM or run make devtools/wait/ip first.\n" >&2; \
-			printf "  VM_PROXY_UPSTREAM=192.168.64.3:80 make runtime/proxy/start\n" >&2; \
+		if ! upstream="$$( \
+			$(VM_BUILD_RUNNER) macos-runtime-guest-address-proxy-upstream \
+				--vm-home "$(VM_HOME)" \
+				--runtime-control-api-base-url "$${VITALSERVER_RUNTIME_CONTROL_API_BASE_URL:-http://127.0.0.1:18321}" \
+				--runtime-control-api-token "$${VITALSERVER_RUNTIME_CONTROL_API_TOKEN:-vitalserver-helper-dev}" \
+				--runtime-control-api-token-header "$${VITALSERVER_RUNTIME_CONTROL_API_TOKEN_HEADER:-X-Runtime-Control-Token}" \
+				--runtime-control-api-timeout "$${VITALSERVER_RUNTIME_CONTROL_API_TIMEOUT_SECONDS:-2}" \
+		)"; then \
+			printf "Runtime Control Guest address owner is unavailable; cannot derive proxy upstream.\n" >&2; \
 			exit 1; \
 		fi; \
-		upstream="$$(cat "$(VM_HOME)/data/run/vm-ip"):80"; \
 	fi; \
 		PROXY_UPSTREAM="$$upstream" $(MAKE) proxy/start
 

@@ -11,7 +11,7 @@ public enum RuntimeHealthNotificationState: Equatable {
     public init(status: RuntimeStatus) {
         if RuntimeReadinessPolicy.isReady(status) {
             self = .healthy
-        } else if !status.effectiveRuntimeInstallationState.isExecutable {
+        } else if status.runtimeInstallationState?.isExecutable != true {
             self = .notInstalled
         } else if status.runtimeState == .critical {
             self = .critical

@@ -6,14 +6,20 @@ import Errors
 extension VirtualMachineDelegate {
     static func hostCLI(
         pidFile: URL,
-        lifecycleStore: RuntimeVMLifecycleStore,
+        lifecycleWriter: any RuntimeVMLifecycleResourceWriting,
         fileStore: RuntimeFileWriting = SystemRuntimeFileStore()
     ) -> VirtualMachineDelegate {
         VirtualMachineDelegate(
             pidFile: pidFile,
             fileStore: fileStore,
             writeLifecycle: { state, message in
-                try lifecycleStore.write(state: state, message: message)
+                try lifecycleWriter.writeVMLifecycleResource(
+                    state: state,
+                    operation: nil,
+                    terminalReason: nil,
+                    message: message,
+                    bootWindowSeconds: nil
+                )
             }
         )
     }

@@ -4,10 +4,10 @@ import os
 import subprocess
 from pathlib import Path
 
-from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
-    RuntimeStateReadError,
-    read_runtime_state,
-    read_runtime_state_string,
+from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
+    RuntimeBootstrapAddressReadError,
+    probe_guest_runtime_http,
+    read_runtime_bootstrap_vm_ip,
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
@@ -85,9 +85,8 @@ def installed_status(config: Path) -> int:
             print(f"  {label}: not loaded (optional)")
 
     try:
-        runtime_state = read_runtime_state(vm_home)
-        print(f"  vm ip: {read_runtime_state_string(runtime_state, 'vmIP', vm_home)}")
-    except RuntimeStateReadError as error:
+        print(f"  vm ip: {read_runtime_bootstrap_vm_ip(vm_home)}")
+    except RuntimeBootstrapAddressReadError as error:
         print(f"  vm ip: unavailable: {error}")
         status = 1
 
@@ -102,10 +101,14 @@ def installed_health(config: Path, proxy_port: str) -> int:
     status = 0
 
     try:
-        runtime_state = read_runtime_state(vm_home)
-        guest_http = read_runtime_state_string(runtime_state, "guestHTTP", vm_home)
-        status |= print_reported_http_status("guest http", guest_http)
-    except RuntimeStateReadError as error:
+        vm_ip = read_runtime_bootstrap_vm_ip(vm_home)
+        ok, code = probe_guest_runtime_http(vm_ip)
+        if ok:
+            print(f"  guest http: ok http://{vm_ip}:80 -> {code}")
+        else:
+            print(f"  guest http: failed http://{vm_ip}:80 -> {code}")
+            status = 1
+    except RuntimeBootstrapAddressReadError as error:
         print(f"  guest http: unavailable: {error}")
         status = 1
     status |= print_http_status("host proxy", f"http://127.0.0.1:{proxy_port}/")
@@ -145,12 +148,4 @@ def print_http_status(label: str, url: str) -> int:
         print(f"  {label}: ok {url} -> {code}")
         return 0
     print(f"  {label}: failed {url} -> {code}")
-    return 1
-
-
-def print_reported_http_status(label: str, status: str) -> int:
-    if status.isdigit() and 200 <= int(status) < 400:
-        print(f"  {label}: ok reported={status}")
-        return 0
-    print(f"  {label}: failed reported={status}")
     return 1

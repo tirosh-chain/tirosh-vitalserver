@@ -23,12 +23,12 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
         do {
             try secondary.append(event)
         } catch {
-            let appendError = CompositeRuntimeEventRepositoryError.secondaryAppendFailed(
-                eventID: event.id,
-                error: String(describing: error)
+            log(
+                CompositeRuntimeEventRepositoryError.secondaryAppendFailed(
+                    eventID: event.id,
+                    error: String(describing: error)
+                ).description
             )
-            log(appendError.description)
-            throw appendError
         }
     }
 

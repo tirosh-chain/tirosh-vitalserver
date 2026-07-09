@@ -38,10 +38,10 @@
 
 | Flow | Current owner | Persisted/read document | Domain/Core policy | Workflow/API surface | Primary verification |
 |---|---|---|---|---|---|
-| Install | Host runtime | `RuntimeInstallStateDocument` | Domain `RuntimeInstallTransitionPolicy`, Domain `RuntimeOperationPlan` | `Workflow/RuntimeInstallLifecycle`, `HostCLI install` | `DomainRuntimeInstallTransitionPolicyTests`, `RuntimeInstallTransitionPolicyTests`, `RuntimeInstallWorkflowTests` |
+| Install | Host runtime | diagnostics `RuntimeInstallStateDocument` | Domain `RuntimeInstallTransitionPolicy`, Domain `RuntimeOperationPlan` | `Workflow/RuntimeInstallLifecycle`, `HostCLI install`; Runtime Control current operation uses Host operation lease, not this document | `DomainRuntimeInstallTransitionPolicyTests`, `RuntimeInstallTransitionPolicyTests`, `RuntimeInstallWorkflowTests` |
 | Uninstall | Host runtime | `RuntimeUninstallStateDocument` | Domain `RuntimeUninstallTransitionPolicy`, Domain `RuntimeUninstallReadinessPolicy` | `Workflow/RuntimeUninstallLifecycle`, `HostCLI uninstall` | `DomainRuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallWorkflowTests` |
-| Product update | Host updater + Guest Control maintenance operations | `runtime-status.json`, Guest operation documents, `runtime-version.json` | update preflight and compatibility policies | `apply-bundle`, `/host/update-bundles/*`, `/v1/maintenance/update-activation`, `/v1/maintenance/update-shutdown` | update preflight, bundle verifier, Guest Control operation tests |
-| Watchdog recovery | Host watchdog | `runtime-status.json`, `runtime-events.jsonl`, health snapshot inputs | Domain `RuntimeWatchdogRecoveryPolicy`, health policies | Workflow `RuntimeWatchdogRunner`, `/runtime/status`, `/runtime/events` | recovery policy and observability tests |
+| Product update | Host updater + Guest Control maintenance operations | Host operation lease, diagnostics `runtime-progress.json`, diagnostics `runtime-status.json`, Guest operation documents, `runtime-version.json` | update preflight and compatibility policies | `apply-bundle`, `/host/update-bundles/*`, `/v1/maintenance/update-activation`, `/v1/maintenance/update-shutdown` | update preflight, bundle verifier, Guest Control operation tests |
+| Watchdog recovery | Host watchdog | health snapshot inputs, Host operation lease, VM lifecycle read | Domain `RuntimeWatchdogRecoveryPolicy`, health policies | Workflow `RuntimeWatchdogRunner`, `/runtime/status`, `/runtime/events` | recovery policy, guard, and observability tests |
 | Guest maintenance operation | Guest Control API | Guest operation documents | Guest Control maintenance usecases | `/v1/maintenance/*`, `/v1/operations/{operationId}` | Guest Control API/usecase tests |
 | Vital Recorder read model | Guest/Postgres read model fed by VitalDB observer evidence | Guest Control VitalDB read-model documents | recorder summary/history construction policy | `/vitaldb/recorders`, `/runtime/overview` | RuntimeControl contract tests, PWA schema tests |
 | Log collection/export | Host log collector/exporter | raw logs, helper message log, JSONL, SQLite sidecars | no domain transition policy | `/host/logs/read`, `/host/logs/export` | log collector/exporter tests |
@@ -64,7 +64,7 @@ Invariants:
 
 Diagnostics:
 
-- Install state document.
+- Install state document as diagnostics/export state, not Runtime Control current operation owner.
 - command log.
 - runtime status/progress event. `RuntimeStepExecutionEvent` is a shared `Contracts` value, not a `Core`-owned transition rule.
 - package preinstall/postinstall logs.
@@ -121,7 +121,8 @@ Invariants:
 Diagnostics:
 
 - update command log.
-- `runtime-status.json` operation/progress.
+- `runtime-status.json` status projection.
+- `runtime-progress.json` diagnostics/export workflow progress artifact.
 - Guest Control operation id.
 - Guest Control operation document.
 - managed backup metadata.

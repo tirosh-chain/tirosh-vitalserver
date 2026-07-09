@@ -214,23 +214,21 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertNil(document.schemaVersion)
         XCTAssertEqual(document.status, .healthy)
-        XCTAssertEqual(document.operation, .health)
         XCTAssertEqual(document.proxyPort, 80)
-        XCTAssertNil(document.vmState)
-        XCTAssertNil(document.vmErrors)
-        XCTAssertEqual(document.failureReasons, [])
-        XCTAssertNil(document.progress)
     }
 
-    func testDecodesRuntimeStatusV2Progress() throws {
+    func testDecodesRuntimeStatusV2IgnoringLegacyEmbeddedProgress() throws {
         let document = try decodeFixture(RuntimeStatusDocument.self, named: "runtime-status-updating")
 
         XCTAssertEqual(document.schemaVersion, 2)
         XCTAssertEqual(document.status, .updating)
-        XCTAssertEqual(document.progress?.operation, .applyBundle)
-        XCTAssertEqual(document.progress?.step, .activateGuestUpdate)
-        XCTAssertEqual(document.progress?.stepStatus, .started)
-        XCTAssertEqual(document.progress?.reasonCodes, ["guest-activation-pending"])
+
+        let encoded = try JSONEncoder().encode(document)
+        let encodedObject = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(encodedObject["progress"])
+        XCTAssertNil(encodedObject["operation"])
+        XCTAssertNil(encodedObject["message"])
+        XCTAssertNil(encodedObject["updatedAt"])
     }
 
     func testRuntimeServiceOperationsRoundTrip() throws {
@@ -323,8 +321,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.reportedVMErrors, [.diskAttachmentInvalid])
     }
 
-    func testDecodesGuestRuntimeState() throws {
-        let document = try decodeFixture(GuestRuntimeStateDocument.self, named: "runtime-state-ready")
+    func testDecodesGuestRuntimeObservation() throws {
+        let document = try decodeFixture(GuestRuntimeObservationDocument.self, named: "runtime-observation-ready")
 
         XCTAssertEqual(document.vmIP, "192.168.64.2")
         XCTAssertEqual(document.bootID, "7b6a6afd-64f8-4dd5-91f1-6dcbf58f8f7d")
@@ -333,7 +331,7 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.vitalFilesDisk?.percent, 25.0)
     }
 
-    func testDecodesGuestRuntimeStateProbeErrors() throws {
+    func testDecodesGuestRuntimeObservationProbeErrors() throws {
         let json = """
         {
           "schemaVersion": 1,
@@ -350,7 +348,7 @@ final class ContractsTests: XCTestCase {
           ]
         }
         """
-        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
+        let document = try JSONDecoder().decode(GuestRuntimeObservationDocument.self, from: Data(json.utf8))
 
         XCTAssertNil(document.vmIP)
         XCTAssertEqual(document.probeErrors, [
@@ -361,7 +359,7 @@ final class ContractsTests: XCTestCase {
         ])
     }
 
-    func testDecodesGuestRuntimeStateDiskHealth() throws {
+    func testDecodesGuestRuntimeObservationDiskHealth() throws {
         let json = """
         {
           "schemaVersion": 1,
@@ -378,7 +376,7 @@ final class ContractsTests: XCTestCase {
           }
         }
         """
-        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
+        let document = try JSONDecoder().decode(GuestRuntimeObservationDocument.self, from: Data(json.utf8))
 
         XCTAssertEqual(document.diskHealth, GuestDiskHealthDocument(
             rootFilesystemReadOnly: true,
@@ -428,22 +426,23 @@ final class ContractsTests: XCTestCase {
         let document = try JSONDecoder().decode(RuntimeStatusDocument.self, from: Data(json.utf8))
 
         XCTAssertEqual(document.status.rawValue, "paused")
-        XCTAssertEqual(document.operation.rawValue, "future-operation")
         XCTAssertEqual(document.vmService, .loaded)
-        XCTAssertEqual(document.vmState?.rawValue, "hibernating")
-        XCTAssertEqual(document.vmErrors ?? [], [.runtimeStateStale, .serviceNotLoaded("paused")])
         XCTAssertEqual(document.rootfsBase, .present)
-        XCTAssertEqual(document.progress?.phase.rawValue, "future-phase")
-        XCTAssertEqual(document.progress?.stepStatus?.rawValue, "future-step-status")
 
         let encoded = try JSONEncoder().encode(document)
+        let encodedObject = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(encodedObject["progress"])
+        XCTAssertNil(encodedObject["vmState"])
+        XCTAssertNil(encodedObject["vmErrors"])
+        XCTAssertNil(encodedObject["failureReasons"])
+        XCTAssertNil(encodedObject["domainErrors"])
+        XCTAssertNil(encodedObject["operation"])
+        XCTAssertNil(encodedObject["message"])
+        XCTAssertNil(encodedObject["updatedAt"])
         let roundTripped = try JSONDecoder().decode(RuntimeStatusDocument.self, from: encoded)
         XCTAssertEqual(roundTripped.status.rawValue, "paused")
         XCTAssertEqual(roundTripped.vmService.rawValue, "loaded")
-        XCTAssertEqual(roundTripped.vmState?.rawValue, "hibernating")
-        XCTAssertEqual(roundTripped.vmErrors ?? [], [.runtimeStateStale, .serviceNotLoaded("paused")])
         XCTAssertEqual(roundTripped.rootfsBase.rawValue, "present")
-        XCTAssertEqual(roundTripped.progress?.phase.rawValue, "future-phase")
     }
 
     func testRuntimeVMStateDefinesObservedStatesAndPreservesUnknownValues() throws {
@@ -480,9 +479,9 @@ final class ContractsTests: XCTestCase {
             .missingDisk,
             .serviceNotLoaded("not loaded"),
             .missingIPAddress,
-            .runtimeStateMissing,
-            .runtimeStateInvalid,
-            .runtimeStateStale,
+            .unknown("vm-runtime-state-missing"),
+            .unknown("vm-runtime-state-invalid"),
+            .unknown("vm-runtime-state-stale"),
             .launchFailed("virtualization"),
             .invalidConfiguration("network"),
             .hostResourceUnavailable("memory"),
@@ -492,8 +491,8 @@ final class ContractsTests: XCTestCase {
             .guestDiskIO,
             .guestHTTP("failed"),
             .guestHTTPProbeFailed("failed"),
-            .guestBootstrapResultMissing,
-            .guestBootstrapResultUnavailable,
+            .unknown("vm-guest-bootstrap-result-missing"),
+            .unknown("vm-guest-bootstrap-result-unavailable"),
             .guestBootstrapMissingRuntimePackages,
             .guestBootstrapDockerRuntimeFailed,
             .guestBootstrapFailed,
@@ -535,18 +534,18 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeVMError.diskAttachmentInvalid.recoveryAction, .backupAndRecreateVM)
         XCTAssertTrue(RuntimeVMError.diskAttachmentInvalid.requiresDataPreservationBeforeRecovery)
 
-        XCTAssertEqual(RuntimeVMError.runtimeStateMissing.category, .guestAgent)
-        XCTAssertEqual(RuntimeVMError.runtimeStateMissing.recoveryAction, .restartGuestAgent)
-        XCTAssertFalse(RuntimeVMError.runtimeStateMissing.requiresDataPreservationBeforeRecovery)
-        XCTAssertEqual(RuntimeVMError.runtimeStateInvalid.category, .guestAgent)
-        XCTAssertEqual(RuntimeVMError.runtimeStateInvalid.recoveryAction, .restartGuestAgent)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-runtime-state-missing").category, .unknown)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-runtime-state-missing").recoveryAction, .inspectLogs)
+        XCTAssertFalse(RuntimeVMError.unknown("vm-runtime-state-missing").requiresDataPreservationBeforeRecovery)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-runtime-state-invalid").category, .unknown)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-runtime-state-invalid").recoveryAction, .inspectLogs)
         XCTAssertEqual(RuntimeVMError.guestHTTPProbeFailed("failed").category, .networking)
         XCTAssertEqual(RuntimeVMError.guestHTTPProbeFailed("failed").recoveryAction, .waitForGuest)
 
-        XCTAssertEqual(RuntimeVMError.guestBootstrapResultMissing.category, .guestBootstrap)
-        XCTAssertEqual(RuntimeVMError.guestBootstrapResultMissing.recoveryAction, .waitForGuest)
-        XCTAssertEqual(RuntimeVMError.guestBootstrapResultUnavailable.category, .guestBootstrap)
-        XCTAssertEqual(RuntimeVMError.guestBootstrapResultUnavailable.recoveryAction, .inspectLogs)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-guest-bootstrap-result-missing").category, .unknown)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-guest-bootstrap-result-missing").recoveryAction, .inspectLogs)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-guest-bootstrap-result-unavailable").category, .unknown)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-guest-bootstrap-result-unavailable").recoveryAction, .inspectLogs)
     }
 
     func testRuntimeFailureReasonsDecodeAsTypedCodes() throws {
@@ -606,14 +605,14 @@ final class ContractsTests: XCTestCase {
             .hostProxyListenerScanInspectionFailed("path=/usr/sbin/lsof reason=permission denied")
         )
         XCTAssertEqual(reasons[15], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
-        XCTAssertEqual(reasons[16], .guestBootstrapResultMissing)
-        XCTAssertEqual(reasons[17], .guestBootstrapResultUnavailable)
+        XCTAssertEqual(reasons[16], .unknown("guest-bootstrap-result-missing"))
+        XCTAssertEqual(reasons[17], .unknown("guest-bootstrap-result-unavailable"))
         XCTAssertEqual(reasons[18], .guestBootstrapMissingRuntimePackages)
         XCTAssertEqual(reasons[19], .guestBootstrapDockerRuntimeFailed)
-        XCTAssertEqual(reasons[20], .guestRuntimeStateMissing)
+        XCTAssertEqual(reasons[20], .unknown("vm-runtime-state-missing"))
         XCTAssertEqual(reasons[21], .vmDiskAttachmentInvalid)
-        XCTAssertEqual(reasons[22], .guestRuntimeStateLoadFailed("decode_failed"))
-        XCTAssertEqual(reasons[23], .guestRuntimeStateMetadataReadFailed("stat_permission_denied"))
+        XCTAssertEqual(reasons[22], .unknown("guest-runtime-state-load-failed-decode_failed"))
+        XCTAssertEqual(reasons[23], .unknown("guest-runtime-state-metadata-read-failed-stat_permission_denied"))
         XCTAssertEqual(reasons[24], .vmLaunchFailed("virtualization"))
         XCTAssertEqual(reasons[25], .vmConfigurationInvalid("network"))
         XCTAssertEqual(reasons[26], .hostResourceUnavailable("memory"))
@@ -682,18 +681,18 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(RuntimeFailureReason(rawValue: "vm-disk-attachment-invalid"), .vmDiskAttachmentInvalid)
 
-        XCTAssertEqual(RuntimeFailureReason(vmError: .runtimeStateMissing), .guestRuntimeStateMissing)
-        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateMissing.domainCategory, .guestAgent)
-        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateMissing.recoveryAction, .restartGuestAgent)
-        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateLoadFailed("decode_failed").domainCategory, .guestAgent)
-        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateLoadFailed("decode_failed").recoveryAction, .restartGuestAgent)
+        XCTAssertEqual(RuntimeFailureReason(vmError: .unknown("vm-runtime-state-missing")), .unknown("vm-runtime-state-missing"))
+        XCTAssertEqual(RuntimeFailureReason.unknown("vm-runtime-state-missing").domainCategory, .unknown)
+        XCTAssertEqual(RuntimeFailureReason.unknown("vm-runtime-state-missing").recoveryAction, .inspectLogs)
+        XCTAssertEqual(RuntimeFailureReason.unknown("guest-runtime-state-load-failed-decode_failed").domainCategory, .unknown)
+        XCTAssertEqual(RuntimeFailureReason.unknown("guest-runtime-state-load-failed-decode_failed").recoveryAction, .inspectLogs)
         XCTAssertEqual(
-            RuntimeFailureReason.guestRuntimeStateMetadataReadFailed("stat_permission_denied").domainCategory,
-            .guestAgent
+            RuntimeFailureReason.unknown("guest-runtime-state-metadata-read-failed-stat_permission_denied").domainCategory,
+            .unknown
         )
         XCTAssertEqual(
-            RuntimeFailureReason.guestRuntimeStateMetadataReadFailed("stat_permission_denied").recoveryAction,
-            .restartGuestAgent
+            RuntimeFailureReason.unknown("guest-runtime-state-metadata-read-failed-stat_permission_denied").recoveryAction,
+            .inspectLogs
         )
 
         XCTAssertEqual(RuntimeFailureReason(vmError: .diskAttachmentInvalid), .vmDiskAttachmentInvalid)
@@ -728,9 +727,15 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").domainSeverity, .warning)
         XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").recoveryAction, .waitForGuest)
 
-        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.domainCategory, .observability)
-        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.domainSeverity, .critical)
-        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.recoveryAction, .inspectLogs)
+        for legacyStatusDocumentReason in [
+            "runtime-status-document-missing",
+            "runtime-status-document-stale",
+            "runtime-status-document-invalid",
+        ] {
+            let reason = RuntimeFailureReason(rawValue: legacyStatusDocumentReason)
+            XCTAssertEqual(reason, .unknown(legacyStatusDocumentReason))
+            XCTAssertEqual(reason.rawValue, legacyStatusDocumentReason)
+        }
 
         XCTAssertEqual(RuntimeFailureReason.launchdServiceCrashed(service: "vm", exitCode: 78).domainCategory, .vmLifecycle)
         XCTAssertEqual(RuntimeFailureReason.launchdServiceCrashed(service: "vm", exitCode: 78).recoveryAction, .restartVMService)
@@ -753,10 +758,10 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").domainCategory, .container)
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").recoveryAction, .reconcileGuestStack)
 
-        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultMissing.domainCategory, .guestBootstrap)
-        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultMissing.recoveryAction, .waitForGuest)
-        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultUnavailable.domainCategory, .guestBootstrap)
-        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultUnavailable.recoveryAction, .inspectLogs)
+        XCTAssertEqual(RuntimeFailureReason.unknown("guest-bootstrap-result-missing").domainCategory, .unknown)
+        XCTAssertEqual(RuntimeFailureReason.unknown("guest-bootstrap-result-missing").recoveryAction, .inspectLogs)
+        XCTAssertEqual(RuntimeFailureReason.unknown("guest-bootstrap-result-unavailable").domainCategory, .unknown)
+        XCTAssertEqual(RuntimeFailureReason.unknown("guest-bootstrap-result-unavailable").recoveryAction, .inspectLogs)
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed.domainCategory, .guestBootstrap)
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed.recoveryAction, .repairGuestBootstrap)
     }

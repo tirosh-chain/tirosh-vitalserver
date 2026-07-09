@@ -117,12 +117,12 @@ final class RuntimeDataBackupPolicyTests: XCTestCase {
     }
 
     private func completeArtifacts() -> [RuntimeDataBackupArtifact] {
-        completeArtifacts(for: RuntimeDataBackupArtifactID.requiredForUIContinuity)
+        completeArtifacts(for: RuntimeDataBackupArtifactID.manifestArtifactOrder)
     }
 
     private func completeArtifacts(for ids: [RuntimeDataBackupArtifactID]) -> [RuntimeDataBackupArtifact] {
         ids.map { id in
-            let role = RuntimeDataBackupArtifactID.optionalForUIContinuity.contains(id)
+            let role = RuntimeDataBackupArtifactID.optionalForDiagnosticsContinuity.contains(id)
                 ? RuntimeDataBackupArtifactRole.optional
                 : .required
             return RuntimeDataBackupArtifact(

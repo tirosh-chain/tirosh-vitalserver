@@ -22,7 +22,7 @@ Guest runtime state.
 
 ## Cause
 
-`runtime-state.json` can be present but stale when the guest agent or VM stops
+`runtime-observation.json` can be present but stale when the guest agent or VM stops
 updating it. The old health path also derived a container observation read
 failure from that stale document and then treated the derived diagnostic failure
 as the blocker.

@@ -60,7 +60,6 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
     func testBlockingGuestStorageErrorsKeepsOnlyDiskRepairClassErrors() {
         XCTAssertEqual(
             RuntimeUpdatePreflightPolicy.blockingGuestStorageErrors([
-                .runtimeStateStale,
                 .guestFilesystemError,
                 .guestHTTP("failed"),
                 .guestFilesystemReadOnly,

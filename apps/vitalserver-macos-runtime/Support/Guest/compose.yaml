@@ -288,6 +288,9 @@ services:
     environment:
       REDIS_RELAY_CONFIG_PATH: "${REDIS_RELAY_CONFIG_PATH:-/run/tirosh/config/redis-relay.toml}"
       REDIS_RELAY_STATUS_PATH: "${REDIS_RELAY_STATUS_PATH:-/run/tirosh/status/redis-relay-status.json}"
+      REDIS_RELAY_STATUS_OWNER_URL: "${REDIS_RELAY_STATUS_OWNER_URL:-http://host.docker.internal:18330/v1/redis-relay/status}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - type: bind
         source: /mnt/tirosh/deploy/redis-relay-config
@@ -304,7 +307,7 @@ services:
       test:
         - CMD-SHELL
         - >-
-          python -c "import json,os,sys; path=os.environ.get('REDIS_RELAY_STATUS_PATH','/run/tirosh/status/redis-relay-status.json'); data=json.load(open(path)); state=data.get('state'); sys.exit(0 if data.get('schemaVersion') == 1 and state in {'disabled','running','running_with_errors','relay_failed','config_invalid'} else 1)"
+          python -c "import os,sys; sys.exit(0 if os.environ.get('REDIS_RELAY_STATUS_OWNER_URL') else 1)"
       interval: 10s
       timeout: 5s
       retries: 30

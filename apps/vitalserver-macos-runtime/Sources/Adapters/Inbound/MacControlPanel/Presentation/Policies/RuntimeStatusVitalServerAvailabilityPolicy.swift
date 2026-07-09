@@ -53,7 +53,7 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         } else if let operation = operationState.operationForPresentation,
                   RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation) {
             text = vocabulary.updatingText
-        } else if !status.effectiveRuntimeInstallationState.isExecutable {
+        } else if status.runtimeInstallationState?.isExecutable != true {
             text = vocabulary.unavailableText
         } else {
             text = labelPolicy.serviceReachabilityLabel(status.hostProxyHTTP)
@@ -78,7 +78,7 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
             return .warning
         }
-        if !status.effectiveRuntimeInstallationState.isExecutable {
+        if status.runtimeInstallationState?.isExecutable != true {
             return .critical
         }
         return reachabilityPolicy.httpSeverity(status.hostProxyHTTP)

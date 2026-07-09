@@ -24,7 +24,7 @@ def print_report() -> None:
             "status",
             "docker",
             RuntimeService.COMPOSE.value,
-            RuntimeService.RUNTIME_STATE.value,
+            RuntimeService.RUNTIME_OBSERVATION.value,
             RuntimeService.CONTAINER_LOGS.value,
         ]
     )

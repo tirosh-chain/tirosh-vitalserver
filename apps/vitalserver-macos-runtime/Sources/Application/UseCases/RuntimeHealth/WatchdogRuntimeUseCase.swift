@@ -189,13 +189,6 @@ public struct WatchdogRuntimeUseCase {
         )
     }
 
-    public func statusReadFailureGuardPlan(reason: String) -> WatchdogRuntimeManagedOperationGuardPlan {
-        WatchdogRuntimeManagedOperationGuardPlan(
-            activeOperation: nil,
-            logMessage: "watchdog active operation guard ignored status read failure error=\(reason)"
-        )
-    }
-
     public func operationLeaseGuardPlan(
         loadResult: RuntimeOperationLeaseLoadResult,
         now: Date
@@ -237,70 +230,6 @@ public struct WatchdogRuntimeUseCase {
             )
         }
         return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: lease.operation, logMessage: nil)
-    }
-
-    public func statusManagedOperationGuardPlan(
-        loadResult: RuntimeStatusDocumentLoadResult,
-        now: Date,
-        graceSeconds: TimeInterval
-    ) -> WatchdogRuntimeManagedOperationGuardPlan {
-        switch loadResult {
-        case .loaded(let document):
-            return statusManagedOperationGuardPlan(
-                status: document,
-                now: now,
-                graceSeconds: graceSeconds
-            )
-        case .missing:
-            return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
-        case .failed(let message):
-            return statusReadFailureGuardPlan(reason: message)
-        }
-    }
-
-    public func statusManagedOperationGuardPlan(
-        status: RuntimeStatusDocument,
-        now: Date,
-        graceSeconds: TimeInterval
-    ) -> WatchdogRuntimeManagedOperationGuardPlan {
-        WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
-    }
-
-    public func guestBootstrapManagedOperationGuardPlan(
-        operation: RuntimeOperation,
-        updatedAt: Date?,
-        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
-        now: Date,
-        graceSeconds: TimeInterval
-    ) -> WatchdogRuntimeManagedOperationGuardPlan {
-        if let vmLifecycle {
-            guard vmLifecycle.state == .starting || vmLifecycle.state == .bootstrapping else {
-                return WatchdogRuntimeManagedOperationGuardPlan(
-                    activeOperation: nil,
-                    logMessage: "watchdog guest bootstrap guard ignored VM lifecycle state operation=\(operation.rawValue) state=\(vmLifecycle.state.rawValue)"
-                )
-            }
-            guard vmLifecycle.isWaitingForGuest(at: now) else {
-                return WatchdogRuntimeManagedOperationGuardPlan(
-                    activeOperation: nil,
-                    logMessage: "watchdog guest bootstrap guard expired by VM lifecycle deadline operation=\(operation.rawValue) state=\(vmLifecycle.state.rawValue) deadlineAt=\(vmLifecycle.deadlineAt ?? "missing")"
-                )
-            }
-        }
-        guard let updatedAt else {
-            return WatchdogRuntimeManagedOperationGuardPlan(
-                activeOperation: operation,
-                logMessage: "watchdog guest bootstrap guard active without updatedAt operation=\(operation.rawValue)"
-            )
-        }
-        let age = now.timeIntervalSince(updatedAt)
-        if age > graceSeconds {
-            return WatchdogRuntimeManagedOperationGuardPlan(
-                activeOperation: nil,
-                logMessage: "watchdog guest bootstrap guard expired operation=\(operation.rawValue) ageSeconds=\(formatAgeSeconds(age))"
-            )
-        }
-        return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: operation, logMessage: nil)
     }
 
     public func initialSnapshotDecision(_ snapshot: RuntimeHealthSnapshot) -> WatchdogRuntimeInitialSnapshotDecision {
@@ -406,43 +335,11 @@ public struct WatchdogRuntimeUseCase {
         )
     }
 
-    public func observedStatusPlan(
-        _ plan: WatchdogRuntimeObservedStatusPlan,
-        currentStatus: RuntimeStatusDocumentLoadResult
-    ) -> WatchdogRuntimeObservedStatusPlan {
-        guard plan.eventType == .recoveryDeferred else {
-            return plan
-        }
-        guard case .loaded(let status) = currentStatus,
-              status.status == .initializing,
-              let progress = status.progress,
-              progress.operation == .install,
-              !isTerminalProgressPhase(progress.phase) else {
-            return plan
-        }
-        return WatchdogRuntimeObservedStatusPlan(
-            status: .initializing,
-            message: plan.message,
-            eventType: plan.eventType,
-            printMessage: plan.printMessage,
-            logMessage: plan.logMessage
-        )
-    }
-
     private func healthPassPlan() -> WatchdogRuntimeHealthPassPlan {
         WatchdogRuntimeHealthPassPlan(
             statusMessage: "runtime watchdog passed",
             printMessage: "watchdog: ok"
         )
-    }
-
-    private func isTerminalProgressPhase(_ phase: RuntimeProgressPhase) -> Bool {
-        switch phase {
-        case .completed, .failed, .cancelled:
-            return true
-        default:
-            return false
-        }
     }
 
     private func suppressedPlan(reason: String) -> WatchdogRuntimeObservedStatusPlan {

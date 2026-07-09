@@ -24,6 +24,7 @@ struct RuntimeLogCopy {
     }
 
     private static func sourceURL(for contract: RuntimeLogCollectionFileContract) -> URL {
+        let installed = InstalledRuntimePaths.defaultInstalled
         switch contract.sourceID {
         case .launcherLog,
              .launchdOutputLog,
@@ -36,33 +37,33 @@ struct RuntimeLogCopy {
              .sleepPreventionErrorLog,
              .watchdogOutputLog,
              .watchdogErrorLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeLogSources)
-                .appendingPathComponent(contract.sourceFileName)
+            return installed.logsDirectory.appendingPathComponent(contract.sourceFileName)
         case .bootstrapLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.bootstrapLogSource)
+            return installed.bootstrapLog
         case .containerLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.containerLogSource)
+            return installed.containerLogs
         case .updateActivationLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateActivationLogSource)
+            return installed.updateActivationLog
         case .updateShutdownLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateShutdownLogSource)
+            return installed.updateShutdownLog
         case .datastoreRepairLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.datastoreRepairLogSource)
+            return installed.datastoreRepairLog
         case .redisBackupLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.redisBackupLogSource)
+            return installed.redisBackupLog
         case .commandLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.commandLogFile)
+            return installed.managerCommandLog
         }
     }
 
     static func destinationURL(for scope: RuntimeLogCollectionDestinationScope) -> URL {
+        let installed = InstalledRuntimePaths.defaultInstalled
         switch scope {
         case .runtimeLogs:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeLogs)
+            return installed.centralRuntimeLogsDirectory
         case .guestLogs:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestLogs)
+            return installed.centralGuestLogsDirectory
         case .productLogs:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.productLogs)
+            return installed.productLogsDirectory
         }
     }
 }
@@ -89,7 +90,7 @@ struct RuntimeLogDirectoryCopy {
     private static func sourceURL(for sourceID: RuntimeLogCollectionDirectorySourceID) -> URL {
         switch sourceID {
         case .guestObservability:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestObservabilitySource)
+            return InstalledRuntimePaths.defaultInstalled.guestObservabilityDirectory
         }
     }
 }
@@ -130,7 +131,7 @@ struct RuntimeRotatedLogCopySet {
     private static func sourceDirectory(for sourceID: RuntimeLogCollectionRotatedSourceID) -> URL {
         switch sourceID {
         case .containerLogs:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestRunDirectory)
+            return InstalledRuntimePaths.defaultInstalled.guestRunDirectory
         }
     }
 }

@@ -1074,6 +1074,60 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
+    func testRedisRelayStatusRequestsGuestControlStatusEndpoint() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "readState": "loaded",
+              "document": {
+                "schemaVersion": 1,
+                "observedAt": "2026-07-01T00:00:00Z",
+                "enabled": true,
+                "state": "running",
+                "scope": "vital_reconstruction",
+                "targetUrl": "redis://relay.example:6379/0",
+                "targetUsernameConfigured": true,
+                "targetPasswordConfigured": true,
+                "settingsFingerprint": "relay-settings",
+                "batches": 3,
+                "totals": {
+                  "scanned": 10,
+                  "copied": 8,
+                  "published": 8,
+                  "unchanged": 1,
+                  "duplicates": 0,
+                  "skipped": 1,
+                  "denied": 0,
+                  "missing": 0,
+                  "errors": 0
+                },
+                "lastBatch": null,
+                "lastSuccessAt": null,
+                "lastErrorAt": null,
+                "lastError": null
+              },
+              "readError": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let read = try gateway.redisRelayStatus()
+
+        XCTAssertEqual(read.readState, .loaded)
+        XCTAssertEqual(read.document?.state, "running")
+        XCTAssertEqual(read.document?.totals.copied, 8)
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/v1/redis-relay/status"]
+        )
+    }
+
     func testReplayLabVitalFilePostsRuntimeLabRequest() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 202,

@@ -19,12 +19,11 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     public init(
         releaseInfo: RuntimeReleaseInfo
     ) {
-        let paths = RuntimePaths()
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(paths: paths),
-            operationStateReader: SystemRuntimeOperationStateReader.live(paths: paths),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
+            statusReader: Self.liveStatusReader(),
+            operationStateReader: SystemRuntimeOperationStateReader.live(),
+            observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
             commandWorker: MacRuntimeControlCommandWorker()
@@ -35,12 +34,34 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         releaseInfo: RuntimeReleaseInfo,
         commandWorker: MacRuntimeControlCommandWorker
     ) {
-        let paths = RuntimePaths()
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(paths: paths),
-            operationStateReader: SystemRuntimeOperationStateReader.live(paths: paths),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
+            statusReader: Self.liveStatusReader(),
+            operationStateReader: SystemRuntimeOperationStateReader.live(),
+            observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
+            fileReader: SystemRuntimeHostFileReader(),
+            settingsReader: SystemRuntimeSettingsReader(),
+            commandWorker: commandWorker
+        )
+    }
+
+    public init(
+        releaseInfo: RuntimeReleaseInfo,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        commandWorker: MacRuntimeControlCommandWorker
+    ) {
+        self.init(
+            releaseInfo: releaseInfo,
+            statusReader: SystemRuntimeStatusReader(
+                guestAddressProvider: guestAddressProvider,
+                vmLifecycleResourceReader: vmLifecycleResourceReader
+            ),
+            operationStateReader: SystemRuntimeOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
             commandWorker: commandWorker
@@ -49,9 +70,9 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
 
     init(
         releaseInfo: RuntimeReleaseInfo,
-        statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(paths: RuntimePaths()),
-        operationStateReader: RuntimeOperationStateReading = SystemRuntimeOperationStateReader.live(paths: RuntimePaths()),
-        observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimePaths()),
+        statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(),
+        operationStateReader: RuntimeOperationStateReading = SystemRuntimeOperationStateReader.live(),
+        observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
         fileReader: RuntimeHostFileReading = SystemRuntimeHostFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
         commandWorker: MacRuntimeControlCommandWorker = MacRuntimeControlCommandWorker()
@@ -65,6 +86,13 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         self.commandWorker = commandWorker
     }
 
+    private static func liveStatusReader() -> RuntimeStatusReading {
+        SystemRuntimeStatusReader(
+            guestAddressProvider: RuntimeControlAPIGuestAddressProvider(),
+            vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()
+        )
+    }
+
     public func loadSettings() -> RuntimeSettings {
         settingsReader.load()
     }
@@ -73,8 +101,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         statusReader.loadStatus(settings: settings)
     }
 
-    public func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
-        operationStateReader.loadOperationState(status: status)
+    public func loadOperationState() -> RuntimeOperationState {
+        operationStateReader.loadOperationState()
     }
 
     public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
@@ -221,6 +249,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.guestServiceStatus(service)
     }
 
+    public func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        try await commandWorker.guestServiceResource(service)
+    }
+
     public func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
         try await commandWorker.startGuestService(request)
     }
@@ -330,13 +362,14 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     public func loadInstallInfo() -> RuntimeInstallInfo {
-        RuntimeInstallInfo(
+        let installed = InstalledRuntimePaths.defaultInstalled
+        return RuntimeInstallInfo(
             appBundlePath: Bundle.main.bundlePath,
             packageIdentifier: RuntimeControlClientConstants.Product.packageIdentifier,
-            runtimeHomePath: RuntimeControlClientConstants.Paths.vmHome,
-            backupsPath: RuntimeControlClientConstants.Paths.backups,
-            redisBackupsPath: RuntimeControlClientConstants.Paths.redisBackups,
-            runtimeDataBackupsPath: RuntimeControlClientConstants.Paths.runtimeDataBackups
+            runtimeHomePath: installed.runtimeHome.path,
+            backupsPath: installed.backupsDirectory.path,
+            redisBackupsPath: installed.redisBackupsDirectory.path,
+            runtimeDataBackupsPath: installed.vitalServerHelperBackupsDirectory.path
         )
     }
 

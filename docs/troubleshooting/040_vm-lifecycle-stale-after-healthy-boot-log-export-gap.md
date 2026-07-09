@@ -8,7 +8,7 @@
 ## Symptoms
 
 - Runtime status becomes `critical` with message `watchdog recovery failed: vm-lifecycle-document-stale`.
-- `runtime-status.json` reports `failureReasons=["vm-lifecycle-document-stale"]` and `vmState="starting"` even though `guestHTTP`, `hostProxyHTTP`, Redis UI, and Swagger UI are `200`.
+- Runtime Control status reports `failureReasons=["vm-lifecycle-document-stale"]` and `vmState="starting"` from the Host VM lifecycle owner even though Guest Control readiness and host proxy probes are successful. Older bundles may show the same symptom in `runtime-status.json`; current status diagnostics no longer own `vmState`, `vmErrors`, or `failureReasons`.
 - `watchdog.out.log` shows repeated recovery plans with `vm=false proxy=false hostProxyHealth=204 hostProxyReady=200 guestReady=200`.
 - Log export manifest may report permission failures such as `runtime-config.json` not copied, while the exported bundle lacks `diagnostics/runtime/vm-lifecycle.json`.
 
@@ -32,7 +32,7 @@ HostCLI writes VM lifecycle as `.starting` before VM launch and `.bootstrapping`
 
 After the boot deadline, `RuntimeHealthChecker` correctly reports the stale lifecycle document as `vm-lifecycle-document-stale`. Because guest and host proxy checks are healthy, recovery planning produces `restartVM=false` and `restartProxy=false`, then the unchanged stale lifecycle document makes the recovered snapshot critical again.
 
-The log export gap is separate but related operationally: the export did include runtime status and guest runtime state, but did not include the Host lifecycle document needed to confirm the stale state directly.
+The log export gap is separate but related operationally: the export did include runtime status diagnostics and guest runtime artifacts, but did not include the Host lifecycle document needed to confirm the stale state directly.
 
 ## Checks
 
@@ -41,7 +41,7 @@ jq '{status,message,updatedAt,failureReasons,vmState,guestHTTP,hostProxyHTTP}' \
   diagnostics/status/runtime-status.json
 
 jq '{updatedAt,guestHTTP,vmIP,ready:.vitalDBObservation.ready}' \
-  diagnostics/guest/runtime-state.json
+  diagnostics/guest/runtime-observation.json
 
 rg -n 'vm-lifecycle-document-stale|runtime watchdog passed|watchdog recovery plan' \
   runtime/watchdog.out.log helper-message.log
@@ -52,7 +52,7 @@ jq '.supplementalItems[] | select(.included == false)' \
 
 ## Actions
 
-- If `guestHTTP=200`, `hostProxyHTTP=200`, and guest runtime-state is fresh, do not treat this as VM/container outage.
+- If Guest Control readiness, host proxy HTTP, and explicit Guest service reads are healthy, do not treat this as VM/container outage.
 - Restarting VM/proxy is not expected to help if watchdog plan shows `vm=false proxy=false`.
 - Check whether `diagnostics/runtime/vm-lifecycle.json` is present in newer exports. If present, confirm whether state stayed `starting` or `bootstrapping` past `deadlineAt`.
 - For older exports without the lifecycle document, use watchdog timing: a transition from healthy watchdog passes to repeated stale lifecycle roughly 10 minutes after boot indicates this case.

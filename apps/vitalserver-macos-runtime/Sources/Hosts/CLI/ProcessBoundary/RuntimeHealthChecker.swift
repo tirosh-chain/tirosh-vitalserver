@@ -11,8 +11,8 @@ extension RuntimeHealthChecker {
         serviceManager: RuntimeServiceManager,
         commandRunner: RuntimeCommandRunner,
         httpProber: RuntimeHTTPProber,
-        guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader,
         guestAddressProvider: (any RuntimeGuestAddressProvider)? = nil,
+        vmLifecycleResourceReader: (any RuntimeVMLifecycleResourceReading)? = nil,
         guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
         guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
@@ -23,11 +23,11 @@ extension RuntimeHealthChecker {
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestBootstrapResultReader: guestBootstrapResultReader,
             plistBuddyPath: Constants.Commands.plistBuddy,
             lsofPath: Constants.Commands.lsof,
             curlPath: Constants.Commands.curl,
             guestAddressProvider: guestAddressProvider,
+            vmLifecycleResourceReader: vmLifecycleResourceReader,
             guestControlGateway: guestControlGateway,
             guestControlGatewayForBaseURL: guestControlGatewayForBaseURL,
             now: now

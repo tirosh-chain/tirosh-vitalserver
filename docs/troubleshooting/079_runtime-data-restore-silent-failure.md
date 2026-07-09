@@ -17,7 +17,7 @@ VitalServer Helper backup restore fails, but the Helper app does not show a usef
 
 The `runtime-data-restore` Host CLI command called the restore composition directly and only printed a success message after the composition returned. It did not publish runtime progress for restore start, restore completion, or restore failure.
 
-When restore failed before a later refresh, the UI could only depend on command output. If a refresh then loaded a status document without restore progress, the visible message could be replaced by unrelated or empty status text.
+When restore failed before a later refresh, the UI could only depend on command output. If a refresh then loaded status without an explicit `runtime-progress.json` update, the visible message could be replaced by unrelated or empty status text.
 
 ## Actions
 
@@ -29,11 +29,14 @@ When restore failed before a later refresh, the UI could only depend on command 
 
 The failure message must include the selected backup path and the restore error. Examples include missing manifest, unsupported restore compatibility version, artifact checksum failure, Redis restore failure, or start-on-boot restoration failure.
 
+Optional diagnostics artifacts may be absent only when the manifest records them as missing. If the manifest records an optional diagnostics artifact as archived, restore must validate its path, file state, size, and checksum and report a typed restore failure when validation fails.
+
 ## Prevention
 
 - Mutating recovery operations must always publish terminal progress on failure.
 - UI refresh must consume explicit Host progress/state instead of inferring restore state from logs or command output.
 - Backup/restore validation errors must remain visible as failed restore state; they must not be converted into generic command cancellation or hidden by a later status refresh.
+- Optional artifact absence and optional artifact validation failure must stay distinct.
 
 ## Related Cases
 

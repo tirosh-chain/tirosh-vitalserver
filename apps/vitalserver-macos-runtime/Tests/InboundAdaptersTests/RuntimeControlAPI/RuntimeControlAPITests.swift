@@ -552,13 +552,12 @@ final class RuntimeControlAPITests: XCTestCase {
         let router = RuntimeControlAPIRouter(
             handler: StubRuntimeControlAPIReadHandler(status: RuntimeStatus(
                 runtimeInstalled: true,
+                runtimeInstallationState: .executable,
                 vmServiceLoaded: true,
                 proxyServiceLoaded: true,
                 guestLogSyncServiceLoaded: true,
                 watchdogServiceLoaded: true,
                 runtimeState: .healthy,
-                statusMessage: "ready",
-                updatedAt: "2026-06-08T00:00:00Z",
                 runtimeVersion: "1.2.3"
             )),
             streamConfiguration: RuntimeControlAPIStreamConfiguration(
@@ -702,6 +701,14 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeOperationState.self,
             from: router.route(.init(method: .get, path: "/runtime/operation-state"))
         )
+        let guestAddress = try await decode(
+            RuntimeGuestAddressResourceState.self,
+            from: router.route(.init(method: .get, path: "/host/runtime/guest-address"))
+        )
+        let vmLifecycle = try await decode(
+            RuntimeVMLifecycleResourceState.self,
+            from: router.route(.init(method: .get, path: "/host/runtime/vm-lifecycle"))
+        )
         let events = try await decode(
             RuntimeEventHistory.self,
             from: router.route(.init(method: .get, path: "/runtime/events"))
@@ -755,7 +762,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(overview.vitalRecorder.onlineRecorders, 1)
         XCTAssertEqual(overview.vitalRecorder.latestRecorder?.vrcode, "VR_A")
         XCTAssertEqual(settings.cpuCount, 4)
-        XCTAssertEqual(health.statusMessage, "healthy")
+        XCTAssertEqual(health.runtimeVersion, "healthy")
         XCTAssertEqual(release.helperVersion, "0.1.0")
         XCTAssertEqual(installInfo.runtimeHomePath, "/runtime/home")
         XCTAssertEqual(operationState.activeOperation, nil)
@@ -766,6 +773,10 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertNil(operationState.lease.document)
         XCTAssertNil(operationState.lease.readError)
         XCTAssertNil(operationState.lease.staleReason)
+        XCTAssertEqual(guestAddress.state, .missing)
+        XCTAssertNil(guestAddress.read)
+        XCTAssertEqual(vmLifecycle.state, .missing)
+        XCTAssertNil(vmLifecycle.document)
         XCTAssertEqual(events.events.map(\.id), ["event-1"])
         XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRecorders.recorders.map(\.vrcode), ["VR_A"])
@@ -781,6 +792,102 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vitalBed.vrcode, "VR_A")
         XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRelationships.events.first?.eventType, .handoff)
+    }
+
+    @MainActor
+    func testRouterServesOperationStateFromOperationStateContractWithoutLoadingStatus() async throws {
+        let lease = RuntimeOperationLeaseDocument(
+            operationId: "operation-1",
+            operation: .applyBundle,
+            ownerPID: 123,
+            startedAt: "2026-07-08T00:00:00Z",
+            heartbeatAt: "2026-07-08T00:00:01Z",
+            expiresAt: "2026-07-08T00:05:00Z",
+            message: "applying bundle"
+        )
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler(
+            statusError: StubRuntimeControlAPIReadHandlerError.statusShouldNotBeLoaded,
+            operationState: RuntimeOperationState(
+                activeOperation: nil,
+                install: .unavailable(),
+                lease: .loaded(lease)
+            )
+        ))
+
+        let operationState = try await decode(
+            RuntimeOperationState.self,
+            from: router.route(.init(method: .get, path: "/runtime/operation-state"))
+        )
+
+        XCTAssertEqual(operationState.activeOperation, .applyBundle)
+        XCTAssertEqual(operationState.lease.state, .loaded)
+        XCTAssertEqual(operationState.lease.document, lease)
+    }
+
+    @MainActor
+    func testRouterServesAndUpdatesHostGuestAddressResourceWithoutLoadingStatus() async throws {
+        let readResult = RuntimeGuestAddressReadResult.loaded(
+            address: "192.168.64.10",
+            source: .runtimeControlAPI
+        )
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler(
+            statusError: StubRuntimeControlAPIReadHandlerError.statusShouldNotBeLoaded,
+            guestAddressResource: .loaded(readResult)
+        ))
+
+        let read = try await decode(
+            RuntimeGuestAddressResourceState.self,
+            from: router.route(.init(method: .get, path: "/host/runtime/guest-address"))
+        )
+        let updated = try await decode(
+            RuntimeGuestAddressResourceState.self,
+            from: router.route(.init(
+                method: .put,
+                path: "/host/runtime/guest-address",
+                body: try JSONEncoder().encode(RuntimeGuestAddressPutRequest(address: "192.168.64.11"))
+            ))
+        )
+
+        XCTAssertEqual(read.state, .loaded)
+        XCTAssertEqual(read.read, readResult)
+        XCTAssertEqual(updated.state, .loaded)
+        XCTAssertEqual(updated.read?.loadedAddress, "192.168.64.11")
+        XCTAssertEqual(updated.read?.source, .runtimeControlAPI)
+    }
+
+    @MainActor
+    func testRouterServesAndUpdatesHostVMLifecycleResourceWithoutLoadingStatus() async throws {
+        let document = RuntimeVMLifecycleDocument(
+            state: .bootstrapping,
+            operation: .install,
+            startedAt: "2026-07-09T01:00:00Z",
+            updatedAt: "2026-07-09T01:01:00Z",
+            deadlineAt: nil,
+            terminalReason: nil,
+            message: "bootstrapping"
+        )
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler(
+            statusError: StubRuntimeControlAPIReadHandlerError.statusShouldNotBeLoaded,
+            vmLifecycleResource: .loaded(document)
+        ))
+
+        let read = try await decode(
+            RuntimeVMLifecycleResourceState.self,
+            from: router.route(.init(method: .get, path: "/host/runtime/vm-lifecycle"))
+        )
+        let updated = try await decode(
+            RuntimeVMLifecycleResourceState.self,
+            from: router.route(.init(
+                method: .put,
+                path: "/host/runtime/vm-lifecycle",
+                body: try JSONEncoder().encode(RuntimeVMLifecyclePutRequest(document: document))
+            ))
+        )
+
+        XCTAssertEqual(read.state, .loaded)
+        XCTAssertEqual(read.document, document)
+        XCTAssertEqual(updated.state, .loaded)
+        XCTAssertEqual(updated.document, document)
     }
 
     @MainActor
@@ -878,7 +985,7 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testOverviewDoesNotFallbackToStaleStatusVitalDBObservationWhenFreshReadIsUnavailable() async throws {
-        let status = RuntimeStatus(runtimeState: .healthy, statusMessage: "ready")
+        let status = RuntimeStatus(runtimeState: .healthy, runtimeVersion: "ready")
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler(
             status: status,
             vitalDBObservationSnapshot: .unavailable(readError: "sqlite=read failed")
@@ -1001,6 +1108,22 @@ final class RuntimeControlAPITests: XCTestCase {
         let exportRequest = RuntimeExportLogsRequest(
             destination: RuntimeControlFileReference(kind: .localPath, value: "/tmp/vitalserver-logs.zip")
         )
+        let lease = RuntimeOperationLeaseDocument(
+            operationId: "operation-1",
+            operation: .applyBundle,
+            ownerPID: 123,
+            startedAt: "2026-07-09T00:00:00Z",
+            heartbeatAt: "2026-07-09T00:00:00Z",
+            expiresAt: "2026-07-09T00:05:00Z",
+            message: "applying bundle"
+        )
+        let acquireLeaseRequest = RuntimeOperationLeaseAcquireRequest(document: lease)
+        let heartbeatLeaseRequest = RuntimeOperationLeaseHeartbeatRequest(
+            operationId: lease.operationId,
+            heartbeatAt: "2026-07-09T00:01:00Z",
+            expiresAt: "2026-07-09T00:06:00Z"
+        )
+        let releaseLeaseRequest = RuntimeOperationLeaseReleaseRequest(operationId: lease.operationId)
 
         let summary = try await decode(RuntimeUpdateBundleSummaryResponse.self, from: router.route(.init(
             method: .post,
@@ -1042,6 +1165,21 @@ final class RuntimeControlAPITests: XCTestCase {
             path: "/host/logs/export",
             body: try JSONEncoder().encode(exportRequest)
         )))
+        let acquireLease = try await decode(RuntimeOperationLeaseMutationResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/host/runtime/operation-lease/acquire",
+            body: try JSONEncoder().encode(acquireLeaseRequest)
+        )))
+        let heartbeatLease = try await decode(RuntimeOperationLeaseMutationResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/host/runtime/operation-lease/heartbeat",
+            body: try JSONEncoder().encode(heartbeatLeaseRequest)
+        )))
+        let releaseLease = try await decode(RuntimeOperationLeaseMutationResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/host/runtime/operation-lease/release",
+            body: try JSONEncoder().encode(releaseLeaseRequest)
+        )))
 
         XCTAssertEqual(summary.summary, "summary /bundles/update.tar.gz")
         XCTAssertEqual(verify.result.stdout, "verify /bundles/update.tar.gz")
@@ -1051,6 +1189,9 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(deleteUpdateBackup.result.stdout, "delete /backups/latest")
         XCTAssertEqual(deleteRuntimeDataBackup.result.stdout, "delete /backups/latest")
         XCTAssertEqual(export.destination.path, "/tmp/vitalserver-logs.zip")
+        XCTAssertEqual(acquireLease, RuntimeOperationLeaseMutationResponse(operationId: "operation-1", state: .acquired))
+        XCTAssertEqual(heartbeatLease, RuntimeOperationLeaseMutationResponse(operationId: "operation-1", state: .heartbeatRecorded))
+        XCTAssertEqual(releaseLease, RuntimeOperationLeaseMutationResponse(operationId: "operation-1", state: .released))
     }
 
     @MainActor
@@ -1119,6 +1260,10 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeGuestControlServiceStatus.self,
             from: router.route(.init(method: .get, path: "/runtime/guest/services/recorder-ingress/status"))
         )
+        let resource = try await decode(
+            RuntimeGuestServiceResource.self,
+            from: router.route(.init(method: .get, path: "/runtime/guest/services/recorder-ingress/resource"))
+        )
 
         XCTAssertEqual(stackStatus.state, "loaded")
         XCTAssertEqual(stackStatus.services.map(\.service), ["app", "recorder-ingress", "postgres"])
@@ -1126,8 +1271,13 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(status.service, "recorder-ingress")
         XCTAssertEqual(status.state, "running")
         XCTAssertEqual(status.health, "healthy")
+        XCTAssertEqual(resource.service, "recorder-ingress")
+        XCTAssertEqual(resource.spec.desiredState, "running")
+        XCTAssertEqual(resource.status.observedState, "running")
+        XCTAssertEqual(resource.lastOperationId, "op-recorder-ingress")
         XCTAssertEqual(client.guestStackStatusCount, 1)
         XCTAssertEqual(client.guestServiceStatusRequests, ["recorder-ingress"])
+        XCTAssertEqual(client.guestServiceResourceRequests, ["recorder-ingress"])
         XCTAssertEqual(client.listGuestServicesCount, 1)
     }
 
@@ -1169,9 +1319,9 @@ final class RuntimeControlAPITests: XCTestCase {
 
         XCTAssertFalse(capabilities.canOpenLocalFiles)
         XCTAssertEqual(settings.cpuCount, 6)
-        XCTAssertEqual(status.statusMessage, "status with 6 CPUs")
+        XCTAssertEqual(status.runtimeVersion, "status with 6 CPUs")
         XCTAssertEqual(events.events.map(\.id), ["event-1", "event-2", "event-3"])
-        XCTAssertEqual(health.statusMessage, "health with 6 CPUs")
+        XCTAssertEqual(health.runtimeVersion, "health with 6 CPUs")
         XCTAssertEqual(release.helperVersion, "0.2.0")
         XCTAssertEqual(installInfo.appBundlePath, "/Applications/VitalServer Helper.app")
         XCTAssertEqual(installInfo.packageIdentifier, "ai.tirosh.vitalserver.helper")
@@ -1273,6 +1423,15 @@ final class RuntimeControlAPITests: XCTestCase {
         let bundle = RuntimeControlFileReference(kind: .localPath, value: "/bundles/update.tar.gz")
         let backup = RuntimeControlFileReference(kind: .localPath, value: "/backups/latest")
         let destination = RuntimeControlFileReference(kind: .localPath, value: "/tmp/vitalserver-logs.zip")
+        let lease = RuntimeOperationLeaseDocument(
+            operationId: "operation-1",
+            operation: .applyBundle,
+            ownerPID: 123,
+            startedAt: "2026-07-09T00:00:00Z",
+            heartbeatAt: "2026-07-09T00:00:00Z",
+            expiresAt: "2026-07-09T00:05:00Z",
+            message: "applying bundle"
+        )
 
         let logText = try await handler.loadLogText(request: RuntimeLogTextRequest(
             source: .helperMessage,
@@ -1288,6 +1447,13 @@ final class RuntimeControlAPITests: XCTestCase {
         let createRuntimeDataBackup = try await handler.createRuntimeDataBackup()
         let delete = try await handler.deleteBackup(backup)
         let export = try await handler.exportLogs(destination: destination)
+        let acquireLease = try await handler.acquireOperationLease(.init(document: lease))
+        let heartbeatLease = try await handler.heartbeatOperationLease(.init(
+            operationId: lease.operationId,
+            heartbeatAt: "2026-07-09T00:01:00Z",
+            expiresAt: "2026-07-09T00:06:00Z"
+        ))
+        let releaseLease = try await handler.releaseOperationLease(.init(operationId: lease.operationId))
 
         XCTAssertEqual(logText.text, "log:helperMessage:25")
         XCTAssertEqual(backups.map(\.path), ["/backups/rollback"])
@@ -1300,10 +1466,16 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(createRuntimeDataBackup.result.stdout, "runtime data backup created")
         XCTAssertEqual(delete.result.stdout, "delete /backups/latest")
         XCTAssertEqual(export.destination.path, "/tmp/vitalserver-logs.zip")
+        XCTAssertEqual(acquireLease, RuntimeOperationLeaseMutationResponse(operationId: "operation-1", state: .acquired))
+        XCTAssertEqual(heartbeatLease, RuntimeOperationLeaseMutationResponse(operationId: "operation-1", state: .heartbeatRecorded))
+        XCTAssertEqual(releaseLease, RuntimeOperationLeaseMutationResponse(operationId: "operation-1", state: .released))
         XCTAssertEqual(client.backupLatestPaths, ["latest-backup"])
         XCTAssertEqual(client.loadRedisBackupsCount, 1)
         XCTAssertEqual(client.loadRuntimeDataBackupsCount, 1)
         XCTAssertEqual(client.createRuntimeDataBackupCount, 1)
+        XCTAssertEqual(client.acquiredOperationLeases, [lease])
+        XCTAssertEqual(client.heartbeatOperationLeaseRequests.map(\.operationId), ["operation-1"])
+        XCTAssertEqual(client.releasedOperationLeaseIDs, ["operation-1"])
     }
 
     @MainActor
@@ -1312,6 +1484,15 @@ final class RuntimeControlAPITests: XCTestCase {
         let bundle = RuntimeControlFileReference(kind: .localPath, value: "/bundles/update.tar.gz")
         let backup = RuntimeControlFileReference(kind: .localPath, value: "/backups/latest")
         let destination = RuntimeControlFileReference(kind: .localPath, value: "/tmp/vitalserver-logs.zip")
+        let lease = RuntimeOperationLeaseDocument(
+            operationId: "operation-1",
+            operation: .applyBundle,
+            ownerPID: 123,
+            startedAt: "2026-07-09T00:00:00Z",
+            heartbeatAt: "2026-07-09T00:00:00Z",
+            expiresAt: "2026-07-09T00:05:00Z",
+            message: "applying bundle"
+        )
 
         let operations: [(String, () async throws -> Void)] = [
             ("loadLogText", {
@@ -1335,6 +1516,17 @@ final class RuntimeControlAPITests: XCTestCase {
             ("createRuntimeDataBackup", { _ = try await handler.createRuntimeDataBackup() }),
             ("deleteBackup", { _ = try await handler.deleteBackup(backup) }),
             ("exportLogs", { _ = try await handler.exportLogs(destination: destination) }),
+            ("acquireOperationLease", { _ = try await handler.acquireOperationLease(.init(document: lease)) }),
+            ("heartbeatOperationLease", {
+                _ = try await handler.heartbeatOperationLease(.init(
+                    operationId: lease.operationId,
+                    heartbeatAt: "2026-07-09T00:01:00Z",
+                    expiresAt: "2026-07-09T00:06:00Z"
+                ))
+            }),
+            ("releaseOperationLease", {
+                _ = try await handler.releaseOperationLease(.init(operationId: lease.operationId))
+            }),
         ]
 
         for (name, operation) in operations {
@@ -1565,7 +1757,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let status = try decode(RuntimeStatus.self, from: response)
 
         XCTAssertEqual(response.status, .ok)
-        XCTAssertEqual(status.statusMessage, "status with 6 CPUs")
+        XCTAssertEqual(status.runtimeVersion, "status with 6 CPUs")
         XCTAssertEqual(client.loadSettingsCount, 1)
     }
 
@@ -2631,7 +2823,10 @@ private final class RuntimeControlStreamTestClock: @unchecked Sendable {
 
 private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     var status: RuntimeStatus?
-    var operationState = RuntimeOperationState(activeOperation: nil, runtimeStatusUpdatedAt: nil, install: .unavailable())
+    var statusError: Error?
+    var operationState = RuntimeOperationState(activeOperation: nil, install: .unavailable())
+    var guestAddressResource = RuntimeGuestAddressResourceState.missing()
+    var vmLifecycleResource = RuntimeVMLifecycleResourceState.missing()
     var eventHistory: RuntimeEventHistory?
     var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
 
@@ -2640,23 +2835,42 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadStatus() async throws -> RuntimeStatus {
+        if let statusError {
+            throw statusError
+        }
         if let status {
             return status
         }
         return RuntimeStatus(
             runtimeInstalled: true,
+            runtimeInstallationState: .executable,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
             guestLogSyncServiceLoaded: true,
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
-            statusMessage: "ready",
             runtimeVersion: "1.2.3"
         )
     }
 
     func loadOperationState() async throws -> RuntimeOperationState {
         operationState
+    }
+
+    func loadGuestAddressResource() async throws -> RuntimeGuestAddressResourceState {
+        guestAddressResource
+    }
+
+    func putGuestAddressResource(_ request: RuntimeGuestAddressPutRequest) async throws -> RuntimeGuestAddressResourceState {
+        .loaded(.loaded(address: request.address, source: .runtimeControlAPI))
+    }
+
+    func loadVMLifecycleResource() async throws -> RuntimeVMLifecycleResourceState {
+        vmLifecycleResource
+    }
+
+    func putVMLifecycleResource(_ request: RuntimeVMLifecyclePutRequest) async throws -> RuntimeVMLifecycleResourceState {
+        .loaded(request.document)
     }
 
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
@@ -2818,7 +3032,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadHealthStatus() async throws -> RuntimeStatus {
-        RuntimeStatus(runtimeInstalled: true, runtimeState: .healthy, statusMessage: "healthy")
+        RuntimeStatus(runtimeInstalled: true, runtimeState: .healthy, runtimeVersion: "healthy")
     }
 
     func loadSettings() async throws -> RuntimeSettings {
@@ -2919,6 +3133,33 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeLogExportResult(destination: URL(fileURLWithPath: destination.value))
     }
 
+    func acquireOperationLease(
+        _ request: RuntimeOperationLeaseAcquireRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        RuntimeOperationLeaseMutationResponse(
+            operationId: request.document.operationId,
+            state: .acquired
+        )
+    }
+
+    func heartbeatOperationLease(
+        _ request: RuntimeOperationLeaseHeartbeatRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        RuntimeOperationLeaseMutationResponse(
+            operationId: request.operationId,
+            state: .heartbeatRecorded
+        )
+    }
+
+    func releaseOperationLease(
+        _ request: RuntimeOperationLeaseReleaseRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        RuntimeOperationLeaseMutationResponse(
+            operationId: request.operationId,
+            state: .released
+        )
+    }
+
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(
             exitCode: 0,
@@ -2948,6 +3189,9 @@ private func XCTAssertFileWriteNoPermission(
     XCTAssertEqual(nsError.code, CocoaError.Code.fileWriteNoPermission.rawValue, file: file, line: line)
 }
 
+private enum StubRuntimeControlAPIReadHandlerError: Error {
+    case statusShouldNotBeLoaded
+}
 
 private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
@@ -2964,13 +3208,17 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     var guestStackStatusCount = 0
     var listGuestServicesCount = 0
     var guestServiceStatusRequests: [String] = []
+    var guestServiceResourceRequests: [String] = []
     var startGuestServiceRequests: [RuntimeGuestServiceControlRequest] = []
     var stopGuestServiceRequests: [RuntimeGuestServiceControlRequest] = []
     var restartGuestServiceRequests: [RuntimeGuestServiceRestartRequest] = []
     var backupLatestPaths: [String?] = []
     var loadBackupsError: Error?
     var exportLogsError: Error?
-    var operationState = RuntimeOperationState(activeOperation: nil, runtimeStatusUpdatedAt: nil, install: .unavailable())
+    var operationState = RuntimeOperationState(activeOperation: nil, install: .unavailable())
+    var acquiredOperationLeases: [RuntimeOperationLeaseDocument] = []
+    var heartbeatOperationLeaseRequests: [RuntimeOperationLeaseHeartbeatRequest] = []
+    var releasedOperationLeaseIDs: [String] = []
     var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
     var vitalDBObservation: VitalDBObservationDocument? = VitalDBObservationDocument(
         observedAt: "2026-05-25T00:00:00Z",
@@ -2985,16 +3233,16 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         statusSettings.append(settings)
-        return RuntimeStatus(statusMessage: "status with \(settings.cpuCount) CPUs", latestBackup: "latest-backup")
+        return RuntimeStatus(runtimeVersion: "status with \(settings.cpuCount) CPUs", latestBackup: "latest-backup")
     }
 
-    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+    func loadOperationState() -> RuntimeOperationState {
         operationState
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         healthSettings.append(settings)
-        return RuntimeStatus(statusMessage: "health with \(settings.cpuCount) CPUs")
+        return RuntimeStatus(runtimeVersion: "health with \(settings.cpuCount) CPUs")
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -3261,6 +3509,39 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         )
     }
 
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        guestServiceResourceRequests.append(service)
+        return RuntimeGuestServiceResource(
+            service: service,
+            spec: RuntimeGuestServiceSpec(
+                state: "configured",
+                desiredState: "running",
+                updatedAt: "2026-07-01T00:00:00+00:00"
+            ),
+            status: RuntimeGuestServiceStatusRead(
+                state: "loaded",
+                observedState: "running",
+                observedAt: "2026-07-01T00:00:00+00:00",
+                serviceStatus: RuntimeGuestControlServiceStatus(
+                    service: service,
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                )
+            ),
+            conditions: [
+                RuntimeGuestServiceCondition(
+                    type: "Reconciled",
+                    status: "true",
+                    reason: "DesiredStateObserved",
+                    message: "matched desired state",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                )
+            ],
+            lastOperationId: "op-\(service)"
+        )
+    }
+
     func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
         startGuestServiceRequests.append(request)
         return guestServiceOperation(request.service, command: .start)
@@ -3337,5 +3618,41 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
             throw exportLogsError
         }
         return RuntimeLogExportResult(destination: destination)
+    }
+
+    func acquireOperationLease(
+        _ document: RuntimeOperationLeaseDocument
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        acquiredOperationLeases.append(document)
+        return RuntimeOperationLeaseMutationResponse(
+            operationId: document.operationId,
+            state: .acquired
+        )
+    }
+
+    func heartbeatOperationLease(
+        operationId: String,
+        heartbeatAt: String,
+        expiresAt: String?
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        heartbeatOperationLeaseRequests.append(RuntimeOperationLeaseHeartbeatRequest(
+            operationId: operationId,
+            heartbeatAt: heartbeatAt,
+            expiresAt: expiresAt
+        ))
+        return RuntimeOperationLeaseMutationResponse(
+            operationId: operationId,
+            state: .heartbeatRecorded
+        )
+    }
+
+    func releaseOperationLease(
+        operationId: String
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        releasedOperationLeaseIDs.append(operationId)
+        return RuntimeOperationLeaseMutationResponse(
+            operationId: operationId,
+            state: .released
+        )
     }
 }

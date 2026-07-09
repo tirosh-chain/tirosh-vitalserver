@@ -19,7 +19,7 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
     case runtimeEventsDocument = "runtime-events-document"
     case runtimeObservabilityDatabase = "runtime-observability-database"
 
-    public static let requiredForUIContinuity: [RuntimeDataBackupArtifactID] = [
+    public static let manifestArtifactOrder: [RuntimeDataBackupArtifactID] = [
         .redisData,
         .runtimeVMConfig,
         .guestRuntimeConfig,
@@ -40,7 +40,7 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
         .startOnBootState,
     ]
 
-    public static let optionalForUIContinuity: [RuntimeDataBackupArtifactID] = [
+    public static let optionalForDiagnosticsContinuity: [RuntimeDataBackupArtifactID] = [
         .runtimeStatusDocument,
         .runtimeEventsDocument,
         .runtimeObservabilityDatabase,
@@ -61,11 +61,11 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
         case .startOnBootState:
             return "start-on-boot-state.json"
         case .runtimeStatusDocument:
-            return RuntimeFileNames.runtimeStatus
+            return RuntimeDiagnosticsArtifactFileNames.runtimeStatus
         case .runtimeEventsDocument:
-            return RuntimeFileNames.runtimeEvents
+            return RuntimeDiagnosticsArtifactFileNames.runtimeEvents
         case .runtimeObservabilityDatabase:
-            return RuntimeFileNames.runtimeObservabilityDB
+            return RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB
         }
     }
 }

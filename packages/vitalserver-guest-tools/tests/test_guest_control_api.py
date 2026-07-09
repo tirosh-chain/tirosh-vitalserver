@@ -43,6 +43,36 @@ class FakeOperationIds:
         return f"op_{service}_{command}_1"
 
 
+def redis_relay_status_document(*, copied: int = 8) -> dict[str, object]:
+    return {
+        "schemaVersion": 1,
+        "observedAt": "2026-07-01T00:00:00Z",
+        "enabled": True,
+        "state": "running",
+        "scope": "vital_reconstruction",
+        "targetUrl": "redis://relay.example:6379/0",
+        "targetUsernameConfigured": True,
+        "targetPasswordConfigured": True,
+        "settingsFingerprint": "relay-settings",
+        "batches": 3,
+        "totals": {
+            "scanned": 10,
+            "copied": copied,
+            "published": copied,
+            "unchanged": 1,
+            "duplicates": 0,
+            "skipped": 1,
+            "denied": 0,
+            "missing": 0,
+            "errors": 0,
+        },
+        "lastBatch": None,
+        "lastSuccessAt": "2026-07-01T00:00:05Z",
+        "lastErrorAt": None,
+        "lastError": None,
+    }
+
+
 class FakeOperations:
     def __init__(
         self,
@@ -54,6 +84,7 @@ class FakeOperations:
         self.events: list[OperationEvent] = []
         self.status_snapshots: list[ServiceStatus] = []
         self.service_resources: dict[str, GuestServiceResource] = {}
+        self.redis_relay_status: dict[str, object] | None = None
 
     def check_ready(self) -> None:
         if self.ready_failure is not None:
@@ -76,6 +107,22 @@ class FakeOperations:
 
     def get_guest_service_resource(self, service: str) -> GuestServiceResource | None:
         return self.service_resources.get(service)
+
+    def save_status(self, document: dict[str, object]) -> None:
+        self.redis_relay_status = document
+
+    def status(self) -> dict[str, object]:
+        if self.redis_relay_status is None:
+            return {
+                "readState": "readFailed",
+                "document": None,
+                "readError": "Redis relay status snapshot is missing.",
+            }
+        return {
+            "readState": "loaded",
+            "document": self.redis_relay_status,
+            "readError": None,
+        }
 
     def get(self, operation_id: str) -> ServiceOperation | None:
         return next(
@@ -517,6 +564,21 @@ class FakeRecorderIngress:
         }
 
 
+class FakeRedisRelay:
+    def __init__(self) -> None:
+        self.saved: dict[str, object] | None = None
+
+    def save_status(self, document: dict[str, object]) -> None:
+        self.saved = document
+
+    def status(self) -> dict[str, object]:
+        return {
+            "readState": "loaded",
+            "document": redis_relay_status_document(),
+            "readError": None,
+        }
+
+
 class FakeRedisBackup:
     def create_backup(self) -> RedisBackupResult:
         return RedisBackupResult(
@@ -575,6 +637,7 @@ def usecases() -> GuestControlUseCases:
         product_lab=FakeProductLab(),
         vitaldb_read_model=FakeVitalDBReadModel(),
         recorder_ingress=FakeRecorderIngress(),
+        redis_relay=FakeRedisRelay(),
         redis_backup=FakeRedisBackup(),
         datastore_repair=FakeDatastoreRepair(),
         update_activation=FakeUpdateActivation(),
@@ -1332,6 +1395,79 @@ def test_recorder_ingress_status_route_returns_explicit_status_read(
         },
         "readError": None,
     }
+
+
+def test_redis_relay_status_route_returns_explicit_status_read(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="GET",
+        path="/v1/redis-relay/status",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document["readState"] == "loaded"
+    assert document["document"]["state"] == "running"
+    assert document["document"]["totals"]["copied"] == 8
+    assert document["readError"] is None
+
+
+def test_redis_relay_status_route_persists_owner_snapshot() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        redis_relay=operations,
+    )
+    body = json.dumps(redis_relay_status_document()).encode("utf-8")
+
+    put_status, put_document = route_request(
+        method="PUT",
+        path="/v1/redis-relay/status",
+        body=body,
+        usecases=usecases,
+    )
+    get_status, get_document = route_request(
+        method="GET",
+        path="/v1/redis-relay/status",
+        usecases=usecases,
+    )
+
+    assert put_status == HTTPStatus.OK
+    assert put_document["readState"] == "loaded"
+    assert put_document["document"]["state"] == "running"
+    assert get_status == HTTPStatus.OK
+    assert get_document["document"] == put_document["document"]
+
+
+def test_redis_relay_status_route_rejects_incomplete_owner_snapshot() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        redis_relay=operations,
+    )
+    document = redis_relay_status_document()
+    document.pop("targetUrl")
+
+    status, response = handle_with_test_handler(
+        method="PUT",
+        path="/v1/redis-relay/status",
+        body=json.dumps(document).encode("utf-8"),
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.BAD_REQUEST
+    assert response == {
+        "code": "redisRelayStatusInvalid",
+        "detail": "Redis relay status document is missing targetUrl.",
+    }
+    assert operations.redis_relay_status is None
 
 
 def test_lab_session_command_routes_return_explicit_session_state(

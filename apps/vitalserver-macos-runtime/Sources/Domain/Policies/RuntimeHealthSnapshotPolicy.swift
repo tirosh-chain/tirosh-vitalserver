@@ -25,24 +25,16 @@ public enum RuntimeHealthSnapshotPolicy {
             || snapshot.proxyService != .loaded
             || snapshot.watchdogService != .loaded
             || !snapshot.vmErrors.isEmpty
-            || hasGuestAddressFailure(snapshot)
             || !isSuccessfulHTTPStatus(snapshot.hostProxyHTTP)
             || hasGuestHTTPFailure(snapshot.guestHTTP)
             || hasCriticalObservationFailure(snapshot)
     }
 
-    private static func hasGuestAddressFailure(_ snapshot: RuntimeHealthSnapshot) -> Bool {
-        switch snapshot.guestAddressRead.state {
-        case .missing, .invalid, .stale, .readFailed:
-            return true
-        case .loaded, .notReported:
-            return false
-        }
-    }
-
     private static func hasCriticalObservationFailure(_ snapshot: RuntimeHealthSnapshot) -> Bool {
         !RuntimeObservationHealthPolicy.failureReasons(
-            guestServiceStatuses: snapshot.guestServiceStatuses
+            guestServiceStatuses: snapshot.guestServiceStatuses,
+            guestServiceResources: snapshot.guestServiceResources,
+            guestServiceResourceReadIssues: snapshot.guestServiceResourceReadIssues
         ).isEmpty
     }
 

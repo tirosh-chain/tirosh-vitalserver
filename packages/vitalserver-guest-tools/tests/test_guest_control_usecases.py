@@ -22,6 +22,8 @@ from tirosh_guest_tools.domain.guest_control.models import (
     RecorderIngressDependencyError,
     RedisBackupDependencyError,
     RedisBackupResult,
+    RedisRelayDependencyError,
+    RedisRelayStatusContractError,
     RedisRestoreDependencyError,
     RedisRestoreResult,
     ServiceCommand,
@@ -52,6 +54,36 @@ class FakeOperationIds:
         return f"op_{service}_{command}_1"
 
 
+def redis_relay_status_document(*, copied: int = 8) -> dict[str, object]:
+    return {
+        "schemaVersion": 1,
+        "observedAt": "2026-07-01T00:00:00Z",
+        "enabled": True,
+        "state": "running",
+        "scope": "vital_reconstruction",
+        "targetUrl": "redis://relay.example:6379/0",
+        "targetUsernameConfigured": True,
+        "targetPasswordConfigured": True,
+        "settingsFingerprint": "relay-settings",
+        "batches": 3,
+        "totals": {
+            "scanned": 10,
+            "copied": copied,
+            "published": copied,
+            "unchanged": 1,
+            "duplicates": 0,
+            "skipped": 1,
+            "denied": 0,
+            "missing": 0,
+            "errors": 0,
+        },
+        "lastBatch": None,
+        "lastSuccessAt": "2026-07-01T00:00:05Z",
+        "lastErrorAt": None,
+        "lastError": None,
+    }
+
+
 class FakeOperations:
     def __init__(
         self,
@@ -63,6 +95,7 @@ class FakeOperations:
         self.events: list[OperationEvent] = []
         self.status_snapshots: list[ServiceStatus] = []
         self.service_resources: dict[str, GuestServiceResource] = {}
+        self.redis_relay_status: dict[str, object] | None = None
 
     def check_ready(self) -> None:
         if self.ready_failure is not None:
@@ -86,6 +119,22 @@ class FakeOperations:
     def get_guest_service_resource(self, service: str) -> GuestServiceResource | None:
         return self.service_resources.get(service)
 
+    def save_status(self, document: dict[str, object]) -> None:
+        self.redis_relay_status = document
+
+    def status(self) -> dict[str, object]:
+        if self.redis_relay_status is None:
+            return {
+                "readState": "readFailed",
+                "document": None,
+                "readError": "Redis relay status snapshot is missing.",
+            }
+        return {
+            "readState": "loaded",
+            "document": self.redis_relay_status,
+            "readError": None,
+        }
+
     def get(self, operation_id: str) -> ServiceOperation | None:
         return next(
             (
@@ -108,6 +157,7 @@ class FakeServiceControl:
         self.fail_command = fail_command
         self.fail_status = fail_status
         self.services = services or ["app", "redis"]
+        self.service_states: dict[str, str] = dict.fromkeys(self.services, "running")
         self.started: list[str] = []
         self.stopped: list[str] = []
         self.restarted: list[str] = []
@@ -126,8 +176,8 @@ class FakeServiceControl:
             )
         return ServiceStatus(
             service=service,
-            state="running",
-            health="healthy",
+            state=self.service_states[service],
+            health="healthy" if self.service_states[service] == "running" else "none",
             observed_at=datetime(2026, 7, 1, tzinfo=UTC),
         )
 
@@ -155,14 +205,17 @@ class FakeServiceControl:
     def start_service(self, service: str) -> None:
         self.started.append(service)
         self._raise_if_failed("start")
+        self.service_states[service] = "running"
 
     def stop_service(self, service: str) -> None:
         self.stopped.append(service)
         self._raise_if_failed("stop")
+        self.service_states[service] = "stopped"
 
     def restart_service(self, service: str) -> None:
         self.restarted.append(service)
         self._raise_if_failed("restart")
+        self.service_states[service] = "running"
 
     def reconcile_services(self) -> None:
         self.reconciled += 1
@@ -520,6 +573,32 @@ class FakeRecorderIngress:
         }
 
 
+class FakeRedisRelay:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.saved: dict[str, object] | None = None
+
+    def save_status(self, document: dict[str, object]) -> None:
+        if self.fail:
+            raise RedisRelayDependencyError(
+                "Redis relay status document is invalid.",
+                kind="redis-relay-contract-invalid",
+            )
+        self.saved = document
+
+    def status(self) -> dict[str, object]:
+        if self.fail:
+            raise RedisRelayDependencyError(
+                "Redis relay status document is invalid.",
+                kind="redis-relay-contract-invalid",
+            )
+        return {
+            "readState": "loaded",
+            "document": redis_relay_status_document(copied=1),
+            "readError": None,
+        }
+
+
 class FakeRedisBackup:
     def __init__(self, *, fail: bool = False, fail_restore: bool = False) -> None:
         self.fail = fail
@@ -636,6 +715,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         product_lab=FakeProductLab(),
         vitaldb_read_model=FakeVitalDBReadModel(),
         recorder_ingress=FakeRecorderIngress(),
+        redis_relay=FakeRedisRelay(),
         redis_backup=FakeRedisBackup(),
         datastore_repair=FakeDatastoreRepair(),
         update_activation=FakeUpdateActivation(),
@@ -680,6 +760,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "maintenance:update-shutdown:create",
         "maintenance:guest-poweroff:create",
         "recorder-ingress:status:get",
+        "redis-relay:status:get",
         "vitaldb:observations:latest",
         "vitaldb:recorders:list",
         "vitaldb:recorders:hide",
@@ -901,6 +982,30 @@ def test_observe_guest_service_reads_and_persists_loaded_status() -> None:
     )
 
 
+def test_observe_guest_service_uses_explicit_status_and_resource_repositories() -> None:
+    operations = FakeOperations()
+    status_snapshots = FakeOperations()
+    guest_service_resources = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        service_status_snapshots=status_snapshots,
+        guest_service_resources=guest_service_resources,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    document = usecases.observe_guest_service("app")
+
+    assert document["status"]["state"] == "loaded"
+    assert operations.status_snapshots == []
+    assert operations.service_resources == {}
+    assert status_snapshots.status_snapshots[0].service == "app"
+    assert guest_service_resources.service_resources["app"].status.as_json()[
+        "observedState"
+    ] == "running"
+
+
 def test_guest_service_spec_update_persists_desired_state() -> None:
     operations = FakeOperations()
     usecases = GuestControlUseCases(
@@ -1076,6 +1181,9 @@ def test_stop_service_persists_operation_transitions() -> None:
         "reason": "StopRequired",
         "message": "Guest service must be stopped to match desired state.",
     }
+    resource = operations.service_resources["app"]
+    assert resource.status.as_json()["observedState"] == "stopped"
+    assert resource.conditions[0].reason == "DesiredStateObserved"
 
 
 def test_restart_service_persists_operation_transitions() -> None:
@@ -2068,4 +2176,93 @@ def test_recorder_ingress_status_preserves_dependency_failure() -> None:
         "httpStatus": "failed",
         "document": None,
         "readError": "Recorder ingress status service is unreachable.",
+    }
+
+
+def test_redis_relay_status_reports_unavailable_without_adapter() -> None:
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    response = usecases.get_redis_relay_status()
+
+    assert response == {
+        "readState": "readFailed",
+        "document": None,
+        "readError": "Redis relay status adapter is unavailable.",
+    }
+
+
+def test_redis_relay_status_returns_status_read_document() -> None:
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        redis_relay=FakeRedisRelay(),
+    )
+
+    response = usecases.get_redis_relay_status()
+
+    assert response["readState"] == "loaded"
+    assert response["document"]["state"] == "running"
+    assert response["readError"] is None
+
+
+def test_redis_relay_status_owner_mutation_persists_snapshot() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        redis_relay=operations,
+    )
+
+    response = usecases.put_redis_relay_status(redis_relay_status_document())
+
+    assert response["readState"] == "loaded"
+    assert response["document"]["state"] == "running"
+    assert usecases.get_redis_relay_status()["document"] == response["document"]
+
+
+def test_redis_relay_status_owner_mutation_rejects_incomplete_snapshot() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        redis_relay=operations,
+    )
+    document = redis_relay_status_document()
+    del document["totals"]["published"]
+
+    with pytest.raises(RedisRelayStatusContractError) as error:
+        usecases.put_redis_relay_status(document)
+
+    assert error.value.message == (
+        "Redis relay status document field totals.published must be integer."
+    )
+    assert operations.redis_relay_status is None
+
+
+def test_redis_relay_status_preserves_dependency_failure() -> None:
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        redis_relay=FakeRedisRelay(fail=True),
+    )
+
+    response = usecases.get_redis_relay_status()
+
+    assert response == {
+        "readState": "invalidResponse",
+        "document": None,
+        "readError": "Redis relay status document is invalid.",
     }

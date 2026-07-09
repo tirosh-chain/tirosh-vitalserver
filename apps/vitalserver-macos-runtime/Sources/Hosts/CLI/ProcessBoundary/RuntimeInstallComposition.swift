@@ -153,7 +153,7 @@ public struct RuntimeInstallComposition<Settings> {
             ),
             writer: InstallRuntimeStateWriter(
                 writeState: { state, mode, currentStep, message, blockers in
-                    try RuntimeInstallStateStore(
+                    try RuntimeInstallWorkflowStateArtifactStore(
                         url: context.installedPaths.runtimeInstallState,
                         fileStore: operations.fileStore,
                         now: operations.now

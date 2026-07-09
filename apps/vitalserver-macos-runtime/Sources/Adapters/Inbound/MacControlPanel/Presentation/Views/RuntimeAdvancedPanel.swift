@@ -111,7 +111,6 @@ struct RuntimeAdvancedPanel: View {
                 statusRow(AppConstants.Labels.runtimeState) { statusBadge }
                 statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.activeOperationText(viewModel.operationState))
                 statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
-                statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(viewModel.status.updatedAt))
                 if !viewModel.status.failureReasons.isEmpty {
                     statusRow(AppConstants.Labels.failureReasons) {
                         Text(viewModel.presentationFormatter.failureReasonText(viewModel.status))

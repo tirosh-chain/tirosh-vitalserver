@@ -58,7 +58,15 @@ describe("shared components", () => {
     rerender(
       <CommandResult
         error={null}
-        result={{ result: { exitCode: 0, stdout: "ok", stderr: "" } }}
+        result={{
+          result: {
+            exitCode: 0,
+            stdout: "ok",
+            stderr: "",
+            outputIssues: [],
+            executionIssue: null
+          }
+        }}
       />
     );
     expect(screen.getByText(/exitCode: 0/)).toHaveTextContent("ok");

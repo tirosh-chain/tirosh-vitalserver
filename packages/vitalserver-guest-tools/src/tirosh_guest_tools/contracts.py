@@ -5,7 +5,7 @@ from enum import StrEnum
 
 class RuntimeService(StrEnum):
     CONTAINER_LOGS = "tirosh-vitalserver-container-logs.service"
-    RUNTIME_STATE = "tirosh-runtime-state.service"
+    RUNTIME_OBSERVATION = "tirosh-runtime-observation.service"
     GUEST_CONTROL_API = "tirosh-vitalserver-guest-control-api.service"
     COMPOSE = "tirosh-vitalserver-compose.service"
     SYNC_HOST_TIME = "tirosh-vitalserver-sync-host-time.service"
@@ -14,9 +14,6 @@ class RuntimeService(StrEnum):
 class RuntimeFileName(StrEnum):
     COMPOSE = "compose.yaml"
     COMPOSE_RUNTIME_LIMITS = "compose.runtime-limits.yaml"
-    VM_IP = "vm-ip"
-    RUNTIME_STATE = "runtime-state.json"
-    BOOTSTRAP_RESULT = "bootstrap-result.json"
     RUNTIME_CONFIG = "runtime-config.json"
     RUNTIME_SETTINGS = "runtime-settings.json"
     REDIS_BACKUP_LOG = "redis-backup.log"
@@ -24,6 +21,15 @@ class RuntimeFileName(StrEnum):
     REPAIR_DATASTORE_LOG = "repair-datastore.log"
     ACTIVATE_UPDATE_LOG = "activate-update.log"
     PREPARE_UPDATE_SHUTDOWN_LOG = "prepare-update-shutdown.log"
+
+
+class RuntimeBootstrapEvidenceFileName(StrEnum):
+    VM_IP = "vm-ip"
+
+
+class RuntimeDiagnosticsArtifactFileName(StrEnum):
+    RUNTIME_OBSERVATION = "runtime-observation.json"
+    BOOTSTRAP_RESULT = "bootstrap-result.json"
 
 
 class ComposeService(StrEnum):
@@ -46,8 +52,8 @@ class RuntimeCommand(StrEnum):
     GUEST_CONTAINER_LOGS = "tirosh-guest-container-logs"
     GUEST_DIAGNOSTICS = "tirosh-guest-diagnostics"
     RUNTIME_ENV = "tirosh-runtime-env"
-    WRITE_RUNTIME_STATE = "tirosh-write-runtime-state"
-    RUNTIME_STATE = "tirosh-runtime-state"
+    WRITE_RUNTIME_OBSERVATION = "tirosh-write-runtime-observation"
+    RUNTIME_OBSERVATION = "tirosh-runtime-observation"
     VITALSERVER_HEALTH = "tirosh-vitalserver-health"
     VITALSERVER_COMPOSE = "tirosh-vitalserver-compose"
     VITALSERVER_SYNC_HOST_TIME = "tirosh-vitalserver-sync-host-time"

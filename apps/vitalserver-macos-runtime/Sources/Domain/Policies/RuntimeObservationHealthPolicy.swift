@@ -12,30 +12,38 @@ public enum RuntimeObservationHealthPolicy {
     ]
 
     public static func failureReasons(
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
+        guestServiceResources: [RuntimeGuestServiceResource] = [],
+        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = []
     ) -> [RuntimeFailureReason] {
         var reasons: [RuntimeFailureReason] = []
-        reasons.append(contentsOf: serviceFailureReasons(guestServiceStatuses))
+        reasons.append(contentsOf: serviceFailureReasons(
+            guestServiceStatuses,
+            resources: guestServiceResources
+        ))
+        reasons.append(contentsOf: resourceReadIssueFailureReasons(guestServiceResourceReadIssues))
         return reasons
     }
 
     public static func requiresGuestStackReconcile(
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
+        guestServiceResources: [RuntimeGuestServiceResource] = []
     ) -> Bool {
         switch guestServiceStatuses {
         case .loaded(let statuses):
-            return !guestServiceFailureReasons(statuses).isEmpty
+            return !guestServiceFailureReasons(statuses, resources: guestServiceResources).isEmpty
         case .notReported, .missing, .readFailed:
             return false
         }
     }
 
     private static func serviceFailureReasons(
-        _ guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
+        _ guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>,
+        resources: [RuntimeGuestServiceResource]
     ) -> [RuntimeFailureReason] {
         switch guestServiceStatuses {
         case .loaded(let statuses):
-            return guestServiceFailureReasons(statuses)
+            return guestServiceFailureReasons(statuses, resources: resources)
         case .missing:
             return [.guestServiceObservationMissing]
         case .readFailed(let message):
@@ -46,11 +54,18 @@ public enum RuntimeObservationHealthPolicy {
     }
 
     private static func guestServiceFailureReasons(
-        _ statuses: [RuntimeGuestControlServiceStatus]
+        _ statuses: [RuntimeGuestControlServiceStatus],
+        resources: [RuntimeGuestServiceResource]
     ) -> [RuntimeFailureReason] {
-        statuses.compactMap { status in
+        let resourceByService = Dictionary(
+            uniqueKeysWithValues: resources.map { ($0.service, $0) }
+        )
+        return statuses.compactMap { status -> RuntimeFailureReason? in
             guard criticalGuestServices.contains(status.service),
-                  let failureState = guestServiceFailureState(status) else {
+                  let failureState = guestServiceFailureState(
+                    status,
+                    resource: resourceByService[status.service]
+                  ) else {
                 return nil
             }
             return .guestService(service: status.service, state: failureState)
@@ -58,8 +73,14 @@ public enum RuntimeObservationHealthPolicy {
     }
 
     private static func guestServiceFailureState(
-        _ status: RuntimeGuestControlServiceStatus
+        _ status: RuntimeGuestControlServiceStatus,
+        resource: RuntimeGuestServiceResource?
     ) -> String? {
+        if let desiredState = resource?.spec.desiredState,
+           desiredState == "stopped",
+           status.state == "stopped" {
+            return nil
+        }
         if status.state != "running" {
             return normalizedState(status.state)
         }
@@ -70,6 +91,18 @@ public enum RuntimeObservationHealthPolicy {
             return normalizedState(status.health)
         }
         return nil
+    }
+
+    private static func resourceReadIssueFailureReasons(
+        _ issues: [RuntimeGuestServiceResourceReadIssue]
+    ) -> [RuntimeFailureReason] {
+        guard !issues.isEmpty else {
+            return []
+        }
+        let message = issues
+            .map { "\($0.service):\($0.message)" }
+            .joined(separator: ",")
+        return [.guestServiceObservationReadFailed(failureToken(message))]
     }
 
     public static func isRuntimeHealthAnomaly(_ anomaly: VitalDBAnomalyObservation) -> Bool {

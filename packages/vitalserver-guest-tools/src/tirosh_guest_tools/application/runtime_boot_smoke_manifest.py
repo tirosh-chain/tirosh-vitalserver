@@ -20,7 +20,7 @@ class RuntimeBootSmokeContext:
     deploy_dir: Path
     manifest_path: Path
     run_id: str
-    max_runtime_state_age_seconds: int
+    max_runtime_observation_age_seconds: int
     compose_ready_timeout_seconds: float
     dev_build: bool
 

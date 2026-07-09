@@ -32,7 +32,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let settings = await worker.loadSettings()
         let status = await worker.loadStatus(settings: settings)
         let health = await worker.loadHealthStatus(settings: settings)
-        let operationState = await worker.loadOperationState(status: RuntimeStatus())
+        let operationState = await worker.loadOperationState()
         let limitedEvents = await worker.loadRuntimeEvents(limit: 5)
         let queriedEvents = await worker.loadRuntimeEvents(query: RuntimeEventQuery(limit: 7))
         let snapshot = await worker.loadVitalDBObservationSnapshot()
@@ -46,8 +46,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let installInfo = await worker.loadInstallInfo()
 
         XCTAssertEqual(settings.proxyPort, 19080)
-        XCTAssertEqual(status.statusMessage, "status")
-        XCTAssertEqual(health.statusMessage, "health")
+        XCTAssertEqual(status.runtimeVersion, "status")
+        XCTAssertEqual(health.runtimeVersion, "health")
         XCTAssertEqual(operationState.activeOperation, .applyBundle)
         XCTAssertEqual(operationState.lease.state, .failed)
         XCTAssertEqual(operationState.lease.readError, "lease read failed")
@@ -73,6 +73,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             actionEnvironment: environment,
             logExporter: exporter,
             guestMaintenanceController: AdapterFakeGuestMaintenanceController(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
             guestControlBaseURLOverride: "http://127.0.0.1:18330"
         )
         let releaseInfo = RuntimeReleaseInfo(
@@ -96,8 +97,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let loadedReleaseInfo = try await client.loadReleaseInfo()
 
         XCTAssertEqual(client.loadSettings().proxyPort, 19080)
-        XCTAssertEqual(client.loadStatus(settings: RuntimeSettings()).statusMessage, "status")
-        XCTAssertEqual(healthStatus.statusMessage, "health")
+        XCTAssertEqual(client.loadStatus(settings: RuntimeSettings()).runtimeVersion, "status")
+        XCTAssertEqual(healthStatus.runtimeVersion, "health")
         XCTAssertEqual(client.loadRuntimeEvents(limit: 3).matchingCount, 3)
         XCTAssertEqual(client.loadRuntimeEvents(query: RuntimeEventQuery(limit: 4)).matchingCount, 4)
         XCTAssertNotNil(client.loadVitalDBObservationSnapshot().observation)
@@ -169,21 +170,21 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         )
 
         let missing = SystemRuntimeOperationStateReader(
-            operationLeaseRepository: AdapterStubOperationLeaseRepository(loadResult: .missing),
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
             now: { now }
-        ).loadOperationState(status: RuntimeStatus())
+        ).loadOperationState()
         let failed = SystemRuntimeOperationStateReader(
-            operationLeaseRepository: AdapterStubOperationLeaseRepository(loadResult: .failed("lease denied")),
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .failed("lease denied")),
             now: { now }
-        ).loadOperationState(status: RuntimeStatus())
+        ).loadOperationState()
         let loaded = SystemRuntimeOperationStateReader(
-            operationLeaseRepository: AdapterStubOperationLeaseRepository(loadResult: .loaded(activeLease)),
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .loaded(activeLease)),
             now: { now }
-        ).loadOperationState(status: RuntimeStatus(operation: .applyBundle))
+        ).loadOperationState()
         let stale = SystemRuntimeOperationStateReader(
-            operationLeaseRepository: AdapterStubOperationLeaseRepository(loadResult: .loaded(expiredLease)),
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .loaded(expiredLease)),
             now: { now }
-        ).loadOperationState(status: RuntimeStatus())
+        ).loadOperationState()
 
         XCTAssertEqual(missing.lease.state, .unavailable)
         XCTAssertNil(missing.lease.document)
@@ -202,6 +203,43 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertTrue(stale.lease.staleReason?.contains("expired-lease") == true)
     }
 
+    func testOperationStateReaderPreservesInstallReadStates() {
+        let installDocument = RuntimeInstallStateDocument(
+            state: .stepStarted,
+            mode: .full,
+            currentStep: .replaceRootfsBase,
+            updatedAt: "2026-07-08T00:00:00Z",
+            message: "install step running"
+        )
+
+        let unavailable = SystemRuntimeOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing)
+        ).loadOperationState()
+        let loaded = SystemRuntimeOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
+            installStateReader: {
+                RuntimeInstallStateRead.loaded(installDocument)
+            }
+        ).loadOperationState()
+        let failed = SystemRuntimeOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
+            installStateReader: {
+                RuntimeInstallStateRead.failed("runtime install state decode failed")
+            }
+        ).loadOperationState()
+
+        XCTAssertEqual(unavailable.install.state, .unavailable)
+        XCTAssertNil(unavailable.activeOperation)
+
+        XCTAssertEqual(loaded.install.state, .loaded)
+        XCTAssertEqual(loaded.install.document, installDocument)
+        XCTAssertNil(loaded.activeOperation)
+
+        XCTAssertEqual(failed.install.state, .failed)
+        XCTAssertEqual(failed.install.readError, "runtime install state decode failed")
+        XCTAssertNil(failed.activeOperation)
+    }
+
     func testApplySettingsReportsAdminPasswordCleanupFailureAsOutputIssue() async throws {
         let environment = AdapterFakeActionEnvironment()
         environment.removeError = CocoaError(.fileWriteNoPermission)
@@ -209,7 +247,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
             actionEnvironment: environment,
-            logExporter: AdapterFakeLogExporter()
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
         )
         var settings = RuntimeSettings()
         settings.changeAdminPassword = true
@@ -236,7 +275,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: runner,
             actionEnvironment: environment,
-            logExporter: AdapterFakeLogExporter()
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
         )
         var settings = RuntimeSettings()
         settings.changeAdminPassword = true
@@ -261,7 +301,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
                 RuntimeControlClientConstants.Paths.launcher: .missing,
                 RuntimeControlClientConstants.Paths.uninstaller: .missing,
             ]),
-            logExporter: AdapterFakeLogExporter()
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
         )
 
         do {
@@ -285,7 +326,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
                 RuntimeControlClientConstants.Paths.launcher: .inspectFailed("permission denied"),
                 RuntimeControlClientConstants.Paths.uninstaller: .present,
             ]),
-            logExporter: AdapterFakeLogExporter()
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
         )
 
         do {
@@ -309,7 +351,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: runner,
             actionEnvironment: AdapterFakeActionEnvironment(),
-            logExporter: AdapterFakeLogExporter()
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
         )
 
         do {
@@ -327,7 +370,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
             actionEnvironment: AdapterFakeActionEnvironment(),
-            logExporter: AdapterFakeLogExporter()
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
         )
 
         let deleteUpdateBackup = try await worker.deleteBackup(
@@ -341,6 +385,23 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(deleteUpdateBackup.stdout, "ran")
         XCTAssertEqual(deleteRuntimeDataBackup.stdout, "ran")
         XCTAssertEqual(repair.stdout, "ran")
+    }
+
+    func testCommandWorkerUsesGuestAddressProviderForGuestControlBaseURL() async throws {
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider(
+                result: .readFailed("vm-ip file read denied")
+            )
+        )
+
+        let scenarios = try await worker.loadLabScenarios()
+
+        XCTAssertEqual(scenarios.state, .unavailable)
+        XCTAssertTrue(scenarios.readError?.contains("guest-address-read-failed:vm-ip file read denied") == true)
+        XCTAssertTrue(scenarios.readError?.contains("runtime status document") == false)
     }
 }
 
@@ -417,11 +478,11 @@ final class RuntimeExecutableCommandPreflightTests: XCTestCase {
 
 private final class AdapterStubStatusReader: RuntimeStatusReading {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        RuntimeStatus(statusMessage: "status")
+        RuntimeStatus(runtimeVersion: "status")
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        RuntimeStatus(statusMessage: "health")
+        RuntimeStatus(runtimeVersion: "health")
     }
 }
 
@@ -432,37 +493,24 @@ private final class AdapterStubOperationStateReader: RuntimeOperationStateReadin
         self.activeOperation = activeOperation
     }
 
-    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+    func loadOperationState() -> RuntimeOperationState {
         RuntimeOperationState(
             activeOperation: activeOperation,
-            runtimeStatusUpdatedAt: status.updatedAt,
             install: .unavailable(),
             lease: .failed(readError: "lease read failed")
         )
     }
 }
 
-private struct AdapterStubOperationLeaseRepository: RuntimeOperationLeaseRepository {
+private struct AdapterStubOperationLeaseReader: RuntimeOperationLeaseReading {
     let result: RuntimeOperationLeaseLoadResult
 
     init(loadResult: RuntimeOperationLeaseLoadResult) {
         self.result = loadResult
     }
 
-    func loadResult() -> RuntimeOperationLeaseLoadResult {
+    func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
         result
-    }
-
-    func acquire(_ document: RuntimeOperationLeaseDocument) throws {
-        XCTFail("acquire should not be called by operation state reader")
-    }
-
-    func heartbeat(operationId: String, heartbeatAt: String, expiresAt: String?) throws {
-        XCTFail("heartbeat should not be called by operation state reader")
-    }
-
-    func release(operationId: String) throws {
-        XCTFail("release should not be called by operation state reader")
     }
 }
 
@@ -617,6 +665,18 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
 private final class AdapterFakeLogExporter: RuntimeLogExporting, @unchecked Sendable {
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         RuntimeLogExportResult(destination: destination)
+    }
+}
+
+private struct AdapterStubGuestAddressProvider: RuntimeGuestAddressProvider {
+    let result: RuntimeGuestAddressReadResult
+
+    static let loaded = AdapterStubGuestAddressProvider(
+        result: .loaded(address: "192.168.64.2", source: .runtimeControlAPI)
+    )
+
+    func readGuestAddress() -> RuntimeGuestAddressReadResult {
+        result
     }
 }
 

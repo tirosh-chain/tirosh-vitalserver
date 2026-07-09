@@ -1,5 +1,5 @@
 import Contracts
 
-public protocol RuntimeGuestAddressProvider {
+public protocol RuntimeGuestAddressProvider: Sendable {
     func readGuestAddress() -> RuntimeGuestAddressReadResult
 }

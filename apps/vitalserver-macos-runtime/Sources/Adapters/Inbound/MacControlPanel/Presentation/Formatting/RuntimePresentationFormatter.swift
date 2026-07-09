@@ -91,9 +91,6 @@ public struct RuntimePresentationFormatter {
 
     public func statusDisplayMessage(_ status: RuntimeStatus) -> String? {
         var lines: [String] = []
-        if let statusMessage = status.statusMessage, !statusMessage.isEmpty {
-            lines.append(statusMessage)
-        }
         if !status.failureReasons.isEmpty {
             lines.append("\(vocabulary.failureReasonsLabel): \(failureReasonText(status))")
         }
@@ -116,17 +113,6 @@ public struct RuntimePresentationFormatter {
         operationText(operationState.operationForPresentation)
     }
 
-    public func progressDisplayMessage(_ status: RuntimeStatus) -> String? {
-        guard let progress = status.progress else {
-            return nil
-        }
-        if let step = progress.step,
-           let stepStatus = progress.stepStatus {
-            return "\(stepStatusDisplayName(stepStatus)): \(humanizeStepName(step.rawValue))"
-        }
-        return progress.message.isEmpty ? nil : progress.message
-    }
-
     public func updateOperationInProgress(_ operationState: RuntimeOperationState) -> Bool {
         RuntimeActiveOperationPolicy.isUpdateOperation(operationState.operationForPresentation)
     }
@@ -137,15 +123,6 @@ public struct RuntimePresentationFormatter {
     ) -> String? {
         guard updateOperationInProgress(operationState) else {
             return nil
-        }
-        if let progress = status.progress,
-           RuntimeActiveOperationPolicy.isUpdateOperation(progress.operation),
-           !RuntimeActiveOperationPolicy.isTerminal(progress.phase),
-           let progressMessage = progressDisplayMessage(status) {
-            return progressMessage
-        }
-        if let statusMessage = status.statusMessage, !statusMessage.isEmpty {
-            return statusMessage
         }
         if let operation = operationState.operationForPresentation {
             return "\(operationText(operation)) in progress"
@@ -231,15 +208,6 @@ public struct RuntimePresentationFormatter {
         return ServiceURLPresentation(displayURL: trimmed, openURL: trimmed)
     }
 
-    private func stepStatusDisplayName(_ status: RuntimeProgressStepStatus) -> String {
-        vocabulary.progressStepStatusText(status.rawValue)
-    }
-
-    private func humanizeStepName(_ step: String) -> String {
-        step
-            .replacingOccurrences(of: "-", with: " ")
-            .capitalized
-    }
 }
 
 private struct AppRuntimePresentationVocabulary: RuntimePresentationVocabulary {

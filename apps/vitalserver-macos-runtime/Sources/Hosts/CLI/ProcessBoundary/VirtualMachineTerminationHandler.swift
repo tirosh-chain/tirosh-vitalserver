@@ -8,7 +8,7 @@ extension VirtualMachineTerminationHandler {
     static func hostCLI(
         virtualMachine: VZVirtualMachine,
         pidFile: URL,
-        lifecycleStore: RuntimeVMLifecycleStore,
+        lifecycleWriter: any RuntimeVMLifecycleResourceWriting,
         fileStore: RuntimeFileWriting = SystemRuntimeFileStore()
     ) -> VirtualMachineTerminationHandler {
         VirtualMachineTerminationHandler(
@@ -16,7 +16,13 @@ extension VirtualMachineTerminationHandler {
             pidFile: pidFile,
             fileStore: fileStore,
             writeLifecycle: { state, message in
-                try lifecycleStore.write(state: state, message: message)
+                try lifecycleWriter.writeVMLifecycleResource(
+                    state: state,
+                    operation: nil,
+                    terminalReason: nil,
+                    message: message,
+                    bootWindowSeconds: nil
+                )
             }
         )
     }

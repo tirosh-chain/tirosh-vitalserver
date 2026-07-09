@@ -26,7 +26,7 @@ public struct RuntimeStatusPrinterCompositionContext {
 
 public struct RuntimeStatusPrinterCompositionOperations {
     let latestBackupPath: () throws -> String?
-    let runtimeStatusDocument: () -> RuntimeStatusDocumentLoadResult
+    let currentStatus: () -> RuntimeStatusPrinterCurrentStatus
     let runtimeVersionValue: () -> String
     let installedProxyPort: () -> Int?
     let hostProxyHTTPStatus: (String) -> String
@@ -37,7 +37,7 @@ public struct RuntimeStatusPrinterCompositionOperations {
 
     public init(
         latestBackupPath: @escaping () throws -> String?,
-        runtimeStatusDocument: @escaping () -> RuntimeStatusDocumentLoadResult,
+        currentStatus: @escaping () -> RuntimeStatusPrinterCurrentStatus,
         runtimeVersionValue: @escaping () -> String,
         installedProxyPort: @escaping () -> Int?,
         hostProxyHTTPStatus: @escaping (String) -> String,
@@ -47,7 +47,7 @@ public struct RuntimeStatusPrinterCompositionOperations {
         printLine: @escaping (String) -> Void = { print($0) }
     ) {
         self.latestBackupPath = latestBackupPath
-        self.runtimeStatusDocument = runtimeStatusDocument
+        self.currentStatus = currentStatus
         self.runtimeVersionValue = runtimeVersionValue
         self.installedProxyPort = installedProxyPort
         self.hostProxyHTTPStatus = hostProxyHTTPStatus
@@ -72,7 +72,7 @@ public enum RuntimeStatusPrinterComposition {
             rootfsBase: context.rootfsBase,
             vmDisk: context.vmDisk,
             latestBackupPath: operations.latestBackupPath,
-            runtimeStatusDocument: operations.runtimeStatusDocument,
+            currentStatus: operations.currentStatus,
             runtimeVersionValue: operations.runtimeVersionValue,
             installedProxyPort: operations.installedProxyPort,
             hostProxyHTTP: { port in

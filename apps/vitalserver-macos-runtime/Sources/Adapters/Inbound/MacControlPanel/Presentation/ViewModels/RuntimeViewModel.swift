@@ -58,6 +58,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var runtimeEventFilter = ""
     @Published var vitalDBObservationSnapshot = RuntimeVitalDBObservationSnapshot.unavailable()
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
+    @Published var vitalBeds = RuntimeVitalBedHistory()
     @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
     @Published var isRunningVitalDBVisibilityAction = false
@@ -130,7 +131,7 @@ public final class RuntimeViewModel: ObservableObject {
             fillMissing: initialSettings == nil
         )
         let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: displayRuntimeSettings)
-        let resolvedOperationState = controlClient.loadOperationState(status: resolvedStatus)
+        let resolvedOperationState = controlClient.loadOperationState()
         self.runtimeSettings = displayRuntimeSettings
         self.savedSettings = displaySettings
         self.settings = displaySettings
@@ -263,6 +264,7 @@ public final class RuntimeViewModel: ObservableObject {
         let refreshed = await observabilityRefresher.refreshVitalObservability()
         vitalDBObservationSnapshot = refreshed.observationSnapshot
         vitalRecorders = refreshed.recorders
+        vitalBeds = refreshed.beds
         vitalRelationships = refreshed.relationships
     }
 
@@ -339,19 +341,7 @@ public final class RuntimeViewModel: ObservableObject {
         defer { isRunningVitalDBVisibilityAction = false }
         do {
             let bedHistory = try await action()
-            vitalRecorders = RuntimeVitalRecorderHistory(
-                state: bedHistory.state,
-                updatedAt: bedHistory.updatedAt,
-                recorders: vitalRecorders.recorders,
-                beds: bedHistory.beds,
-                summary: RuntimeVitalRecorderHistorySummary(
-                    recorders: vitalRecorders.recorders,
-                    beds: bedHistory.beds
-                ),
-                activityHistory: vitalRecorders.activityHistory,
-                recorderIngressStatusRead: vitalRecorders.recorderIngressStatusRead,
-                readError: bedHistory.readError
-            )
+            vitalBeds = bedHistory
             vitalDBVisibilityActionMessage = successMessage
         } catch {
             vitalDBVisibilityActionMessage = error.localizedDescription

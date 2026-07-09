@@ -8,7 +8,7 @@ import Errors
 final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     func testPrepareBuildsPreflightContextFromExplicitPortsInOrder() throws {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
         let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
         let backup = URL(fileURLWithPath: "/product/backups/backup-before-1.2.3")
         var events: [String] = []
@@ -20,7 +20,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                 version: "1.2.3",
                 artifacts: [
                     UpdateBundleArtifact(
-                        name: RuntimeFileNames.rootfsBase,
+                        name: RuntimePackageArtifactFileNames.rootfsBase,
                         type: .rootfsBase,
                         sha256: "abc",
                         size: 20
@@ -181,7 +181,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                 version: "1.2.3",
                 artifacts: [
                     UpdateBundleArtifact(
-                        name: RuntimeFileNames.rootfsBase,
+                        name: RuntimePackageArtifactFileNames.rootfsBase,
                         type: .rootfsBase,
                         sha256: "abc",
                         size: 20
@@ -206,7 +206,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
         )) { error in
             XCTAssertEqual(
                 String(describing: error),
-                "missing file: \(stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase).path)"
+                "missing file: \(stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase).path)"
             )
         }
     }
@@ -218,7 +218,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                 version: "1.2.3",
                 artifacts: [
                     UpdateBundleArtifact(
-                        name: RuntimeFileNames.rootfsBase,
+                        name: RuntimePackageArtifactFileNames.rootfsBase,
                         type: .rootfsBase,
                         sha256: "abc",
                         size: 20

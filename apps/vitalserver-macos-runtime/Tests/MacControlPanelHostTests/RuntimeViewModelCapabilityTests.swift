@@ -13,7 +13,7 @@ import Errors
 final class RuntimeViewModelCapabilityTests: XCTestCase {
     func testViewModelInitializesStatusFromExplicitControlClientRead() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        client.status = RuntimeStatus(runtimeInstalled: true, statusMessage: "initial status")
+        client.status = RuntimeStatus(runtimeInstalled: true, runtimeVersion: "initial-version")
 
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -22,7 +22,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
 
         XCTAssertEqual(client.loadStatusCount, 1)
-        XCTAssertEqual(viewModel.status.statusMessage, "initial status")
+        XCTAssertEqual(viewModel.status.runtimeVersion, "initial-version")
         XCTAssertTrue(viewModel.status.runtimeInstalled)
     }
 
@@ -87,12 +87,12 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            initialStatus: RuntimeStatus(runtimeInstalled: true, statusMessage: "provided"),
+            initialStatus: RuntimeStatus(runtimeInstalled: true, runtimeVersion: "provided"),
             healthNotifications: NoopHealthNotifications()
         )
 
         XCTAssertEqual(client.loadStatusCount, 0)
-        XCTAssertEqual(viewModel.status.statusMessage, "provided")
+        XCTAssertEqual(viewModel.status.runtimeVersion, "provided")
         XCTAssertTrue(viewModel.status.runtimeInstalled)
     }
 
@@ -906,7 +906,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
     func testHealthRefreshDoesNotPublishContainerObservationAsCurrentProductStatus() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        client.healthStatus = RuntimeStatus(statusMessage: "health refreshed")
+        client.healthStatus = RuntimeStatus(runtimeVersion: "health-refreshed")
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
@@ -915,7 +915,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         await viewModel.refreshHealthStatus()
 
-        XCTAssertEqual(viewModel.status.statusMessage, "health refreshed")
+        XCTAssertEqual(viewModel.status.runtimeVersion, "health-refreshed")
     }
 
     func testVitalRecorderRefreshUpdatesCurrentObservationSnapshot() async {
@@ -947,6 +947,38 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.vitalDBObservationSnapshot.observation, observation)
     }
 
+    func testVitalRecorderRefreshUpdatesBedsFromDedicatedBedReadModel() async {
+        let bed = RuntimeVitalBedRecord(
+            bedID: "bed-postgres",
+            name: "OR 1",
+            vrcode: "VR_A",
+            status: .online,
+            patientConnected: true,
+            firstSeenAt: "2026-07-01T00:00:00+00:00",
+            lastSeenAt: "2026-07-01T00:01:00+00:00",
+            observationCount: 1,
+            currentAnomalyCount: 0,
+            latestAnomalySeverity: nil
+        )
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.vitalDBBedHistory = RuntimeVitalBedHistory(
+            updatedAt: "2026-07-01T00:01:00+00:00",
+            beds: [bed]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshVitalRecorders()
+
+        XCTAssertEqual(client.loadVitalDBRecordersCount, 1)
+        XCTAssertEqual(client.loadVitalDBBedsCount, 1)
+        XCTAssertEqual(viewModel.vitalBeds.beds.map(\.bedID), ["bed-postgres"])
+        XCTAssertTrue(viewModel.vitalRecorders.beds.isEmpty)
+    }
+
     func testVitalDBVisibilityActionsUseRuntimeControlClientAndUpdateReadModel() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(
@@ -975,6 +1007,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.unhiddenBedRequests, [.init(bedIDs: ["bed-a"])])
         XCTAssertEqual(client.deletedBedRequests, [.init(bedIDs: ["bed-a"])])
         XCTAssertEqual(viewModel.vitalRecorders.updatedAt, "2026-07-01T00:00:00+00:00")
+        XCTAssertEqual(viewModel.vitalBeds.updatedAt, "2026-07-01T00:00:00+00:00")
         XCTAssertEqual(viewModel.vitalDBVisibilityActionMessage, "Hidden bed deleted.")
         XCTAssertFalse(viewModel.isRunningVitalDBVisibilityAction)
     }
@@ -1337,16 +1370,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
         viewModel.status = RuntimeStatus(
             runtimeInstalled: true,
+            runtimeInstallationState: .executable,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
             guestLogSyncServiceLoaded: true,
             sleepPreventionServiceLoaded: true,
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
-            operation: .none,
-            statusMessage: "healthy",
-            updatedAt: observedAt,
-            startedAt: observedAt,
             runtimeVersion: "2026.05.30",
             latestBackup: "/backups/latest.tar.gz",
             vmState: .running,
@@ -1450,6 +1480,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var lastRuntimeEventQuery: RuntimeEventQuery?
     var runtimeEventQueries: [RuntimeEventQuery] = []
     var loadVitalDBRecordersCount = 0
+    var loadVitalDBBedsCount = 0
     var loadBackupsCount = 0
     var loadSettingsCount = 0
     var verifyUpdateBundleCount = 0
@@ -1508,10 +1539,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var lastAppliedSettings: RuntimeSettings?
     var settings = RuntimeSettings()
     var status = RuntimeStatus()
-    var operationState = RuntimeOperationState(activeOperation: nil, runtimeStatusUpdatedAt: nil, install: .unavailable())
+    var operationState = RuntimeOperationState(activeOperation: nil, install: .unavailable())
     var healthStatus = RuntimeStatus()
     var vitalDBObservation: VitalDBObservationDocument?
     var vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(updatedAt: "2026-07-01T00:00:00+00:00")
+    var vitalDBBedHistory = RuntimeVitalBedHistory()
     var vitalDBBedVisibilityHistory = RuntimeVitalBedHistory(updatedAt: "2026-07-01T00:00:00+00:00")
 
     init(capabilities: RuntimeControlCapabilities) {
@@ -1529,7 +1561,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return status
     }
 
-    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+    func loadOperationState() -> RuntimeOperationState {
         operationState
     }
 
@@ -1561,7 +1593,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadVitalDBBeds() -> RuntimeVitalBedHistory {
-        RuntimeVitalBedHistory()
+        loadVitalDBBedsCount += 1
+        return vitalDBBedHistory
     }
 
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {

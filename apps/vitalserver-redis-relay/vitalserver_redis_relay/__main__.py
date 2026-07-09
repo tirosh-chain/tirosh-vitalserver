@@ -23,10 +23,15 @@ def main() -> None:
             "/run/tirosh/status/redis-relay-status.json",
         ),
     )
+    parser.add_argument(
+        "--status-owner-url",
+        default=os.environ.get("REDIS_RELAY_STATUS_OWNER_URL"),
+    )
     args = parser.parse_args()
     run_forever(
         config_path=Path(args.config_path),
         status_path=Path(args.status_path),
+        status_owner_url=args.status_owner_url,
     )
 
 

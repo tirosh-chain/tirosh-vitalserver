@@ -497,6 +497,41 @@ def main() -> int:
         )
     )
 
+    runtime_proxy_upstream = subparsers.add_parser(
+        "macos-runtime-guest-address-proxy-upstream",
+        help="publish VM IP evidence and print owner-backed proxy upstream",
+    )
+    runtime_proxy_upstream.add_argument("--vm-home", type=Path, required=True)
+    runtime_proxy_upstream.add_argument(
+        "--runtime-control-api-base-url",
+        default="http://127.0.0.1:18321",
+    )
+    runtime_proxy_upstream.add_argument(
+        "--runtime-control-api-token",
+        default="vitalserver-helper-dev",
+    )
+    runtime_proxy_upstream.add_argument(
+        "--runtime-control-api-token-header",
+        default="X-Runtime-Control-Token",
+    )
+    runtime_proxy_upstream.add_argument(
+        "--runtime-control-api-timeout",
+        type=float,
+        default=2.0,
+    )
+    runtime_proxy_upstream.set_defaults(
+        handler=lambda args: macos_runtime_usecases.print_guest_address_proxy_upstream(
+            usecase_inputs.RuntimeGuestAddressOwnerInput(
+                config=args.config,
+                vm_home=args.vm_home,
+                runtime_control_api_base_url=args.runtime_control_api_base_url,
+                runtime_control_api_token=args.runtime_control_api_token,
+                runtime_control_api_token_header=args.runtime_control_api_token_header,
+                runtime_control_api_timeout=args.runtime_control_api_timeout,
+            )
+        )
+    )
+
     runtime_wait_ip = subparsers.add_parser(
         "macos-runtime-wait-ip",
         help="wait until the guest VM IP file is available",

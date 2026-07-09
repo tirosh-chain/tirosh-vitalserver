@@ -121,7 +121,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
 
     func testPrepareUsesRequestedBackupAndBuildsContextFromExplicitObservations() throws {
         let requestedBackup = URL(fileURLWithPath: "/product/backups/backup-1")
-        let backupRootfs = requestedBackup.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let backupRootfs = requestedBackup.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
         var events: [String] = []
 
         let operations = operationsForPreflight(
@@ -144,7 +144,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
             },
             loadBackupManifest: { backup in
                 events.append("manifest:\(backup.path)")
-                return backupManifest(rootfsBase: RuntimeFileNames.rootfsBase)
+                return backupManifest(rootfsBase: RuntimePackageArtifactFileNames.rootfsBase)
             },
             observeBackupRootfs: { plan in
                 events.append("file:\(plan.backupRootfs?.path ?? "none")")
@@ -164,7 +164,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
 
         XCTAssertEqual(context.backup, requestedBackup)
         XCTAssertEqual(context.backupRootfs, backupRootfs)
-        XCTAssertEqual(context.backupVersion, requestedBackup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+        XCTAssertEqual(context.backupVersion, requestedBackup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion))
         XCTAssertTrue(context.restoresRootfsBase)
         XCTAssertEqual(context.restartPolicy, RuntimeServiceRestartPolicy(
             restartVM: true,
@@ -191,7 +191,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
             },
             loadBackupManifest: { _ in
                 XCTFail("missing backup directory should stop before manifest load")
-                return backupManifest(rootfsBase: RuntimeFileNames.rootfsBase)
+                return backupManifest(rootfsBase: RuntimePackageArtifactFileNames.rootfsBase)
             },
             observeBackupRootfs: { plan in
                 XCTFail("missing backup directory should stop before rootfs observation")
@@ -214,13 +214,13 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
 
     func testPrepareFailsBeforePolicyWhenBackupRootfsIsMissing() {
         let requestedBackup = URL(fileURLWithPath: "/product/backups/backup-1")
-        let missingRootfs = requestedBackup.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let missingRootfs = requestedBackup.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
         let operations = operationsForPreflight(
             resolveBackupSelection: { _ in requestedBackup },
             observeBackupDirectory: { backup in
                 RollbackRuntimeBackupDirectoryObservation(backup: backup, backupDirectoryState: .directory)
             },
-            loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimeFileNames.rootfsBase) },
+            loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimePackageArtifactFileNames.rootfsBase) },
             observeBackupRootfs: { plan in
                 RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsState: .missing)
             },
@@ -243,8 +243,8 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
         let backup = URL(fileURLWithPath: "/backups/before-1.2.3")
         let preflight = RollbackPreflightContext(
             backup: backup,
-            backupRootfs: backup.appendingPathComponent(RuntimeFileNames.rootfsBase),
-            backupVersion: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
+            backupRootfs: backup.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase),
+            backupVersion: backup.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion),
             restoresRootfsBase: true,
             restartPolicy: stoppedPolicy
         )
@@ -326,7 +326,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
             observeBackupDirectory: { backup in
                 RollbackRuntimeBackupDirectoryObservation(backup: backup, backupDirectoryState: .directory)
             },
-            loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimeFileNames.rootfsBase) },
+            loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimePackageArtifactFileNames.rootfsBase) },
             observeBackupRootfs: { plan in
                 RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsState: .file)
             },
@@ -380,7 +380,7 @@ private final class RollbackHarness {
                 backupDirectoryState: backupDirectoryExists ? .directory : .missing
             )
         },
-        loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimeFileNames.rootfsBase) },
+        loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimePackageArtifactFileNames.rootfsBase) },
         observeBackupRootfs: { [self] plan in
             RollbackRuntimeBackupRootfsObservation(
                 backupPlan: plan,

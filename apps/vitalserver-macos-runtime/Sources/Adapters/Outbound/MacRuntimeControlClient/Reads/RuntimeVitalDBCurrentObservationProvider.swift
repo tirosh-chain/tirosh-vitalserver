@@ -15,8 +15,6 @@ struct RuntimeVitalDBCurrentObservationProvider {
     }
 
     static func live(
-        paths _: RuntimePaths,
-        fileStore _: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore(),
         guestControlBaseURL: @escaping @Sendable () -> String? = {
             RuntimeControlClientConstants.Product.localGuestControlAPIBaseURL
         },

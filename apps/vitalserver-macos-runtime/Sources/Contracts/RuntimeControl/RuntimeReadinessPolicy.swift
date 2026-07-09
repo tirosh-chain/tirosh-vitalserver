@@ -3,7 +3,7 @@ import Errors
 
 public enum RuntimeReadinessPolicy {
     public static func isReady(_ status: RuntimeStatus) -> Bool {
-        status.runtimeInstalled
+        status.runtimeInstallationState?.isExecutable == true
             && serviceIsLoaded(status.vmServiceState)
             && serviceIsLoaded(status.proxyServiceState)
             && serviceIsLoaded(status.watchdogServiceState)

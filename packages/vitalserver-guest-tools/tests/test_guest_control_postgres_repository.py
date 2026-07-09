@@ -22,6 +22,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceStatusRead,
     OperationEvent,
     OperationState,
+    RedisRelayDependencyError,
     ServiceCommand,
     ServiceOperation,
     ServiceStatus,
@@ -65,6 +66,7 @@ def test_postgres_repository_runs_schema_migration(monkeypatch: Any) -> None:
     assert "CREATE TABLE IF NOT EXISTS service_operation_events" in commands[1]
     assert "CREATE TABLE IF NOT EXISTS service_status_snapshots" in commands[1]
     assert "CREATE TABLE IF NOT EXISTS guest_service_resources" in commands[1]
+    assert "CREATE TABLE IF NOT EXISTS redis_relay_status_snapshots" in commands[1]
     assert "UPDATE guest_service_resources" in commands[1]
     assert "UPDATE service_status_snapshots" in commands[1]
     assert "'\"not_reported\"'::jsonb" in commands[1]
@@ -294,6 +296,136 @@ def test_postgres_repository_rejects_invalid_guest_service_resource_document(
         PostgresOperationRepository().get_guest_service_resource("app")
 
     assert error.value.kind == "guestServiceResourceDocumentInvalid"
+
+
+def redis_relay_status_document() -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "observedAt": "2026-07-01T00:00:00Z",
+        "enabled": True,
+        "state": "running",
+        "scope": "vital_reconstruction",
+        "targetUrl": "redis://relay.example:6379/0",
+        "targetUsernameConfigured": True,
+        "targetPasswordConfigured": True,
+        "settingsFingerprint": "relay-settings",
+        "batches": 3,
+        "totals": {
+            "scanned": 10,
+            "copied": 8,
+            "published": 8,
+            "unchanged": 1,
+            "duplicates": 0,
+            "skipped": 1,
+            "denied": 0,
+            "missing": 0,
+            "errors": 0,
+        },
+        "lastBatch": None,
+        "lastSuccessAt": "2026-07-01T00:00:05Z",
+        "lastErrorAt": None,
+        "lastError": None,
+    }
+
+
+def test_postgres_repository_persists_and_reads_redis_relay_status(
+    monkeypatch: Any,
+) -> None:
+    saved_sql: list[str] = []
+    document = redis_relay_status_document()
+
+    def fake_compose(
+        arguments: list[str],
+        *,
+        check: bool = True,
+        timeout_seconds: float | None = None,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del check
+        del timeout_seconds
+        assert capture_output is True
+        saved_sql.append(arguments[-1])
+        if arguments[-1].startswith("SELECT"):
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                stdout=json.dumps(document, sort_keys=True),
+                stderr="",
+            )
+        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(compose_app, "compose", fake_compose)
+
+    repository = PostgresOperationRepository()
+    repository.save_status(document)
+    loaded = repository.status()
+
+    assert loaded == {
+        "readState": "loaded",
+        "document": document,
+        "readError": None,
+    }
+    assert "INSERT INTO redis_relay_status_snapshots" in saved_sql[0]
+    assert "ON CONFLICT (snapshot_id) DO UPDATE" in saved_sql[0]
+    assert "SELECT document::text FROM redis_relay_status_snapshots" in saved_sql[1]
+
+
+def test_postgres_repository_rejects_incomplete_redis_relay_status_document() -> None:
+    with pytest.raises(RedisRelayDependencyError) as error:
+        PostgresOperationRepository().save_status({"state": "running"})
+
+    assert error.value.kind == "redis-relay-contract-invalid"
+    assert "observedAt" in error.value.message
+
+    missing_nullable = redis_relay_status_document()
+    del missing_nullable["targetUrl"]
+    with pytest.raises(RedisRelayDependencyError) as nullable_error:
+        PostgresOperationRepository().save_status(missing_nullable)
+
+    assert nullable_error.value.kind == "redis-relay-contract-invalid"
+    assert "targetUrl" in nullable_error.value.message
+
+    missing_counter = redis_relay_status_document()
+    totals = missing_counter["totals"]
+    assert isinstance(totals, dict)
+    del totals["published"]
+    with pytest.raises(RedisRelayDependencyError) as counter_error:
+        PostgresOperationRepository().save_status(missing_counter)
+
+    assert counter_error.value.kind == "redis-relay-contract-invalid"
+    assert "totals.published" in counter_error.value.message
+
+
+def test_postgres_repository_rejects_incomplete_stored_redis_relay_status_document(
+    monkeypatch: Any,
+) -> None:
+    document = redis_relay_status_document()
+    del document["lastBatch"]
+
+    def fake_compose(
+        arguments: list[str],
+        *,
+        check: bool = True,
+        timeout_seconds: float | None = None,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del check
+        del timeout_seconds
+        assert capture_output is True
+        return subprocess.CompletedProcess(
+            arguments,
+            0,
+            stdout=json.dumps(document, sort_keys=True),
+            stderr="",
+        )
+
+    monkeypatch.setattr(compose_app, "compose", fake_compose)
+
+    with pytest.raises(RedisRelayDependencyError) as error:
+        PostgresOperationRepository().status()
+
+    assert error.value.kind == "redis-relay-contract-invalid"
+    assert "lastBatch" in error.value.message
 
 
 def test_postgres_repository_reports_psql_failure(monkeypatch: Any) -> None:

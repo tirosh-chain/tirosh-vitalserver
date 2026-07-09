@@ -7,7 +7,7 @@
 
 증상:
 
-update apply가 `activate-guest-update` 또는 `wait-runtime-health` 단계에서 실패하고 rollback으로 넘어갑니다. 이후 VM IP가 사라지거나 `runtime-state.json`이 갱신되지 않고, launchd log에 아래 메시지가 남습니다.
+update apply가 `activate-guest-update` 또는 `wait-runtime-health` 단계에서 실패하고 rollback으로 넘어갑니다. 이후 VM IP가 사라지거나 `runtime-observation.json`이 갱신되지 않고, launchd log에 아래 메시지가 남습니다.
 
 ```text
 EXT4-fs error (device vda1): ... iget: checksum invalid
@@ -67,7 +67,7 @@ launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
 
 guest가 filesystem flush/unmount를 완료하지 못하거나 initrd shutdown에서 특정 프로세스를 기다리며 poweroff를 끝내지 못하는 경우도 있습니다. 이때 host는 guest log marker를 근거로 disk-safe 상태를 추정하지 않습니다. VM process가 timeout 안에 종료되지 않으면 update를 실패로 남기고, disk와 Redis backup 보존 여부를 확인한 뒤 수동 복구 절차를 선택합니다.
 
-Guest runtime state는 `diskHealth` contract로 root filesystem read-only 여부와 kernel disk error line을 보고합니다. Host health는 fresh `runtime-state.json`에 포함된 이 명시적 contract만 사용해 `guest-filesystem-error`, `guest-filesystem-read-only`, `guest-disk-io`를 판단합니다. Update preflight는 이 오류들이 있으면 update를 진행하지 않고 VM disk repair를 요구해야 합니다.
+Guest runtime state는 `diskHealth` contract로 root filesystem read-only 여부와 kernel disk error line을 보고합니다. Host health는 fresh `runtime-observation.json`에 포함된 이 명시적 contract만 사용해 `guest-filesystem-error`, `guest-filesystem-read-only`, `guest-disk-io`를 판단합니다. Update preflight는 이 오류들이 있으면 update를 진행하지 않고 VM disk repair를 요구해야 합니다.
 
 이미 disk 오류가 발생한 설치본에서는 같은 update bundle을 반복 적용하지 않습니다. 먼저 Redis backup이 남아 있는지 확인하고, 가능한 경우 Redis backup을 보존한 뒤 VM disk 복구 또는 재설치를 진행합니다.
 

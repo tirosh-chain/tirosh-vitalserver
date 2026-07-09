@@ -23,10 +23,10 @@ UI는 상태를 보여주는 곳입니다. UI가 “값이 없으니 정상일 �
 
 | 상태      | 뜻                                           | 예시                                               |
 | --------- | -------------------------------------------- | -------------------------------------------------- |
-| `ok`      | 확인 대상이 명시적으로 정상으로 확인됨       | runtime status를 읽었고 service가 healthy로 보고됨 |
-| `missing` | 필요한 상태, 파일, field가 없음              | `runtime-status.json` 파일이 아직 생성되지 않음    |
-| `invalid` | 값이나 문서 모양이 약속과 맞지 않음          | JSON은 있지만 필수 field 타입이 맞지 않음          |
-| `failed`  | 읽기, 해석, 권한, 의존 service 호출이 실패함 | 파일 권한 문제로 status를 읽지 못함                |
+| `ok`      | 확인 대상이 명시적으로 정상으로 확인됨       | Guest Control service status가 healthy로 보고됨 |
+| `missing` | 필요한 상태, 파일, field가 없음              | Guest Control operation id가 없거나 required field가 없음 |
+| `invalid` | 값이나 문서 모양이 약속과 맞지 않음          | API payload는 있지만 필수 field 타입이 맞지 않음 |
+| `failed`  | 읽기, 해석, 권한, 의존 service 호출이 실패함 | Guest Control API나 Host owner read 호출이 실패함 |
 | `stale`   | 상태는 있지만 최신 상태로 보기 어려움        | 마지막 recorder activity가 기준 시간을 넘김        |
 | `empty`   | 정상적으로 읽었고 결과가 비어 있음           | recorder 목록을 정상적으로 읽었지만 항목이 없음    |
 
@@ -69,7 +69,7 @@ Host는 runtime/process/filesystem state를 소유하고, Guest는 Host가 제�
 
 ### 3-1. Host time
 
-Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-state, observability, compose service를 시작합니다.
+Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-observation, observability, compose service를 시작합니다.
 
 | 상태                       | 의미                                    |
 | -------------------------- | --------------------------------------- |

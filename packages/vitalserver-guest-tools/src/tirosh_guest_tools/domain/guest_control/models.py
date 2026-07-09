@@ -5,7 +5,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from tirosh_guest_tools.domain.runtime_state import ProbeError, RuntimeResourceUsage
+from tirosh_guest_tools.domain.runtime_observation import (
+    ProbeError,
+    RuntimeResourceUsage,
+)
 
 
 class ServiceCommand(StrEnum):
@@ -338,6 +341,108 @@ class RecorderIngressDependencyError(RuntimeError):
         super().__init__(message)
         self.message = message
         self.kind = kind
+
+
+class RedisRelayDependencyError(RuntimeError):
+    def __init__(self, message: str, *, kind: str) -> None:
+        super().__init__(message)
+        self.message = message
+        self.kind = kind
+
+
+class RedisRelayStatusContractError(ValueError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+REDIS_RELAY_REQUIRED_STRING_FIELDS = ("observedAt", "state", "scope")
+REDIS_RELAY_REQUIRED_BOOL_FIELDS = (
+    "enabled",
+    "targetUsernameConfigured",
+    "targetPasswordConfigured",
+)
+REDIS_RELAY_REQUIRED_INT_FIELDS = ("schemaVersion", "batches")
+REDIS_RELAY_REQUIRED_NULLABLE_STRING_FIELDS = (
+    "targetUrl",
+    "settingsFingerprint",
+    "lastSuccessAt",
+    "lastErrorAt",
+    "lastError",
+)
+REDIS_RELAY_BATCH_COUNTER_FIELDS = (
+    "scanned",
+    "copied",
+    "published",
+    "unchanged",
+    "duplicates",
+    "skipped",
+    "denied",
+    "missing",
+    "errors",
+)
+
+
+def validate_redis_relay_status_document(document: object) -> str:
+    if not isinstance(document, dict):
+        raise RedisRelayStatusContractError(
+            "Redis relay status document must be a JSON object.",
+        )
+    for field in REDIS_RELAY_REQUIRED_STRING_FIELDS:
+        value = document.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise RedisRelayStatusContractError(
+                f"Redis relay status document is missing {field}.",
+            )
+    for field in REDIS_RELAY_REQUIRED_BOOL_FIELDS:
+        value = document.get(field)
+        if type(value) is not bool:
+            raise RedisRelayStatusContractError(
+                f"Redis relay status document field {field} must be boolean.",
+            )
+    for field in REDIS_RELAY_REQUIRED_INT_FIELDS:
+        value = document.get(field)
+        if type(value) is not int:
+            raise RedisRelayStatusContractError(
+                f"Redis relay status document field {field} must be integer.",
+            )
+    for field in REDIS_RELAY_REQUIRED_NULLABLE_STRING_FIELDS:
+        if field not in document:
+            raise RedisRelayStatusContractError(
+                f"Redis relay status document is missing {field}.",
+            )
+        value = document[field]
+        if value is not None and not isinstance(value, str):
+            raise RedisRelayStatusContractError(
+                f"Redis relay status document field {field} must be string or null.",
+            )
+    totals = document.get("totals")
+    if not isinstance(totals, dict):
+        raise RedisRelayStatusContractError(
+            "Redis relay status document field totals must be an object.",
+        )
+    validate_redis_relay_batch(totals, field="totals")
+    if "lastBatch" not in document:
+        raise RedisRelayStatusContractError(
+            "Redis relay status document is missing lastBatch.",
+        )
+    last_batch = document["lastBatch"]
+    if last_batch is not None:
+        if not isinstance(last_batch, dict):
+            raise RedisRelayStatusContractError(
+                "Redis relay status document field lastBatch must be object or null.",
+            )
+        validate_redis_relay_batch(last_batch, field="lastBatch")
+    return document["observedAt"]
+
+
+def validate_redis_relay_batch(batch: dict[str, Any], *, field: str) -> None:
+    for counter in REDIS_RELAY_BATCH_COUNTER_FIELDS:
+        value = batch.get(counter)
+        if type(value) is not int:
+            raise RedisRelayStatusContractError(
+                f"Redis relay status document field {field}.{counter} must be integer.",
+            )
 
 
 class VitalDBReadModelDependencyError(RuntimeError):

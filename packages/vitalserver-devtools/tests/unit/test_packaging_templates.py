@@ -161,6 +161,23 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"'
         in proxy_run_text
     )
+    assert (
+        'runtime_control_api_base_url="${VITALSERVER_RUNTIME_CONTROL_API_BASE_URL:-http://127.0.0.1:18321}"'
+        in proxy_run_text
+    )
+    assert 'state_file="${vm_home}/data/run/runtime-observation.json"' not in proxy_run_text
+    assert "read_state_value()" not in proxy_run_text
+    assert "read_guest_http()" not in proxy_run_text
+    assert "waiting for VM runtime observation" not in proxy_run_text
+    assert "waiting for VM runtime bootstrap" not in proxy_run_text
+    assert "publish_guest_address_owner()" in proxy_run_text
+    assert "load_guest_address_owner()" in proxy_run_text
+    assert 'owner_address_state="loaded"' in proxy_run_text
+    assert '/host/runtime/guest-address' in proxy_run_text
+    assert (
+        '-H "${runtime_control_api_token_header}: ${runtime_control_api_token}"'
+        in proxy_run_text
+    )
     assert '"${runtime_logs}"' in proxy_run_text
     assert '"${nginx_prefix}/temp/client_body"' in proxy_run_text
     assert '"${nginx_prefix}/temp/proxy"' in proxy_run_text
@@ -316,10 +333,7 @@ def test_proxy_run_does_not_report_started_when_proxy_readiness_fails(
     state_dir.mkdir(parents=True)
     proxy_template.parent.mkdir(parents=True)
     fake_bin.mkdir()
-    (state_dir / "runtime-state.json").write_text(
-        '{"vmIP":"192.168.64.8","guestHTTP":"200"}',
-        encoding="utf-8",
-    )
+    (state_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
     proxy_template.write_text(
         """
 worker_processes 1;
@@ -363,6 +377,10 @@ echo "$!" > "${prefix}/logs/nginx.pid"
     fake_curl.write_text(
         """#!/usr/bin/env bash
 case "$*" in
+  */host/runtime/guest-address*)
+    printf '{"state":"loaded","read":{"state":"loaded","address":"192.168.64.8"}}'
+    exit 0
+    ;;
   *127.0.0.1*) exit 22 ;;
   *) exit 0 ;;
 esac
@@ -438,10 +456,7 @@ def test_proxy_run_requires_recorder_ingress_health_on_upstream(
     state_dir.mkdir(parents=True)
     proxy_template.parent.mkdir(parents=True)
     fake_bin.mkdir()
-    (state_dir / "runtime-state.json").write_text(
-        '{"vmIP":"192.168.64.8","guestHTTP":"200"}',
-        encoding="utf-8",
-    )
+    (state_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
     proxy_template.write_text(
         """
 worker_processes 1;
@@ -482,6 +497,10 @@ echo "$!" > "${prefix}/logs/nginx.pid"
     fake_curl.write_text(
         """#!/usr/bin/env bash
 case "$*" in
+  */host/runtime/guest-address*)
+    printf '{"state":"loaded","read":{"state":"loaded","address":"192.168.64.8"}}'
+    exit 0
+    ;;
   *192.168.64.8:80/recorder-ingress/health*) exit 22 ;;
   *) exit 0 ;;
 esac
@@ -530,6 +549,128 @@ esac
     stderr = stderr_path.read_text(encoding="utf-8")
     assert "started proxy:" not in stdout
     assert "waiting for VM upstream readiness: http://192.168.64.8:80/" in stderr
+
+
+def test_proxy_run_publishes_loaded_guest_address_and_routes_from_owner(
+    tmp_path: Path,
+) -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(
+        root / "config/vm-build.toml",
+        root,
+    )
+    packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"
+    proxy_run = tmp_path / "vitalserver-proxy-run"
+    render_packaging_executable(
+        settings,
+        packaging / "proxy-run.template",
+        proxy_run,
+    )
+
+    vm_home = tmp_path / "vm"
+    nginx_prefix = tmp_path / "nginx"
+    fake_bin = tmp_path / "bin"
+    state_dir = vm_home / "data/run"
+    proxy_template = vm_home / "Support/Proxy/vitalserver.conf.template"
+    capture_file = tmp_path / "curl-calls.txt"
+    state_dir.mkdir(parents=True)
+    proxy_template.parent.mkdir(parents=True)
+    fake_bin.mkdir()
+    (state_dir / "runtime-observation.json").write_text(
+        '{"vmIP":"192.168.64.9","guestHTTP":"503"}',
+        encoding="utf-8",
+    )
+    (state_dir / "vm-ip").write_text("192.168.64.9\n", encoding="utf-8")
+    proxy_template.write_text(
+        """
+worker_processes 1;
+pid logs/nginx.pid;
+events { worker_connections 64; }
+http { server { listen ${VITALSERVER_PROXY_PORT}; } }
+""",
+        encoding="utf-8",
+    )
+    fake_nginx = fake_bin / "nginx"
+    fake_nginx.write_text(
+        """#!/usr/bin/env bash
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_curl = fake_bin / "curl"
+    fake_curl.write_text(
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${CURL_CAPTURE_FILE}"
+case "$*" in
+  */host/runtime/guest-address*)
+    if [[ "$*" != *"-X PUT"* ]]; then
+      printf '{"state":"loaded","read":{"state":"loaded","address":"192.168.64.10"}}'
+    fi
+    ;;
+esac
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_nginx.chmod(0o755)
+    fake_curl.chmod(0o755)
+
+    stdout_path = tmp_path / "proxy-run.stdout"
+    stderr_path = tmp_path / "proxy-run.stderr"
+    with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
+        "w",
+        encoding="utf-8",
+    ) as stderr_file:
+        process = subprocess.Popen(
+            [str(proxy_run)],
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+            env={
+                **os.environ,
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "CURL_CAPTURE_FILE": str(capture_file),
+                "VITALSERVER_VM_HOME": str(vm_home),
+                "VITALSERVER_NGINX_PREFIX": str(nginx_prefix),
+                "VITALSERVER_NGINX_BIN": str(fake_nginx),
+                "VITALSERVER_PROXY_RELOAD_INTERVAL": "0.1",
+                "VITALSERVER_RUNTIME_CONTROL_API_BASE_URL": "http://127.0.0.1:18321",
+            },
+            start_new_session=True,
+        )
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            stdout = stdout_path.read_text(encoding="utf-8")
+            calls = (
+                capture_file.read_text(encoding="utf-8")
+                if capture_file.exists()
+                else ""
+            )
+            if (
+                "/host/runtime/guest-address" in calls
+                and "started proxy:" in stdout
+            ):
+                break
+            time.sleep(0.05)
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate(timeout=5)
+
+    calls = capture_file.read_text(encoding="utf-8")
+    stdout = stdout_path.read_text(encoding="utf-8")
+    stderr = stderr_path.read_text(encoding="utf-8")
+    assert "-X PUT" in calls
+    assert "X-Runtime-Control-Token: vitalserver-helper-dev" in calls
+    assert '{"address":"192.168.64.9"}' in calls
+    assert "http://127.0.0.1:18321/host/runtime/guest-address" in calls
+    assert "started proxy: http://localhost:" in stdout
+    assert "-> http://192.168.64.10:80" in stdout
+    assert "-> http://192.168.64.9:80" not in stdout
+    assert "waiting for VM runtime observation" not in stderr
+    assert "waiting for VM runtime bootstrap" not in stderr
 
 
 def assert_upload_proxy_streaming(config_text: str) -> None:

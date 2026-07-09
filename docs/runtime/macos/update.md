@@ -77,7 +77,9 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 | `POST /v1/maintenance/update-activation` | Host Updater | Guest Control API | `requestId`, `version`은 baseline 필수. result는 Guest operation document로 보존 |
 | `POST /v1/maintenance/update-shutdown` | host VM state control | Guest Control API | `requestId`, `version`은 baseline 필수. `poweroff-ready`는 Guest operation result로 보존 |
 | `POST /v1/maintenance/guest-poweroff` | host VM state control | Guest Control API | shutdown operation이 `poweroff-ready`인 뒤 별도 poweroff operation으로 실행 |
-| `runtime-status.json` | host Updater/Supervisor | Helper UI | operation/step/status는 enum 계약으로 유지 |
+| Host operation lease | host Updater/Supervisor | Helper UI/watchdog | active operation owner. `operation`, owner, heartbeat, expiry를 명시 |
+| `runtime-progress.json` | host Updater/Supervisor | diagnostics/export | workflow step/progress display artifact. operation/step/status는 enum 계약으로 유지하지만 Runtime Control current read model, active operation, health owner가 아님 |
+| `runtime-status.json` | host Updater/Supervisor | diagnostics/export | diagnostics/status projection. current runtimeState, active operation, progress owner가 아님 |
 | `runtime-version.json` | installer/Updater | Helper UI/Updater | 현재 installed component version 표시와 rollback 판단 기준 |
 
 현재 baseline에서 Host updater는 Guest Control API에 아래 형식의 body를 보냅니다.
@@ -220,7 +222,7 @@ update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 �
 | artifacts replaced | runtime progress step |
 | guest activation requested | Guest Control `POST /v1/maintenance/update-activation` accepted operation |
 | guest activation completed | Guest Control operation state `completed` |
-| health passed | `runtime-status.json` state `healthy` |
+| health passed | explicit runtime health owner reads report healthy; `runtime-status.json` may only mirror this as diagnostics projection |
 | update committed | `runtime-version.json` version 갱신 |
 
 재실행 시에는 아래를 지켜야 합니다.
@@ -434,7 +436,7 @@ VM Image Update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치
 | Vital files | configured vital files directory | 보존 |
 | VR release files | `vm/data/vr-release` | 보존 |
 | Redis data | guest Docker volume `redis-data` | 보존 |
-| runtime status | `status/runtime-status.json` | update/rollback 상태로 갱신 |
+| runtime status | `status/runtime-status.json` | diagnostics/status projection으로 갱신. current operation/health owner가 아님 |
 | install/update logs | `logs/`, `/private/tmp/tirosh-vitalserver-manager-command.log` | 보존 또는 rotation |
 | managed backups | `backups/<timestamp>-before-<version>` | 생성/보존 |
 | Helper app | `/Applications/VitalServer Helper.app` | 교체 |
@@ -479,7 +481,7 @@ Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합�
 | migrations | executable migration을 순서대로 실행 |
 | cloud-init refresh | `guest-deploy`가 바뀐 경우 새 instance-id로 seed를 갱신해 bootstrap 재실행을 유도 |
 | restart | 이전에 runtime이 running 상태였으면 VM/proxy/watchdog 재시작 |
-| guest activation | VM 내부에서 Docker image load, compose recreate, runtime-state 갱신 |
+| guest activation | VM 내부에서 Docker image load, compose recreate, Guest Control/Postgres read model 갱신 |
 | health wait | guest HTTP, host proxy, Redis UI, Swagger UI 등 runtime health 대기 |
 | rollback | health wait 실패 또는 migration 실패 시 backup 복원 시도 |
 
@@ -502,7 +504,7 @@ watchdog:
   read runtime health
   restart VM service
   restart proxy service
-  write runtime status
+  publish diagnostics/status projection
 ```
 
 따라서 update가 진행 중인 동안 watchdog이 auto-recovery를 실행하면 경쟁 상태가 생깁니다. 대표적인 실패 흐름은 아래입니다.
@@ -521,16 +523,16 @@ watchdog wakes up
 
 정책은 명확합니다.
 
-| runtime-status 상태 | operation | watchdog 동작 |
+| owner contract | 상태 | watchdog 동작 |
 |---|---|---|
-| `updating` | `apply-bundle` | auto-recovery skip |
-| `recovering` | `activate-guest-update` | auto-recovery skip |
-| `recovering` | `rollback` | auto-recovery skip |
-| `healthy` / `degraded` / `critical` | any | 일반 health/recovery 정책 적용 |
+| Host operation lease | active lease | auto-recovery suppress |
+| Host operation lease | missing/stale/failed read | 일반 health/recovery 정책 적용 또는 typed blocker 유지 |
+| `runtime-status.json` | any status projection | active operation lock으로 사용하지 않음 |
+| `runtime-progress.json` | any workflow progress | active operation lock이나 health/recovery state로 사용하지 않음 |
 
-skip은 영구 정지가 아닙니다. 상태 파일이 오래 방치된 경우를 대비해 grace timeout을 둡니다. 이 timeout이 지나면 watchdog은 stale update 상태로 보고 일반 recovery 정책으로 돌아갑니다.
+suppression은 영구 정지가 아닙니다. Lease가 없거나 stale이면 watchdog은 status/progress 문서에서 operation을 추론하지 않고 일반 recovery 정책으로 돌아갑니다.
 
-이 정책의 기준 파일은 `runtime-status.json`입니다. Helper UI와 watchdog은 같은 상태 문서를 읽어 update 중인지 판단합니다. update command는 단계별 progress를 이 파일에 기록해야 하며, watchdog은 이 진행 상태를 runtime lock처럼 사용합니다.
+`runtime-status.json`은 diagnostics/status projection artifact입니다. Workflow progress detail은 Runtime Control operation-state/API owner contract에서 읽고, `runtime-progress.json`은 diagnostics/export artifact로 남깁니다. Watchdog은 status/progress 문서에서 active operation ownership이나 health/recovery state를 재구성하지 않습니다.
 
 중요한 세부 기준:
 
@@ -586,7 +588,7 @@ host apply-bundle
       -> POST /v1/maintenance/update-activation
       -> VM 내부에서 image load
       -> docker compose recreate
-      -> runtime-state 갱신
+      -> Guest Control/Postgres read model 갱신
   -> host health wait
 ```
 
@@ -710,7 +712,7 @@ tail -f /private/tmp/tirosh-vitalserver-manager-command.log
 cat "/Library/Application Support/VitalServerHelper/status/runtime-status.json"
 tail -n 200 "/Library/Application Support/VitalServerHelper/vm/data/run/container-logs.log"
 tail -n 200 "/Library/Application Support/VitalServerHelper/vm/logs/proxy.err.log"
-cat "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-state.json"
+cat "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-observation.json"
 ```
 
 bundle 자체를 확인할 때:

@@ -5,12 +5,15 @@ from collections.abc import Callable
 from tirosh_guest_tools.application.guest_control.ports import (
     Clock,
     DatastoreRepairPort,
+    GuestServiceResourceRepository,
     OperationIdFactory,
     OperationRepository,
     ProductLabPort,
     RecorderIngressReadModelPort,
     RedisBackupPort,
+    RedisRelayReadModelPort,
     ServiceControlPort,
+    ServiceStatusSnapshotRepository,
     UpdateActivationPort,
     UpdateShutdownPort,
     VitalDBReadModelPort,
@@ -32,6 +35,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabUploadResult,
     RecorderIngressDependencyError,
     RedisBackupDependencyError,
+    RedisRelayDependencyError,
     RedisRestoreDependencyError,
     ServiceCommand,
     ServiceNotFoundError,
@@ -42,6 +46,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     UpdateShutdownDependencyError,
     UpdateShutdownResult,
     VitalDBReadModelDependencyError,
+    validate_redis_relay_status_document,
 )
 from tirosh_guest_tools.domain.guest_control.operation_policy import (
     accept_service_operation,
@@ -61,11 +66,14 @@ class GuestControlUseCases:
         *,
         service_control: ServiceControlPort,
         operations: OperationRepository,
+        service_status_snapshots: ServiceStatusSnapshotRepository | None = None,
+        guest_service_resources: GuestServiceResourceRepository | None = None,
         operation_ids: OperationIdFactory,
         clock: Clock,
         product_lab: ProductLabPort | None = None,
         vitaldb_read_model: VitalDBReadModelPort | None = None,
         recorder_ingress: RecorderIngressReadModelPort | None = None,
+        redis_relay: RedisRelayReadModelPort | None = None,
         redis_backup: RedisBackupPort | None = None,
         datastore_repair: DatastoreRepairPort | None = None,
         update_activation: UpdateActivationPort | None = None,
@@ -75,11 +83,22 @@ class GuestControlUseCases:
         self._product_lab = product_lab
         self._vitaldb_read_model = vitaldb_read_model
         self._recorder_ingress = recorder_ingress
+        self._redis_relay = redis_relay
         self._redis_backup = redis_backup
         self._datastore_repair = datastore_repair
         self._update_activation = update_activation
         self._update_shutdown = update_shutdown
         self._operations = operations
+        self._service_status_snapshots = (
+            service_status_snapshots
+            if service_status_snapshots is not None
+            else operations
+        )
+        self._guest_service_resources = (
+            guest_service_resources
+            if guest_service_resources is not None
+            else operations
+        )
         self._operation_ids = operation_ids
         self._clock = clock
 
@@ -145,6 +164,9 @@ class GuestControlUseCases:
         if self._recorder_ingress is not None:
             capabilities.append("recorder-ingress:status:get")
 
+        if self._redis_relay is not None:
+            capabilities.append("redis-relay:status:get")
+
         if self._vitaldb_read_model is not None:
             capabilities.extend(
                 [
@@ -200,7 +222,7 @@ class GuestControlUseCases:
 
     def get_service_status(self, service: str) -> ServiceStatus:
         status = self._service_control.get_service_status(service)
-        self._operations.save_service_status_snapshot(status)
+        self._service_status_snapshots.save_service_status_snapshot(status)
         return status
 
     def get_guest_service_resource(self, service: str) -> dict[str, object]:
@@ -212,9 +234,9 @@ class GuestControlUseCases:
         resource = self._load_guest_service_resource(service)
         status_read = self._read_guest_service_status(service)
         if status_read.service_status is not None:
-            self._operations.save_service_status_snapshot(status_read.service_status)
+            self._service_status_snapshots.save_service_status_snapshot(status_read.service_status)
         observed = self._guest_service_resource_with_status(resource, status_read)
-        self._operations.save_guest_service_resource(observed)
+        self._guest_service_resources.save_guest_service_resource(observed)
         return observed.as_json()
 
     def update_guest_service_spec(
@@ -244,13 +266,13 @@ class GuestControlUseCases:
             conditions=resource.conditions,
             last_operation_id=resource.last_operation_id,
         )
-        self._operations.save_guest_service_resource(resource)
+        self._guest_service_resources.save_guest_service_resource(resource)
         return resource.as_json()
 
     def get_stack_status(self) -> StackStatus:
         status = self._service_control.get_stack_status()
         for service_status in status.services:
-            self._operations.save_service_status_snapshot(service_status)
+            self._service_status_snapshots.save_service_status_snapshot(service_status)
             self._sync_guest_service_resource_status(service_status)
         return status
 
@@ -353,12 +375,12 @@ class GuestControlUseCases:
         if command == ServiceCommand.RECONCILE:
             stack_status = self._service_control.get_stack_status()
             for service_status in stack_status.services:
-                self._operations.save_service_status_snapshot(service_status)
+                self._service_status_snapshots.save_service_status_snapshot(service_status)
                 self._sync_guest_service_resource_status(service_status)
             return
 
         service_status = self._service_control.get_service_status(service)
-        self._operations.save_service_status_snapshot(service_status)
+        self._service_status_snapshots.save_service_status_snapshot(service_status)
         self._sync_guest_service_resource_status(service_status)
 
     def _save_guest_service_spec(
@@ -380,10 +402,10 @@ class GuestControlUseCases:
             conditions=previous.conditions,
             last_operation_id=previous.last_operation_id,
         )
-        self._operations.save_guest_service_resource(resource)
+        self._guest_service_resources.save_guest_service_resource(resource)
 
     def _load_guest_service_resource(self, service: str) -> GuestServiceResource:
-        resource = self._operations.get_guest_service_resource(service)
+        resource = self._guest_service_resources.get_guest_service_resource(service)
         if resource is not None:
             return resource
         return self._missing_guest_service_resource(service)
@@ -398,7 +420,7 @@ class GuestControlUseCases:
         )
         resource = self._load_guest_service_resource(service_status.service)
         resource = self._guest_service_resource_with_status(resource, status_read)
-        self._operations.save_guest_service_resource(resource)
+        self._guest_service_resources.save_guest_service_resource(resource)
         return resource
 
     def _missing_guest_service_resource(
@@ -486,7 +508,7 @@ class GuestControlUseCases:
         resource = self._load_guest_service_resource(service)
         status_read = self._read_guest_service_status(service)
         if status_read.service_status is not None:
-            self._operations.save_service_status_snapshot(status_read.service_status)
+            self._service_status_snapshots.save_service_status_snapshot(status_read.service_status)
 
         decision = reconcile_guest_service(
             spec=resource.spec,
@@ -501,7 +523,7 @@ class GuestControlUseCases:
             conditions=decision.conditions,
             last_operation_id=operation.operation_id,
         )
-        self._operations.save_guest_service_resource(resource)
+        self._guest_service_resources.save_guest_service_resource(resource)
 
         if decision.blocked:
             failed = fail_operation(
@@ -519,17 +541,23 @@ class GuestControlUseCases:
             self._execute_guest_service_effect(service, decision.effect)
             final_status = self._read_guest_service_status(service)
             if final_status.service_status is not None:
-                self._operations.save_service_status_snapshot(
+                self._service_status_snapshots.save_service_status_snapshot(
                     final_status.service_status
                 )
+            final_decision = reconcile_guest_service(
+                spec=resource.spec,
+                status=final_status,
+                requested_command=None,
+                now=self._clock.now(),
+            )
             final_resource = GuestServiceResource(
                 service=service,
                 spec=resource.spec,
                 status=final_status,
-                conditions=decision.conditions,
+                conditions=final_decision.conditions,
                 last_operation_id=operation.operation_id,
             )
-            self._operations.save_guest_service_resource(final_resource)
+            self._guest_service_resources.save_guest_service_resource(final_resource)
         except GuestControlDependencyError as error:
             failed = fail_operation(
                 running,
@@ -554,7 +582,7 @@ class GuestControlUseCases:
                 ],
                 last_operation_id=operation.operation_id,
             )
-            self._operations.save_guest_service_resource(failed_resource)
+            self._guest_service_resources.save_guest_service_resource(failed_resource)
             self._save_operation_transition(failed)
             return failed
 
@@ -866,6 +894,30 @@ class GuestControlUseCases:
             return self._recorder_ingress.status()
         except RecorderIngressDependencyError as error:
             return _recorder_ingress_failed_document(error)
+
+    def get_redis_relay_status(self) -> dict[str, object]:
+        if self._redis_relay is None:
+            return _redis_relay_unavailable_document(
+                "Redis relay status adapter is unavailable."
+            )
+
+        try:
+            return self._redis_relay.status()
+        except RedisRelayDependencyError as error:
+            return _redis_relay_failed_document(error)
+
+    def put_redis_relay_status(self, document: dict[str, object]) -> dict[str, object]:
+        validate_redis_relay_status_document(document)
+        if self._redis_relay is None:
+            return _redis_relay_unavailable_document(
+                "Redis relay status owner is unavailable."
+            )
+
+        try:
+            self._redis_relay.save_status(document)
+            return self._redis_relay.status()
+        except RedisRelayDependencyError as error:
+            return _redis_relay_failed_document(error)
 
     def create_redis_backup(self) -> ServiceOperation:
         operation = accept_service_operation(
@@ -1531,4 +1583,30 @@ def _recorder_ingress_read_state(kind: str) -> str:
         return "invalidResponse"
     if kind == "recorder-ingress-http-error":
         return "commandFailed"
+    return "readFailed"
+
+
+def _redis_relay_unavailable_document(message: str) -> dict[str, object]:
+    return {
+        "readState": "readFailed",
+        "document": None,
+        "readError": message,
+    }
+
+
+def _redis_relay_failed_document(
+    error: RedisRelayDependencyError,
+) -> dict[str, object]:
+    return {
+        "readState": _redis_relay_read_state(error.kind),
+        "document": None,
+        "readError": error.message,
+    }
+
+
+def _redis_relay_read_state(kind: str) -> str:
+    if kind == "redis-relay-contract-invalid":
+        return "invalidResponse"
+    if kind == "redis-relay-status-missing":
+        return "readFailed"
     return "readFailed"

@@ -40,15 +40,15 @@ struct RuntimeDataBackupComposition {
             expiresAt: expiresAt,
             message: "automatic VitalServer Helper backup"
         )
-        let leaseRepository = JSONFileRuntimeOperationLeaseRepository(url: lifecycle.installedPaths.runtimeOperationLease)
+        let leaseOwner = lifecycle.runtimeOperationLeaseOwner()
         do {
-            try leaseRepository.acquire(lease)
-        } catch RuntimeOperationLeaseRepositoryError.existingOperation(_, let operation) {
+            try leaseOwner.acquire(lease)
+        } catch RuntimeOperationLeaseOwnerError.existingOperation(_, let operation) {
             lifecycle.log("automatic backup skipped during active runtime operation operation=\(operation)")
             return "automatic backup skipped: active operation \(operation)"
         }
         defer {
-            try? leaseRepository.release(operationId: operationID)
+            try? leaseOwner.release(operationId: operationID)
         }
 
         let backup = try createBackup(reason: "automatic")
@@ -160,7 +160,7 @@ struct RuntimeDataBackupComposition {
             ),
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: Constants.Product.identifier,
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: lifecycle.backupTimestamp,
@@ -261,7 +261,7 @@ struct RuntimeDataBackupComposition {
     }
 
     private func validateManifest(_ backup: URL) throws {
-        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+        let manifestURL = backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)
         let manifestData = try lifecycle.fileStore.readData(manifestURL)
         let manifest = try JSONDecoder().decode(RuntimeDataBackupManifest.self, from: manifestData)
         switch RuntimeDataBackupPolicy.validateCompletedBackup(manifest, expectedProduct: Constants.Product.identifier) {

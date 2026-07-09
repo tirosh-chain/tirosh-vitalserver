@@ -7,7 +7,7 @@
 
 ## Symptom
 
-Fresh reinstall leaves the installed runtime unhealthy or Critical. Host health reports that `runtime-state.json` is missing and guest HTTP/host proxy are unavailable even though the VM launchd service is running.
+Fresh reinstall leaves the installed runtime unhealthy or Critical. Host health reports that `runtime-observation.json` is missing and guest HTTP/host proxy are unavailable even though the VM launchd service is running.
 
 Installed guest `bootstrap.log` contains:
 
@@ -15,7 +15,7 @@ Installed guest `bootstrap.log` contains:
 RuntimeError: command returned no output: lsblk -no PARTNUM /dev/nvme1n1p1
 ```
 
-The guest bootstrap result is failed before runtime services create `runtime-state.json`.
+The guest bootstrap result is failed before runtime services create `runtime-observation.json`.
 
 ## Cause
 
@@ -50,4 +50,4 @@ make dist/pkg/dev/runtime-smoke
 
 DMG dev runtime smoke is an internal phase of `dist/dmg/dev/verify`; it is not exposed as a separate public workflow target.
 
-The runtime smoke must fail explicitly when bootstrap result, runtime state, systemd units, Docker/Compose health, HTTP readiness, disk health, capabilities, or command dispatch contracts do not hold.
+The runtime smoke must fail explicitly when bootstrap result, runtime observation, systemd units, Docker/Compose health, HTTP readiness, disk health, capabilities, or command dispatch contracts do not hold.

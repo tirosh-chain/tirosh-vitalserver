@@ -12,7 +12,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         let repository = JSONLRuntimeEventRepository(
-            url: directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+            url: directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         )
 
         try repository.append(event(id: "event-1", status: .healthy))
@@ -28,7 +28,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
         defer {
             try? FileManager.default.removeItem(at: directory)
         }
-        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let url = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         let fileLock = RecordingRuntimeEventFileLock()
         let repository = JSONLRuntimeEventRepository(url: url, fileLock: fileLock)
 
@@ -44,7 +44,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
         defer {
             try? FileManager.default.removeItem(at: directory)
         }
-        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let url = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         let repository = JSONLRuntimeEventRepository(
             url: url,
             rotationMaxBytes: 1,
@@ -68,7 +68,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let url = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         let repository = JSONLRuntimeEventRepository(url: url)
         try repository.append(event(id: "event-1", status: .healthy))
         let handle = try FileHandle(forWritingTo: url)
@@ -97,7 +97,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let url = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         let repository = JSONLRuntimeEventRepository(url: url)
         try repository.append(event(id: "event-1", status: .healthy))
         let handle = try FileHandle(forWritingTo: url)
@@ -123,7 +123,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let url = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         let repository = JSONLRuntimeEventRepository(url: url)
 
@@ -145,7 +145,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let url = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         let repository = JSONLRuntimeEventRepository(url: url, rotationKeepCount: 2)
         try repository.append(event(id: "event-1", status: .healthy))
         try FileManager.default.createDirectory(at: URL(fileURLWithPath: "\(url.path).1"), withIntermediateDirectories: true)
@@ -167,7 +167,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
         defer {
             try? FileManager.default.removeItem(at: directory)
         }
-        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let url = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         let repository = JSONLRuntimeEventRepository(url: url)
 
@@ -185,7 +185,7 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
         defer {
             try? FileManager.default.removeItem(at: directory)
         }
-        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let url = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
         let firstRotated = URL(fileURLWithPath: "\(url.path).1")
         let repository = JSONLRuntimeEventRepository(
             url: url,

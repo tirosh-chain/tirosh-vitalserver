@@ -19,7 +19,7 @@ final class RuntimeEventDisplayPolicyTests: XCTestCase {
             message: "recorder ingress observed",
             runtimeVersion: "0.1.6",
             vmState: .stale,
-            vmErrors: [.runtimeStateStale],
+            vmErrors: [.guestFilesystemError],
             failureReasons: [],
             progress: nil
         )
@@ -33,7 +33,7 @@ final class RuntimeEventDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item.operation, "watchdog")
         XCTAssertEqual(
             item.detailText,
-            "VM state: Stale, VM errors: Guest runtime state stale"
+            "VM state: Stale, VM errors: Guest filesystem error"
         )
     }
 

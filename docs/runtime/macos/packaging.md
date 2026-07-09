@@ -77,14 +77,14 @@ Packaging workflow 이름은 각 단계가 보장하는 상태를 뜻합니다. 
 
 `compile passed`는 `installed runtime passed`와 다릅니다. DMG compile은 clean rootfs 기반 산출물 생성을 의미하고, 산출물 readback과 golden runtime smoke는 `verify`가 소유합니다. 설치 전 검증, 수동 QA 전달, release candidate 확인에는 `verify` target을 사용합니다. Runtime smoke failure는 fallback으로 보정하지 않고 failing stage, runId, manifest, bootstrap log, launcher log를 통해 실패 상태를 드러내야 합니다. `make dist/dmg/dev`는 빠른 packaging target이므로 installed runtime bootstrap, compose start, install-provision side effect를 실행하지 않습니다. 설치 후 동작 가능성을 확인해야 할 때는 `make dist/dmg/dev/verify`, `make dist/dmg/dev/all`, 또는 설치 후 `make dist/installed/health`를 사용합니다. DMG dev의 review, artifact verify, runtime smoke는 `internal/vm/dmg/dev/*` 조합 단계로 유지하지만 public target으로 노출하지 않습니다. 사용자는 cache packaging, clean compile, verify, full gate 중 하나를 선택합니다.
 
-Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. Devtools가 VM을 직접 시작하는 runtime-smoke 경로에서도 `data/deploy/host-time.json`을 써야 하며, Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-state, observability, compose service를 시작합니다. `host-time.json`이 missing/invalid이면 NTP나 현재 Guest clock으로 보정하지 않고 smoke failure로 처리합니다.
+Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. Devtools가 VM을 직접 시작하는 runtime-smoke 경로에서도 `data/deploy/host-time.json`을 써야 하며, Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-observation, observability, compose service를 시작합니다. `host-time.json`이 missing/invalid이면 NTP나 현재 Guest clock으로 보정하지 않고 smoke failure로 처리합니다.
 
 `runtime-boot-smoke-manifest.json`은 아래 stage를 모두 통과해야 합니다.
 
 | stage | 검증 의미 |
 |---|---|
 | `bootstrap-result` | guest bootstrap이 completed result를 기록 |
-| `runtime-state` | guest runtime-state contract가 생성되고 decode 가능 |
+| `runtime-observation` | guest runtime observation artifact가 생성되고 decode 가능 |
 | `systemd-units` | 필수 guest systemd units가 설치/활성화됨 |
 | `http` | guest HTTP와 host proxy path가 응답 |
 | `compose-services` | expected compose services가 running/healthy contract를 보고 |
@@ -239,15 +239,17 @@ launchd
 launchd
   -> ai.tirosh.vitalserver.helper.vm
       -> vitalserver-vm start
-      -> VM이 /mnt/tirosh/run/runtime-state.json 기록
+      -> VM이 /mnt/tirosh/run/runtime-observation.json 기록
 
 launchd
   -> ai.tirosh.vitalserver.helper.proxy
       -> vitalserver-proxy-run
-      -> runtime-state.json 대기
+      -> vm-ip bootstrap evidence를 Runtime Control Guest address owner에 publish
+      -> Runtime Control Guest address owner read
+      -> direct HTTP probes
       -> nginx config 렌더링
       -> nginx start/reload
-      -> VM IP 변경 감시
+      -> Guest address owner 변경 감시
 ```
 
 이 구조에서 운영자가 `VITALSERVER_PROXY_UPSTREAM`을 직접 설정할 필요는 없습니다.
@@ -282,7 +284,7 @@ make dist/dmg/release
 
 따라서 `postinstall`이나 Make target에 provisioning 정책을 다시 넣지 않습니다. `postinstall`은 설치 log를 연결한 뒤 `vitalserver-vm runtime install-provision`을 호출하는 wrapper로 유지합니다.
 
-`install-provision`은 package payload, VM disk/config, cloud-init seed, 권한, launchd service 시작 요청까지 담당합니다. runtime이 실제로 healthy인지 판단하는 일은 `postinstall`이 하지 않습니다. Helper app, watchdog, `vitalserver-vm runtime health`가 `runtime-status.json`과 guest-owned state를 읽어 별도 readiness로 보고합니다. 따라서 `.pkg` 성공은 "runtime service start가 요청됨"을 뜻하고, "VitalServer backend가 ready"를 뜻하지 않습니다. Provision 완료 status는 active operation이 아니어야 하며, watchdog이 이어서 Guest-owned state를 반영할 수 있어야 합니다.
+`install-provision`은 package payload, VM disk/config, cloud-init seed, 권한, launchd service 시작 요청까지 담당합니다. runtime이 실제로 healthy인지 판단하는 일은 `postinstall`이 하지 않습니다. Helper app과 Runtime Control API는 explicit Guest/Host read model을 표시하고, `runtime-status.json`은 diagnostics/status projection artifact로 남깁니다. watchdog은 launchd state, VM/bootstrap evidence, Host operation lease, Guest Control readiness, HTTP health를 읽어 recovery 여부를 판단합니다. 따라서 `.pkg` 성공은 "runtime service start가 요청됨"을 뜻하고, "VitalServer backend가 ready"를 뜻하지 않습니다. Provision 완료 status는 active operation이 아니어야 하며, watchdog이 이어서 Guest-owned state를 반영할 수 있어야 합니다.
 
 Guest compose에 선언된 service가 disabled 설정을 가질 수 있어도, compose bind mount source는 install-provision이 명시적으로 만들어야 합니다. Redis Relay는 기본 disabled 상태에서도 `redis-relay-config/redis-relay.toml`, `redis-relay-secrets`, `redis-relay-status`가 존재해야 guest compose start가 실패하지 않습니다. Disabled는 process 동작 여부이고, Host-owned config contract의 부재를 뜻하지 않습니다.
 
@@ -347,7 +349,7 @@ Install VitalServer Helper.pkg
       -> remove install settings JSON
 ```
 
-VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack 안의 edge nginx container를 구성한 뒤 `/mnt/tirosh/run/runtime-state.json`에 guest HTTP readiness를, `/mnt/tirosh/run/vm-ip`에 bootstrap Guest address를 기록합니다. proxy service의 `vitalserver-proxy-run`은 `vm-ip`와 readiness evidence를 기다렸다가 host nginx config를 렌더링하고 nginx를 시작 또는 reload합니다.
+VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack 안의 edge nginx container를 구성한 뒤 `/mnt/tirosh/run/runtime-observation.json`에 diagnostics snapshot을, `/mnt/tirosh/run/vm-ip`에 bootstrap Guest address evidence를 기록합니다. proxy service의 `vitalserver-proxy-run`은 loaded bootstrap address를 `PUT /host/runtime/guest-address`로 Runtime Control owner에 publish하고, host nginx routing address는 `GET /host/runtime/guest-address` owner read에서만 가져옵니다. Proxy readiness는 direct HTTP probes로 판단합니다. `runtime-observation.json.guestHTTP`는 proxy routing readiness gate가 아니고, `vm-ip`는 routing fallback이 아닙니다. `vm-ip` publish/read failure는 명시 로그와 typed Guest address read failure로 남아야 하며, `runtime-status.json`이나 `runtime-observation.json.vmIP` fallback state를 만들지 않습니다.
 
 설치 시 설정값은 MDM 또는 고급 설치 wrapper가 `installer` 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 쓸 수 있습니다. 이 파일은 partial JSON이며 `postinstall` 이후 삭제됩니다. 일반 사용자 설치는 기본값으로 진행하고, 설치 후 Helper app의 Settings에서 runtime 설정을 변경합니다.
 
@@ -415,11 +417,12 @@ make dist/troubleshooting/release
 | Docker image bundle | `make devtools/docker/images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
 | PKG/DMG staging | `vitalserver-devtools release-pkg` / `release-dmg` | Python build CLI, Swift, macOS packaging tools | release manifest, app source, rootfs base, nginx binary, Docker image list, templates | package root under `.tmp/vitalserver-vm-pkg/root`, `dist/*` |
 | install provisioning | PKG `postinstall` | `vitalserver-vm runtime install-provision` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services, degraded runtime status until health is observed |
-| runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Helper/watchdog-readable status |
+| runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | diagnostics/status projection |
+| runtime progress | RuntimeLifecycle | `runtime-progress.json` | install/update/rollback/restore workflow step result | diagnostics/export progress artifact; not Runtime Control current read model or health/recovery owner |
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
 | watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, VM/bootstrap evidence, Guest Control readiness, HTTP health | runtime status update, VM/proxy kickstart |
-| host proxy | launchd | `vitalserver-proxy-run` | `vm-ip` Guest address discovery, bootstrap readiness evidence, proxy template, nginx binary | rendered host nginx config, nginx process |
-| guest bootstrap | cloud-init | `bootstrap.sh`, Guest tools wheel | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime state marker |
+| host proxy | launchd | `vitalserver-proxy-run` | Runtime Control Guest address owner read, direct HTTP probes, `vm-ip` owner-publish evidence, proxy template, nginx binary | rendered host nginx config, nginx process |
+| guest bootstrap | cloud-init | `bootstrap.sh`, Guest tools wheel | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime observation marker |
 | update verification | operator/Helper | `vitalserver-vm runtime verify-bundle` | bundle tarball | manifest/checksum validation |
 | update apply | operator/Helper | `vitalserver-vm runtime apply-bundle` | verified bundle tarball | staged bundle, backup, artifact replacement, migrations, health check |
 
@@ -560,7 +563,8 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 | `/Library/LaunchDaemons` | VM/proxy 자동 실행 plist |
 | `/Library/Application Support/VitalServerHelper` | VM image, deploy bundle, nginx runtime |
 | `/Library/Application Support/VitalServerHelper/logs/install.log` | installer provisioning log, 10 MiB 기준 rotation |
-| `/Library/Application Support/VitalServerHelper/status/runtime-status.json` | Helper/watchdog용 runtime 상태 |
+| `/Library/Application Support/VitalServerHelper/status/runtime-status.json` | diagnostics/status projection |
+| `/Library/Application Support/VitalServerHelper/status/runtime-progress.json` | diagnostics/export workflow progress artifact; Helper/API current read model이나 health/recovery 입력 아님 |
 
 repo에서 개발 설치를 검증할 때는 설치 후 `make dist/installed/health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다. pkg만 전달받은 설치 환경에서는 Helper app Status 탭이나 설치된 `vitalserver-vm` CLI를 사용합니다.
 

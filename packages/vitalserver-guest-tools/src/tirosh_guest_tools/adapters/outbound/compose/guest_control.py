@@ -9,7 +9,9 @@ from pathlib import Path
 from tirosh_guest_tools.adapters.outbound.runtime import collector as runtime_collector
 from tirosh_guest_tools.adapters.outbound.runtime.probes import append_probe_error
 from tirosh_guest_tools.application import compose as compose_app
-from tirosh_guest_tools.application.runtime_state import write_current_state
+from tirosh_guest_tools.application.runtime_observation import (
+    write_runtime_observation_outputs,
+)
 from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.guest_control.models import (
@@ -19,7 +21,10 @@ from tirosh_guest_tools.domain.guest_control.models import (
     StackStatus,
 )
 from tirosh_guest_tools.domain.operations import ComposeAction
-from tirosh_guest_tools.domain.runtime_state import ProbeError, RuntimeResourceUsage
+from tirosh_guest_tools.domain.runtime_observation import (
+    ProbeError,
+    RuntimeResourceUsage,
+)
 from tirosh_guest_tools.infrastructure.common import systemctl
 
 DOCKER_INSPECT_TIMEOUT_SECONDS = 1
@@ -131,8 +136,8 @@ class ComposeGuestControlAdapter:
         try:
             compose_app.run_compose_action(ComposeAction.UP)
             systemctl("restart", RuntimeService.CONTAINER_LOGS.value, check=False)
-            systemctl("restart", RuntimeService.RUNTIME_STATE.value, check=False)
-            write_current_state()
+            systemctl("restart", RuntimeService.RUNTIME_OBSERVATION.value, check=False)
+            write_runtime_observation_outputs()
         except GuestDependencyError as error:
             raise GuestControlDependencyError(
                 error.message,
@@ -279,7 +284,9 @@ def resource_usage_from_docker_inspect(
 
 def memory_cgroup_path(pid: int) -> Path | None:
     try:
-        cgroup_lines = Path(f"/proc/{pid}/cgroup").read_text(encoding="utf-8").splitlines()
+        cgroup_lines = (
+            Path(f"/proc/{pid}/cgroup").read_text(encoding="utf-8").splitlines()
+        )
     except OSError:
         return None
     for line in cgroup_lines:

@@ -15,13 +15,35 @@ public actor MacRuntimeControlReadWorker {
     private let settingsReader: any RuntimeSettingsReading
 
     public init(releaseInfo: RuntimeReleaseInfo) {
-        let paths = RuntimePaths()
+        self.init(
+            releaseInfo: releaseInfo,
+            operationLeaseReader: UnavailableRuntimeOperationLeaseReader(
+                reason: "runtime operation lease owner unavailable for default read worker"
+            )
+        )
+    }
+
+    public init(
+        releaseInfo: RuntimeReleaseInfo,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        guestAddressProvider: any RuntimeGuestAddressProvider = UnavailableRuntimeGuestAddressProvider(
+            reason: "runtime Guest address owner unavailable for default read worker"
+        ),
+        vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading = UnavailableRuntimeVMLifecycleResourceReader(
+            reason: "runtime VM lifecycle owner unavailable for default read worker"
+        )
+    ) {
         let fileReader = SystemRuntimeHostFileReader()
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(paths: paths),
-            operationStateReader: SystemRuntimeOperationStateReader.live(paths: paths),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
+            statusReader: SystemRuntimeStatusReader(
+                guestAddressProvider: guestAddressProvider,
+                vmLifecycleResourceReader: vmLifecycleResourceReader
+            ),
+            operationStateReader: SystemRuntimeOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
             fileReader: fileReader,
             settingsReader: SystemRuntimeSettingsReader()
         )
@@ -30,8 +52,8 @@ public actor MacRuntimeControlReadWorker {
     init(
         releaseInfo: RuntimeReleaseInfo,
         statusReader: any RuntimeStatusReading,
-        operationStateReader: any RuntimeOperationStateReading = SystemRuntimeOperationStateReader.live(paths: RuntimePaths()),
-        observabilityReader: any RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimePaths()),
+        operationStateReader: any RuntimeOperationStateReading = SystemRuntimeOperationStateReader.live(),
+        observabilityReader: any RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
         fileReader: any RuntimeHostFileReading,
         settingsReader: any RuntimeSettingsReading
     ) {
@@ -55,8 +77,8 @@ public actor MacRuntimeControlReadWorker {
         await statusReader.loadHealthStatus(settings: settings)
     }
 
-    public func loadOperationState(status: RuntimeStatus) async -> RuntimeOperationState {
-        operationStateReader.loadOperationState(status: status)
+    public func loadOperationState() async -> RuntimeOperationState {
+        operationStateReader.loadOperationState()
     }
 
     public func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -118,45 +140,72 @@ public actor MacRuntimeControlReadWorker {
     }
 
     public func loadInstallInfo() -> RuntimeInstallInfo {
-        RuntimeInstallInfo(
+        let installed = InstalledRuntimePaths.defaultInstalled
+        return RuntimeInstallInfo(
             appBundlePath: Bundle.main.bundlePath,
             packageIdentifier: RuntimeControlClientConstants.Product.packageIdentifier,
-            runtimeHomePath: RuntimeControlClientConstants.Paths.vmHome,
-            backupsPath: RuntimeControlClientConstants.Paths.backups,
-            redisBackupsPath: RuntimeControlClientConstants.Paths.redisBackups,
-            runtimeDataBackupsPath: RuntimeControlClientConstants.Paths.runtimeDataBackups
+            runtimeHomePath: installed.runtimeHome.path,
+            backupsPath: installed.backupsDirectory.path,
+            redisBackupsPath: installed.redisBackupsDirectory.path,
+            runtimeDataBackupsPath: installed.vitalServerHelperBackupsDirectory.path
         )
     }
 }
 
 protocol RuntimeOperationStateReading: Sendable {
-    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState
+    func loadOperationState() -> RuntimeOperationState
 }
 
 struct SystemRuntimeOperationStateReader: RuntimeOperationStateReading, @unchecked Sendable {
-    private let operationLeaseRepository: any RuntimeOperationLeaseRepository
+    private let resourceReader: any RuntimeOperationStateResourceReading
     private let now: @Sendable () -> Date
 
     init(
-        operationLeaseRepository: any RuntimeOperationLeaseRepository,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        installStateReader: @escaping @Sendable () -> RuntimeInstallStateRead = {
+            RuntimeInstallStateRead.unavailable()
+        },
         now: @escaping @Sendable () -> Date = Date.init
     ) {
-        self.operationLeaseRepository = operationLeaseRepository
+        self.init(
+            resourceReader: HostRuntimeOperationStateResourceReader(
+                operationLeaseReader: operationLeaseReader,
+                installStateReader: installStateReader
+            ),
+            now: now
+        )
+    }
+
+    init(
+        resourceReader: any RuntimeOperationStateResourceReading,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.resourceReader = resourceReader
         self.now = now
     }
 
-    static func live(paths: RuntimePaths) -> Self {
-        Self(operationLeaseRepository: JSONFileRuntimeOperationLeaseRepository(
-            url: URL(fileURLWithPath: paths.runtimeOperationLease)
-        ))
+    static func live() -> Self {
+        Self.live(
+            operationLeaseReader: UnavailableRuntimeOperationLeaseReader(
+                reason: "runtime operation lease owner unavailable for default operation-state reader"
+            )
+        )
     }
 
-    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+    static func live(
+        operationLeaseReader: any RuntimeOperationLeaseReading
+    ) -> Self {
+        return Self(
+            resourceReader: HostRuntimeOperationStateResourceReader.live(operationLeaseReader: operationLeaseReader)
+        )
+    }
+
+    func loadOperationState() -> RuntimeOperationState {
+        let snapshot = resourceReader.loadResourceSnapshot()
         return RuntimeOperationState(
             activeOperation: nil,
-            runtimeStatusUpdatedAt: status.updatedAt,
-            install: RuntimeInstallOperationState.fromRuntimeStatusInstallRead(status),
-            lease: leaseState(from: operationLeaseRepository.loadResult(), now: now())
+            install: RuntimeInstallOperationState.fromInstallStateRead(snapshot.install),
+            lease: leaseState(from: snapshot.lease, now: now())
         )
     }
 

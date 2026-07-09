@@ -19,7 +19,7 @@ stopTimeoutSeconds = 120
 
 [intervals]
 commandPollSeconds = 3
-runtimeStateSeconds = 5
+runtimeObservationSeconds = 5
 observabilitySeconds = 10
 
 [containerLogs]

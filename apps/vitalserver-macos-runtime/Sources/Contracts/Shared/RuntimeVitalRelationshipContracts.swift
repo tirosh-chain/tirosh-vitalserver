@@ -143,15 +143,11 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        assignments = try container.decodeIfPresent([RuntimeVitalBedAssignmentRecord].self, forKey: .assignments) ?? []
-        events = try container.decodeIfPresent([RuntimeVitalRelationshipEventRecord].self, forKey: .events) ?? []
-        readError = try container.decodeIfPresent(String.self, forKey: .readError)
-        state = try container.decodeIfPresent(RuntimeVitalRelationshipHistoryState.self, forKey: .state)
-            ?? Self.defaultState(
-                assignments: assignments,
-                events: events,
-                readError: readError
-            )
+        state = try container.decode(RuntimeVitalRelationshipHistoryState.self, forKey: .state)
+        assignments = try container.decode([RuntimeVitalBedAssignmentRecord].self, forKey: .assignments)
+        events = try container.decode([RuntimeVitalRelationshipEventRecord].self, forKey: .events)
+        readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        try Self.validateDecoded(state: state, readError: readError)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -175,5 +171,62 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
             return .loaded
         }
         return assignments.isEmpty && events.isEmpty ? .readFailed : .partiallyLoaded
+    }
+
+    private static func validateDecoded(
+        state: RuntimeVitalRelationshipHistoryState,
+        readError: String?
+    ) throws {
+        switch state {
+        case .partiallyLoaded:
+            if readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "partially loaded VitalDB relationship history must include readError"
+                    )
+                )
+            }
+        case .readFailed:
+            if readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "failed VitalDB relationship history must include readError"
+                    )
+                )
+            }
+        case .loaded:
+            break
+        }
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeRequiredNullable<T: Decodable>(
+        _ type: T.Type,
+        forKey key: Key
+    ) throws -> T? {
+        guard contains(key) else {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: codingPath + [key],
+                    debugDescription: "Missing required nullable field '\(key.stringValue)'"
+                )
+            )
+        }
+        return try decodeIfPresent(type, forKey: key)
+    }
+}
+
+private extension Optional where Wrapped == String {
+    var isBlankOrMissing: Bool {
+        switch self {
+        case .none:
+            return true
+        case let .some(value):
+            return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 }

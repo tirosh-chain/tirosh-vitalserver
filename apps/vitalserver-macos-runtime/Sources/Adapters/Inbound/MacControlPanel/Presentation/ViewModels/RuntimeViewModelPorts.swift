@@ -6,11 +6,12 @@ import Errors
 public protocol RuntimeViewModelSnapshotReading: Sendable {
     func loadSettings() async -> RuntimeSettings
     func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus
-    func loadOperationState(status: RuntimeStatus) async -> RuntimeOperationState
+    func loadOperationState() async -> RuntimeOperationState
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadRuntimeEvents(query: RuntimeEventQuery) async -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() async -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() async -> RuntimeVitalRecorderHistory
+    func loadVitalDBBeds() async -> RuntimeVitalBedHistory
     func loadVitalDBRecorderSummaries() async -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() async -> RuntimeVitalRelationshipHistory
@@ -22,6 +23,10 @@ public protocol RuntimeViewModelSnapshotReading: Sendable {
 public extension RuntimeViewModelSnapshotReading {
     func loadVitalDBRecorderSummaries() async -> RuntimeVitalRecorderHistory {
         await loadVitalDBRecorders()
+    }
+
+    func loadVitalDBBeds() async -> RuntimeVitalBedHistory {
+        .failed(readError: "vitaldb-beds reader is unavailable")
     }
 }
 

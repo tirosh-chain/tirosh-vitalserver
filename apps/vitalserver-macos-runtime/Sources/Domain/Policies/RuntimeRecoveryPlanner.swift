@@ -15,6 +15,7 @@ public struct RuntimeRecoveryInput: Equatable {
     public let hostProxyReadinessHTTP: String
     public let hostProxyLivenessHTTP: String
     public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
+    public let guestServiceResources: [RuntimeGuestServiceResource]
 
     public init(
         vmExecutable: RuntimeFileState,
@@ -29,7 +30,8 @@ public struct RuntimeRecoveryInput: Equatable {
         guestHTTP: String,
         hostProxyReadinessHTTP: String,
         hostProxyLivenessHTTP: String,
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
+        guestServiceResources: [RuntimeGuestServiceResource] = []
     ) {
         self.vmExecutable = vmExecutable
         self.proxyExecutable = proxyExecutable
@@ -44,6 +46,7 @@ public struct RuntimeRecoveryInput: Equatable {
         self.hostProxyReadinessHTTP = hostProxyReadinessHTTP
         self.hostProxyLivenessHTTP = hostProxyLivenessHTTP
         self.guestServiceStatuses = guestServiceStatuses
+        self.guestServiceResources = guestServiceResources
     }
 }
 
@@ -142,7 +145,8 @@ public enum RuntimeRecoveryPlanner {
 
         let waitingForGuest = input.vmLifecycle?.isWaitingForGuest(at: input.now) ?? false
         let guestServiceFailureRequiresReconcile = RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
-            guestServiceStatuses: input.guestServiceStatuses
+            guestServiceStatuses: input.guestServiceStatuses,
+            guestServiceResources: input.guestServiceResources
         )
 
         let guestStackReconcileReasons = guestStackReconcileReasons(
@@ -225,7 +229,8 @@ public enum RuntimeRecoveryPlanner {
         let hostProxyLivenessHTTP = classifyHTTPStatus(input.hostProxyLivenessHTTP)
         let waitingForGuest = input.vmLifecycle?.isWaitingForGuest(at: input.now) ?? false
         let guestServiceFailureRequiresReconcile = RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
-            guestServiceStatuses: input.guestServiceStatuses
+            guestServiceStatuses: input.guestServiceStatuses,
+            guestServiceResources: input.guestServiceResources
         )
         let guestStackReconcileReasons = guestStackReconcileReasons(
             input: input,

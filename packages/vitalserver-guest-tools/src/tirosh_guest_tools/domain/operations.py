@@ -8,7 +8,7 @@ class ComposeAction(StrEnum):
     STOP = "stop"
 
 
-class RuntimeStateAction(StrEnum):
+class RuntimeObservationAction(StrEnum):
     WATCH = "watch"
     ONCE = "once"
 

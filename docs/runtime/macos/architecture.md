@@ -189,7 +189,7 @@ As-is의 계층 간 통신은 아래처럼 섞여 있습니다.
 | Helper UI -> local/remote runtime control | `RuntimeControlClient` protocol 호출 | 좋은 경계. PWA/API에서도 유지할 usecase contract |
 | Helper UI -> local host affordance | `RuntimeHostClient` protocol 호출 | update bundle file 선택, local log export, backup file operation처럼 browser/API 전환 때 재설계할 local-only 경계 |
 | `MacHostRuntimeClient` -> host runtime | CLI command, host file read, privileged process | 전환기 adapter 책임 |
-| Host runtime -> Helper UI | `runtime-status.json`, logs, backup metadata file read | API server가 생기면 endpoint/read model로 감쌀 대상 |
+| Host runtime -> Helper UI | Runtime Control read model/API, logs, backup metadata file read | `runtime-status.json`은 diagnostics/status projection artifact이며 current runtimeState/failureReasons, active operation, progress, service liveness, HTTP probe, VM IP, VM lifecycle, proxy port, runtime version, latest backup owner가 아님 |
 | Host runtime <-> Guest VM | shared directory JSON, logs, deploy files | 최종 구조에서도 유지할 VM/process boundary |
 
 ### 3-3. To-be
@@ -438,7 +438,7 @@ VitalServerHelper.pkg
 | macOS 재부팅 후 자동 기동 | VM/proxy LaunchDaemon `RunAtLoad`, start-on-boot policy |
 | VM launcher 비정상 종료 복구 | VM LaunchDaemon `KeepAlive`, detached VM process, watchdog recovery |
 | host nginx proxy 비정상 종료 복구 | proxy LaunchDaemon `KeepAlive`, `vitalserver-proxy-run` loop, watchdog recovery |
-| VM IP 변경 대응 | `vitalserver-proxy-run`이 Guest `vm-ip` bootstrap file과 `runtime-state.json.guestHTTP` readiness evidence를 읽고 nginx config reload |
+| VM IP 변경 대응 | `vitalserver-proxy-run`이 Guest `vm-ip` bootstrap file을 Runtime Control address owner에 publish하고 direct HTTP probes로 nginx config reload |
 | guest service 복구 | guest systemd unit, Docker, nginx, Compose restart policy |
 | 설치/업데이트 실패 진단 | 고정 log path, runtime status/health command |
 | update 실패 복구 | apply 전 backup, health check 실패 시 rollback |
@@ -482,29 +482,23 @@ Single-node self-healing runtime
 2. watchdog LaunchDaemon은 `vitalserver-vm runtime watchdog`을 주기 실행한다.
 3. watchdog은 VM/proxy/HTTP health를 기준으로 recovery action을 고른다. Guest product service 문제는 Guest stack reconcile을 먼저 요청하고, VM/IP boundary 문제만 VM/proxy restart로 승격한다.
 4. guest 내부 Docker Compose stack은 `tirosh-vitalserver-compose.service`로 재부팅 후 재적용된다.
-5. Helper app은 `/Library/Application Support/VitalServerHelper/status/runtime-status.json`을 읽어 정상/복구중/장애/업데이트중 상태를 표시한다.
+5. Helper app은 Runtime Control read model/API를 통해 정상/복구중/장애/업데이트중 상태를 표시한다. Current runtimeState/failureReasons는 explicit current owner reads에서 조립하고, active operation은 RuntimeOperationState, workflow progress detail은 explicit operation-state/API owner contract, Host service liveness는 live launchd read, HTTP 상태는 explicit probe read, VM IP 표시는 loaded Guest address provider result, VM state/errors는 VM lifecycle read, proxy port는 proxy launch daemon/config read의 display/probe input, runtime version은 runtime version store, latest backup은 managed backup directory read가 owner이며 `runtime-status.json` 값으로 덮어쓰지 않는다. Progress artifact, `vm-ip` compatibility file, proxy config/plist의 부재/읽기 실패는 current health issue를 만들지 않는다.
 6. install/update는 free-space preflight를 수행하고, installer/runtime log는 size 기반 rotation을 수행한다.
 7. guest bootstrap은 bundled image load 후 Docker dangling image cleanup을 수행한다.
 
 ### 5-3. Runtime Status 계약
 
-운영 상태의 source of truth는 아래 JSON 파일입니다.
+Host health/status projection 문서는 아래 JSON 파일입니다.
 
 ```text
 /Library/Application Support/VitalServerHelper/status/runtime-status.json
 ```
 
-이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Helper app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
+이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 diagnostics/status projection으로 갱신합니다. Runtime Control current read model은 이 문서를 읽지 않고, 이 문서의 status/failure projection이나 read/decode failure를 current 상태 owner로 소비하지 않습니다. Current runtimeState/failureReasons는 explicit current owner reads에서 조립하고, active operation은 RuntimeOperationState의 Host operation lease owner, workflow progress detail은 explicit operation-state/API owner contract, VM/proxy/watchdog service liveness는 live host service read, current HTTP 상태는 explicit probe read, VM IP 표시는 loaded Guest address provider result, VM state/errors는 VM lifecycle read를 별도 owner contract로 소비합니다. `runtime-progress.json`, install-state document, `vm-ip` compatibility file, proxy config/plist의 부재/읽기 실패는 current health issue가 아닙니다. Installed CLI `runtime status`도 status file은 diagnostics presence로만 표시하고, status/VM IP는 health snapshot과 explicit owner read에서 온 current status input을 표시합니다.
 
-`runtime-status.json`은 update/watchdog coordination에도 사용합니다. update와 rollback은 VM/proxy/watchdog launchd service를 직접 stop/start하므로, 이 구간에서 watchdog auto-recovery가 동시에 실행되면 같은 자원을 두 process가 재시작하는 경쟁 상태가 됩니다. 따라서 watchdog은 상태 문서가 아래 operation을 진행 중이라고 판단하면 recovery를 건너뜁니다.
+Update/watchdog coordination은 `runtime-status.json`을 active lock처럼 읽지 않습니다. update와 rollback은 VM/proxy/watchdog launchd service를 직접 stop/start하므로, 이 구간에서 watchdog auto-recovery가 동시에 실행되면 같은 자원을 두 process가 재시작하는 경쟁 상태가 됩니다. 이 guard의 권한 있는 입력은 Host operation lease입니다. Status diagnostics, progress artifact, bootstrap proof file은 operation ownership을 제공할 수 없고, stale file state에서 active operation ownership이나 health/recovery state를 재구성하면 안 됩니다.
 
-| status | operation | 의미 |
-|---|---|---|
-| `updating` | `apply-bundle` | host artifact 교체, migration, service restart 진행 중 |
-| `recovering` | `activate-guest-update` | guest Docker image load/compose recreate 진행 중 |
-| `recovering` | `rollback` | managed backup 복원 진행 중 |
-
-이 guard는 stale 상태를 영구적으로 믿지 않습니다. 상태 파일의 `updatedAt`이 grace timeout보다 오래되면 watchdog은 update process가 더 이상 살아 있지 않은 것으로 보고 일반 recovery로 돌아갑니다.
+Watchdog은 active lease가 있을 때만 active-operation recovery를 suppress합니다. Lease가 없거나 stale이면 status/progress/bootstrap 문서로 operation을 추론하지 않고 일반 health/recovery 정책으로 돌아갑니다.
 
 상태 값은 아래로 제한합니다.
 
@@ -715,11 +709,11 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 | 방향 | 방식 | 입력 | 출력 |
 |---|---|---|---|
 | `MacRuntimeControlApp -> Local control` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
-| `Local control -> MacRuntimeControlApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
+| `Local control -> MacRuntimeControlApp` | Runtime Control read model/API and host diagnostics reads | explicit owner reads, operation-state/API owner contract, status/progress diagnostics artifacts, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
 | `Local control -> Guest VM` | Guest Control API | service, stack, Lab, update, repair, Redis maintenance requests | Guest operation id, operation state, typed failure |
 | `Local control -> Guest VM` | shared directory file contract | `runtime-config.json`, cloud-init/bootstrap files, deploy bundle files | bootstrap/discovery input |
 | `Guest VM -> Local control` | Guest Control API | service status, stack status, Lab/read-model reads, operation reads | product state, maintenance completion, typed unavailable/error state |
-| `Guest VM -> Local control` | shared directory file contract | `runtime-state.json`, bootstrap evidence, guest logs | VM/proxy discovery and diagnostics evidence |
+| `Guest VM -> Local control` | shared directory file contract | `runtime-observation.json`, bootstrap evidence, guest logs | VM/proxy discovery and diagnostics evidence |
 
 이 구조에서 파일 기반 계약은 모든 계층에 쓰는 범용 통신 방식이 아닙니다. Swift module 사이에서는 `public` API와 protocol을 import해서 호출하고, Host와 Guest 사이의 product/service/update/repair operation은 Guest Control API를 사용합니다. shared directory 파일은 bootstrap 초기에 HTTP service가 아직 없을 때 필요한 설정, 발견, 배포 bundle, 진단 증거로 제한합니다.
 
@@ -744,7 +738,7 @@ Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 | `RuntimeControl` | UI/usecase 관점의 typed client/read model/result 계약 | `RuntimeControlClient`, `RuntimeHostClient`, `RuntimeCommandResult`, `RuntimeLogSource` |
 | `RuntimeControlAPI` | HTTP transport 관점의 route/DTO/router/local server 계약 | `/runtime/status`, `/runtime/settings`, `/host/update-bundles/verify`, `RuntimeControlAPIRouter`, `RuntimeControlLocalHTTPServer`, `RuntimeControlFileReference` |
 | `Core` | host OS나 SwiftUI를 모르는 compatibility shim | 기존 `Core` import 경로 호환 |
-| `HostInfrastructure` | 특정 product workflow보다 일반적인 host filesystem/shared-directory 구현 | `SystemRuntimeFileStore`, `JSONFileRuntimeStatusRepository` |
+| `HostInfrastructure` | 특정 product workflow보다 일반적인 host filesystem/shared-directory 구현 | `SystemRuntimeFileStore`, `JSONFileRuntimeStatusArtifactSink` |
 | `MacHost*` | macOS host에서만 의미가 있는 local adapter 구현 | `MacHostRuntimeClient`, `MacHostRuntimeLogCollector`, `MacHostRuntimeLogExporter` |
 | `MacRuntimeControlApp` | macOS SwiftUI transition app, composition, native shell, presentation | `MacRuntimeControlApplication`, `RuntimeViewModel`, `RuntimeNativeShell` |
 | `System*` | Foundation/FileManager/Process 같은 system API를 감싼 일반 구현. macOS UI나 launchd 정책을 뜻하지 않음 | `SystemRuntimeFileStore`, `SystemRuntimeCommandRunner` |

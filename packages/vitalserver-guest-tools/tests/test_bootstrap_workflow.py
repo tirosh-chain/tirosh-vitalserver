@@ -131,7 +131,9 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         missing_runtime_packages=lambda: [],
         install_runtime_files=lambda _: events.append("install-runtime-files"),
         prepare_runtime_data=lambda: events.append("prepare-runtime-data"),
-        write_initial_runtime_state=lambda: events.append("write-runtime-state"),
+        write_initial_runtime_observation=lambda: events.append(
+            "write-runtime-observation"
+        ),
         start_docker=lambda: events.append("start-docker"),
         start_avahi=lambda: events.append("start-avahi"),
         start_guest_background_services=lambda: events.append(
@@ -149,9 +151,13 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         probe_edge_readiness=lambda _url, _timeout: EdgeReadinessProbeResult(
             status_code=200
         ),
-        write_runtime_state_once=lambda: events.append("write-runtime-state"),
+        write_runtime_observation_once=lambda: events.append(
+            "write-runtime-observation"
+        ),
         write_edge_diagnostics=lambda: events.append("write-edge-diagnostics"),
-        restart_runtime_state=lambda: events.append("restart-runtime-state"),
+        restart_runtime_observation=lambda: events.append(
+            "restart-runtime-observation"
+        ),
         runtime_boot_smoke_enabled=lambda _: False,
         run_runtime_boot_smoke=lambda: events.append("run-runtime-boot-smoke"),
     )

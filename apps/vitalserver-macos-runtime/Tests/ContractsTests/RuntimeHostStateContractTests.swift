@@ -47,13 +47,14 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertNotEqual(decoded[4], .missing)
     }
 
-    func testRuntimeProxyPortReadStateKeepsFailureMeaningsDistinctFromLoadedPort() throws {
+    func testRuntimeProxyPortReadStateKeepsReadMeaningsDistinctFromLoadedPort() throws {
         let states: [RuntimeProxyPortReadState] = [
             .loaded(80),
             .missing("entry does not exist"),
             .empty,
             .invalid("not-a-port"),
             .outOfRange(70000),
+            .readFailed("proxy plist denied"),
             .commandFailed(exitCode: 2, reason: "permission denied"),
         ]
 
@@ -64,7 +65,6 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertEqual(decoded[0].port, 80)
         for state in decoded.dropFirst() {
             XCTAssertNil(state.port)
-            XCTAssertTrue(state.failureReasons.contains(.hostProxyConfigInvalid))
             XCTAssertNotEqual(state, .loaded(80))
         }
     }

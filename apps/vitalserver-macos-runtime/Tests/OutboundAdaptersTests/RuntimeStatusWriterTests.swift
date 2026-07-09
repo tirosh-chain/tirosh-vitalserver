@@ -7,17 +7,18 @@ import Errors
 
 final class RuntimeStatusWriterTests: XCTestCase {
     func testWriteStatusReturnsSnapshotWhileStatusDocumentOmitsVitalDBObservation() throws {
-        let repository = RuntimeStatusWriterRepositorySpy()
+        let sink = RuntimeStatusWriterArtifactSinkSpy()
         let observation = vitalDBObservation()
         let snapshot = healthSnapshot(vitalDBObservation: observation)
         let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
         let reporter = RuntimeStatusReporter(
-            repository: repository,
+            statusArtifactSink: sink,
+            progressArtifactSink: RuntimeStatusWriterProgressArtifactSinkSpy(),
             productIdentifier: "VitalServerHelper",
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm"),
             makeStatusDocument: statusDocumentUseCase.build,
-            makeProgressDocument: statusDocumentUseCase.progressUpdate
+            makeProgressDocument: statusDocumentUseCase.progressDocument
         )
         let writer = RuntimeStatusWriter(
             reporter: reporter,
@@ -27,25 +28,22 @@ final class RuntimeStatusWriterTests: XCTestCase {
             latestBackup: { nil }
         )
 
-        let returnedSnapshot = try writer.writeStatus(
-            .healthy,
-            operation: .health,
-            message: "runtime health check passed"
-        )
+        let returnedSnapshot = try writer.writeStatus(.healthy)
 
         XCTAssertEqual(returnedSnapshot, snapshot)
-        XCTAssertEqual(repository.saved?.status, .healthy)
+        XCTAssertEqual(sink.saved?.status, .healthy)
     }
 
     func testWriteStatusPropagatesLatestBackupReadFailure() {
         let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
         let reporter = RuntimeStatusReporter(
-            repository: RuntimeStatusWriterRepositorySpy(),
+            statusArtifactSink: RuntimeStatusWriterArtifactSinkSpy(),
+            progressArtifactSink: RuntimeStatusWriterProgressArtifactSinkSpy(),
             productIdentifier: "VitalServerHelper",
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm"),
             makeStatusDocument: statusDocumentUseCase.build,
-            makeProgressDocument: statusDocumentUseCase.progressUpdate
+            makeProgressDocument: statusDocumentUseCase.progressDocument
         )
         let writer = RuntimeStatusWriter(
             reporter: reporter,
@@ -55,11 +53,7 @@ final class RuntimeStatusWriterTests: XCTestCase {
             latestBackup: { throw RuntimeStatusWriterTestError.latestBackupReadFailed }
         )
 
-        XCTAssertThrowsError(try writer.writeStatus(
-            .healthy,
-            operation: .health,
-            message: "runtime health check passed"
-        )) { error in
+        XCTAssertThrowsError(try writer.writeStatus(.healthy)) { error in
             XCTAssertEqual(error as? RuntimeStatusWriterTestError, .latestBackupReadFailed)
         }
     }
@@ -69,17 +63,16 @@ private enum RuntimeStatusWriterTestError: Error, Equatable {
     case latestBackupReadFailed
 }
 
-private final class RuntimeStatusWriterRepositorySpy: RuntimeStatusRepository {
-    var result: RuntimeStatusDocumentLoadResult = .missing
+private final class RuntimeStatusWriterArtifactSinkSpy: RuntimeStatusArtifactSink {
     var saved: RuntimeStatusDocument?
-
-    func loadResult() -> RuntimeStatusDocumentLoadResult {
-        result
-    }
 
     func save(_ document: RuntimeStatusDocument) throws {
         saved = document
     }
+}
+
+private final class RuntimeStatusWriterProgressArtifactSinkSpy: RuntimeProgressArtifactSink {
+    func save(_ document: RuntimeProgressDocument) throws {}
 }
 
 private func healthSnapshot(vitalDBObservation: VitalDBObservationDocument?) -> RuntimeHealthSnapshot {

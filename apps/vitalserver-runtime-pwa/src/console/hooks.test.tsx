@@ -332,7 +332,6 @@ function createGateway(): GatewayMock {
     getOverview: vi.fn().mockResolvedValue({ status: { runtimeState: "healthy" } }),
     getOperationState: vi.fn().mockResolvedValue({
       activeOperation: "apply-bundle",
-      runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
       install: { state: "unavailable", document: null, readError: null },
       lease: { state: "unavailable", document: null, readError: null, staleReason: null }
     }),
@@ -352,6 +351,7 @@ function createGateway(): GatewayMock {
       services: [],
       probeErrors: []
     }),
+    getGuestServiceResource: vi.fn().mockResolvedValue(guestServiceResource()),
     getLabScenarios: vi.fn().mockResolvedValue({
       state: "loaded",
       scenarios: [{ scenarioId: "baseline", name: "Baseline", category: "generated" }],
@@ -522,7 +522,15 @@ function recorderIngressSettings() {
   };
 }
 
-const commandResult = { result: { exitCode: 0, stdout: "ok", stderr: "" } };
+const commandResult = {
+  result: {
+    exitCode: 0,
+    stdout: "ok",
+    stderr: "",
+    outputIssues: [],
+    executionIssue: null
+  }
+};
 
 function guestServiceOperation(command: "start" | "stop" | "restart") {
   return {
@@ -533,6 +541,38 @@ function guestServiceOperation(command: "start" | "stop" | "restart") {
     createdAt: "2026-07-01T00:00:00+00:00",
     updatedAt: "2026-07-01T00:00:01+00:00",
     failure: null
+  };
+}
+
+function guestServiceResource() {
+  return {
+    service: "app",
+    spec: {
+      state: "configured",
+      desiredState: "running",
+      updatedAt: "2026-07-01T00:00:00+00:00"
+    },
+    status: {
+      state: "loaded",
+      observedState: "running",
+      observedAt: "2026-07-01T00:00:01+00:00",
+      serviceStatus: {
+        service: "app",
+        state: "running",
+        health: "healthy",
+        observedAt: "2026-07-01T00:00:01+00:00"
+      }
+    },
+    conditions: [
+      {
+        type: "Reconciled",
+        status: "true",
+        reason: "DesiredStateObserved",
+        message: "matched desired state",
+        observedAt: "2026-07-01T00:00:01+00:00"
+      }
+    ],
+    lastOperationId: "op-app"
   };
 }
 

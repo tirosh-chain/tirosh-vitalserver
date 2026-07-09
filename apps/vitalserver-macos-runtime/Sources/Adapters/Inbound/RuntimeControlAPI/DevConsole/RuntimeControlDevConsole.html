@@ -532,7 +532,7 @@
         ["Overall health", runtimeHealthText(status)],
         ["Recommended action", action ? action.action : null],
         ["VitalServer", serviceText(status.hostProxyHTTP)],
-        ["Uptime", formatUptime(status.startedAt)],
+        ["Runtime Control uptime", formatUptime(status.runtimeControlStartedAt)],
         ["Known recorders", recorders.length],
         ["Known beds", beds.length],
         ["CPU", formatPercent(status.cpuUsagePercent)],
@@ -551,8 +551,6 @@
       const swaggerURL = proxyPort ? `http://127.0.0.1:${proxyPort}/swagger/` : null;
       const values = [
         ["runtime state", status.runtimeState],
-        ["operation", status.operation],
-        ["message", status.statusMessage],
         ["runtime version", status.runtimeVersion],
         ["VM state", status.vmState],
         ["VM errors", (status.vmErrors || []).map(domainText).join(", ")],
@@ -570,8 +568,7 @@
         ["host proxy service", serviceState(status.proxyServiceState)],
         ["guest log sync service", serviceState(status.guestLogSyncServiceState)],
         ["watchdog service", serviceState(status.watchdogServiceState)],
-        ["sleep prevention service", serviceState(status.sleepPreventionServiceState)],
-        ["updated", formatDate(status.updatedAt)]
+        ["sleep prevention service", serviceState(status.sleepPreventionServiceState)]
       ];
       $("advancedStatusMetrics").innerHTML = metricsHTML(values);
     }
@@ -1035,16 +1032,20 @@
       return Number.isInteger(code) && code >= 200 && code < 300;
     }
 
+    function runtimeIsExecutable(status) {
+      return status && status.runtimeInstallationState === "executable";
+    }
+
     function runtimeHealthText(status) {
-      if (!status.runtimeInstalled) return "Runtime is not installed";
+      if (!runtimeIsExecutable(status)) return "Runtime is not executable";
       if (["installing", "initializing", "updating", "recovering"].includes(status.runtimeState)) return titleCase(status.runtimeState);
       if (successfulHTTPStatus(status.hostProxyHTTP)) return "VitalServer is reachable";
       return "VitalServer is unavailable";
     }
 
     function actionNeeded(status) {
-      if (!status || !status.runtimeInstalled) {
-        return { title: "Runtime is not installed", action: "Install" };
+      if (!runtimeIsExecutable(status)) {
+        return { title: "Runtime is not executable", action: "Install" };
       }
       if (["healthy", "installing", "initializing", "updating", "recovering"].includes(status.runtimeState)) {
         return null;

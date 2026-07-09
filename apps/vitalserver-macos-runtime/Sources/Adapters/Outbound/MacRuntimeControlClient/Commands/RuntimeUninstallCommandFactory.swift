@@ -12,7 +12,7 @@ enum RuntimeUninstallCommandFactory {
             uninstallArguments = []
         }
         let command = ([uninstaller] + uninstallArguments).map(shellQuote).joined(separator: " ")
-        let logPath = RuntimeControlClientConstants.Paths.uninstallLog
+        let logPath = InstalledRuntimePaths.defaultInstalled.runtimeUninstallLog.path
         let previousLogPath = "\(logPath).previous"
         let viewerScriptPath = "/private/tmp/tirosh-vitalserver-uninstall-progress.command"
         let startScript = RuntimeUninstallProgressScript.startScript(
@@ -25,7 +25,7 @@ enum RuntimeUninstallCommandFactory {
             shellQuote: shellQuote
         )
         let script = [
-            "mkdir -p \(shellQuote((RuntimeControlClientConstants.Paths.uninstallLog as NSString).deletingLastPathComponent))",
+            "mkdir -p \(shellQuote((logPath as NSString).deletingLastPathComponent))",
             startScript
         ].joined(separator: "; ")
         return "/bin/bash -lc \(shellQuote(script))"

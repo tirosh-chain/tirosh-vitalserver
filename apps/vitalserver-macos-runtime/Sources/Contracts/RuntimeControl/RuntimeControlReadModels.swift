@@ -68,6 +68,105 @@ public enum RuntimeOperationResourceReadState: String, Codable, Equatable, Senda
     case stale
 }
 
+public enum RuntimeHostResourceReadState: String, Codable, Equatable, Sendable {
+    case loaded
+    case missing
+    case unavailable
+    case failed
+}
+
+public struct RuntimeVMLifecycleResourceState: Codable, Equatable, Sendable {
+    public let state: RuntimeHostResourceReadState
+    public let document: RuntimeVMLifecycleDocument?
+    public let readError: String?
+
+    public init(
+        state: RuntimeHostResourceReadState,
+        document: RuntimeVMLifecycleDocument? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.document = document
+        self.readError = readError
+    }
+
+    public static func loaded(_ document: RuntimeVMLifecycleDocument) -> Self {
+        Self(state: .loaded, document: document)
+    }
+
+    public static func missing(readError: String? = nil) -> Self {
+        Self(state: .missing, readError: readError)
+    }
+
+    public static func unavailable(readError: String? = nil) -> Self {
+        Self(state: .unavailable, readError: readError)
+    }
+
+    public static func failed(readError: String) -> Self {
+        Self(state: .failed, readError: readError)
+    }
+}
+
+public struct RuntimeGuestAddressResourceState: Codable, Equatable, Sendable {
+    public let state: RuntimeHostResourceReadState
+    public let read: RuntimeGuestAddressReadResult?
+    public let readError: String?
+
+    public init(
+        state: RuntimeHostResourceReadState,
+        read: RuntimeGuestAddressReadResult? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.read = read
+        self.readError = readError
+    }
+
+    public static func loaded(_ read: RuntimeGuestAddressReadResult) -> Self {
+        Self(state: .loaded, read: read)
+    }
+
+    public static func missing(readError: String? = nil) -> Self {
+        Self(state: .missing, readError: readError)
+    }
+
+    public static func unavailable(readError: String? = nil) -> Self {
+        Self(state: .unavailable, readError: readError)
+    }
+
+    public static func failed(readError: String) -> Self {
+        Self(state: .failed, readError: readError)
+    }
+}
+
+public struct RuntimeInstallStateRead: Equatable, Sendable {
+    public let state: RuntimeOperationResourceReadState
+    public let document: RuntimeInstallStateDocument?
+    public let error: String?
+
+    private init(
+        state: RuntimeOperationResourceReadState,
+        document: RuntimeInstallStateDocument? = nil,
+        error: String? = nil
+    ) {
+        self.state = state
+        self.document = document
+        self.error = error
+    }
+
+    public static func loaded(_ document: RuntimeInstallStateDocument) -> Self {
+        Self(state: .loaded, document: document)
+    }
+
+    public static func unavailable() -> Self {
+        Self(state: .unavailable)
+    }
+
+    public static func failed(_ error: String) -> Self {
+        Self(state: .failed, error: error)
+    }
+}
+
 public struct RuntimeInstallOperationState: Codable, Equatable, Sendable {
     public let state: RuntimeOperationResourceReadState
     public let document: RuntimeInstallStateDocument?
@@ -95,14 +194,20 @@ public struct RuntimeInstallOperationState: Codable, Equatable, Sendable {
         Self(state: .failed, readError: readError)
     }
 
-    public static func fromRuntimeStatusInstallRead(_ status: RuntimeStatus) -> Self {
-        if let document = status.installStateDocument {
+    public static func fromInstallStateRead(_ read: RuntimeInstallStateRead) -> Self {
+        switch read.state {
+        case .loaded:
+            guard let document = read.document else {
+                return .failed(readError: "runtime install state read is loaded without a document")
+            }
             return .loaded(document)
+        case .failed:
+            return .failed(readError: read.error ?? "runtime install state read failed")
+        case .unavailable:
+            return .unavailable()
+        case .stale:
+            return .failed(readError: "runtime install state read cannot be stale")
         }
-        if let error = status.installStateDocumentError {
-            return .failed(readError: error)
-        }
-        return .unavailable()
     }
 
     enum CodingKeys: String, CodingKey {
@@ -114,8 +219,9 @@ public struct RuntimeInstallOperationState: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.state = try container.decode(RuntimeOperationResourceReadState.self, forKey: .state)
-        self.document = try container.decodeIfPresent(RuntimeInstallStateDocument.self, forKey: .document)
-        self.readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        self.document = try container.decodeRequiredNullable(RuntimeInstallStateDocument.self, forKey: .document)
+        self.readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        try Self.validateDecoded(state: state, document: document, readError: readError, codingPath: decoder.codingPath)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -130,6 +236,30 @@ public struct RuntimeInstallOperationState: Codable, Equatable, Sendable {
             try container.encode(readError, forKey: .readError)
         } else {
             try container.encodeNil(forKey: .readError)
+        }
+    }
+
+    private static func validateDecoded(
+        state: RuntimeOperationResourceReadState,
+        document: RuntimeInstallStateDocument?,
+        readError: String?,
+        codingPath: [CodingKey]
+    ) throws {
+        if state == .loaded && document == nil {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: codingPath,
+                    debugDescription: "loaded install operation state must include document"
+                )
+            )
+        }
+        if state == .failed && readError.isBlankOrMissing {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: codingPath,
+                    debugDescription: "failed install operation state must include readError"
+                )
+            )
         }
     }
 }
@@ -178,9 +308,16 @@ public struct RuntimeOperationLeaseState: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.state = try container.decode(RuntimeOperationResourceReadState.self, forKey: .state)
-        self.document = try container.decodeIfPresent(RuntimeOperationLeaseDocument.self, forKey: .document)
-        self.readError = try container.decodeIfPresent(String.self, forKey: .readError)
-        self.staleReason = try container.decodeIfPresent(String.self, forKey: .staleReason)
+        self.document = try container.decodeRequiredNullable(RuntimeOperationLeaseDocument.self, forKey: .document)
+        self.readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        self.staleReason = try container.decodeRequiredNullable(String.self, forKey: .staleReason)
+        try Self.validateDecoded(
+            state: state,
+            document: document,
+            readError: readError,
+            staleReason: staleReason,
+            codingPath: decoder.codingPath
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -202,25 +339,70 @@ public struct RuntimeOperationLeaseState: Codable, Equatable, Sendable {
             try container.encodeNil(forKey: .staleReason)
         }
     }
+
+    private static func validateDecoded(
+        state: RuntimeOperationResourceReadState,
+        document: RuntimeOperationLeaseDocument?,
+        readError: String?,
+        staleReason: String?,
+        codingPath: [CodingKey]
+    ) throws {
+        if (state == .loaded || state == .stale) && document == nil {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: codingPath,
+                    debugDescription: "\(state.rawValue) operation lease state must include document"
+                )
+            )
+        }
+        if state == .failed && readError.isBlankOrMissing {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: codingPath,
+                    debugDescription: "failed operation lease state must include readError"
+                )
+            )
+        }
+        if state == .stale && staleReason.isBlankOrMissing {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: codingPath,
+                    debugDescription: "stale operation lease state must include staleReason"
+                )
+            )
+        }
+    }
+}
+
+public enum RuntimeOperationLeaseMutationState: String, Codable, Equatable, Sendable {
+    case acquired
+    case heartbeatRecorded
+    case released
+}
+
+public struct RuntimeOperationLeaseMutationResponse: Codable, Equatable, Sendable {
+    public let operationId: String
+    public let state: RuntimeOperationLeaseMutationState
+
+    public init(operationId: String, state: RuntimeOperationLeaseMutationState) {
+        self.operationId = operationId
+        self.state = state
+    }
 }
 
 public struct RuntimeOperationState: Codable, Equatable, Sendable {
     public let activeOperation: RuntimeOperation?
-    public let runtimeStatusUpdatedAt: String?
     public let install: RuntimeInstallOperationState
     public let lease: RuntimeOperationLeaseState
 
     public init(
         activeOperation: RuntimeOperation?,
-        runtimeStatusUpdatedAt: String?,
         install: RuntimeInstallOperationState,
         lease: RuntimeOperationLeaseState = .unavailable()
     ) {
         self.activeOperation = activeOperation ?? Self.resolvedActiveOperation(
-            install: install,
             lease: lease
         )
-        self.runtimeStatusUpdatedAt = runtimeStatusUpdatedAt
         self.install = install
         self.lease = lease
     }
@@ -234,12 +416,8 @@ public struct RuntimeOperationState: Codable, Equatable, Sendable {
     }
 
     private static func resolvedActiveOperation(
-        install: RuntimeInstallOperationState,
         lease: RuntimeOperationLeaseState
     ) -> RuntimeOperation? {
-        if install.inProgress {
-            return .install
-        }
         if lease.state == .loaded {
             return lease.document?.operation
         }
@@ -248,20 +426,17 @@ public struct RuntimeOperationState: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case activeOperation
-        case runtimeStatusUpdatedAt
         case install
         case lease
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let activeOperation = try container.decodeIfPresent(RuntimeOperation.self, forKey: .activeOperation)
-        let runtimeStatusUpdatedAt = try container.decodeIfPresent(String.self, forKey: .runtimeStatusUpdatedAt)
+        let activeOperation = try container.decodeRequiredNullable(RuntimeOperation.self, forKey: .activeOperation)
         let install = try container.decode(RuntimeInstallOperationState.self, forKey: .install)
-        let lease = try container.decodeIfPresent(RuntimeOperationLeaseState.self, forKey: .lease) ?? .unavailable()
+        let lease = try container.decode(RuntimeOperationLeaseState.self, forKey: .lease)
         self.init(
             activeOperation: activeOperation,
-            runtimeStatusUpdatedAt: runtimeStatusUpdatedAt,
             install: install,
             lease: lease
         )
@@ -274,35 +449,8 @@ public struct RuntimeOperationState: Codable, Equatable, Sendable {
         } else {
             try container.encodeNil(forKey: .activeOperation)
         }
-        if let runtimeStatusUpdatedAt {
-            try container.encode(runtimeStatusUpdatedAt, forKey: .runtimeStatusUpdatedAt)
-        } else {
-            try container.encodeNil(forKey: .runtimeStatusUpdatedAt)
-        }
         try container.encode(install, forKey: .install)
         try container.encode(lease, forKey: .lease)
-    }
-}
-
-private extension RuntimeInstallOperationState {
-    var inProgress: Bool {
-        guard state == .loaded, let document else {
-            return false
-        }
-        switch document.state {
-        case .preflightBlocked, .provisionPayloadBlocked, .completed, .failed:
-            return false
-        case .started,
-             .settingsLoaded,
-             .preflightVerified,
-             .provisionPayloadVerified,
-             .stepStarted,
-             .stepCompleted,
-             .unknown:
-            return true
-        case .provisioned:
-            return false
-        }
     }
 }
 
@@ -340,8 +488,24 @@ public struct RuntimeCommandResult: Codable, Equatable, Sendable {
         exitCode = try container.decode(Int32.self, forKey: .exitCode)
         stdout = try container.decode(String.self, forKey: .stdout)
         stderr = try container.decode(String.self, forKey: .stderr)
-        outputIssues = try container.decodeIfPresent([RuntimeCommandOutputIssue].self, forKey: .outputIssues) ?? []
-        executionIssue = try container.decodeIfPresent(RuntimeProcessExecutionIssue.self, forKey: .executionIssue)
+        outputIssues = try container.decode([RuntimeCommandOutputIssue].self, forKey: .outputIssues)
+        executionIssue = try container.decodeRequiredNullable(
+            RuntimeProcessExecutionIssue.self,
+            forKey: .executionIssue
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(exitCode, forKey: .exitCode)
+        try container.encode(stdout, forKey: .stdout)
+        try container.encode(stderr, forKey: .stderr)
+        try container.encode(outputIssues, forKey: .outputIssues)
+        if let executionIssue {
+            try container.encode(executionIssue, forKey: .executionIssue)
+        } else {
+            try container.encodeNil(forKey: .executionIssue)
+        }
     }
 }
 
@@ -447,9 +611,9 @@ public struct RuntimeEventHistory: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        events = try container.decodeIfPresent([RuntimeEventDocument].self, forKey: .events) ?? []
-        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
-        matchingCount = try container.decodeIfPresent(Int.self, forKey: .matchingCount)
+        events = try container.decode([RuntimeEventDocument].self, forKey: .events)
+        nextCursor = try container.decodeRequiredNullable(String.self, forKey: .nextCursor)
+        matchingCount = try container.decodeRequiredNullable(Int.self, forKey: .matchingCount)
         readError = try container.decodeIfPresent(String.self, forKey: .readError)
         state = try container.decodeIfPresent(RuntimeEventPageState.self, forKey: .state)
             ?? Self.defaultState(events: events, readError: readError)
@@ -459,9 +623,21 @@ public struct RuntimeEventHistory: Codable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(state, forKey: .state)
         try container.encode(events, forKey: .events)
-        try container.encodeIfPresent(nextCursor, forKey: .nextCursor)
-        try container.encodeIfPresent(matchingCount, forKey: .matchingCount)
-        try container.encodeIfPresent(readError, forKey: .readError)
+        if let nextCursor {
+            try container.encode(nextCursor, forKey: .nextCursor)
+        } else {
+            try container.encodeNil(forKey: .nextCursor)
+        }
+        if let matchingCount {
+            try container.encode(matchingCount, forKey: .matchingCount)
+        } else {
+            try container.encodeNil(forKey: .matchingCount)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
     }
 
     private static func defaultState(
@@ -923,6 +1099,40 @@ public struct RuntimeVitalBedHistory: Codable, Equatable, Sendable {
         RuntimeVitalBedHistory(state: .readFailed, readError: readError)
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case updatedAt
+        case beds
+        case summary
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(RuntimeVitalRecorderHistoryState.self, forKey: .state)
+        updatedAt = try container.decodeRequiredNullable(String.self, forKey: .updatedAt)
+        beds = try container.decode([RuntimeVitalBedRecord].self, forKey: .beds)
+        summary = try container.decode(RuntimeVitalBedHistorySummary.self, forKey: .summary)
+        readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let updatedAt {
+            try container.encode(updatedAt, forKey: .updatedAt)
+        } else {
+            try container.encodeNil(forKey: .updatedAt)
+        }
+        try container.encode(beds, forKey: .beds)
+        try container.encode(summary, forKey: .summary)
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+
     private static func defaultState(
         beds: [RuntimeVitalBedRecord],
         readError: String?
@@ -988,22 +1198,20 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
-        recorders = try container.decodeIfPresent([RuntimeVitalRecorderRecord].self, forKey: .recorders) ?? []
-        beds = try container.decodeIfPresent([RuntimeVitalBedRecord].self, forKey: .beds) ?? []
-        summary = try container.decodeIfPresent(RuntimeVitalRecorderHistorySummary.self, forKey: .summary)
-            ?? RuntimeVitalRecorderHistorySummary(recorders: recorders, beds: beds)
-        activityHistory = try container.decodeIfPresent(
+        state = try container.decode(RuntimeVitalRecorderHistoryState.self, forKey: .state)
+        updatedAt = try container.decodeRequiredNullable(String.self, forKey: .updatedAt)
+        recorders = try container.decode([RuntimeVitalRecorderRecord].self, forKey: .recorders)
+        beds = try container.decode([RuntimeVitalBedRecord].self, forKey: .beds)
+        summary = try container.decode(RuntimeVitalRecorderHistorySummary.self, forKey: .summary)
+        activityHistory = try container.decode(
             RuntimeVitalRecorderActivityHistory.self,
             forKey: .activityHistory
-        ) ?? .notProvided()
-        recorderIngressStatusRead = try container.decodeIfPresent(
+        )
+        recorderIngressStatusRead = try container.decodeRequiredNullable(
             RuntimeRecorderIngressStatusReadResult.self,
             forKey: .recorderIngressStatusRead
         )
-        readError = try container.decodeIfPresent(String.self, forKey: .readError)
-        state = try container.decodeIfPresent(RuntimeVitalRecorderHistoryState.self, forKey: .state)
-            ?? Self.defaultState(recorders: recorders, beds: beds, readError: readError)
+        readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1387,9 +1595,15 @@ public struct RuntimeVitalRecorderActivityHistory: Codable, Equatable, Sendable 
         let container = try decoder.container(keyedBy: CodingKeys.self)
         source = try container.decode(RuntimeVitalRecorderActivityHistorySource.self, forKey: .source)
         bucketCount = try container.decode(Int.self, forKey: .bucketCount)
-        earliestBucketStartedAt = try container.decodeIfPresent(String.self, forKey: .earliestBucketStartedAt)
-        latestBucketStartedAt = try container.decodeIfPresent(String.self, forKey: .latestBucketStartedAt)
-        readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        earliestBucketStartedAt = try container.decodeRequiredNullable(
+            String.self,
+            forKey: .earliestBucketStartedAt
+        )
+        latestBucketStartedAt = try container.decodeRequiredNullable(
+            String.self,
+            forKey: .latestBucketStartedAt
+        )
+        readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2137,8 +2351,16 @@ public struct RuntimeVitalDBObservationSnapshot: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.state = try container.decode(RuntimeVitalDBObservationReadState.self, forKey: .state)
-        self.observation = try container.decodeIfPresent(VitalDBObservationDocument.self, forKey: .observation)
-        self.readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        self.observation = try container.decodeRequiredNullable(
+            VitalDBObservationDocument.self,
+            forKey: .observation
+        )
+        self.readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        try Self.validateDecoded(
+            state: state,
+            observation: observation,
+            readError: readError
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2153,6 +2375,35 @@ public struct RuntimeVitalDBObservationSnapshot: Codable, Equatable, Sendable {
             try container.encode(readError, forKey: .readError)
         } else {
             try container.encodeNil(forKey: .readError)
+        }
+    }
+
+    private static func validateDecoded(
+        state: RuntimeVitalDBObservationReadState,
+        observation: VitalDBObservationDocument?,
+        readError: String?
+    ) throws {
+        switch state {
+        case .loaded:
+            if observation == nil {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.observation],
+                        debugDescription: "loaded VitalDB observation snapshots must include observation"
+                    )
+                )
+            }
+        case .failed:
+            if readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "failed VitalDB observation snapshots must include readError"
+                    )
+                )
+            }
+        case .unavailable:
+            break
         }
     }
 }
@@ -2328,5 +2579,32 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
                 observedAt: nil
             )
         }
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeRequiredNullable<T: Decodable>(
+        _ type: T.Type,
+        forKey key: Key
+    ) throws -> T? {
+        guard contains(key) else {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: codingPath,
+                    debugDescription: "Missing required nullable key \(key.stringValue)"
+                )
+            )
+        }
+        return try decodeIfPresent(T.self, forKey: key)
+    }
+}
+
+private extension Optional where Wrapped == String {
+    var isBlankOrMissing: Bool {
+        guard let value = self else {
+            return true
+        }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }

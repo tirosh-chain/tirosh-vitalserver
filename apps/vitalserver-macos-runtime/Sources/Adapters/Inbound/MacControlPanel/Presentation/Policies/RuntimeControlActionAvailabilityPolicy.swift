@@ -5,7 +5,7 @@ public struct RuntimeControlActionAvailabilityPolicy {
     public init() {}
 
     public func isRuntimeExecutable(_ status: RuntimeStatus) -> Bool {
-        status.effectiveRuntimeInstallationState.isExecutable
+        status.runtimeInstallationState?.isExecutable == true
     }
 
     public func canApplyUpdate(

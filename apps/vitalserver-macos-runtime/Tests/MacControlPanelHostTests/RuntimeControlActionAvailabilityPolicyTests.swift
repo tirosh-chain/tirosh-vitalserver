@@ -75,11 +75,11 @@ final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
         ))
     }
 
-    func testLegacyInstalledBoolOnlyAppliesWhenExplicitRuntimeInstallationStateIsMissing() {
+    func testLegacyInstalledBoolDoesNotCreateExecutableRuntimeState() {
         let legacyInstalled = RuntimeStatus(runtimeInstalled: true)
         let legacyMissing = RuntimeStatus(runtimeInstalled: false)
 
-        XCTAssertTrue(policy.isRuntimeExecutable(legacyInstalled))
+        XCTAssertFalse(policy.isRuntimeExecutable(legacyInstalled))
         XCTAssertFalse(policy.isRuntimeExecutable(legacyMissing))
     }
 

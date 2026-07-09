@@ -16,6 +16,7 @@ public actor MacRuntimeControlCommandWorker {
     private let logExporter: any RuntimeLogExporting
     private let guestProductServiceController: any RuntimeGuestProductServiceCommandControlling
     private let guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling
+    private let guestAddressProvider: any RuntimeGuestAddressProvider
     private let guestControlBaseURLOverride: String?
 
     public init() {
@@ -24,13 +25,17 @@ public actor MacRuntimeControlCommandWorker {
             actionEnvironment: SystemRuntimeActionEnvironment(),
             logExporter: MacRuntimeControlLogExporter(),
             guestProductServiceController: UnavailableRuntimeGuestProductServiceController(),
-            guestMaintenanceController: UnavailableRuntimeGuestMaintenanceController()
+            guestMaintenanceController: UnavailableRuntimeGuestMaintenanceController(),
+            guestAddressProvider: UnavailableRuntimeGuestAddressProvider(
+                reason: "runtime Guest address owner unavailable for default command worker"
+            )
         )
     }
 
     public init(
         guestProductServiceController: any RuntimeGuestProductServiceCommandControlling,
         guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling,
+        guestAddressProvider: any RuntimeGuestAddressProvider,
         guestControlBaseURLOverride: String? = nil
     ) {
         self.init(
@@ -39,6 +44,7 @@ public actor MacRuntimeControlCommandWorker {
             logExporter: MacRuntimeControlLogExporter(),
             guestProductServiceController: guestProductServiceController,
             guestMaintenanceController: guestMaintenanceController,
+            guestAddressProvider: guestAddressProvider,
             guestControlBaseURLOverride: guestControlBaseURLOverride
         )
     }
@@ -49,6 +55,7 @@ public actor MacRuntimeControlCommandWorker {
         logExporter: any RuntimeLogExporting,
         guestProductServiceController: any RuntimeGuestProductServiceCommandControlling = UnavailableRuntimeGuestProductServiceController(),
         guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling = UnavailableRuntimeGuestMaintenanceController(),
+        guestAddressProvider: any RuntimeGuestAddressProvider,
         guestControlBaseURLOverride: String? = nil
     ) {
         self.privilegedCommandRunner = privilegedCommandRunner
@@ -56,6 +63,7 @@ public actor MacRuntimeControlCommandWorker {
         self.logExporter = logExporter
         self.guestProductServiceController = guestProductServiceController
         self.guestMaintenanceController = guestMaintenanceController
+        self.guestAddressProvider = guestAddressProvider
         self.guestControlBaseURLOverride = guestControlBaseURLOverride
     }
 
@@ -255,6 +263,12 @@ public actor MacRuntimeControlCommandWorker {
         }
     }
 
+    public func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        return try await runGuestControlCommand { gateway in
+            try gateway.serviceResource(service)
+        }
+    }
+
     public func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
         let controller = guestProductServiceController
         let baseURLOverride = request.guestControlBaseURL
@@ -432,8 +446,8 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     private func ensureManagedBackupDeletionTarget(_ url: URL) throws {
-        let backupsRoot = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.backups)
-        let runtimeDataBackupsRoot = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeDataBackups)
+        let backupsRoot = InstalledRuntimePaths.defaultInstalled.backupsDirectory
+        let runtimeDataBackupsRoot = InstalledRuntimePaths.defaultInstalled.vitalServerHelperBackupsDirectory
         guard RuntimeManagedBackupPolicy.isManagedBackupURL(url, backupsRoot: backupsRoot)
             || RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(url, runtimeDataBackupsRoot: runtimeDataBackupsRoot)
         else {
@@ -451,32 +465,17 @@ public actor MacRuntimeControlCommandWorker {
         if let override = guestControlBaseURLOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
             return override
         }
-        let read = RuntimeStatusDocumentReader(
-            url: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeStatus),
-            fileStore: SystemRuntimeFileStore()
-        ).load()
-        if let vmIP = read.document?.vmIP?.trimmingCharacters(in: .whitespacesAndNewlines), !vmIP.isEmpty {
+        let guestAddressRead = guestAddressProvider.readGuestAddress()
+        if let vmIP = guestAddressRead.loadedAddress?.trimmingCharacters(in: .whitespacesAndNewlines), !vmIP.isEmpty {
             return RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: vmIP)
         }
-        if let guestAddressRead = read.document?.guestAddressRead,
-           guestAddressRead.state != .notReported
-        {
+        if guestAddressRead.state != .notReported {
             throw RuntimeClientError.guestControlUnavailable(
                 "guest address is unavailable: \(guestAddressRead.failureStatusText)"
             )
         }
-        if let error = read.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
-            throw RuntimeClientError.guestControlUnavailable(
-                "runtime status document read failed: \(error)"
-            )
-        }
-        if let issue = read.issue {
-            throw RuntimeClientError.guestControlUnavailable(
-                "\(issue.source) is unavailable: \(issue.message)"
-            )
-        }
         throw RuntimeClientError.guestControlUnavailable(
-            "runtime status document does not report vmIP"
+            "guest address was not read"
         )
     }
 

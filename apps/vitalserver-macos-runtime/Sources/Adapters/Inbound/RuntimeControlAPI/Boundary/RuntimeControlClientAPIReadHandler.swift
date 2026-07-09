@@ -23,7 +23,7 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     public func loadOperationState() async throws -> RuntimeOperationState {
-        client.loadOperationState(status: try await loadStatus())
+        client.loadOperationState()
     }
 
     public func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
@@ -167,6 +167,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
         try await client.guestServiceStatus(service)
+    }
+
+    public func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        try await client.guestServiceResource(service)
     }
 
     public func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
@@ -322,6 +326,37 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
         }
         return try await hostClient.exportLogs(to: try localFileURL(destination))
+    }
+
+    public func acquireOperationLease(
+        _ request: RuntimeOperationLeaseAcquireRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return try await hostClient.acquireOperationLease(request.document)
+    }
+
+    public func heartbeatOperationLease(
+        _ request: RuntimeOperationLeaseHeartbeatRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return try await hostClient.heartbeatOperationLease(
+            operationId: request.operationId,
+            heartbeatAt: request.heartbeatAt,
+            expiresAt: request.expiresAt
+        )
+    }
+
+    public func releaseOperationLease(
+        _ request: RuntimeOperationLeaseReleaseRequest
+    ) async throws -> RuntimeOperationLeaseMutationResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return try await hostClient.releaseOperationLease(operationId: request.operationId)
     }
 
     public func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse {

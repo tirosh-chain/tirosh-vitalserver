@@ -8,6 +8,7 @@ public protocol RuntimeObservabilitySnapshotLoading {
     func loadRuntimeEvents(query: RuntimeEventQuery) async -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() async -> RuntimeVitalDBObservationSnapshot
     func loadVitalRecorders() async -> RuntimeVitalRecorderHistory
+    func loadVitalBeds() async -> RuntimeVitalBedHistory
     func loadVitalRelationships() async -> RuntimeVitalRelationshipHistory
 }
 
@@ -27,15 +28,18 @@ public struct RuntimeEventRefreshResult {
 public struct RuntimeVitalObservabilityRefreshResult {
     public let observationSnapshot: RuntimeVitalDBObservationSnapshot
     public let recorders: RuntimeVitalRecorderHistory
+    public let beds: RuntimeVitalBedHistory
     public let relationships: RuntimeVitalRelationshipHistory
 
     public init(
         observationSnapshot: RuntimeVitalDBObservationSnapshot,
         recorders: RuntimeVitalRecorderHistory,
+        beds: RuntimeVitalBedHistory,
         relationships: RuntimeVitalRelationshipHistory
     ) {
         self.observationSnapshot = observationSnapshot
         self.recorders = recorders
+        self.beds = beds
         self.relationships = relationships
     }
 }
@@ -81,10 +85,12 @@ public struct RuntimeObservabilityRefresher {
     public func refreshVitalObservability() async -> RuntimeVitalObservabilityRefreshResult {
         let observationSnapshot = await snapshots.loadVitalDBObservationSnapshot()
         let recorders = await snapshots.loadVitalRecorders()
+        let beds = await snapshots.loadVitalBeds()
         let relationships = await snapshots.loadVitalRelationships()
         return RuntimeVitalObservabilityRefreshResult(
             observationSnapshot: observationSnapshot,
             recorders: recorders,
+            beds: beds,
             relationships: relationships
         )
     }

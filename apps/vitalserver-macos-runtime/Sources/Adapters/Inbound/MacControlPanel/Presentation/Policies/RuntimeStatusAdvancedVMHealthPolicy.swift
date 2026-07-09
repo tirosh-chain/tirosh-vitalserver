@@ -50,8 +50,14 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,
                 value: value(
-                    vocabulary.installStateText(status.effectiveRuntimeInstallationState),
-                    installStateSeverity(status.effectiveRuntimeInstallationState)
+                    vocabulary.installStateText(
+                        status.runtimeInstallationState
+                            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
+                    ),
+                    installStateSeverity(
+                        status.runtimeInstallationState
+                            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
+                    )
                 )
             ),
             RuntimeStatusHealthDetailItem(
