@@ -9,9 +9,11 @@ import {
   RuntimeControlValidationError
 } from "@/domain/runtime-control/errors/runtimeControlError";
 import type {
-  RuntimeControlCapabilities,
-  RuntimeControlOverview,
-  RuntimeApplySettingsRequest,
+  ControlCapabilities,
+  PlatformCapabilities,
+  RuntimeCapabilities,
+  RuntimeApplyProductSettingsRequest,
+  RuntimeAdminPasswordRequest,
   RuntimeBackup,
   RuntimeBackupRequest,
   RuntimeCommandResponse,
@@ -37,9 +39,15 @@ import type {
   RuntimeLogExportResult,
   RuntimeLogTextRequest,
   RuntimeLogTextResponse,
-  RuntimeOperationState,
-  RuntimeSettings,
-  RuntimeStatus,
+  PlatformOperationState,
+  PlatformWorkflowOperation,
+  PlatformWorkflowResource,
+  RuntimeRedisRelayStatusReadResult,
+  RuntimeRedisRelaySettingsRead,
+  RuntimeRedisRelaySettingsApplyRequest,
+  RuntimeVitalDBObservationSnapshot,
+  RuntimeProductSettingsRead,
+  PlatformState,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest,
   RuntimeUpdateBundleSummaryResponse,
@@ -51,6 +59,7 @@ import type {
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeBackupSchema,
+  platformCapabilitiesSchema,
   runtimeCapabilitiesSchema,
   runtimeCommandResponseSchema,
   runtimeEventHistorySchema,
@@ -65,10 +74,14 @@ import {
   runtimeLabVitalFileUploadResponseSchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
-  runtimeOperationStateSchema,
-  runtimeOverviewSchema,
-  runtimeSettingsSchema,
-  runtimeStatusSchema,
+  platformOperationStateSchema,
+  platformWorkflowOperationSchema,
+  platformWorkflowResourceSchema,
+  runtimeRedisRelayStatusReadResultSchema,
+  runtimeRedisRelaySettingsReadSchema,
+  runtimeVitalDBObservationSnapshotSchema,
+  runtimeProductSettingsReadSchema,
+  platformStateSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBBedsSchema,
   vitalDBRecordersSchema,
@@ -99,70 +112,125 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
-  getCapabilities(): Promise<RuntimeControlCapabilities> {
+  getPlatformCapabilities(): Promise<PlatformCapabilities> {
+    return this.get("/platform/capabilities", platformCapabilitiesSchema);
+  }
+
+  getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
     return this.get("/runtime/capabilities", runtimeCapabilitiesSchema);
   }
 
-  getOverview(): Promise<RuntimeControlOverview> {
-    return this.get("/runtime/overview", runtimeOverviewSchema);
+  async getCapabilities(): Promise<ControlCapabilities> {
+    const [platform, runtime] = await Promise.all([
+      this.getPlatformCapabilities(),
+      this.getRuntimeCapabilities()
+    ]);
+    const available = new Set(runtime.capabilities);
+    return {
+      ...platform,
+      canControlGuestServices:
+        available.has("services:start") &&
+        available.has("services:stop") &&
+        available.has("services:restart"),
+      canUseLab: available.has("lab:scenarios"),
+      canApplyRuntimeProductSettings: available.has("settings:apply"),
+      canApplyRuntimeAdminPassword: available.has("admin-password:apply"),
+      canApplyRuntimeRedisRelaySettings:
+        available.has("redis-relay:settings:apply")
+    };
   }
 
-  getStatus(): Promise<RuntimeStatus> {
-    return this.get("/runtime/status", runtimeStatusSchema);
+  getPlatformState(): Promise<PlatformState> {
+    return this.get("/platform", platformStateSchema);
   }
 
-  getOperationState(): Promise<RuntimeOperationState> {
-    return this.get("/runtime/operation-state", runtimeOperationStateSchema);
+  getRedisRelayStatus(): Promise<RuntimeRedisRelayStatusReadResult> {
+    return this.get(
+      "/runtime/redis-relay/status",
+      runtimeRedisRelayStatusReadResultSchema
+    );
   }
 
-  getSettings(): Promise<RuntimeSettings> {
-    return this.get("/runtime/settings", runtimeSettingsSchema);
+  getRuntimeRedisRelaySettings(): Promise<RuntimeRedisRelaySettingsRead> {
+    return this.get(
+      "/runtime/redis-relay/settings",
+      runtimeRedisRelaySettingsReadSchema
+    );
+  }
+
+  applyRuntimeRedisRelaySettings(
+    request: RuntimeRedisRelaySettingsApplyRequest
+  ): Promise<RuntimeGuestControlServiceOperation> {
+    return this.put(
+      "/runtime/redis-relay/settings",
+      request,
+      runtimeGuestControlServiceOperationSchema
+    );
+  }
+
+  getLatestVitalDBObservation(): Promise<RuntimeVitalDBObservationSnapshot> {
+    return this.get(
+      "/runtime/vitaldb/observations/latest",
+      runtimeVitalDBObservationSnapshotSchema
+    );
+  }
+
+  getOperationState(): Promise<PlatformOperationState> {
+    return this.get("/platform/operations", platformOperationStateSchema);
+  }
+
+  getPlatformWorkflow(): Promise<PlatformWorkflowResource> {
+    return this.get("/platform/workflows/current", platformWorkflowResourceSchema);
+  }
+
+  getRuntimeProductSettings(): Promise<RuntimeProductSettingsRead> {
+    return this.get("/runtime/settings", runtimeProductSettingsReadSchema);
   }
 
   getLabScenarios(): Promise<RuntimeLabScenarioList> {
-    return this.get("/lab/scenarios", runtimeLabScenarioListSchema);
+    return this.get("/runtime/lab/scenarios", runtimeLabScenarioListSchema);
   }
 
   getLabBeds(): Promise<RuntimeLabBedList> {
-    return this.get("/lab/beds", runtimeLabBedListSchema);
+    return this.get("/runtime/lab/beds", runtimeLabBedListSchema);
   }
 
   getLabRecorders(): Promise<RuntimeLabRecorderList> {
-    return this.get("/lab/recorders", runtimeLabRecorderListSchema);
+    return this.get("/runtime/lab/recorders", runtimeLabRecorderListSchema);
   }
 
   createLabBeds(request: RuntimeLabBedCreateRequest): Promise<RuntimeLabBedList> {
-    return this.post("/lab/beds/create", request, runtimeLabBedListSchema);
+    return this.post("/runtime/lab/beds/create", request, runtimeLabBedListSchema);
   }
 
   deleteLabBeds(request: RuntimeLabBedDeleteRequest): Promise<RuntimeLabBedList> {
-    return this.post("/lab/beds/delete", request, runtimeLabBedListSchema);
+    return this.post("/runtime/lab/beds/delete", request, runtimeLabBedListSchema);
   }
 
   resetLabBeds(): Promise<RuntimeLabBedList> {
-    return this.post("/lab/beds/reset", undefined, runtimeLabBedListSchema);
+    return this.post("/runtime/lab/beds/reset", undefined, runtimeLabBedListSchema);
   }
 
   createLabRecorders(
     request: RuntimeLabRecorderCreateRequest
   ): Promise<RuntimeLabRecorderList> {
-    return this.post("/lab/recorders/create", request, runtimeLabRecorderListSchema);
+    return this.post("/runtime/lab/recorders/create", request, runtimeLabRecorderListSchema);
   }
 
   deleteLabRecorders(
     request: RuntimeLabRecorderDeleteRequest
   ): Promise<RuntimeLabRecorderList> {
-    return this.post("/lab/recorders/delete", request, runtimeLabRecorderListSchema);
+    return this.post("/runtime/lab/recorders/delete", request, runtimeLabRecorderListSchema);
   }
 
   resetLabRecorders(): Promise<RuntimeLabRecorderList> {
-    return this.post("/lab/recorders/reset", undefined, runtimeLabRecorderListSchema);
+    return this.post("/runtime/lab/recorders/reset", undefined, runtimeLabRecorderListSchema);
   }
 
   createLabSession(
     request: RuntimeLabSessionCreateRequest
   ): Promise<RuntimeLabSessionResponse> {
-    return this.post("/lab/sessions", request, runtimeLabSessionResponseSchema);
+    return this.post("/runtime/lab/sessions", request, runtimeLabSessionResponseSchema);
   }
 
   getLabSession(sessionId: string): Promise<RuntimeLabSessionResponse> {
@@ -189,14 +257,14 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
   }
 
   getLabVitalFiles(): Promise<RuntimeLabVitalFileList> {
-    return this.get("/lab/vital-files", runtimeLabVitalFileListSchema);
+    return this.get("/runtime/lab/vital-files", runtimeLabVitalFileListSchema);
   }
 
   uploadLabVitalFile(
     request: RuntimeLabVitalFileUploadRequest
   ): Promise<RuntimeLabVitalFileUploadResponse> {
     return this.post(
-      "/lab/vital-files/upload",
+      "/runtime/lab/vital-files/upload",
       request,
       runtimeLabVitalFileUploadResponseSchema
     );
@@ -206,22 +274,22 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeLabVitalFileReplayRequest
   ): Promise<RuntimeLabSessionResponse> {
     return this.post(
-      "/lab/vital-files/replay",
+      "/runtime/lab/vital-files/replay",
       request,
       runtimeLabSessionResponseSchema
     );
   }
 
-  getGuestStackStatus(): Promise<RuntimeGuestControlStackStatus> {
+  getRuntimeStack(): Promise<RuntimeGuestControlStackStatus> {
     return this.get(
-      "/runtime/guest/stack/status",
+      "/runtime/stack",
       runtimeGuestControlStackStatusSchema
     );
   }
 
   getGuestServiceResource(service: string): Promise<RuntimeGuestServiceResource> {
     return this.get(
-      `/runtime/guest/services/${encodeURIComponent(service)}/resource`,
+      `/runtime/services/${encodeURIComponent(service)}/resource`,
       runtimeGuestServiceResourceSchema
     );
   }
@@ -230,8 +298,8 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeGuestServiceControlRequest
   ): Promise<RuntimeGuestControlServiceOperation> {
     return this.post(
-      "/runtime/guest/services/start",
-      request,
+      `/runtime/services/${encodeURIComponent(request.service)}/start`,
+      undefined,
       runtimeGuestControlServiceOperationSchema
     );
   }
@@ -240,8 +308,8 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeGuestServiceControlRequest
   ): Promise<RuntimeGuestControlServiceOperation> {
     return this.post(
-      "/runtime/guest/services/stop",
-      request,
+      `/runtime/services/${encodeURIComponent(request.service)}/stop`,
+      undefined,
       runtimeGuestControlServiceOperationSchema
     );
   }
@@ -250,25 +318,39 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeGuestServiceControlRequest
   ): Promise<RuntimeGuestControlServiceOperation> {
     return this.post(
-      "/runtime/guest/services/restart",
+      `/runtime/services/${encodeURIComponent(request.service)}/restart`,
+      undefined,
+      runtimeGuestControlServiceOperationSchema
+    );
+  }
+
+  applyRuntimeProductSettings(
+    request: RuntimeApplyProductSettingsRequest
+  ): Promise<RuntimeGuestControlServiceOperation> {
+    return this.put(
+      "/runtime/settings",
       request,
       runtimeGuestControlServiceOperationSchema
     );
   }
 
-  applySettings(
-    request: RuntimeApplySettingsRequest
-  ): Promise<RuntimeCommandResponse> {
-    return this.put("/runtime/settings", request, runtimeCommandResponseSchema);
+  applyRuntimeAdminPassword(
+    request: RuntimeAdminPasswordRequest
+  ): Promise<RuntimeGuestControlServiceOperation> {
+    return this.post(
+      "/runtime/admin-password",
+      request,
+      runtimeGuestControlServiceOperationSchema
+    );
   }
 
   uninstallRuntime(
     request: RuntimeUninstallRequest
-  ): Promise<RuntimeCommandResponse> {
+  ): Promise<PlatformWorkflowOperation> {
     return this.post(
-      "/runtime/uninstall",
+      "/platform/uninstall",
       request,
-      runtimeCommandResponseSchema
+      platformWorkflowOperationSchema
     );
   }
 
@@ -283,50 +365,50 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
   }
 
   getRecorders(): Promise<VitalDBRecorders> {
-    return this.get("/vitaldb/recorders", vitalDBRecordersSchema);
+    return this.get("/runtime/vitaldb/recorders", vitalDBRecordersSchema);
   }
 
   hideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders> {
-    return this.post("/vitaldb/recorders/hide", request, vitalDBRecordersSchema);
+    return this.post("/runtime/vitaldb/recorders/hide", request, vitalDBRecordersSchema);
   }
 
   unhideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders> {
-    return this.post("/vitaldb/recorders/unhide", request, vitalDBRecordersSchema);
+    return this.post("/runtime/vitaldb/recorders/unhide", request, vitalDBRecordersSchema);
   }
 
   deleteRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders> {
-    return this.post("/vitaldb/recorders/delete", request, vitalDBRecordersSchema);
+    return this.post("/runtime/vitaldb/recorders/delete", request, vitalDBRecordersSchema);
   }
 
   getBeds(): Promise<VitalDBBeds> {
-    return this.get("/vitaldb/beds", vitalDBBedsSchema);
+    return this.get("/runtime/vitaldb/beds", vitalDBBedsSchema);
   }
 
   hideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds> {
-    return this.post("/vitaldb/beds/hide", request, vitalDBBedsSchema);
+    return this.post("/runtime/vitaldb/beds/hide", request, vitalDBBedsSchema);
   }
 
   unhideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds> {
-    return this.post("/vitaldb/beds/unhide", request, vitalDBBedsSchema);
+    return this.post("/runtime/vitaldb/beds/unhide", request, vitalDBBedsSchema);
   }
 
   deleteBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds> {
-    return this.post("/vitaldb/beds/delete", request, vitalDBBedsSchema);
+    return this.post("/runtime/vitaldb/beds/delete", request, vitalDBBedsSchema);
   }
 
   getRelationships(): Promise<VitalDBRelationships> {
-    return this.get("/vitaldb/relationships", vitalDBRelationshipsSchema);
+    return this.get("/runtime/vitaldb/relationships", vitalDBRelationshipsSchema);
   }
 
   readLogs(request: RuntimeLogTextRequest): Promise<RuntimeLogTextResponse> {
-    return this.post("/host/logs/read", request, runtimeLogTextResponseSchema);
+    return this.post("/platform/logs/read", request, runtimeLogTextResponseSchema);
   }
 
   exportLogs(
     request: RuntimeExportLogsRequest
   ): Promise<RuntimeLogExportResult> {
     return this.post(
-      "/host/logs/export",
+      "/platform/logs/export",
       request,
       runtimeLogExportResultSchema
     );
@@ -336,7 +418,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeUpdateBundleRequest
   ): Promise<RuntimeUpdateBundleSummaryResponse> {
     return this.post(
-      "/host/update-bundles/summary",
+      "/platform/update-bundles/summary",
       request,
       runtimeUpdateBundleSummaryResponseSchema
     );
@@ -344,39 +426,55 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   verifyUpdateBundle(
     request: RuntimeUpdateBundleRequest
-  ): Promise<RuntimeCommandResponse> {
+  ): Promise<PlatformWorkflowOperation> {
     return this.post(
-      "/host/update-bundles/verify",
+      "/platform/update-bundles/verify",
       request,
-      runtimeCommandResponseSchema
+      platformWorkflowOperationSchema
     );
   }
 
   applyUpdateBundle(
     request: RuntimeUpdateBundleRequest
-  ): Promise<RuntimeCommandResponse> {
+  ): Promise<PlatformWorkflowOperation> {
     return this.post(
-      "/host/update-bundles/apply",
+      "/platform/update-bundles/apply",
       request,
-      runtimeCommandResponseSchema
+      platformWorkflowOperationSchema
+    );
+  }
+
+  rollbackRelease(): Promise<PlatformWorkflowOperation> {
+    return this.post(
+      "/platform/releases/rollback",
+      undefined,
+      platformWorkflowOperationSchema
+    );
+  }
+
+  createPlatformSupportExport(): Promise<PlatformWorkflowOperation> {
+    return this.post(
+      "/platform/support-exports",
+      undefined,
+      platformWorkflowOperationSchema
     );
   }
 
   listHostBackups(): Promise<RuntimeBackup[]> {
-    return this.get("/host/backups", runtimeBackupSchema.array());
+    return this.get("/platform/backups", runtimeBackupSchema.array());
   }
 
   listRedisBackups(): Promise<RuntimeBackup[]> {
-    return this.get("/host/backups/redis", runtimeBackupSchema.array());
+    return this.get("/platform/backups/redis", runtimeBackupSchema.array());
   }
 
   listRuntimeDataBackups(): Promise<RuntimeBackup[]> {
-    return this.get("/host/backups/vitalserver-helper", runtimeBackupSchema.array());
+    return this.get("/platform/backups/runtime-data", runtimeBackupSchema.array());
   }
 
   rollbackBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/host/backups/rollback",
+      "/platform/backups/rollback",
       request,
       runtimeCommandResponseSchema
     );
@@ -385,14 +483,14 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
   deleteHostBackup(
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {
-    return this.delete("/host/backups", request, runtimeCommandResponseSchema);
+    return this.delete("/platform/backups", request, runtimeCommandResponseSchema);
   }
 
   deleteUpdateBackup(
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {
     return this.delete(
-      "/host/backups/update",
+      "/platform/backups/update",
       request,
       runtimeCommandResponseSchema
     );
@@ -402,7 +500,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {
     return this.delete(
-      "/host/backups/vitalserver-helper",
+      "/platform/backups/runtime-data",
       request,
       runtimeCommandResponseSchema
     );
@@ -412,7 +510,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/host/backups/redis/restore",
+      "/platform/backups/redis/restore",
       request,
       runtimeCommandResponseSchema
     );
@@ -422,7 +520,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/host/backups/vitalserver-helper/restore",
+      "/platform/backups/runtime-data/restore",
       request,
       runtimeCommandResponseSchema
     );
@@ -430,7 +528,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   createRedisBackup(): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/runtime/redis/backups",
+      "/platform/backups/redis",
       undefined,
       runtimeCommandResponseSchema
     );
@@ -438,7 +536,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   createRuntimeDataBackup(): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/runtime/data/backups",
+      "/platform/backups/runtime-data",
       undefined,
       runtimeCommandResponseSchema
     );
@@ -446,7 +544,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   repairRuntime(): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/runtime/services/repair-runtime",
+      "/platform/services/repair",
       undefined,
       runtimeCommandResponseSchema
     );
@@ -454,7 +552,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   repairProxy(proxyPort: number): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/runtime/services/repair-proxy",
+      "/platform/proxy/repair",
       { proxyPort },
       runtimeCommandResponseSchema
     );
@@ -462,7 +560,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   repairDatastore(): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/runtime/services/repair-datastore",
+      "/runtime/maintenance/datastore/repair",
       undefined,
       runtimeCommandResponseSchema
     );
@@ -470,7 +568,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   repairVMDisk(): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/runtime/services/repair-vm-disk",
+      "/platform/runtime-provider/disk/repair",
       undefined,
       runtimeCommandResponseSchema
     );
@@ -622,7 +720,7 @@ function trimTrailingSlash(value: string): string {
 }
 
 function labSessionPath(sessionId: string): string {
-  return `/lab/sessions/${encodeURIComponent(sessionId)}`;
+  return `/runtime/lab/sessions/${encodeURIComponent(sessionId)}`;
 }
 
 function runtimeEventQueryParameters(

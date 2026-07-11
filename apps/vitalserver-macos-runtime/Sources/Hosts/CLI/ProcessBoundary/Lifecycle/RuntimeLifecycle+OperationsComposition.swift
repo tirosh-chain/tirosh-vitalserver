@@ -119,9 +119,6 @@ extension RuntimeLifecycle {
                 automaticRecoveryEnabled: {
                     try automaticRecoveryEnabled()
                 },
-                reconcileGuestStack: {
-                    try reconcileGuestStackServicesThroughGuestControl()
-                },
                 restartVMRuntime: {
                     try restartVMRuntimeForWatchdogRecovery()
                 },

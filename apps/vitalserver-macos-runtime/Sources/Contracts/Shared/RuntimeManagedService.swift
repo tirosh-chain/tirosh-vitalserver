@@ -1,15 +1,19 @@
 public enum RuntimeManagedService: CaseIterable, Equatable, Sendable {
+    case platformAgent
     case vm
     case proxy
     case guestLogSync
     case sleepPrevention
     case watchdog
 
-    public static let startOrder: [RuntimeManagedService] = [.vm, .guestLogSync, .watchdog, .proxy]
+    public static let startOrder: [RuntimeManagedService] = [.platformAgent, .vm, .guestLogSync, .watchdog, .proxy]
     public static let stopOrder: [RuntimeManagedService] = [.watchdog, .guestLogSync, .proxy, .vm, .sleepPrevention]
+    public static let uninstallOrder: [RuntimeManagedService] = stopOrder + [.platformAgent]
 
     public var label: String {
         switch self {
+        case .platformAgent:
+            "ai.tirosh.vitalserver.helper.platform-agent"
         case .vm:
             "ai.tirosh.vitalserver.helper.vm"
         case .proxy:
@@ -25,6 +29,8 @@ public enum RuntimeManagedService: CaseIterable, Equatable, Sendable {
 
     public var runtimeServiceDisplayName: String {
         switch self {
+        case .platformAgent:
+            "Platform Agent"
         case .vm:
             "VM"
         case .proxy:

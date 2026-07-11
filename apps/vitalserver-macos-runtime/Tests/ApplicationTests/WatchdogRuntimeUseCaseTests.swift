@@ -62,7 +62,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.printMessage, "watchdog: recovery disabled")
     }
 
-    func testRecoveryDecisionPlansExplicitComposeReconcileEvent() {
+    func testRecoveryDecisionPlansPlatformVMRestartForRuntimeReadinessFailure() {
         let useCase = WatchdogRuntimeUseCase()
 
         let decision = useCase.recoveryDecision(
@@ -80,18 +80,13 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
             return XCTFail("expected recovery execution plan")
         }
         XCTAssertEqual(plan.reason, "host-proxy-http-502, guest-http-503")
-        XCTAssertTrue(plan.recoveryPlan.reconcileGuestStack)
-        XCTAssertFalse(plan.recoveryPlan.restartVM)
-        XCTAssertFalse(plan.recoveryPlan.restartProxy)
-        XCTAssertEqual(
-            plan.guestStackReconcileEventMessage,
-            "watchdog guest stack reconcile dispatched operation=guest-stack"
-        )
-        XCTAssertNil(plan.vmRestartEventMessage)
-        XCTAssertNil(plan.proxyRestartEventMessage)
+        XCTAssertTrue(plan.recoveryPlan.restartVM)
+        XCTAssertTrue(plan.recoveryPlan.restartProxy)
+        XCTAssertEqual(plan.vmRestartEventMessage, "watchdog restart dispatched services=vm,guest-log-sync")
+        XCTAssertEqual(plan.proxyRestartEventMessage, "watchdog restart dispatched services=proxy")
         XCTAssertEqual(
             plan.plannedEventMessage,
-            "watchdog recovery planned guestStack=true vm=false proxy=false reasons=guest-http-unhealthy-503"
+            "watchdog platform recovery planned vm=true proxy=true reasons=guest-http-unhealthy-503,vm-restart-requires-proxy-restart"
         )
     }
 
@@ -112,10 +107,8 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         guard case .recover(let plan) = decision else {
             return XCTFail("expected recovery execution plan")
         }
-        XCTAssertFalse(plan.recoveryPlan.reconcileGuestStack)
         XCTAssertTrue(plan.recoveryPlan.restartVM)
         XCTAssertTrue(plan.recoveryPlan.restartProxy)
-        XCTAssertNil(plan.guestStackReconcileEventMessage)
         XCTAssertEqual(
             plan.vmRestartEventMessage,
             "watchdog restart dispatched services=vm,guest-log-sync"
@@ -123,7 +116,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.proxyRestartEventMessage, "watchdog restart dispatched services=proxy")
         XCTAssertEqual(
             plan.plannedEventMessage,
-            "watchdog recovery planned guestStack=false vm=true proxy=true reasons=missing-vm-ip,guest-http-unhealthy-missing-vm-ip,vm-restart-requires-proxy-restart"
+            "watchdog platform recovery planned vm=true proxy=true reasons=missing-vm-ip,guest-http-unhealthy-missing-vm-ip,vm-restart-requires-proxy-restart"
         )
     }
 

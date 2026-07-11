@@ -14,7 +14,7 @@ import {
   useReplayLabVitalFile,
   useResetLabBeds,
   useResetLabRecorders,
-  useRuntimeCapabilities,
+  useControlCapabilities,
   useStartLabSession,
   useStopLabSession,
   useUploadLabVitalFile
@@ -34,7 +34,7 @@ import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 
 export function LabPage() {
-  const capabilities = useRuntimeCapabilities();
+  const capabilities = useControlCapabilities();
   const scenarios = useLabScenarios();
   const beds = useLabBeds();
   const recorders = useLabRecorders();

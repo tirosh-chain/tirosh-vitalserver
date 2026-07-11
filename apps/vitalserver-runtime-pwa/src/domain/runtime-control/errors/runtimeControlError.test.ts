@@ -32,7 +32,7 @@ describe("runtime control error summaries", () => {
     expect(
       summarizeRuntimeControlError(
         new RuntimeControlContractError(
-          "/runtime/overview",
+          "/runtime/stack",
           new Error("bad schema")
         )
     )
@@ -55,7 +55,7 @@ describe("runtime control error summaries", () => {
 
     expect(
       summarizeRuntimeControlError(
-        new RuntimeControlContractError("/runtime/overview", zodLikeError)
+        new RuntimeControlContractError("/runtime/stack", zodLikeError)
       )
     ).toMatchObject({
       kind: "contract",
@@ -77,7 +77,7 @@ describe("runtime control error summaries", () => {
     expect(
       summarizeRuntimeControlError(
         new RuntimeControlNetworkError(
-          "http://127.0.0.1:18321/runtime/overview",
+          "http://127.0.0.1:18321/runtime/stack",
           new TypeError("Failed to fetch")
         )
       )
@@ -85,7 +85,7 @@ describe("runtime control error summaries", () => {
       kind: "network",
       title: "Runtime Control API is unreachable",
       detail:
-        "The Remote Console tried http://127.0.0.1:18321/runtime/overview, but the Runtime Control API did not respond. Failed to fetch"
+        "The Remote Console tried http://127.0.0.1:18321/runtime/stack, but the Runtime Control API did not respond. Failed to fetch"
     });
   });
 

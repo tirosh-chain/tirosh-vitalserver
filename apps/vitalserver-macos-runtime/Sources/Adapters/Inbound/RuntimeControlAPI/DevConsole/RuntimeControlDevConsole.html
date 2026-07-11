@@ -237,10 +237,6 @@
         <div id="advancedStatusMetrics"></div>
       </section>
       <section>
-        <h2>PWA Overview</h2>
-        <div id="overviewMetrics"></div>
-      </section>
-      <section>
         <h2>Runtime Info</h2>
         <div id="installMetrics"></div>
       </section>
@@ -359,24 +355,10 @@
       <div class="grid">
       <section>
         <div class="stream-head">
-          <h2>Overview Stream</h2>
-          <span class="stream-state"><span id="overviewDot" class="status-dot"></span><span id="overviewState">closed</span></span>
-        </div>
-        <pre id="overviewStream"></pre>
-      </section>
-      <section>
-        <div class="stream-head">
           <h2>Status Stream</h2>
           <span class="stream-state"><span id="statusDot" class="status-dot"></span><span id="statusState">closed</span></span>
         </div>
         <pre id="statusStream"></pre>
-      </section>
-      <section>
-        <div class="stream-head">
-          <h2>Event Stream</h2>
-          <span class="stream-state"><span id="eventDot" class="status-dot"></span><span id="eventState">closed</span></span>
-        </div>
-        <pre id="eventStream"></pre>
       </section>
       <section>
         <div class="stream-head">
@@ -464,26 +446,24 @@
     }
 
     async function refreshStatus() {
-      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, vitalBeds, vitalRelationships, backups, redisBackups, runtimeEvents, labScenarios] = await Promise.all([
-        getJSON("/runtime/overview"),
-        getJSON("/runtime/status"),
+      const [status, settings, install, release, vitalDBObservation, vitalRecorders, vitalBeds, vitalRelationships, backups, redisBackups, runtimeEvents, labScenarios] = await Promise.all([
+        getJSON("/platform"),
         getJSON("/runtime/settings"),
-        getJSON("/runtime/install"),
-        getJSON("/runtime/release"),
-        getJSON("/vitaldb/observations/latest"),
-        getJSON("/vitaldb/recorders"),
-        getJSON("/vitaldb/beds"),
-        getJSON("/vitaldb/relationships"),
-        getJSON("/host/backups"),
-        getJSON("/host/backups/redis"),
+        getJSON("/platform/installation"),
+        getJSON("/platform/release"),
+        getJSON("/runtime/vitaldb/observations/latest"),
+        getJSON("/runtime/vitaldb/recorders"),
+        getJSON("/runtime/vitaldb/beds"),
+        getJSON("/runtime/vitaldb/relationships"),
+        getJSON("/platform/backups"),
+        getJSON("/platform/backups/redis"),
         getJSON("/runtime/events?limit=50"),
-        getJSON("/lab/scenarios")
+        getJSON("/runtime/lab/scenarios")
       ]);
       latestStatus = status;
       latestSettings = settings || {};
       latestVitalDBObservation = vitalDBObservation || null;
       replaceRuntimeEvents(runtimeEvents && runtimeEvents.events);
-      renderOverview(overview);
       renderStatus(latestStatus, latestSettings, latestVitalDBObservation);
       renderAdvancedStatus(latestStatus);
       renderInstall(install);
@@ -499,31 +479,6 @@
       append("statusStream", "snapshot", status);
     }
 
-    function renderOverview(overview) {
-      if (!overview) {
-        $("overviewMetrics").innerHTML = emptyText("No overview");
-        return;
-      }
-      const recorder = overview.vitalRecorder || {};
-      const latest = recorder.latestRecorder;
-      const values = [
-        ["runtime", overview.status && overview.status.runtimeState],
-        ["VitalServer", overview.status && serviceText(overview.status.hostProxyHTTP)],
-        ["runtime version", overview.status && overview.status.runtimeVersion],
-        ["proxy port", overview.settings && overview.settings.proxyPort],
-        ["recorder source", recorder.source],
-        ["active connections", recorder.activeConnections],
-        ["known recorders", recorder.knownRecorders],
-        ["online recorders", recorder.onlineRecorders],
-        ["stale recorders", recorder.staleRecorders],
-        ["known beds", recorder.knownBeds],
-        ["recorder anomalies", recorder.recorderAnomalies],
-        ["observation updated", formatDate(recorder.observedAt)],
-        ["latest recorder", latest ? `${latest.vrcode || "-"} ${latest.ip || "-"}` : null]
-      ];
-      $("overviewMetrics").innerHTML = metricsHTML(values);
-    }
-
     function renderStatus(status, settings = {}, observation = null) {
       const action = actionNeeded(status);
       const recorders = (observation && observation.recorders) || [];
@@ -531,8 +486,8 @@
       const values = [
         ["Overall health", runtimeHealthText(status)],
         ["Recommended action", action ? action.action : null],
-        ["VitalServer", serviceText(status.hostProxyHTTP)],
-        ["Runtime Control uptime", formatUptime(status.runtimeControlStartedAt)],
+        ["VitalServer", serviceText(status.publicProxyHTTP)],
+        ["Platform API uptime", formatUptime(status.platformAPIStartedAt)],
         ["Known recorders", recorders.length],
         ["Known beds", beds.length],
         ["CPU", formatPercent(status.cpuUsagePercent)],
@@ -545,21 +500,19 @@
     }
 
     function renderAdvancedStatus(status) {
-      const proxyPort = validProxyPort(status.proxyPort);
+      const proxyPort = validProxyPort(status.publicProxyPort);
       const vitalServerURL = proxyPort ? `http://127.0.0.1:${proxyPort}/` : null;
       const redisUIURL = proxyPort ? `http://127.0.0.1:${proxyPort}/redis-ui/` : null;
       const swaggerURL = proxyPort ? `http://127.0.0.1:${proxyPort}/swagger/` : null;
       const values = [
-        ["runtime state", status.runtimeState],
-        ["runtime version", status.runtimeVersion],
-        ["VM state", status.vmState],
-        ["VM errors", (status.vmErrors || []).map(domainText).join(", ")],
-        ["failure reasons", (status.failureReasons || []).map(domainText).join(", ")],
-        ["VM IP", status.vmIP],
-        ["guest HTTP", status.guestHTTP],
-        ["host proxy HTTP", status.hostProxyHTTP],
-        ["Redis UI HTTP", status.redisUIHTTP],
-        ["Swagger HTTP", status.swaggerUIHTTP],
+        ["platform health", status.platformHealth],
+        ["installed version", status.installedVersion],
+        ["Runtime Provider state", status.runtimeProviderState],
+        ["Runtime Provider errors", (status.runtimeProviderErrors || []).map(domainText).join(", ")],
+        ["health issues", (status.healthIssues || []).map(domainText).join(", ")],
+        ["Runtime endpoint", status.runtimeEndpoint],
+        ["Runtime Controller HTTP", status.runtimeControllerHTTP],
+        ["public proxy HTTP", status.publicProxyHTTP],
         ["status read issues", (status.readIssues || []).map(issue => `${issue.source}: ${issue.message}`).join(", ")],
         ["VitalServer URL", vitalServerURL],
         ["Redis UI URL", redisUIURL],
@@ -763,57 +716,57 @@
     }
 
     async function summarizeBundle() {
-      const result = await postJSON("/host/update-bundles/summary", {
+      const result = await postJSON("/platform/update-bundles/summary", {
         bundle: localPathReference($("bundlePath").value)
       });
       append("statusStream", "bundle-summary", result);
     }
 
     async function verifyBundle() {
-      await runRuntimeCommand("bundle-verified", () => postJSON("/host/update-bundles/verify", {
+      await runRuntimeCommand("bundle-verified", () => postJSON("/platform/update-bundles/verify", {
         bundle: localPathReference($("bundlePath").value)
       }));
     }
 
     async function applyBundle() {
       if (!confirm("Apply this update bundle? Runtime services may restart.")) return;
-      await runRuntimeCommand("bundle-applied", () => postJSON("/host/update-bundles/apply", {
+      await runRuntimeCommand("bundle-applied", () => postJSON("/platform/update-bundles/apply", {
         bundle: localPathReference($("bundlePath").value)
       }));
     }
 
     async function rollbackSelectedBackup() {
       if (!confirm("Rollback to this backup? Runtime services will restart.")) return;
-      await runRuntimeCommand("backup-rollback", () => postJSON("/host/backups/rollback", {
+      await runRuntimeCommand("backup-rollback", () => postJSON("/platform/backups/rollback", {
         backup: localPathReference($("backupPath").value)
       }));
     }
 
     async function deleteSelectedBackup() {
       if (!confirm("Delete this backup? This cannot be undone.")) return;
-      await runRuntimeCommand("backup-deleted", () => deleteJSON("/host/backups", {
+      await runRuntimeCommand("backup-deleted", () => deleteJSON("/platform/backups", {
         backup: localPathReference($("backupPath").value)
       }));
     }
 
     async function exportRuntimeLogs() {
-      const result = await postJSON("/host/logs/export", {
+      const result = await postJSON("/platform/logs/export", {
         destination: localPathReference($("logExportPath").value)
       });
       append("statusStream", "logs-exported", result);
     }
 
     async function refreshLab() {
-      renderLab(await getJSON("/lab/scenarios"));
+      renderLab(await getJSON("/runtime/lab/scenarios"));
     }
 
     async function createLabSession() {
-      const scenarios = await getJSON("/lab/scenarios");
+      const scenarios = await getJSON("/runtime/lab/scenarios");
       const scenario = (scenarios.scenarios || [])[0];
       if (!scenario) {
         throw new Error("No Lab scenario is available.");
       }
-      const session = await postJSON("/lab/sessions", {
+      const session = await postJSON("/runtime/lab/sessions", {
         scenarioId: scenario.scenarioId,
         name: "Dev Console Lab",
         recorderCount: 1,
@@ -861,11 +814,9 @@
     }
 
     function connectAll() {
-      connectStream("overview", "/runtime/overview/stream", "overviewStream", "overviewState", "overviewDot");
-      connectStream("status", "/runtime/status/stream", "statusStream", "statusState", "statusDot");
-      connectStream("events", "/runtime/events/stream?limit=50", "eventStream", "eventState", "eventDot");
-      connectStream("vitaldb", "/vitaldb/observations/stream", "vitalDBStream", "vitalDBState", "vitalDBDot");
-      connectStream("logs", `/host/logs/stream?source=${encodeURIComponent($("logSource").value)}&lineLimit=${encodeURIComponent($("lineLimit").value)}`, "logStream", "logState", "logDot");
+      connectStream("status", "/platform/stream", "statusStream", "statusState", "statusDot");
+      connectStream("vitaldb", "/runtime/vitaldb/observations/stream", "vitalDBStream", "vitalDBState", "vitalDBDot");
+      connectStream("logs", `/platform/logs/stream?source=${encodeURIComponent($("logSource").value)}&lineLimit=${encodeURIComponent($("lineLimit").value)}`, "logStream", "logState", "logDot");
     }
 
     function disconnectAll() {
@@ -873,9 +824,7 @@
         controller.abort();
       }
       streams.clear();
-      setState("overviewState", "overviewDot", "closed");
       setState("statusState", "statusDot", "closed");
-      setState("eventState", "eventDot", "closed");
       setState("vitalDBState", "vitalDBDot", "closed");
       setState("logState", "logDot", "closed");
     }
@@ -953,22 +902,6 @@
           renderObservability(latestStatus, latestVitalDBObservation);
         } catch (_) {}
       }
-      if (outputId === "overviewStream" && parsed.data) {
-        try {
-          const overview = JSON.parse(parsed.data);
-          latestStatus = overview.status || latestStatus;
-          latestSettings = overview.settings || latestSettings;
-          latestVitalDBObservation = overview.vitalDBObservation || null;
-          renderOverview(overview);
-          renderStatus(latestStatus, latestSettings, latestVitalDBObservation);
-          renderAdvancedStatus(latestStatus);
-          renderVitalDBObservation(overview.vitalDBObservation);
-          renderObservability(latestStatus, latestVitalDBObservation);
-        } catch (_) {}
-      }
-      if (outputId === "eventStream" && data && typeof data === "object") {
-        prependRuntimeEvent(data);
-      }
       if (outputId === "vitalDBStream" && parsed.data) {
         try {
           const observation = JSON.parse(parsed.data);
@@ -1038,8 +971,8 @@
 
     function runtimeHealthText(status) {
       if (!runtimeIsExecutable(status)) return "Runtime is not executable";
-      if (["installing", "initializing", "updating", "recovering"].includes(status.runtimeState)) return titleCase(status.runtimeState);
-      if (successfulHTTPStatus(status.hostProxyHTTP)) return "VitalServer is reachable";
+      if (["installing", "initializing", "updating", "recovering"].includes(status.platformHealth)) return titleCase(status.platformHealth);
+      if (successfulHTTPStatus(status.publicProxyHTTP)) return "VitalServer is reachable";
       return "VitalServer is unavailable";
     }
 
@@ -1047,10 +980,10 @@
       if (!runtimeIsExecutable(status)) {
         return { title: "Runtime is not executable", action: "Install" };
       }
-      if (["healthy", "installing", "initializing", "updating", "recovering"].includes(status.runtimeState)) {
+      if (["healthy", "installing", "initializing", "updating", "recovering"].includes(status.platformHealth)) {
         return null;
       }
-      const reasons = status.failureReasons || [];
+      const reasons = status.healthIssues || [];
       const proxyReason = reasons.find((reason) => String(reason).includes("proxy") || String(reason).includes("port"));
       if (proxyReason) {
         return { title: "VitalServer is unavailable", action: "Repair Proxy" };
@@ -1159,13 +1092,13 @@
 
     $("refresh").addEventListener("click", () => refreshStatus().catch((error) => append("statusStream", "error", { message: error.message })));
     $("healthCheck").addEventListener("click", () => runRuntimeCommand("health-check", () => postJSON("/runtime/health", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
-    $("repairRuntime").addEventListener("click", () => runRuntimeCommand("runtime-repaired", () => postJSON("/runtime/services/repair-runtime", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("repairRuntime").addEventListener("click", () => runRuntimeCommand("runtime-repaired", () => postJSON("/platform/services/repair", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("repairProxy").addEventListener("click", () => {
-      runRuntimeCommand("proxy-repaired", () => postJSON("/runtime/services/repair-proxy", null))
+      runRuntimeCommand("proxy-repaired", () => postJSON("/platform/proxy/repair", null))
         .catch((error) => append("statusStream", "command-error", { message: error.message }));
     });
-    $("repairDatastore").addEventListener("click", () => runRuntimeCommand("datastore-repaired", () => postJSON("/runtime/services/repair-datastore", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
-    $("createRedisBackup").addEventListener("click", () => runRuntimeCommand("redis-backup-created", () => postJSON("/runtime/redis/backups", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("repairDatastore").addEventListener("click", () => runRuntimeCommand("datastore-repaired", () => postJSON("/runtime/maintenance/datastore/repair", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("createRedisBackup").addEventListener("click", () => runRuntimeCommand("redis-backup-created", () => postJSON("/platform/backups/redis", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("applySettings").addEventListener("click", () => confirm("Apply runtime settings?") && applyRuntimeSettings().catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("summaryBundle").addEventListener("click", () => summarizeBundle().catch((error) => append("statusStream", "bundle-error", { message: error.message })));
     $("verifyBundle").addEventListener("click", () => verifyBundle().catch((error) => append("statusStream", "bundle-error", { message: error.message })));
@@ -1179,7 +1112,7 @@
     $("disconnectAll").addEventListener("click", disconnectAll);
     function reconnectLogs() {
       if (streams.has("logs")) {
-        connectStream("logs", `/host/logs/stream?source=${encodeURIComponent($("logSource").value)}&lineLimit=${encodeURIComponent($("lineLimit").value)}`, "logStream", "logState", "logDot");
+        connectStream("logs", `/platform/logs/stream?source=${encodeURIComponent($("logSource").value)}&lineLimit=${encodeURIComponent($("lineLimit").value)}`, "logStream", "logState", "logDot");
       }
     }
 

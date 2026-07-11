@@ -48,8 +48,8 @@ public struct RuntimeStatusOverallHealthPolicy {
     }
 
     public func overallHealth(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState
+        status: PlatformState,
+        operationState: PlatformOperationState
     ) -> RuntimeStatusOverallHealthValue {
         if let operation = operationState.operationForPresentation {
             if RuntimeActiveOperationPolicy.isInstallOperation(operation) {
@@ -62,21 +62,20 @@ public struct RuntimeStatusOverallHealthPolicy {
                 return value(vocabulary.updatingText, .warning)
             }
         }
-        if status.runtimeState == .initializing {
+        if status.platformHealth == .initializing {
             return value(vocabulary.initializingText, .warning)
         }
         if RuntimeReadinessPolicy.isReady(status) {
             return value(vocabulary.healthyText, .healthy)
         }
         let installationState = status.runtimeInstallationState
-            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
         if installationState == .missing {
             return value(vocabulary.notInstalledText, .critical)
         }
         if !installationState.isExecutable {
             return value(vocabulary.installStateText(installationState), .critical)
         }
-        switch status.runtimeState {
+        switch status.platformHealth {
         case .some(.installing):
             return value(vocabulary.installingText, .warning)
         case .some(.initializing):

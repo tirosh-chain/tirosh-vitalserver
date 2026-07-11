@@ -182,7 +182,7 @@ Product Lab virtual recorder 또는 dev testkit이 실제 VRecorder처럼 보이
 
 ### 7-2. Helper Product Lab 경로
 
-macOS runtime의 Helper UI는 Product Lab surface를 통해 virtual recorder를 제어합니다. Product Lab session, bed, recorder read model은 Runtime Control API `/lab/*`와 Guest Control API `/v1/lab/*` 계약을 거쳐 `apps/vitalserver-lab` service가 소유합니다. 이 경로는 Helper가 dev-only test harness를 직접 제어하지 않고도 VitalServer 수신, recorder-ingress, observer, Guest/Postgres read model 반영을 검증하기 위한 제품 경로입니다.
+macOS runtime의 Helper UI는 Product Lab surface를 통해 virtual recorder를 제어합니다. Product Lab session, bed, recorder read model은 Runtime Control API `/runtime/lab/*`와 Guest Control API `/runtime/lab/*` 계약을 거쳐 `apps/vitalserver-lab` service가 소유합니다. 이 경로는 Helper가 dev-only test harness를 직접 제어하지 않고도 VitalServer 수신, recorder-ingress, observer, Guest/Postgres read model 반영을 검증하기 위한 제품 경로입니다.
 
 Lab에서 별도로 만든 bed/recorder를 session이 사용해야 할 때는 session 생성 요청에 명시적인 `bedIds`를 전달해야 합니다. Helper나 Host는 기존 Lab bed/recorder를 이름, fixture, 이전 명령 결과로 추측해 점유하지 않습니다. `bedIds`가 없으면 Product Lab은 새 session-scoped bed/recorder read model을 만들고, `bedIds`가 있으면 Lab service가 해당 Lab-owned bed/recorder rows를 session 상태로 전이합니다.
 

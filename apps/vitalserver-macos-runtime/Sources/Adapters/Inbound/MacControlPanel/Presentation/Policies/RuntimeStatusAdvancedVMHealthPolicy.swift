@@ -30,8 +30,8 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
     }
 
     public func vmHealth(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState
+        status: PlatformState,
+        operationState: PlatformOperationState
     ) -> [RuntimeStatusHealthDetailItem] {
         let operation = operationState.operationForPresentation
         return vmHealth(
@@ -42,32 +42,27 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
     }
 
     private func vmHealth(
-        status: RuntimeStatus,
+        status: PlatformState,
         installInProgress: Bool,
         initializationInProgress: Bool
     ) -> [RuntimeStatusHealthDetailItem] {
+        let runtimeInstallationValue = value(
+            vocabulary.installStateText(status.runtimeInstallationState),
+            installStateSeverity(status.runtimeInstallationState)
+        )
         var items = [
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,
-                value: value(
-                    vocabulary.installStateText(
-                        status.runtimeInstallationState
-                            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
-                    ),
-                    installStateSeverity(
-                        status.runtimeInstallationState
-                            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
-                    )
-                )
+                value: runtimeInstallationValue
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmStateLabel,
-                value: value(vmStatePolicy.vmStateValue(status.vmState))
+                value: value(vmStatePolicy.vmStateValue(status.runtimeProviderState))
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmServiceLabel,
                 value: value(serviceValuePolicy.serviceValue(
-                    state: status.vmServiceState,
+                    state: status.serviceState(.runtimeProvider),
                     installInProgress: installInProgress,
                     initializationInProgress: initializationInProgress
                 ))
@@ -75,16 +70,16 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmIPAddressLabel,
                 value: value(
-                    status.vmIP ?? guestReadinessPolicy.pendingGuestStateText(
+                    status.runtimeEndpoint ?? guestReadinessPolicy.pendingGuestStateText(
                         status: status,
                         waitingText: vocabulary.waitingText,
                         staleText: vocabulary.guestStateStaleText
                     ),
-                    status.vmServiceState == .loaded && status.vmIP != nil ? .healthy : .warning
+                    status.serviceState(.runtimeProvider) == .loaded && status.runtimeEndpoint != nil ? .healthy : .warning
                 )
             ),
         ]
-        if let vmErrors = status.vmErrors, !vmErrors.isEmpty {
+        if let vmErrors = status.runtimeProviderErrors, !vmErrors.isEmpty {
             items.append(RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmErrorsLabel,
                 value: value(

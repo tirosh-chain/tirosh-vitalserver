@@ -3,26 +3,26 @@ import Errors
 
 @MainActor
 public protocol RuntimeStatusSnapshotLoading {
-    func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus
-    func loadOperationState() async -> RuntimeOperationState
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+    func loadPlatformState(settings: RuntimeSettings) async -> PlatformState
+    func loadOperationState() async -> PlatformOperationState
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState
 }
 
 public protocol RuntimeStatusPresentationFormatting {
-    func statusDisplayMessage(_ status: RuntimeStatus) -> String?
-    func updateOperationDisplayMessage(_ status: RuntimeStatus, operationState: RuntimeOperationState) -> String?
+    func statusDisplayMessage(_ status: PlatformState) -> String?
+    func updateOperationDisplayMessage(_ status: PlatformState, operationState: PlatformOperationState) -> String?
 }
 
 public struct RuntimeStatusRefreshResult {
-    public let status: RuntimeStatus
-    public let operationState: RuntimeOperationState
+    public let status: PlatformState
+    public let operationState: PlatformOperationState
     public let message: String?
     public let operationDetail: String?
     public let selectedLogSource: RuntimeLogSource?
 
     public init(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         message: String?,
         operationDetail: String?,
         selectedLogSource: RuntimeLogSource?
@@ -52,7 +52,7 @@ public struct RuntimeStatusRefresher {
         settings: RuntimeSettings,
         isBusy: Bool
     ) async -> RuntimeStatusRefreshResult {
-        let status = await snapshots.loadStatus(settings: settings)
+        let status = await snapshots.loadPlatformState(settings: settings)
         let operationState = await snapshots.loadOperationState()
         return presentation(
             status: status,
@@ -95,7 +95,7 @@ public struct RuntimeStatusRefresher {
         settings: RuntimeSettings,
         pendingDetail: String
     ) async -> RuntimeStatusRefreshResult {
-        let status = await snapshots.loadStatus(settings: settings)
+        let status = await snapshots.loadPlatformState(settings: settings)
         let operationState = await snapshots.loadOperationState()
         return RuntimeStatusRefreshResult(
             status: status,
@@ -107,8 +107,8 @@ public struct RuntimeStatusRefresher {
     }
 
     private func presentation(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         isBusy: Bool,
         includeOperationStatePresentation: Bool,
         messagePrefix: String? = nil

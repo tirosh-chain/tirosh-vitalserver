@@ -143,6 +143,8 @@ public enum RuntimeControlHTTPWireCodec {
         switch status {
         case .ok:
             return "OK"
+        case .accepted:
+            return "Accepted"
         case .noContent:
             return "No Content"
         case .badRequest:
@@ -153,6 +155,8 @@ public enum RuntimeControlHTTPWireCodec {
             return "Not Found"
         case .methodNotAllowed:
             return "Method Not Allowed"
+        case .serviceUnavailable:
+            return "Service Unavailable"
         case .notImplemented:
             return "Not Implemented"
         case .internalServerError:

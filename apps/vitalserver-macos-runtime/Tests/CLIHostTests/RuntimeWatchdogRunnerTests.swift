@@ -111,7 +111,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
     }
 
-    func testGuestReadinessFailureReconcilesGuestCompose() throws {
+    func testRuntimeReadinessFailureRestartsPlatformVMAndProxy() throws {
         let harness = WatchdogHarness(snapshots: [
             healthSnapshot(
                 vmLifecycle: runningLifecycle(),
@@ -125,14 +125,14 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.proxyLivenessPorts, [80])
-        XCTAssertEqual(harness.guestStackReconcileCalls, 1)
-        XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
-        XCTAssertTrue(harness.restartedServices.isEmpty)
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 1)
+        XCTAssertEqual(harness.restartedServices, [.proxy])
         XCTAssertEqual(harness.sleepCalls, [watchdogRecoveryWaitSeconds])
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [
             .recoveryPlanned,
+            .serviceRestartDispatched,
             .serviceRestartDispatched,
         ])
     }
@@ -283,9 +283,9 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertTrue(harness.logs.contains { $0.contains("watchdog failed to mark VM lifecycle running") })
     }
 
-    func testGuestComposeReconcileFailureWritesCommandFailureAndStopsRecoverySequence() throws {
+    func testVMRestartFailureWritesCommandFailureAndStopsRecoverySequence() throws {
         let harness = WatchdogHarness(
-            guestStackReconcileError: WatchdogTestError.guestStackReconcileFailed,
+            vmRestartError: WatchdogTestError.vmRestartFailed,
             snapshots: [
                 healthSnapshot(
                     vmLifecycle: runningLifecycle(),
@@ -298,8 +298,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
 
         try harness.runner.run()
 
-        XCTAssertEqual(harness.guestStackReconcileCalls, 1)
-        XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 1)
         XCTAssertTrue(harness.restartedServices.isEmpty)
         XCTAssertTrue(harness.sleepCalls.isEmpty)
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .critical])
@@ -311,7 +310,6 @@ private final class WatchdogHarness {
     var prepareLogCalls = 0
     var healthCalls = 0
     var proxyLivenessPorts: [Int?] = []
-    var guestStackReconcileCalls = 0
     var vmRuntimeRestartCalls = 0
     var restartedServices: [RuntimeManagedService] = []
     var sleepCalls: [TimeInterval] = []
@@ -339,7 +337,6 @@ private final class WatchdogHarness {
     private let automaticRecoveryEnabled: Bool
     private let automaticRecoveryReadError: Error?
     private let lifecycleMarkError: Error?
-    private let guestStackReconcileError: Error?
     private let vmRestartError: Error?
     private let proxyRestartError: Error?
     private var snapshots: [RuntimeHealthSnapshot]
@@ -349,7 +346,6 @@ private final class WatchdogHarness {
         automaticRecoveryEnabled: Bool = true,
         automaticRecoveryReadError: Error? = nil,
         lifecycleMarkError: Error? = nil,
-        guestStackReconcileError: Error? = nil,
         vmRestartError: Error? = nil,
         proxyRestartError: Error? = nil,
         snapshots: [RuntimeHealthSnapshot] = [healthSnapshot()]
@@ -358,7 +354,6 @@ private final class WatchdogHarness {
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
         self.automaticRecoveryReadError = automaticRecoveryReadError
         self.lifecycleMarkError = lifecycleMarkError
-        self.guestStackReconcileError = guestStackReconcileError
         self.vmRestartError = vmRestartError
         self.proxyRestartError = proxyRestartError
         self.snapshots = snapshots
@@ -393,12 +388,6 @@ private final class WatchdogHarness {
                         throw automaticRecoveryReadError
                     }
                     return self.automaticRecoveryEnabled
-                },
-                reconcileGuestStack: {
-                    self.guestStackReconcileCalls += 1
-                    if let guestStackReconcileError = self.guestStackReconcileError {
-                        throw guestStackReconcileError
-                    }
                 },
                 restartVMRuntime: {
                     self.vmRuntimeRestartCalls += 1
@@ -460,7 +449,6 @@ private struct WatchdogHarnessRunner {
 private enum WatchdogTestError: Error {
     case configReadFailed
     case lifecycleWriteFailed
-    case guestStackReconcileFailed
     case vmRestartFailed
 }
 
@@ -495,7 +483,7 @@ private func healthSnapshot(
         vmLifecycle: vmLifecycle,
         vmState: vmState,
         vmErrors: vmErrors,
-        guestAddressRead: guestAddressRead ?? vmIP.map { .loaded(address: $0, source: .runtimeControlAPI) }
+        guestAddressRead: guestAddressRead ?? vmIP.map { .loaded(address: $0, source: .platformAgent) }
             ?? .missing("vm-ip file missing"),
         vmIP: vmIP,
         proxyPort: proxyPort,

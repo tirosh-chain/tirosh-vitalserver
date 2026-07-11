@@ -155,6 +155,26 @@ class RedisRelayReadModelPort(Protocol):
         raise NotImplementedError
 
 
+class RuntimeSettingsPort(Protocol):
+    def read(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def save(self, settings: dict[str, Any]) -> None:
+        raise NotImplementedError
+
+
+class RuntimeAdminPort(Protocol):
+    def replace_admin_password(self, password: str) -> None:
+        raise NotImplementedError
+
+
+class RedisRelaySettingsPort(Protocol):
+    def read(self) -> dict[str, object]:
+        raise NotImplementedError
+
+    def save(self, settings: dict[str, object]) -> None:
+        raise NotImplementedError
+
 class RedisBackupPort(Protocol):
     def create_backup(self) -> RedisBackupResult:
         raise NotImplementedError
@@ -220,4 +240,14 @@ class OperationRepository(Protocol):
         raise NotImplementedError
 
     def get(self, operation_id: str) -> ServiceOperation | None:
+        raise NotImplementedError
+
+    def query_events(
+        self,
+        *,
+        limit: int,
+        event_type: str | None,
+        since: datetime | None,
+        cursor: str | None,
+    ) -> dict[str, Any]:
         raise NotImplementedError

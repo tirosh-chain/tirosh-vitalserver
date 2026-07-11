@@ -19,7 +19,12 @@ describe("runtime event filters", () => {
   });
 
   it("uses the contract event type list for UI filters", () => {
-    expect(runtimeEventTypes).toContain("recovery-suppressed");
-    expect(runtimeEventTypes).toContain("recovery-deferred");
+    expect(runtimeEventTypes).toEqual([
+      "operation-accepted",
+      "operation-running",
+      "operation-completed",
+      "operation-failed",
+      "operation-cancelled"
+    ]);
   });
 });

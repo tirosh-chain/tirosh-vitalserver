@@ -140,7 +140,7 @@ struct RuntimeHostVersionReader: RuntimeVersionReading {
         case .missing:
             return RuntimeVersionRead(
                 version: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "runtimeVersion",
                     message: "runtime version document missing path=\(versionFile.path)"
                 )
@@ -148,7 +148,7 @@ struct RuntimeHostVersionReader: RuntimeVersionReading {
         case .failed(let message):
             return RuntimeVersionRead(
                 version: nil,
-                issue: RuntimeStatusReadIssue(source: "runtimeVersion", message: message)
+                issue: PlatformStateReadIssue(source: "runtimeVersion", message: message)
             )
         }
     }
@@ -166,7 +166,7 @@ struct RuntimeHostLatestBackupReader: RuntimeLatestBackupReading {
         case .missing:
             return RuntimeLatestBackupRead(
                 path: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "latestBackup",
                     message: "backup directory missing path=\(backupsDirectory.path)"
                 )
@@ -174,7 +174,7 @@ struct RuntimeHostLatestBackupReader: RuntimeLatestBackupReading {
         case .inspectFailed(let reason):
             return RuntimeLatestBackupRead(
                 path: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "latestBackup",
                     message: "backup directory inspection failed path=\(backupsDirectory.path) reason=\(reason)"
                 )
@@ -182,7 +182,7 @@ struct RuntimeHostLatestBackupReader: RuntimeLatestBackupReading {
         case .file, .other, .unknown:
             return RuntimeLatestBackupRead(
                 path: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "latestBackup",
                     message: "backup directory path state is unexpected path=\(backupsDirectory.path) state=\(directoryState.rawValue)"
                 )
@@ -201,7 +201,7 @@ struct RuntimeHostLatestBackupReader: RuntimeLatestBackupReading {
         } catch {
             return RuntimeLatestBackupRead(
                 path: nil,
-                issue: RuntimeStatusReadIssue(source: "latestBackup", message: error.localizedDescription)
+                issue: PlatformStateReadIssue(source: "latestBackup", message: error.localizedDescription)
             )
         }
     }

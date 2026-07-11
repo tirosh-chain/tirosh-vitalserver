@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 
@@ -133,6 +134,27 @@ class FakeOperations:
             ),
             None,
         )
+
+    def query_events(self, **_: object) -> dict[str, object]:
+        return {
+            "events": [
+                {
+                    "schemaVersion": 1,
+                    "id": "runtime-operation-event-1",
+                    "source": "runtime-controller",
+                    "eventType": "operation-completed",
+                    "timestamp": "2026-07-01T00:00:00+00:00",
+                    "operationId": "op_app_restart_1",
+                    "operationService": "app",
+                    "operationCommand": "restart",
+                    "operationState": "completed",
+                    "message": "app restart completed",
+                    "failure": None,
+                }
+            ],
+            "nextCursor": None,
+            "matchingCount": None,
+        }
 
 
 class FakeServiceControl:
@@ -594,6 +616,58 @@ class FakeDatastoreRepair:
         return None
 
 
+class FakeRuntimeSettings:
+    def __init__(self) -> None:
+        self.settings = runtime_settings_document()
+
+    def read(self) -> dict[str, object]:
+        return dict(self.settings)
+
+    def save(self, settings: dict[str, object]) -> None:
+        self.settings = dict(settings)
+
+
+class FakeRuntimeAdmin:
+    def __init__(self) -> None:
+        self.password: str | None = None
+
+    def replace_admin_password(self, password: str) -> None:
+        self.password = password
+
+
+class FakeRedisRelaySettings:
+    def __init__(self) -> None:
+        self.settings: dict[str, object] = {
+            "enabled": False,
+            "target": {
+                "url": "redis://redis.example:6379/0",
+                "username": "",
+                "passwordConfigured": False,
+                "tls": False,
+            },
+            "scope": "vital_reconstruction",
+            "includeRecorderNetworkContext": False,
+            "intervalSeconds": 1.0,
+            "scanCount": 1000,
+        }
+
+    def read(self) -> dict[str, object]:
+        return self.settings
+
+    def save(self, settings: dict[str, object]) -> None:
+        self.settings = settings
+
+
+def runtime_settings_document() -> dict[str, object]:
+    path = (
+        Path(__file__).parents[3]
+        / "apps/vitalserver-platform-agent/packaging/linux/runtime-settings.json"
+    )
+    value = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(value, dict)
+    return value
+
+
 class FakeUpdateActivation:
     def activate_update(
         self,
@@ -638,6 +712,9 @@ def usecases() -> GuestControlUseCases:
         vitaldb_read_model=FakeVitalDBReadModel(),
         recorder_ingress=FakeRecorderIngress(),
         redis_relay=FakeRedisRelay(),
+        runtime_settings=FakeRuntimeSettings(),
+        runtime_admin=FakeRuntimeAdmin(),
+        redis_relay_settings=FakeRedisRelaySettings(),
         redis_backup=FakeRedisBackup(),
         datastore_repair=FakeDatastoreRepair(),
         update_activation=FakeUpdateActivation(),
@@ -774,7 +851,7 @@ def test_list_services_route_returns_services(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/services",
+        path="/runtime/services",
         usecases=usecases,
     )
 
@@ -787,7 +864,7 @@ def test_capabilities_route_advertises_vitaldb_read_model(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/capabilities",
+        path="/runtime/capabilities",
         usecases=usecases,
     )
 
@@ -824,7 +901,7 @@ def test_capabilities_route_omits_unconfigured_adapter_capabilities() -> None:
 
     status, document = route_request(
         method="GET",
-        path="/v1/capabilities",
+        path="/runtime/capabilities",
         usecases=usecases,
     )
 
@@ -852,7 +929,7 @@ def test_stack_status_route_returns_explicit_stack_document(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/stack/status",
+        path="/runtime/stack",
         usecases=usecases,
     )
 
@@ -880,7 +957,7 @@ def test_restart_route_returns_operation_document(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/services/app/restart",
+        path="/runtime/services/app/restart",
         usecases=usecases,
     )
 
@@ -896,18 +973,18 @@ def test_guest_service_resource_routes_return_controller_resource(
 ) -> None:
     spec_status, spec_document = route_request(
         method="PUT",
-        path="/v1/services/app/spec",
+        path="/runtime/services/app/spec",
         body=json.dumps({"desiredState": "stopped"}).encode("utf-8"),
         usecases=usecases,
     )
     reconcile_status, reconcile_document = route_request(
         method="POST",
-        path="/v1/services/app/reconcile",
+        path="/runtime/services/app/reconcile",
         usecases=usecases,
     )
     resource_status, resource_document = route_request(
         method="GET",
-        path="/v1/services/app/resource",
+        path="/runtime/services/app/resource",
         usecases=usecases,
     )
 
@@ -929,7 +1006,7 @@ def test_guest_service_observe_route_returns_observed_resource(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/services/app/observe",
+        path="/runtime/services/app/observe",
         usecases=usecases,
     )
 
@@ -952,7 +1029,7 @@ def test_guest_service_spec_invalid_request_returns_bad_request() -> None:
 
     status, document = handle_with_test_handler(
         method="PUT",
-        path="/v1/services/app/spec",
+        path="/runtime/services/app/spec",
         body=json.dumps({"desiredState": "paused"}).encode("utf-8"),
         usecases=usecases,
     )
@@ -974,7 +1051,7 @@ def test_guest_service_unknown_service_returns_not_found() -> None:
 
     status, document = handle_with_test_handler(
         method="GET",
-        path="/v1/services/redis/resource",
+        path="/runtime/services/redis/resource",
         body=b"",
         usecases=usecases,
     )
@@ -998,7 +1075,7 @@ def test_restart_route_preserves_failed_operation_document() -> None:
 
     status, document = route_request(
         method="POST",
-        path="/v1/services/app/restart",
+        path="/runtime/services/app/restart",
         usecases=usecases,
     )
 
@@ -1028,17 +1105,17 @@ def test_service_command_routes_return_operation_documents(
 ) -> None:
     _, start_document = route_request(
         method="POST",
-        path="/v1/services/app/start",
+        path="/runtime/services/app/start",
         usecases=usecases,
     )
     _, stop_document = route_request(
         method="POST",
-        path="/v1/services/app/stop",
+        path="/runtime/services/app/stop",
         usecases=usecases,
     )
     _, restart_document = route_request(
         method="POST",
-        path="/v1/services/app/restart",
+        path="/runtime/services/app/restart",
         usecases=usecases,
     )
 
@@ -1058,7 +1135,7 @@ def test_stack_reconcile_route_returns_operation_document(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/stack/reconcile",
+        path="/runtime/stack/reconcile",
         usecases=usecases,
     )
 
@@ -1074,7 +1151,7 @@ def test_redis_backup_route_returns_operation_with_archive_result(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/maintenance/redis-backup",
+        path="/runtime/maintenance/redis-backup",
         usecases=usecases,
     )
 
@@ -1093,7 +1170,7 @@ def test_redis_restore_route_returns_operation_with_restored_archive_result(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/maintenance/redis-restore",
+        path="/runtime/maintenance/redis-restore",
         body=json.dumps({
             "archive": "/mnt/tirosh-runtime/backups/redis/redis-20260701.tar.gz",
         }).encode("utf-8"),
@@ -1115,7 +1192,7 @@ def test_datastore_repair_route_returns_operation_document(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/maintenance/datastore-repair",
+        path="/runtime/maintenance/datastore/repair",
         usecases=usecases,
     )
 
@@ -1131,7 +1208,7 @@ def test_update_activation_route_returns_operation_with_request_result(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/maintenance/update-activation",
+        path="/runtime/maintenance/update-activation",
         body=json.dumps({
             "requestId": "update-activation-request-1",
             "version": "0.2.0",
@@ -1156,7 +1233,7 @@ def test_update_activation_route_rejects_missing_request_id(
     with pytest.raises(Exception) as error:
         route_request(
             method="POST",
-            path="/v1/maintenance/update-activation",
+            path="/runtime/maintenance/update-activation",
             body=json.dumps({"version": "0.2.0"}).encode("utf-8"),
             usecases=usecases,
         )
@@ -1169,7 +1246,7 @@ def test_update_shutdown_route_returns_operation_with_ready_result(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/maintenance/update-shutdown",
+        path="/runtime/maintenance/update-shutdown",
         body=json.dumps({
             "requestId": "update-shutdown-request-1",
             "version": "0.2.0",
@@ -1196,7 +1273,7 @@ def test_update_shutdown_route_rejects_missing_version(
     with pytest.raises(Exception) as error:
         route_request(
             method="POST",
-            path="/v1/maintenance/update-shutdown",
+            path="/runtime/maintenance/update-shutdown",
             body=json.dumps({"requestId": "update-shutdown-request-1"}).encode(
                 "utf-8"
             ),
@@ -1211,7 +1288,7 @@ def test_guest_poweroff_route_returns_operation_document(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/maintenance/guest-poweroff",
+        path="/runtime/maintenance/guest-poweroff",
         usecases=usecases,
     )
 
@@ -1227,13 +1304,13 @@ def test_operation_route_returns_latest_operation(
 ) -> None:
     _, operation_document = route_request(
         method="POST",
-        path="/v1/maintenance/redis-backup",
+        path="/runtime/maintenance/redis-backup",
         usecases=usecases,
     )
 
     status, document = route_request(
         method="GET",
-        path=f"/v1/operations/{operation_document['operationId']}",
+        path=f"/runtime/operations/{operation_document['operationId']}",
         usecases=usecases,
     )
 
@@ -1248,7 +1325,7 @@ def test_lab_scenarios_route_returns_product_lab_contract(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/lab/scenarios",
+        path="/runtime/lab/scenarios",
         usecases=usecases,
     )
 
@@ -1269,7 +1346,7 @@ def test_lab_vital_files_route_returns_product_lab_catalog(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/lab/vital-files",
+        path="/runtime/lab/vital-files",
         usecases=usecases,
     )
 
@@ -1286,12 +1363,12 @@ def test_lab_read_model_routes_return_product_lab_contract(
 ) -> None:
     bed_status, beds = route_request(
         method="GET",
-        path="/v1/lab/beds",
+        path="/runtime/lab/beds",
         usecases=usecases,
     )
     recorder_status, recorders = route_request(
         method="GET",
-        path="/v1/lab/recorders",
+        path="/runtime/lab/recorders",
         usecases=usecases,
     )
 
@@ -1308,13 +1385,13 @@ def test_lab_management_routes_return_product_lab_read_models(
 ) -> None:
     create_status, created = route_request(
         method="POST",
-        path="/v1/lab/beds/create",
+        path="/runtime/lab/beds/create",
         body=json.dumps({"roomNames": ["OR-A"]}).encode("utf-8"),
         usecases=usecases,
     )
     delete_status, deleted = route_request(
         method="POST",
-        path="/v1/lab/recorders/delete",
+        path="/runtime/lab/recorders/delete",
         body=json.dumps({"recorderIds": ["lab-session-1-recorder-1"]}).encode("utf-8"),
         usecases=usecases,
     )
@@ -1334,7 +1411,7 @@ def test_lab_create_session_route_returns_session_response_with_operation(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/lab/sessions",
+        path="/runtime/lab/sessions",
         body=json.dumps(
             {
                 "scenarioId": "normal_monitoring",
@@ -1358,7 +1435,7 @@ def test_lab_get_session_route_returns_loaded_session_response(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/lab/sessions/lab-session-1",
+        path="/runtime/lab/sessions/lab-session-1",
         usecases=usecases,
     )
 
@@ -1374,7 +1451,7 @@ def test_recorder_ingress_status_route_returns_explicit_status_read(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/recorder-ingress/status",
+        path="/runtime/recorder-ingress/status",
         usecases=usecases,
     )
 
@@ -1402,7 +1479,7 @@ def test_redis_relay_status_route_returns_explicit_status_read(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/redis-relay/status",
+        path="/runtime/redis-relay/status",
         usecases=usecases,
     )
 
@@ -1426,13 +1503,13 @@ def test_redis_relay_status_route_persists_owner_snapshot() -> None:
 
     put_status, put_document = route_request(
         method="PUT",
-        path="/v1/redis-relay/status",
+        path="/runtime/redis-relay/status",
         body=body,
         usecases=usecases,
     )
     get_status, get_document = route_request(
         method="GET",
-        path="/v1/redis-relay/status",
+        path="/runtime/redis-relay/status",
         usecases=usecases,
     )
 
@@ -1457,7 +1534,7 @@ def test_redis_relay_status_route_rejects_incomplete_owner_snapshot() -> None:
 
     status, response = handle_with_test_handler(
         method="PUT",
-        path="/v1/redis-relay/status",
+        path="/runtime/redis-relay/status",
         body=json.dumps(document).encode("utf-8"),
         usecases=usecases,
     )
@@ -1475,12 +1552,12 @@ def test_lab_session_command_routes_return_explicit_session_state(
 ) -> None:
     _, started = route_request(
         method="POST",
-        path="/v1/lab/sessions/lab-session-1/start",
+        path="/runtime/lab/sessions/lab-session-1/start",
         usecases=usecases,
     )
     _, stopped = route_request(
         method="POST",
-        path="/v1/lab/sessions/lab-session-1/stop",
+        path="/runtime/lab/sessions/lab-session-1/stop",
         usecases=usecases,
     )
 
@@ -1495,7 +1572,7 @@ def test_lab_replay_vital_file_route_uses_explicit_request_body(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/lab/vital-files/replay",
+        path="/runtime/lab/vital-files/replay",
         body=json.dumps(
             {"vitalFilePath": "/mnt/tirosh-vital-files/sample.vital"}
         ).encode("utf-8"),
@@ -1514,7 +1591,7 @@ def test_lab_upload_vital_file_route_uses_explicit_request_body(
 ) -> None:
     status, document = route_request(
         method="POST",
-        path="/v1/lab/vital-files/upload",
+        path="/runtime/lab/vital-files/upload",
         body=json.dumps(
             {
                 "vitalFilePath": "/mnt/tirosh-vital-files/sample.vital",
@@ -1537,7 +1614,7 @@ def test_latest_vitaldb_observation_route_returns_product_read_model(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/observations/latest",
+        path="/runtime/vitaldb/observations/latest",
         usecases=usecases,
     )
 
@@ -1545,6 +1622,148 @@ def test_latest_vitaldb_observation_route_returns_product_read_model(
     assert document["state"] == "loaded"
     assert document["observation"]["observedAt"] == "2026-07-01T00:00:00+00:00"
     assert document["readError"] is None
+
+
+def test_runtime_events_route_reads_runtime_owned_operation_history(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="GET",
+        path="/runtime/events",
+        query={
+            "limit": ["25"],
+            "type": ["operation-completed"],
+            "since": ["2026-07-01T00:00:00Z"],
+        },
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document["events"][0]["source"] == "runtime-controller"
+    assert document["events"][0]["operationState"] == "completed"
+
+
+def test_runtime_events_route_rejects_invalid_query(
+    usecases: GuestControlUseCases,
+) -> None:
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="GET",
+            path="/runtime/events",
+            query={"limit": ["0"]},
+            usecases=usecases,
+        )
+
+    assert error.value.status == HTTPStatus.BAD_REQUEST
+    assert error.value.code == "queryParameterInvalid"
+
+
+def test_runtime_settings_routes_read_apply_and_reconcile(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, read = route_request(
+        method="GET",
+        path="/runtime/settings",
+        usecases=usecases,
+    )
+    settings = dict(read["settings"])
+    settings["publicPort"] = 8080
+
+    applied_status, operation = route_request(
+        method="PUT",
+        path="/runtime/settings",
+        body=json.dumps({"settings": settings}).encode("utf-8"),
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert read["state"] == "loaded"
+    assert applied_status == HTTPStatus.ACCEPTED
+    assert operation["state"] == "completed"
+    assert operation["command"] == "apply-settings"
+
+
+def test_runtime_settings_route_rejects_incomplete_contract(
+    usecases: GuestControlUseCases,
+) -> None:
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="PUT",
+            path="/runtime/settings",
+            body=b'{"settings": {}}',
+            usecases=usecases,
+        )
+
+    assert error.value.status == HTTPStatus.BAD_REQUEST
+    assert error.value.code == "runtimeSettingsInvalid"
+
+
+def test_runtime_admin_password_route_applies_without_returning_secret(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, operation = route_request(
+        method="POST",
+        path="/runtime/admin-password",
+        body=json.dumps({"password": "new-admin-secret"}).encode("utf-8"),
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.ACCEPTED
+    assert operation["state"] == "completed"
+    assert operation["service"] == "runtime-admin"
+    assert operation["command"] == "apply-admin-password"
+    assert "new-admin-secret" not in json.dumps(operation)
+
+
+def test_runtime_admin_password_route_rejects_newline(
+    usecases: GuestControlUseCases,
+) -> None:
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="POST",
+            path="/runtime/admin-password",
+            body=json.dumps({"password": "invalid\nsecret"}).encode("utf-8"),
+            usecases=usecases,
+        )
+
+    assert error.value.status == HTTPStatus.BAD_REQUEST
+    assert error.value.code == "runtimeAdminPasswordInvalid"
+
+
+def test_redis_relay_settings_routes_read_apply_and_do_not_return_secret(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, read = route_request(
+        method="GET", path="/runtime/redis-relay/settings", usecases=usecases
+    )
+    assert status == HTTPStatus.OK
+    assert read["state"] == "loaded"
+    assert "password" not in read["settings"]["target"]
+
+    request = {
+        "enabled": True,
+        "target": {
+            "url": "redis://relay.example:6379/1",
+            "username": "relay",
+            "password": "private-secret",
+            "clearPassword": False,
+            "tls": True,
+        },
+        "scope": "waveform_trend_only",
+        "includeRecorderNetworkContext": True,
+        "intervalSeconds": 0.5,
+        "scanCount": 250,
+    }
+    status, operation = route_request(
+        method="PUT",
+        path="/runtime/redis-relay/settings",
+        body=json.dumps(request).encode("utf-8"),
+        usecases=usecases,
+    )
+    assert status == HTTPStatus.ACCEPTED
+    assert operation["command"] == "apply-redis-relay-settings"
+    assert operation["state"] == "completed"
+    assert "private-secret" not in json.dumps(operation)
 
 
 def test_latest_vitaldb_observation_route_reports_unavailable_without_adapter() -> None:
@@ -1558,7 +1777,7 @@ def test_latest_vitaldb_observation_route_reports_unavailable_without_adapter() 
 
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/observations/latest",
+        path="/runtime/vitaldb/observations/latest",
         usecases=usecases,
     )
 
@@ -1575,7 +1794,7 @@ def test_vitaldb_recorders_route_returns_product_read_model(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/recorders",
+        path="/runtime/vitaldb/recorders",
         usecases=usecases,
     )
 
@@ -1592,19 +1811,19 @@ def test_vitaldb_recorders_visibility_routes_require_hidden_before_delete(
 ) -> None:
     _, delete_without_hide = route_request(
         method="POST",
-        path="/v1/vitaldb/recorders/delete",
+        path="/runtime/vitaldb/recorders/delete",
         body=json.dumps({"vrcodes": ["VR-001"]}).encode("utf-8"),
         usecases=usecases,
     )
     _, hidden = route_request(
         method="POST",
-        path="/v1/vitaldb/recorders/hide",
+        path="/runtime/vitaldb/recorders/hide",
         body=json.dumps({"vrcodes": ["VR-001"]}).encode("utf-8"),
         usecases=usecases,
     )
     _, deleted = route_request(
         method="POST",
-        path="/v1/vitaldb/recorders/delete",
+        path="/runtime/vitaldb/recorders/delete",
         body=json.dumps({"vrcodes": ["VR-001"]}).encode("utf-8"),
         usecases=usecases,
     )
@@ -1614,6 +1833,28 @@ def test_vitaldb_recorders_visibility_routes_require_hidden_before_delete(
     )
     assert hidden["recorders"][0]["visibility"] == "hidden"
     assert deleted["recorders"] == []
+
+
+def test_vitaldb_recorder_detail_distinguishes_loaded_and_missing(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, recorder = route_request(
+        method="GET",
+        path="/runtime/vitaldb/recorders/VR-001",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert recorder["vrcode"] == "VR-001"
+
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="GET",
+            path="/runtime/vitaldb/recorders/VR-missing",
+            usecases=usecases,
+        )
+    assert error.value.status == HTTPStatus.NOT_FOUND
+    assert error.value.code == "vitalDBRecorderNotFound"
 
 
 def test_vitaldb_recorders_route_reports_unavailable_without_adapter() -> None:
@@ -1627,16 +1868,37 @@ def test_vitaldb_recorders_route_reports_unavailable_without_adapter() -> None:
 
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/recorders",
+        path="/runtime/vitaldb/recorders",
         usecases=usecases,
     )
 
     assert status == HTTPStatus.OK
+    assert document["state"] == "readFailed"
+    assert document["recorders"] == []
+    assert document["updatedAt"] is None
+    assert document["readError"] == "VitalDB recorder read model adapter is unavailable."
+
+
+def test_vitaldb_recorder_detail_reports_read_model_failure_as_unavailable() -> None:
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        product_lab=FakeProductLab(),
+    )
+
+    status, document = handle_with_test_handler(
+        method="GET",
+        path="/runtime/vitaldb/recorders/VR-001",
+        body=b"",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.SERVICE_UNAVAILABLE
     assert document == {
-        "state": "unavailable",
-        "recorders": [],
-        "observedAt": None,
-        "readError": "VitalDB recorder read model adapter is unavailable.",
+        "code": "vitaldb-read-model-unavailable",
+        "detail": "VitalDB read model adapter is unavailable.",
     }
 
 
@@ -1645,7 +1907,7 @@ def test_vitaldb_recorder_activity_route_returns_product_read_model(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/recorders/VR-001/activity",
+        path="/runtime/vitaldb/recorders/VR-001/activity",
         usecases=usecases,
     )
 
@@ -1661,7 +1923,7 @@ def test_vitaldb_beds_route_returns_product_read_model(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/beds",
+        path="/runtime/vitaldb/beds",
         usecases=usecases,
     )
 
@@ -1678,19 +1940,19 @@ def test_vitaldb_beds_visibility_routes_require_hidden_before_delete(
 ) -> None:
     _, delete_without_hide = route_request(
         method="POST",
-        path="/v1/vitaldb/beds/delete",
+        path="/runtime/vitaldb/beds/delete",
         body=json.dumps({"bedIDs": ["bed-a"]}).encode("utf-8"),
         usecases=usecases,
     )
     _, hidden = route_request(
         method="POST",
-        path="/v1/vitaldb/beds/hide",
+        path="/runtime/vitaldb/beds/hide",
         body=json.dumps({"bedIDs": ["bed-a"]}).encode("utf-8"),
         usecases=usecases,
     )
     _, deleted = route_request(
         method="POST",
-        path="/v1/vitaldb/beds/delete",
+        path="/runtime/vitaldb/beds/delete",
         body=json.dumps({"bedIDs": ["bed-a"]}).encode("utf-8"),
         usecases=usecases,
     )
@@ -1700,6 +1962,28 @@ def test_vitaldb_beds_visibility_routes_require_hidden_before_delete(
     )
     assert hidden["beds"][0]["visibility"] == "hidden"
     assert deleted["beds"] == []
+
+
+def test_vitaldb_bed_detail_distinguishes_loaded_and_missing(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, bed = route_request(
+        method="GET",
+        path="/runtime/vitaldb/beds/bed-a",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert bed["bedID"] == "bed-a"
+
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="GET",
+            path="/runtime/vitaldb/beds/bed-missing",
+            usecases=usecases,
+        )
+    assert error.value.status == HTTPStatus.NOT_FOUND
+    assert error.value.code == "vitalDBBedNotFound"
 
 
 def test_vitaldb_beds_route_reports_unavailable_without_adapter() -> None:
@@ -1713,17 +1997,15 @@ def test_vitaldb_beds_route_reports_unavailable_without_adapter() -> None:
 
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/beds",
+        path="/runtime/vitaldb/beds",
         usecases=usecases,
     )
 
     assert status == HTTPStatus.OK
-    assert document == {
-        "state": "unavailable",
-        "beds": [],
-        "observedAt": None,
-        "readError": "VitalDB bed read model adapter is unavailable.",
-    }
+    assert document["state"] == "readFailed"
+    assert document["beds"] == []
+    assert document["updatedAt"] is None
+    assert document["readError"] == "VitalDB bed read model adapter is unavailable."
 
 
 def test_vitaldb_relationships_route_returns_product_read_model(
@@ -1731,7 +2013,7 @@ def test_vitaldb_relationships_route_returns_product_read_model(
 ) -> None:
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/relationships",
+        path="/runtime/vitaldb/relationships",
         usecases=usecases,
     )
 
@@ -1753,7 +2035,7 @@ def test_vitaldb_relationships_route_reports_unavailable_without_adapter() -> No
 
     status, document = route_request(
         method="GET",
-        path="/v1/vitaldb/relationships",
+        path="/runtime/vitaldb/relationships",
         usecases=usecases,
     )
 
@@ -1772,7 +2054,7 @@ def test_lab_post_route_rejects_missing_json_body(
     with pytest.raises(Exception) as error:
         route_request(
             method="POST",
-            path="/v1/lab/sessions",
+            path="/runtime/lab/sessions",
             usecases=usecases,
         )
 

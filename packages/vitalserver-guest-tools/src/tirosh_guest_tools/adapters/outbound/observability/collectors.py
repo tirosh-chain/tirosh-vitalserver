@@ -32,6 +32,7 @@ from tirosh_guest_tools.domain.observability import (
 )
 from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
+    RUNTIME_CONFIG_FILE,
     RUNTIME_DIR,
     VITAL_FILES_MOUNT_POINT,
 )
@@ -174,7 +175,7 @@ def collect_runtime_files(
     files = [
         RUNTIME_DIR / RuntimeDiagnosticsArtifactFileName.RUNTIME_OBSERVATION.value,
         RUNTIME_DIR / RuntimeDiagnosticsArtifactFileName.BOOTSTRAP_RESULT.value,
-        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value,
+        RUNTIME_CONFIG_FILE,
     ]
     return {str(path): file_state(path, errors) for path in files}
 

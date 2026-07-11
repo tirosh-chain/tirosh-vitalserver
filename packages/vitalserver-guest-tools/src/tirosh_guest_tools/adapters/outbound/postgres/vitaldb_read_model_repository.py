@@ -14,6 +14,11 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
     VitalDBReadModelDependencyError,
 )
+from tirosh_guest_tools.domain.vitaldb_history import (
+    VitalDBHistoryProjectionError,
+    bed_history_from_recorder_history,
+    project_vitaldb_history,
+)
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS vitaldb_observation_snapshots (
@@ -79,12 +84,7 @@ class PostgresVitalDBReadModelRepository:
         }
 
     def recorders(self) -> dict[str, Any]:
-        return self._collection_document(
-            collection="recorders",
-            entity_kind="recorder",
-            identity_field="vrcode",
-            invalid_message="VitalDB recorder read model field is invalid.",
-        )
+        return self._history_document()
 
     def hide_recorders(self, request: dict[str, Any]) -> dict[str, Any]:
         ids = _required_string_list(request, "vrcodes")
@@ -132,12 +132,7 @@ class PostgresVitalDBReadModelRepository:
         }
 
     def beds(self) -> dict[str, Any]:
-        return self._collection_document(
-            collection="beds",
-            entity_kind="bed",
-            identity_field="bedID",
-            invalid_message="VitalDB bed read model field is invalid.",
-        )
+        return bed_history_from_recorder_history(self._history_document())
 
     def hide_beds(self, request: dict[str, Any]) -> dict[str, Any]:
         ids = _required_string_list(request, "bedIDs")
@@ -234,6 +229,57 @@ class PostgresVitalDBReadModelRepository:
             )
 
         return observation
+
+    def _observation_documents(self, *, limit: int = 1000) -> list[dict[str, Any]]:
+        sql = (
+            "SELECT COALESCE(jsonb_agg(document ORDER BY observed_at, snapshot_id), "
+            "'[]'::jsonb)::text FROM ("
+            "SELECT snapshot_id, document, observed_at "
+            "FROM vitaldb_observation_snapshots "
+            "ORDER BY observed_at DESC, snapshot_id DESC "
+            f"LIMIT {limit}"
+            ") AS recent;"
+        )
+        completed = _run_vitaldb_psql(sql, stage="vitaldb observation history read")
+        text = (completed.stdout or "").strip()
+        if not text:
+            raise VitalDBReadModelDependencyError(
+                "VitalDB observation history read returned no document.",
+                kind="vitaldb-read-model-unavailable",
+            )
+        try:
+            observations = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise VitalDBReadModelDependencyError(
+                "VitalDB observation history is invalid JSON.",
+                kind="vitaldb-read-model-invalid",
+            ) from error
+        if not isinstance(observations, list) or not all(
+            isinstance(observation, dict) for observation in observations
+        ):
+            raise VitalDBReadModelDependencyError(
+                "VitalDB observation history is not a document list.",
+                kind="vitaldb-read-model-invalid",
+            )
+        if not observations:
+            raise VitalDBReadModelDependencyError(
+                "VitalDB observation read model is empty.",
+                kind="vitaldb-read-model-unavailable",
+            )
+        return observations
+
+    def _history_document(self) -> dict[str, Any]:
+        try:
+            return project_vitaldb_history(
+                self._observation_documents(),
+                recorder_visibility=self._visibility_by_id("recorder"),
+                bed_visibility=self._visibility_by_id("bed"),
+            )
+        except VitalDBHistoryProjectionError as error:
+            raise VitalDBReadModelDependencyError(
+                str(error),
+                kind="vitaldb-read-model-invalid",
+            ) from error
 
     def _latest_relationship_history_document(self) -> dict[str, Any]:
         sql = (
@@ -343,7 +389,9 @@ class PostgresVitalDBReadModelRepository:
             )
         visibility_by_id: dict[str, str] = {}
         for entity_id, visibility in document.items():
-            if not isinstance(entity_id, str) or visibility not in {
+            if not isinstance(entity_id, str) or not isinstance(
+                visibility, str
+            ) or visibility not in {
                 VISIBLE,
                 HIDDEN,
                 DELETED,

@@ -130,8 +130,8 @@ def test_runtime_proxy_upstream_publishes_bootstrap_and_prints_owner_address(
     assert result == 0
     assert capsys.readouterr().out == "192.168.64.10:80\n"
     assert calls == [
-        ("PUT", "/host/runtime/guest-address", {"address": "192.168.64.8"}),
-        ("GET", "/host/runtime/guest-address", None),
+        ("PUT", "/platform/runtime-endpoint", {"address": "192.168.64.8"}),
+        ("GET", "/platform/runtime-endpoint", None),
     ]
 
 

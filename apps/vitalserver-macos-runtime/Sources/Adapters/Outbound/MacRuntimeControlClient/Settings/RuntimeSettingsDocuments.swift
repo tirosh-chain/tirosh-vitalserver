@@ -177,22 +177,18 @@ struct GuestRuntimeSettings: Decodable {
 public struct RuntimeControlSettingsDocument: Codable, Equatable {
     public let logArchiveRetentionDays: Int
     public let logArchiveMaximumGiB: Int
-    public let redisRelay: RuntimeRedisRelaySettings
 
     enum CodingKeys: String, CodingKey {
         case logArchiveRetentionDays
         case logArchiveMaximumGiB
-        case redisRelay
     }
 
     public init(
         logArchiveRetentionDays: Int = RuntimeSettingsInitialValues.logArchiveRetentionDays,
-        logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB,
-        redisRelay: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings()
+        logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB
     ) {
         self.logArchiveRetentionDays = logArchiveRetentionDays
         self.logArchiveMaximumGiB = logArchiveMaximumGiB
-        self.redisRelay = redisRelay
     }
 
     public init(from decoder: Decoder) throws {
@@ -205,11 +201,7 @@ public struct RuntimeControlSettingsDocument: Codable, Equatable {
             logArchiveMaximumGiB: try container.decodeIfPresent(
                 Int.self,
                 forKey: .logArchiveMaximumGiB
-            ) ?? RuntimeSettingsInitialValues.logArchiveMaximumGiB,
-            redisRelay: try container.decodeIfPresent(
-                RuntimeRedisRelaySettings.self,
-                forKey: .redisRelay
-            ) ?? RuntimeRedisRelaySettings()
+            ) ?? RuntimeSettingsInitialValues.logArchiveMaximumGiB
         )
     }
 
@@ -237,8 +229,7 @@ public struct RuntimeControlSettingsDocument: Codable, Equatable {
     var runtimeSettingsReadInput: RuntimeLogArchiveSettingsReadInput {
         RuntimeLogArchiveSettingsReadInput(
             retentionDays: logArchiveRetentionDays,
-            maximumGiB: logArchiveMaximumGiB,
-            redisRelay: redisRelay
+            maximumGiB: logArchiveMaximumGiB
         )
     }
 }

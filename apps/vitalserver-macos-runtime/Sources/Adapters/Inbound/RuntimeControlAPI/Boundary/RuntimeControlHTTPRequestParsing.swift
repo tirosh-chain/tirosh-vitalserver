@@ -62,22 +62,29 @@ public extension RuntimeControlHTTPRequest {
         }
 
         let before: RuntimeEventCursor?
+        let cursor: String?
         if let rawCursor = try queryValue(named: "cursor") {
-            guard let decodedCursor = RuntimeEventCursorWireCodec.decode(rawCursor) else {
+            let parts = rawCursor.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 2,
+                  parts[0] == "event",
+                  let eventID = Int(parts[1]),
+                  eventID > 0 else {
                 throw RuntimeControlHTTPQueryError.invalidCursor(rawCursor)
             }
-            before = decodedCursor
+            cursor = rawCursor
+            before = nil
         } else {
+            cursor = nil
             before = nil
         }
 
         let eventType: RuntimeEventType?
         if let rawEventType = try queryValue(named: "type") {
-            let parsedEventType = RuntimeEventType(rawValue: rawEventType)
-            guard RuntimeEventType.knownTypes.contains(parsedEventType) else {
+            let parsed = RuntimeEventType(rawValue: rawEventType)
+            guard RuntimeEventType.knownTypes.contains(parsed) else {
                 throw RuntimeControlHTTPQueryError.invalidEventType(rawEventType)
             }
-            eventType = parsedEventType
+            eventType = parsed
         } else {
             eventType = nil
         }
@@ -86,7 +93,8 @@ public extension RuntimeControlHTTPRequest {
             limit: limit,
             eventType: eventType,
             since: try queryValue(named: "since"),
-            before: before
+            before: before,
+            cursor: cursor
         )
     }
 
@@ -174,10 +182,11 @@ public extension RuntimeControlHTTPRequest {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)
             .split(separator: "/", omittingEmptySubsequences: true)
-        guard components.count == 3,
-              components[0] == "vitaldb",
-              components[1] == "recorders",
-              let decoded = String(components[2]).removingPercentEncoding,
+        guard components.count == 4,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              let decoded = String(components[3]).removingPercentEncoding,
               !decoded.isEmpty
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
@@ -189,12 +198,13 @@ public extension RuntimeControlHTTPRequest {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)
             .split(separator: "/", omittingEmptySubsequences: true)
-        guard components.count == 4,
-              components[0] == "vitaldb",
-              components[1] == "recorders",
-              let decoded = String(components[2]).removingPercentEncoding,
+        guard components.count == 5,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              let decoded = String(components[3]).removingPercentEncoding,
               !decoded.isEmpty,
-              components[3] == "activity"
+              components[4] == "activity"
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
         }
@@ -205,10 +215,11 @@ public extension RuntimeControlHTTPRequest {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)
             .split(separator: "/", omittingEmptySubsequences: true)
-        guard components.count == 3,
-              components[0] == "vitaldb",
-              components[1] == "beds",
-              let decoded = String(components[2]).removingPercentEncoding,
+        guard components.count == 4,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "beds",
+              let decoded = String(components[3]).removingPercentEncoding,
               !decoded.isEmpty
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("bedID")
@@ -220,13 +231,12 @@ public extension RuntimeControlHTTPRequest {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)
             .split(separator: "/", omittingEmptySubsequences: true)
-        guard components.count == 5,
+        guard components.count == 4,
               components[0] == "runtime",
-              components[1] == "guest",
-              components[2] == "services",
-              let decoded = String(components[3]).removingPercentEncoding,
+              components[1] == "services",
+              let decoded = String(components[2]).removingPercentEncoding,
               !decoded.isEmpty,
-              components[4] == "status" || components[4] == "resource"
+              ["status", "resource", "start", "stop", "restart"].contains(String(components[3]))
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("service")
         }
@@ -237,10 +247,11 @@ public extension RuntimeControlHTTPRequest {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)
             .split(separator: "/", omittingEmptySubsequences: true)
-        guard components.count >= 3,
-              components[0] == "lab",
-              components[1] == "sessions",
-              let decoded = String(components[2]).removingPercentEncoding,
+        guard components.count >= 4,
+              components[0] == "runtime",
+              components[1] == "lab",
+              components[2] == "sessions",
+              let decoded = String(components[3]).removingPercentEncoding,
               !decoded.isEmpty
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("sessionId")

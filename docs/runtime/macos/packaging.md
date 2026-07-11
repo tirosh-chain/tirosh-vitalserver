@@ -11,6 +11,7 @@
 | 최종 산출물 위치는? | `dist/` |
 | build 작업의 주 구현은? | Python `packages/vitalserver-devtools` |
 | 설치 후 provisioning 주 구현은? | Swift `vitalserver-vm runtime install-provision` |
+| Platform API 자동 기동은? | launchd `ai.tirosh.vitalserver.helper.platform-agent` (`RunAtLoad`, `KeepAlive`) |
 | Shell script 역할은? | `postinstall`, launchd, uninstall wrapper |
 | update bundle은 누가 검증/적용하나? | Swift `RuntimeLifecycle` |
 
@@ -55,9 +56,14 @@ Release manifest는 build input이고, Product Lab/API 구현의 세부 contract
 | `services.*` | release manifest | bundled service image, version, display name |
 | `bundle.optionalContainerServices` | release manifest | 이번 package/update bundle에 포함할 선택 container service 목록 |
 
-`bundle.optionalContainerServices`는 dev-only 선택 container service를 포함할지 여부만 표현합니다. Runtime v2 product stack의 Product Lab과 Postgres는 선택 TestKit service가 아니라 `services.lab`, `services.postgres`, Guest compose, packaging preflight가 함께 검증하는 product dependency입니다. Lab route, API shape, 화면 정책은 release manifest가 아니라 Runtime Control `/lab/*`, Guest Control `/v1/lab/*`, `apps/vitalserver-lab` 구현이 소유합니다.
+`bundle.optionalContainerServices`는 dev-only 선택 container service를 포함할지 여부만 표현합니다. Runtime v2 product stack의 Product Lab과 Postgres는 선택 TestKit service가 아니라 `services.lab`, `services.postgres`, Guest compose, packaging preflight가 함께 검증하는 product dependency입니다. Lab route, API shape, 화면 정책은 release manifest가 아니라 Runtime Control `/runtime/lab/*`, Guest Control `/runtime/lab/*`, `apps/vitalserver-lab` 구현이 소유합니다.
 
-Runtime Control PWA는 package/update bundle에 static asset으로 포함됩니다. `make devtools/app`, `make dist/pkg/*`, `make dist/dmg/*`, `make dist/update/*`는 `make pwa/build`를 먼저 실행합니다. 빌드 머신에서는 packaging 전에 한 번 `make pwa/install`을 실행해야 하며, 현장 Mac에는 npm/Vite나 registry 접근이 필요하지 않습니다.
+Runtime Control PWA와 headless `vitalserver-platform-agent`는 Helper app bundle에
+함께 포함됩니다. Agent executable은 app 전체 서명 전에 nested code로 먼저
+서명되며 launchd plist는 app 내부 executable을 직접 실행합니다. `make devtools/app`,
+`make dist/pkg/*`, `make dist/dmg/*`, `make dist/update/*`는 `make pwa/build`를 먼저
+실행합니다. 빌드 머신에서는 packaging 전에 한 번 `make pwa/install`을 실행해야
+하며, 현장 Mac에는 npm/Vite나 registry 접근이 필요하지 않습니다.
 
 ## Build and Runtime Validation Contracts
 
@@ -122,11 +128,11 @@ Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `
 vitaldb-observer
   -> /health
   -> /ready
-  -> /api/v1/observations
+  -> /api/runtime/observations
   -> Guest Control VitalDB writer
   -> Postgres read model
-  -> Guest Control API /v1/vitaldb/*
-  -> Runtime Control API /vitaldb/*
+  -> Guest Control API /runtime/vitaldb/*
+  -> Runtime Control API /runtime/vitaldb/*
 ```
 
 Docker image bundle과 guest deploy 대상은 `config/vm-build.toml`이 소유합니다. observer image, Dockerfile, guest deploy `include` 항목을 변경할 때는 Makefile literal을 추가하지 말고 TOML 값을 수정합니다.
@@ -286,7 +292,7 @@ make dist/dmg/release
 
 `install-provision`은 package payload, VM disk/config, cloud-init seed, 권한, launchd service 시작 요청까지 담당합니다. runtime이 실제로 healthy인지 판단하는 일은 `postinstall`이 하지 않습니다. Helper app과 Runtime Control API는 explicit Guest/Host read model을 표시하고, `runtime-status.json`은 diagnostics/status projection artifact로 남깁니다. watchdog은 launchd state, VM/bootstrap evidence, Host operation lease, Guest Control readiness, HTTP health를 읽어 recovery 여부를 판단합니다. 따라서 `.pkg` 성공은 "runtime service start가 요청됨"을 뜻하고, "VitalServer backend가 ready"를 뜻하지 않습니다. Provision 완료 status는 active operation이 아니어야 하며, watchdog이 이어서 Guest-owned state를 반영할 수 있어야 합니다.
 
-Guest compose에 선언된 service가 disabled 설정을 가질 수 있어도, compose bind mount source는 install-provision이 명시적으로 만들어야 합니다. Redis Relay는 기본 disabled 상태에서도 `redis-relay-config/redis-relay.toml`, `redis-relay-secrets`, `redis-relay-status`가 존재해야 guest compose start가 실패하지 않습니다. Disabled는 process 동작 여부이고, Host-owned config contract의 부재를 뜻하지 않습니다.
+Guest compose에 선언된 service가 disabled 설정을 가질 수 있어도, compose bind mount source는 release provisioning이 명시적으로 만들어야 합니다. Redis Relay는 문서화된 설치 preset으로 기본 disabled owner document와 `redis-relay-secrets`, `redis-relay-status` directory를 준비해야 guest compose start가 실패하지 않습니다. 설치 뒤 설정과 secret의 읽기·변경·삭제 및 Compose reconcile은 Runtime Controller가 소유하며 Host `configure`나 Control Panel이 파일을 직접 쓰지 않습니다. Disabled는 process 동작 여부이고 Runtime owner contract의 부재를 뜻하지 않습니다.
 
 Fresh install `postinstall`이 실패하면 wrapper는 실패 로그를 `/private/tmp/tirosh-vitalserver-postinstall-failure.log`에 보존한 뒤 이번 package attempt가 만든 product root, Helper app, runtime tools, LaunchDaemon plist, package receipt를 제거합니다. Cleanup은 package nginx 경로로 확인된 orphan host proxy process도 종료합니다. 이 cleanup은 fresh install 경계에서만 동작하며, 외부 `.vital` 경로나 별도 사용자 데이터 경로는 삭제하지 않습니다.
 
@@ -349,7 +355,7 @@ Install VitalServer Helper.pkg
       -> remove install settings JSON
 ```
 
-VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack 안의 edge nginx container를 구성한 뒤 `/mnt/tirosh/run/runtime-observation.json`에 diagnostics snapshot을, `/mnt/tirosh/run/vm-ip`에 bootstrap Guest address evidence를 기록합니다. proxy service의 `vitalserver-proxy-run`은 loaded bootstrap address를 `PUT /host/runtime/guest-address`로 Runtime Control owner에 publish하고, host nginx routing address는 `GET /host/runtime/guest-address` owner read에서만 가져옵니다. Proxy readiness는 direct HTTP probes로 판단합니다. `runtime-observation.json.guestHTTP`는 proxy routing readiness gate가 아니고, `vm-ip`는 routing fallback이 아닙니다. `vm-ip` publish/read failure는 명시 로그와 typed Guest address read failure로 남아야 하며, `runtime-status.json`이나 `runtime-observation.json.vmIP` fallback state를 만들지 않습니다.
+VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack 안의 edge nginx container를 구성한 뒤 `/mnt/tirosh/run/runtime-observation.json`에 diagnostics snapshot을, `/mnt/tirosh/run/vm-ip`에 bootstrap Guest address evidence를 기록합니다. proxy service의 `vitalserver-proxy-run`은 loaded bootstrap address를 `PUT /platform/runtime-endpoint`로 Runtime Control owner에 publish하고, host nginx routing address는 `GET /platform/runtime-endpoint` owner read에서만 가져옵니다. Proxy readiness는 direct HTTP probes로 판단합니다. `runtime-observation.json.guestHTTP`는 proxy routing readiness gate가 아니고, `vm-ip`는 routing fallback이 아닙니다. `vm-ip` publish/read failure는 명시 로그와 typed Guest address read failure로 남아야 하며, `runtime-status.json`이나 `runtime-observation.json.vmIP` fallback state를 만들지 않습니다.
 
 설치 시 설정값은 MDM 또는 고급 설치 wrapper가 `installer` 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 쓸 수 있습니다. 이 파일은 partial JSON이며 `postinstall` 이후 삭제됩니다. 일반 사용자 설치는 기본값으로 진행하고, 설치 후 Helper app의 Settings에서 runtime 설정을 변경합니다.
 

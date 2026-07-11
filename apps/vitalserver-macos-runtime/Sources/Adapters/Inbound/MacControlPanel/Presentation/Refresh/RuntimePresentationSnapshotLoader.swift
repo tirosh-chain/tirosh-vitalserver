@@ -25,21 +25,21 @@ struct RuntimePresentationSnapshotLoader {
         return localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
     }
 
-    func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadPlatformState(settings: RuntimeSettings) async -> PlatformState {
         if let snapshotReader {
-            return await snapshotReader.loadStatus(settings: settings)
+            return await snapshotReader.loadPlatformState(settings: settings)
         }
-        return controlClient.loadStatus(settings: settings)
+        return controlClient.loadPlatformState(settings: settings)
     }
 
-    func loadOperationState() async -> RuntimeOperationState {
+    func loadOperationState() async -> PlatformOperationState {
         if let snapshotReader {
             return await snapshotReader.loadOperationState()
         }
         return controlClient.loadOperationState()
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
         if let snapshotReader {
             return await snapshotReader.loadHealthStatus(settings: settings)
         }

@@ -2,6 +2,7 @@ import Application
 import Contracts
 import Errors
 @testable import MacControlPanelHost
+@testable import MacPlatformAgent
 import OutboundAdapters
 import RuntimeControl
 import XCTest
@@ -9,7 +10,7 @@ import XCTest
 @MainActor
 final class RuntimeControlOperationLeaseControllerTests: XCTestCase {
     func testAcquireLoadHeartbeatAndReleaseOperationLease() async throws {
-        let controller = RuntimeControlOperationLeaseController()
+        let controller = makeController()
         let document = operationLease(operationId: "lease-1", operation: .applyBundle)
 
         let acquire = try await controller.acquireOperationLease(document)
@@ -41,7 +42,7 @@ final class RuntimeControlOperationLeaseControllerTests: XCTestCase {
     }
 
     func testAcquireFailsWhenOperationAlreadyExists() async throws {
-        let controller = RuntimeControlOperationLeaseController()
+        let controller = makeController()
         _ = try await controller.acquireOperationLease(operationLease(operationId: "lease-1", operation: .applyBundle))
 
         do {
@@ -56,7 +57,7 @@ final class RuntimeControlOperationLeaseControllerTests: XCTestCase {
     }
 
     func testHeartbeatAndReleasePreserveOperationIDMismatch() async throws {
-        let controller = RuntimeControlOperationLeaseController()
+        let controller = makeController()
         let document = operationLease(operationId: "lease-1", operation: .applyBundle)
         _ = try await controller.acquireOperationLease(document)
 
@@ -99,6 +100,16 @@ final class RuntimeControlOperationLeaseControllerTests: XCTestCase {
             heartbeatAt: "2026-07-09T01:00:00Z",
             expiresAt: nil,
             message: nil
+        )
+    }
+
+    private func makeController() -> RuntimeControlOperationLeaseController {
+        RuntimeControlOperationLeaseController(
+            owner: JSONFileRuntimeOperationLeaseRepository(
+                url: FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString, isDirectory: true)
+                    .appendingPathComponent("runtime-operation-lease.json")
+            )
         )
     }
 }

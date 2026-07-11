@@ -18,9 +18,6 @@ public struct RuntimeHealthObservation {
     public let hostProxyHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
-    public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
-    public let guestServiceResources: [RuntimeGuestServiceResource]
-    public let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     public let configurationFailureReasons: [RuntimeFailureReason]
     public let proxyPortFailureReasons: [RuntimeFailureReason]
@@ -42,9 +39,6 @@ public struct RuntimeHealthObservation {
         hostProxyHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
-        guestServiceResources: [RuntimeGuestServiceResource] = [],
-        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>,
         configurationFailureReasons: [RuntimeFailureReason],
         proxyPortFailureReasons: [RuntimeFailureReason],
@@ -65,9 +59,6 @@ public struct RuntimeHealthObservation {
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
-        self.guestServiceStatuses = guestServiceStatuses
-        self.guestServiceResources = guestServiceResources
-        self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
         self.vitalDBObservation = vitalDBObservation
         self.configurationFailureReasons = configurationFailureReasons
         self.proxyPortFailureReasons = proxyPortFailureReasons
@@ -116,9 +107,6 @@ public struct EvaluateRuntimeHealthUseCase {
             hostProxyHTTP: httpStatusText(reads.hostProxyHTTP),
             redisUIHTTP: httpStatusText(reads.redisUIHTTP),
             swaggerUIHTTP: httpStatusText(reads.swaggerUIHTTP),
-            guestServiceStatuses: reads.guestServiceStatuses,
-            guestServiceResources: reads.guestServiceResources,
-            guestServiceResourceReadIssues: reads.guestServiceResourceReadIssues,
             vitalDBObservation: reads.vitalDBObservation,
             configurationFailureReasons: vmLifecycle.failureReasons
                 + guestReadinessInput.failureReasons,
@@ -193,9 +181,6 @@ public struct EvaluateRuntimeHealthUseCase {
             hostProxyHTTP: observation.hostProxyHTTP,
             redisUIHTTP: observation.redisUIHTTP,
             swaggerUIHTTP: observation.swaggerUIHTTP,
-            guestServiceStatuses: observation.guestServiceStatuses,
-            guestServiceResources: observation.guestServiceResources,
-            guestServiceResourceReadIssues: observation.guestServiceResourceReadIssues,
             vitalDBObservation: observation.vitalDBObservation,
             configurationFailureReasons: observation.configurationFailureReasons,
             proxyPortFailureReasons: observation.proxyPortFailureReasons

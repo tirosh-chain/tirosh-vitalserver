@@ -77,7 +77,7 @@ public enum RuntimeLogExportSourceContract {
             .init(sourceID: .commandLog, relativeDestination: "command.log"),
             .init(sourceID: .helperMessageLog, relativeDestination: "helper-message.log"),
             .init(sourceID: .runtimeStatus, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)"),
-            .init(sourceID: .runtimeOperationLease, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease)"),
+            .init(sourceID: .runtimeOperationLease, relativeDestination: "diagnostics/platform/\(RuntimeHostOwnerFileNames.operationLease)"),
             .init(sourceID: .runtimeEvents, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)"),
             .init(sourceID: .runtimeObservabilityDB, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)"),
             .init(sourceID: .runtimeObservabilityDBWAL, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)-wal"),

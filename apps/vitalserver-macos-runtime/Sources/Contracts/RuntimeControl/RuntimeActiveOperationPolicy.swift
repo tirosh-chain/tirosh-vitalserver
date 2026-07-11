@@ -20,8 +20,8 @@ public enum RuntimeActiveOperationPolicy {
         }
     }
 
-    public static func isUpdateInProgress(_ status: RuntimeStatus, operation: RuntimeOperation?) -> Bool {
-        guard status.runtimeState != .recovering else {
+    public static func isUpdateInProgress(_ status: PlatformState, operation: RuntimeOperation?) -> Bool {
+        guard status.platformHealth != .recovering else {
             return false
         }
         return isUpdateOperation(operation)
@@ -42,15 +42,15 @@ public enum RuntimeActiveOperationPolicy {
         }
     }
 
-    public static func isRecoveryInProgress(_ status: RuntimeStatus, operation: RuntimeOperation?) -> Bool {
-        guard status.runtimeState == .recovering else {
+    public static func isRecoveryInProgress(_ status: PlatformState, operation: RuntimeOperation?) -> Bool {
+        guard status.platformHealth == .recovering else {
             return false
         }
         return isRecoveryOperation(operation) || isUpdateOperation(operation)
     }
 
-    public static func isInitializationInProgress(_ status: RuntimeStatus) -> Bool {
-        status.runtimeState == .initializing
+    public static func isInitializationInProgress(_ status: PlatformState) -> Bool {
+        status.platformHealth == .initializing
     }
 
     public static func isTerminal(_ phase: RuntimeProgressPhase) -> Bool {

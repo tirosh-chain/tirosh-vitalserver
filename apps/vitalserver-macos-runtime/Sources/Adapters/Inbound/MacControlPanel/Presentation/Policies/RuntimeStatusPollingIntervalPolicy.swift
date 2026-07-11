@@ -7,10 +7,10 @@ public struct RuntimeStatusPollingIntervalPolicy {
     public init() {}
 
     public func statusPollingIntervalNanoseconds(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState
+        status: PlatformState,
+        operationState: PlatformOperationState
     ) -> UInt64 {
-        if operationState.hasActiveOperation || status.runtimeState == .recovering {
+        if operationState.hasActiveOperation || status.platformHealth == .recovering {
             return Self.activeOperationInterval
         }
         return Self.steadyStateInterval

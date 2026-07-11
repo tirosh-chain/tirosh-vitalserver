@@ -559,6 +559,15 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(stopCommand.contains("'runtime' 'stop-services'"))
         XCTAssertTrue(repairCommand.contains("'runtime' 'repair-services'"))
     }
+
+    func testRuntimeProviderRestartStopsBeforeStarting() {
+        let command = RuntimeCommandFactory.runtimeProviderCommand(action: .restart)
+
+        let stopRange = try! XCTUnwrap(command.range(of: "'runtime' 'stop-services'"))
+        let startRange = try! XCTUnwrap(command.range(of: "'runtime' 'start-services'"))
+        XCTAssertLessThan(stopRange.lowerBound, startRange.lowerBound)
+        XCTAssertTrue(command.contains(" && "))
+    }
 }
 
 private func progressPlan(

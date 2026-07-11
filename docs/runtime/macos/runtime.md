@@ -331,13 +331,13 @@ runtime health는 사용자 화면, watchdog, update wait가 같이 사용하는
   -> process는 살아 있지만 upstream/app/guest가 아직 준비되지 않음
   -> update 중이면 대기
   -> 일반 운영 중이면 watchdog recovery 대상
-  -> VM process/IP boundary가 살아 있으면 Guest stack reconcile 우선
-  -> VM IP missing, VM service not loaded, expired bootstrapping이면 VM runtime restart로 승격
+  -> Runtime Control readiness가 실패하면 Host-owned VM + guest-log-sync + proxy restart
+  -> Guest product service reconcile은 Runtime Controller 내부 정책으로 처리
 ```
 
 guest runtime observation writer도 VitalServer 상태를 `/ready` 기준으로 기록합니다. `/`는 VitalServer app이 정상이어도 login 또는 UI route로 `302` redirect를 반환할 수 있으므로 readiness source가 아닙니다.
 
-watchdog auto-recovery는 update/rollback과 동시에 실행되면 안 됩니다. 이 suppression은 `runtime-status.json`의 status projection이나 `bootstrap-result.json`이 아니라 Host operation lease를 기준으로 합니다. Runtime Control의 current operation/progress detail은 explicit operation-state/API owner contract에서 읽고, `runtime-progress.json`은 diagnostics/export workflow progress artifact로만 남깁니다. Lease가 없거나 stale이면 watchdog은 status/progress/bootstrap 문서에서 operation을 추론하지 않고 일반 recovery 정책으로 돌아갑니다. 일반 recovery에서도 HTTP probe read failure는 Guest stack reconcile이나 VM restart로 추정하지 않고 typed blocker로 남깁니다.
+watchdog auto-recovery는 update/rollback과 동시에 실행되면 안 됩니다. 이 suppression은 `runtime-status.json`의 status projection이나 `bootstrap-result.json`이 아니라 Host operation lease를 기준으로 합니다. Runtime Control의 current operation/progress detail은 explicit operation-state/API owner contract에서 읽고, `runtime-progress.json`은 diagnostics/export workflow progress artifact로만 남깁니다. Lease가 없거나 stale이면 watchdog은 status/progress/bootstrap 문서에서 operation을 추론하지 않고 일반 recovery 정책으로 돌아갑니다. 일반 recovery에서도 HTTP probe read failure는 VM restart로 추정하지 않고 typed blocker로 남기며, Host watchdog은 Guest product stack을 reconcile하지 않습니다.
 
 ## 11. DHCP Reservation
 

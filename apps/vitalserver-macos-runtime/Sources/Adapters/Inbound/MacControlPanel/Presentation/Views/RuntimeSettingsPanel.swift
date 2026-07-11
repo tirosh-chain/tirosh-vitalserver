@@ -28,7 +28,7 @@ struct RuntimeSettingsPanel: View {
                         range: cpuCountRange,
                         suffix: AppConstants.Labels.unitVCPU
                     )
-                    .disabled(!viewModel.capabilities.canEditVMResources)
+                    .disabled(!viewModel.capabilities.canEditRuntimeProviderResources)
                     settingSlider(
                         AppConstants.Labels.memory,
                         value: $viewModel.settings.memoryGiB,
@@ -36,7 +36,7 @@ struct RuntimeSettingsPanel: View {
                         step: AppConstants.SettingsLimits.memoryStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
-                    .disabled(!viewModel.capabilities.canEditVMResources)
+                    .disabled(!viewModel.capabilities.canEditRuntimeProviderResources)
                     settingHelp(AppConstants.Labels.memoryAllocationHelp)
                     settingSlider(
                         AppConstants.Labels.disk,
@@ -45,7 +45,7 @@ struct RuntimeSettingsPanel: View {
                         step: AppConstants.SettingsLimits.diskStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
-                    .disabled(!viewModel.capabilities.canEditVMResources)
+                    .disabled(!viewModel.capabilities.canEditRuntimeProviderResources)
                     settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp(viewModel.settings.minimumDiskGiB))
                 }
                 settingsSection(AppConstants.Labels.sectionNetwork) {
@@ -416,7 +416,7 @@ struct RuntimeSettingsPanel: View {
     }
 
     private var canApplySettingsForCurrentConnection: Bool {
-        viewModel.capabilities.canEditVMResources
+        viewModel.capabilities.canEditRuntimeProviderResources
             || viewModel.capabilities.canEditNetworkExposure
             || viewModel.capabilities.canOpenLocalFiles
             || viewModel.capabilities.canResetAdminPassword

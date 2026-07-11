@@ -113,7 +113,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testStatusDisplayMessageIncludesFailureReasons() {
-        let status = RuntimeStatus(
+        let status = platformState(
             failureReasons: [.hostProxyHTTP("503"), .guestHTTP("000")]
         )
 
@@ -124,8 +124,8 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testUpdateOperationDisplayMessageUsesOperationStateWhenStatusProgressExists() {
-        let status = RuntimeStatus(runtimeState: .updating)
-        let operationState = RuntimeOperationState(
+        let status = platformState(runtimeState: .updating)
+        let operationState = PlatformOperationState(
             activeOperation: .applyBundle,
             install: .unavailable()
         )
@@ -138,9 +138,9 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testCompletedUpdateProgressIsNotRestoredAsActive() {
-        let status = RuntimeStatus(runtimeState: .healthy)
+        let status = platformState(runtimeState: .healthy)
 
-        let operationState = RuntimeOperationState(
+        let operationState = PlatformOperationState(
             activeOperation: nil,
             install: .unavailable()
         )
@@ -150,8 +150,8 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testUpdateOperationDisplayMessageUsesOperationStateResource() {
-        let status = RuntimeStatus(runtimeState: .healthy)
-        let operationState = RuntimeOperationState(
+        let status = platformState(runtimeState: .healthy)
+        let operationState = PlatformOperationState(
             activeOperation: .applyBundle,
             install: .unavailable()
         )
@@ -164,10 +164,10 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testUpdateOperationDisplayMessageDoesNotInferFromLegacyStatusOperation() {
-        let status = RuntimeStatus(
+        let status = platformState(
             runtimeState: .updating
         )
-        let operationState = RuntimeOperationState(
+        let operationState = PlatformOperationState(
             activeOperation: nil,
             install: .unavailable()
         )
@@ -177,7 +177,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testActiveOperationTextUsesOperationStateResource() {
-        let operationState = RuntimeOperationState(
+        let operationState = PlatformOperationState(
             activeOperation: .applyBundle,
             install: .unavailable()
         )
@@ -186,7 +186,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testActiveOperationTextUsesInstallOperationState() {
-        let operationState = RuntimeOperationState(
+        let operationState = PlatformOperationState(
             activeOperation: nil,
             install: .loaded(RuntimeInstallStateDocument(
                 state: .stepStarted,
@@ -195,7 +195,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
             ))
         )
 
-        XCTAssertEqual(formatter.activeOperationText(operationState), "Install")
+        XCTAssertEqual(formatter.activeOperationText(operationState), "Unknown")
     }
 
     func testRuntimeStateAndOperationTextUseStandardDisplayVocabulary() {

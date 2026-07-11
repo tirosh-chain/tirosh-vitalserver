@@ -1,5 +1,5 @@
 public enum RuntimeGuestAddressSource: String, Codable, Equatable, Sendable {
-    case runtimeControlAPI = "runtime-control-api"
+    case platformAgent = "platform-agent"
 }
 
 public enum RuntimeGuestAddressReadState: String, Codable, Equatable, Sendable {

@@ -145,6 +145,9 @@ class FakeOperations:
             None,
         )
 
+    def query_events(self, **_: object) -> dict[str, object]:
+        return {"events": [], "nextCursor": None, "matchingCount": None}
+
 
 class FakeServiceControl:
     def __init__(
@@ -1842,12 +1845,10 @@ def test_vitaldb_recorders_report_unavailable_without_adapter() -> None:
 
     response = usecases.list_vitaldb_recorders()
 
-    assert response == {
-        "state": "unavailable",
-        "recorders": [],
-        "observedAt": None,
-        "readError": "VitalDB recorder read model adapter is unavailable.",
-    }
+    assert response["state"] == "readFailed"
+    assert response["recorders"] == []
+    assert response["updatedAt"] is None
+    assert response["readError"] == "VitalDB recorder read model adapter is unavailable."
 
 
 def test_vitaldb_recorders_return_read_model_document() -> None:
@@ -1881,12 +1882,11 @@ def test_vitaldb_recorders_visibility_commands_require_hidden_before_delete() ->
     hidden = usecases.hide_vitaldb_recorders({"vrcodes": ["VR-001"]})
     deleted = usecases.delete_vitaldb_recorders({"vrcodes": ["VR-001"]})
 
-    assert delete_without_hide == {
-        "state": "failed",
-        "recorders": [],
-        "observedAt": None,
-        "readError": "VitalDB entity must be hidden before delete: VR-001",
-    }
+    assert delete_without_hide["state"] == "readFailed"
+    assert delete_without_hide["recorders"] == []
+    assert delete_without_hide["readError"] == (
+        "VitalDB entity must be hidden before delete: VR-001"
+    )
     assert hidden["recorders"][0]["visibility"] == "hidden"
     assert deleted["recorders"] == []
 
@@ -1917,12 +1917,9 @@ def test_vitaldb_recorders_preserve_dependency_failure() -> None:
 
     response = usecases.list_vitaldb_recorders()
 
-    assert response == {
-        "state": "unavailable",
-        "recorders": [],
-        "observedAt": None,
-        "readError": "Postgres read model is unreachable.",
-    }
+    assert response["state"] == "readFailed"
+    assert response["recorders"] == []
+    assert response["readError"] == "Postgres read model is unreachable."
 
 
 def test_vitaldb_recorder_activity_reports_unavailable_without_adapter() -> None:
@@ -1989,12 +1986,10 @@ def test_vitaldb_beds_report_unavailable_without_adapter() -> None:
 
     response = usecases.list_vitaldb_beds()
 
-    assert response == {
-        "state": "unavailable",
-        "beds": [],
-        "observedAt": None,
-        "readError": "VitalDB bed read model adapter is unavailable.",
-    }
+    assert response["state"] == "readFailed"
+    assert response["beds"] == []
+    assert response["updatedAt"] is None
+    assert response["readError"] == "VitalDB bed read model adapter is unavailable."
 
 
 def test_vitaldb_beds_return_read_model_document() -> None:
@@ -2028,12 +2023,11 @@ def test_vitaldb_beds_visibility_commands_require_hidden_before_delete() -> None
     hidden = usecases.hide_vitaldb_beds({"bedIDs": ["bed-a"]})
     deleted = usecases.delete_vitaldb_beds({"bedIDs": ["bed-a"]})
 
-    assert delete_without_hide == {
-        "state": "failed",
-        "beds": [],
-        "observedAt": None,
-        "readError": "VitalDB entity must be hidden before delete: bed-a",
-    }
+    assert delete_without_hide["state"] == "readFailed"
+    assert delete_without_hide["beds"] == []
+    assert delete_without_hide["readError"] == (
+        "VitalDB entity must be hidden before delete: bed-a"
+    )
     assert hidden["beds"][0]["visibility"] == "hidden"
     assert deleted["beds"] == []
 
@@ -2064,12 +2058,9 @@ def test_vitaldb_beds_preserve_dependency_failure() -> None:
 
     response = usecases.list_vitaldb_beds()
 
-    assert response == {
-        "state": "unavailable",
-        "beds": [],
-        "observedAt": None,
-        "readError": "Postgres read model is unreachable.",
-    }
+    assert response["state"] == "readFailed"
+    assert response["beds"] == []
+    assert response["readError"] == "Postgres read model is unreachable."
 
 
 def test_vitaldb_relationships_report_unavailable_without_adapter() -> None:

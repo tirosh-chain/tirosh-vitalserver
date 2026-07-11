@@ -85,148 +85,6 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.failureReasons, [])
     }
 
-    func testHealthyGuestServiceStatusesKeepSnapshotHealthy() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestServiceStatuses: .loaded([
-                RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "healthy",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ])
-        ))
-
-        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
-        XCTAssertEqual(snapshot.failureReasons, [])
-    }
-
-    func testStackStatusProbeErrorsDoNotBecomeRuntimeHealthFailuresWhenServicesAreHealthy() {
-        let stackStatus = RuntimeGuestControlStackStatus(
-            state: "loaded",
-            observedAt: "2026-07-01T00:00:00Z",
-            services: [
-                RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "healthy",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ],
-            probeErrors: [
-                GuestRuntimeProbeError(
-                    source: "docker stats",
-                    message: "timed out after 1 seconds"
-                ),
-            ]
-        )
-
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestServiceStatuses: .loaded(stackStatus.services)
-        ))
-
-        XCTAssertEqual(stackStatus.probeErrors, [
-            GuestRuntimeProbeError(
-                source: "docker stats",
-                message: "timed out after 1 seconds"
-            ),
-        ])
-        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
-        XCTAssertEqual(snapshot.failureReasons, [])
-    }
-
-    func testGuestServiceStatusesAreTheRecorderIngressHealthAuthority() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestServiceStatuses: .loaded([
-                RuntimeGuestControlServiceStatus(
-                    service: "recorder-ingress",
-                    state: "running",
-                    health: "healthy",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ])
-        ))
-
-        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
-        XCTAssertEqual(snapshot.failureReasons, [])
-    }
-
-    func testGuestServiceReadFailureProducesTypedReason() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestServiceStatuses: .readFailed("guest control api unavailable")
-        ))
-
-        XCTAssertEqual(snapshot.failureReasons, [
-            .guestServiceObservationReadFailed("guest_control_api_unavailable"),
-        ])
-    }
-
-    func testGuestServiceStatusFailureProducesTypedReason() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestServiceStatuses: .loaded([
-                RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "unhealthy",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ])
-        ))
-
-        XCTAssertEqual(snapshot.failureReasons, [
-            .guestService(service: "app", state: "unhealthy"),
-        ])
-    }
-
-    func testGuestServiceDesiredStoppedSuppressesStoppedStatusFailure() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestServiceStatuses: .loaded([
-                RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "stopped",
-                    health: "unknown",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-                RuntimeGuestControlServiceStatus(
-                    service: "redis",
-                    state: "stopped",
-                    health: "unknown",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ]),
-            guestServiceResources: [
-                guestServiceResource(service: "app", desiredState: "stopped"),
-                guestServiceResource(service: "redis", desiredState: "running"),
-            ]
-        ))
-
-        XCTAssertFalse(snapshot.failureReasons.contains(.guestService(service: "app", state: "stopped")))
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestService(service: "redis", state: "stopped")))
-    }
-
-    func testGuestServiceResourceReadIssueProducesTypedFailureReason() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            guestServiceStatuses: .loaded([
-                RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "healthy",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ]),
-            guestServiceResourceReadIssues: [
-                RuntimeGuestServiceResourceReadIssue(
-                    service: "app",
-                    message: "resource controller unavailable"
-                ),
-            ]
-        ))
-
-        XCTAssertEqual(snapshot.failureReasons, [
-            .guestServiceObservationReadFailed("app_resource_controller_unavailable"),
-        ])
-    }
-
     func testCriticalVitalDBAnomalyIsPreservedWithoutRuntimeFailureReason() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-25T00:00:00Z",
@@ -391,9 +249,6 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         redisUIHTTP: String = "200",
         swaggerUIHTTP: String = "200",
         vitalDBObservation: VitalDBObservationDocument? = nil,
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
-        guestServiceResources: [RuntimeGuestServiceResource] = [],
-        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         vitalDBObservationInput: RuntimeObservationInput<VitalDBObservationDocument>? = nil,
         proxyPortFailureReasons: [RuntimeFailureReason] = []
     ) -> RuntimeHealthInput {
@@ -415,25 +270,10 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             hostProxyHTTP: hostProxyHTTP,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
-            guestServiceStatuses: guestServiceStatuses,
-            guestServiceResources: guestServiceResources,
-            guestServiceResourceReadIssues: guestServiceResourceReadIssues,
             vitalDBObservation: vitalDBObservationInput
                 ?? vitalDBObservation.map(RuntimeObservationInput.loaded)
                 ?? .notReported,
             proxyPortFailureReasons: proxyPortFailureReasons
-        )
-    }
-
-    private func guestServiceResource(
-        service: String,
-        desiredState: String
-    ) -> RuntimeGuestServiceResource {
-        RuntimeGuestServiceResource(
-            service: service,
-            spec: RuntimeGuestServiceSpec(state: desiredState, desiredState: desiredState),
-            status: RuntimeGuestServiceStatusRead(state: desiredState),
-            conditions: []
         )
     }
 

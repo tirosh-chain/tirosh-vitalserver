@@ -33,7 +33,7 @@ public struct RuntimeControlAPIVMLifecycleOwner {
     }
 
     public func loadVMLifecycleResource() throws -> RuntimeVMLifecycleResourceState {
-        let response = try send(method: "GET", path: "/host/runtime/vm-lifecycle", body: nil)
+        let response = try send(method: "GET", path: "/platform/runtime-provider", body: nil)
         return try validated(decode(RuntimeVMLifecycleResourceState.self, from: response))
     }
 
@@ -45,7 +45,7 @@ public struct RuntimeControlAPIVMLifecycleOwner {
         }
         let response = try send(
             method: "PUT",
-            path: "/host/runtime/vm-lifecycle",
+            path: "/platform/runtime-provider",
             body: try encoder.encode(Body(document: document))
         )
         return try validated(decode(RuntimeVMLifecycleResourceState.self, from: response))

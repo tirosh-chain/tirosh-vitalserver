@@ -23,7 +23,6 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
     let httpStatusCode: (String) -> String
     let proxyLivenessURL: (Int) -> String
     let automaticRecoveryEnabled: () throws -> Bool
-    let reconcileGuestStack: () throws -> Void
     let restartVMRuntime: () throws -> Void
     let restartService: (RuntimeManagedService) throws -> Void
     let createLogsDirectory: () -> RuntimeBestEffortOperationResult
@@ -57,7 +56,6 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         httpStatusCode: @escaping (String) -> String,
         proxyLivenessURL: @escaping (Int) -> String,
         automaticRecoveryEnabled: @escaping () throws -> Bool,
-        reconcileGuestStack: @escaping () throws -> Void,
         restartVMRuntime: @escaping () throws -> Void,
         restartService: @escaping (RuntimeManagedService) throws -> Void,
         createLogsDirectory: @escaping () -> RuntimeBestEffortOperationResult,
@@ -90,7 +88,6 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         self.httpStatusCode = httpStatusCode
         self.proxyLivenessURL = proxyLivenessURL
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
-        self.reconcileGuestStack = reconcileGuestStack
         self.restartVMRuntime = restartVMRuntime
         self.restartService = restartService
         self.createLogsDirectory = createLogsDirectory
@@ -134,7 +131,6 @@ public struct RuntimeWatchdogRunnerComposition {
                     return operations.httpStatusCode(operations.proxyLivenessURL(port))
                 },
                 automaticRecoveryEnabled: operations.automaticRecoveryEnabled,
-                reconcileGuestStack: operations.reconcileGuestStack,
                 restartVMRuntime: operations.restartVMRuntime,
                 restartService: operations.restartService,
                 writeRuntimeStatus: operations.writeRuntimeStatus,
@@ -143,7 +139,10 @@ public struct RuntimeWatchdogRunnerComposition {
                 recordLifecycleEvent: operations.recordLifecycleEvent,
                 markVMLifecycleRunning: { lifecycle, message in
                     let timestamp = operations.now()
-                    _ = try RuntimeControlAPIVMLifecycleOwner().putVMLifecycleResource(RuntimeVMLifecycleDocument(
+                    _ = try FileRuntimeVMLifecycleResourceStore(
+                        documentURL: context.installedPaths.vmLifecycle,
+                        fileStore: operations.fileStore
+                    ).putVMLifecycleResource(RuntimeVMLifecycleDocument(
                         state: .running,
                         operation: lifecycle.operation,
                         operationID: lifecycle.operationID,

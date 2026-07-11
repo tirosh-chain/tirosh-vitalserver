@@ -30,14 +30,6 @@ public enum RuntimeWatchdogRecoveryPolicy {
         if let missingFailureReasonIssue = RuntimeHealthSnapshotPolicy.missingFailureReasonIssue(snapshot) {
             return .unrecoverable(reason: missingFailureReasonIssue)
         }
-        if let observationSourceIssue = observationSourceIssue(
-            snapshot.failureReasons,
-            guestServiceStatuses: snapshot.guestServiceStatuses,
-            guestServiceResources: snapshot.guestServiceResources
-        ) {
-            return .unrecoverable(reason: observationSourceIssue.rawValue)
-        }
-
         guard automaticRecoveryEnabled else {
             return .recoveryDisabled(reason: reasons)
         }
@@ -53,9 +45,7 @@ public enum RuntimeWatchdogRecoveryPolicy {
             vmIP: snapshot.vmIP,
             guestHTTP: snapshot.guestHTTP,
             hostProxyReadinessHTTP: snapshot.hostProxyHTTP,
-            hostProxyLivenessHTTP: hostProxyLivenessHTTP,
-            guestServiceStatuses: snapshot.guestServiceStatuses,
-            guestServiceResources: snapshot.guestServiceResources
+            hostProxyLivenessHTTP: hostProxyLivenessHTTP
         ))
 
         guard plan.canRecover else {
@@ -104,27 +94,6 @@ public enum RuntimeWatchdogRecoveryPolicy {
 
     private static func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
         reasons.isEmpty ? "no failure reason reported" : reasons.map(\.rawValue).joined(separator: ", ")
-    }
-
-    private static func observationSourceIssue(
-        _ reasons: [RuntimeFailureReason],
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>,
-        guestServiceResources: [RuntimeGuestServiceResource]
-    ) -> RuntimeFailureReason? {
-        if RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
-            guestServiceStatuses: guestServiceStatuses,
-            guestServiceResources: guestServiceResources
-        ) {
-            return nil
-        }
-        return reasons.first { reason in
-            switch reason {
-            case .guestServiceObservationMissing, .guestServiceObservationReadFailed:
-                return true
-            default:
-                return false
-            }
-        }
     }
 
     private static func reasonText(_ reasons: [String]) -> String {

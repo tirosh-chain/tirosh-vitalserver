@@ -21,18 +21,25 @@ guestHostname = "vital-guest"
 [shares]
 runtimeTag = "runtime-share"
 runtimeMount = "/runtime"
+runtimeMountMode = "native"
 vitalFilesTag = "files-share"
 vitalFilesMount = "/files"
+vitalFilesMountMode = "virtiofs"
 
 [paths]
 deployDir = "/runtime/deploy"
 runtimeDir = "/runtime/run"
+composeFile = "/runtime/deploy/compose.yaml"
+runtimeConfigFile = "/etc/vitalserver/runtime-config.json"
+runtimeSettingsFile = "/etc/vitalserver/runtime-settings.json"
+composeRuntimeLimitsFile = "/runtime/run/compose.runtime-limits.yaml"
 guestToolsHome = "/opt/custom-tools"
 pythonWheelDir = "/runtime/wheels"
 commandBinDir = "/opt/bin"
 
 [compose]
 projectName = "custom-project"
+environmentFile = "/etc/vitalserver/runtime.env"
 stopTimeoutSeconds = 45
 
 [intervals]
@@ -65,8 +72,14 @@ fileEnabled = true
     assert settings.guest_hostname == "vital-guest"
     assert settings.shares.runtime_tag == "runtime-share"
     assert settings.shares.runtime_mount == Path("/runtime")
+    assert settings.shares.runtime_mount_mode == "native"
+    assert settings.shares.vital_files_mount_mode == "virtiofs"
     assert settings.paths.python_wheel_dir == Path("/runtime/wheels")
+    assert settings.paths.runtime_config_file == Path(
+        "/etc/vitalserver/runtime-config.json"
+    )
     assert settings.compose.project_name == "custom-project"
+    assert settings.compose.environment_file == Path("/etc/vitalserver/runtime.env")
     assert settings.compose.stop_timeout_seconds == 45
     assert settings.intervals.command_poll_seconds == 7
     assert settings.intervals.runtime_observation_seconds == 11
@@ -82,6 +95,7 @@ def test_load_settings_uses_packaged_defaults_when_file_is_missing(
     settings = load_settings(tmp_path / "missing.toml")
 
     assert settings.shares.runtime_mount == Path("/mnt/tirosh")
+    assert settings.shares.runtime_mount_mode == "virtiofs"
     assert settings.paths.deploy_dir == Path("/mnt/tirosh/deploy")
     assert settings.compose.project_name == "vitalserver"
     assert settings.compose.stop_timeout_seconds == 120

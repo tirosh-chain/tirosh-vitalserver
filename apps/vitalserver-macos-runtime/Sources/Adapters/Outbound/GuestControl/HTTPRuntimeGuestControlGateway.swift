@@ -161,46 +161,112 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
     }
 
     public func capabilities() throws -> RuntimeGuestControlCapabilities {
-        try decode(RuntimeGuestControlCapabilities.self, method: "GET", path: "/v1/capabilities")
+        try decode(RuntimeGuestControlCapabilities.self, method: "GET", path: "/runtime/capabilities")
+    }
+
+    public func runtimeSettings() throws -> RuntimeProductSettingsRead {
+        try decode(RuntimeProductSettingsRead.self, method: "GET", path: "/runtime/settings")
+    }
+
+    public func applyRuntimeSettings(
+        _ settings: GuestRuntimeSettingsDocument
+    ) throws -> RuntimeGuestControlServiceOperation {
+        try decode(
+            RuntimeGuestControlServiceOperation.self,
+            method: "PUT",
+            path: "/runtime/settings",
+            body: RuntimeApplyProductSettingsRequest(settings: settings)
+        )
+    }
+
+    public func applyAdminPassword(_ password: String) throws -> RuntimeGuestControlServiceOperation {
+        try decode(
+            RuntimeGuestControlServiceOperation.self,
+            method: "POST",
+            path: "/runtime/admin-password",
+            body: RuntimeAdminPasswordRequest(password: password)
+        )
+    }
+
+    public func redisRelaySettings() throws -> RuntimeRedisRelaySettingsRead {
+        try decode(
+            RuntimeRedisRelaySettingsRead.self,
+            method: "GET",
+            path: "/runtime/redis-relay/settings"
+        )
+    }
+
+    public func applyRedisRelaySettings(
+        _ settings: RuntimeRedisRelaySettingsApplyRequest
+    ) throws -> RuntimeGuestControlServiceOperation {
+        try decode(
+            RuntimeGuestControlServiceOperation.self,
+            method: "PUT",
+            path: "/runtime/redis-relay/settings",
+            body: settings
+        )
+    }
+
+    public func runtimeEvents(query: RuntimeEventQuery) throws -> RuntimeOperationEventHistory {
+        var components = URLComponents()
+        components.path = "/runtime/events"
+        var items = [URLQueryItem(name: "limit", value: String(query.limit))]
+        if let eventType = query.eventType {
+            items.append(URLQueryItem(name: "type", value: eventType.rawValue))
+        }
+        if let since = query.since {
+            items.append(URLQueryItem(name: "since", value: since))
+        }
+        if let cursor = query.cursor {
+            items.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        components.queryItems = items
+        guard let path = components.string else {
+            throw RuntimeGuestControlHTTPGatewayError.invalidRequestURL(
+                baseURL: baseURL.absoluteString,
+                path: "/runtime/events"
+            )
+        }
+        return try decode(RuntimeOperationEventHistory.self, method: "GET", path: path)
     }
 
     public func listServices() throws -> RuntimeGuestControlServiceList {
-        try decode(RuntimeGuestControlServiceList.self, method: "GET", path: "/v1/services")
+        try decode(RuntimeGuestControlServiceList.self, method: "GET", path: "/runtime/services")
     }
 
     public func stackStatus() throws -> RuntimeGuestControlStackStatus {
-        try decode(RuntimeGuestControlStackStatus.self, method: "GET", path: "/v1/stack/status")
+        try decode(RuntimeGuestControlStackStatus.self, method: "GET", path: "/runtime/stack")
     }
 
     public func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {
-        try decode(RuntimeGuestControlServiceStatus.self, method: "GET", path: "/v1/services/\(pathSegment(service))/status")
+        try decode(RuntimeGuestControlServiceStatus.self, method: "GET", path: "/runtime/services/\(pathSegment(service))/status")
     }
 
     public func serviceResource(_ service: String) throws -> RuntimeGuestServiceResource {
-        try decode(RuntimeGuestServiceResource.self, method: "GET", path: "/v1/services/\(pathSegment(service))/resource")
+        try decode(RuntimeGuestServiceResource.self, method: "GET", path: "/runtime/services/\(pathSegment(service))/resource")
     }
 
     public func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
-        try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/v1/services/\(pathSegment(service))/start")
+        try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/runtime/services/\(pathSegment(service))/start")
     }
 
     public func stopService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
-        try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/v1/services/\(pathSegment(service))/stop")
+        try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/runtime/services/\(pathSegment(service))/stop")
     }
 
     public func restartService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
-        try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/v1/services/\(pathSegment(service))/restart")
+        try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/runtime/services/\(pathSegment(service))/restart")
     }
 
     public func reconcileServices() throws -> RuntimeGuestControlServiceOperation {
-        try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/v1/stack/reconcile")
+        try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/runtime/stack/reconcile")
     }
 
     public func createRedisBackup() throws -> RuntimeGuestControlServiceOperation {
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
-            path: "/v1/maintenance/redis-backup"
+            path: "/runtime/maintenance/redis-backup"
         )
     }
 
@@ -208,7 +274,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
-            path: "/v1/maintenance/redis-restore",
+            path: "/runtime/maintenance/redis-restore",
             body: RuntimeGuestControlRedisRestoreRequest(archive: archive)
         )
     }
@@ -217,7 +283,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
-            path: "/v1/maintenance/datastore-repair"
+            path: "/runtime/maintenance/datastore/repair"
         )
     }
 
@@ -225,7 +291,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
-            path: "/v1/maintenance/update-activation",
+            path: "/runtime/maintenance/update-activation",
             body: RuntimeGuestControlUpdateActivationRequest(
                 requestId: requestId,
                 version: version
@@ -237,7 +303,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
-            path: "/v1/maintenance/update-shutdown",
+            path: "/runtime/maintenance/update-shutdown",
             body: RuntimeGuestControlUpdateShutdownRequest(
                 requestId: requestId,
                 version: version
@@ -249,19 +315,19 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
-            path: "/v1/maintenance/guest-poweroff"
+            path: "/runtime/maintenance/guest-poweroff"
         )
     }
 
     public func operation(_ operationId: String) throws -> RuntimeGuestControlServiceOperation {
-        try decode(RuntimeGuestControlServiceOperation.self, method: "GET", path: "/v1/operations/\(operationId)")
+        try decode(RuntimeGuestControlServiceOperation.self, method: "GET", path: "/runtime/operations/\(operationId)")
     }
 
     public func latestVitalDBObservation() throws -> RuntimeGuestControlVitalDBObservationRead {
         try decode(
             RuntimeGuestControlVitalDBObservationRead.self,
             method: "GET",
-            path: "/v1/vitaldb/observations/latest"
+            path: "/runtime/vitaldb/observations/latest"
         )
     }
 
@@ -269,7 +335,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBRecorderRead.self,
             method: "GET",
-            path: "/v1/vitaldb/recorders"
+            path: "/runtime/vitaldb/recorders"
         )
     }
 
@@ -277,7 +343,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBRecorderRead.self,
             method: "POST",
-            path: "/v1/vitaldb/recorders/hide",
+            path: "/runtime/vitaldb/recorders/hide",
             body: request
         )
     }
@@ -286,7 +352,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBRecorderRead.self,
             method: "POST",
-            path: "/v1/vitaldb/recorders/unhide",
+            path: "/runtime/vitaldb/recorders/unhide",
             body: request
         )
     }
@@ -295,7 +361,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBRecorderRead.self,
             method: "POST",
-            path: "/v1/vitaldb/recorders/delete",
+            path: "/runtime/vitaldb/recorders/delete",
             body: request
         )
     }
@@ -304,7 +370,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBRecorderActivityRead.self,
             method: "GET",
-            path: "/v1/vitaldb/recorders/\(pathSegment(vrcode))/activity"
+            path: "/runtime/vitaldb/recorders/\(pathSegment(vrcode))/activity"
         )
     }
 
@@ -312,7 +378,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBBedRead.self,
             method: "GET",
-            path: "/v1/vitaldb/beds"
+            path: "/runtime/vitaldb/beds"
         )
     }
 
@@ -320,7 +386,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBBedRead.self,
             method: "POST",
-            path: "/v1/vitaldb/beds/hide",
+            path: "/runtime/vitaldb/beds/hide",
             body: request
         )
     }
@@ -329,7 +395,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBBedRead.self,
             method: "POST",
-            path: "/v1/vitaldb/beds/unhide",
+            path: "/runtime/vitaldb/beds/unhide",
             body: request
         )
     }
@@ -338,7 +404,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBBedRead.self,
             method: "POST",
-            path: "/v1/vitaldb/beds/delete",
+            path: "/runtime/vitaldb/beds/delete",
             body: request
         )
     }
@@ -347,7 +413,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeGuestControlVitalDBRelationshipRead.self,
             method: "GET",
-            path: "/v1/vitaldb/relationships"
+            path: "/runtime/vitaldb/relationships"
         )
     }
 
@@ -355,7 +421,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeRecorderIngressStatusReadResult.self,
             method: "GET",
-            path: "/v1/recorder-ingress/status"
+            path: "/runtime/recorder-ingress/status"
         )
     }
 
@@ -363,31 +429,31 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeRedisRelayStatusReadResult.self,
             method: "GET",
-            path: "/v1/redis-relay/status"
+            path: "/runtime/redis-relay/status"
         )
     }
 
     public func labScenarios() throws -> RuntimeLabScenarioList {
-        try decode(RuntimeLabScenarioList.self, method: "GET", path: "/v1/lab/scenarios")
+        try decode(RuntimeLabScenarioList.self, method: "GET", path: "/runtime/lab/scenarios")
     }
 
     public func labVitalFiles() throws -> RuntimeLabVitalFileList {
-        try decode(RuntimeLabVitalFileList.self, method: "GET", path: "/v1/lab/vital-files")
+        try decode(RuntimeLabVitalFileList.self, method: "GET", path: "/runtime/lab/vital-files")
     }
 
     public func labBeds() throws -> RuntimeLabBedList {
-        try decode(RuntimeLabBedList.self, method: "GET", path: "/v1/lab/beds")
+        try decode(RuntimeLabBedList.self, method: "GET", path: "/runtime/lab/beds")
     }
 
     public func labRecorders() throws -> RuntimeLabRecorderList {
-        try decode(RuntimeLabRecorderList.self, method: "GET", path: "/v1/lab/recorders")
+        try decode(RuntimeLabRecorderList.self, method: "GET", path: "/runtime/lab/recorders")
     }
 
     public func createLabBeds(_ request: RuntimeLabBedCreateRequest) throws -> RuntimeLabBedList {
         try decode(
             RuntimeLabBedList.self,
             method: "POST",
-            path: "/v1/lab/beds/create",
+            path: "/runtime/lab/beds/create",
             body: request
         )
     }
@@ -396,7 +462,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabBedList.self,
             method: "POST",
-            path: "/v1/lab/beds/delete",
+            path: "/runtime/lab/beds/delete",
             body: request
         )
     }
@@ -405,7 +471,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabBedList.self,
             method: "POST",
-            path: "/v1/lab/beds/reset"
+            path: "/runtime/lab/beds/reset"
         )
     }
 
@@ -413,7 +479,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabRecorderList.self,
             method: "POST",
-            path: "/v1/lab/recorders/create",
+            path: "/runtime/lab/recorders/create",
             body: request
         )
     }
@@ -422,7 +488,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabRecorderList.self,
             method: "POST",
-            path: "/v1/lab/recorders/delete",
+            path: "/runtime/lab/recorders/delete",
             body: request
         )
     }
@@ -431,7 +497,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabRecorderList.self,
             method: "POST",
-            path: "/v1/lab/recorders/reset"
+            path: "/runtime/lab/recorders/reset"
         )
     }
 
@@ -439,7 +505,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabSessionResponse.self,
             method: "POST",
-            path: "/v1/lab/sessions",
+            path: "/runtime/lab/sessions",
             body: request
         )
     }
@@ -448,7 +514,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabSessionResponse.self,
             method: "GET",
-            path: "/v1/lab/sessions/\(pathSegment(sessionId))"
+            path: "/runtime/lab/sessions/\(pathSegment(sessionId))"
         )
     }
 
@@ -456,7 +522,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabSessionResponse.self,
             method: "POST",
-            path: "/v1/lab/sessions/\(pathSegment(sessionId))/start"
+            path: "/runtime/lab/sessions/\(pathSegment(sessionId))/start"
         )
     }
 
@@ -464,7 +530,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabSessionResponse.self,
             method: "POST",
-            path: "/v1/lab/sessions/\(pathSegment(sessionId))/stop"
+            path: "/runtime/lab/sessions/\(pathSegment(sessionId))/stop"
         )
     }
 
@@ -472,7 +538,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabSessionResponse.self,
             method: "POST",
-            path: "/v1/lab/vital-files/replay",
+            path: "/runtime/lab/vital-files/replay",
             body: request
         )
     }
@@ -481,7 +547,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(
             RuntimeLabVitalFileUploadResponse.self,
             method: "POST",
-            path: "/v1/lab/vital-files/upload",
+            path: "/runtime/lab/vital-files/upload",
             body: request
         )
     }

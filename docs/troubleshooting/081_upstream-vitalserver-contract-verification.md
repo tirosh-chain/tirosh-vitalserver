@@ -25,7 +25,7 @@ The Helper runtime depends on a small explicit contract from the original `vital
 
 The verification fails when one of these meanings changes:
 
-- `.gitmodules` no longer points at `https://github.com/vitaldb/vitalserver.git`.
+- `.gitmodules` no longer points at `https://github.com/runtime/vitaldb/vitalserver.git`.
 - `vendor/vitalserver` is dirty or unreadable.
 - The pinned commit is not in `config/upstream-vitalserver-contract.json` `approvedCommits` during release verification.
 - Required files such as `vitalserver-old/service/app.js` are missing.

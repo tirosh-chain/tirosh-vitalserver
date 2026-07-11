@@ -9,8 +9,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     public let capabilities = RuntimeControlCapabilities()
 
     private let releaseInfo: RuntimeReleaseInfo
-    private let statusReader: RuntimeStatusReading
-    private let operationStateReader: RuntimeOperationStateReading
+    private let platformStateReader: PlatformStateReading
+    private let operationStateReader: PlatformOperationStateReading
     private let observabilityReader: RuntimeObservabilityReading
     private let fileReader: RuntimeHostFileReading
     private let settingsReader: RuntimeSettingsReading
@@ -21,8 +21,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     ) {
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: Self.liveStatusReader(),
-            operationStateReader: SystemRuntimeOperationStateReader.live(),
+            platformStateReader: Self.livePlatformStateReader(),
+            operationStateReader: SystemPlatformOperationStateReader.live(),
             observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
@@ -36,8 +36,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     ) {
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: Self.liveStatusReader(),
-            operationStateReader: SystemRuntimeOperationStateReader.live(),
+            platformStateReader: Self.livePlatformStateReader(),
+            operationStateReader: SystemPlatformOperationStateReader.live(),
             observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
@@ -54,11 +54,11 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     ) {
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(
+            platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
                 vmLifecycleResourceReader: vmLifecycleResourceReader
             ),
-            operationStateReader: SystemRuntimeOperationStateReader.live(
+            operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader
             ),
             observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
@@ -70,15 +70,15 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
 
     init(
         releaseInfo: RuntimeReleaseInfo,
-        statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(),
-        operationStateReader: RuntimeOperationStateReading = SystemRuntimeOperationStateReader.live(),
+        platformStateReader: PlatformStateReading = SystemPlatformStateReader(),
+        operationStateReader: PlatformOperationStateReading = SystemPlatformOperationStateReader.live(),
         observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
         fileReader: RuntimeHostFileReading = SystemRuntimeHostFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
         commandWorker: MacRuntimeControlCommandWorker = MacRuntimeControlCommandWorker()
     ) {
         self.releaseInfo = releaseInfo
-        self.statusReader = statusReader
+        self.platformStateReader = platformStateReader
         self.operationStateReader = operationStateReader
         self.observabilityReader = observabilityReader
         self.fileReader = fileReader
@@ -86,8 +86,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         self.commandWorker = commandWorker
     }
 
-    private static func liveStatusReader() -> RuntimeStatusReading {
-        SystemRuntimeStatusReader(
+    private static func livePlatformStateReader() -> PlatformStateReading {
+        SystemPlatformStateReader(
             guestAddressProvider: RuntimeControlAPIGuestAddressProvider(),
             vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()
         )
@@ -97,16 +97,16 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         settingsReader.load()
     }
 
-    public func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        statusReader.loadStatus(settings: settings)
+    public func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
+        platformStateReader.loadPlatformState(settings: settings)
     }
 
-    public func loadOperationState() -> RuntimeOperationState {
+    public func loadOperationState() -> PlatformOperationState {
         operationStateReader.loadOperationState()
     }
 
-    public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        await statusReader.loadHealthStatus(settings: settings)
+    public func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
+        await platformStateReader.loadHealthStatus(settings: settings)
     }
 
     public func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -229,6 +229,12 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.repairRuntimeServices()
     }
 
+    public func controlRuntimeProvider(
+        _ action: RuntimeProviderCommandAction
+    ) async throws -> RuntimeCommandResult {
+        try await commandWorker.controlRuntimeProvider(action)
+    }
+
     public func createRedisBackup() async throws -> RuntimeCommandResult {
         try await commandWorker.createRedisBackup()
     }
@@ -245,12 +251,52 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.guestStackStatus()
     }
 
+    public func runtimeCapabilities() async throws -> RuntimeCapabilities {
+        try await commandWorker.runtimeCapabilities()
+    }
+
+    public func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead {
+        try await commandWorker.loadRuntimeProductSettings()
+    }
+
+    public func applyRuntimeProductSettings(
+        _ settings: GuestRuntimeSettingsDocument
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.applyRuntimeProductSettings(settings)
+    }
+
+    public func applyRuntimeAdminPassword(
+        _ password: String
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.applyRuntimeAdminPassword(password)
+    }
+
+    public func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead {
+        try await commandWorker.loadRuntimeRedisRelaySettings()
+    }
+
+    public func applyRuntimeRedisRelaySettings(
+        _ settings: RuntimeRedisRelaySettingsApplyRequest
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.applyRuntimeRedisRelaySettings(settings)
+    }
+
+    public func loadRuntimeOperationEvents(
+        query: RuntimeEventQuery
+    ) async throws -> RuntimeOperationEventHistory {
+        try await commandWorker.loadRuntimeOperationEvents(query: query)
+    }
+
     public func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
         try await commandWorker.guestServiceStatus(service)
     }
 
     public func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
         try await commandWorker.guestServiceResource(service)
+    }
+
+    public func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult {
+        try await commandWorker.loadRedisRelayStatus()
     }
 
     public func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {

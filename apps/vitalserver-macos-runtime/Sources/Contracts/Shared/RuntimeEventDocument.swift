@@ -24,6 +24,11 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case runtimeCommandStarted
     case runtimeCommandCompleted
     case runtimeCommandFailed
+    case operationAccepted
+    case operationRunning
+    case operationCompleted
+    case operationFailed
+    case operationCancelled
     case unknown(String)
 
     public static let knownTypes: [RuntimeEventType] = [
@@ -50,6 +55,11 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
         .runtimeCommandStarted,
         .runtimeCommandCompleted,
         .runtimeCommandFailed,
+        .operationAccepted,
+        .operationRunning,
+        .operationCompleted,
+        .operationFailed,
+        .operationCancelled,
     ]
 
     public init(rawValue: String) {
@@ -100,6 +110,16 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .runtimeCommandCompleted
         case "runtime-command-failed":
             self = .runtimeCommandFailed
+        case "operation-accepted":
+            self = .operationAccepted
+        case "operation-running":
+            self = .operationRunning
+        case "operation-completed":
+            self = .operationCompleted
+        case "operation-failed":
+            self = .operationFailed
+        case "operation-cancelled":
+            self = .operationCancelled
         default:
             self = .unknown(rawValue)
         }
@@ -153,6 +173,16 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "runtime-command-completed"
         case .runtimeCommandFailed:
             return "runtime-command-failed"
+        case .operationAccepted:
+            return "operation-accepted"
+        case .operationRunning:
+            return "operation-running"
+        case .operationCompleted:
+            return "operation-completed"
+        case .operationFailed:
+            return "operation-failed"
+        case .operationCancelled:
+            return "operation-cancelled"
         case .unknown(let value):
             return value
         }

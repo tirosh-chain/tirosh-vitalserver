@@ -158,7 +158,7 @@ enum RuntimeVMLifecycleResourceReadMapper {
             guard let document = resource.document else {
                 return RuntimeVMLifecycleRead(
                     document: nil,
-                    issue: RuntimeStatusReadIssue(
+                    issue: PlatformStateReadIssue(
                         source: "vmLifecycle",
                         message: "VM lifecycle resource loaded without document"
                     )
@@ -168,7 +168,7 @@ enum RuntimeVMLifecycleResourceReadMapper {
         case .missing:
             return RuntimeVMLifecycleRead(
                 document: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "vmLifecycle",
                     message: resource.readError ?? "VM lifecycle document missing"
                 )
@@ -176,7 +176,7 @@ enum RuntimeVMLifecycleResourceReadMapper {
         case .unavailable:
             return RuntimeVMLifecycleRead(
                 document: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "vmLifecycle",
                     message: resource.readError ?? "VM lifecycle resource unavailable"
                 )
@@ -184,7 +184,7 @@ enum RuntimeVMLifecycleResourceReadMapper {
         case .failed:
             return RuntimeVMLifecycleRead(
                 document: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "vmLifecycle",
                     message: resource.readError ?? "VM lifecycle resource read failed"
                 )

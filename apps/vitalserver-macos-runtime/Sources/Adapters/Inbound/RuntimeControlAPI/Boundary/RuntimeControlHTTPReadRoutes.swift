@@ -10,36 +10,29 @@ struct RuntimeControlHTTPReadRoutes {
         request: RuntimeControlHTTPRequest
     ) async throws -> RuntimeControlHTTPResponse? {
         switch endpoint {
-        case .capabilities:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadCapabilities())
-        case .overview:
-            return try await RuntimeControlHTTPResponseFactory.json(loadOverview())
-        case .overviewStream:
+        case .platformCapabilities:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadPlatformCapabilities())
+        case .runtimeCapabilities:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeCapabilities())
+        case .platformState:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadPlatformState())
+        case .platformStateStream:
             return try await RuntimeControlHTTPResponseFactory.eventStream(
-                id: "runtime-overview",
-                event: "runtime-overview",
-                value: loadOverview()
-            )
-        case .status:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadStatus())
-        case .statusStream:
-            return try await RuntimeControlHTTPResponseFactory.eventStream(
-                id: "runtime-status",
-                event: "runtime-status",
-                value: handler.loadStatus()
+                id: "platform-state",
+                event: "platform-state",
+                value: handler.loadPlatformState()
             )
         case .operationState:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadOperationState())
+        case .platformWorkflow:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadPlatformWorkflow())
         case .guestAddress:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadGuestAddressResource())
         case .vmLifecycle:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadVMLifecycleResource())
         case .events:
             let query = try request.runtimeEventQuery()
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadEvents(query: query))
-        case .eventStream:
-            let query = try request.runtimeEventQuery()
-            return try await RuntimeControlHTTPResponseFactory.eventStream(handler.loadEvents(query: query))
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeOperationEvents(query: query))
         case .vitalDBObservation:
             return try await RuntimeControlHTTPResponseFactory.json(loadVitalDBObservation())
         case .vitalDBObservationStream:
@@ -76,7 +69,7 @@ struct RuntimeControlHTTPReadRoutes {
         case .health:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadHealthStatus())
         case .settings:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadSettings())
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeProductSettings())
         case .release:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadReleaseInfo())
         case .installInfo:
@@ -105,6 +98,10 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.guestServiceResource(try request.runtimeGuestServiceName())
             )
+        case .redisRelayStatus:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRedisRelayStatus())
+        case .redisRelaySettings:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeRedisRelaySettings())
         case .logText:
             let logRequest = try request.decodedBody(RuntimeLogTextRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadLogText(request: logRequest))
@@ -122,6 +119,8 @@ struct RuntimeControlHTTPReadRoutes {
         case .runtimeDataBackups:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeDataBackups())
         case .applySettings,
+             .applyAdminPassword,
+             .applyRedisRelaySettings,
              .createLabBeds,
              .deleteLabBeds,
              .resetLabBeds,
@@ -151,25 +150,26 @@ struct RuntimeControlHTTPReadRoutes {
              .updateBundleSummary,
              .verifyUpdateBundle,
              .applyUpdateBundle,
+             .rollbackRelease,
              .rollbackBackup,
              .deleteBackup,
              .deleteUpdateBackup,
              .deleteRuntimeDataBackup,
              .exportLogs,
+             .createSupportExport,
              .acquireOperationLease,
              .heartbeatOperationLease,
              .releaseOperationLease,
              .putGuestAddress,
              .putVMLifecycle,
+             .startRuntimeProvider,
+             .stopRuntimeProvider,
+             .restartRuntimeProvider,
              .uninstall,
              .restoreRedisBackup,
              .restoreRuntimeDataBackup:
             return nil
         }
-    }
-
-    private func loadOverview() async throws -> RuntimeControlOverview {
-        try await RuntimeControlOverviewAssembler(handler: handler).load()
     }
 
     private func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {

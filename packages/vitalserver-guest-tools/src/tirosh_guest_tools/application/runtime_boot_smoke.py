@@ -32,6 +32,7 @@ from tirosh_guest_tools.contracts import (
 )
 from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
+    RUNTIME_CONFIG_FILE,
     RUNTIME_DIR,
     mount_runtime_share,
     read_json,
@@ -106,7 +107,7 @@ class RuntimeBootSmokeStageFailed(RuntimeError):
 
 def default_context() -> RuntimeBootSmokeContext:
     read_required_json_object(
-        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value,
+        RUNTIME_CONFIG_FILE,
         "runtime config",
     )
     metadata = read_required_json_object(
@@ -398,7 +399,7 @@ def validate_guest_control_api(
 
     capabilities = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/capabilities",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/capabilities",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -407,7 +408,7 @@ def validate_guest_control_api(
 
     services = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/services",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/services",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -418,7 +419,7 @@ def validate_guest_control_api(
 
     app_status = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/services/{ComposeService.APP.value}/status",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/services/{ComposeService.APP.value}/status",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -431,7 +432,7 @@ def validate_guest_control_api(
 
     recorder_ingress_status = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/recorder-ingress/status",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/recorder-ingress/status",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -457,7 +458,7 @@ def validate_guest_control_api(
 
     restart = run.operations.http_json(
         "POST",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/services/{ComposeService.APP.value}/restart",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/services/{ComposeService.APP.value}/restart",
         GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
         None,
     )
@@ -473,7 +474,7 @@ def validate_guest_control_api(
 
     operation = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/operations/{operation_id}",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/operations/{operation_id}",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -490,7 +491,7 @@ def validate_guest_control_api(
 
     reconcile = run.operations.http_json(
         "POST",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/stack/reconcile",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/stack/reconcile",
         GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
         None,
     )
@@ -516,7 +517,7 @@ def validate_guest_control_api(
 
     reconcile_operation = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/operations/{reconcile_operation_id}",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/operations/{reconcile_operation_id}",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -532,7 +533,7 @@ def validate_guest_control_api(
     )
     lab_scenarios = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/scenarios",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/lab/scenarios",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -578,7 +579,7 @@ def validate_product_lab_session_operations(
 ) -> dict[str, Any]:
     create = run.operations.http_json(
         "POST",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/sessions",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/lab/sessions",
         GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
         {
             "scenarioId": scenario_id,
@@ -600,7 +601,7 @@ def validate_product_lab_session_operations(
 
     read = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/sessions/{session_path_segment}",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/lab/sessions/{session_path_segment}",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -617,7 +618,7 @@ def validate_product_lab_session_operations(
 
     start = run.operations.http_json(
         "POST",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/sessions/{session_path_segment}/start",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/lab/sessions/{session_path_segment}/start",
         GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
         None,
     )
@@ -633,7 +634,7 @@ def validate_product_lab_session_operations(
 
     stop = run.operations.http_json(
         "POST",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/sessions/{session_path_segment}/stop",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/lab/sessions/{session_path_segment}/stop",
         GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
         None,
     )
@@ -649,7 +650,7 @@ def validate_product_lab_session_operations(
     replay_vital_file_path = prepare_lab_replay_smoke_vital_file(run)
     replay = run.operations.http_json(
         "POST",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/vital-files/replay",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/lab/vital-files/replay",
         GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
         {
             "vitalFilePath": replay_vital_file_path,
@@ -862,7 +863,7 @@ def validate_disk_health(
 def validate_capabilities(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
     document = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/capabilities",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/capabilities",
         HTTP_TIMEOUT_SECONDS,
         None,
     )
@@ -999,7 +1000,7 @@ def expected_compose_service_requirements(
 def read_guest_control_stack_status(run: RuntimeBootSmokeRun) -> dict[str, Any]:
     document = run.operations.http_json(
         "GET",
-        f"{GUEST_CONTROL_API_BASE_URL}/v1/stack/status",
+        f"{GUEST_CONTROL_API_BASE_URL}/runtime/stack",
         HTTP_TIMEOUT_SECONDS,
         None,
     )

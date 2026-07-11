@@ -10,7 +10,7 @@ public enum RuntimeControlHTTPMethod: String, CaseIterable, Codable, Equatable, 
 
 public enum RuntimeControlAPIScope: String, Codable, Equatable, Sendable {
     case runtimeControl
-    case hostAffordance
+    case platformAffordance
 }
 
 public enum RuntimeControlAPIClientAccess: String, Codable, Equatable, Sendable {
@@ -31,7 +31,7 @@ public enum RuntimeControlAPIErrorCode: String, Codable, Equatable, Sendable {
     case methodNotAllowed
     case unauthorized
     case endpointNotImplemented
-    case hostAffordanceUnavailable
+    case platformAffordanceUnavailable
     case handlerFailed
 }
 

@@ -42,8 +42,7 @@ enum RuntimeCommandFactory {
     static func configureRuntimeArguments(
         settings: RuntimeSettings,
         adminPasswordFile: String? = nil,
-        recorderIngressSettingsFile: String? = nil,
-        redisRelaySettingsFile: String? = nil
+        recorderIngressSettingsFile: String? = nil
     ) -> [String] {
         var arguments = [
             RuntimeControlClientConstants.RuntimeCommand.runtime,
@@ -129,12 +128,6 @@ enum RuntimeCommandFactory {
                 recorderIngressSettingsFile,
             ]
         }
-        if let redisRelaySettingsFile {
-            arguments += [
-                RuntimeControlClientConstants.RuntimeCommand.optionRedisRelaySettingsFile,
-                redisRelaySettingsFile,
-            ]
-        }
         if settings.restartAfterSave {
             arguments.append(RuntimeControlClientConstants.RuntimeCommand.optionRestart)
         }
@@ -159,6 +152,17 @@ enum RuntimeCommandFactory {
                 action.runtimeCommand,
             ]
         )
+    }
+
+    static func runtimeProviderCommand(action: RuntimeProviderCommandAction) -> String {
+        switch action {
+        case .start:
+            return runtimeServicesCommand(action: .start)
+        case .stop:
+            return runtimeServicesCommand(action: .stop)
+        case .restart:
+            return "\(runtimeServicesCommand(action: .stop)) && \(runtimeServicesCommand(action: .start))"
+        }
     }
 
     static func commandWithLog(_ shellCommand: String) -> String {

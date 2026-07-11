@@ -16,6 +16,14 @@ let package = Package(
             name: "VitalServerHelper",
             targets: ["MacControlPanelHost"]
         ),
+        .library(
+            name: "MacPlatformAgent",
+            targets: ["MacPlatformAgent"]
+        ),
+        .executable(
+            name: "vitalserver-platform-agent",
+            targets: ["MacPlatformAgentService"]
+        ),
         .executable(
             name: "vitalserver-troubleshooting-reset-for-reinstall",
             targets: ["TroubleshootingResetForReinstall"]
@@ -97,8 +105,18 @@ let package = Package(
         ),
         .executableTarget(
             name: "MacControlPanelHost",
-            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters"],
+            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters", "MacPlatformAgent"],
             path: "Sources/Hosts/MacControlPanel"
+        ),
+        .target(
+            name: "MacPlatformAgent",
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl", "InboundAdapters", "OutboundAdapters"],
+            path: "Sources/Hosts/MacPlatformAgent"
+        ),
+        .executableTarget(
+            name: "MacPlatformAgentService",
+            dependencies: ["MacPlatformAgent"],
+            path: "Sources/Hosts/MacPlatformAgentService"
         ),
         .executableTarget(
             name: "TroubleshootingResetForReinstall",
@@ -181,7 +199,11 @@ let package = Package(
         ),
         .testTarget(
             name: "MacControlPanelHostTests",
-            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters", "MacControlPanelHost"]
+            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters", "MacPlatformAgent", "MacControlPanelHost"]
+        ),
+        .testTarget(
+            name: "MacPlatformAgentTests",
+            dependencies: ["RuntimeControl", "OutboundAdapters", "MacPlatformAgent"]
         )
     ]
 )

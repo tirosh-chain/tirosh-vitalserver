@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "composeExecutable": "/usr/bin/docker",
+  "composeFile": "/opt/vitalserver/runtime-bundle/compose.yaml",
+  "composeEnvironmentFile": "/etc/vitalserver/runtime.env",
+  "composeProjectName": "vitalserver",
+  "projectDirectory": "/opt/vitalserver/runtime-bundle",
+  "runtimeReadyURL": "http://127.0.0.1:18330/ready",
+  "runtimeEndpointAddress": "127.0.0.1",
+  "runtimeEndpointDocument": "/var/lib/vitalserver/run/runtime-endpoint.json",
+  "runtimeProviderDocument": "/var/lib/vitalserver/run/runtime-provider.json",
+  "readinessProbeTimeoutSeconds": 20,
+  "startupTimeoutSeconds": 180,
+  "shutdownTimeoutSeconds": 120
+}

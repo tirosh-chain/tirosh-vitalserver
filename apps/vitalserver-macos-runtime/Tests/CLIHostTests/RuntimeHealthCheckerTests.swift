@@ -51,7 +51,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             commandRunner: commandRunner,
             httpProber: httpProber,
             guestAddressProvider: stubGuestAddressProvider(
-                read: .loaded(address: "192.168.64.2", source: .runtimeControlAPI)
+                read: .loaded(address: "192.168.64.2", source: .platformAgent)
             ),
             guestControlGateway: {
                 RuntimeGuestControlGatewaySpy(
@@ -83,7 +83,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertFalse(snapshot.failureReasons.contains(.guestBootstrapFailed))
         XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
-        XCTAssertEqual(snapshot.guestAddressRead, .loaded(address: "192.168.64.2", source: .runtimeControlAPI))
+        XCTAssertEqual(snapshot.guestAddressRead, .loaded(address: "192.168.64.2", source: .platformAgent))
         XCTAssertEqual(snapshot.vmIP, "192.168.64.2")
         XCTAssertEqual(snapshot.proxyPort, 8080)
         XCTAssertEqual(snapshot.hostProxyHTTP, "200")
@@ -146,7 +146,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.guestAddressRead.state, .missing)
         XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("Guest address resource missing") == true)
         XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
-        XCTAssertEqual(snapshot.guestServiceStatuses, .notReported)
         XCTAssertFalse(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingVMIP)))
         XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
     }
@@ -163,7 +162,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("Guest address resource invalid") == true)
         XCTAssertNil(snapshot.vmIP)
         XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
-        XCTAssertEqual(snapshot.guestServiceStatuses, .notReported)
         XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(fixture.guestControlGateway.readyCount, 0)
         XCTAssertEqual(fixture.guestControlGateway.stackStatusCount, 0)
@@ -181,71 +179,9 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("Guest address resource read failed") == true)
         XCTAssertNil(snapshot.vmIP)
         XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
-        XCTAssertEqual(snapshot.guestServiceStatuses, .notReported)
         XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertEqual(fixture.guestControlGateway.readyCount, 0)
         XCTAssertEqual(fixture.guestControlGateway.stackStatusCount, 0)
-    }
-
-    func testSnapshotReadsGuestServiceStatusesThroughGuestControlGateway() {
-        let fixture = healthyRuntimeFixture(guestHTTP: "200")
-        let status = RuntimeGuestControlServiceStatus(
-            service: "app",
-            state: "running",
-            health: "healthy",
-            observedAt: "2026-07-01T00:00:00Z"
-        )
-        let guestControlGateway = RuntimeGuestControlGatewaySpy(
-            services: ["app"],
-            statuses: ["app": status],
-            vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead(
-                state: .loaded,
-                observation: healthyVitalDBObservation()
-            )
-        )
-
-        let snapshot = healthSnapshot(from: fixture.checker(guestControlGateway: { guestControlGateway }))
-
-        XCTAssertEqual(snapshot.guestServiceStatuses, .loaded([status]))
-        XCTAssertEqual(guestControlGateway.stackStatusCount, 1)
-        XCTAssertEqual(guestControlGateway.listServicesCount, 0)
-        XCTAssertEqual(guestControlGateway.statusRequests, [])
-        XCTAssertEqual(guestControlGateway.resourceRequests, ["app"])
-        XCTAssertEqual(snapshot.guestServiceResourceReadIssues, [])
-    }
-
-    func testSnapshotPreservesGuestServiceResourceReadFailure() {
-        let fixture = healthyRuntimeFixture(guestHTTP: "200")
-        let status = RuntimeGuestControlServiceStatus(
-            service: "app",
-            state: "running",
-            health: "healthy",
-            observedAt: "2026-07-01T00:00:00Z"
-        )
-        let guestControlGateway = RuntimeGuestControlGatewaySpy(
-            services: ["app"],
-            statuses: ["app": status],
-            resourceFailures: [
-                "app": RuntimeGuestControlGatewaySpyError.missingStatus("resource-app"),
-            ],
-            vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead(
-                state: .loaded,
-                observation: healthyVitalDBObservation()
-            )
-        )
-
-        let snapshot = healthSnapshot(from: fixture.checker(guestControlGateway: { guestControlGateway }))
-
-        XCTAssertEqual(snapshot.guestServiceStatuses, .loaded([status]))
-        XCTAssertEqual(snapshot.guestServiceResourceReadIssues, [
-            RuntimeGuestServiceResourceReadIssue(
-                service: "app",
-                message: "missing status for service resource-app"
-            ),
-        ])
-        XCTAssertEqual(snapshot.failureReasons, [
-            .guestServiceObservationReadFailed("app_missing_status_for_service_resource-app"),
-        ])
     }
 
     func testSnapshotPreservesMissingVitalDBObservationFromGuestControlReadWithoutRuntimeFailure() {
@@ -506,7 +442,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
             guestAddressProvider: stubGuestAddressProvider(
-                read: .loaded(address: "192.168.64.44", source: .runtimeControlAPI)
+                read: .loaded(address: "192.168.64.44", source: .platformAgent)
             ),
             guestControlGateway: { guestControlGateway }
         )
@@ -517,7 +453,8 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.guestHTTP, "200")
         XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-invalid")))
         XCTAssertEqual(guestControlGateway.readyCount, 1)
-        XCTAssertEqual(guestControlGateway.stackStatusCount, 1)
+        XCTAssertEqual(guestControlGateway.stackStatusCount, 0)
+        XCTAssertEqual(guestControlGateway.resourceRequests, [])
     }
 
     func testSnapshotUsesBootstrappingLifecycleWithoutBootstrapResultFileInput() throws {
@@ -1187,7 +1124,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         guestHTTP: String,
         guestAddressRead: RuntimeGuestAddressReadResult = .loaded(
             address: "192.168.64.2",
-            source: .runtimeControlAPI
+            source: .platformAgent
         )
     ) -> RuntimeHealthCheckerFixture {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))

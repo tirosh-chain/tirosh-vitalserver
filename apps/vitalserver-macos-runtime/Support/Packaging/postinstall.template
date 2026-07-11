@@ -93,6 +93,7 @@ safe_remove_path() {
 
 remove_package_owned_artifacts() {
   local labels=(
+    "ai.tirosh.vitalserver.helper.platform-agent"
     "ai.tirosh.vitalserver.helper.watchdog"
     "ai.tirosh.vitalserver.helper.guest-log-sync"
     "ai.tirosh.vitalserver.helper.proxy"

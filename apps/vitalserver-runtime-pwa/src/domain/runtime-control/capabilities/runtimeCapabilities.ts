@@ -1,10 +1,10 @@
-import type { RuntimeControlCapabilities } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import type { ControlCapabilities } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
 export function canApplyRuntimeSettings(
-  capabilities: RuntimeControlCapabilities | undefined
+  capabilities: ControlCapabilities | undefined
 ): boolean {
   return Boolean(
-    capabilities?.canEditVMResources ||
+    capabilities?.canEditRuntimeProviderResources ||
       capabilities?.canEditNetworkExposure ||
       capabilities?.canOpenLocalFiles ||
       capabilities?.canControlRuntimeServices ||
@@ -12,8 +12,26 @@ export function canApplyRuntimeSettings(
   );
 }
 
+export function canApplyRuntimeProductSettings(
+  capabilities: ControlCapabilities | undefined
+): boolean {
+  return capabilities?.canApplyRuntimeProductSettings === true;
+}
+
+export function canApplyRuntimeAdminPassword(
+  capabilities: ControlCapabilities | undefined
+): boolean {
+  return capabilities?.canApplyRuntimeAdminPassword === true;
+}
+
+export function canApplyRuntimeRedisRelaySettings(
+  capabilities: ControlCapabilities | undefined
+): boolean {
+  return capabilities?.canApplyRuntimeRedisRelaySettings === true;
+}
+
 export function canControlRecovery(
-  capabilities: RuntimeControlCapabilities | undefined
+  capabilities: ControlCapabilities | undefined
 ): boolean {
   return Boolean(capabilities?.canControlRuntimeServices);
 }

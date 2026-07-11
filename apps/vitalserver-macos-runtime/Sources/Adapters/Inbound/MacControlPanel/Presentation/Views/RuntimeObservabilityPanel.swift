@@ -74,7 +74,7 @@ struct RuntimeObservabilityPanel: View {
     }
 
     private var guestLogSyncStatus: String {
-        switch viewModel.status.guestLogSyncServiceState {
+        switch viewModel.status.serviceState(.logSync) {
         case .loaded:
             return AppConstants.StatusText.running
         case .notLoaded:

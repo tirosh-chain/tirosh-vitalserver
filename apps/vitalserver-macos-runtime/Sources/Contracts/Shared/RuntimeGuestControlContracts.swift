@@ -72,6 +72,9 @@ public enum RuntimeGuestControlServiceCommand: String, Codable, Equatable, Senda
     case updateActivation = "activate-update"
     case updateShutdown = "prepare-update-shutdown"
     case requestGuestPoweroff = "request-guest-poweroff"
+    case applySettings = "apply-settings"
+    case applyAdminPassword = "apply-admin-password"
+    case applyRedisRelaySettings = "apply-redis-relay-settings"
 }
 
 public enum RuntimeGuestControlOperationState: String, Codable, Equatable, Sendable {

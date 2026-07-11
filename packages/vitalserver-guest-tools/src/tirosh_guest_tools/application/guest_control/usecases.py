@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 
 from tirosh_guest_tools.application.guest_control.ports import (
     Clock,
@@ -12,6 +13,9 @@ from tirosh_guest_tools.application.guest_control.ports import (
     RecorderIngressReadModelPort,
     RedisBackupPort,
     RedisRelayReadModelPort,
+    RedisRelaySettingsPort,
+    RuntimeAdminPort,
+    RuntimeSettingsPort,
     ServiceControlPort,
     ServiceStatusSnapshotRepository,
     UpdateActivationPort,
@@ -58,6 +62,7 @@ from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
     GuestServiceReconcileEffect,
     reconcile_guest_service,
 )
+from tirosh_guest_tools.domain.vitaldb_history import attach_recorder_ingress_status
 
 
 class GuestControlUseCases:
@@ -74,6 +79,9 @@ class GuestControlUseCases:
         vitaldb_read_model: VitalDBReadModelPort | None = None,
         recorder_ingress: RecorderIngressReadModelPort | None = None,
         redis_relay: RedisRelayReadModelPort | None = None,
+        runtime_settings: RuntimeSettingsPort | None = None,
+        runtime_admin: RuntimeAdminPort | None = None,
+        redis_relay_settings: RedisRelaySettingsPort | None = None,
         redis_backup: RedisBackupPort | None = None,
         datastore_repair: DatastoreRepairPort | None = None,
         update_activation: UpdateActivationPort | None = None,
@@ -84,6 +92,9 @@ class GuestControlUseCases:
         self._vitaldb_read_model = vitaldb_read_model
         self._recorder_ingress = recorder_ingress
         self._redis_relay = redis_relay
+        self._runtime_settings = runtime_settings
+        self._runtime_admin = runtime_admin
+        self._redis_relay_settings = redis_relay_settings
         self._redis_backup = redis_backup
         self._datastore_repair = datastore_repair
         self._update_activation = update_activation
@@ -163,6 +174,14 @@ class GuestControlUseCases:
 
         if self._recorder_ingress is not None:
             capabilities.append("recorder-ingress:status:get")
+        if self._runtime_settings is not None:
+            capabilities.extend(["settings:get", "settings:apply"])
+        if self._runtime_admin is not None:
+            capabilities.append("admin-password:apply")
+        if self._redis_relay_settings is not None:
+            capabilities.extend(
+                ["redis-relay:settings:get", "redis-relay:settings:apply"]
+            )
 
         if self._redis_relay is not None:
             capabilities.append("redis-relay:status:get")
@@ -782,6 +801,164 @@ class GuestControlUseCases:
         except VitalDBReadModelDependencyError as error:
             return _vitaldb_observation_failed_document(error)
 
+    def get_runtime_events(
+        self,
+        *,
+        limit: int,
+        event_type: str | None,
+        since: datetime | None,
+        cursor: str | None,
+    ) -> dict[str, object]:
+        return self._operations.query_events(
+            limit=limit,
+            event_type=event_type,
+            since=since,
+            cursor=cursor,
+        )
+
+    def get_runtime_settings(self) -> dict[str, object]:
+        if self._runtime_settings is None:
+            return {
+                "state": "unavailable",
+                "settings": None,
+                "readError": "Runtime settings adapter is unavailable.",
+            }
+        try:
+            return {
+                "state": "loaded",
+                "settings": self._runtime_settings.read(),
+                "readError": None,
+            }
+        except GuestControlDependencyError as error:
+            return {
+                "state": "failed",
+                "settings": None,
+                "readError": error.message,
+            }
+
+    def apply_runtime_settings(
+        self, settings: dict[str, object]
+    ) -> ServiceOperation:
+        operation = accept_service_operation(
+            operation_id=self._operation_ids.new_operation_id(
+                service="runtime-settings",
+                command=ServiceCommand.APPLY_SETTINGS.value,
+            ),
+            service="runtime-settings",
+            command=ServiceCommand.APPLY_SETTINGS,
+            now=self._clock.now(),
+        )
+        self._create_operation(operation)
+        running = start_operation(operation, now=self._clock.now())
+        self._save_operation_transition(running)
+        try:
+            if self._runtime_settings is None:
+                raise GuestControlDependencyError(
+                    "Runtime settings adapter is unavailable.",
+                    kind="runtimeSettingsUnavailable",
+                )
+            self._runtime_settings.save(settings)
+            self._service_control.reconcile_services()
+        except GuestControlDependencyError as error:
+            failed = fail_operation(
+                running,
+                failure=OperationFailure(kind=error.kind, message=error.message),
+                now=self._clock.now(),
+            )
+            self._save_operation_transition(failed)
+            return failed
+        completed = finish_operation(running, now=self._clock.now())
+        self._save_operation_transition(completed)
+        return completed
+
+    def apply_admin_password(self, password: str) -> ServiceOperation:
+        operation = accept_service_operation(
+            operation_id=self._operation_ids.new_operation_id(
+                service="runtime-admin",
+                command=ServiceCommand.APPLY_ADMIN_PASSWORD.value,
+            ),
+            service="runtime-admin",
+            command=ServiceCommand.APPLY_ADMIN_PASSWORD,
+            now=self._clock.now(),
+        )
+        self._create_operation(operation)
+        running = start_operation(operation, now=self._clock.now())
+        self._save_operation_transition(running)
+        try:
+            if self._runtime_admin is None:
+                raise GuestControlDependencyError(
+                    "Runtime admin adapter is unavailable.",
+                    kind="runtimeAdminUnavailable",
+                )
+            self._runtime_admin.replace_admin_password(password)
+            self._service_control.reconcile_services()
+        except GuestControlDependencyError as error:
+            failed = fail_operation(
+                running,
+                failure=OperationFailure(kind=error.kind, message=error.message),
+                now=self._clock.now(),
+            )
+            self._save_operation_transition(failed)
+            return failed
+        completed = finish_operation(running, now=self._clock.now())
+        self._save_operation_transition(completed)
+        return completed
+
+    def get_redis_relay_settings(self) -> dict[str, object]:
+        if self._redis_relay_settings is None:
+            return {
+                "state": "unavailable",
+                "settings": None,
+                "readError": "Redis Relay settings adapter is unavailable.",
+            }
+        try:
+            return {
+                "state": "loaded",
+                "settings": self._redis_relay_settings.read(),
+                "readError": None,
+            }
+        except GuestControlDependencyError as error:
+            return {
+                "state": "failed",
+                "settings": None,
+                "readError": error.message,
+            }
+
+    def apply_redis_relay_settings(
+        self, settings: dict[str, object]
+    ) -> ServiceOperation:
+        operation = accept_service_operation(
+            operation_id=self._operation_ids.new_operation_id(
+                service="redis-relay-settings",
+                command=ServiceCommand.APPLY_REDIS_RELAY_SETTINGS.value,
+            ),
+            service="redis-relay-settings",
+            command=ServiceCommand.APPLY_REDIS_RELAY_SETTINGS,
+            now=self._clock.now(),
+        )
+        self._create_operation(operation)
+        running = start_operation(operation, now=self._clock.now())
+        self._save_operation_transition(running)
+        try:
+            if self._redis_relay_settings is None:
+                raise GuestControlDependencyError(
+                    "Redis Relay settings adapter is unavailable.",
+                    kind="redisRelaySettingsUnavailable",
+                )
+            self._redis_relay_settings.save(settings)
+            self._service_control.reconcile_services()
+        except GuestControlDependencyError as error:
+            failed = fail_operation(
+                running,
+                failure=OperationFailure(kind=error.kind, message=error.message),
+                now=self._clock.now(),
+            )
+            self._save_operation_transition(failed)
+            return failed
+        completed = finish_operation(running, now=self._clock.now())
+        self._save_operation_transition(completed)
+        return completed
+
     def list_vitaldb_recorders(self) -> dict[str, object]:
         if self._vitaldb_read_model is None:
             return _vitaldb_read_model_unavailable_document(
@@ -790,9 +967,30 @@ class GuestControlUseCases:
             )
 
         try:
-            return self._vitaldb_read_model.recorders()
+            return self._with_recorder_ingress(
+                self._vitaldb_read_model.recorders()
+            )
         except VitalDBReadModelDependencyError as error:
             return _vitaldb_read_model_failed_document(error, collection="recorders")
+
+    def get_vitaldb_recorder(self, vrcode: str) -> dict[str, object] | None:
+        read_model = self._require_vitaldb_read_model()
+        document = self._with_recorder_ingress(read_model.recorders())
+        recorders = document.get("recorders")
+        if not isinstance(recorders, list):
+            raise VitalDBReadModelDependencyError(
+                "VitalDB recorder read model recorders field is invalid.",
+                kind="vitaldb-read-model-invalid",
+            )
+        for recorder in recorders:
+            if not isinstance(recorder, dict):
+                raise VitalDBReadModelDependencyError(
+                    "VitalDB recorder read model item is invalid.",
+                    kind="vitaldb-read-model-invalid",
+                )
+            if recorder.get("vrcode") == vrcode:
+                return recorder
+        return None
 
     def hide_vitaldb_recorders(self, request: dict[str, object]) -> dict[str, object]:
         return self._run_vitaldb_read_model_command(
@@ -854,6 +1052,25 @@ class GuestControlUseCases:
             return self._vitaldb_read_model.beds()
         except VitalDBReadModelDependencyError as error:
             return _vitaldb_read_model_failed_document(error, collection="beds")
+
+    def get_vitaldb_bed(self, bed_id: str) -> dict[str, object] | None:
+        read_model = self._require_vitaldb_read_model()
+        document = read_model.beds()
+        beds = document.get("beds")
+        if not isinstance(beds, list):
+            raise VitalDBReadModelDependencyError(
+                "VitalDB bed read model beds field is invalid.",
+                kind="vitaldb-read-model-invalid",
+            )
+        for bed in beds:
+            if not isinstance(bed, dict):
+                raise VitalDBReadModelDependencyError(
+                    "VitalDB bed read model item is invalid.",
+                    kind="vitaldb-read-model-invalid",
+                )
+            if bed.get("bedID") == bed_id:
+                return bed
+        return None
 
     def hide_vitaldb_beds(self, request: dict[str, object]) -> dict[str, object]:
         return self._run_vitaldb_read_model_command(
@@ -1297,9 +1514,22 @@ class GuestControlUseCases:
         action: Callable[[], dict[str, object]],
     ) -> dict[str, object]:
         try:
-            return action()
+            document = action()
+            return (
+                self._with_recorder_ingress(document)
+                if collection == "recorders"
+                else document
+            )
         except VitalDBReadModelDependencyError as error:
             return _vitaldb_read_model_failed_document(error, collection=collection)
+
+    def _with_recorder_ingress(
+        self, history: dict[str, object]
+    ) -> dict[str, object]:
+        return attach_recorder_ingress_status(
+            history,
+            self.get_recorder_ingress_status(),
+        )
 
     def _create_operation(self, operation: ServiceOperation) -> None:
         self._operations.create(operation)
@@ -1505,6 +1735,10 @@ def _vitaldb_read_model_unavailable_document(
     collection: str,
     message: str,
 ) -> dict[str, object]:
+    if collection == "recorders":
+        return _failed_recorder_history(message)
+    if collection == "beds":
+        return _failed_bed_history(message)
     return {
         "state": "unavailable",
         collection: [],
@@ -1518,6 +1752,10 @@ def _vitaldb_read_model_failed_document(
     *,
     collection: str,
 ) -> dict[str, object]:
+    if collection == "recorders":
+        return _failed_recorder_history(error.message)
+    if collection == "beds":
+        return _failed_bed_history(error.message)
     state = (
         "unavailable"
         if error.kind == "vitaldb-read-model-unavailable"
@@ -1528,6 +1766,52 @@ def _vitaldb_read_model_failed_document(
         collection: [],
         "observedAt": None,
         "readError": error.message,
+    }
+
+
+def _failed_recorder_history(message: str) -> dict[str, object]:
+    return {
+        "state": "readFailed",
+        "updatedAt": None,
+        "recorders": [],
+        "beds": [],
+        "summary": {
+            "knownRecorders": 0,
+            "currentRecorders": 0,
+            "onlineRecorders": 0,
+            "staleRecorders": 0,
+            "recorderAnomalies": 0,
+            "knownBeds": 0,
+            "onlineBeds": 0,
+            "staleBeds": 0,
+            "bedAssignments": 0,
+            "bedAnomalies": 0,
+        },
+        "activityHistory": {
+            "source": "unavailable",
+            "bucketCount": 0,
+            "earliestBucketStartedAt": None,
+            "latestBucketStartedAt": None,
+            "readError": message,
+        },
+        "recorderIngressStatusRead": None,
+        "readError": message,
+    }
+
+
+def _failed_bed_history(message: str) -> dict[str, object]:
+    return {
+        "state": "readFailed",
+        "updatedAt": None,
+        "beds": [],
+        "summary": {
+            "knownBeds": 0,
+            "onlineBeds": 0,
+            "staleBeds": 0,
+            "bedAssignments": 0,
+            "bedAnomalies": 0,
+        },
+        "readError": message,
     }
 
 

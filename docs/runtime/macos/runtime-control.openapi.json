@@ -20,17 +20,17 @@
     "/runtime/capabilities": {
       "get": {
         "operationId": "getRuntimeCapabilities",
-        "summary": "Read Runtime Control capabilities",
+        "summary": "Read Runtime Controller capabilities",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
         "responses": {
           "200": {
-            "description": "Runtime Control capabilities",
+            "description": "Runtime Controller-owned capabilities",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeControlCapabilities"
+                  "$ref": "#/components/schemas/RuntimeCapabilities"
                 }
               }
             }
@@ -41,21 +41,20 @@
         }
       }
     },
-    "/runtime/overview": {
+    "/platform/capabilities": {
       "get": {
-        "operationId": "getRuntimeOverview",
-        "summary": "Read PWA runtime overview",
-        "description": "Aggregated read model for PWA status screens. It combines the same status, settings, release, install, and Vital Recorder observation data used by the native status UI.",
+        "operationId": "getPlatformCapabilities",
+        "summary": "Read Platform Agent capabilities",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
         "responses": {
           "200": {
-            "description": "PWA runtime overview read model",
+            "description": "Platform Agent-owned capabilities",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeControlOverview"
+                  "$ref": "#/components/schemas/PlatformCapabilities"
                 }
               }
             }
@@ -66,51 +65,25 @@
         }
       }
     },
-    "/runtime/overview/stream": {
+    "/platform": {
       "get": {
-        "operationId": "streamRuntimeOverview",
-        "summary": "Subscribe to PWA runtime overview updates",
-        "description": "Long-lived SSE stream for the aggregated PWA runtime overview. The local router emits a runtime-overview frame when the RuntimeControlOverview payload changes and heartbeat comments while idle.",
+        "operationId": "getPlatformState",
+        "summary": "Read platform state",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
         "responses": {
           "200": {
-            "description": "PWA runtime overview SSE stream.",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string",
-                  "description": "Long-lived SSE frames with id runtime-overview, event runtime-overview, and data as a JSON-encoded RuntimeControlOverview."
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/status": {
-      "get": {
-        "operationId": "getRuntimeStatus",
-        "summary": "Read runtime status",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "readOnlyLocal",
-        "x-runtime-control-access": "browserSafe",
-        "responses": {
-          "200": {
-            "description": "Runtime status read model",
+            "description": "Platform state read model",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeStatus"
+                  "$ref": "#/components/schemas/PlatformState"
                 }
               },
               "examples": {
                 "healthy": {
-                  "$ref": "#/components/examples/RuntimeStatusHealthy"
+                  "$ref": "#/components/examples/PlatformStateHealthy"
                 }
               }
             }
@@ -121,47 +94,22 @@
         }
       }
     },
-    "/runtime/operation-state": {
+    "/platform/stream": {
       "get": {
-        "operationId": "getRuntimeOperationState",
-        "summary": "Read runtime operation state",
-        "description": "Read the API-owned operation state resource. It preserves unavailable, failed, loaded, and stale operation subresource meanings instead of requiring clients to infer them from RuntimeStatus fields or Host files.",
+        "operationId": "streamPlatformState",
+        "summary": "Subscribe to platform state updates",
+        "description": "Long-lived SSE stream for platform state updates. The local router keeps the connection open, emits a platform-state frame when the PlatformState payload changes, and sends heartbeat comments while idle.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
         "responses": {
           "200": {
-            "description": "Runtime operation state read model",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeOperationState"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/status/stream": {
-      "get": {
-        "operationId": "streamRuntimeStatus",
-        "summary": "Subscribe to runtime status updates",
-        "description": "Long-lived SSE stream for runtime status updates. The local router keeps the connection open, emits a runtime-status frame when the RuntimeStatus payload changes, and sends heartbeat comments while idle.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "readOnlyLocal",
-        "x-runtime-control-access": "browserSafe",
-        "responses": {
-          "200": {
-            "description": "Runtime status SSE stream.",
+            "description": "Platform state SSE stream.",
             "content": {
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "Long-lived SSE frames with id runtime-status, event runtime-status, and data as a JSON-encoded RuntimeStatus."
+                  "description": "Long-lived SSE frames with id platform-state, event platform-state, and data as a JSON-encoded PlatformState."
                 }
               }
             }
@@ -172,7 +120,7 @@
         }
       }
     },
-    "/lab/scenarios": {
+    "/runtime/lab/scenarios": {
       "get": {
         "operationId": "listRuntimeLabScenarios",
         "summary": "List Runtime Lab scenarios",
@@ -197,7 +145,7 @@
         }
       }
     },
-    "/lab/vital-files": {
+    "/runtime/lab/vital-files": {
       "get": {
         "operationId": "listRuntimeLabVitalFiles",
         "summary": "List Runtime Lab vital files",
@@ -222,7 +170,7 @@
         }
       }
     },
-    "/lab/beds": {
+    "/runtime/lab/beds": {
       "get": {
         "operationId": "listRuntimeLabBeds",
         "summary": "List Runtime Lab beds",
@@ -247,7 +195,7 @@
         }
       }
     },
-    "/lab/recorders": {
+    "/runtime/lab/recorders": {
       "get": {
         "operationId": "listRuntimeLabRecorders",
         "summary": "List Runtime Lab recorders",
@@ -272,7 +220,7 @@
         }
       }
     },
-    "/lab/sessions": {
+    "/runtime/lab/sessions": {
       "post": {
         "operationId": "createRuntimeLabSession",
         "summary": "Create a Runtime Lab session",
@@ -307,7 +255,7 @@
         }
       }
     },
-    "/lab/sessions/{sessionId}": {
+    "/runtime/lab/sessions/{sessionId}": {
       "get": {
         "operationId": "getRuntimeLabSession",
         "summary": "Read a Runtime Lab session",
@@ -342,7 +290,7 @@
         }
       }
     },
-    "/lab/sessions/{sessionId}/start": {
+    "/runtime/lab/sessions/{sessionId}/start": {
       "post": {
         "operationId": "startRuntimeLabSession",
         "summary": "Start a Runtime Lab session",
@@ -377,7 +325,7 @@
         }
       }
     },
-    "/lab/sessions/{sessionId}/stop": {
+    "/runtime/lab/sessions/{sessionId}/stop": {
       "post": {
         "operationId": "stopRuntimeLabSession",
         "summary": "Stop a Runtime Lab session",
@@ -412,7 +360,7 @@
         }
       }
     },
-    "/lab/vital-files/replay": {
+    "/runtime/lab/vital-files/replay": {
       "post": {
         "operationId": "replayRuntimeLabVitalFile",
         "summary": "Replay a vital file through Runtime Lab",
@@ -447,7 +395,7 @@
         }
       }
     },
-    "/lab/vital-files/upload": {
+    "/runtime/lab/vital-files/upload": {
       "post": {
         "operationId": "uploadRuntimeLabVitalFile",
         "summary": "Upload a vital file through Runtime Lab",
@@ -482,7 +430,7 @@
         }
       }
     },
-    "/runtime/guest/services": {
+    "/runtime/services": {
       "get": {
         "operationId": "listRuntimeGuestServices",
         "summary": "List Guest product services",
@@ -507,7 +455,7 @@
         }
       }
     },
-    "/runtime/guest/stack/status": {
+    "/runtime/stack": {
       "get": {
         "operationId": "getRuntimeGuestStackStatus",
         "summary": "Read Guest product service stack status",
@@ -532,7 +480,91 @@
         }
       }
     },
-    "/runtime/guest/services/{service}/status": {
+    "/runtime/redis-relay/status": {
+      "get": {
+        "operationId": "getRuntimeRedisRelayStatus",
+        "summary": "Read Redis Relay status owner resource",
+        "description": "Reads the explicit Redis Relay status snapshot from the Runtime Controller owner without reconstructing it from Host status or diagnostics artifacts.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Explicit Redis Relay status read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeRedisRelayStatusReadResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/redis-relay/settings": {
+      "get": {
+        "operationId": "getRuntimeRedisRelaySettings",
+        "summary": "Read Runtime-owned Redis Relay settings without secret material",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Explicit Redis Relay settings read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeRedisRelaySettingsReadResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "operationId": "applyRuntimeRedisRelaySettings",
+        "summary": "Apply Runtime-owned Redis Relay settings and reconcile Compose",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeRedisRelaySettingsApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Redis Relay settings apply operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceOperation"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/{service}/status": {
       "get": {
         "operationId": "getRuntimeGuestServiceStatus",
         "summary": "Read Guest product service status",
@@ -567,7 +599,7 @@
         }
       }
     },
-    "/runtime/guest/services/{service}/resource": {
+    "/runtime/services/{service}/resource": {
       "get": {
         "operationId": "getRuntimeGuestServiceResource",
         "summary": "Read Guest product service controller resource",
@@ -602,7 +634,7 @@
         }
       }
     },
-    "/runtime/guest/services/start": {
+    "/runtime/services/{service}/start": {
       "post": {
         "operationId": "startRuntimeGuestService",
         "summary": "Start a Guest product service",
@@ -610,16 +642,16 @@
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localServerMediated",
         "x-runtime-control-access": "localServerMediated",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeGuestServiceRestartRequest"
-              }
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "Guest product service operation",
@@ -637,7 +669,7 @@
         }
       }
     },
-    "/runtime/guest/services/stop": {
+    "/runtime/services/{service}/stop": {
       "post": {
         "operationId": "stopRuntimeGuestService",
         "summary": "Stop a Guest product service",
@@ -645,16 +677,16 @@
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localServerMediated",
         "x-runtime-control-access": "localServerMediated",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeGuestServiceRestartRequest"
-              }
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "Guest product service operation",
@@ -672,7 +704,7 @@
         }
       }
     },
-    "/runtime/guest/services/restart": {
+    "/runtime/services/{service}/restart": {
       "post": {
         "operationId": "restartRuntimeGuestService",
         "summary": "Restart a Guest product service",
@@ -680,16 +712,16 @@
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localServerMediated",
         "x-runtime-control-access": "localServerMediated",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeGuestServiceRestartRequest"
-              }
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "Guest product service operation",
@@ -710,7 +742,7 @@
     "/runtime/events": {
       "get": {
         "operationId": "getRuntimeEvents",
-        "summary": "Read runtime status and progress event history",
+        "summary": "Read platform state and progress event history",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
@@ -773,66 +805,7 @@
         }
       }
     },
-    "/runtime/events/stream": {
-      "get": {
-        "operationId": "streamRuntimeEvents",
-        "summary": "Subscribe to runtime status and progress events",
-        "description": "Long-lived SSE stream for runtime event updates. Each data frame carries one RuntimeEventDocument JSON object. The local router keeps the connection open, emits undelivered events, and sends heartbeat comments while idle.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "readOnlyLocal",
-        "x-runtime-control-access": "browserSafe",
-        "parameters": [
-          {
-            "name": "Last-Event-ID",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Optional SSE resume marker. Clients should pass the latest received event id when reconnecting."
-          },
-          {
-            "name": "type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/RuntimeEventType"
-            }
-          },
-          {
-            "name": "since",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Inclusive ISO-8601 timestamp lower bound for initial catch-up."
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Runtime event SSE stream. Event names match RuntimeEventType values.",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string",
-                  "description": "SSE frames with id, event, and data fields. data is a JSON-encoded RuntimeEventDocument."
-                },
-                "examples": {
-                  "statusChanged": {
-                    "value": "id: event-1\nevent: status-changed\ndata: {\"id\":\"event-1\",\"eventType\":\"status-changed\",\"timestamp\":\"2026-05-24T00:00:00Z\",\"product\":\"VitalServerHelper\",\"status\":\"healthy\",\"operation\":\"health\",\"message\":\"ready\"}\n\n"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/health": {
+    "/platform/health": {
       "post": {
         "operationId": "refreshRuntimeHealth",
         "summary": "Refresh and read runtime health",
@@ -841,11 +814,11 @@
         "x-runtime-control-access": "browserSafe",
         "responses": {
           "200": {
-            "description": "Refreshed runtime status",
+            "description": "Refreshed platform state",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeStatus"
+                  "$ref": "#/components/schemas/PlatformState"
                 }
               }
             }
@@ -858,8 +831,8 @@
     },
     "/runtime/settings": {
       "get": {
-        "operationId": "getRuntimeSettings",
-        "summary": "Read current runtime settings",
+        "operationId": "getRuntimeProductSettings",
+        "summary": "Read current Runtime Controller product settings",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
@@ -869,7 +842,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeSettings"
+                  "$ref": "#/components/schemas/RuntimeProductSettingsRead"
                 }
               }
             }
@@ -880,8 +853,8 @@
         }
       },
       "put": {
-        "operationId": "applyRuntimeSettings",
-        "summary": "Apply runtime settings",
+        "operationId": "applyRuntimeProductSettings",
+        "summary": "Apply Runtime Controller product settings",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -890,14 +863,21 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RuntimeApplySettingsRequest"
+                "$ref": "#/components/schemas/RuntimeApplyProductSettingsRequest"
               }
             }
           }
         },
         "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
+          "202": {
+            "description": "Runtime settings apply operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceOperation"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -905,7 +885,44 @@
         }
       }
     },
-    "/runtime/release": {
+    "/runtime/admin-password": {
+      "post": {
+        "operationId": "applyRuntimeAdminPassword",
+        "summary": "Replace the Runtime product administrator password",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeAdminPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Runtime administrator password apply operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceOperation"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/platform/release": {
       "get": {
         "operationId": "getRuntimeRelease",
         "summary": "Read helper and bundled release metadata",
@@ -929,7 +946,7 @@
         }
       }
     },
-    "/runtime/install": {
+    "/platform/installation": {
       "get": {
         "operationId": "getRuntimeInstallInfo",
         "summary": "Read installed runtime path metadata",
@@ -953,7 +970,7 @@
         }
       }
     },
-    "/runtime/services/repair-runtime": {
+    "/platform/services/repair": {
       "post": {
         "operationId": "repairRuntimeServices",
         "summary": "Repair runtime services",
@@ -971,7 +988,7 @@
         }
       }
     },
-    "/runtime/services/repair-proxy": {
+    "/platform/proxy/repair": {
       "post": {
         "operationId": "repairRuntimeProxy",
         "summary": "Repair host proxy service",
@@ -998,7 +1015,7 @@
         }
       }
     },
-    "/runtime/services/repair-datastore": {
+    "/runtime/maintenance/datastore/repair": {
       "post": {
         "operationId": "repairRuntimeDatastore",
         "summary": "Repair datastore",
@@ -1015,7 +1032,7 @@
         }
       }
     },
-    "/runtime/services/repair-vm-disk": {
+    "/platform/runtime-provider/disk/repair": {
       "post": {
         "operationId": "repairRuntimeVMDisk",
         "summary": "Repair VM disk",
@@ -1033,43 +1050,7 @@
         }
       }
     },
-    "/runtime/redis/backups": {
-      "post": {
-        "operationId": "createRedisBackup",
-        "summary": "Create Redis-only repair backup",
-        "description": "Requests a recoverable Redis-only backup from the runtime guest and returns the command result.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "localCommand",
-        "x-runtime-control-access": "localServerMediated",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/data/backups": {
-      "post": {
-        "operationId": "createRuntimeDataBackup",
-        "summary": "Create VitalServer backup",
-        "description": "Creates a recoverable VitalServer backup, including Redis data, runtime settings, Host diagnostics/export artifacts, and runtime observability SQLite.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "localCommand",
-        "x-runtime-control-access": "localServerMediated",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/uninstall": {
+    "/platform/uninstall": {
       "post": {
         "operationId": "uninstallRuntime",
         "summary": "Uninstall runtime",
@@ -1087,8 +1068,25 @@
           }
         },
         "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
+          "202": {
+            "description": "Uninstall workflow accepted or completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowOperation"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another platform workflow is active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowOperation"
+                }
+              }
+            }
           },
           "501": {
             "$ref": "#/components/responses/NotImplemented"
@@ -1096,11 +1094,46 @@
         }
       }
     },
-    "/host/backups": {
+    "/platform/support-exports": {
+      "post": {
+        "operationId": "createPlatformSupportExport",
+        "summary": "Create a managed platform support bundle",
+        "description": "Schedules the platform-specific support collector. The completed durable workflow publishes the managed artifact path, SHA-256 digest, and byte size; the caller does not choose a host path.",
+        "x-runtime-control-scope": "platformAffordance",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "202": {
+            "description": "Support export workflow accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowOperation"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another platform workflow is active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowOperation"
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/platform/backups": {
       "get": {
         "operationId": "listHostBackups",
         "summary": "List local host backups",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
@@ -1126,7 +1159,7 @@
         "operationId": "deleteHostBackup",
         "summary": "Delete selected local backup",
         "description": "Compatibility deletion endpoint. Browser clients should prefer Delete Update Backup or Delete VitalServer Backup endpoints so the target backup type stays explicit.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1149,12 +1182,12 @@
         }
       }
     },
-    "/host/backups/update": {
+    "/platform/backups/update": {
       "delete": {
         "operationId": "deleteUpdateBackup",
         "summary": "Delete selected update backup",
         "description": "Deletes a managed update/rollback backup. This does not delete VitalServer backups or current runtime data.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1177,11 +1210,11 @@
         }
       }
     },
-    "/host/backups/redis": {
+    "/platform/backups/redis": {
       "get": {
         "operationId": "listRedisBackups",
         "summary": "List local Redis-only repair backups",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
@@ -1202,13 +1235,29 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         }
+      },
+      "post": {
+        "operationId": "createRedisBackup",
+        "summary": "Create Redis-only repair backup",
+        "description": "Requests a recoverable Redis-only backup from the Runtime Controller and returns the Platform workflow result.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
       }
     },
-    "/host/backups/redis/restore": {
+    "/platform/backups/redis/restore": {
       "post": {
         "operationId": "restoreRedisBackup",
         "summary": "Restore selected Redis-only repair backup",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1231,11 +1280,11 @@
         }
       }
     },
-    "/host/backups/vitalserver-helper": {
+    "/platform/backups/runtime-data": {
       "get": {
         "operationId": "listRuntimeDataBackups",
         "summary": "List local VitalServer backups",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
@@ -1257,11 +1306,27 @@
           }
         }
       },
+      "post": {
+        "operationId": "createRuntimeDataBackup",
+        "summary": "Create VitalServer backup",
+        "description": "Creates a recoverable VitalServer backup, including Runtime data, settings, Platform diagnostics, and observability data.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
       "delete": {
         "operationId": "deleteRuntimeDataBackup",
         "summary": "Delete selected VitalServer backup",
         "description": "Deletes a selected VitalServer backup. This does not delete update rollback backups or current runtime data.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1284,12 +1349,12 @@
         }
       }
     },
-    "/host/backups/vitalserver-helper/restore": {
+    "/platform/backups/runtime-data/restore": {
       "post": {
         "operationId": "restoreRuntimeDataBackup",
         "summary": "Restore selected VitalServer backup",
         "description": "Restores Redis data, runtime settings, Host diagnostics/export artifacts, start-on-boot state, and runtime observability SQLite from a verified VitalServer backup.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1312,11 +1377,11 @@
         }
       }
     },
-    "/host/logs/read": {
+    "/platform/logs/read": {
       "post": {
         "operationId": "readHostLogText",
         "summary": "Read local log text",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1346,12 +1411,12 @@
         }
       }
     },
-    "/host/logs/stream": {
+    "/platform/logs/stream": {
       "get": {
         "operationId": "streamHostLogText",
         "summary": "Subscribe to local log text updates",
         "description": "Long-lived SSE stream for host log text updates. The local router keeps the connection open, emits a runtime-log frame when the selected log text changes, and sends heartbeat comments while idle.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "parameters": [
@@ -1403,11 +1468,11 @@
         }
       }
     },
-    "/host/logs/export": {
+    "/platform/logs/export": {
       "post": {
         "operationId": "exportHostLogs",
         "summary": "Export local logs",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "nativeShellOnly",
         "requestBody": {
@@ -1437,11 +1502,11 @@
         }
       }
     },
-    "/host/update-bundles/summary": {
+    "/platform/update-bundles/summary": {
       "post": {
         "operationId": "summarizeHostUpdateBundle",
         "summary": "Summarize selected update bundle",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1471,11 +1536,11 @@
         }
       }
     },
-    "/host/update-bundles/verify": {
+    "/platform/update-bundles/verify": {
       "post": {
         "operationId": "verifyHostUpdateBundle",
         "summary": "Verify selected update bundle",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1489,8 +1554,15 @@
           }
         },
         "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
+          "202": {
+            "description": "Durable update verification operation accepted by the Platform Agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowOperation"
+                }
+              }
+            }
           },
           "501": {
             "$ref": "#/components/responses/NotImplemented"
@@ -1498,11 +1570,11 @@
         }
       }
     },
-    "/host/update-bundles/apply": {
+    "/platform/update-bundles/apply": {
       "post": {
         "operationId": "applyHostUpdateBundle",
         "summary": "Apply selected update bundle",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1516,8 +1588,15 @@
           }
         },
         "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
+          "202": {
+            "description": "Durable update apply operation accepted by the Platform Agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowOperation"
+                }
+              }
+            }
           },
           "501": {
             "$ref": "#/components/responses/NotImplemented"
@@ -1525,12 +1604,74 @@
         }
       }
     },
-    "/host/runtime/operation-lease/acquire": {
+    "/platform/releases/rollback": {
+      "post": {
+        "operationId": "rollbackPlatformRelease",
+        "summary": "Rollback to the previous installed Platform release",
+        "description": "Schedules a durable Platform-owned rollback workflow. The rollback target comes from the explicit install owner; callers do not provide or infer a release path.",
+        "x-runtime-control-scope": "platformAffordance",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "202": {
+            "description": "Durable release rollback operation accepted by the Platform Agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "description": "Another Platform workflow is active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowOperation"
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/platform/workflows/current": {
+      "get": {
+        "operationId": "getCurrentPlatformWorkflow",
+        "summary": "Read the durable Platform delivery workflow owner",
+        "x-runtime-control-scope": "platformAffordance",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Current Platform workflow resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformWorkflowResource"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/platform/operations/lease/acquire": {
       "post": {
         "operationId": "acquireHostRuntimeOperationLease",
         "summary": "Acquire Host runtime operation lease",
         "description": "Mutates the Host-owned operation lease through the local Runtime Control API. Diagnostics/export artifacts may mirror lease context, but callers must use this owner contract instead of selecting a file path or repository.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1563,12 +1704,12 @@
         }
       }
     },
-    "/host/runtime/operation-lease/heartbeat": {
+    "/platform/operations/lease/heartbeat": {
       "post": {
         "operationId": "heartbeatHostRuntimeOperationLease",
         "summary": "Record Host runtime operation lease heartbeat",
         "description": "Updates heartbeat metadata for the Host-owned operation lease through the local Runtime Control API. Missing or failed owner access must surface as an error, not as an empty operation state.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1601,12 +1742,12 @@
         }
       }
     },
-    "/host/runtime/operation-lease/release": {
+    "/platform/operations/lease/release": {
       "post": {
         "operationId": "releaseHostRuntimeOperationLease",
         "summary": "Release Host runtime operation lease",
         "description": "Releases the Host-owned operation lease through the local Runtime Control API. Clients receive an explicit mutation response and must not infer release state from file absence.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1639,12 +1780,12 @@
         }
       }
     },
-    "/host/runtime/guest-address": {
+    "/platform/runtime-endpoint": {
       "get": {
         "operationId": "getHostRuntimeGuestAddress",
         "summary": "Read Host Guest address resource",
         "description": "Reads the Host-owned Guest address resource through Runtime Control API. Loaded, missing, unavailable, and failed states remain distinct; clients must not infer Guest address from runtime-status.json, runtime-observation.json, or file absence.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
@@ -1653,7 +1794,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeGuestAddressResourceState"
+                  "$ref": "#/components/schemas/RuntimeEndpointResourceState"
                 }
               }
             }
@@ -1667,7 +1808,7 @@
         "operationId": "putHostRuntimeGuestAddress",
         "summary": "Update Host Guest address resource",
         "description": "Updates the Host-owned Guest address resource through Runtime Control API. This is the owner mutation boundary; callers provide an explicit address rather than relying on file fallback or status projection.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1675,7 +1816,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RuntimeGuestAddressPutRequest"
+                "$ref": "#/components/schemas/RuntimeEndpointPutRequest"
               }
             }
           }
@@ -1686,7 +1827,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeGuestAddressResourceState"
+                  "$ref": "#/components/schemas/RuntimeEndpointResourceState"
                 }
               }
             }
@@ -1700,12 +1841,12 @@
         }
       }
     },
-    "/host/runtime/vm-lifecycle": {
+    "/platform/runtime-provider": {
       "get": {
         "operationId": "getHostRuntimeVMLifecycle",
         "summary": "Read Host VM lifecycle resource",
         "description": "Reads the Host-owned VM lifecycle resource through Runtime Control API. Loaded, missing, unavailable, and failed states remain distinct; clients must not infer VM lifecycle state from runtime-status.json or file absence.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
@@ -1714,7 +1855,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeVMLifecycleResourceState"
+                  "$ref": "#/components/schemas/RuntimeProviderResourceState"
                 }
               }
             }
@@ -1728,7 +1869,7 @@
         "operationId": "putHostRuntimeVMLifecycle",
         "summary": "Update Host VM lifecycle resource",
         "description": "Updates the Host-owned VM lifecycle resource through Runtime Control API. This is the owner mutation boundary; callers provide an explicit lifecycle document rather than relying on file fallback or status projection.",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1736,7 +1877,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RuntimeVMLifecyclePutRequest"
+                "$ref": "#/components/schemas/RuntimeProviderPutRequest"
               }
             }
           }
@@ -1747,7 +1888,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeVMLifecycleResourceState"
+                  "$ref": "#/components/schemas/RuntimeProviderResourceState"
                 }
               }
             }
@@ -1761,11 +1902,125 @@
         }
       }
     },
-    "/host/backups/rollback": {
+    "/platform/runtime-provider/start": {
+      "post": {
+        "operationId": "startRuntimeProvider",
+        "summary": "Start the platform Runtime Provider",
+        "description": "Requests the OS service manager to start the Runtime Provider. Command completion reports only the Platform effect; clients must read the separately returned Provider lifecycle resource for current Provider state.",
+        "x-runtime-control-scope": "platformAffordance",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Provider start effect completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeProviderCommandResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "description": "Runtime Provider start effect failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeProviderCommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform/runtime-provider/stop": {
+      "post": {
+        "operationId": "stopRuntimeProvider",
+        "summary": "Stop the platform Runtime Provider",
+        "description": "Requests the OS service manager to stop the Runtime Provider without converting service-manager state into Provider lifecycle state.",
+        "x-runtime-control-scope": "platformAffordance",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Provider stop effect completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeProviderCommandResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "description": "Runtime Provider stop effect failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeProviderCommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform/runtime-provider/restart": {
+      "post": {
+        "operationId": "restartRuntimeProvider",
+        "summary": "Restart the platform Runtime Provider",
+        "description": "Requests an explicit stop followed by start through the OS service manager. Runtime readiness remains owned by the Provider lifecycle and Runtime Controller contracts.",
+        "x-runtime-control-scope": "platformAffordance",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Provider restart effect completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeProviderCommandResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "description": "Runtime Provider restart effect failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeProviderCommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform/backups/rollback": {
       "post": {
         "operationId": "rollbackHostBackup",
         "summary": "Rollback selected local backup",
-        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
@@ -1788,7 +2043,7 @@
         }
       }
     },
-    "/vitaldb/observations/latest": {
+    "/runtime/vitaldb/observations/latest": {
       "get": {
         "operationId": "getLatestVitalDBObservation",
         "summary": "Read latest VitalDB observation snapshot",
@@ -1819,7 +2074,7 @@
         }
       }
     },
-    "/vitaldb/observations/stream": {
+    "/runtime/vitaldb/observations/stream": {
       "get": {
         "operationId": "streamVitalDBObservations",
         "summary": "Subscribe to VitalDB observation updates",
@@ -1845,7 +2100,7 @@
         }
       }
     },
-    "/vitaldb/recorders": {
+    "/runtime/vitaldb/recorders": {
       "get": {
         "operationId": "getVitalDBRecorders",
         "summary": "Read Vital Recorder history by vrcode",
@@ -1870,7 +2125,7 @@
         }
       }
     },
-    "/vitaldb/recorders/hide": {
+    "/runtime/vitaldb/recorders/hide": {
       "post": {
         "operationId": "hideVitalDBRecorders",
         "summary": "Hide Vital Recorders by vrcode",
@@ -1905,7 +2160,7 @@
         }
       }
     },
-    "/vitaldb/recorders/unhide": {
+    "/runtime/vitaldb/recorders/unhide": {
       "post": {
         "operationId": "unhideVitalDBRecorders",
         "summary": "Unhide Vital Recorders by vrcode",
@@ -1940,7 +2195,7 @@
         }
       }
     },
-    "/vitaldb/recorders/delete": {
+    "/runtime/vitaldb/recorders/delete": {
       "post": {
         "operationId": "deleteVitalDBRecorders",
         "summary": "Delete hidden Vital Recorders by vrcode",
@@ -1975,7 +2230,7 @@
         }
       }
     },
-    "/vitaldb/recorders/{vrcode}": {
+    "/runtime/vitaldb/recorders/{vrcode}": {
       "get": {
         "operationId": "getVitalDBRecorder",
         "summary": "Read one Vital Recorder by vrcode",
@@ -1994,29 +2249,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Vital Recorder record, or null when no recorder has been observed for the requested vrcode.",
+            "description": "Vital Recorder record.",
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/RuntimeVitalRecorderRecord"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderRecord"
                 }
               }
             }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "No recorder has been observed for the requested vrcode."
+          },
+          "503": {
+            "description": "The Runtime Controller could not read the recorder owner state."
           }
         }
       }
     },
-    "/vitaldb/recorders/{vrcode}/activity": {
+    "/runtime/vitaldb/recorders/{vrcode}/activity": {
       "get": {
         "operationId": "getVitalDBRecorderActivity",
         "summary": "Read one Vital Recorder activity chart window",
@@ -2081,7 +2335,7 @@
         }
       }
     },
-    "/vitaldb/beds": {
+    "/runtime/vitaldb/beds": {
       "get": {
         "operationId": "getVitalDBBeds",
         "summary": "Read VitalDB bed history by bedID",
@@ -2106,7 +2360,7 @@
         }
       }
     },
-    "/vitaldb/beds/hide": {
+    "/runtime/vitaldb/beds/hide": {
       "post": {
         "operationId": "hideVitalDBBeds",
         "summary": "Hide VitalDB beds by bedID",
@@ -2141,7 +2395,7 @@
         }
       }
     },
-    "/vitaldb/beds/unhide": {
+    "/runtime/vitaldb/beds/unhide": {
       "post": {
         "operationId": "unhideVitalDBBeds",
         "summary": "Unhide VitalDB beds by bedID",
@@ -2176,7 +2430,7 @@
         }
       }
     },
-    "/vitaldb/beds/delete": {
+    "/runtime/vitaldb/beds/delete": {
       "post": {
         "operationId": "deleteVitalDBBeds",
         "summary": "Delete hidden VitalDB beds by bedID",
@@ -2211,7 +2465,7 @@
         }
       }
     },
-    "/vitaldb/beds/{bedID}": {
+    "/runtime/vitaldb/beds/{bedID}": {
       "get": {
         "operationId": "getVitalDBBed",
         "summary": "Read one VitalDB bed by bedID",
@@ -2230,29 +2484,28 @@
         ],
         "responses": {
           "200": {
-            "description": "VitalDB bed record, or null when no bed has been observed for the requested bedID.",
+            "description": "VitalDB bed record.",
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/RuntimeVitalBedRecord"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/RuntimeVitalBedRecord"
                 }
               }
             }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "No bed has been observed for the requested bedID."
+          },
+          "503": {
+            "description": "The Runtime Controller could not read the bed owner state."
           }
         }
       }
     },
-    "/vitaldb/relationships": {
+    "/runtime/vitaldb/relationships": {
       "get": {
         "operationId": "getVitalDBRelationships",
         "summary": "Read Vital Recorder and bed relationship history",
@@ -2277,7 +2530,7 @@
         }
       }
     },
-    "/lab/beds/create": {
+    "/runtime/lab/beds/create": {
       "post": {
         "operationId": "createRuntimeLabBeds",
         "summary": "Create Runtime Lab beds",
@@ -2312,7 +2565,7 @@
         }
       }
     },
-    "/lab/beds/delete": {
+    "/runtime/lab/beds/delete": {
       "post": {
         "operationId": "deleteRuntimeLabBeds",
         "summary": "Delete Runtime Lab beds",
@@ -2347,7 +2600,7 @@
         }
       }
     },
-    "/lab/beds/reset": {
+    "/runtime/lab/beds/reset": {
       "post": {
         "operationId": "resetRuntimeLabBeds",
         "summary": "Reset Runtime Lab beds",
@@ -2372,7 +2625,7 @@
         }
       }
     },
-    "/lab/recorders/create": {
+    "/runtime/lab/recorders/create": {
       "post": {
         "operationId": "createRuntimeLabRecorders",
         "summary": "Create Runtime Lab recorders",
@@ -2407,7 +2660,7 @@
         }
       }
     },
-    "/lab/recorders/delete": {
+    "/runtime/lab/recorders/delete": {
       "post": {
         "operationId": "deleteRuntimeLabRecorders",
         "summary": "Delete Runtime Lab recorders",
@@ -2442,7 +2695,7 @@
         }
       }
     },
-    "/lab/recorders/reset": {
+    "/runtime/lab/recorders/reset": {
       "post": {
         "operationId": "resetRuntimeLabRecorders",
         "summary": "Reset Runtime Lab recorders",
@@ -2457,6 +2710,31 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RuntimeLabRecorderList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/platform/operations": {
+      "get": {
+        "operationId": "getPlatformOperationState",
+        "summary": "Read runtime operation state",
+        "description": "Read the API-owned operation state resource. It preserves unavailable, failed, loaded, and stale operation subresource meanings instead of requiring clients to infer them from PlatformState fields or Host files.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime operation state read model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformOperationState"
                 }
               }
             }
@@ -2519,30 +2797,46 @@
       }
     },
     "examples": {
-      "RuntimeStatusHealthy": {
+      "PlatformStateHealthy": {
         "value": {
           "runtimeInstallationState": "executable",
-          "runtimeInstalled": true,
-          "vmServiceLoaded": true,
-          "proxyServiceLoaded": true,
-          "guestLogSyncServiceLoaded": true,
-          "sleepPreventionServiceLoaded": true,
-          "watchdogServiceLoaded": true,
-          "runtimeState": "healthy",
-          "runtimeVersion": "0.1.5",
-          "vmIP": "192.168.64.33",
-          "guestHTTP": "200",
-          "hostProxyHTTP": "200",
-          "runtimeControlHTTP": "200",
-          "runtimeControlStartedAt": "2026-05-26T04:30:00Z",
-          "redisUIHTTP": "200",
-          "swaggerUIHTTP": "200",
+          "services": [
+            {
+              "role": "runtime-provider",
+              "state": "loaded"
+            },
+            {
+              "role": "public-proxy",
+              "state": "loaded"
+            },
+            {
+              "role": "log-sync",
+              "state": "loaded"
+            },
+            {
+              "role": "sleep-prevention",
+              "state": "loaded"
+            },
+            {
+              "role": "watchdog",
+              "state": "loaded"
+            }
+          ],
+          "platformHealth": "healthy",
+          "installedVersion": "0.1.5",
+          "runtimeProviderState": "running",
+          "runtimeProviderErrors": [],
+          "runtimeEndpoint": "192.168.64.33",
+          "runtimeControllerHTTP": "200",
+          "publicProxyHTTP": "200",
+          "platformAPIHTTP": "200",
+          "platformAPIStartedAt": "2026-05-26T04:30:00Z",
           "dataDirectoryStats": {
             "fileCount": 128,
             "sizeBytes": 1073741824
           },
-          "proxyPort": 80,
-          "failureReasons": []
+          "publicProxyPort": 80,
+          "healthIssues": []
         }
       }
     },
@@ -2613,35 +2907,6 @@
             "items": {
               "type": "string"
             }
-          }
-        }
-      },
-      "RuntimeOperationState": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "API-owned runtime operation state resource. Missing install state, failed reads, stale leases, and loaded operation documents remain distinct.",
-        "required": [
-          "activeOperation",
-          "install",
-          "lease"
-        ],
-        "properties": {
-          "activeOperation": {
-            "description": "Operation selected by the operation-state owner for client display and refresh decisions. Clients must not recompute it from RuntimeStatus, install, or lease subresources.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeOperation"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "install": {
-            "$ref": "#/components/schemas/RuntimeInstallOperationState"
-          },
-          "lease": {
-            "$ref": "#/components/schemas/RuntimeOperationLeaseState"
           }
         }
       },
@@ -2870,213 +3135,6 @@
           "failed"
         ]
       },
-      "RuntimeGuestAddressResourceState": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "Host-owned Guest address resource state exposed through Runtime Control API. Missing, unavailable, failed, and loaded states are distinct.",
-        "required": [
-          "state",
-          "read",
-          "readError"
-        ],
-        "properties": {
-          "state": {
-            "$ref": "#/components/schemas/RuntimeHostResourceReadState"
-          },
-          "read": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeGuestAddressReadResult"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "readError": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
-      "RuntimeGuestAddressPutRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "address"
-        ],
-        "properties": {
-          "address": {
-            "type": "string"
-          }
-        }
-      },
-      "RuntimeVMLifecycleState": {
-        "type": "string",
-        "description": "Known VM lifecycle states. Unknown string values are preserved by the Swift contract.",
-        "enum": [
-          "starting",
-          "bootstrapping",
-          "running",
-          "stopping",
-          "stopped",
-          "failed"
-        ]
-      },
-      "RuntimeVMLifecycleTerminalReason": {
-        "type": "string",
-        "description": "Known terminal VM lifecycle reasons. Unknown string values are preserved by the Swift contract.",
-        "enum": [
-          "launch-failed",
-          "disk-attachment-invalid",
-          "guest-filesystem-read-only",
-          "guest-disk-io",
-          "guest-kernel-panic"
-        ]
-      },
-      "RuntimeVMLifecycleDocument": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "schemaVersion",
-          "state",
-          "operation",
-          "operationID",
-          "bootID",
-          "startedAt",
-          "updatedAt",
-          "deadlineAt",
-          "terminalReason",
-          "message"
-        ],
-        "properties": {
-          "schemaVersion": {
-            "type": "integer"
-          },
-          "state": {
-            "$ref": "#/components/schemas/RuntimeVMLifecycleState"
-          },
-          "operation": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeOperation"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "operationID": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "bootID": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "startedAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "deadlineAt": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "terminalReason": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeVMLifecycleTerminalReason"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
-      "RuntimeVMLifecycleResourceState": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "Host-owned VM lifecycle resource state exposed through Runtime Control API. Missing, unavailable, failed, and loaded states are distinct.",
-        "required": [
-          "state",
-          "document",
-          "readError"
-        ],
-        "properties": {
-          "state": {
-            "$ref": "#/components/schemas/RuntimeHostResourceReadState"
-          },
-          "document": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeVMLifecycleDocument"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "readError": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
-      "RuntimeVMLifecyclePutRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "document"
-        ],
-        "properties": {
-          "document": {
-            "$ref": "#/components/schemas/RuntimeVMLifecycleDocument"
-          }
-        }
-      },
       "RuntimeOperationResourceReadState": {
         "type": "string",
         "enum": [
@@ -3084,239 +3142,6 @@
           "unavailable",
           "failed",
           "stale"
-        ]
-      },
-      "RuntimeControlOverview": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "Aggregated PWA read model aligned with the native runtime status UI.",
-        "required": [
-          "status",
-          "settings",
-          "release",
-          "install",
-          "vitalDBObservation",
-          "vitalDBObservationSnapshot",
-          "vitalRecorder",
-          "conditions"
-        ],
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/RuntimeStatus"
-          },
-          "settings": {
-            "$ref": "#/components/schemas/RuntimeSettings"
-          },
-          "release": {
-            "$ref": "#/components/schemas/RuntimeReleaseInfo"
-          },
-          "install": {
-            "$ref": "#/components/schemas/RuntimeInstallInfo"
-          },
-          "vitalDBObservation": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/VitalDBObservationDocument"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "vitalDBObservationSnapshot": {
-            "$ref": "#/components/schemas/RuntimeVitalDBObservationSnapshot"
-          },
-          "vitalRecorder": {
-            "$ref": "#/components/schemas/RuntimeVitalRecorderSummary"
-          },
-          "conditions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeControlCondition"
-            }
-          }
-        }
-      },
-      "RuntimeControlCondition": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "API-owned status condition preserving explicit read state for overview consumers.",
-        "required": [
-          "type",
-          "status",
-          "reason",
-          "message",
-          "observedAt"
-        ],
-        "properties": {
-          "type": {
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/RuntimeControlConditionStatus"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "message": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "observedAt": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
-      "RuntimeControlConditionStatus": {
-        "type": "string",
-        "enum": [
-          "True",
-          "False",
-          "Unknown"
-        ]
-      },
-      "RuntimeVitalDBObservationSnapshot": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one.",
-        "required": [
-          "state",
-          "observation",
-          "readError"
-        ],
-        "properties": {
-          "state": {
-            "$ref": "#/components/schemas/RuntimeVitalDBObservationReadState"
-          },
-          "observation": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/VitalDBObservationDocument"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "readError": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
-      "RuntimeVitalDBObservationReadState": {
-        "type": "string",
-        "enum": [
-          "loaded",
-          "unavailable",
-          "failed"
-        ]
-      },
-      "RuntimeVitalRecorderSummary": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from recorder-ingress connection status when available.",
-        "required": [
-          "source"
-        ],
-        "properties": {
-          "source": {
-            "$ref": "#/components/schemas/RuntimeVitalRecorderSummarySource"
-          },
-          "activeConnections": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "knownRecorders": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "onlineRecorders": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "staleRecorders": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "knownBeds": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "recorderAnomalies": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "observedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "latestRecorder": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeVitalRecorderReference"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
-      "RuntimeVitalRecorderReference": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "vrcode",
-          "source"
-        ],
-        "properties": {
-          "vrcode": {
-            "type": "string"
-          },
-          "ip": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "lastSeenAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "source": {
-            "$ref": "#/components/schemas/RuntimeVitalRecorderSummarySource"
-          }
-        }
-      },
-      "RuntimeVitalRecorderSummarySource": {
-        "type": "string",
-        "enum": [
-          "vitalDBObservation",
-          "unavailable"
         ]
       },
       "RuntimeVitalRecorderHistory": {
@@ -4433,7 +4258,7 @@
           "critical"
         ]
       },
-      "RuntimeControlCapabilities": {
+      "PlatformCapabilities": {
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -4441,16 +4266,15 @@
           "canUninstallRuntime",
           "canApplyBundle",
           "canRollback",
-          "canEditVMResources",
+          "canRollbackRelease",
+          "canEditRuntimeProviderResources",
           "canEditNetworkExposure",
           "canResetAdminPassword",
           "canOpenLocalFiles",
           "canStreamLogs",
           "canControlRuntimeServices",
-          "canControlGuestServices",
           "canExportLogs",
-          "canViewReleaseMetadata",
-          "canUseLab"
+          "canViewReleaseMetadata"
         ],
         "properties": {
           "canInstallRuntime": {
@@ -4465,7 +4289,10 @@
           "canRollback": {
             "type": "boolean"
           },
-          "canEditVMResources": {
+          "canRollbackRelease": {
+            "type": "boolean"
+          },
+          "canEditRuntimeProviderResources": {
             "type": "boolean"
           },
           "canEditNetworkExposure": {
@@ -4483,17 +4310,31 @@
           "canControlRuntimeServices": {
             "type": "boolean"
           },
-          "canControlGuestServices": {
-            "type": "boolean"
-          },
           "canExportLogs": {
             "type": "boolean"
           },
           "canViewReleaseMetadata": {
             "type": "boolean"
+          }
+        }
+      },
+      "RuntimeCapabilities": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "capabilities"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer"
           },
-          "canUseLab": {
-            "type": "boolean"
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Capability identifiers supplied explicitly by the Runtime Controller."
           }
         }
       },
@@ -5328,7 +5169,10 @@
               "start",
               "stop",
               "restart",
-              "reconcile"
+              "reconcile",
+              "apply-settings",
+              "apply-admin-password",
+              "apply-redis-relay-settings"
             ]
           },
           "state": {
@@ -5374,67 +5218,6 @@
             "type": "string"
           },
           "evidencePath": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "RuntimeGuestServicesReadState": {
-        "type": "string",
-        "enum": [
-          "unavailable",
-          "loaded",
-          "failed"
-        ]
-      },
-      "RuntimeGuestAddressSource": {
-        "type": "string",
-        "enum": [
-          "runtime-control-api"
-        ],
-        "description": "Source that produced the explicit Guest address read result."
-      },
-      "RuntimeGuestAddressReadState": {
-        "type": "string",
-        "enum": [
-          "notReported",
-          "loaded",
-          "missing",
-          "invalid",
-          "stale",
-          "readFailed"
-        ],
-        "description": "Explicit Guest address read state. Missing, invalid, stale, and read-failed are distinct from a loaded address."
-      },
-      "RuntimeGuestAddressReadResult": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "state"
-        ],
-        "properties": {
-          "state": {
-            "$ref": "#/components/schemas/RuntimeGuestAddressReadState"
-          },
-          "address": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "source": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeGuestAddressSource"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "reason": {
             "type": [
               "string",
               "null"
@@ -5520,7 +5303,10 @@
             "type": "string"
           },
           "scope": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "targetUrl": {
             "type": [
@@ -5576,69 +5362,88 @@
           }
         }
       },
-      "RuntimeStatus": {
+      "RuntimeRedisRelayStatusReadResult": {
         "type": "object",
-        "additionalProperties": true,
+        "additionalProperties": false,
+        "required": [
+          "readState",
+          "document",
+          "readError"
+        ],
         "properties": {
-          "runtimeInstallationState": {
+          "readState": {
             "type": "string",
-            "description": "Explicit Host runtime executable file state. Missing, present-but-not-executable, inspect failure, and executable are distinct; runtimeInstalled is a compatibility display hint only."
-          },
-          "runtimeInstalled": {
-            "type": "boolean",
-            "description": "Compatibility display hint derived from runtimeInstallationState == executable. Clients must use runtimeInstallationState for runtime installation decisions."
-          },
-          "vmServiceLoaded": {
-            "type": "boolean"
-          },
-          "proxyServiceLoaded": {
-            "type": "boolean"
-          },
-          "guestLogSyncServiceLoaded": {
-            "type": "boolean",
-            "description": "Whether the host guest-log-sync launchd service is loaded. This service keeps guest/container logs copied into the local logs directory."
-          },
-          "sleepPreventionServiceLoaded": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Whether the host sleep-prevention launchd service is loaded. When enabled, it prevents idle system sleep so VRecorder TCP streams, the host proxy, and the VM stay online."
-          },
-          "watchdogServiceLoaded": {
-            "type": "boolean"
-          },
-          "runtimeState": {
-            "$ref": "#/components/schemas/RuntimeState"
-          },
-          "runtimeVersion": {
-            "type": [
-              "string",
-              "null"
+            "enum": [
+              "notRead",
+              "loaded",
+              "invalidResponse",
+              "readFailed"
             ]
           },
-          "vmState": {
-            "$ref": "#/components/schemas/RuntimeVMState"
-          },
-          "vmErrors": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/RuntimeVMError"
-            }
-          },
-          "guestAddressRead": {
+          "document": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/RuntimeGuestAddressReadResult"
+                "$ref": "#/components/schemas/RuntimeRedisRelayStatus"
               },
               {
                 "type": "null"
               }
-            ],
-            "description": "Typed Guest address read evidence preserved from runtime health. The compatibility vmIP field is populated only from a loaded address."
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PlatformState": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "runtimeInstallationState",
+          "services"
+        ],
+        "properties": {
+          "runtimeInstallationState": {
+            "type": "string",
+            "description": "Explicit Platform Agent runtime installation state. Missing, present-but-not-executable, inspection failure, and executable are distinct."
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformServiceStatus"
+            },
+            "description": "Platform Agent-owned service states keyed by cross-platform role. Platform implementations map launchd, Windows Service, or systemd state into the same roles."
+          },
+          "platformHealth": {
+            "$ref": "#/components/schemas/RuntimeState"
+          },
+          "readIssues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "source",
+                "message"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "installedVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "latestBackup": {
             "type": [
@@ -5646,115 +5451,59 @@
               "null"
             ]
           },
-          "vmIP": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "runtimeProviderState": {
+            "$ref": "#/components/schemas/RuntimeProviderState"
           },
-          "guestHTTP": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "hostProxyHTTP": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "runtimeControlHTTP": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "HTTP reachability status for the Remote Console and Runtime Control API server."
-          },
-          "runtimeControlStartedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ISO-8601 UTC timestamp for the Remote Console and Runtime Control API server start time. Clients should derive live uptime from this value."
-          },
-          "redisUIHTTP": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "swaggerUIHTTP": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "guestServicesReadState": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeGuestServicesReadState"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Guest Control API service read state. loaded, failed, and unavailable are distinct."
-          },
-          "guestServices": {
+          "runtimeProviderErrors": {
             "type": [
               "array",
               "null"
             ],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/RuntimeProviderError"
             }
           },
-          "guestServiceStatuses": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeGuestControlServiceStatus"
-            }
+          "runtimeEndpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Platform Agent-reported endpoint of the Runtime Controller. For VM providers this is the VM address; for native providers it is the local endpoint."
           },
-          "guestServiceResources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeGuestServiceResource"
-            }
-          },
-          "guestServiceResourceReadIssues": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeGuestServiceResourceReadIssue"
-            }
-          },
-          "guestStackProbeErrors": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeGuestControlProbeError"
-            },
-            "description": "Optional Guest stack probe failures returned with a loaded stack status. These are diagnostics evidence and must not be treated as Guest service read failure."
-          },
-          "guestServicesReadError": {
+          "runtimeControllerHTTP": {
             "type": [
               "string",
               "null"
             ]
           },
-          "cpuUsagePercent": {
+          "publicProxyHTTP": {
             "type": [
-              "number",
+              "string",
               "null"
             ]
           },
-          "memory": {
-            "$ref": "#/components/schemas/ResourceUsage"
+          "platformAPIHTTP": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTTP reachability status for the local Platform API and Remote Console server."
           },
-          "systemDisk": {
-            "$ref": "#/components/schemas/ResourceUsage"
+          "platformAPIStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO-8601 UTC timestamp for the local Platform API server start time."
           },
           "dataStorage": {
             "$ref": "#/components/schemas/ResourceUsage"
+          },
+          "dataStorageError": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "dataDirectoryStats": {
             "oneOf": [
@@ -5772,25 +5521,188 @@
               "null"
             ]
           },
-          "proxyPort": {
+          "publicProxyPort": {
             "type": "integer"
           },
-          "failureReasons": {
+          "publicProxyPortReadState": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "healthIssues": {
             "type": "array",
             "items": {
               "type": "string"
             }
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "redisRelayStatus"
+              ]
+            },
+            {
+              "required": [
+                "guestServicesReadState"
+              ]
+            },
+            {
+              "required": [
+                "guestServices"
+              ]
+            },
+            {
+              "required": [
+                "guestServiceStatuses"
+              ]
+            },
+            {
+              "required": [
+                "guestServiceResources"
+              ]
+            },
+            {
+              "required": [
+                "guestServiceResourceReadIssues"
+              ]
+            },
+            {
+              "required": [
+                "guestStackProbeErrors"
+              ]
+            },
+            {
+              "required": [
+                "guestServicesReadError"
+              ]
+            },
+            {
+              "required": [
+                "cpuUsagePercent"
+              ]
+            },
+            {
+              "required": [
+                "memory"
+              ]
+            },
+            {
+              "required": [
+                "vitalServerMemory"
+              ]
+            },
+            {
+              "required": [
+                "recorderIngressMemory"
+              ]
+            },
+            {
+              "required": [
+                "redisMemory"
+              ]
+            },
+            {
+              "required": [
+                "systemDisk"
+              ]
+            },
+            {
+              "required": [
+                "runtimeInstalled"
+              ]
+            },
+            {
+              "required": [
+                "vmServiceLoaded"
+              ]
+            },
+            {
+              "required": [
+                "proxyServiceLoaded"
+              ]
+            },
+            {
+              "required": [
+                "guestLogSyncServiceLoaded"
+              ]
+            },
+            {
+              "required": [
+                "sleepPreventionServiceLoaded"
+              ]
+            },
+            {
+              "required": [
+                "watchdogServiceLoaded"
+              ]
+            },
+            {
+              "required": [
+                "vmServiceState"
+              ]
+            },
+            {
+              "required": [
+                "proxyServiceState"
+              ]
+            },
+            {
+              "required": [
+                "guestLogSyncServiceState"
+              ]
+            },
+            {
+              "required": [
+                "sleepPreventionServiceState"
+              ]
+            },
+            {
+              "required": [
+                "watchdogServiceState"
+              ]
+            }
+          ]
+        }
+      },
+      "PlatformServiceStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "state",
+          "readError"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "runtime-provider",
+              "public-proxy",
+              "log-sync",
+              "sleep-prevention",
+              "watchdog"
+            ]
           },
-          "redisRelayStatus": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeRedisRelayStatus"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Latest Redis Relay status owner snapshot read through Guest Control/Postgres. Missing field means the Host did not report this optional status; null means no loaded snapshot."
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "stopped",
+              "not-installed",
+              "unavailable",
+              "read-failed",
+              "permission-denied",
+              "failed"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -5798,7 +5710,9 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "events"
+          "events",
+          "nextCursor",
+          "matchingCount"
         ],
         "properties": {
           "events": {
@@ -5833,90 +5747,34 @@
           "source",
           "eventType",
           "timestamp",
-          "product",
+          "operationId",
+          "operationService",
+          "operationCommand",
+          "operationState",
           "message",
-          "runtimeVersion",
-          "failureReasons"
+          "failure"
         ],
         "properties": {
           "schemaVersion": {
-            "type": "integer"
+            "type": "integer",
+            "enum": [1]
           },
-          "id": {
-            "type": "string"
+          "id": { "type": "string" },
+          "source": { "type": "string" },
+          "eventType": { "$ref": "#/components/schemas/RuntimeEventType" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "operationId": { "type": "string" },
+          "operationService": { "type": "string" },
+          "operationCommand": { "type": "string" },
+          "operationState": {
+            "type": "string",
+            "enum": ["accepted", "running", "completed", "failed", "cancelled"]
           },
-          "source": {
-            "type": "string"
-          },
-          "eventType": {
-            "$ref": "#/components/schemas/RuntimeEventType"
-          },
-          "timestamp": {
-            "type": "string"
-          },
-          "product": {
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/RuntimeState"
-          },
-          "previousStatus": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "operation": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "runtimeVersion": {
-            "type": "string"
-          },
-          "vmState": {
-            "$ref": "#/components/schemas/RuntimeVMState"
-          },
-          "vmErrors": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/RuntimeVMError"
-            }
-          },
-          "failureReasons": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "domainErrors": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/RuntimeDomainError"
-            }
-          },
-          "progress": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "additionalProperties": true
-          },
-          "vitalDBObservation": {
+          "message": { "type": "string" },
+          "failure": {
             "oneOf": [
-              {
-                "$ref": "#/components/schemas/VitalDBObservationDocument"
-              },
-              {
-                "type": "null"
-              }
+              { "$ref": "#/components/schemas/RuntimeGuestControlOperationFailure" },
+              { "type": "null" }
             ]
           }
         }
@@ -5924,51 +5782,12 @@
       "RuntimeEventType": {
         "type": "string",
         "enum": [
-          "status-changed",
-          "progress-updated",
-          "health-observed",
-          "recovery-triggered",
-          "recovery-completed",
-          "recovery-suppressed",
-          "recovery-deferred",
-          "domain-error-observed",
-          "vm-error-observed",
-          "container-observed",
-          "recorder-ingress-observed",
-          "vitaldb-observed",
-          "vitaldb-observer-unhealthy",
-          "vitaldb-anomaly-detected",
-          "watchdog-skipped",
-          "recovery-planned",
-          "service-restart-dispatched",
-          "observability-store-failed",
-          "runtime-status-observed",
-          "guest-state-observed",
-          "runtime-command-started",
-          "runtime-command-completed",
-          "runtime-command-failed"
+          "operation-accepted",
+          "operation-running",
+          "operation-completed",
+          "operation-failed",
+          "operation-cancelled"
         ]
-      },
-      "RuntimeVMState": {
-        "type": [
-          "string",
-          "null"
-        ],
-        "description": "Observed VM lifecycle state. Unknown values are preserved by clients.",
-        "enum": [
-          "not-installed",
-          "stopped",
-          "starting",
-          "running",
-          "stale",
-          "unreachable",
-          "failed",
-          null
-        ]
-      },
-      "RuntimeVMError": {
-        "type": "string",
-        "description": "Observed VM domain error code. The API may return newer codes; clients should preserve unknown values."
       },
       "RuntimeDomainError": {
         "type": "object",
@@ -6810,6 +6629,230 @@
           }
         }
       },
+      "RuntimeProductSettingsRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "settings",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "loaded",
+              "unavailable",
+              "failed"
+            ]
+          },
+          "settings": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeProductSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeAdminPasswordRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "RuntimeRedisRelayTargetRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "url",
+          "username",
+          "passwordConfigured",
+          "tls"
+        ],
+        "properties": {
+          "url": { "type": "string" },
+          "username": { "type": "string" },
+          "passwordConfigured": { "type": "boolean" },
+          "tls": { "type": "boolean" }
+        }
+      },
+      "RuntimeRedisRelayTargetApply": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "url",
+          "username",
+          "clearPassword",
+          "tls"
+        ],
+        "properties": {
+          "url": { "type": "string" },
+          "username": { "type": "string" },
+          "password": { "type": "string" },
+          "clearPassword": { "type": "boolean" },
+          "tls": { "type": "boolean" }
+        }
+      },
+      "RuntimeRedisRelaySettingsRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "target",
+          "scope",
+          "includeRecorderNetworkContext",
+          "intervalSeconds",
+          "scanCount"
+        ],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "target": { "$ref": "#/components/schemas/RuntimeRedisRelayTargetRead" },
+          "scope": { "$ref": "#/components/schemas/RuntimeRedisRelayScope" },
+          "includeRecorderNetworkContext": { "type": "boolean" },
+          "intervalSeconds": { "type": "number", "minimum": 0.1 },
+          "scanCount": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "RuntimeRedisRelaySettingsReadResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "settings", "readError"],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["loaded", "unavailable", "failed"]
+          },
+          "settings": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RuntimeRedisRelaySettingsRead" },
+              { "type": "null" }
+            ]
+          },
+          "readError": { "type": ["string", "null"] }
+        }
+      },
+      "RuntimeRedisRelaySettingsApplyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "target",
+          "scope",
+          "includeRecorderNetworkContext",
+          "intervalSeconds",
+          "scanCount"
+        ],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "target": { "$ref": "#/components/schemas/RuntimeRedisRelayTargetApply" },
+          "scope": { "$ref": "#/components/schemas/RuntimeRedisRelayScope" },
+          "includeRecorderNetworkContext": { "type": "boolean" },
+          "intervalSeconds": { "type": "number", "minimum": 0.1 },
+          "scanCount": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "RuntimeProductSettings": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "automaticBackupEnabled",
+          "backupRetentionCount",
+          "backupScheduleTimes",
+          "containerMemoryLimitsEnabled",
+          "publicHost",
+          "publicPort",
+          "recorderIngress",
+          "recorderIngressContainerMemoryLimitMiB",
+          "recorderIngressSendDataMode",
+          "recorderIngressSendDataReplayBatchSize",
+          "recorderIngressSendDataReplayMaxMiBPerSecond",
+          "redisContainerMemoryLimitMiB",
+          "remoteConsoleURL",
+          "vitalServerContainerMemoryLimitMiB",
+          "vitalServerURL"
+        ],
+        "properties": {
+          "automaticBackupEnabled": {
+            "type": "boolean"
+          },
+          "backupRetentionCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "backupScheduleTimes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "containerMemoryLimitsEnabled": {
+            "type": "boolean"
+          },
+          "publicHost": {
+            "type": "string"
+          },
+          "publicPort": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "recorderIngress": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressSettings"
+          },
+          "recorderIngressContainerMemoryLimitMiB": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recorderIngressSendDataMode": {
+            "type": "string",
+            "enum": [
+              "passthrough",
+              "mirror_spool",
+              "spool_only",
+              "spool_and_replay"
+            ]
+          },
+          "recorderIngressSendDataReplayBatchSize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recorderIngressSendDataReplayMaxMiBPerSecond": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "redisContainerMemoryLimitMiB": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "remoteConsoleURL": {
+            "type": "string"
+          },
+          "vitalServerContainerMemoryLimitMiB": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "vitalServerURL": {
+            "type": "string"
+          }
+        }
+      },
       "RuntimeSettings": {
         "type": "object",
         "additionalProperties": false,
@@ -7373,14 +7416,14 @@
           }
         }
       },
-      "RuntimeApplySettingsRequest": {
+      "RuntimeApplyProductSettingsRequest": {
         "type": "object",
         "required": [
           "settings"
         ],
         "properties": {
           "settings": {
-            "$ref": "#/components/schemas/RuntimeSettings"
+            "$ref": "#/components/schemas/RuntimeProductSettings"
           }
         }
       },
@@ -8005,6 +8048,466 @@
             }
           },
           "sessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PlatformOperationState": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Platform Agent-owned operation state. Missing install state, failed reads, stale leases, and loaded operation documents remain distinct.",
+        "required": [
+          "activeOperation",
+          "install",
+          "lease"
+        ],
+        "properties": {
+          "activeOperation": {
+            "description": "Operation selected by the operation-state owner for client display and refresh decisions. Clients must not recompute it from PlatformState, install, or lease subresources.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeOperation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "install": {
+            "$ref": "#/components/schemas/RuntimeInstallOperationState"
+          },
+          "lease": {
+            "$ref": "#/components/schemas/RuntimeOperationLeaseState"
+          }
+        }
+      },
+      "RuntimeProviderState": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Observed VM lifecycle state. Unknown values are preserved by clients.",
+        "enum": [
+          "not-installed",
+          "stopped",
+          "starting",
+          "running",
+          "stale",
+          "unreachable",
+          "failed",
+          null
+        ]
+      },
+      "RuntimeProviderError": {
+        "type": "string",
+        "description": "Observed VM domain error code. The API may return newer codes; clients should preserve unknown values."
+      },
+      "RuntimeEndpointResourceState": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Platform Agent-owned Runtime endpoint resource. Missing, unavailable, failed, stale, and loaded states remain distinct.",
+        "required": [
+          "state",
+          "read",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeHostResourceReadState"
+          },
+          "read": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeEndpointReadResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeEndpointPutRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "address"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeProviderLifecycleState": {
+        "type": "string",
+        "description": "Known VM lifecycle states. Unknown string values are preserved by the Swift contract.",
+        "enum": [
+          "starting",
+          "bootstrapping",
+          "running",
+          "stopping",
+          "stopped",
+          "failed"
+        ]
+      },
+      "RuntimeProviderTerminalReason": {
+        "type": "string",
+        "description": "Known terminal VM lifecycle reasons. Unknown string values are preserved by the Swift contract.",
+        "enum": [
+          "launch-failed",
+          "disk-attachment-invalid",
+          "guest-filesystem-read-only",
+          "guest-disk-io",
+          "guest-kernel-panic"
+        ]
+      },
+      "RuntimeProviderLifecycleDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "state",
+          "operation",
+          "operationID",
+          "bootID",
+          "startedAt",
+          "updatedAt",
+          "deadlineAt",
+          "terminalReason",
+          "message"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeProviderLifecycleState"
+          },
+          "operation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeOperation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operationID": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bootID": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "deadlineAt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "terminalReason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeProviderTerminalReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeProviderResourceState": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Platform Agent-owned Runtime Provider lifecycle resource. Apple VM, Hyper-V VM, and Linux Native providers map their explicit lifecycle into this contract.",
+        "required": [
+          "state",
+          "document",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeHostResourceReadState"
+          },
+          "document": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeProviderLifecycleDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeProviderPutRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "document"
+        ],
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/RuntimeProviderLifecycleDocument"
+          }
+        }
+      },
+      "RuntimeProviderCommandAction": {
+        "type": "string",
+        "enum": [
+          "start",
+          "stop",
+          "restart"
+        ]
+      },
+      "RuntimeProviderCommandState": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "failed"
+        ]
+      },
+      "PlatformCommandFailure": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "message"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "PlatformWorkflowRelease": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["platformVersion", "runtimeBundleVersion"],
+        "properties": {
+          "platformVersion": { "type": "string" },
+          "runtimeBundleVersion": { "type": "string" }
+        }
+      },
+      "PlatformWorkflowOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "operationId",
+          "kind",
+          "state",
+          "startedAt",
+          "updatedAt",
+          "release",
+          "artifact",
+          "failure"
+        ],
+        "properties": {
+          "schemaVersion": { "type": "integer", "enum": [1] },
+          "operationId": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["update-verify", "update-apply", "rollback", "uninstall", "support-export"]
+          },
+          "state": {
+            "type": "string",
+            "enum": ["accepted", "running", "completed", "failed"]
+          },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "release": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/PlatformWorkflowRelease" },
+              { "type": "null" }
+            ]
+          },
+          "artifact": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/PlatformWorkflowArtifact" },
+              { "type": "null" }
+            ]
+          },
+          "failure": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/PlatformCommandFailure" },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "PlatformWorkflowArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "sizeBytes"],
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "sizeBytes": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "PlatformWorkflowResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "operation", "readError"],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["loaded", "missing", "unavailable", "failed"]
+          },
+          "operation": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/PlatformWorkflowOperation" },
+              { "type": "null" }
+            ]
+          },
+          "readError": { "type": ["string", "null"] }
+        }
+      },
+      "RuntimeProviderCommandResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "action",
+          "state",
+          "provider",
+          "failure"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string"
+          },
+          "action": {
+            "$ref": "#/components/schemas/RuntimeProviderCommandAction"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeProviderCommandState"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/RuntimeProviderResourceState"
+          },
+          "failure": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PlatformCommandFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeEndpointSource": {
+        "type": "string",
+        "enum": [
+          "platform-agent"
+        ],
+        "description": "Source that produced the explicit Guest address read result."
+      },
+      "RuntimeEndpointReadState": {
+        "type": "string",
+        "enum": [
+          "notReported",
+          "loaded",
+          "missing",
+          "invalid",
+          "stale",
+          "readFailed"
+        ],
+        "description": "Explicit Guest address read state. Missing, invalid, stale, and read-failed are distinct from a loaded address."
+      },
+      "RuntimeEndpointReadResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeEndpointReadState"
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeEndpointSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
             "type": [
               "string",
               "null"

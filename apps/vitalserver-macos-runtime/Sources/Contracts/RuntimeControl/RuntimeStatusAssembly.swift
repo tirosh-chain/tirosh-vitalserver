@@ -1,28 +1,12 @@
 import Contracts
 
-public struct RuntimeRedisRelayStatusRead {
-    public let document: RuntimeRedisRelayStatus?
-    public let error: String?
-    public let issue: RuntimeStatusReadIssue?
-
-    public init(
-        document: RuntimeRedisRelayStatus?,
-        error: String?,
-        issue: RuntimeStatusReadIssue?
-    ) {
-        self.document = document
-        self.error = error
-        self.issue = issue
-    }
-}
-
 public struct RuntimeVMLifecycleRead {
     public let document: RuntimeVMLifecycleDocument?
-    public let issue: RuntimeStatusReadIssue?
+    public let issue: PlatformStateReadIssue?
 
     public init(
         document: RuntimeVMLifecycleDocument?,
-        issue: RuntimeStatusReadIssue?
+        issue: PlatformStateReadIssue?
     ) {
         self.document = document
         self.issue = issue
@@ -31,9 +15,9 @@ public struct RuntimeVMLifecycleRead {
 
 public struct RuntimeVersionRead {
     public let version: String?
-    public let issue: RuntimeStatusReadIssue?
+    public let issue: PlatformStateReadIssue?
 
-    public init(version: String?, issue: RuntimeStatusReadIssue?) {
+    public init(version: String?, issue: PlatformStateReadIssue?) {
         self.version = version
         self.issue = issue
     }
@@ -41,9 +25,9 @@ public struct RuntimeVersionRead {
 
 public struct RuntimeLatestBackupRead {
     public let path: String?
-    public let issue: RuntimeStatusReadIssue?
+    public let issue: PlatformStateReadIssue?
 
-    public init(path: String?, issue: RuntimeStatusReadIssue?) {
+    public init(path: String?, issue: PlatformStateReadIssue?) {
         self.path = path
         self.issue = issue
     }
@@ -62,26 +46,11 @@ public struct RuntimeCurrentHealthRead {
     }
 }
 
-public enum RuntimeGuestServicesRead: Equatable, Sendable {
-    case unavailable
-    case loaded(
-        services: [String],
-        statuses: [RuntimeGuestControlServiceStatus],
-        resources: [RuntimeGuestServiceResource] = [],
-        resourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
-        probeErrors: [GuestRuntimeProbeError] = [],
-        cpuUsagePercent: Double?,
-        memory: ResourceUsage?,
-        systemDisk: ResourceUsage?
-    )
-    case failed(String)
-}
-
 public struct RuntimeHTTPStatusRead: Equatable, Sendable {
     public let status: String?
-    public let issue: RuntimeStatusReadIssue?
+    public let issue: PlatformStateReadIssue?
 
-    public init(status: String?, issue: RuntimeStatusReadIssue?) {
+    public init(status: String?, issue: PlatformStateReadIssue?) {
         self.status = status
         self.issue = issue
     }
@@ -153,24 +122,24 @@ public struct RuntimeDataDirectoryMetricReads: Equatable, Sendable {
 public struct RuntimeLiveDiagnostics: Equatable, Sendable {
     public let runtimeInstalled: Bool
     public let runtimeInstallationState: RuntimeFileState
-    public let runtimeInstallationIssue: RuntimeStatusReadIssue?
+    public let runtimeInstallationIssue: PlatformStateReadIssue?
     public let vmService: RuntimeServiceStateRead
     public let proxyService: RuntimeServiceStateRead
     public let guestLogSyncService: RuntimeServiceStateRead
     public let sleepPreventionService: RuntimeServiceStateRead
     public let watchdogService: RuntimeServiceStateRead
-    public let readIssues: [RuntimeStatusReadIssue]
+    public let readIssues: [PlatformStateReadIssue]
 
     public init(
         runtimeInstalled: Bool,
         runtimeInstallationState: RuntimeFileState,
-        runtimeInstallationIssue: RuntimeStatusReadIssue?,
+        runtimeInstallationIssue: PlatformStateReadIssue?,
         vmService: RuntimeServiceStateRead,
         proxyService: RuntimeServiceStateRead,
         guestLogSyncService: RuntimeServiceStateRead,
         sleepPreventionService: RuntimeServiceStateRead,
         watchdogService: RuntimeServiceStateRead,
-        readIssues: [RuntimeStatusReadIssue]
+        readIssues: [PlatformStateReadIssue]
     ) {
         self.runtimeInstalled = runtimeInstalled
         self.runtimeInstallationState = runtimeInstallationState
@@ -186,11 +155,9 @@ public struct RuntimeLiveDiagnostics: Equatable, Sendable {
 
 public struct RuntimeServiceStateRead: Equatable, Sendable {
     public let state: RuntimeServiceState
-    public let source: RuntimeServiceStateSource
 
-    public init(state: RuntimeServiceState, source: RuntimeServiceStateSource) {
+    public init(state: RuntimeServiceState) {
         self.state = state
-        self.source = source
     }
 }
 
@@ -251,16 +218,16 @@ public enum RuntimeLiveDiagnosticsAssembler {
     }
 
     private static func liveServiceState(_ state: RuntimeServiceState) -> RuntimeServiceStateRead {
-        RuntimeServiceStateRead(state: state, source: .liveLaunchd)
+        RuntimeServiceStateRead(state: state)
     }
 
-    private static func serviceReadIssues(_ states: [(String, RuntimeServiceStateRead)]) -> [RuntimeStatusReadIssue] {
+    private static func serviceReadIssues(_ states: [(String, RuntimeServiceStateRead)]) -> [PlatformStateReadIssue] {
         states.compactMap { source, read in
             switch read.state {
             case .readFailed(let message), .permissionDenied(let message):
-                RuntimeStatusReadIssue(source: source, message: message)
+                PlatformStateReadIssue(source: source, message: message)
             case .unknown(let value):
-                RuntimeStatusReadIssue(source: source, message: "unknown service state: \(value)")
+                PlatformStateReadIssue(source: source, message: "unknown service state: \(value)")
             case .loaded, .notLoaded:
                 nil
             }
@@ -270,22 +237,22 @@ public enum RuntimeLiveDiagnosticsAssembler {
     private static func runtimeInstallationIssue(
         state: RuntimeFileState,
         path: String
-    ) -> RuntimeStatusReadIssue? {
+    ) -> PlatformStateReadIssue? {
         switch state {
         case .executable, .missing:
             nil
         case .present:
-            RuntimeStatusReadIssue(
+            PlatformStateReadIssue(
                 source: "runtimeInstallation",
                 message: "runtime launcher is present but not executable path=\(path)"
             )
         case .inspectFailed(let reason):
-            RuntimeStatusReadIssue(
+            PlatformStateReadIssue(
                 source: "runtimeInstallation",
                 message: "runtime launcher inspection failed path=\(path) reason=\(reason)"
             )
         case .unknown(let value):
-            RuntimeStatusReadIssue(
+            PlatformStateReadIssue(
                 source: "runtimeInstallation",
                 message: "runtime launcher inspection returned unknown state path=\(path) state=\(value)"
             )
@@ -295,33 +262,29 @@ public enum RuntimeLiveDiagnosticsAssembler {
 
 public enum RuntimeHealthStatusAssembler {
     public static func applyingHealthProbeReads(
-        to status: RuntimeStatus,
+        to status: PlatformState,
         reads: RuntimeHealthProbeReads
-    ) -> RuntimeStatus {
+    ) -> PlatformState {
         var next = status
-        if status.vmIP == nil {
-            next.guestHTTP = RuntimeHTTPStatusText.missingVMIP
+        if status.runtimeEndpoint == nil {
+            next.runtimeControllerHTTP = RuntimeHTTPStatusText.missingVMIP
         } else {
-            apply(reads.guestHTTP, to: \.guestHTTP, in: &next)
+            apply(reads.guestHTTP, to: \.runtimeControllerHTTP, in: &next)
         }
 
-        guard status.proxyPort != nil else {
-            next.hostProxyHTTP = RuntimeHTTPStatusText.missingProxyPort
-            next.redisUIHTTP = RuntimeHTTPStatusText.missingProxyPort
-            next.swaggerUIHTTP = RuntimeHTTPStatusText.missingProxyPort
+        guard status.publicProxyPort != nil else {
+            next.publicProxyHTTP = RuntimeHTTPStatusText.missingProxyPort
             return next
         }
 
-        apply(reads.hostProxyHTTP, to: \.hostProxyHTTP, in: &next)
-        apply(reads.redisUIHTTP, to: \.redisUIHTTP, in: &next)
-        apply(reads.swaggerUIHTTP, to: \.swaggerUIHTTP, in: &next)
+        apply(reads.hostProxyHTTP, to: \.publicProxyHTTP, in: &next)
         return next
     }
 
     private static func apply(
         _ read: RuntimeHTTPStatusRead?,
-        to keyPath: WritableKeyPath<RuntimeStatus, String?>,
-        in status: inout RuntimeStatus
+        to keyPath: WritableKeyPath<PlatformState, String?>,
+        in status: inout PlatformState
     ) {
         guard let read else {
             return
@@ -331,8 +294,8 @@ public enum RuntimeHealthStatusAssembler {
     }
 
     private static func append(
-        _ issue: RuntimeStatusReadIssue?,
-        to status: inout RuntimeStatus
+        _ issue: PlatformStateReadIssue?,
+        to status: inout PlatformState
     ) {
         guard let issue else {
             return
@@ -341,8 +304,8 @@ public enum RuntimeHealthStatusAssembler {
     }
 
     private static func appendUnique(
-        _ issue: RuntimeStatusReadIssue,
-        to status: inout RuntimeStatus
+        _ issue: PlatformStateReadIssue,
+        to status: inout PlatformState
     ) {
         guard !status.readIssues.contains(issue) else {
             return
@@ -353,21 +316,21 @@ public enum RuntimeHealthStatusAssembler {
 
 public enum RuntimeControlLocalAPIStatusAssembler {
     public static func applyingLocalAPIStatus(
-        to status: RuntimeStatus,
+        to status: PlatformState,
         read: RuntimeControlLocalAPIStatusRead
-    ) -> RuntimeStatus {
+    ) -> PlatformState {
         var next = status
-        next.runtimeControlHTTP = read.http
-        next.runtimeControlStartedAt = read.startedAt
+        next.platformAPIHTTP = read.http
+        next.platformAPIStartedAt = read.startedAt
         return next
     }
 }
 
 public enum RuntimeDataDirectoryMetricsAssembler {
     public static func applyingMetricReads(
-        to status: RuntimeStatus,
+        to status: PlatformState,
         reads: RuntimeDataDirectoryMetricReads
-    ) -> RuntimeStatus {
+    ) -> PlatformState {
         var next = status
         switch reads.storageUsage {
         case .loaded(let usage):
@@ -398,30 +361,22 @@ public enum RuntimeDataDirectoryMetricsAssembler {
     }
 }
 
-public enum RuntimeControlStatusAssembler {
-    public static func makeStatus(
-        redisRelayStatusRead: RuntimeRedisRelayStatusRead = RuntimeRedisRelayStatusRead(
-            document: nil,
-            error: nil,
-            issue: nil
-        ),
+public enum PlatformStateAssembler {
+    public static func makePlatformState(
         proxyPortReadState: RuntimeProxyPortReadState? = nil,
         runtimeVersionRead: RuntimeVersionRead = RuntimeVersionRead(version: nil, issue: nil),
         latestBackupRead: RuntimeLatestBackupRead = RuntimeLatestBackupRead(path: nil, issue: nil),
         currentHealthRead: RuntimeCurrentHealthRead? = nil,
-        guestServicesRead: RuntimeGuestServicesRead = .unavailable,
         guestAddressRead: RuntimeGuestAddressReadResult = .notReported,
         vmLifecycleRead: RuntimeVMLifecycleRead = RuntimeVMLifecycleRead(document: nil, issue: nil),
         liveDiagnostics: RuntimeLiveDiagnostics
-    ) -> RuntimeStatus {
+    ) -> PlatformState {
         let readIssues = liveDiagnostics.readIssues
             + [liveDiagnostics.runtimeInstallationIssue].compactMap { $0 }
-            + [redisRelayStatusRead.issue].compactMap { $0 }
             + [vmLifecycleRead.issue].compactMap { $0 }
             + [runtimeVersionRead.issue, latestBackupRead.issue].compactMap { $0 }
         let currentHealth = currentHealthRead ?? makeCurrentHealthRead(
             liveDiagnostics: liveDiagnostics,
-            guestServicesRead: guestServicesRead,
             guestAddressRead: guestAddressRead,
             vmLifecycleRead: vmLifecycleRead,
             proxyPortReadState: proxyPortReadState,
@@ -433,67 +388,40 @@ public enum RuntimeControlStatusAssembler {
         let sleepPreventionService = liveDiagnostics.sleepPreventionService
         let watchdogService = liveDiagnostics.watchdogService
 
-        return RuntimeStatus(
-            runtimeInstalled: liveDiagnostics.runtimeInstalled,
+        return PlatformState(
             runtimeInstallationState: liveDiagnostics.runtimeInstallationState,
-            vmServiceLoaded: vmService.state.isLoaded,
-            proxyServiceLoaded: proxyService.state.isLoaded,
-            guestLogSyncServiceLoaded: guestLogSyncService.state.isLoaded,
-            sleepPreventionServiceLoaded: sleepPreventionService.state.isLoaded,
-            watchdogServiceLoaded: watchdogService.state.isLoaded,
-            vmServiceState: vmService.state,
-            proxyServiceState: proxyService.state,
-            guestLogSyncServiceState: guestLogSyncService.state,
-            sleepPreventionServiceState: sleepPreventionService.state,
-            watchdogServiceState: watchdogService.state,
-            vmServiceStateSource: vmService.source,
-            proxyServiceStateSource: proxyService.source,
-            guestLogSyncServiceStateSource: guestLogSyncService.source,
-            sleepPreventionServiceStateSource: sleepPreventionService.source,
-            watchdogServiceStateSource: watchdogService.source,
-            runtimeState: currentHealth.runtimeState,
+            services: [
+                PlatformServiceStatus(role: .runtimeProvider, state: vmService.state),
+                PlatformServiceStatus(role: .publicProxy, state: proxyService.state),
+                PlatformServiceStatus(role: .logSync, state: guestLogSyncService.state),
+                PlatformServiceStatus(role: .sleepPrevention, state: sleepPreventionService.state),
+                PlatformServiceStatus(role: .watchdog, state: watchdogService.state),
+            ],
+            platformHealth: currentHealth.runtimeState,
             readIssues: readIssues,
-            runtimeVersion: runtimeVersionRead.version,
+            installedVersion: runtimeVersionRead.version,
             latestBackup: latestBackupRead.path,
-            vmState: vmState(from: vmLifecycleRead.document),
-            vmErrors: vmLifecycleRead.document?.reportedVMErrors,
-            vmIP: guestAddressRead.loadedAddress,
-            guestHTTP: nil,
-            hostProxyHTTP: nil,
-            redisUIHTTP: nil,
-            swaggerUIHTTP: nil,
-            guestServicesReadState: guestServicesRead.state,
-            guestServices: guestServicesRead.services,
-            guestServiceStatuses: guestServicesRead.statuses,
-            guestServiceResources: guestServicesRead.resources,
-            guestServiceResourceReadIssues: guestServicesRead.resourceReadIssues,
-            guestStackProbeErrors: guestServicesRead.probeErrors,
-            guestServicesReadError: guestServicesRead.error,
-            cpuUsagePercent: guestServicesRead.cpuUsagePercent,
-            memory: guestServicesRead.memory,
-            vitalServerMemory: guestServicesRead.memory(for: "app"),
-            recorderIngressMemory: guestServicesRead.memory(for: "recorder-ingress"),
-            redisMemory: guestServicesRead.memory(for: "redis"),
-            systemDisk: guestServicesRead.systemDisk,
+            runtimeProviderState: vmState(from: vmLifecycleRead.document),
+            runtimeProviderErrors: vmLifecycleRead.document?.reportedVMErrors,
+            runtimeEndpoint: guestAddressRead.loadedAddress,
+            runtimeControllerHTTP: nil,
+            publicProxyHTTP: nil,
             dataStorage: nil,
-            proxyPort: proxyPortReadState?.port,
-            proxyPortReadState: proxyPortReadState,
-            failureReasons: currentHealth.failureReasons,
-            redisRelayStatus: redisRelayStatusRead.document
+            publicProxyPort: proxyPortReadState?.port,
+            publicProxyPortReadState: proxyPortReadState,
+            healthIssues: currentHealth.failureReasons
         )
     }
 
     private static func makeCurrentHealthRead(
         liveDiagnostics: RuntimeLiveDiagnostics,
-        guestServicesRead: RuntimeGuestServicesRead,
         guestAddressRead: RuntimeGuestAddressReadResult,
         vmLifecycleRead: RuntimeVMLifecycleRead,
         proxyPortReadState: RuntimeProxyPortReadState?,
-        readIssues: [RuntimeStatusReadIssue]
+        readIssues: [PlatformStateReadIssue]
     ) -> RuntimeCurrentHealthRead {
         let failureReasons = currentFailureReasons(
             liveDiagnostics: liveDiagnostics,
-            guestServicesRead: guestServicesRead,
             guestAddressRead: guestAddressRead,
             vmLifecycleRead: vmLifecycleRead,
             proxyPortReadState: proxyPortReadState
@@ -509,7 +437,7 @@ public enum RuntimeControlStatusAssembler {
 
     private static func currentRuntimeState(
         failureReasons: [RuntimeFailureReason],
-        readIssues: [RuntimeStatusReadIssue]
+        readIssues: [PlatformStateReadIssue]
     ) -> RuntimeState? {
         if failureReasons.contains(where: { $0.domainSeverity == .critical }) {
             return .critical
@@ -520,7 +448,7 @@ public enum RuntimeControlStatusAssembler {
         return .healthy
     }
 
-    private static func isCurrentRuntimeStateReadIssue(_ issue: RuntimeStatusReadIssue) -> Bool {
+    private static func isCurrentRuntimeStateReadIssue(_ issue: PlatformStateReadIssue) -> Bool {
         [
             "runtimeInstallation",
             "vmService",
@@ -534,7 +462,6 @@ public enum RuntimeControlStatusAssembler {
 
     private static func currentFailureReasons(
         liveDiagnostics: RuntimeLiveDiagnostics,
-        guestServicesRead: RuntimeGuestServicesRead,
         guestAddressRead: RuntimeGuestAddressReadResult,
         vmLifecycleRead: RuntimeVMLifecycleRead,
         proxyPortReadState: RuntimeProxyPortReadState?
@@ -544,10 +471,6 @@ public enum RuntimeControlStatusAssembler {
         appendServiceReason(.proxyService(liveDiagnostics.proxyService.state.rawValue), ifNotLoaded: liveDiagnostics.proxyService, to: &reasons)
         appendServiceReason(.watchdogService(liveDiagnostics.watchdogService.state.rawValue), ifNotLoaded: liveDiagnostics.watchdogService, to: &reasons)
         reasons.append(contentsOf: vmLifecycleRead.document?.reportedVMErrors.map(RuntimeFailureReason.init(vmError:)) ?? [])
-        if let error = guestServicesRead.error {
-            reasons.append(.guestServiceObservationReadFailed(error))
-        }
-        reasons.append(contentsOf: guestServiceFailureReasons(guestServicesRead))
         return reasons
     }
 
@@ -560,38 +483,6 @@ public enum RuntimeControlStatusAssembler {
             return
         }
         reasons.append(reason)
-    }
-
-    private static func guestServiceFailureReasons(
-        _ read: RuntimeGuestServicesRead
-    ) -> [RuntimeFailureReason] {
-        let resourceByService = Dictionary(
-            uniqueKeysWithValues: read.resources.map { ($0.service, $0) }
-        )
-        return read.statuses.compactMap { status in
-            guestServiceFailureReason(
-                status,
-                resource: resourceByService[status.service]
-            )
-        }
-    }
-
-    private static func guestServiceFailureReason(
-        _ status: RuntimeGuestControlServiceStatus,
-        resource: RuntimeGuestServiceResource?
-    ) -> RuntimeFailureReason? {
-        if let desiredState = resource?.spec.desiredState,
-           desiredState == "stopped",
-           status.state == "stopped" {
-            return nil
-        }
-        if status.state != "running" {
-            return .guestService(service: status.service, state: status.state)
-        }
-        if status.health != "healthy" && status.health != "ready" {
-            return .guestService(service: status.service, state: status.health)
-        }
-        return nil
     }
 
     private static func vmState(from lifecycle: RuntimeVMLifecycleDocument?) -> RuntimeVMState? {
@@ -609,115 +500,6 @@ public enum RuntimeControlStatusAssembler {
             return .failed
         case .unknown(let value):
             return .unknown(value)
-        }
-    }
-}
-
-private extension RuntimeGuestServicesRead {
-    var state: RuntimeGuestServicesReadState {
-        switch self {
-        case .unavailable:
-            return .unavailable
-        case .loaded:
-            return .loaded
-        case .failed:
-            return .failed
-        }
-    }
-
-    var services: [String]? {
-        switch self {
-        case .loaded(let services, _, _, _, _, _, _, _):
-            return services
-        case .unavailable, .failed:
-            return nil
-        }
-    }
-
-    var statuses: [RuntimeGuestControlServiceStatus] {
-        switch self {
-        case .loaded(_, let statuses, _, _, _, _, _, _):
-            return statuses
-        case .unavailable, .failed:
-            return []
-        }
-    }
-
-    var resources: [RuntimeGuestServiceResource] {
-        switch self {
-        case .loaded(_, _, let resources, _, _, _, _, _):
-            return resources
-        case .unavailable, .failed:
-            return []
-        }
-    }
-
-    var resourceReadIssues: [RuntimeGuestServiceResourceReadIssue] {
-        switch self {
-        case .loaded(_, _, _, let issues, _, _, _, _):
-            return issues
-        case .unavailable, .failed:
-            return []
-        }
-    }
-
-    var error: String? {
-        switch self {
-        case .failed(let message):
-            return message
-        case .unavailable, .loaded:
-            return nil
-        }
-    }
-
-    var cpuUsagePercent: Double? {
-        switch self {
-        case .loaded(_, _, _, _, _, let cpuUsagePercent, _, _):
-            return cpuUsagePercent
-        case .unavailable, .failed:
-            return nil
-        }
-    }
-
-    var memory: ResourceUsage? {
-        switch self {
-        case .loaded(_, _, _, _, _, _, let memory, _):
-            return memory
-        case .unavailable, .failed:
-            return nil
-        }
-    }
-
-    var systemDisk: ResourceUsage? {
-        switch self {
-        case .loaded(_, _, _, _, _, _, _, let systemDisk):
-            return systemDisk
-        case .unavailable, .failed:
-            return nil
-        }
-    }
-
-    var probeErrors: [GuestRuntimeProbeError] {
-        switch self {
-        case .loaded(_, _, _, _, let probeErrors, _, _, _):
-            return probeErrors
-        case .unavailable, .failed:
-            return []
-        }
-    }
-
-    func memory(for service: String) -> RuntimeContainerMemoryUsage? {
-        switch self {
-        case .loaded(_, let statuses, _, _, _, _, _, _):
-            guard let memory = statuses.first(where: { $0.service == service })?.memory else {
-                return nil
-            }
-            return RuntimeContainerMemoryUsage(
-                usedBytes: memory.usedBytes,
-                limitBytes: memory.totalBytes
-            )
-        case .unavailable, .failed:
-            return nil
         }
     }
 }

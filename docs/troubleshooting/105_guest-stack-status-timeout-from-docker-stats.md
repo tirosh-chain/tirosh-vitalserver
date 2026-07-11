@@ -12,7 +12,7 @@
 The Helper shows product HTTP endpoints as reachable, but `Guest product services` reports:
 
 ```text
-guest control API request failed url=http://<vm-ip>:18330/v1/stack/status reason=The request timed out.
+guest control API request failed url=http://<vm-ip>:18330/runtime/stack reason=The request timed out.
 ```
 
 Diagnostics can show:
@@ -22,11 +22,11 @@ Runtime state: Degraded
 Failure reasons: guest-service-observation-read-failed-guest_control_API_request_failed_url_http_<vm-ip>_18330_v1_stack_status
 ```
 
-Direct probes can show `/ready` responding while `/v1/stack/status` takes longer than the Host read timeout.
+Direct probes can show `/ready` responding while `/runtime/stack` takes longer than the Host read timeout.
 
 ## Cause
 
-`/v1/stack/status` includes product service states and optional resource metrics. Container memory metrics were collected with:
+`/runtime/stack` includes product service states and optional resource metrics. Container memory metrics were collected with:
 
 ```text
 docker stats --no-stream --format '{{json .}}'
@@ -47,7 +47,7 @@ available.
 
 The Host must continue to surface failed Guest Control reads, but Guest Control should avoid letting optional metrics consume the whole status endpoint budget.
 
-When `/v1/stack/status` returns `state=loaded`, Host `RuntimeStatus` preserves optional stack probe failures in `guestStackProbeErrors`. UI can show that evidence as a warning row without turning healthy product services into a service-read failure.
+When `/runtime/stack` returns `state=loaded`, Host `RuntimeStatus` preserves optional stack probe failures in `guestStackProbeErrors`. UI can show that evidence as a warning row without turning healthy product services into a service-read failure.
 
 ## Prevention
 
@@ -56,3 +56,11 @@ When `/v1/stack/status` returns `state=loaded`, Host `RuntimeStatus` preserves o
 - Keep optional resource probes shorter than the Host endpoint timeout.
 - Preserve probe failures as explicit `probeErrors` instead of converting them into empty success.
 - Preserve Host-facing optional probe evidence as `guestStackProbeErrors`; do not promote it to `guestServicesReadError` or a runtime failure reason.
+
+## Follow-up
+
+- 2026-07-11: Linux installed acceptance on a TCG-emulated x86_64 machine
+  exceeded a 60-second `/runtime/stack` request budget while preserving explicit
+  failure. The Linux installer now supplies a 120-second timeout for this
+  expensive acceptance read; the Runtime Provider's separate lifecycle
+  deadline remains 180 seconds.

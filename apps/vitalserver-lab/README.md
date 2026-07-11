@@ -4,8 +4,8 @@
 scenarios, Lab sessions, Lab read models, and `.vital` replay requests.
 
 The service runs inside the Guest container stack. Runtime Control API, PWA,
-Swift Helper, and CLI consume Lab through Guest Control `/v1/lab/*` or
-Runtime Control `/lab/*`; they must not call a TestKit container or
+Swift Helper, and CLI consume Lab through Guest Control `/runtime/lab/*` or
+Runtime Control `/runtime/lab/*`; they must not call a TestKit container or
 `/dev/testkit` product route.
 
 ## Runtime Ownership
@@ -28,15 +28,15 @@ The container exposes a small HTTP API:
 ```text
 GET  /health
 GET  /ready
-GET  /lab/scenarios
-GET  /lab/beds
-GET  /lab/recorders
-POST /lab/sessions
-GET  /lab/sessions/{sessionId}
-POST /lab/sessions/{sessionId}/start
-POST /lab/sessions/{sessionId}/stop
-POST /lab/vital-files/replay
-POST /lab/vital-files/upload
+GET  /runtime/lab/scenarios
+GET  /runtime/lab/beds
+GET  /runtime/lab/recorders
+POST /runtime/lab/sessions
+GET  /runtime/lab/sessions/{sessionId}
+POST /runtime/lab/sessions/{sessionId}/start
+POST /runtime/lab/sessions/{sessionId}/stop
+POST /runtime/lab/vital-files/replay
+POST /runtime/lab/vital-files/upload
 ```
 
 Read failures remain explicit. Missing sessions, invalid request bodies,

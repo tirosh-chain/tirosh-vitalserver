@@ -33,6 +33,9 @@ class ServiceCommand(StrEnum):
     UPDATE_ACTIVATION = "activate-update"
     UPDATE_SHUTDOWN = "prepare-update-shutdown"
     REQUEST_GUEST_POWEROFF = "request-guest-poweroff"
+    APPLY_SETTINGS = "apply-settings"
+    APPLY_ADMIN_PASSWORD = "apply-admin-password"
+    APPLY_REDIS_RELAY_SETTINGS = "apply-redis-relay-settings"
 
 
 class GuestServiceDesiredState(StrEnum):
@@ -356,7 +359,7 @@ class RedisRelayStatusContractError(ValueError):
         self.message = message
 
 
-REDIS_RELAY_REQUIRED_STRING_FIELDS = ("observedAt", "state", "scope")
+REDIS_RELAY_REQUIRED_STRING_FIELDS = ("observedAt", "state")
 REDIS_RELAY_REQUIRED_BOOL_FIELDS = (
     "enabled",
     "targetUsernameConfigured",
@@ -364,6 +367,7 @@ REDIS_RELAY_REQUIRED_BOOL_FIELDS = (
 )
 REDIS_RELAY_REQUIRED_INT_FIELDS = ("schemaVersion", "batches")
 REDIS_RELAY_REQUIRED_NULLABLE_STRING_FIELDS = (
+    "scope",
     "targetUrl",
     "settingsFingerprint",
     "lastSuccessAt",

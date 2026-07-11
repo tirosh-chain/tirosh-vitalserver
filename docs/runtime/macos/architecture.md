@@ -12,6 +12,8 @@
 | 원 IP 보존은 어떻게 하나? | host nginx가 Docker/VM NAT 앞에서 `X-Forwarded-*`를 재작성한다. |
 | bridged mode는? | Apple `com.apple.vm.networking` 승인이 필요한 향후 옵션 |
 | build/runtime 책임은? | build는 Python, runtime은 Swift, Shell은 얇은 wrapper |
+| Platform API listener owner는? | launchd가 관리하는 headless `vitalserver-platform-agent` |
+| Control Panel 역할은? | Platform/Runtime 계약을 소비하는 native shell이며 listener를 소유하지 않음 |
 
 ## 2. 목표
 
@@ -72,27 +74,30 @@ Linux guest
 
 현재 코드는 macOS native Helper app에서 시작한 전환기 구조입니다. 최종 구조는 같은 product workflow를 Web/PWA, macOS shell, Windows shell이 공유하고, host-specific 실행은 Runtime Control API 뒤로 숨기는 구조입니다.
 
-### 3-1. As-is
+### 3-1. 현재 v2 reference
 
-현재 macOS Helper app은 SwiftUI presentation, native shell, composition을 담고 있습니다. `MacHostRuntimeAdapter`는 별도 SwiftPM target이며, `MacRuntimeControlApp` 안에서는 composition 파일만 adapter를 import합니다. 다만 아직 같은 Helper app process 안에서 `MacHostRuntimeClient`가 host file, privileged command, `vitalserver-vm` CLI를 직접 호출합니다.
+현재 macOS Helper app은 SwiftUI presentation과 native shell만 조립합니다. Platform
+API listener와 Platform owner adapter는 별도 `MacPlatformAgent` target 및
+`vitalserver-platform-agent` executable에 있고 launchd가 UI와 독립적으로
+기동·재기동합니다. CLI, launcher, proxy, watchdog는 HTTP listener를 상태 저장소로
+사용하지 않고 같은 durable Platform owner contract를 직접 소비합니다.
 
 ```text
-MacRuntimeControlApp
+MacControlPanelHost
   - SwiftUI UI
   - RuntimeViewModel
   - NativeShell
-  - app composition
         |
-        | RuntimeControlClient protocol
-        | composition-only MacHostRuntimeClient wiring
+        | Runtime Control HTTP/client contracts
         v
-MacHostRuntimeAdapter
-  - MacHostRuntimeClient
-  - status/settings/log/backup file readers
-  - privileged command runner
-  - vitalserver-vm CLI command factory
+MacPlatformAgentService (launchd KeepAlive)
+  - Platform API listener
+  - Platform-only state/command adapters
+  - durable operation lease/runtime endpoint/provider lifecycle owners
         |
-        | CLI / file / process
+        +-- Runtime Controller API forwarding -> Linux Guest
+        |
+        | explicit CLI / file / process ports
         v
 HostCLI
   - vitalserver-vm command entrypoint
@@ -110,15 +115,15 @@ Guest VM
 
 | Target | 현재 책임 | 전환기 성격 |
 |---|---|---|
-| `MacRuntimeControlApp` | SwiftUI 화면, view model, app composition, native shell | presentation/native shell은 adapter 세부 구현을 모름. composition만 local adapter를 조립 |
+| `MacControlPanelHost` | SwiftUI 화면, view model, native shell | Platform Agent를 소비하며 API listener나 durable Platform state를 소유하지 않음 |
+| `MacPlatformAgent` | Platform API handler/listener composition, Platform owner controller | macOS Platform Agent reference implementation |
+| `MacPlatformAgentService` | headless executable entrypoint | launchd `RunAtLoad`/`KeepAlive` process |
 | `RuntimeControl` | UI/usecase 입출력 계약, `RuntimeControlClient`, `RuntimeHostClient`, DTO, enum | 최종 API/client/server가 공유할 계약의 시작점과, 전환기 SwiftUI가 쓰는 local host affordance 계약 |
-| `RuntimeControlAPI` | legacy compatibility shim | 전환기 기존 import 경로 호환. public 선언은 `Interfaces/RuntimeControlAPI` typealias만 유지 |
 | `Contracts` | runtime status/progress/health/Guest Control/update bundle/file name/network mode 계약 | PWA/API/server/host runtime이 공유할 schema와 enum의 독립 target |
-| `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local 구현, file/process/CLI adapter | 외부 public surface는 `MacHostRuntimeClient` facade 중심. 나중에 Runtime Control API server 쪽 adapter로 이동하거나 축소 가능 |
+| `InboundAdapters` | HTTP router/server, PWA/native presentation adapter | 외부 요청을 명시 contract로 decode/encode |
+| `OutboundAdapters` | file/process/CLI/Guest Control adapter | 외부 상태를 typed result로 Platform Agent와 workflow에 제공 |
 | `HostCLI` | `vitalserver-vm` CLI와 runtime workflow 실행 | 현재 host runtime source of truth |
-| `Core` | legacy compatibility shim | 전환기 기존 import 경로 호환. public 선언은 `Contracts`, `Domain`, `Application/Ports` typealias만 유지 |
-| `Infrastructure` | installed path, file store, JSON repository/gateway, JSONL/SQLite observability/read model, guest config reading/writing, Redis backup result document loading, health snapshot assembly | host filesystem/shared directory/SQLite/read adapter 구현 |
-| `HostInfrastructure` | legacy compatibility shim | 전환기 기존 import 경로 호환. public 선언은 `Infrastructure` typealias만 유지 |
+| `Bootstrap` | CLI workflow dependency composition | adapter 선택만 담당하고 domain transition을 소유하지 않음 |
 
 ### 3-2. Source code architecture boundary
 
@@ -480,9 +485,9 @@ Single-node self-healing runtime
 
 1. VM/proxy LaunchDaemon은 `RunAtLoad`, `KeepAlive`, `ThrottleInterval`, stdout/stderr log path를 가진다.
 2. watchdog LaunchDaemon은 `vitalserver-vm runtime watchdog`을 주기 실행한다.
-3. watchdog은 VM/proxy/HTTP health를 기준으로 recovery action을 고른다. Guest product service 문제는 Guest stack reconcile을 먼저 요청하고, VM/IP boundary 문제만 VM/proxy restart로 승격한다.
+3. Host watchdog은 VM/proxy/Runtime Control readiness를 기준으로 Host-owned recovery action만 고른다. Guest product service 문제와 stack reconcile은 Runtime Controller가 소유하며 Host recovery input이나 effect가 아니다.
 4. guest 내부 Docker Compose stack은 `tirosh-vitalserver-compose.service`로 재부팅 후 재적용된다.
-5. Helper app은 Runtime Control read model/API를 통해 정상/복구중/장애/업데이트중 상태를 표시한다. Current runtimeState/failureReasons는 explicit current owner reads에서 조립하고, active operation은 RuntimeOperationState, workflow progress detail은 explicit operation-state/API owner contract, Host service liveness는 live launchd read, HTTP 상태는 explicit probe read, VM IP 표시는 loaded Guest address provider result, VM state/errors는 VM lifecycle read, proxy port는 proxy launch daemon/config read의 display/probe input, runtime version은 runtime version store, latest backup은 managed backup directory read가 owner이며 `runtime-status.json` 값으로 덮어쓰지 않는다. Progress artifact, `vm-ip` compatibility file, proxy config/plist의 부재/읽기 실패는 current health issue를 만들지 않는다.
+5. Helper app은 Runtime Control read model/API를 통해 정상/복구중/장애/업데이트중 상태를 표시한다. Current runtimeState/failureReasons는 explicit current owner reads에서 조립하고, active operation은 PlatformOperationState, workflow progress detail은 explicit operation-state/API owner contract, Host service liveness는 live launchd read, HTTP 상태는 explicit probe read, VM IP 표시는 loaded Guest address provider result, VM state/errors는 VM lifecycle read, proxy port는 proxy launch daemon/config read의 display/probe input, runtime version은 runtime version store, latest backup은 managed backup directory read가 owner이며 `runtime-status.json` 값으로 덮어쓰지 않는다. Progress artifact, `vm-ip` compatibility file, proxy config/plist의 부재/읽기 실패는 current health issue를 만들지 않는다.
 6. install/update는 free-space preflight를 수행하고, installer/runtime log는 size 기반 rotation을 수행한다.
 7. guest bootstrap은 bundled image load 후 Docker dangling image cleanup을 수행한다.
 
@@ -494,7 +499,7 @@ Host health/status projection 문서는 아래 JSON 파일입니다.
 /Library/Application Support/VitalServerHelper/status/runtime-status.json
 ```
 
-이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 diagnostics/status projection으로 갱신합니다. Runtime Control current read model은 이 문서를 읽지 않고, 이 문서의 status/failure projection이나 read/decode failure를 current 상태 owner로 소비하지 않습니다. Current runtimeState/failureReasons는 explicit current owner reads에서 조립하고, active operation은 RuntimeOperationState의 Host operation lease owner, workflow progress detail은 explicit operation-state/API owner contract, VM/proxy/watchdog service liveness는 live host service read, current HTTP 상태는 explicit probe read, VM IP 표시는 loaded Guest address provider result, VM state/errors는 VM lifecycle read를 별도 owner contract로 소비합니다. `runtime-progress.json`, install-state document, `vm-ip` compatibility file, proxy config/plist의 부재/읽기 실패는 current health issue가 아닙니다. Installed CLI `runtime status`도 status file은 diagnostics presence로만 표시하고, status/VM IP는 health snapshot과 explicit owner read에서 온 current status input을 표시합니다.
+이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 diagnostics/status projection으로 갱신합니다. Runtime Control current read model은 이 문서를 읽지 않고, 이 문서의 status/failure projection이나 read/decode failure를 current 상태 owner로 소비하지 않습니다. Current runtimeState/failureReasons는 explicit current owner reads에서 조립하고, active operation은 PlatformOperationState의 Host operation lease owner, workflow progress detail은 explicit operation-state/API owner contract, VM/proxy/watchdog service liveness는 live host service read, current HTTP 상태는 explicit probe read, VM IP 표시는 loaded Guest address provider result, VM state/errors는 VM lifecycle read를 별도 owner contract로 소비합니다. `runtime-progress.json`, install-state document, `vm-ip` compatibility file, proxy config/plist의 부재/읽기 실패는 current health issue가 아닙니다. Installed CLI `runtime status`도 status file은 diagnostics presence로만 표시하고, status/VM IP는 health snapshot과 explicit owner read에서 온 current status input을 표시합니다.
 
 Update/watchdog coordination은 `runtime-status.json`을 active lock처럼 읽지 않습니다. update와 rollback은 VM/proxy/watchdog launchd service를 직접 stop/start하므로, 이 구간에서 watchdog auto-recovery가 동시에 실행되면 같은 자원을 두 process가 재시작하는 경쟁 상태가 됩니다. 이 guard의 권한 있는 입력은 Host operation lease입니다. Status diagnostics, progress artifact, bootstrap proof file은 operation ownership을 제공할 수 없고, stale file state에서 active operation ownership이나 health/recovery state를 재구성하면 안 됩니다.
 
@@ -736,7 +741,7 @@ Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 |---|---|---|
 | `Contracts` | PWA/API/server/host runtime이 함께 알아야 하는 JSON schema, enum, file name 계약 | `RuntimeStatusDocument`, `RuntimeWorkflowStep`, update bundle manifest |
 | `RuntimeControl` | UI/usecase 관점의 typed client/read model/result 계약 | `RuntimeControlClient`, `RuntimeHostClient`, `RuntimeCommandResult`, `RuntimeLogSource` |
-| `RuntimeControlAPI` | HTTP transport 관점의 route/DTO/router/local server 계약 | `/runtime/status`, `/runtime/settings`, `/host/update-bundles/verify`, `RuntimeControlAPIRouter`, `RuntimeControlLocalHTTPServer`, `RuntimeControlFileReference` |
+| `RuntimeControlAPI` | HTTP transport 관점의 route/DTO/router/local server 계약 | `/runtime/status`, `/runtime/settings`, `/platform/update-bundles/verify`, `RuntimeControlAPIRouter`, `RuntimeControlLocalHTTPServer`, `RuntimeControlFileReference` |
 | `Core` | host OS나 SwiftUI를 모르는 compatibility shim | 기존 `Core` import 경로 호환 |
 | `HostInfrastructure` | 특정 product workflow보다 일반적인 host filesystem/shared-directory 구현 | `SystemRuntimeFileStore`, `JSONFileRuntimeStatusArtifactSink` |
 | `MacHost*` | macOS host에서만 의미가 있는 local adapter 구현 | `MacHostRuntimeClient`, `MacHostRuntimeLogCollector`, `MacHostRuntimeLogExporter` |
@@ -745,7 +750,7 @@ Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 
 Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락을 드러냅니다. 예를 들어 macOS의 launchd, AppKit panel, local file/log export, privileged CLI 실행은 `MacHost*`, `MacRuntimeControlApp`, `RuntimeNativeShell` 쪽에 둡니다. 반대로 PWA, Runtime Control API server, macOS/Windows host runtime이 모두 재사용해야 하는 상태/진행/update/Guest Control operation 계약은 `Contracts`와 `RuntimeControl`에 둡니다.
 
-`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. `MacHostRuntimeClient -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. Runtime Control API server는 PWA가 사용할 product API surface이므로 browser diagnostics page와 분리합니다. Stable profile에서도 API server를 시작할 수 있어야 하며, Product Lab은 `/lab/*` route를 사용하고 legacy `/dev/testkit/*` route는 product surface에 노출하지 않습니다. 이 경계는 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유하도록 유지합니다.
+`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. `MacHostRuntimeClient -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. Runtime Control API server는 PWA가 사용할 product API surface이므로 browser diagnostics page와 분리합니다. Stable profile에서도 API server를 시작할 수 있어야 하며, Product Lab은 `/runtime/lab/*` route를 사용하고 legacy `/dev/testkit/*` route는 product surface에 노출하지 않습니다. 이 경계는 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유하도록 유지합니다.
 
 `RuntimeHostClient`는 현재 SwiftUI 전환기에서 필요한 local host affordance 경계입니다. PWA 진입 시 이 계약을 그대로 browser client에 노출한다는 뜻이 아닙니다. PWA는 `RuntimeControlClient`에 해당하는 HTTP/SSE API를 우선 사용하고, local file 선택, log export destination, pairing/native shell 같은 기능은 native shell 또는 Runtime Control API의 별도 endpoint로 재배치합니다.
 

@@ -40,11 +40,11 @@
 |---|---|---|---|---|---|
 | Install | Host runtime | diagnostics `RuntimeInstallStateDocument` | Domain `RuntimeInstallTransitionPolicy`, Domain `RuntimeOperationPlan` | `Workflow/RuntimeInstallLifecycle`, `HostCLI install`; Runtime Control current operation uses Host operation lease, not this document | `DomainRuntimeInstallTransitionPolicyTests`, `RuntimeInstallTransitionPolicyTests`, `RuntimeInstallWorkflowTests` |
 | Uninstall | Host runtime | `RuntimeUninstallStateDocument` | Domain `RuntimeUninstallTransitionPolicy`, Domain `RuntimeUninstallReadinessPolicy` | `Workflow/RuntimeUninstallLifecycle`, `HostCLI uninstall` | `DomainRuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallWorkflowTests` |
-| Product update | Host updater + Guest Control maintenance operations | Host operation lease, diagnostics `runtime-progress.json`, diagnostics `runtime-status.json`, Guest operation documents, `runtime-version.json` | update preflight and compatibility policies | `apply-bundle`, `/host/update-bundles/*`, `/v1/maintenance/update-activation`, `/v1/maintenance/update-shutdown` | update preflight, bundle verifier, Guest Control operation tests |
+| Product update | Host updater + Guest Control maintenance operations | Host operation lease, diagnostics `runtime-progress.json`, diagnostics `runtime-status.json`, Guest operation documents, `runtime-version.json` | update preflight and compatibility policies | `apply-bundle`, `/platform/update-bundles/*`, `/runtime/maintenance/update-activation`, `/runtime/maintenance/update-shutdown` | update preflight, bundle verifier, Guest Control operation tests |
 | Watchdog recovery | Host watchdog | health snapshot inputs, Host operation lease, VM lifecycle read | Domain `RuntimeWatchdogRecoveryPolicy`, health policies | Workflow `RuntimeWatchdogRunner`, `/runtime/status`, `/runtime/events` | recovery policy, guard, and observability tests |
-| Guest maintenance operation | Guest Control API | Guest operation documents | Guest Control maintenance usecases | `/v1/maintenance/*`, `/v1/operations/{operationId}` | Guest Control API/usecase tests |
-| Vital Recorder read model | Guest/Postgres read model fed by VitalDB observer evidence | Guest Control VitalDB read-model documents | recorder summary/history construction policy | `/vitaldb/recorders`, `/runtime/overview` | RuntimeControl contract tests, PWA schema tests |
-| Log collection/export | Host log collector/exporter | raw logs, helper message log, JSONL, SQLite sidecars | no domain transition policy | `/host/logs/read`, `/host/logs/export` | log collector/exporter tests |
+| Guest maintenance operation | Guest Control API | Guest operation documents | Guest Control maintenance usecases | `/runtime/maintenance/*`, `/runtime/operations/{operationId}` | Guest Control API/usecase tests |
+| Vital Recorder read model | Guest/Postgres read model fed by VitalDB observer evidence | Guest Control VitalDB read-model documents | recorder summary/history construction policy | `/runtime/vitaldb/recorders` | RuntimeControl contract tests, PWA schema tests |
+| Log collection/export | Host log collector/exporter | raw logs, helper message log, JSONL, SQLite sidecars | no domain transition policy | `/platform/logs/read`, `/platform/logs/export` | log collector/exporter tests |
 
 ## Required Flow Details
 
@@ -177,8 +177,7 @@ Invariants:
 
 Diagnostics:
 
-- `/vitaldb/recorders`.
-- `/runtime/overview`.
+- `/runtime/vitaldb/recorders`.
 - `/runtime/events`.
 - vitaldb-observer stdout/container logs.
 - Guest Control VitalDB read-model documents.
@@ -200,8 +199,8 @@ Invariants:
 
 Diagnostics:
 
-- `/host/logs/read`.
-- `/host/logs/export`.
+- `/platform/logs/read`.
+- `/platform/logs/export`.
 - helper message log.
 - command log.
 - exported bundle manifest.

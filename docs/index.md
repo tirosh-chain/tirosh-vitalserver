@@ -71,6 +71,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 
 | 문서 | 역할 |
 |---|---|
+| [Runtime v2 Cross-platform Conformance](runtime/runtime-v2-conformance.md) | macOS, Windows, Linux가 공유하는 Platform/Runtime API proof와 설치 acceptance matrix |
 | [VitalServer macOS Runtime](runtime/macos/index.md) | VM runtime 문서군의 빠른 지도 |
 | [macOS Runtime Overview](runtime/macos/overview.md) | VM runtime 세부 문서의 한눈에 보기와 사용자 시나리오 |
 | [Architecture](runtime/macos/architecture.md) | 제품 구조, 단일 노드 가용성, Web/PWA UI/native shell/host runtime 책임 경계 |

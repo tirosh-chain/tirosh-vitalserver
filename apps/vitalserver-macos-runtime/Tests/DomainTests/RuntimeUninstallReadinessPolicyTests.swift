@@ -34,7 +34,7 @@ final class DomainRuntimeUninstallReadinessPolicyTests: XCTestCase {
 private func serviceStates(
     overrides: [RuntimeManagedService: RuntimeServiceState] = [:]
 ) -> [RuntimeManagedService: RuntimeServiceState] {
-    Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
+    Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map { service in
         (service, overrides[service] ?? .notLoaded)
     })
 }

@@ -73,13 +73,13 @@ struct RuntimeStatusDisplayPolicy {
         vocabulary: AppRuntimeStatusVitalServerAvailabilityVocabulary()
     )
 
-    func overallHealth(status: RuntimeStatus, operationState: RuntimeOperationState) -> StatusValue {
+    func overallHealth(status: PlatformState, operationState: PlatformOperationState) -> StatusValue {
         statusValue(overallHealthPolicy.overallHealth(status: status, operationState: operationState))
     }
 
     func vitalServerAvailability(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         now: Date = Date()
     ) -> StatusValue {
         statusValue(vitalServerAvailabilityPolicy.availability(
@@ -89,7 +89,7 @@ struct RuntimeStatusDisplayPolicy {
         ))
     }
 
-    func remoteConsoleAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
+    func remoteConsoleAvailability(status: PlatformState, now: Date = Date()) -> StatusValue {
         statusValue(remoteConsoleAvailabilityPolicy.availability(status: status, now: now))
     }
 
@@ -97,19 +97,27 @@ struct RuntimeStatusDisplayPolicy {
         statusValue(remoteConsoleAvailabilityPolicy.availability(http: http, startedAt: startedAt, now: now))
     }
 
-    func actionNeeded(status: RuntimeStatus) -> ActionNeededItem? {
+    func actionNeeded(status: PlatformState) -> ActionNeededItem? {
         actionNeededPolicy.actionNeeded(status: status).map(actionNeededItem)
     }
 
     func healthDetails(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
+        runtimeStackStatus: RuntimeGuestControlStackStatus? = nil,
+        runtimeStackReadError: String? = nil,
+        runtimeServiceResources: [RuntimeGuestServiceResource] = [],
+        runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
         now: Date = Date()
     ) -> [HealthItem] {
         healthDetailsPolicy.healthDetails(
             status: status,
             operationState: operationState,
+            runtimeStackStatus: runtimeStackStatus,
+            runtimeStackReadError: runtimeStackReadError,
+            runtimeServiceResources: runtimeServiceResources,
+            runtimeServiceResourceReadIssues: runtimeServiceResourceReadIssues,
             recorderIngressStatusRead: recorderIngressStatusRead,
             now: now
         ).map(healthItem)
@@ -208,20 +216,30 @@ struct RuntimeStatusDisplayPolicy {
         ]
     }
 
-    func advancedVMHealth(status: RuntimeStatus, operationState: RuntimeOperationState) -> [HealthItem] {
+    func advancedVMHealth(status: PlatformState, operationState: PlatformOperationState) -> [HealthItem] {
         advancedVMHealthPolicy.vmHealth(status: status, operationState: operationState).map(healthItem)
     }
 
     func advancedServiceHealth(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
+        runtimeStackStatus: RuntimeGuestControlStackStatus?,
+        runtimeStackReadError: String?,
+        runtimeServiceResources: [RuntimeGuestServiceResource],
+        runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
         redisRelaySettings: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
+        redisRelayStatusRead: RuntimeRedisRelayStatusReadResult,
         now: Date = Date()
     ) -> [ServiceHealthItem] {
         advancedServiceHealthPolicy.serviceHealth(
             status: status,
             operationState: operationState,
+            runtimeStackStatus: runtimeStackStatus,
+            runtimeStackReadError: runtimeStackReadError,
+            runtimeServiceResources: runtimeServiceResources,
+            runtimeServiceResourceReadIssues: runtimeServiceResourceReadIssues,
             redisRelaySettings: redisRelaySettings,
+            redisRelayStatusRead: redisRelayStatusRead,
             now: now
         ).map(serviceHealthItem)
     }

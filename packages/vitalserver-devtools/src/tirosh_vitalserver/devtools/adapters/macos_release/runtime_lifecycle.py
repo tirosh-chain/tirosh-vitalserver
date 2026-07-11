@@ -872,13 +872,13 @@ def print_runtime_guest_address_proxy_upstream(
     runtime_control_guest_address_request(
         input,
         method="PUT",
-        path="/host/runtime/guest-address",
+        path="/platform/runtime-endpoint",
         body={"address": bootstrap_address},
     )
     state = runtime_control_guest_address_request(
         input,
         method="GET",
-        path="/host/runtime/guest-address",
+        path="/platform/runtime-endpoint",
         body=None,
     )
     address = loaded_guest_address_from_owner_state(state)

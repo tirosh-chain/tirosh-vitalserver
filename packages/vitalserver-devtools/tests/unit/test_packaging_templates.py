@@ -27,6 +27,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         root,
     )
     packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"
+    platform_agent_launchd_template = (
+        root
+        / "apps/vitalserver-macos-runtime/launchd"
+        / settings.launchd.platform_agent.template_file
+    )
     proxy_config_template = root / "infra/macos-nginx/vitalserver.conf.template"
     proxy_config_template_text = proxy_config_template.read_text(encoding="utf-8")
     guest_edge_config_text = (
@@ -152,6 +157,13 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert 'launchctl bootout "system/${label}"' in postinstall_text
     assert "ai.tirosh.vitalserver.helper.vm" in postinstall_text
     assert "ai.tirosh.vitalserver.helper.proxy" in postinstall_text
+    assert "ai.tirosh.vitalserver.helper.platform-agent" in postinstall_text
+    platform_agent_launchd_text = platform_agent_launchd_template.read_text(
+        encoding="utf-8"
+    )
+    assert "ai.tirosh.vitalserver.helper.platform-agent" in platform_agent_launchd_text
+    assert "${VITALSERVER_PLATFORM_AGENT_BIN}" in platform_agent_launchd_text
+    assert "<key>KeepAlive</key>\n  <true/>" in platform_agent_launchd_text
     assert "pkgutil --forget" not in postinstall_text
     assert 'rm -rf "${path}"' in postinstall_text
     assert "runtime install progress status=" not in postinstall_text
@@ -161,23 +173,18 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"'
         in proxy_run_text
     )
-    assert (
-        'runtime_control_api_base_url="${VITALSERVER_RUNTIME_CONTROL_API_BASE_URL:-http://127.0.0.1:18321}"'
-        in proxy_run_text
-    )
+    assert 'runtime_endpoint_file="${vm_home}/run/runtime-endpoint.json"' in proxy_run_text
     assert 'state_file="${vm_home}/data/run/runtime-observation.json"' not in proxy_run_text
     assert "read_state_value()" not in proxy_run_text
     assert "read_guest_http()" not in proxy_run_text
     assert "waiting for VM runtime observation" not in proxy_run_text
     assert "waiting for VM runtime bootstrap" not in proxy_run_text
-    assert "publish_guest_address_owner()" in proxy_run_text
-    assert "load_guest_address_owner()" in proxy_run_text
-    assert 'owner_address_state="loaded"' in proxy_run_text
-    assert '/host/runtime/guest-address' in proxy_run_text
-    assert (
-        '-H "${runtime_control_api_token_header}: ${runtime_control_api_token}"'
-        in proxy_run_text
-    )
+    assert "publish_runtime_endpoint()" in proxy_run_text
+    assert "clear_runtime_endpoint()" in proxy_run_text
+    assert '"source":"platform-agent"' in proxy_run_text
+    assert 'mv -f "${temporary}" "${runtime_endpoint_file}"' in proxy_run_text
+    assert "VITALSERVER_RUNTIME_CONTROL_API_BASE_URL" not in proxy_run_text
+    assert '/platform/runtime-endpoint' not in proxy_run_text
     assert '"${runtime_logs}"' in proxy_run_text
     assert '"${nginx_prefix}/temp/client_body"' in proxy_run_text
     assert '"${nginx_prefix}/temp/proxy"' in proxy_run_text
@@ -377,7 +384,7 @@ echo "$!" > "${prefix}/logs/nginx.pid"
     fake_curl.write_text(
         """#!/usr/bin/env bash
 case "$*" in
-  */host/runtime/guest-address*)
+  */platform/runtime-endpoint*)
     printf '{"state":"loaded","read":{"state":"loaded","address":"192.168.64.8"}}'
     exit 0
     ;;
@@ -497,7 +504,7 @@ echo "$!" > "${prefix}/logs/nginx.pid"
     fake_curl.write_text(
         """#!/usr/bin/env bash
 case "$*" in
-  */host/runtime/guest-address*)
+  */platform/runtime-endpoint*)
     printf '{"state":"loaded","read":{"state":"loaded","address":"192.168.64.8"}}'
     exit 0
     ;;
@@ -551,7 +558,7 @@ esac
     assert "waiting for VM upstream readiness: http://192.168.64.8:80/" in stderr
 
 
-def test_proxy_run_publishes_loaded_guest_address_and_routes_from_owner(
+def test_proxy_run_publishes_durable_runtime_endpoint_and_routes_from_it(
     tmp_path: Path,
 ) -> None:
     root = repo_root()
@@ -573,6 +580,7 @@ def test_proxy_run_publishes_loaded_guest_address_and_routes_from_owner(
     state_dir = vm_home / "data/run"
     proxy_template = vm_home / "Support/Proxy/vitalserver.conf.template"
     capture_file = tmp_path / "curl-calls.txt"
+    endpoint_file = vm_home / "run/runtime-endpoint.json"
     state_dir.mkdir(parents=True)
     proxy_template.parent.mkdir(parents=True)
     fake_bin.mkdir()
@@ -602,7 +610,7 @@ exit 0
         """#!/usr/bin/env bash
 printf '%s\n' "$*" >> "${CURL_CAPTURE_FILE}"
 case "$*" in
-  */host/runtime/guest-address*)
+  */platform/runtime-endpoint*)
     if [[ "$*" != *"-X PUT"* ]]; then
       printf '{"state":"loaded","read":{"state":"loaded","address":"192.168.64.10"}}'
     fi
@@ -638,18 +646,12 @@ exit 0
             },
             start_new_session=True,
         )
+        endpoint_document: dict[str, str] | None = None
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
             stdout = stdout_path.read_text(encoding="utf-8")
-            calls = (
-                capture_file.read_text(encoding="utf-8")
-                if capture_file.exists()
-                else ""
-            )
-            if (
-                "/host/runtime/guest-address" in calls
-                and "started proxy:" in stdout
-            ):
+            if endpoint_file.exists() and "started proxy:" in stdout:
+                endpoint_document = json.loads(endpoint_file.read_text(encoding="utf-8"))
                 break
             time.sleep(0.05)
         os.killpg(process.pid, signal.SIGTERM)
@@ -662,13 +664,16 @@ exit 0
     calls = capture_file.read_text(encoding="utf-8")
     stdout = stdout_path.read_text(encoding="utf-8")
     stderr = stderr_path.read_text(encoding="utf-8")
-    assert "-X PUT" in calls
-    assert "X-Runtime-Control-Token: vitalserver-helper-dev" in calls
-    assert '{"address":"192.168.64.9"}' in calls
-    assert "http://127.0.0.1:18321/host/runtime/guest-address" in calls
+    assert endpoint_document == {
+        "address": "192.168.64.9",
+        "source": "platform-agent",
+        "state": "loaded",
+    }
+    assert not endpoint_file.exists()
+    assert "/platform/runtime-endpoint" not in calls
+    assert "192.168.64.9:80" in calls
     assert "started proxy: http://localhost:" in stdout
-    assert "-> http://192.168.64.10:80" in stdout
-    assert "-> http://192.168.64.9:80" not in stdout
+    assert "-> http://192.168.64.9:80" in stdout
     assert "waiting for VM runtime observation" not in stderr
     assert "waiting for VM runtime bootstrap" not in stderr
 

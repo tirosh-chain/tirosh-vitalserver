@@ -301,9 +301,6 @@ public struct RuntimeHealthObservationReads {
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     public let containerLogsMetadata: RuntimeContainerLogsMetadata
     public let proxyListenerObservation: RuntimeHostProxyListenerObservation?
-    public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
-    public let guestServiceResources: [RuntimeGuestServiceResource]
-    public let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     public let observedAt: Date
 
     public init(
@@ -325,9 +322,6 @@ public struct RuntimeHealthObservationReads {
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument> = .notReported,
         containerLogsMetadata: RuntimeContainerLogsMetadata,
         proxyListenerObservation: RuntimeHostProxyListenerObservation?,
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
-        guestServiceResources: [RuntimeGuestServiceResource] = [],
-        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         observedAt: Date
     ) {
         self.vmExecutable = vmExecutable
@@ -348,9 +342,6 @@ public struct RuntimeHealthObservationReads {
         self.vitalDBObservation = vitalDBObservation
         self.containerLogsMetadata = containerLogsMetadata
         self.proxyListenerObservation = proxyListenerObservation
-        self.guestServiceStatuses = guestServiceStatuses
-        self.guestServiceResources = guestServiceResources
-        self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
         self.observedAt = observedAt
     }
 }

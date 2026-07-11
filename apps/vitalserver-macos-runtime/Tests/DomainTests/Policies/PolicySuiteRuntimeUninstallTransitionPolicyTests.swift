@@ -323,7 +323,7 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         serviceState: RuntimeServiceState = .notLoaded
     ) -> RuntimeUninstallReadinessInput {
         RuntimeUninstallReadinessInput(
-            serviceStates: Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map {
+            serviceStates: Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map {
                 ($0, serviceState)
             }),
             vmProcessState: vmProcessState,

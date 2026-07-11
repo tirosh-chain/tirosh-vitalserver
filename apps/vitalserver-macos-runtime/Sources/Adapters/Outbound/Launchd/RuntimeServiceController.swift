@@ -47,21 +47,21 @@ public struct RuntimeServiceController {
 
     public func stopRuntimeServices() throws {
         log("stopping runtime services")
-        for service in RuntimeManagedService.stopOrder {
+        for service in RuntimeManagedService.uninstallOrder {
             try stopAndWaitIfLoaded(service)
         }
     }
 
     public func disableRuntimeServicesForUninstall() throws {
         log("disabling runtime services before uninstall")
-        for service in RuntimeManagedService.stopOrder {
+        for service in RuntimeManagedService.uninstallOrder {
             try serviceOperator.setEnabledOrThrow(service, enabled: false)
         }
     }
 
     public func clearDisabledOverridesAfterUninstall() throws {
         log("clearing launchd disabled overrides after uninstall")
-        for service in RuntimeManagedService.stopOrder {
+        for service in RuntimeManagedService.uninstallOrder {
             try serviceOperator.setEnabledOrThrow(service, enabled: true)
         }
     }

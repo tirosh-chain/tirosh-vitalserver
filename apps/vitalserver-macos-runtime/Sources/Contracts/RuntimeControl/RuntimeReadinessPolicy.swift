@@ -2,15 +2,15 @@ import Contracts
 import Errors
 
 public enum RuntimeReadinessPolicy {
-    public static func isReady(_ status: RuntimeStatus) -> Bool {
-        status.runtimeInstallationState?.isExecutable == true
-            && serviceIsLoaded(status.vmServiceState)
-            && serviceIsLoaded(status.proxyServiceState)
-            && serviceIsLoaded(status.watchdogServiceState)
-            && status.runtimeState == .healthy
-            && status.vmIP != nil
-            && isSuccessfulHTTPStatus(status.guestHTTP)
-            && isSuccessfulHTTPStatus(status.hostProxyHTTP)
+    public static func isReady(_ status: PlatformState) -> Bool {
+        status.runtimeInstallationState.isExecutable
+            && serviceIsLoaded(status.serviceState(.runtimeProvider))
+            && serviceIsLoaded(status.serviceState(.publicProxy))
+            && serviceIsLoaded(status.serviceState(.watchdog))
+            && status.platformHealth == .healthy
+            && status.runtimeEndpoint != nil
+            && isSuccessfulHTTPStatus(status.runtimeControllerHTTP)
+            && isSuccessfulHTTPStatus(status.publicProxyHTTP)
     }
 
     private static func serviceIsLoaded(_ state: RuntimeServiceState?) -> Bool {

@@ -432,7 +432,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Runtime Control route executor must not collapse every handler error to handlerFailed"
         )
         XCTAssertTrue(
-            errorResponseText.contains("case .hostAffordanceUnavailable"),
+            errorResponseText.contains("case .platformAffordanceUnavailable"),
             "Runtime Control HTTP error mapper must preserve missing host affordance as a distinct API error"
         )
         XCTAssertTrue(
@@ -2203,7 +2203,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             if relativePath.hasSuffix("RuntimeProgressDocumentReader.swift") {
                 XCTAssertFalse(
                     FileManager.default.fileExists(atPath: path.path),
-                    "runtime-progress.json must not have a RuntimeStatus read-path adapter"
+                    "runtime-progress.json must not have a PlatformState read-path adapter"
                 )
                 continue
             }
@@ -2230,7 +2230,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             (
                 "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeProgressDocumentReader.swift",
                 [
-                    "RuntimeStatusReadIssue(source: \"runtimeProgress\"",
+                    "PlatformStateReadIssue(source: \"runtimeProgress\"",
                 ]
             ),
         ]
@@ -2240,7 +2240,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             if relativePath.hasSuffix("RuntimeProgressDocumentReader.swift") {
                 XCTAssertFalse(
                     FileManager.default.fileExists(atPath: path.path),
-                    "runtime-progress.json must not have a RuntimeStatus read-path adapter"
+                    "runtime-progress.json must not have a PlatformState read-path adapter"
                 )
                 continue
             }
@@ -2552,10 +2552,12 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let root = packageRoot().appendingPathComponent("Sources/Adapters/Outbound")
         for file in try swiftFiles(root: root) {
             let text = try String(contentsOf: file, encoding: .utf8)
-            XCTAssertFalse(
-                text.contains("RuntimeStatus("),
-                "Outbound adapters must read external state; RuntimeControl read model assembly belongs in RuntimeControl contracts: \(file.path)"
-            )
+            for constructorToken in ["return PlatformState(", "= PlatformState("] {
+                XCTAssertFalse(
+                    text.contains(constructorToken),
+                    "Outbound adapters must read external state; RuntimeControl read model assembly belongs in RuntimeControl contracts: \(file.path)"
+                )
+            }
         }
     }
 
@@ -2572,7 +2574,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             for token in [
                 "RuntimePaths",
                 "paths.",
-                "RuntimeStatusReadIssue",
+                "PlatformStateReadIssue",
                 "RuntimeServiceStateRead(",
                 "runtimeInstalled:",
             "unknown service state",
@@ -2606,7 +2608,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         XCTAssertFalse(
             modelsText.contains("case statusDocument = \"status-document\""),
-            "RuntimeStatus service state source contract must not expose runtime-status.json as a liveness source"
+            "PlatformState service state source contract must not expose runtime-status.json as a liveness source"
         )
     }
 
@@ -2618,7 +2620,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
         XCTAssertTrue(
             readerText.contains("RuntimeHealthStatusAssembler.applyingHealthProbeReads"),
-            "RuntimeStatusReader should read HTTP probe results and delegate RuntimeStatus mutation policy to RuntimeControl"
+            "RuntimeStatusReader should read HTTP probe results and delegate PlatformState mutation policy to RuntimeControl"
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
@@ -2656,8 +2658,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         XCTAssertTrue(runtimeControlAssembly.contains("RuntimeVMLifecycleRead"))
         XCTAssertTrue(runtimeControlAssembly.contains("vmLifecycleRead.issue"))
         XCTAssertTrue(runtimeControlAssembly.contains("vmState(from: vmLifecycleRead.document)"))
-        XCTAssertTrue(runtimeControlAssembly.contains("vmErrors: vmLifecycleRead.document?.reportedVMErrors"))
-        XCTAssertTrue(runtimeControlAssembly.contains("vmIP: guestAddressRead.loadedAddress"))
+        XCTAssertTrue(runtimeControlAssembly.contains("runtimeProviderErrors: vmLifecycleRead.document?.reportedVMErrors"))
+        XCTAssertTrue(runtimeControlAssembly.contains("runtimeEndpoint: guestAddressRead.loadedAddress"))
         XCTAssertTrue(runtimeControlAssembly.contains("isCurrentRuntimeStateReadIssue"))
         XCTAssertTrue(runtimeControlAssembly.contains("readIssues.contains(where: isCurrentRuntimeStateReadIssue)"))
         let currentRuntimeStateReadIssueSources = runtimeControlAssembly[
@@ -2717,7 +2719,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         XCTAssertFalse(
             actionNeededPolicy.contains("if !status.readIssues.isEmpty"),
-            "RuntimeStatus read issues are diagnostics and must not create action-needed state"
+            "PlatformState read issues are diagnostics and must not create action-needed state"
         )
     }
 
@@ -2729,7 +2731,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
         XCTAssertTrue(
             readerText.contains("RuntimeDataDirectoryMetricsAssembler.applyingMetricReads"),
-            "RuntimeStatusReader should collect data directory metric reads and delegate RuntimeStatus mutation policy to RuntimeControl"
+            "RuntimeStatusReader should collect data directory metric reads and delegate PlatformState mutation policy to RuntimeControl"
         )
         for token in [
             "next.dataStorage",
@@ -2793,7 +2795,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeStatusReaderUsesGuestControlForProductServices() throws {
+    func testPlatformStateReaderDoesNotAggregateRuntimeProductServices() throws {
         let readerText = try String(
             contentsOf: packageRoot().appendingPathComponent(
                 "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeStatusReader.swift"
@@ -2801,13 +2803,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(
+        XCTAssertFalse(
             readerText.contains("gateway.stackStatus()"),
-            "RuntimeStatusReader should read product service liveness from Guest Control API"
+            "PlatformStateReader must not aggregate Runtime-owned product service liveness"
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             readerText.contains("RuntimeGuestServicesRead"),
-            "RuntimeStatusReader should preserve Guest service read state explicitly"
+            "PlatformStateReader must not carry Runtime product service read state"
         )
         XCTAssertTrue(
             readerText.contains("guestAddressProvider = guestAddressProvider ?? ownerReaders.guestAddressProvider"),
@@ -2817,11 +2819,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             readerText.contains("guestAddressProvider.readGuestAddress()"),
             "RuntimeStatusReader should call the Guest address provider before Guest Control API reads"
         )
-        XCTAssertTrue(
-            readerText.contains("redisRelayStatusRead(vmIP: guestAddressRead.loadedAddress)")
-                && readerText.contains("guestControlGateway(baseURL).redisRelayStatus()"),
-            "RuntimeStatusReader should read Guest-owned Redis relay status through Guest Control API"
-        )
         for token in [
             "containerServices",
             "composeServices",
@@ -2829,6 +2826,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "serviceStackStatus",
             "runtime-observation.json",
             "RuntimeRedisRelayStatusReader(",
+            "redisRelayStatusRead(",
+            ".redisRelayStatus()",
             "paths.redisRelayStatus",
             "paths.vmIPFile",
             "RuntimeVMIPFileGuestAddressProvider(",
@@ -3063,17 +3062,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
-    func testRuntimeControlOverviewAssemblerDoesNotMutateStatusObservation() throws {
-        let file = packageRoot()
-            .appendingPathComponent("Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlOverviewAssembler.swift")
-        let text = try String(contentsOf: file, encoding: .utf8)
-
-        XCTAssertFalse(
-            text.contains("status.vitalDBObservation ="),
-            "RuntimeControl overview must carry VitalDB observation through explicit overview fields, not by mutating status"
-        )
-    }
-
     func testPresentationDoesNotAnnotateRuntimeStatusWithSyntheticRuntimeControlState() throws {
         let root = packageRoot()
         XCTAssertFalse(
@@ -3084,7 +3072,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                     )
                     .path
             ),
-            "Presentation must not create RuntimeStatus runtimeControl fields; host/read contracts should provide state explicitly"
+            "Presentation must not create PlatformState runtimeControl fields; host/read contracts should provide state explicitly"
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
@@ -3102,7 +3090,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             )
         }
         let hostHandlerFile = root
-            .appendingPathComponent("Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlAPIHandler.swift")
+            .appendingPathComponent("Sources/Hosts/MacPlatformAgent/MacRuntimeControlAPIHandler.swift")
         let hostHandlerText = try String(contentsOf: hostHandlerFile, encoding: .utf8)
         XCTAssertTrue(
             hostHandlerText.contains("RuntimeControlLocalAPIStatusAssembler.applyingLocalAPIStatus"),
@@ -3119,7 +3107,57 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             ] {
                 XCTAssertFalse(
                     text.contains(token),
-                    "Presentation must not mutate RuntimeStatus runtimeControl state: \(token) in \(file.path)"
+                    "Presentation must not mutate PlatformState runtimeControl state: \(token) in \(file.path)"
+                )
+            }
+        }
+    }
+
+    func testRuntimeControlOverviewHostAggregateIsRemoved() throws {
+        let root = packageRoot()
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: root
+                    .appendingPathComponent(
+                        "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlOverviewAssembler.swift"
+                    )
+                    .path
+            )
+        )
+        let routes = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlAPIEndpointRouting.swift"
+            ),
+            encoding: .utf8
+        )
+        let contracts = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
+            ),
+            encoding: .utf8
+        )
+        XCTAssertFalse(routes.contains("/runtime/overview"))
+        XCTAssertFalse(contracts.contains("struct RuntimeControlOverview"))
+    }
+
+    func testHostConfigureDoesNotOwnRedisRelaySettings() throws {
+        let root = packageRoot()
+        let writer = root.appendingPathComponent(
+            "Sources/Hosts/CLI/ProcessBoundary/RuntimeRedisRelayConfigurationWriter.swift"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: writer.path))
+
+        let sourceRoot = root.appendingPathComponent("Sources")
+        for file in try swiftFiles(root: sourceRoot) {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for forbidden in [
+                "--redis-relay-settings-file",
+                "writeRedisRelayConfiguration",
+                "writeRedisRelaySettingsFile",
+            ] {
+                XCTAssertFalse(
+                    text.contains(forbidden),
+                    "Host configuration must consume the Runtime owner API, not write Redis Relay state: \(forbidden) in \(file.path)"
                 )
             }
         }
@@ -3169,12 +3207,12 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 formatterText.contains(token),
-                "RuntimeStatus operation/progress fields are legacy diagnostics and must not drive presentation: \(token)"
+                "PlatformState operation/progress fields are legacy diagnostics and must not drive presentation: \(token)"
             )
         }
         XCTAssertFalse(
             refresherText.contains("progressDisplayMessage"),
-            "RuntimeStatusRefresher must not expose a presentation hook that derives operation detail from RuntimeStatus.progress"
+            "RuntimeStatusRefresher must not expose a presentation hook that derives operation detail from PlatformState.progress"
         )
         for token in [
             "synchronizeFileBackedOperation",
@@ -3182,12 +3220,12 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 refresherText.contains(token),
-                "RuntimeStatusRefresher must present explicit RuntimeOperationState, not file-backed progress/status artifacts: \(token)"
+                "RuntimeStatusRefresher must present explicit PlatformOperationState, not file-backed progress/status artifacts: \(token)"
             )
         }
         XCTAssertTrue(
             refresherText.contains("includeOperationStatePresentation"),
-            "RuntimeStatusRefresher should make operation detail presentation depend on explicit RuntimeOperationState"
+            "RuntimeStatusRefresher should make operation detail presentation depend on explicit PlatformOperationState"
         )
         for token in [
             "status.operation",
@@ -3197,7 +3235,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 devConsoleText.contains(token),
-                "Runtime Control Dev Console must not display legacy RuntimeStatus operation/progress owner fields: \(token)"
+                "Runtime Control Dev Console must not display legacy PlatformState operation/progress owner fields: \(token)"
             )
         }
     }
@@ -3217,19 +3255,19 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
         XCTAssertFalse(
             readWorkerText.contains("runtimeStatusUpdatedAt"),
-            "RuntimeOperationState reader must not expose legacy RuntimeStatus snapshot freshness"
+            "PlatformOperationState reader must not expose legacy PlatformState snapshot freshness"
         )
         XCTAssertFalse(
             readWorkerText.contains("loadOperationState(status:"),
-            "RuntimeOperationState reader must not accept RuntimeStatus as an input"
+            "PlatformOperationState reader must not accept PlatformState as an input"
         )
         XCTAssertFalse(
             readModelText.contains("runtimeStatusUpdatedAt"),
-            "RuntimeOperationState contract must not expose legacy RuntimeStatus snapshot freshness"
+            "PlatformOperationState contract must not expose legacy PlatformState snapshot freshness"
         )
         XCTAssertFalse(
             clientContractText.contains("loadOperationState(status:"),
-            "RuntimeControlClient operation-state contract must not accept RuntimeStatus as an input"
+            "RuntimeControlClient operation-state contract must not accept PlatformState as an input"
         )
     }
 
@@ -3252,32 +3290,34 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 text.contains(token),
-                "RuntimeStatus must not expose operation/progress/message/timestamp owner fields: \(token)"
+                "PlatformState must not expose operation/progress/message/timestamp owner fields: \(token)"
             )
         }
     }
 
-    func testMacHostRemoteConsoleStatusUsesExplicitLocalAPIReadContract() throws {
+    func testMacPlatformAgentOwnsLocalAPIStatusAndControlPanelDoesNotPublishIt() throws {
         let environmentFile = packageRoot()
             .appendingPathComponent("Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlEnvironment.swift")
         let environmentText = try String(contentsOf: environmentFile, encoding: .utf8)
+        let handlerFile = packageRoot()
+            .appendingPathComponent("Sources/Hosts/MacPlatformAgent/MacRuntimeControlAPIHandler.swift")
+        let handlerText = try String(contentsOf: handlerFile, encoding: .utf8)
 
         XCTAssertTrue(
-            environmentText.contains("RuntimeControlLocalAPIStatusRead.reachable"),
-            "Mac host environment should publish reachable local API state through the shared read contract"
+            handlerText.contains("RuntimeControlLocalAPIStatusRead.reachable"),
+            "The Platform Agent API handler should publish its reachable listener state through the shared read contract"
         )
-        XCTAssertTrue(
-            environmentText.contains("RuntimeControlLocalAPIStatusRead.failed"),
-            "Mac host environment should publish failed local API state through the shared read contract"
-        )
-        XCTAssertFalse(
-            environmentText.contains(#"updateRemoteConsoleStatus(http: "200""#),
-            "Mac host environment must not inject raw reachable HTTP strings into presentation state"
-        )
-        XCTAssertFalse(
-            environmentText.contains(#"updateRemoteConsoleStatus(http: "failed""#),
-            "Mac host environment must not inject raw failed HTTP strings into presentation state"
-        )
+        for token in [
+            "RuntimeControlLocalAPIStatusRead.reachable",
+            "RuntimeControlLocalAPIStatusRead.failed",
+            "updateRemoteConsoleStatus(",
+            "RuntimeControlLocalHTTPServer",
+        ] {
+            XCTAssertFalse(
+                environmentText.contains(token),
+                "The Control Panel is a Platform Agent consumer and must not publish listener state: \(token)"
+            )
+        }
     }
 
     func testRecorderSummaryPolicyUsesExplicitVitalDBObservationSnapshotInput() throws {
@@ -3480,7 +3520,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 assemblyText.contains(token),
-                "RuntimeStatus assembly must not expose owner document diagnostics as current RuntimeStatus: \(token)"
+                "PlatformState assembly must not expose owner document diagnostics as current PlatformState: \(token)"
             )
         }
         for token in [
@@ -3493,7 +3533,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 contractText.contains(token),
-                "RuntimeStatus contract must not carry owner document diagnostics: \(token)"
+                "PlatformState contract must not carry owner document diagnostics: \(token)"
             )
         }
     }
@@ -3507,13 +3547,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         let resourceReaderText = try String(
             contentsOf: packageRoot().appendingPathComponent(
-                "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeOperationStateResourceReader.swift"
+                "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/PlatformOperationStateResourceReader.swift"
             ),
             encoding: .utf8
         )
-        let environmentText = try String(
+        let platformAgentServiceText = try String(
             contentsOf: packageRoot().appendingPathComponent(
-                "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlEnvironment.swift"
+                "Sources/Hosts/MacPlatformAgent/MacPlatformAgentService.swift"
             ),
             encoding: .utf8
         )
@@ -3535,26 +3575,26 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
         XCTAssertTrue(
             readWorkerText.contains("RuntimeInstallOperationState.fromInstallStateRead"),
-            "RuntimeOperationState reader should map explicit install-state reads into the operation read model"
+            "PlatformOperationState reader should map explicit install-state reads into the operation read model"
         )
         XCTAssertTrue(
-            readWorkerText.contains("any RuntimeOperationStateResourceReading"),
-            "RuntimeOperationState reader should consume owner read results through a resource reader"
+            readWorkerText.contains("any PlatformOperationStateResourceReading"),
+            "PlatformOperationState reader should consume owner read results through a resource reader"
         )
         XCTAssertTrue(
             readWorkerText.contains("resourceReader.loadResourceSnapshot()"),
-            "RuntimeOperationState reader should consume one explicit resource snapshot"
+            "PlatformOperationState reader should consume one explicit resource snapshot"
         )
         XCTAssertTrue(
-            resourceReaderText.contains("struct RuntimeOperationStateResourceSnapshot"),
+            resourceReaderText.contains("struct PlatformOperationStateResourceSnapshot"),
             "Operation resource reader should expose a snapshot contract for operation-state resources"
         )
         XCTAssertTrue(
-            resourceReaderText.contains("func loadResourceSnapshot() -> RuntimeOperationStateResourceSnapshot"),
+            resourceReaderText.contains("func loadResourceSnapshot() -> PlatformOperationStateResourceSnapshot"),
             "Operation resource reader should provide one snapshot read for install and lease resources"
         )
         XCTAssertTrue(
-            resourceReaderText.contains("struct HostRuntimeOperationStateResourceReader"),
+            resourceReaderText.contains("struct HostPlatformOperationStateResourceReader"),
             "Host operation-state resource reader should own operation-state resource reads behind a Host contract"
         )
         XCTAssertTrue(
@@ -3584,13 +3624,12 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Operation resource reader must not select the file-backed operation lease adapter"
         )
         XCTAssertTrue(
-            environmentText.contains("let operationLeaseController = RuntimeControlOperationLeaseController()")
-                && environmentText.contains("operationLeaseReader: operationLeaseController"),
-            "Mac live composition should create a controller-owned operation lease owner and inject it into operation-state reads"
-        )
-        XCTAssertFalse(
-            environmentText.contains("JSONFileRuntimeOperationLeaseRepository("),
-            "Mac live composition must not use a file-backed operation lease owner for operation-state reads"
+            platformAgentServiceText.contains("let operationLeaseController = RuntimeControlOperationLeaseController(")
+                && platformAgentServiceText.contains("let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(")
+                && platformAgentServiceText.contains("url: installedPaths.runtimeOperationLease")
+                && platformAgentServiceText.contains("owner: operationLeaseOwner")
+                && platformAgentServiceText.contains("operationLeaseReader: operationLeaseController"),
+            "Mac live composition should expose the durable Platform operation owner through one controller"
         )
         for token in [
             "RuntimeInstallStateDocumentReader(",
@@ -3603,7 +3642,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 readWorkerText.contains(token),
-                "RuntimeOperationState reader must not directly know file-backed resource details: \(token)"
+                "PlatformOperationState reader must not directly know file-backed resource details: \(token)"
             )
         }
         XCTAssertTrue(
@@ -3634,22 +3673,22 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 readModelText.contains(token),
-                "RuntimeOperationState active operation must come from explicit operation lease, not install-state artifacts: \(token)"
+                "PlatformOperationState active operation must come from explicit operation lease, not install-state artifacts: \(token)"
             )
         }
         for token in [
-            "public let issue: RuntimeStatusReadIssue?",
-            "issue: RuntimeStatusReadIssue?",
-            #"RuntimeStatusReadIssue(source: "runtimeInstallState""#,
+            "public let issue: PlatformStateReadIssue?",
+            "issue: PlatformStateReadIssue?",
+            #"PlatformStateReadIssue(source: "runtimeInstallState""#,
         ] {
             XCTAssertFalse(
                 readModelText.contains(token) || resourceReaderText.contains(token),
-                "RuntimeInstallStateRead must not reuse RuntimeStatus diagnostics as operation-state contract: \(token)"
+                "RuntimeInstallStateRead must not reuse PlatformState diagnostics as operation-state contract: \(token)"
             )
         }
         XCTAssertFalse(
             readModelText.contains("fromRuntimeStatusInstallRead"),
-            "RuntimeInstallOperationState must not derive install state from RuntimeStatus"
+            "RuntimeInstallOperationState must not derive install state from PlatformState"
         )
         XCTAssertFalse(
             apiReadHandlerText.contains("client.loadOperationState(status:"),
@@ -3691,35 +3730,35 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         let macAPIHandlerText = try String(
             contentsOf: root.appendingPathComponent(
-                "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlAPIHandler.swift"
+                "Sources/Hosts/MacPlatformAgent/MacRuntimeControlAPIHandler.swift"
             ),
             encoding: .utf8
         )
         let macLocalAPIText = try String(
             contentsOf: root.appendingPathComponent(
-                "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlLocalAPI.swift"
+                "Sources/Hosts/MacPlatformAgent/MacRuntimeControlLocalAPI.swift"
             ),
             encoding: .utf8
         )
-        let macEnvironmentText = try String(
+        let macPlatformAgentServiceText = try String(
             contentsOf: root.appendingPathComponent(
-                "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlEnvironment.swift"
+                "Sources/Hosts/MacPlatformAgent/MacPlatformAgentService.swift"
             ),
             encoding: .utf8
         )
         let macLeaseControllerText = try String(
             contentsOf: root.appendingPathComponent(
-                "Sources/Hosts/MacControlPanel/Composition/RuntimeControlOperationLeaseController.swift"
+                "Sources/Hosts/MacPlatformAgent/RuntimeControlOperationLeaseController.swift"
             ),
             encoding: .utf8
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: root.appendingPathComponent(
                     "Sources/Adapters/Outbound/Persistence/JSONFileRuntimeOperationLeaseRepository.swift"
                 ).path
             ),
-            "File-backed operation lease owner implementation must not remain in production source"
+            "Platform operation lease owner must be durable across API and UI process restarts"
         )
 
         XCTAssertTrue(
@@ -3731,30 +3770,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Host CLI workflow composition should consume the injected operation lease owner factory"
         )
         XCTAssertTrue(
-            runtimeLifecycleText.contains("RuntimeControlAPIOperationLeaseOwner()"),
-            "Host CLI should use the Runtime Control API-backed operation lease owner"
+            runtimeLifecycleText.contains("JSONFileRuntimeOperationLeaseRepository(url: container.installedPaths.runtimeOperationLease)"),
+            "Host CLI should use the same durable Platform operation lease owner without requiring an API listener"
         )
-        for token in [
-            "JSONFileRuntimeOperationLeaseRepository(",
-            "installedPaths.runtimeOperationLease",
-        ] {
-            XCTAssertFalse(
-                operationsCompositionText.contains(token),
-                "Host CLI operation lease owner factory must not select file-backed state: \(token)"
-            )
-            XCTAssertFalse(
-                bundleCompositionText.contains(token),
-                "Runtime bundle workflow composition should use the centralized operation lease factory: \(token)"
-            )
-            XCTAssertFalse(
-                dataBackupCompositionText.contains(token),
-                "Runtime data backup composition should use the centralized operation lease factory: \(token)"
-            )
-            XCTAssertFalse(
-                runtimeLifecycleText.contains(token),
-                "RuntimeLifecycle default operation lease owner must not select file-backed state: \(token)"
-            )
-        }
+        XCTAssertFalse(operationsCompositionText.contains("JSONFileRuntimeOperationLeaseRepository("))
+        XCTAssertFalse(bundleCompositionText.contains("JSONFileRuntimeOperationLeaseRepository("))
+        XCTAssertFalse(dataBackupCompositionText.contains("JSONFileRuntimeOperationLeaseRepository("))
+        XCTAssertFalse(runtimeLifecycleText.contains("RuntimeControlAPIOperationLeaseOwner()"))
         XCTAssertTrue(bundleCompositionText.contains("runtimeOperationLeaseOwner().acquire"))
         XCTAssertTrue(bundleCompositionText.contains("runtimeOperationLeaseOwner().heartbeat"))
         XCTAssertTrue(bundleCompositionText.contains("runtimeOperationLeaseOwner().release"))
@@ -3772,10 +3794,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Mac Runtime Control API handler should delegate operation lease mutations through the dedicated lease mutation client"
         )
         XCTAssertTrue(
-            macEnvironmentText.contains("RuntimeControlOperationLeaseController()")
-                && macEnvironmentText.contains("operationLeaseReader: operationLeaseController")
-                && macEnvironmentText.contains("operationLeaseClient: operationLeaseController"),
-            "Mac local Runtime Control API should use one controller-owned operation lease owner for reads and mutations"
+            macPlatformAgentServiceText.contains("RuntimeControlOperationLeaseController(")
+                && macPlatformAgentServiceText.contains("let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(")
+                && macPlatformAgentServiceText.contains("url: installedPaths.runtimeOperationLease")
+                && macPlatformAgentServiceText.contains("owner: operationLeaseOwner")
+                && macPlatformAgentServiceText.contains("operationLeaseReader: operationLeaseController")
+                && macPlatformAgentServiceText.contains("operationLeaseClient: operationLeaseController"),
+            "Mac local Runtime Control API should expose the same durable operation owner for reads and mutations"
         )
         XCTAssertTrue(
             macLeaseControllerText.contains("final class RuntimeControlOperationLeaseController")
@@ -3783,17 +3808,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 && macLeaseControllerText.contains("RuntimeOperationLeaseMutationClient"),
             "Mac operation lease controller should implement the owner and mutation contracts directly"
         )
-        for token in [
-            "JSONFileRuntimeOperationLeaseRepository(",
-            "InstalledRuntimePaths.defaultInstalled.runtimeOperationLease",
-        ] {
-            XCTAssertFalse(
-                macAPIHandlerText.contains(token)
-                    || macLocalAPIText.contains(token)
-                    || macEnvironmentText.contains(token),
-                "Mac Runtime Control API composition must not select file-backed operation lease state: \(token)"
-            )
-        }
+        XCTAssertFalse(macAPIHandlerText.contains("JSONFileRuntimeOperationLeaseRepository("))
+        XCTAssertFalse(macLocalAPIText.contains("JSONFileRuntimeOperationLeaseRepository("))
     }
 
     func testCLIHostUsesGuestAddressProviderForGuestControlURL() throws {
@@ -3818,7 +3834,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
         XCTAssertTrue(lifecycleText.contains("let guestAddressProvider: any RuntimeGuestAddressProvider"))
         XCTAssertTrue(lifecycleText.contains("self.guestAddressProvider = container.guestAddressProvider"))
-        XCTAssertTrue(lifecycleCompositionText.contains("guestAddressProvider ?? RuntimeControlAPIGuestAddressProvider()"))
+        XCTAssertTrue(lifecycleCompositionText.contains("guestAddressProvider ?? FileRuntimeGuestAddressResourceStore("))
+        XCTAssertTrue(lifecycleCompositionText.contains("documentURL: installedPaths.runtimeEndpoint"))
         XCTAssertTrue(serviceSupportText.contains("readGuestAddress()"))
         XCTAssertTrue(serviceSupportText.contains("guestAddressRead.loadedAddress"))
         for token in [
@@ -3839,8 +3856,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             )
         }
         XCTAssertFalse(
-            lifecycleCompositionText.contains("RuntimeBootstrapGuestAddressProvider.live("),
-            "RuntimeLifecycleComposition default Guest address provider must use the API owner provider"
+            lifecycleCompositionText.contains("RuntimeControlAPIGuestAddressProvider()"),
+            "RuntimeLifecycleComposition must read the durable Platform endpoint owner without requiring an API listener"
         )
     }
 
@@ -3962,17 +3979,17 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let text = try String(contentsOf: file, encoding: .utf8)
 
         XCTAssertFalse(
-            text.contains("@Published var status = RuntimeStatus()"),
+            text.contains("@Published var status = PlatformState()"),
             "RuntimeViewModel must initialize status from explicit host/client state, not from an empty placeholder"
         )
         XCTAssertTrue(
-            text.contains("@Published var status: RuntimeStatus"),
+            text.contains("@Published var status: PlatformState"),
             "RuntimeViewModel should keep status non-optional while requiring explicit initialization"
         )
         XCTAssertTrue(
             text.contains("let loadedSettings = initialSettings ?? controlClient.loadSettings()")
                 && text.contains("localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings")
-                && text.contains("initialStatus ?? controlClient.loadStatus(settings: displayRuntimeSettings)"),
+                && text.contains("initialStatus ?? controlClient.loadPlatformState(settings: displayRuntimeSettings)"),
             "RuntimeViewModel init must use explicit initialStatus or load status from the control client"
         )
         XCTAssertFalse(
@@ -4493,7 +4510,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         for token in [
             "StopRuntimeVMProcessUseCase().requestStopAndWait",
             "StopRuntimeVMProcessUseCase().waitUntilObservedProcessStopped",
-            "RuntimeControlAPIVMLifecycleOwner()",
+            "FileRuntimeVMLifecycleResourceStore(",
         ] {
             XCTAssertTrue(
                 hostText.contains(token),
@@ -5059,7 +5076,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         for token in [
             "statusReporter:",
-            "loadStatus:",
+            "loadPlatformState:",
             "loadStatusResult",
             "RuntimeGuestBootstrapResultReader",
             "loadBootstrapResultDocument",
@@ -5076,7 +5093,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             encoding: .utf8
         )
         for token in [
-            "loadStatus:",
+            "loadPlatformState:",
             "RuntimeStatusDocumentLoadResult",
             "RuntimeGuestBootstrapResultReader",
             "loadBootstrapResultDocument",

@@ -152,7 +152,7 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
     }
 
     public var runtimeOperationLease: URL {
-        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease)
+        hostRunDirectory.appendingPathComponent(RuntimeHostOwnerFileNames.operationLease)
     }
 
     public var runtimeEvents: URL {
@@ -181,6 +181,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var vmLifecycle: URL {
         hostRunDirectory.appendingPathComponent(RuntimeHostOwnerFileNames.vmLifecycle)
+    }
+
+    public var runtimeEndpoint: URL {
+        hostRunDirectory.appendingPathComponent(RuntimeHostOwnerFileNames.runtimeEndpoint)
     }
 
     public var runtimeObservation: URL {

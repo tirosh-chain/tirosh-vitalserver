@@ -115,7 +115,7 @@ Missing backup directory, decode failure, permission failure, Guest Control capa
 
 ### 5-1. Guest-owned restore
 
-Redis restore는 Guest-owned입니다. Host는 선택한 archive를 shared runtime data directory에 staging하고 Guest Control API `POST /v1/maintenance/redis-restore`에 guest mount path를 전달합니다. Guest Control API는 operation document를 만들고, archive 검증, Docker Compose stop, Redis volume 교체, Compose start를 Guest 내부 adapter로 실행한 뒤 operation result를 Guest/Postgres에 기록합니다.
+Redis restore는 Guest-owned입니다. Host는 선택한 archive를 shared runtime data directory에 staging하고 Guest Control API `POST /runtime/maintenance/redis-restore`에 guest mount path를 전달합니다. Guest Control API는 operation document를 만들고, archive 검증, Docker Compose stop, Redis volume 교체, Compose start를 Guest 내부 adapter로 실행한 뒤 operation result를 Guest/Postgres에 기록합니다.
 
 ### 5-2. Capability failure
 

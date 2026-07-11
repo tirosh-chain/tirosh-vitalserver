@@ -109,70 +109,12 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
             return XCTFail("Expected recovery plan, got \(decision)")
         }
         XCTAssertEqual(reason, "guest-http-503, guest-bootstrap-result-missing")
-        XCTAssertFalse(plan.restartVM)
-        XCTAssertFalse(plan.restartProxy)
-        XCTAssertTrue(plan.reconcileGuestStack)
-        XCTAssertEqual(plan.actionReasonCodes, ["guest-http-unhealthy-503"])
-    }
-
-    func testObservationSourceIssueBlocksAutomaticRecovery() {
-        let decision = RuntimeWatchdogRecoveryPolicy.decision(
-            snapshot: healthSnapshot(
-                failureReasons: [.guestServiceObservationMissing]
-            ),
-            hostProxyLivenessHTTP: "204",
-            automaticRecoveryEnabled: true
-        )
-
-        XCTAssertEqual(
-            decision,
-            .unrecoverable(reason: "guest-service-observation-missing")
-        )
-    }
-
-    func testLegacyContainerFailureDoesNotCreateRecoveryPlanWhenGuestServiceObservationIsMissing() {
-        let decision = RuntimeWatchdogRecoveryPolicy.decision(
-            snapshot: healthSnapshot(
-                vmLifecycle: RuntimeVMLifecycleDocument(
-                    state: .bootstrapping,
-                    startedAt: "2026-06-29T07:46:19Z",
-                    updatedAt: "2026-06-29T07:46:19Z",
-                    deadlineAt: "2000-01-01T00:00:00Z"
-                ),
-                hostProxyHTTP: "failed",
-                guestHTTP: "failed",
-                failureReasons: [
-                    .guestHTTPProbeFailed("failed"),
-                    .vmLifecycleDocumentStale,
-                    .hostProxyHTTP("failed"),
-                    .recorderIngressHTTP("failed"),
-                    .guestServiceObservationMissing,
-                ]
-            ),
-            hostProxyLivenessHTTP: "failed",
-            automaticRecoveryEnabled: true
-        )
-
-        XCTAssertEqual(
-            decision,
-            .unrecoverable(reason: "guest-service-observation-missing")
-        )
-    }
-
-    func testGuestServiceObservationReadIssueBlocksAutomaticRecovery() {
-        let decision = RuntimeWatchdogRecoveryPolicy.decision(
-            snapshot: healthSnapshot(
-                vmLifecycle: runningLifecycle(),
-                failureReasons: [.guestServiceObservationReadFailed("guest-control-timeout")]
-            ),
-            hostProxyLivenessHTTP: "204",
-            automaticRecoveryEnabled: true
-        )
-
-        XCTAssertEqual(
-            decision,
-            .unrecoverable(reason: "guest-service-observation-read-failed-guest-control-timeout")
-        )
+        XCTAssertTrue(plan.restartVM)
+        XCTAssertTrue(plan.restartProxy)
+        XCTAssertEqual(plan.actionReasonCodes, [
+            "guest-http-unhealthy-503",
+            "vm-restart-requires-proxy-restart",
+        ])
     }
 
     func testReportsUnrecoverableWhenInstalledArtifactsAreMissing() {
@@ -203,12 +145,12 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 reason: "host-proxy-http-502, guest-http-503",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
-                    restartVM: false,
-                    restartGuestLogSync: false,
-                    restartProxy: false,
-                    reconcileGuestStack: true,
+                    restartVM: true,
+                    restartGuestLogSync: true,
+                    restartProxy: true,
                     actionReasons: [
                         .guestHTTPUnhealthy("503"),
+                        .vmRestartRequiresProxyRestart,
                     ]
                 )
             )
@@ -295,7 +237,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
-    func testMissingVMLifecycleDoesNotBlockGuestComposeReconcile() {
+    func testMissingVMLifecycleBlocksRuntimeReadinessVMRestart() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 guestHTTP: "503",
@@ -307,19 +249,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             decision,
-            .recover(
-                reason: "guest-http-503",
-                plan: RuntimeRecoveryPlan(
-                    canRecover: true,
-                    restartVM: false,
-                    restartGuestLogSync: false,
-                    restartProxy: false,
-                    reconcileGuestStack: true,
-                    actionReasons: [
-                        .guestHTTPUnhealthy("503"),
-                    ]
-                )
-            )
+            .unrecoverable(reason: "recovery-blocked-missing-vm-lifecycle-for-vm-restart")
         )
     }
 

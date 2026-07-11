@@ -28,10 +28,13 @@ def main() -> None:
         default=os.environ.get("REDIS_RELAY_STATUS_OWNER_URL"),
     )
     args = parser.parse_args()
+    status_owner_url = args.status_owner_url.strip() if args.status_owner_url else ""
+    if not status_owner_url:
+        parser.error("--status-owner-url or REDIS_RELAY_STATUS_OWNER_URL is required")
     run_forever(
         config_path=Path(args.config_path),
         status_path=Path(args.status_path),
-        status_owner_url=args.status_owner_url,
+        status_owner_url=status_owner_url,
     )
 
 

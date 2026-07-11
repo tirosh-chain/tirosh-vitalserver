@@ -5,8 +5,8 @@ import Errors
 
 @MainActor
 public final class RuntimeViewModel: ObservableObject {
-    @Published var status: RuntimeStatus
-    @Published var operationState: RuntimeOperationState
+    @Published var status: PlatformState
+    @Published var operationState: PlatformOperationState
     @Published private(set) var runtimeSettings = RuntimeSettings()
     @Published private(set) var savedSettings = RuntimeSettings()
     @Published var settings = RuntimeSettings()
@@ -61,6 +61,20 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var vitalBeds = RuntimeVitalBedHistory()
     @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
+    @Published var redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
+        readState: .notRead,
+        document: nil,
+        readError: nil
+    )
+    @Published private(set) var runtimeRedisRelaySettingsRead = RuntimeRedisRelaySettingsRead(
+        state: .unavailable,
+        settings: nil,
+        readError: "Runtime Redis Relay settings have not been read."
+    )
+    @Published var runtimeStackStatus: RuntimeGuestControlStackStatus?
+    @Published var runtimeStackReadError: String?
+    @Published var runtimeServiceResources: [RuntimeGuestServiceResource] = []
+    @Published var runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = []
     @Published var isRunningVitalDBVisibilityAction = false
     @Published var vitalDBVisibilityActionMessage = ""
     @Published var remoteConsoleHTTP: String?
@@ -110,7 +124,7 @@ public final class RuntimeViewModel: ObservableObject {
         hostClient: any RuntimeHostClient,
         snapshotReader: (any RuntimeViewModelSnapshotReading)? = nil,
         initialSettings: RuntimeSettings? = nil,
-        initialStatus: RuntimeStatus? = nil,
+        initialStatus: PlatformState? = nil,
         localAPISettings: (any RuntimeControlLocalAPISettingsApplying)? = nil,
         healthNotifications: any HealthNotifying = NoopHealthNotifier(),
         nativeShell: any RuntimeNativeShell = NoopRuntimeNativeShell(),
@@ -130,7 +144,7 @@ public final class RuntimeViewModel: ObservableObject {
             displaySettings.runtimeAppliedSettings,
             fillMissing: initialSettings == nil
         )
-        let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: displayRuntimeSettings)
+        let resolvedStatus = initialStatus ?? controlClient.loadPlatformState(settings: displayRuntimeSettings)
         let resolvedOperationState = controlClient.loadOperationState()
         self.runtimeSettings = displayRuntimeSettings
         self.savedSettings = displaySettings
@@ -216,6 +230,8 @@ public final class RuntimeViewModel: ObservableObject {
     func refresh() async {
         await loadRuntimeSettings()
         applyStatusRefreshResult(await statusRefresher.refreshStatus(settings: runtimeSettings, isBusy: isBusy))
+        await refreshRuntimeStack()
+        await refreshRedisRelayStatus()
         await refreshReleaseInfo()
         await refreshBackupList()
         await refreshRuntimeEvents()
@@ -235,6 +251,48 @@ public final class RuntimeViewModel: ObservableObject {
     func refreshHealthStatus() async {
         applyStatusRefreshResult(await statusRefresher.refreshHealthStatus(settings: runtimeSettings, isBusy: isBusy))
         healthNotificationCoordinator.handleTransition(to: status)
+    }
+
+    func refreshRedisRelayStatus() async {
+        do {
+            redisRelayStatusRead = try await controlClient.loadRedisRelayStatus()
+        } catch {
+            redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
+                readState: .readFailed,
+                document: nil,
+                readError: error.localizedDescription
+            )
+        }
+    }
+
+    func refreshRuntimeStack() async {
+        do {
+            let stackStatus = try await controlClient.guestStackStatus()
+            var resources: [RuntimeGuestServiceResource] = []
+            var resourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = []
+            let services = Array(Set(stackStatus.services.map(\.service))).sorted()
+            for service in services {
+                do {
+                    resources.append(try await controlClient.guestServiceResource(service))
+                } catch {
+                    resourceReadIssues.append(
+                        RuntimeGuestServiceResourceReadIssue(
+                            service: service,
+                            message: error.localizedDescription
+                        )
+                    )
+                }
+            }
+            runtimeStackStatus = stackStatus
+            runtimeStackReadError = nil
+            runtimeServiceResources = resources
+            runtimeServiceResourceReadIssues = resourceReadIssues
+        } catch {
+            runtimeStackStatus = nil
+            runtimeStackReadError = error.localizedDescription
+            runtimeServiceResources = []
+            runtimeServiceResourceReadIssues = []
+        }
     }
 
     func healthCheck() async {
@@ -396,6 +454,8 @@ public final class RuntimeViewModel: ObservableObject {
         }
         var settingsToApply = settings
         settingsToApply.appliedVMSettings = nil
+        let redisRelaySettingsToApply = settingsToApply.redisRelay
+        let redisRelayChanged = redisRelaySettingsToApply != savedSettings.redisRelay
         let applySettingsResult = await runClientAction(
             preparingMessage: AppConstants.StatusText.settingsApplyPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -404,6 +464,12 @@ public final class RuntimeViewModel: ObservableObject {
             action: { try await self.controlClient.applySettings(settingsToApply) }
         )
         if applySettingsResult.isSuccess {
+            if redisRelayChanged {
+                guard await applyRuntimeRedisRelaySettings(redisRelaySettingsToApply) else {
+                    await refreshHealthStatus()
+                    return
+                }
+            }
             localAPISettings?.apply(settings: settingsToApply)
             settings.adminPassword = ""
             settings.changeAdminPassword = false
@@ -538,10 +604,94 @@ public final class RuntimeViewModel: ObservableObject {
 
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
-        let loadedSettings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
+        var loadedSettings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
+        do {
+            let read = try await controlClient.loadRuntimeRedisRelaySettings()
+            runtimeRedisRelaySettingsRead = read
+            if read.state == .loaded, let document = read.settings {
+                loadedSettings.redisRelay = Self.redisRelaySettings(from: document)
+            } else {
+                loadedSettings.redisRelay = RuntimeRedisRelaySettings()
+            }
+        } catch {
+            runtimeRedisRelaySettingsRead = RuntimeRedisRelaySettingsRead(
+                state: .failed,
+                settings: nil,
+                readError: error.localizedDescription
+            )
+            loadedSettings.redisRelay = RuntimeRedisRelaySettings()
+        }
         runtimeSettings = Self.settingsWithAdvertisedServiceURLPresets(loadedSettings.runtimeAppliedSettings, fillMissing: true)
         savedSettings = loadedSettings
         settings = loadedSettings
+    }
+
+    var canEditRuntimeRedisRelaySettings: Bool {
+        runtimeRedisRelaySettingsRead.state == .loaded
+    }
+
+    private func applyRuntimeRedisRelaySettings(_ settings: RuntimeRedisRelaySettings) async -> Bool {
+        guard canEditRuntimeRedisRelaySettings else {
+            message = runtimeRedisRelaySettingsRead.readError
+                ?? "Runtime Redis Relay settings owner is unavailable."
+            return false
+        }
+        do {
+            let operation = try await controlClient.applyRuntimeRedisRelaySettings(
+                Self.redisRelayApplyRequest(from: settings)
+            )
+            switch operation.state {
+            case .accepted, .running, .completed:
+                message = "Redis Relay settings operation \(operation.operationId) is \(operation.state.rawValue)."
+                return true
+            case .failed, .cancelled:
+                message = operation.failure?.message
+                    ?? "Redis Relay settings operation \(operation.operationId) \(operation.state.rawValue)."
+                return false
+            }
+        } catch {
+            message = "Redis Relay settings apply failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private static func redisRelaySettings(
+        from document: RuntimeRedisRelaySettingsReadDocument
+    ) -> RuntimeRedisRelaySettings {
+        RuntimeRedisRelaySettings(
+            enabled: document.enabled,
+            target: RuntimeRedisRelayTarget(
+                url: document.target.url,
+                username: document.target.username,
+                password: "",
+                clearPassword: false,
+                passwordConfigured: document.target.passwordConfigured,
+                tls: document.target.tls
+            ),
+            scope: document.scope == .waveformTrendOnly ? .waveformTrendOnly : .vitalReconstruction,
+            includeRecorderNetworkContext: document.includeRecorderNetworkContext,
+            intervalSeconds: document.intervalSeconds,
+            scanCount: document.scanCount
+        )
+    }
+
+    private static func redisRelayApplyRequest(
+        from settings: RuntimeRedisRelaySettings
+    ) -> RuntimeRedisRelaySettingsApplyRequest {
+        RuntimeRedisRelaySettingsApplyRequest(
+            enabled: settings.enabled,
+            target: RuntimeRedisRelayTargetApply(
+                url: settings.target.url,
+                username: settings.target.username,
+                password: settings.target.password.isEmpty ? nil : settings.target.password,
+                clearPassword: settings.target.clearPassword,
+                tls: settings.target.tls
+            ),
+            scope: settings.scope == .waveformTrendOnly ? .waveformTrendOnly : .vitalReconstruction,
+            includeRecorderNetworkContext: settings.includeRecorderNetworkContext,
+            intervalSeconds: settings.intervalSeconds,
+            scanCount: settings.scanCount
+        )
     }
 
     private func normalizeAdvertisedURLSettings() {
@@ -629,7 +779,7 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     private var canApplySettingsForCurrentConnection: Bool {
-        controlClient.capabilities.canEditVMResources
+        controlClient.capabilities.canEditRuntimeProviderResources
             || controlClient.capabilities.canEditNetworkExposure
             || controlClient.capabilities.canOpenLocalFiles
             || controlClient.capabilities.canResetAdminPassword

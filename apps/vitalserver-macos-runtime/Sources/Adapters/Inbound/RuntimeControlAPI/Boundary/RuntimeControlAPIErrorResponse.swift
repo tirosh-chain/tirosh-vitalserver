@@ -31,10 +31,10 @@ enum RuntimeControlHTTPErrorResponseMapper {
 
     private static func response(for error: RuntimeControlAPIReadHandlerError) -> RuntimeControlHTTPResponse {
         switch error {
-        case .hostAffordanceUnavailable:
+        case .platformAffordanceUnavailable:
             return RuntimeControlHTTPResponseFactory.error(
                 status: .notImplemented,
-                code: .hostAffordanceUnavailable,
+                code: .platformAffordanceUnavailable,
                 message: error.localizedDescription
             )
         case .unsupportedFileReference:

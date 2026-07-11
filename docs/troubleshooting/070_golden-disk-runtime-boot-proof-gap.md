@@ -91,7 +91,7 @@ tirosh-runtime-observation once
 3. `runtime-observation.json`이 없거나 invalid면 runtime observation writer/service 문제로 분리합니다.
 4. systemd service가 inactive/failed이면 edge HTTP 결과만으로 정상 boot로 보지 않습니다.
 5. launcher log의 kernel panic/Oops/RCU stall은 TS-069와 같은 terminal guest failure로 처리합니다.
-6. dev build에서 Product Lab 또는 다른 required product service만 누락된 runtime boot smoke 실패가 나오면 같은 run의 manifest timestamp와 Guest Control `/v1/stack/status` 응답을 비교합니다. 해당 service가 몇 초 뒤 등장했다면 late-ready service를 readiness window 동안 재조회해야 하는 검증 race입니다.
+6. dev build에서 Product Lab 또는 다른 required product service만 누락된 runtime boot smoke 실패가 나오면 같은 run의 manifest timestamp와 Guest Control `/runtime/stack` 응답을 비교합니다. 해당 service가 몇 초 뒤 등장했다면 late-ready service를 readiness window 동안 재조회해야 하는 검증 race입니다.
 
 ## Prevention
 
@@ -151,7 +151,7 @@ Runtime boot smoke는 최소 아래를 통과해야 합니다.
 | VM IP | non-loopback `vmIP` present |
 | HTTP | `/ready` and `/health` return 2xx |
 | systemd | docker, runtime-state, compose, observability, Guest Control API active |
-| product stack services | Guest Control `/v1/stack/status` reports the expected service set; no exited/restarting required service |
+| product stack services | Guest Control `/runtime/stack` reports the expected service set; no exited/restarting required service |
 | late-ready product services | expected service가 Guest Control stack status에 아직 없으면 readiness window 동안 재조회 |
 | disk health | root filesystem not read-only; no kernel disk error lines |
 | capabilities | `prepareUpdateShutdown`, `activateUpdate`, `redisBackup`, `redisRestore`, `repairDatastore` are explicit booleans |

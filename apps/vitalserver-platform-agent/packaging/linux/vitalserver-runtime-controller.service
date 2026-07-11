@@ -1,0 +1,25 @@
+[Unit]
+Description=VitalServer Runtime Controller
+After=docker.service network-online.target vitalserver-runtime-provider.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/vitalserver/current/runtime-bundle
+Environment=VITALSERVER_RUNTIME_CONTROLLER_SETTINGS_PATH=/etc/vitalserver/runtime-controller.toml
+EnvironmentFile=/etc/vitalserver/runtime.env
+ExecStart=/usr/bin/env python3 /opt/vitalserver/current/bin/vitalserver-runtime-controller.pyz --host 127.0.0.1 --port 18330
+Restart=on-failure
+RestartSec=5
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/etc/vitalserver /opt/vitalserver
+ReadWritePaths=/etc/vitalserver/runtime-config.json /etc/vitalserver/runtime-settings.json /etc/vitalserver/redis-relay/redis-relay.toml /etc/vitalserver/secrets/redis-relay /var/lib/vitalserver /var/log/vitalserver /run/docker.sock
+
+[Install]
+WantedBy=multi-user.target

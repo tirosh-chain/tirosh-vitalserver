@@ -8,7 +8,8 @@ from tirosh_guest_tools.application.contexts import RedisBackupOutcome
 from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.infrastructure.common import (
-    DEPLOY_DIR,
+    COMPOSE_ENVIRONMENT_FILE,
+    COMPOSE_FILE,
     MOUNT_POINT,
     PROJECT_NAME,
     RUNTIME_DIR,
@@ -57,10 +58,12 @@ def create_backup(archive: Path) -> None:
         [
             "docker",
             "compose",
+            "--env-file",
+            str(COMPOSE_ENVIRONMENT_FILE),
             "--project-name",
             PROJECT_NAME,
             "-f",
-            str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
+            str(COMPOSE_FILE),
             "exec",
             "-T",
             "redis",

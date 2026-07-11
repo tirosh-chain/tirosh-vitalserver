@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "listenAddress": "127.0.0.1:18331",
+  "apiToken": "replace-during-install",
+  "runtimeExecutable": "state/runtime-provider",
+  "runtimeEndpointDocument": "state/runtime-endpoint.json",
+  "runtimeProviderDocument": "state/runtime-provider.json",
+  "operationLeaseDocument": "state/operation-lease.json",
+  "runtimeControllerPort": 18330,
+  "pwaDirectory": "",
+  "platformServices": {
+    "runtime-provider": null,
+    "public-proxy": null,
+    "log-sync": null,
+    "sleep-prevention": null,
+    "watchdog": null
+  }
+}

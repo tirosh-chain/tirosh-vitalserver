@@ -4,15 +4,15 @@ import RuntimeControl
 public struct RuntimeStatusGuestReadinessPresentationPolicy {
     public init() {}
 
-    public func isWaitingForInitialGuestState(_ status: RuntimeStatus) -> Bool {
-        guard status.vmState == .starting else {
+    public func isWaitingForInitialGuestState(_ status: PlatformState) -> Bool {
+        guard status.runtimeProviderState == .starting else {
             return false
         }
-        return status.guestHTTP == RuntimeHTTPStatusText.missingVMIP
+        return status.runtimeControllerHTTP == RuntimeHTTPStatusText.missingVMIP
     }
 
     public func vmErrorSeverity(
-        status: RuntimeStatus,
+        status: PlatformState,
         vmErrors: [RuntimeVMError]
     ) -> RuntimeStatusReachabilityPolicy.Severity {
         guard isWaitingForInitialGuestState(status),
@@ -24,8 +24,8 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
     }
 
     public func guestHTTPValue(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         computedValue: RuntimeStatusHTTPValue,
         waitingText: String,
         staleText: String
@@ -34,7 +34,7 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
             return computedValue
         }
         guard isWaitingForInitialGuestState(status),
-              status.guestHTTP == RuntimeHTTPStatusText.missingVMIP
+              status.runtimeControllerHTTP == RuntimeHTTPStatusText.missingVMIP
         else {
             return computedValue
         }
@@ -50,7 +50,7 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
     }
 
     public func pendingGuestStateText(
-        status: RuntimeStatus,
+        status: PlatformState,
         waitingText: String,
         staleText _: String
     ) -> String {
@@ -69,8 +69,8 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
     }
 
     private func shouldPreserveComputedGuestHTTP(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState
+        status: PlatformState,
+        operationState: PlatformOperationState
     ) -> Bool {
         if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
             return true

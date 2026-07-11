@@ -78,7 +78,6 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
             hostProxyHTTP: observation.hostProxyHTTP,
             redisUIHTTP: observation.redisUIHTTP,
             swaggerUIHTTP: observation.swaggerUIHTTP,
-            guestServiceStatuses: observation.guestServiceStatuses,
             vitalDBObservation: observation.vitalDBObservation,
             configurationFailureReasons: [],
             proxyPortFailureReasons: []

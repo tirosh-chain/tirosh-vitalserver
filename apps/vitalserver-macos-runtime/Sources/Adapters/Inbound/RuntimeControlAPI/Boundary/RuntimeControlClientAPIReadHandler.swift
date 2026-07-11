@@ -13,21 +13,27 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         self.hostClient = hostClient
     }
 
-    public func loadCapabilities() async throws -> RuntimeControlCapabilities {
-        client.capabilities
+    public func loadPlatformCapabilities() async throws -> PlatformCapabilities {
+        PlatformCapabilities(client.capabilities)
     }
 
-    public func loadStatus() async throws -> RuntimeStatus {
+    public func loadRuntimeCapabilities() async throws -> RuntimeCapabilities {
+        try await client.runtimeCapabilities()
+    }
+
+    public func loadPlatformState() async throws -> PlatformState {
         let settings = client.loadSettings()
-        return client.loadStatus(settings: settings)
+        return client.loadPlatformState(settings: settings)
     }
 
-    public func loadOperationState() async throws -> RuntimeOperationState {
+    public func loadOperationState() async throws -> PlatformOperationState {
         client.loadOperationState()
     }
 
-    public func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
-        client.loadRuntimeEvents(query: query)
+    public func loadRuntimeOperationEvents(
+        query: RuntimeEventQuery
+    ) async throws -> RuntimeOperationEventHistory {
+        try await client.loadRuntimeOperationEvents(query: query)
     }
 
     public func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
@@ -52,13 +58,17 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadVitalDBRelationships()
     }
 
-    public func loadHealthStatus() async throws -> RuntimeStatus {
+    public func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult {
+        try await client.loadRedisRelayStatus()
+    }
+
+    public func loadHealthStatus() async throws -> PlatformState {
         let settings = client.loadSettings()
         return await client.loadHealthStatus(settings: settings)
     }
 
-    public func loadSettings() async throws -> RuntimeSettings {
-        client.loadSettings()
+    public func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead {
+        try await client.loadRuntimeProductSettings()
     }
 
     public func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
@@ -175,7 +185,7 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         let textResult = await hostClient.loadLogTextResult(
             sourceID: request.source,
@@ -189,29 +199,47 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func loadBackups() async throws -> [RuntimeBackup] {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         let settings = client.loadSettings()
-        let status = client.loadStatus(settings: settings)
+        let status = client.loadPlatformState(settings: settings)
         return try hostClient.loadBackups(latestBackupPath: status.latestBackup)
     }
 
     public func loadRedisBackups() async throws -> [RuntimeBackup] {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return try hostClient.loadRedisBackups()
     }
 
     public func loadRuntimeDataBackups() async throws -> [RuntimeBackup] {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return try hostClient.loadRuntimeDataBackups()
     }
 
-    public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.applySettings(settings))
+    public func applyRuntimeProductSettings(
+        _ settings: GuestRuntimeSettingsDocument
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await client.applyRuntimeProductSettings(settings)
+    }
+
+    public func applyRuntimeAdminPassword(
+        _ password: String
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await client.applyRuntimeAdminPassword(password)
+    }
+
+    public func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead {
+        try await client.loadRuntimeRedisRelaySettings()
+    }
+
+    public func applyRuntimeRedisRelaySettings(
+        _ settings: RuntimeRedisRelaySettingsApplyRequest
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await client.applyRuntimeRedisRelaySettings(settings)
     }
 
     public func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
@@ -228,49 +256,49 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func repairRuntimeServices() async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.repairRuntimeServices())
     }
 
     public func repairProxy() async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.repairProxy())
     }
 
     public func repairDatastore() async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.repairDatastore())
     }
 
     public func repairVMDisk() async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.repairVMDisk())
     }
 
     public func createRedisBackup() async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.createRedisBackup())
     }
 
     public func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.createRuntimeDataBackup())
     }
 
     public func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         let summary = hostClient.updateBundleSummaryResult(url: try localFileURL(bundle))
         return RuntimeUpdateBundleSummaryResponse(
@@ -281,58 +309,68 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.verifyUpdateBundle(url: try localFileURL(bundle)))
     }
 
     public func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.applyUpdateBundle(url: try localFileURL(bundle)))
     }
 
     public func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.rollbackRuntime(backupURL: try localFileURL(backup)))
     }
 
     public func restoreRedisBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.restoreRedisBackup(backupURL: try localFileURL(backup)))
     }
 
     public func restoreRuntimeDataBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.restoreRuntimeDataBackup(backupURL: try localFileURL(backup)))
     }
 
     public func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.deleteBackup(url: try localFileURL(backup)))
     }
 
     public func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return try await hostClient.exportLogs(to: try localFileURL(destination))
+    }
+
+    public func createPlatformSupportExport() async throws -> PlatformWorkflowOperation {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+        }
+        let directory = URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper/support", isDirectory: true)
+        return await createManagedPlatformSupportExport(in: directory) { destination in
+            try await hostClient.exportLogs(to: destination)
+        }
     }
 
     public func acquireOperationLease(
         _ request: RuntimeOperationLeaseAcquireRequest
     ) async throws -> RuntimeOperationLeaseMutationResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return try await hostClient.acquireOperationLease(request.document)
     }
@@ -341,7 +379,7 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         _ request: RuntimeOperationLeaseHeartbeatRequest
     ) async throws -> RuntimeOperationLeaseMutationResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return try await hostClient.heartbeatOperationLease(
             operationId: request.operationId,
@@ -354,7 +392,7 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         _ request: RuntimeOperationLeaseReleaseRequest
     ) async throws -> RuntimeOperationLeaseMutationResponse {
         guard let hostClient else {
-            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+            throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
         return try await hostClient.releaseOperationLease(operationId: request.operationId)
     }

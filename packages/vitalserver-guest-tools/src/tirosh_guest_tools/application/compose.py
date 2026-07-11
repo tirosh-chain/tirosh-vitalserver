@@ -22,7 +22,10 @@ from tirosh_guest_tools.domain.errors import (
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.domain.runtime_config import RuntimeConfig
 from tirosh_guest_tools.infrastructure.common import (
+    COMPOSE_RUNTIME_LIMITS_FILE,
     DEPLOY_DIR,
+    RUNTIME_CONFIG_FILE,
+    RUNTIME_SETTINGS_FILE,
     compose_command,
     mount_runtime_share,
     mount_vital_files_share,
@@ -181,7 +184,7 @@ def run_compose_action(action: ComposeAction | str) -> None:
 
 
 def load_runtime_env() -> RuntimeConfig:
-    config = load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)
+    config = load_config(RUNTIME_CONFIG_FILE)
     os.environ["VITALSERVER_REDIS_HOST"] = config.redis_host
     os.environ["VITALSERVER_REDIS_PORT"] = str(config.redis_port)
     os.environ["VITALSERVER_TRUST_PROXY"] = "1" if config.trust_proxy else "0"
@@ -189,7 +192,7 @@ def load_runtime_env() -> RuntimeConfig:
     os.environ["VITALSERVER_PUBLIC_PORT"] = str(config.public_port)
     os.environ["VITALSERVER_ADMIN_PASSWORD"] = config.admin_password
     os.environ["VITALSERVER_VITAL_FILES_DIR"] = config.vital_files_directory
-    settings_path = DEPLOY_DIR / RuntimeFileName.RUNTIME_SETTINGS.value
+    settings_path = RUNTIME_SETTINGS_FILE
     settings_document = read_json(settings_path)
     load_recorder_ingress_send_data_env(settings_document, settings_path)
     write_compose_runtime_limits(settings_document, settings_path)
@@ -407,7 +410,7 @@ def write_compose_runtime_limits(
     document: dict[str, Any],
     settings_path: os.PathLike[str] | str,
 ) -> None:
-    output_path = DEPLOY_DIR / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value
+    output_path = COMPOSE_RUNTIME_LIMITS_FILE
     enabled = bool_setting(
         document,
         settings_path,

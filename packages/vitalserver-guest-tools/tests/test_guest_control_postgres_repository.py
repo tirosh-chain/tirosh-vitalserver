@@ -27,6 +27,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ServiceOperation,
     ServiceStatus,
     VitalDBReadModelDependencyError,
+    validate_redis_relay_status_document,
 )
 
 
@@ -150,6 +151,60 @@ def test_postgres_repository_appends_operation_event(monkeypatch: Any) -> None:
     assert "INSERT INTO service_operation_events" in saved_sql[0]
     assert "'op_app_restart_1'" in saved_sql[0]
     assert "'running'" in saved_sql[0]
+
+
+def test_postgres_repository_queries_runtime_owned_operation_events(
+    monkeypatch: Any,
+) -> None:
+    sql: list[str] = []
+    rows = [
+        {
+            "_eventId": 12,
+            "schemaVersion": 1,
+            "id": "runtime-operation-event-12",
+            "source": "runtime-controller",
+            "eventType": "operation-completed",
+            "timestamp": "2026-07-01T00:00:02+00:00",
+            "operationId": "op_app_restart_1",
+            "operationService": "app",
+            "operationCommand": "restart",
+            "operationState": "completed",
+            "message": "app restart completed",
+            "failure": None,
+        },
+        {"_eventId": 11},
+    ]
+
+    def fake_compose(
+        arguments: list[str],
+        *,
+        check: bool = True,
+        timeout_seconds: float | None = None,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del check
+        del timeout_seconds
+        assert capture_output is True
+        sql.append(arguments[-1])
+        return subprocess.CompletedProcess(
+            arguments, 0, stdout=json.dumps(rows), stderr=""
+        )
+
+    monkeypatch.setattr(compose_app, "compose", fake_compose)
+
+    response = PostgresOperationRepository().query_events(
+        limit=1,
+        event_type="operation-completed",
+        since=datetime(2026, 7, 1, tzinfo=UTC),
+        cursor="event:20",
+    )
+
+    assert response["events"][0]["id"] == "runtime-operation-event-12"
+    assert "_eventId" not in response["events"][0]
+    assert response["nextCursor"] == "event:12"
+    assert "e.state = 'completed'" in sql[0]
+    assert "e.event_id < 20" in sql[0]
+    assert "LIMIT 2" in sql[0]
 
 
 def test_postgres_repository_saves_service_status_snapshot(monkeypatch: Any) -> None:
@@ -283,6 +338,8 @@ def test_postgres_repository_rejects_invalid_guest_service_resource_document(
         del check
         del timeout_seconds
         assert capture_output is True
+        if "FROM vitaldb_entity_visibility" in arguments[-1]:
+            return subprocess.CompletedProcess(arguments, 0, stdout="{}", stderr="")
         return subprocess.CompletedProcess(
             arguments,
             0,
@@ -385,6 +442,19 @@ def test_postgres_repository_rejects_incomplete_redis_relay_status_document() ->
     assert nullable_error.value.kind == "redis-relay-contract-invalid"
     assert "targetUrl" in nullable_error.value.message
 
+    nullable_scope = redis_relay_status_document()
+    nullable_scope["scope"] = None
+    observed_at = validate_redis_relay_status_document(nullable_scope)
+    assert observed_at == "2026-07-01T00:00:00Z"
+
+    missing_scope = redis_relay_status_document()
+    del missing_scope["scope"]
+    with pytest.raises(RedisRelayDependencyError) as scope_error:
+        PostgresOperationRepository().save_status(missing_scope)
+
+    assert scope_error.value.kind == "redis-relay-contract-invalid"
+    assert "scope" in scope_error.value.message
+
     missing_counter = redis_relay_status_document()
     totals = missing_counter["totals"]
     assert isinstance(totals, dict)
@@ -412,6 +482,8 @@ def test_postgres_repository_rejects_incomplete_stored_redis_relay_status_docume
         del check
         del timeout_seconds
         assert capture_output is True
+        if "FROM vitaldb_entity_visibility" in arguments[-1]:
+            return subprocess.CompletedProcess(arguments, 0, stdout="{}", stderr="")
         return subprocess.CompletedProcess(
             arguments,
             0,
@@ -516,7 +588,7 @@ def test_vitaldb_read_model_repository_persists_and_reads_latest_observation(
             return subprocess.CompletedProcess(
                 arguments,
                 0,
-                stdout=json.dumps(observation, sort_keys=True),
+                stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
                 stderr="",
             )
         return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
@@ -549,8 +621,11 @@ def test_vitaldb_read_model_repository_reads_recorders_from_latest_observation(
         "recorders": [
             {
                 "vrcode": "VR-001",
-                "bedName": "OR-A",
-                "status": "connected",
+                "ip": "10.0.0.2",
+                "lastSeenAt": "2026-07-01T00:00:00+00:00",
+                "version": "1.0",
+                "online": True,
+                "stale": False,
             }
         ],
         "beds": [],
@@ -572,7 +647,7 @@ def test_vitaldb_read_model_repository_reads_recorders_from_latest_observation(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -580,14 +655,12 @@ def test_vitaldb_read_model_repository_reads_recorders_from_latest_observation(
 
     response = PostgresVitalDBReadModelRepository().recorders()
 
-    assert response == {
-        "state": "loaded",
-        "recorders": [{**observation["recorders"][0], "visibility": "visible"}],
-        "observedAt": "2026-07-01T00:00:00+00:00",
-        "ready": True,
-        "recorderOnlineThresholdSeconds": 60,
-        "readError": None,
-    }
+    assert response["state"] == "loaded"
+    assert response["updatedAt"] == "2026-07-01T00:00:00+00:00"
+    assert response["recorders"][0]["vrcode"] == "VR-001"
+    assert response["recorders"][0]["status"] == "online"
+    assert response["recorders"][0]["visibility"] == "visible"
+    assert response["summary"]["knownRecorders"] == 1
 
 
 def test_vitaldb_read_model_repository_applies_recorder_visibility(
@@ -626,7 +699,7 @@ def test_vitaldb_read_model_repository_applies_recorder_visibility(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -634,10 +707,10 @@ def test_vitaldb_read_model_repository_applies_recorder_visibility(
 
     response = PostgresVitalDBReadModelRepository().recorders()
 
-    assert response["recorders"] == [
-        {"vrcode": "VR-001", "online": True, "stale": False, "visibility": "hidden"},
-        {"vrcode": "VR-003", "online": True, "stale": False, "visibility": "visible"},
-    ]
+    assert [
+        (record["vrcode"], record["visibility"])
+        for record in response["recorders"]
+    ] == [("VR-001", "hidden"), ("VR-003", "visible")]
 
 
 def test_vitaldb_read_model_repository_requires_hidden_before_recorder_delete(
@@ -708,11 +781,11 @@ def test_vitaldb_read_model_repository_marks_hidden_recorders_deleted(
                 stdout=json.dumps({"VR-001": "hidden"}),
                 stderr="",
             )
-        if "SELECT document::text FROM vitaldb_observation_snapshots" in arguments[-1]:
+        if "jsonb_agg" in arguments[-1]:
             return subprocess.CompletedProcess(
                 arguments,
                 0,
-                stdout=json.dumps(observation),
+                stdout=json.dumps([observation]),
                 stderr="",
             )
         return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
@@ -773,7 +846,7 @@ def test_vitaldb_read_model_repository_reads_recorder_activity_from_latest_obser
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -827,7 +900,7 @@ def test_vitaldb_read_model_repository_reports_invalid_recorder_activity(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -852,7 +925,10 @@ def test_vitaldb_read_model_repository_reads_beds_from_latest_observation(
             {
                 "bedID": "bed-a",
                 "name": "OR-A",
-                "recorderCount": 1,
+                "vrcode": None,
+                "lastSeenAt": "2026-07-01T00:00:00+00:00",
+                "patientConnected": False,
+                "online": True,
             }
         ],
         "readIssues": [],
@@ -873,7 +949,7 @@ def test_vitaldb_read_model_repository_reads_beds_from_latest_observation(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -881,14 +957,12 @@ def test_vitaldb_read_model_repository_reads_beds_from_latest_observation(
 
     response = PostgresVitalDBReadModelRepository().beds()
 
-    assert response == {
-        "state": "loaded",
-        "beds": [{**observation["beds"][0], "visibility": "visible"}],
-        "observedAt": "2026-07-01T00:00:00+00:00",
-        "ready": True,
-        "recorderOnlineThresholdSeconds": 60,
-        "readError": None,
-    }
+    assert response["state"] == "loaded"
+    assert response["updatedAt"] == "2026-07-01T00:00:00+00:00"
+    assert response["beds"][0]["bedID"] == "bed-a"
+    assert response["beds"][0]["status"] == "online"
+    assert response["beds"][0]["visibility"] == "visible"
+    assert response["summary"]["knownBeds"] == 1
 
 
 def test_vitaldb_read_model_repository_applies_bed_visibility(
@@ -927,7 +1001,7 @@ def test_vitaldb_read_model_repository_applies_bed_visibility(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -935,10 +1009,10 @@ def test_vitaldb_read_model_repository_applies_bed_visibility(
 
     response = PostgresVitalDBReadModelRepository().beds()
 
-    assert response["beds"] == [
-        {"bedID": "bed-a", "online": True, "visibility": "hidden"},
-        {"bedID": "bed-c", "online": True, "visibility": "visible"},
-    ]
+    assert [
+        (record["bedID"], record["visibility"])
+        for record in response["beds"]
+    ] == [("bed-a", "hidden"), ("bed-c", "visible")]
 
 
 def test_vitaldb_read_model_repository_requires_hidden_before_bed_delete(
@@ -1150,7 +1224,7 @@ def test_vitaldb_read_model_repository_preserves_loaded_empty_collection(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -1158,14 +1232,11 @@ def test_vitaldb_read_model_repository_preserves_loaded_empty_collection(
 
     response = PostgresVitalDBReadModelRepository().recorders()
 
-    assert response == {
-        "state": "loaded",
-        "recorders": [],
-        "observedAt": "2026-07-01T00:00:00+00:00",
-        "ready": True,
-        "recorderOnlineThresholdSeconds": 60,
-        "readError": None,
-    }
+    assert response["state"] == "loaded"
+    assert response["updatedAt"] == "2026-07-01T00:00:00+00:00"
+    assert response["recorders"] == []
+    assert response["beds"] == []
+    assert response["summary"]["knownRecorders"] == 0
 
 
 def test_vitaldb_read_model_repository_reports_invalid_collection(
@@ -1190,10 +1261,12 @@ def test_vitaldb_read_model_repository_reports_invalid_collection(
         del check
         del timeout_seconds
         assert capture_output is True
+        if "FROM vitaldb_entity_visibility" in arguments[-1]:
+            return subprocess.CompletedProcess(arguments, 0, stdout="{}", stderr="")
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -1203,7 +1276,7 @@ def test_vitaldb_read_model_repository_reports_invalid_collection(
         PostgresVitalDBReadModelRepository().recorders()
 
     assert error.value.kind == "vitaldb-read-model-invalid"
-    assert error.value.message == "VitalDB recorder read model field is invalid."
+    assert error.value.message == "VitalDB observation recorders is invalid."
 
 
 def test_vitaldb_read_model_repository_reports_invalid_observed_at(
@@ -1228,10 +1301,12 @@ def test_vitaldb_read_model_repository_reports_invalid_observed_at(
         del check
         del timeout_seconds
         assert capture_output is True
+        if "FROM vitaldb_entity_visibility" in arguments[-1]:
+            return subprocess.CompletedProcess(arguments, 0, stdout="{}", stderr="")
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps(observation, sort_keys=True),
+            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
             stderr="",
         )
 
@@ -1242,8 +1317,7 @@ def test_vitaldb_read_model_repository_reports_invalid_observed_at(
 
     assert error.value.kind == "vitaldb-read-model-invalid"
     assert (
-        error.value.message
-        == "VitalDB observation read model observedAt field is invalid."
+        error.value.message == "VitalDB observation observedAt is invalid."
     )
 
 

@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import type {
-  RuntimeApplySettingsRequest,
   RuntimeBackupRequest,
   RuntimeExportLogsRequest,
   RuntimeLabBedCreateRequest,
@@ -18,17 +17,12 @@ import type {
   VitalDBBedVisibilityRequest,
   VitalDBRecorderVisibilityRequest
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
-import { runtimeSettingsSchema } from "./runtimeControlSchemas";
 
 const nonEmptyString = z.string().trim().min(1);
 const fileReferenceSchema = z.object({
   kind: z.enum(["localPath", "uploadedArtifact", "remoteURL"]),
   value: nonEmptyString
 });
-
-export const runtimeApplySettingsRequestSchema = z.object({
-  settings: runtimeSettingsSchema
-}) satisfies z.ZodType<RuntimeApplySettingsRequest>;
 
 export const runtimeUninstallRequestSchema = z.object({
   mode: z.enum(["standard", "clean", "forceCleanUninstaller"])

@@ -3,18 +3,27 @@ guestHostname = "tirosh-vitalserver"
 [shares]
 runtimeTag = "tirosh"
 runtimeMount = "/mnt/tirosh"
+runtimeMountMode = "virtiofs"
 vitalFilesTag = "tirosh-vital-files"
 vitalFilesMount = "/mnt/tirosh-vital-files"
+vitalFilesMountMode = "virtiofs"
 
 [paths]
 deployDir = "/mnt/tirosh/deploy"
 runtimeDir = "/mnt/tirosh/run"
+composeFile = "/mnt/tirosh/deploy/compose.yaml"
+runtimeConfigFile = "/mnt/tirosh/deploy/runtime-config.json"
+runtimeSettingsFile = "/mnt/tirosh/deploy/runtime-settings.json"
+redisRelayConfigFile = "/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml"
+redisRelayPasswordFile = "/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-password"
+composeRuntimeLimitsFile = "/mnt/tirosh/deploy/compose.runtime-limits.yaml"
 guestToolsHome = "/opt/tirosh/guest-tools"
 pythonWheelDir = "/mnt/tirosh/deploy/python-wheels"
 commandBinDir = "/usr/local/bin"
 
 [compose]
 projectName = "vitalserver"
+environmentFile = "/mnt/tirosh/deploy/.env"
 stopTimeoutSeconds = 120
 
 [intervals]
@@ -30,7 +39,7 @@ retainedFiles = 5
 rotateCheckLines = 200
 
 [observability]
-vitaldbObserverUrl = "http://127.0.0.1:18084/api/v1/observations"
+vitaldbObserverUrl = "http://127.0.0.1:18084/api/runtime/observations"
 
 [logging]
 format = "json"

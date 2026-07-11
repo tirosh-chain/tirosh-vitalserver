@@ -27,15 +27,6 @@ public enum RuntimeHealthSnapshotPolicy {
             || !snapshot.vmErrors.isEmpty
             || !isSuccessfulHTTPStatus(snapshot.hostProxyHTTP)
             || hasGuestHTTPFailure(snapshot.guestHTTP)
-            || hasCriticalObservationFailure(snapshot)
-    }
-
-    private static func hasCriticalObservationFailure(_ snapshot: RuntimeHealthSnapshot) -> Bool {
-        !RuntimeObservationHealthPolicy.failureReasons(
-            guestServiceStatuses: snapshot.guestServiceStatuses,
-            guestServiceResources: snapshot.guestServiceResources,
-            guestServiceResourceReadIssues: snapshot.guestServiceResourceReadIssues
-        ).isEmpty
     }
 
     private static func hasGuestHTTPFailure(_ value: String) -> Bool {

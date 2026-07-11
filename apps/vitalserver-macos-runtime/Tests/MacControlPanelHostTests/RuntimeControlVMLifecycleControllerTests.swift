@@ -1,23 +1,24 @@
 import Contracts
 import Foundation
 @testable import MacControlPanelHost
+@testable import MacPlatformAgent
 import OutboundAdapters
 import XCTest
 
 @MainActor
 final class RuntimeControlVMLifecycleControllerTests: XCTestCase {
     func testLoadReportsMissingDistinctly() async throws {
-        let controller = RuntimeControlVMLifecycleController()
+        let controller = RuntimeControlVMLifecycleController(documentURL: temporaryDocumentURL())
 
         let state = try await controller.loadVMLifecycleResource()
 
         XCTAssertEqual(state.state, .missing)
         XCTAssertNil(state.document)
-        XCTAssertEqual(state.readError, "VM lifecycle document missing")
+        XCTAssertTrue(state.readError?.contains("lifecycle document missing") == true)
     }
 
     func testPutAndLoadPreserveExplicitDocument() async throws {
-        let controller = RuntimeControlVMLifecycleController()
+        let controller = RuntimeControlVMLifecycleController(documentURL: temporaryDocumentURL())
         let document = RuntimeVMLifecycleDocument(
             state: .bootstrapping,
             operation: .install,
@@ -33,5 +34,11 @@ final class RuntimeControlVMLifecycleControllerTests: XCTestCase {
 
         XCTAssertEqual(put, .loaded(document))
         XCTAssertEqual(loaded, .loaded(document))
+    }
+
+    private func temporaryDocumentURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("RuntimeControlVMLifecycleControllerTests-\(UUID().uuidString)")
+            .appendingPathComponent("runtime-provider-lifecycle.json")
     }
 }

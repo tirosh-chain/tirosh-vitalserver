@@ -4,12 +4,12 @@ import Application
 import Contracts
 import Errors
 
-protocol RuntimeStatusReading: Sendable {
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+protocol PlatformStateReading: Sendable {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState
 }
 
-struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
+struct SystemPlatformStateReader: PlatformStateReading, @unchecked Sendable {
     private let fileStore: RuntimeFileStore
     private let storageUsageProvider: RuntimeStorageUsageProviding
     private let guestAddressProvider: any RuntimeGuestAddressProvider
@@ -76,17 +76,17 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         self.runCommand = runCommand
     }
 
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
         withDataDirectoryMetrics(loadBaseStatus(), settings: settings)
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
         let status = loadBaseStatus()
         let reads = RuntimeHealthProbeReads(
-            guestHTTP: await guestHTTPRead(vmIP: status.vmIP),
-            hostProxyHTTP: await hostProxyHTTPRead(proxyPort: status.proxyPort),
-            redisUIHTTP: await redisUIHTTPRead(proxyPort: status.proxyPort),
-            swaggerUIHTTP: await swaggerUIHTTPRead(proxyPort: status.proxyPort)
+            guestHTTP: await guestHTTPRead(vmIP: status.runtimeEndpoint),
+            hostProxyHTTP: await hostProxyHTTPRead(proxyPort: status.publicProxyPort),
+            redisUIHTTP: nil,
+            swaggerUIHTTP: nil
         )
         return withDataDirectoryMetrics(
             RuntimeHealthStatusAssembler.applyingHealthProbeReads(to: status, reads: reads),
@@ -109,7 +109,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             } ?? readiness.status
             return RuntimeHTTPStatusRead(
                 status: readiness.status,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "guestHTTP",
                     message: "guest control readiness failed: \(message)"
                 )
@@ -117,9 +117,9 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         } catch {
             return RuntimeHTTPStatusRead(
                 status: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: "guestHTTP",
-                    message: runtimeStatusGuestServicesReadErrorDescription(error)
+                    message: String(describing: error)
                 )
             )
         }
@@ -135,123 +135,18 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         )
     }
 
-    private func redisUIHTTPRead(proxyPort: Int?) async -> RuntimeHTTPStatusRead? {
-        guard let proxyPort else {
-            return nil
-        }
-        return await httpStatus(
-            source: "redisUIHTTP",
-            url: RuntimeControlClientConstants.Product.redisUIURL(proxyPort: proxyPort)
-        )
-    }
-
-    private func swaggerUIHTTPRead(proxyPort: Int?) async -> RuntimeHTTPStatusRead? {
-        guard let proxyPort else {
-            return nil
-        }
-        return await httpStatus(
-            source: "swaggerUIHTTP",
-            url: RuntimeControlClientConstants.Product.swaggerURL(proxyPort: proxyPort)
-        )
-    }
-
-    func loadBaseStatus() -> RuntimeStatus {
+    func loadBaseStatus() -> PlatformState {
         let liveDiagnostics = liveDiagnosticsReader.loadLiveDiagnostics()
         let guestAddressRead = guestAddressProvider.readGuestAddress()
         let vmLifecycleRead = vmLifecycleReader.loadVMLifecycleRead()
 
-        return RuntimeControlStatusAssembler.makeStatus(
-            redisRelayStatusRead: redisRelayStatusRead(vmIP: guestAddressRead.loadedAddress),
+        return PlatformStateAssembler.makePlatformState(
             proxyPortReadState: proxyPortReader.loadProxyPortReadState(),
             runtimeVersionRead: runtimeVersionReader.loadRuntimeVersionRead(),
             latestBackupRead: latestBackupReader.loadLatestBackupRead(),
-            guestServicesRead: guestServicesRead(
-                vmIP: guestAddressRead.loadedAddress
-            ),
             guestAddressRead: guestAddressRead,
             vmLifecycleRead: vmLifecycleRead,
             liveDiagnostics: liveDiagnostics
-        )
-    }
-
-    private func guestServicesRead(vmIP: String?) -> RuntimeGuestServicesRead {
-        guard let vmIP, !vmIP.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return .unavailable
-        }
-        let baseURL = RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: vmIP)
-        do {
-            let gateway = try guestControlGateway(baseURL)
-            let stackStatus = try gateway.stackStatus()
-            let statuses = stackStatus.services
-            let services = statuses.map(\.service)
-            let resourceRead = guestServiceResourcesRead(
-                services: services,
-                gateway: gateway
-            )
-            return .loaded(
-                services: services,
-                statuses: statuses,
-                resources: resourceRead.guestServiceResources,
-                resourceReadIssues: resourceRead.guestServiceResourceReadIssues,
-                probeErrors: stackStatus.probeErrors,
-                cpuUsagePercent: stackStatus.cpuUsagePercent,
-                memory: stackStatus.memory,
-                systemDisk: stackStatus.systemDisk
-            )
-        } catch {
-            return .failed(runtimeStatusGuestServicesReadErrorDescription(error))
-        }
-    }
-
-    private func redisRelayStatusRead(vmIP: String?) -> RuntimeRedisRelayStatusRead {
-        guard let vmIP, !vmIP.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return RuntimeRedisRelayStatusRead(document: nil, error: nil, issue: nil)
-        }
-        let baseURL = RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: vmIP)
-        do {
-            let read = try guestControlGateway(baseURL).redisRelayStatus()
-            switch read.readState {
-            case .loaded:
-                return RuntimeRedisRelayStatusRead(document: read.document, error: nil, issue: nil)
-            case .notRead:
-                return RuntimeRedisRelayStatusRead(document: nil, error: nil, issue: nil)
-            case .invalidResponse, .readFailed:
-                let message = read.readError ?? "redis relay status read failed state=\(read.readState.rawValue)"
-                return RuntimeRedisRelayStatusRead(
-                    document: nil,
-                    error: message,
-                    issue: RuntimeStatusReadIssue(source: "redisRelayStatus", message: message)
-                )
-            }
-        } catch {
-            let message = runtimeStatusGuestServicesReadErrorDescription(error)
-            return RuntimeRedisRelayStatusRead(
-                document: nil,
-                error: message,
-                issue: RuntimeStatusReadIssue(source: "redisRelayStatus", message: message)
-            )
-        }
-    }
-
-    private func guestServiceResourcesRead(
-        services: [String],
-        gateway: RuntimeGuestControlGateway
-    ) -> RuntimeGuestServiceResourcesRead {
-        var guestServiceResources: [RuntimeGuestServiceResource] = []
-        var guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = []
-        for service in services {
-            do {
-                guestServiceResources.append(try gateway.serviceResource(service))
-            } catch {
-                guestServiceResourceReadIssues.append(RuntimeGuestServiceResourceReadIssue(
-                    service: service,
-                    message: runtimeStatusGuestServicesReadErrorDescription(error)
-                ))
-            }
-        }
-        return RuntimeGuestServiceResourcesRead(
-            guestServiceResources: guestServiceResources,
-            guestServiceResourceReadIssues: guestServiceResourceReadIssues
         )
     }
 
@@ -264,7 +159,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         guard result.exitCode == 0 else {
             return RuntimeHTTPStatusRead(
                 status: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: source,
                     message: RuntimeProcessFailureMessageFormatter.message(
                         exitCode: result.exitCode,
@@ -279,13 +174,13 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         guard !code.isEmpty else {
             return RuntimeHTTPStatusRead(
                 status: nil,
-                issue: RuntimeStatusReadIssue(source: source, message: "empty HTTP status")
+                issue: PlatformStateReadIssue(source: source, message: "empty HTTP status")
             )
         }
         return RuntimeHTTPStatusRead(status: code, issue: nil)
     }
 
-    private func withDataDirectoryMetrics(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
+    private func withDataDirectoryMetrics(_ status: PlatformState, settings: RuntimeSettings) -> PlatformState {
         RuntimeDataDirectoryMetricsAssembler.applyingMetricReads(
             to: status,
             reads: dataDirectoryMetricReads(settings: settings)
@@ -309,13 +204,4 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         )
     }
 
-}
-
-private struct RuntimeGuestServiceResourcesRead {
-    let guestServiceResources: [RuntimeGuestServiceResource]
-    let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
-}
-
-private func runtimeStatusGuestServicesReadErrorDescription(_ error: Error) -> String {
-    return String(describing: error)
 }

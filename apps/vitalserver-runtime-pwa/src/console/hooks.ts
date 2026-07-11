@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useRuntimeControlGateway } from "@/console/runtimeControlGatewayContext";
 import { consoleQueryKeys } from "@/console/queryKeys";
@@ -9,7 +9,9 @@ import {
   updateBundleRequest
 } from "@/console/requestBuilders";
 import type {
-  RuntimeApplySettingsRequest,
+  RuntimeApplyProductSettingsRequest,
+  RuntimeAdminPasswordRequest,
+  RuntimeRedisRelaySettingsApplyRequest,
   RuntimeCommandResponse,
   RuntimeLabBedCreateRequest,
   RuntimeLabBedDeleteRequest,
@@ -23,7 +25,6 @@ import type {
   VitalDBRecorderVisibilityRequest,
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
-  runtimeApplySettingsRequestSchema,
   runtimeExportLogsRequestSchema,
   runtimeLabBedCreateRequestSchema,
   runtimeLabBedDeleteRequestSchema,
@@ -39,16 +40,57 @@ import {
   vitalDBRecorderVisibilityRequestSchema,
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas";
 
-export function useRuntimeOverview() {
+export function usePlatformState() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
-    queryKey: consoleQueryKeys.overview,
-    queryFn: () => runtimeControlGateway.getOverview(),
+    queryKey: consoleQueryKeys.platformState,
+    queryFn: () => runtimeControlGateway.getPlatformState(),
     refetchInterval: 2_000
   });
 }
 
-export function useRuntimeOperationState() {
+export function useRedisRelayStatus() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.redisRelayStatus,
+    queryFn: () => runtimeControlGateway.getRedisRelayStatus(),
+    refetchInterval: 2_000
+  });
+}
+
+export function useRuntimeRedisRelaySettings() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.redisRelaySettings,
+    queryFn: () => runtimeControlGateway.getRuntimeRedisRelaySettings()
+  });
+}
+
+export function useApplyRuntimeRedisRelaySettings() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RuntimeRedisRelaySettingsApplyRequest) =>
+      runtimeControlGateway.applyRuntimeRedisRelaySettings(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.redisRelaySettings
+      });
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.runtimeStack });
+    }
+  });
+}
+
+export function useLatestVitalDBObservation() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.vitalDBObservation,
+    queryFn: () => runtimeControlGateway.getLatestVitalDBObservation(),
+    refetchInterval: 5_000
+  });
+}
+
+export function usePlatformOperationState() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.operationState,
@@ -57,16 +99,53 @@ export function useRuntimeOperationState() {
   });
 }
 
-export function useGuestStackStatus() {
+export function usePlatformWorkflow() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
-    queryKey: consoleQueryKeys.guestStackStatus,
-    queryFn: () => runtimeControlGateway.getGuestStackStatus(),
+    queryKey: consoleQueryKeys.platformWorkflow,
+    queryFn: () => runtimeControlGateway.getPlatformWorkflow(),
     refetchInterval: 2_000
   });
 }
 
-export function useRuntimeCapabilities() {
+export function useCreatePlatformSupportExport() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => runtimeControlGateway.createPlatformSupportExport(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformWorkflow });
+    }
+  });
+}
+
+export function useRuntimeStack() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.runtimeStack,
+    queryFn: () => runtimeControlGateway.getRuntimeStack(),
+    refetchInterval: 2_000
+  });
+}
+
+export function useRuntimeServiceResources(services: string[]) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const uniqueServices = Array.from(new Set(services)).sort();
+  const results = useQueries({
+    queries: uniqueServices.map((service) => ({
+      queryKey: consoleQueryKeys.runtimeServiceResource(service),
+      queryFn: () => runtimeControlGateway.getGuestServiceResource(service),
+      refetchInterval: 2_000
+    }))
+  });
+  return uniqueServices.map((service, index) => ({
+    service,
+    resource: results[index]?.data,
+    error: results[index]?.error ?? null
+  }));
+}
+
+export function useControlCapabilities() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.capabilities,
@@ -88,22 +167,39 @@ export function useRuntimeEvents(query: {
   });
 }
 
-export function useRuntimeSettings() {
+export function useRuntimeProductSettings() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
-    queryKey: consoleQueryKeys.settings,
-    queryFn: () => runtimeControlGateway.getSettings(),
+    queryKey: consoleQueryKeys.runtimeProductSettings,
+    queryFn: () => runtimeControlGateway.getRuntimeProductSettings(),
     refetchInterval: 5_000
   });
 }
 
-export function useApplyRuntimeSettings() {
+export function useApplyRuntimeProductSettings() {
   const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (request: RuntimeApplySettingsRequest) =>
-      runtimeControlGateway.applySettings(
-        parseConsoleRequest(runtimeApplySettingsRequestSchema, request)
-      )
+    mutationFn: (request: RuntimeApplyProductSettingsRequest) =>
+      runtimeControlGateway.applyRuntimeProductSettings(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.runtimeProductSettings
+      });
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.runtimeStack });
+    }
+  });
+}
+
+export function useApplyRuntimeAdminPassword() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RuntimeAdminPasswordRequest) =>
+      runtimeControlGateway.applyRuntimeAdminPassword(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.runtimeStack });
+    }
   });
 }
 
@@ -378,17 +474,36 @@ export function useSummarizeUpdateBundle() {
 
 export function useVerifyUpdateBundle() {
   const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (path: string) =>
-      runtimeControlGateway.verifyUpdateBundle(updateBundleRequest(path))
+      runtimeControlGateway.verifyUpdateBundle(updateBundleRequest(path)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformWorkflow });
+    }
   });
 }
 
 export function useApplyUpdateBundle() {
   const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (path: string) =>
-      runtimeControlGateway.applyUpdateBundle(updateBundleRequest(path))
+      runtimeControlGateway.applyUpdateBundle(updateBundleRequest(path)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformWorkflow });
+    }
+  });
+}
+
+export function useRollbackRelease() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => runtimeControlGateway.rollbackRelease(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformWorkflow });
+    }
   });
 }
 

@@ -8,6 +8,8 @@ public enum RuntimeManagedServicePaths {
 
     public static func displayName(_ service: RuntimeManagedService) -> String {
         switch service {
+        case .platformAgent:
+            "Platform Agent"
         case .vm:
             "VM"
         case .proxy:

@@ -42,12 +42,11 @@ public struct RuntimeStatusActionNeededPolicy {
         self.vocabulary = vocabulary
     }
 
-    public func actionNeeded(status: RuntimeStatus) -> RuntimeStatusActionNeededDecision? {
-        if RuntimeReadinessPolicy.isReady(status) || isManagedOperationInProgress(status.runtimeState) {
+    public func actionNeeded(status: PlatformState) -> RuntimeStatusActionNeededDecision? {
+        if RuntimeReadinessPolicy.isReady(status) || isManagedOperationInProgress(status.platformHealth) {
             return nil
         }
         let installationState = status.runtimeInstallationState
-            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
         if installationState == .missing {
             return RuntimeStatusActionNeededDecision(
                 title: vocabulary.runtimeNotInstalledTitle,
@@ -63,8 +62,8 @@ public struct RuntimeStatusActionNeededPolicy {
             )
         }
 
-        let primaryReason = status.failureReasons.first { $0.domainSeverity == .critical }
-            ?? status.failureReasons.first
+        let primaryReason = status.healthIssues.first { $0.domainSeverity == .critical }
+            ?? status.healthIssues.first
         if let primaryReason {
             return RuntimeStatusActionNeededDecision(
                 title: userFacingProblemTitle(status),
@@ -79,9 +78,9 @@ public struct RuntimeStatusActionNeededPolicy {
         state == .installing || state == .initializing || state == .updating || state == .recovering
     }
 
-    private func userFacingProblemTitle(_ status: RuntimeStatus) -> String {
-        if !reachabilityPolicy.isSuccessfulHTTPStatus(status.guestHTTP)
-            || !reachabilityPolicy.isSuccessfulHTTPStatus(status.hostProxyHTTP) {
+    private func userFacingProblemTitle(_ status: PlatformState) -> String {
+        if !reachabilityPolicy.isSuccessfulHTTPStatus(status.runtimeControllerHTTP)
+            || !reachabilityPolicy.isSuccessfulHTTPStatus(status.publicProxyHTTP) {
             return vocabulary.vitalServerUnavailableTitle
         }
         return vocabulary.vitalServerNeedsAttentionTitle

@@ -15,14 +15,14 @@ Initial Guest endpoints:
 ```text
 GET  /health
 GET  /ready
-GET  /v1/capabilities
-GET  /v1/services
-GET  /v1/services/{service}/status
-POST /v1/services/{service}/start
-POST /v1/services/{service}/stop
-POST /v1/services/{service}/restart
-POST /v1/stack/reconcile
-GET  /v1/operations/{operationId}
+GET  /runtime/capabilities
+GET  /runtime/services
+GET  /runtime/services/{service}/status
+POST /runtime/services/{service}/start
+POST /runtime/services/{service}/stop
+POST /runtime/services/{service}/restart
+POST /runtime/stack/reconcile
+GET  /runtime/operations/{operationId}
 ```
 
 ## 2. Current Implementation
@@ -46,11 +46,11 @@ Host now has a Guest Control API consumer boundary for product service start, st
 Host-facing entry points:
 
 ```text
-GET  /runtime/guest/services
-GET  /runtime/guest/services/{service}/status
-POST /runtime/guest/services/start
-POST /runtime/guest/services/stop
-POST /runtime/guest/services/restart
+GET  /runtime/services
+GET  /runtime/services/{service}/status
+POST /runtime/services/{service}/start
+POST /runtime/services/{service}/stop
+POST /runtime/services/{service}/restart
 vitalserver-vm runtime guest-service-start <service> [--guest-control-url <url>]
 vitalserver-vm runtime guest-service-stop <service> [--guest-control-url <url>]
 vitalserver-vm runtime guest-service-restart <service> [--guest-control-url <url>]
@@ -65,15 +65,18 @@ API and they are not the product service control path. Product service actions
 go through Guest Control so Docker/Compose state and operation state stay
 Guest-owned.
 
-Runtime Control capabilities preserve the same ownership split.
-`canControlRuntimeServices` is the Host maintenance capability for settings,
-recovery, backup/restore, and VM/proxy/watchdog lifecycle work.
-`canControlGuestServices` is the product service control capability for Guest
-Control start/stop/restart operations.
+Runtime Control capabilities preserve the same ownership split. Platform
+maintenance booleans are served only by `GET /platform/capabilities`.
+`GET /runtime/capabilities` passes through the Runtime Controller-owned
+`schemaVersion` and capability identifiers from Guest Control. Product service
+control requires `services:start`, `services:stop`, and `services:restart`;
+Product Lab availability comes from Runtime-owned `lab:*` identifiers. The
+Platform Agent does not advertise those product capabilities on behalf of the
+Runtime Controller.
 
 Guest maintenance capability checks also consume Guest Control API directly.
 Host update, Redis backup/restore, and datastore repair preflight checks read
-`GET /v1/capabilities` and map `RuntimeGuestCapabilityRequirement` to explicit
+`GET /runtime/capabilities` and map `RuntimeGuestCapabilityRequirement` to explicit
 Guest Control capability names such as `maintenance:update-shutdown:create`.
 They must not read `runtime-observation.json.capabilities` as the current capability
 source. Runtime-state documents do not carry capability state in v2.
@@ -84,27 +87,27 @@ service operations. Host maintenance commands such as proxy repair, datastore
 repair, VM disk repair, runtime service repair, and Redis backup are exposed
 through `RuntimeHostClient` so product clients do not look like service owners.
 
-### 2-5. Runtime status preserves Guest service read state
+### 2-5. Runtime clients read Guest service state from its owner
 
-Runtime status assembly now consumes Guest Control API service reads. `loaded`, `failed`, and `unavailable` are preserved as different states:
+`RuntimeStatus` is a Host/platform status contract and does not aggregate Guest service or product resource state. Runtime clients read `/runtime/stack` and the per-service resource endpoints directly. Those owner resources preserve `loaded`, `failed`, and `unavailable` as different meanings:
 
 | State | Meaning |
 |---|---|
 | `loaded` | Guest Control API returned the service list and matching service status documents |
-| `failed` | Guest Control API was expected but the read failed; the error is preserved in `guestServicesReadError` |
+| `failed` | The Runtime owner read failed and its typed read error is preserved by that resource contract |
 | `unavailable` | Guest service status was not read in this context |
 
-The Swift advanced service health presentation displays Guest product service statuses separately from Host launchd services and legacy VM diagnostics. A failed Guest Control read is shown as a failed read, not as an empty service list.
+The Swift and PWA presentations display Guest product service statuses separately from Host services. A failed Runtime owner read is shown as a failed read, not as an empty service list or a reconstructed `RuntimeStatus` field.
 
 Runtime Control product payloads must not expose `containerObservation.composeServices`, `composeServicesReadState`, or `composeServicesReadError`. `runtime-observation.json` also no longer carries `containerServices` or `vitalDBObservation`; product service state and product read-model state must come from Guest Control API, Product APIs, and Guest/Postgres read models rather than Host-readable runtime-state files.
 
-Runtime watchdog and recovery planning also consume explicit Guest Control service status. Guest service failures produce Guest-owned service failure reasons and plan Guest stack reconcile through the Guest Control API. Guest service status reads must remain explicit when they are missing, loaded, failed, or unavailable.
+Host watchdog and recovery planning do not consume Guest product service status or controller resources. They use Runtime Control readiness only as a platform boundary signal and may recover the Host-owned VM/proxy boundary; Guest service reconciliation belongs to the Runtime Controller. Product clients still preserve missing, loaded, failed, and unavailable service reads through the direct Runtime owner resources.
 
 Runtime health checks use Guest Control API `/ready` for Guest readiness. The
 Host addresses Guest APIs through a typed Guest address provider. The product
-path reads `GET /host/runtime/guest-address`; bootstrap `vm-ip` evidence may
+path reads `GET /platform/runtime-endpoint`; bootstrap `vm-ip` evidence may
 only publish an explicit owner mutation through
-`PUT /host/runtime/guest-address`. Runtime Control may use a loaded owner
+`PUT /platform/runtime-endpoint`. Runtime Control may use a loaded owner
 address for API routing and display, but `vm-ip` file absence, inspection
 failure, or decode/read failure must not create current health issues or failure
 reasons or become a routing fallback. `runtime-observation.json.vmIP` is not a
@@ -126,7 +129,7 @@ the Docker Compose product stack. The `tirosh-vitalserver-guest-control-api`
 systemd unit may depend on Docker and network readiness, but it must stay
 independent from `tirosh-vitalserver-compose.service`. Otherwise a slow or
 failed Compose startup can leave the Host with a VM IP but no `/ready` or
-`/v1/stack/status` endpoint, so Runtime Control can only report Guest Control
+`/runtime/stack` endpoint, so Runtime Control can only report Guest Control
 timeouts instead of observing or reconciling the stack.
 
 Host watchdog must also complete the Host-owned VM lifecycle when the Guest
@@ -151,22 +154,22 @@ in the watchdog managed-operation guard and must not be compared against
 
 Runtime Control status reads no longer read `runtime-observation.json` directly. The status reader uses the typed Guest address provider, not `runtime-status.json.vmIP`, to call Guest Control API. Runtime Control command execution uses the same Guest address provider when deriving a Guest Control base URL, unless the caller supplies an explicit override URL. It must not fall back to Guest runtime-state files or status snapshots for product service liveness, VM IP discovery, CPU, memory, disk status, or Guest API command routing. `RuntimeControlStatusAssembler` also does not accept a Guest runtime-state read input, so Host-readable runtime-state documents cannot be promoted into current RuntimeStatus resource fields through a test-only or alternate caller path.
 
-Host managed service liveness has the same owner rule. Runtime Control current status reads do not read `runtime-status.json`; status documents are diagnostics/export artifacts only. Current `runtimeState` and `failureReasons` are assembled from explicit current owner reads, not from the status snapshot. VM, proxy, and watchdog service loaded/read-failed state must come from live Host service reads. HTTP probe state (`guestHTTP`, `hostProxyHTTP`, Redis UI, Swagger UI) is also filled from explicit probe reads, not from `runtime-status.json` snapshots. Current VM IP display comes from a loaded Guest address provider result, current VM state/errors come from the Host-owned VM lifecycle document read, current Host proxy port display/probe input comes from the proxy launch daemon/config read, runtime version comes from `runtime-version.json`, and latest backup comes from the managed backup directory read. The concrete Host file readers for those Host-owned inputs live behind `RuntimeHostStatusOwnerReaders`; `SystemRuntimeStatusReader` consumes the typed read models and must not reopen status/progress/install documents or raw owner files as fallback state. RuntimeStatus does not carry active operation, workflow progress, or status document read/decode diagnostics; those belong to RuntimeOperationState, explicit operation-state/API owner contracts, and dedicated diagnostics/export paths. Presentation surfaces must not recreate operation messages or file diagnostics from legacy RuntimeStatus fields. Progress artifact absence or read/decode failure must not create current health issues. Proxy config/plist absence, read failure, or invalid port may leave `proxyPort` unavailable for display/probes, but it must not create current health issues or failure reasons. A stale or optimistic status document must not hide a launchd permission failure, missing service, current service stop, current probe failure, explicit API/owner Guest address unavailability, VM lifecycle read failure, runtime version read failure, or backup directory read failure.
+Host managed service liveness has the same owner rule. Runtime Control current status reads do not read `runtime-status.json`; status documents are diagnostics/export artifacts only. Current `runtimeState` and `failureReasons` are assembled from explicit current owner reads, not from the status snapshot. VM, proxy, and watchdog service loaded/read-failed state must come from live Host service reads. HTTP probe state (`guestHTTP`, `hostProxyHTTP`, Redis UI, Swagger UI) is also filled from explicit probe reads, not from `runtime-status.json` snapshots. Current VM IP display comes from a loaded Guest address provider result, current VM state/errors come from the Host-owned VM lifecycle document read, current Host proxy port display/probe input comes from the proxy launch daemon/config read, runtime version comes from `runtime-version.json`, and latest backup comes from the managed backup directory read. The concrete Host file readers for those Host-owned inputs live behind `RuntimeHostStatusOwnerReaders`; `SystemRuntimeStatusReader` consumes the typed read models and must not reopen status/progress/install documents or raw owner files as fallback state. RuntimeStatus does not carry active operation, workflow progress, or status document read/decode diagnostics; those belong to PlatformOperationState, explicit operation-state/API owner contracts, and dedicated diagnostics/export paths. Presentation surfaces must not recreate operation messages or file diagnostics from legacy RuntimeStatus fields. Progress artifact absence or read/decode failure must not create current health issues. Proxy config/plist absence, read failure, or invalid port may leave `proxyPort` unavailable for display/probes, but it must not create current health issues or failure reasons. A stale or optimistic status document must not hide a launchd permission failure, missing service, current service stop, current probe failure, explicit API/owner Guest address unavailability, VM lifecycle read failure, runtime version read failure, or backup directory read failure.
 
 Current Host status owner inputs are classified as follows:
 
 | Input | Current owner role | File status | Next migration direction |
 |---|---|---|---|
-| Guest address | Host-owned runtime/process address state | `GET`/`PUT /host/runtime/guest-address` is the owner contract; `RuntimeControlGuestAddressController` owns the current resource, starts missing at construction, and only an explicit owner mutation can make it loaded or failed. Runtime lifecycle and health checker compositions default to `RuntimeControlAPIGuestAddressProvider`; `vm-ip` remains bootstrap compatibility evidence and may be injected through `RuntimeBootstrapGuestAddressProvider` during explicit compatibility tests/tools only. `vitalserver-proxy-run` publishes a loaded bootstrap address to `PUT /host/runtime/guest-address`, then reads the routing address from `GET /host/runtime/guest-address`; Host proxy readiness comes from direct HTTP probes, not `runtime-observation.json.guestHTTP`. Publish failure is logged as owner mutation failure and must not become silent fallback state. CLI Guest Control URL resolution consumes the injected `RuntimeGuestAddressProvider` from `RuntimeLifecycle`; it does not select `vm-ip` directly in the service command path. `SystemRuntimeStatusReader` does not select it as fallback state | Move VM lifecycle reconciliation/address publication to `PUT /host/runtime/guest-address`; do not reintroduce `runtime-status.json.vmIP`, `runtime-observation.json.vmIP`, or raw `vm-ip` as current state owners |
-| VM lifecycle | Host-owned runtime/process state | `GET`/`PUT /host/runtime/vm-lifecycle` is the owner contract; `RuntimeControlVMLifecycleController` owns the current resource, starts missing at construction, watchdog/VM launcher/delegate writes use resource writers, and status/health consumers read `RuntimeVMLifecycleResourceState` through resource readers | Add richer VM reconciliation on top of this owner contract; do not reintroduce `vm-lifecycle.json` as current state |
+| Runtime endpoint | Platform-owned runtime/process address state | `vm/run/runtime-endpoint.json` is the durable owner document and `GET`/`PUT /platform/runtime-endpoint` exposes that owner contract. `vitalserver-proxy-run` promotes loaded bootstrap `vm-ip` evidence into the owner with an atomic replace and clears it when the proxy exits. Runtime lifecycle, health checker, command routing, and API consume `FileRuntimeGuestAddressResourceStore` or the API resource; UI/API listener availability is not required for Host operation. Proxy readiness comes from direct HTTP probes, not `runtime-observation.json.guestHTTP`. Missing, invalid, and read/write failure remain distinct | Implement the same Platform endpoint owner contract in Windows Service and Linux systemd adapters; do not reintroduce `runtime-status.json.vmIP` or `runtime-observation.json.vmIP` as current owners |
+| Runtime Provider lifecycle | Platform-owned runtime/process state | `GET`/`PUT /platform/runtime-provider` is the API contract. `FileRuntimeVMLifecycleResourceStore` owns the durable lifecycle document so the provider can publish before the UI/API process starts; controller, watchdog, VM launcher/delegate, and status/health readers consume the same repository contract. Missing, invalid, failed, and loaded stay distinct | Add richer provider reconciliation on top of this owner contract; do not use `runtime-status.json` or probe output as lifecycle state |
 | Host proxy port | Host launchd/config owner input | `RuntimeHostProxyPortReader` reads the proxy launch daemon plist as the explicit Host config source for current `proxyPort` display and probe routing. Missing, unreadable, invalid, and out-of-range values are preserved in `proxyPortReadState`; they do not become current health failure reasons and they do not fall back to `RuntimeSettings` or `runtime-status.json.proxyPort` | Promote to a Host API owner resource only if proxy config becomes mutable controller state; until then keep it as a typed Host config read and do not hide config read failures with settings fallback |
 | Runtime version | Applied package/runtime artifact | `runtime-version.json` is install/update artifact metadata, not health state | Keep as artifact read unless version ownership becomes a release registry API |
 | Latest backup | Managed backup inventory | Backup directory scan is operational metadata; read failure is a read issue only | Keep as explicit inventory read or expose through a backup inventory API |
 | Applied VM config / host time | Host-provided contract to VM/bootstrap | Contract files are inputs owned by Host, not RuntimeStatus owner state | Keep as Host contracts; do not use as status fallback |
 
-Watchdog active-operation suppression and Runtime Control active-operation display both avoid `runtime-status.json` as the current owner. Recovery is blocked only by the explicit Host operation lease exposed through RuntimeOperationState. `runtime-progress.json` is a diagnostics/export artifact for workflow step detail, not a RuntimeStatus field. Status documents, progress documents, and bootstrap proof files may describe what was last published, but they must not act as the active-operation lock, recreate operation ownership, or provide health/recovery state from stale file state.
+Watchdog active-operation suppression and Runtime Control active-operation display both avoid `runtime-status.json` as the current owner. Recovery is blocked only by the explicit Host operation lease exposed through PlatformOperationState. `runtime-progress.json` is a diagnostics/export artifact for workflow step detail, not a RuntimeStatus field. Status documents, progress documents, and bootstrap proof files may describe what was last published, but they must not act as the active-operation lock, recreate operation ownership, or provide health/recovery state from stale file state.
 
-Guest-owned resource usage is published by Guest Control `GET /v1/stack/status`. The stack status document carries explicit `cpuUsagePercent`, VM `memory`, VM `systemDisk`, and per-service container `memory` values. Helper Status UI consumes those fields as a service consumer; it must not infer VM or container resource usage from files, logs, container diagnostics fallback, or missing fields. Runtime Control status also reads GuestService controller resources through Guest Control `GET /v1/services/{service}/resource`, preserving desired state, observed state, conditions, and per-service resource read issues in `RuntimeStatus`.
+Guest-owned resource usage is published by Guest Control `GET /runtime/stack` and exposed to product clients as `GET /runtime/stack`. The stack status document carries explicit `cpuUsagePercent`, VM `memory`, VM `systemDisk`, and per-service container `memory` values. Helper Status UI consumes that owner resource directly; it must not infer VM or container resource usage from files, logs, container diagnostics fallback, missing fields, or `RuntimeStatus`. Per-service desired state, observed state, conditions, last operation, and read failures are read directly from `GET /runtime/services/{service}/resource`.
 
 Guest Control observation endpoints must keep their own probe budgets smaller
 than the Host read timeout. Required service-state reads may fail the endpoint
@@ -186,13 +189,13 @@ This relationship belongs in the Guest Control contract and tests. Operators
 should not have to memorize every UI polling interval, watchdog interval, and
 Guest probe timeout to decide whether a timeout is meaningful.
 
-RuntimeStatus preserves loaded stack-status optional probe failures as
-`guestStackProbeErrors`. That field is diagnostics evidence for UI and API
-clients. It is not `guestServicesReadError`, and it must not create runtime
+The Runtime-owned stack document preserves optional probe failures in its
+`probeErrors` field. That field is diagnostics evidence for UI and API clients;
+it is not a Host `RuntimeStatus` field and must not be promoted into Host
 failure reasons or watchdog recovery plans when service statuses are loaded and
 healthy.
 
-Swift and PWA Status recorder-ingress queue and detail rows consume explicit `recorderIngressStatusRead` documents sourced from Guest Control API `GET /v1/recorder-ingress/status`. `RuntimeStatus` does not publish `containerObservation`, so recorder-ingress display cannot fall back to the v1 container diagnostics payload.
+Swift and PWA Status recorder-ingress queue and detail rows consume explicit `recorderIngressStatusRead` documents sourced from Guest Control API `GET /runtime/recorder-ingress/status`. `RuntimeStatus` does not publish `containerObservation`, so recorder-ingress display cannot fall back to the v1 container diagnostics payload.
 
 The Host `runtime-status.json` document also does not carry
 `containerObservation`. `RuntimeContainerObservation` is no longer a production
@@ -201,52 +204,52 @@ result contract, and runtime-state file metadata is not part of current health.
 Missing or failed container observation reads also must not exist as typed Host
 `RuntimeFailureReason` cases; legacy raw codes decode as unknown.
 
-Health failure and recovery planning policies do not accept container or VitalDB diagnostics observations as decision inputs. Guest service status is the only product-service observation that can create service failure reasons or Guest stack reconcile decisions; container and VitalDB observations remain evidence for diagnostics, events, and product read-model surfaces.
+Host health failure and recovery planning policies do not accept Guest service, container, or VitalDB product observations as decision inputs. Those observations remain evidence for diagnostics, events, and product read-model surfaces, while product recovery belongs to the Runtime Controller.
 
-Recorder activity windows consume Guest/Postgres read models through Guest Control API `GET /v1/vitaldb/recorders/{vrcode}/activity`. Host SQLite activity buckets are transitional diagnostics only when a caller explicitly opts into diagnostics/migration projection mode; the live v2 path must not use Host SQLite to enrich Guest-owned recorder state. Host SQLite VitalDB projection reads live behind a dedicated diagnostics adapter, not inside the product observability reader or its product-facing initializer. Host status publishing also must not append VitalDB observations into the Host SQLite projection; Guest/Postgres owns the product read-model write path.
+Recorder activity windows consume Guest/Postgres read models through Guest Control API `GET /runtime/vitaldb/recorders/{vrcode}/activity`. Host SQLite activity buckets are transitional diagnostics only when a caller explicitly opts into diagnostics/migration projection mode; the live v2 path must not use Host SQLite to enrich Guest-owned recorder state. Host SQLite VitalDB projection reads live behind a dedicated diagnostics adapter, not inside the product observability reader or its product-facing initializer. Host status publishing also must not append VitalDB observations into the Host SQLite projection; Guest/Postgres owns the product read-model write path.
 
 The Host diagnostics projection adapter collects explicit projection reads only. It must not assemble product read models or become a fallback source of current product state; Contracts assemblers remain responsible for turning explicit reads into presentation/API read models.
 
-VitalDB observation reads may still appear in Host health snapshots and runtime events as explicit evidence. They must not create Host runtime failure reasons, watchdog recovery blockers, typed `RuntimeFailureReason` observation missing/read-failed/stale cases, a `runtime-status.json` contract field/current state, or a `RuntimeStatus.vitalDBObservation` product status field. Guest service status is the Host recovery authority for product service liveness; VitalDB observation state belongs to Guest/Product read-model surfaces.
+VitalDB observation reads may still appear in Host health snapshots and runtime events as explicit evidence. They must not create Host runtime failure reasons, watchdog recovery blockers, typed `RuntimeFailureReason` observation missing/read-failed/stale cases, a `runtime-status.json` contract field/current state, or a `RuntimeStatus.vitalDBObservation` product status field. Guest service and VitalDB state both belong to Runtime/Product owner surfaces and are not Host recovery authority.
 
 ### 2-6. Product Lab has a first-class API namespace
 
-Runtime v2 treats virtual recorder scenarios and `.vital` replay as Product Lab capability, not as a dev-only TestKit concern. Runtime Control API now reserves `/lab/*` for product-facing Lab contracts:
+Runtime v2 treats virtual recorder scenarios and `.vital` replay as Product Lab capability, not as a dev-only TestKit concern. Runtime Control API now reserves `/runtime/lab/*` for product-facing Lab contracts:
 
 ```text
-GET  /lab/scenarios
-POST /lab/sessions
-GET  /lab/sessions/{sessionId}
-POST /lab/sessions/{sessionId}/start
-POST /lab/sessions/{sessionId}/stop
-GET  /lab/beds
-POST /lab/beds/create
-POST /lab/recorders/create
-GET  /lab/recorders
-POST /lab/vital-files/replay
-POST /lab/vital-files/upload
+GET  /runtime/lab/scenarios
+POST /runtime/lab/sessions
+GET  /runtime/lab/sessions/{sessionId}
+POST /runtime/lab/sessions/{sessionId}/start
+POST /runtime/lab/sessions/{sessionId}/stop
+GET  /runtime/lab/beds
+POST /runtime/lab/beds/create
+POST /runtime/lab/recorders/create
+GET  /runtime/lab/recorders
+POST /runtime/lab/vital-files/replay
+POST /runtime/lab/vital-files/upload
 ```
 
 The Host contract explicitly returns `unavailable` when Guest Control or Product Lab is not reachable. Missing Lab backend, failed Lab reads, and empty scenario lists must remain different meanings.
 
 ### 2-7. Guest Control API mediates Product Lab execution
 
-Runtime v2 routes Product Lab execution through Guest Control API. Host Runtime Control clients call `/lab/*`, the Host adapter calls Guest Control `/v1/lab/*`, and the Guest adapter talks to the Product Lab service API as the implementation boundary.
+Runtime v2 routes Product Lab execution through Guest Control API. Host Runtime Control clients call `/runtime/lab/*`, the Host adapter calls Guest Control `/runtime/lab/*`, and the Guest adapter talks to the Product Lab service API as the implementation boundary.
 
 Guest Product Lab endpoints:
 
 ```text
-GET  /v1/lab/scenarios
-POST /v1/lab/sessions
-GET  /v1/lab/sessions/{sessionId}
-POST /v1/lab/sessions/{sessionId}/start
-POST /v1/lab/sessions/{sessionId}/stop
-GET  /v1/lab/beds
-POST /v1/lab/beds/create
-POST /v1/lab/recorders/create
-GET  /v1/lab/recorders
-POST /v1/lab/vital-files/replay
-POST /v1/lab/vital-files/upload
+GET  /runtime/lab/scenarios
+POST /runtime/lab/sessions
+GET  /runtime/lab/sessions/{sessionId}
+POST /runtime/lab/sessions/{sessionId}/start
+POST /runtime/lab/sessions/{sessionId}/stop
+GET  /runtime/lab/beds
+POST /runtime/lab/beds/create
+POST /runtime/lab/recorders/create
+GET  /runtime/lab/recorders
+POST /runtime/lab/vital-files/replay
+POST /runtime/lab/vital-files/upload
 ```
 
 Command-style Lab requests create persisted Guest Control operations using the same Postgres operation repository as service restart. Lab operation failures are saved as failed operations and returned through the Lab response `readError` instead of being converted into an empty scenario list or a successful stopped session.
@@ -255,15 +258,15 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 
 | Product Lab operation | Guest adapter target |
 |---|---|
-| Scenario list | `GET http://lab:8080/lab/scenarios` |
-| Bed read model | `GET http://lab:8080/lab/beds` |
-| Recorder read model | `GET http://lab:8080/lab/recorders` |
-| Create session | `POST http://lab:8080/lab/sessions` |
-| Read session | `GET http://lab:8080/lab/sessions/{sessionId}` |
-| Start session | `POST http://lab:8080/lab/sessions/{sessionId}/start` |
-| Stop session | `POST http://lab:8080/lab/sessions/{sessionId}/stop` |
-| `.vital` replay | `POST http://lab:8080/lab/vital-files/replay` |
-| `.vital` upload | `POST http://lab:8080/lab/vital-files/upload` |
+| Scenario list | `GET http://lab:8080/runtime/lab/scenarios` |
+| Bed read model | `GET http://lab:8080/runtime/lab/beds` |
+| Recorder read model | `GET http://lab:8080/runtime/lab/recorders` |
+| Create session | `POST http://lab:8080/runtime/lab/sessions` |
+| Read session | `GET http://lab:8080/runtime/lab/sessions/{sessionId}` |
+| Start session | `POST http://lab:8080/runtime/lab/sessions/{sessionId}/start` |
+| Stop session | `POST http://lab:8080/runtime/lab/sessions/{sessionId}/stop` |
+| `.vital` replay | `POST http://lab:8080/runtime/lab/vital-files/replay` |
+| `.vital` upload | `POST http://lab:8080/runtime/lab/vital-files/upload` |
 
 This makes Product Lab the product boundary and removes the TestKit adapter from the Guest Control Lab execution path.
 
@@ -283,8 +286,8 @@ recorders separately so Lab-managed virtual resources are visible without
 pretending they are VitalDB-observed resources before the upstream product
 read model reports them.
 
-VitalDB Recorder and Bed product reads are separate contracts. `/vitaldb/recorders`
-returns recorder history and recorder-linked summary fields; `/vitaldb/beds`
+VitalDB Recorder and Bed product reads are separate contracts. `/runtime/vitaldb/recorders`
+returns recorder history and recorder-linked summary fields; `/runtime/vitaldb/beds`
 returns `RuntimeVitalBedHistory` from the Guest/Postgres bed read document.
 The Beds tab must consume the Bed document directly, not slice `beds` out of
 recorder history. Bed hide/unhide/delete commands return the refreshed Bed
@@ -293,7 +296,7 @@ The Swift Helper ViewModel keeps `vitalBeds` as a distinct published read
 result; Recorder panels may link to beds for display, but they must read those
 links from the Bed read result rather than the Recorder history payload.
 
-CLI automation uses the same boundary. `vitalserver-vm runtime lab-*` commands call Guest Control `/v1/lab/*` and print the returned Product Lab contracts as JSON. The Host CLI must not read Lab fixture files, TestKit state files, or container-local process state to infer session state.
+CLI automation uses the same boundary. `vitalserver-vm runtime lab-*` commands call Guest Control `/runtime/lab/*` and print the returned Product Lab contracts as JSON. The Host CLI must not read Lab fixture files, TestKit state files, or container-local process state to infer session state.
 
 Swift Helper navigation now treats Lab as a primary product section. Observability and Logs move toward diagnostics/More surfaces, while Lab scenario creation, session control, and `.vital` replay use the Runtime Control Product Lab client contract instead of direct TestKit container calls.
 
@@ -313,7 +316,7 @@ without letting Lab infer or scan private host data.
 
 ### 3-1. Runtime smoke proves operation persistence
 
-Runtime boot smoke now uses Guest Control API for product service proof. The `compose-services` stage reads `GET /v1/stack/status` instead of `runtime-observation.json.containerServices`, and the `guest-control-api` stage checks Guest Control API readiness, capabilities, service listing, `app` status, `app` restart, stack reconcile, `/v1/operations/{operationId}` readback, Product Lab scenarios, Product Lab session create/start/stop operations, and Product Lab `.vital` replay request acceptance as part of the product runtime proof.
+Runtime boot smoke now uses Guest Control API for product service proof. The `compose-services` stage reads `GET /runtime/stack` instead of `runtime-observation.json.containerServices`, and the `guest-control-api` stage checks Guest Control API readiness, capabilities, service listing, `app` status, `app` restart, stack reconcile, `/runtime/operations/{operationId}` readback, Product Lab scenarios, Product Lab session create/start/stop operations, and Product Lab `.vital` replay request acceptance as part of the product runtime proof.
 
 ### 3-2. Runtime files are no longer the service control boundary
 
@@ -390,7 +393,7 @@ The remaining acceptance proof is an end-to-end VM smoke run. `make runtime/proo
 `make runtime/proof/no-v1-service-state` is the fast static cleanup proof. It checks that Host product service liveness and command routing use Guest Control API through explicit Guest address reads instead of `runtime-status.json.vmIP`, Runtime Control current runtimeState, failureReasons, VM IP, VM lifecycle state/errors, Host proxy port, runtime version, and latest backup use explicit owner reads instead of `runtime-status.json` snapshots, Runtime Control current status does not read `runtime-status.json`, active operation, progress, and status document diagnostics are absent from RuntimeStatus and Swift/PWA presentation consumers, progress document, Guest address, and proxy config failures do not become current status issues, Host managed service liveness and current HTTP probe state use explicit live reads instead of `runtime-status.json`, watchdog active-operation suppression uses operation leases only instead of `runtime-status.json`, `runtime-observation.json`, or `bootstrap-result.json`, Host runtime health does not consume `bootstrap-result.json` as current health state, `RuntimeContainerObservation` is not a production contract, `runtime-observation.json` no longer carries container service state, VitalDB observation state, or capability state, Host no longer keeps `RuntimeGuestRuntimeStatePolicy` or runtime-state freshness observation as a runtime-state guestHTTP/vmIP promotion path, host proxy does not read `runtime-observation.json` for routing readiness and uses explicit Guest address owner reads plus direct HTTP probes, devtools runtime wait reads the `vm-ip` bootstrap address and direct HTTP probes instead of `runtime-observation.json.vmIP` or `runtime-observation.json.guestHTTP`, dev `runtime/proxy/start` derives upstream from Runtime Control Guest address owner instead of reading `vm-ip` directly, `runtime-status.json` no longer carries container diagnostics evidence or a VitalDB observation contract field, `RuntimeStatus` no longer carries legacy VitalDB observation state, runtime boot smoke validates product services through Guest Control stack status, Redis backup has no request/result file bridge, `/dev/testkit` product surfaces are absent, runtime config no longer carries TestKit enablement, product packaging includes Lab and excludes TestKit runtime artifacts, VitalDB read-model contracts do not name Host SQLite as a product source, VitalDB Beds consume explicit Guest/Postgres Bed history documents instead of slicing recorder history, Host SQLite VitalDB projection reads require explicit diagnostics mode behind a dedicated diagnostics adapter, Host status publishing does not write VitalDB observations into Host SQLite, Host runtime health does not promote VitalDB read-model failures into recovery reasons, Host recorder-ingress status reads go through Guest Control API only, and whole-stack start/stop plus Host maintenance commands are absent from the product `RuntimeControlClient` and product client callers. It also checks that whole-stack start/stop is absent from Runtime Control HTTP, PWA, and Swift product presentation surfaces, that runtime-data backup/restore plus update activation/shutdown consume Guest Control maintenance API instead of request/result files, that shared Host/Guest contracts no longer publish legacy `*.request` or `*-result.json` filenames, and that Swift production source no longer carries legacy guest result document contracts or polling evaluators.
 
 The same proof also checks that Guest maintenance capability preflight reads
-come from Guest Control `GET /v1/capabilities`. Capability checks must preserve
+come from Guest Control `GET /runtime/capabilities`. Capability checks must preserve
 capability read failure separately from a loaded-but-missing capability, and
 they must not use `GuestRuntimeObservationDocument.capabilities` as the current
 maintenance capability source.
@@ -413,7 +416,7 @@ VitalDB Observer API -> /swagger/docs/openapi/vitaldb-observer.openapi.yaml
 ```
 
 Guest Control API and Product Lab service remain implementation boundaries
-consumed through Runtime Control `/runtime/guest/*`, `/lab/*`, and `/vitaldb/*`
+consumed through Runtime Control `/runtime/guest/*`, `/runtime/lab/*`, and `/runtime/vitaldb/*`
 contracts. Until those internal services publish explicit support OpenAPI
 documents, the API catalog must not invent direct Swagger entries for them.
 
@@ -428,12 +431,12 @@ Runtime v2 now exposes Redis backup and restore through Guest Control API as
 maintenance operations:
 
 ```text
-POST /v1/maintenance/redis-backup
-POST /v1/maintenance/redis-restore
-POST /v1/maintenance/datastore-repair
-POST /v1/maintenance/update-activation
-POST /v1/maintenance/update-shutdown
-GET  /v1/operations/{operationId}
+POST /runtime/maintenance/redis-backup
+POST /runtime/maintenance/redis-restore
+POST /runtime/maintenance/datastore/repair
+POST /runtime/maintenance/update-activation
+POST /runtime/maintenance/update-shutdown
+GET  /runtime/operations/{operationId}
 ```
 
 The Redis backup API creates a persisted Guest Control operation with command
@@ -521,18 +524,18 @@ operation, then performs the Host-owned proxy/watchdog restart and health
 aftercare without writing or polling datastore repair request/result files.
 
 Update shutdown now uses a two-step Guest Control maintenance API. First,
-`POST /v1/maintenance/update-shutdown` accepts explicit `requestId` and
+`POST /runtime/maintenance/update-shutdown` accepts explicit `requestId` and
 `version`, persists `accepted` and `running`, starts the Guest shutdown
 preparation in a background thread, and persists a completed operation when the
 Guest reaches `poweroff-ready`. The result preserves
 `shutdownPhase=poweroff-ready` and the Redis backup archive path when available.
-Second, Host calls `POST /v1/maintenance/guest-poweroff` after it has read the
+Second, Host calls `POST /runtime/maintenance/guest-poweroff` after it has read the
 completed `poweroff-ready` operation.
 
 Host update shutdown consumes this API as its primary path. The Swift shutdown
 workflow no longer writes `prepare-update-shutdown.request` or polls
 `prepare-update-shutdown-result.json`; it starts the Guest operation, polls
-`GET /v1/operations/{operationId}` until `poweroff-ready`, then explicitly
+`GET /runtime/operations/{operationId}` until `poweroff-ready`, then explicitly
 requests Guest poweroff. Host still owns VM process observation and post-poweroff
 service stop.
 

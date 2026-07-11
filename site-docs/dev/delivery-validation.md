@@ -275,7 +275,7 @@ operation state를 남기고, invalid command도 failed operation으로 보존�
 실행되지 않게 합니다.
 
 Host의 mutating runtime operation owner는 Runtime Control Host operation lease API입니다.
-Lease acquire, heartbeat, release는 `/host/runtime/operation-lease/*` owner boundary를 통해 수행해야
+Lease acquire, heartbeat, release는 `/platform/operations/lease/*` owner boundary를 통해 수행해야
 하며, CLI는 local-server-mediated owner API를 사용할 수 없으면 파일 fallback으로 lease를 추정하지 않고
 unavailable/read failure를 그대로 드러내야 합니다. `runtime-operation-lease.json`은 diagnostics/export
 artifact로 남을 수 있지만 active operation ownership의 source of truth가 아닙니다.
@@ -303,7 +303,7 @@ command success가 확인되기 전에는 failed draft를 현재 상태로 승�
 Settings apply의 activation은 한 종류가 아닙니다. CPU, memory, disk, network, Vital files directory처럼
 VM boundary가 바뀌는 설정은 VM runtime restart를 요구합니다. Redis Relay처럼 guest compose service
 묶음만 바뀌는 설정은 VM을 재시작하지 않고 Guest Control stack reconcile operation으로 적용해야
-합니다. Host는 Guest Control API로 reconcile command를 accepted시키고, `/v1/operations/{operationId}`
+합니다. Host는 Guest Control API로 reconcile command를 accepted시키고, `/runtime/operations/{operationId}`
 read가 완료 또는 실패를 보고할 때까지 bounded wait합니다. Guest capability가 없거나 operation read가
 unavailable/failed이면 성공으로 추정하지 않습니다. Settings UI는 이 차이를 `Change activation`으로
 표시하고, container reconcile을 VM restart처럼 설명하면 안 됩니다.

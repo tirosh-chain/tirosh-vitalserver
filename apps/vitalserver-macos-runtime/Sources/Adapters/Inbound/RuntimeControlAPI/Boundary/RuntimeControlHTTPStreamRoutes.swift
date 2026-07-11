@@ -12,51 +12,18 @@ struct RuntimeControlHTTPStreamRoutes {
         request: RuntimeControlHTTPRequest
     ) -> RuntimeControlHTTPStreamResponse {
         switch endpoint {
-        case .overviewStream:
+        case .platformStateStream:
             return makeStream { [handler, configuration] continuation in
                 await pollSnapshot(
-                    id: "runtime-overview",
-                    event: "runtime-overview",
+                    id: "platform-state",
+                    event: "platform-state",
                     interval: configuration.pollIntervalNanoseconds,
                     heartbeatInterval: configuration.heartbeatIntervalNanoseconds,
                     now: now,
                     continuation: continuation
                 ) {
-                    try await RuntimeControlOverviewAssembler(handler: handler).load()
+                    try await handler.loadPlatformState()
                 }
-            }
-        case .statusStream:
-            return makeStream { [handler, configuration] continuation in
-                await pollSnapshot(
-                    id: "runtime-status",
-                    event: "runtime-status",
-                    interval: configuration.pollIntervalNanoseconds,
-                    heartbeatInterval: configuration.heartbeatIntervalNanoseconds,
-                    now: now,
-                    continuation: continuation
-                ) {
-                    try await handler.loadStatus()
-                }
-            }
-        case .eventStream:
-            do {
-                let query = try request.runtimeEventQuery()
-                let lastEventID = request.headerValue(named: "Last-Event-ID")
-                return makeStream { [handler, configuration] continuation in
-                    await pollEvents(
-                        lastEventID: lastEventID,
-                        interval: configuration.pollIntervalNanoseconds,
-                        heartbeatInterval: configuration.heartbeatIntervalNanoseconds,
-                        now: now,
-                        continuation: continuation
-                    ) {
-                        try await handler.loadEvents(query: query)
-                    }
-                }
-            } catch let queryError as RuntimeControlHTTPQueryError {
-                return errorStreamResponse(queryError.localizedDescription)
-            } catch {
-                return errorStreamResponse(error.localizedDescription)
             }
         case .vitalDBObservationStream:
             return makeStream { [handler, configuration] continuation in

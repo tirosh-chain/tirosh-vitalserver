@@ -102,7 +102,6 @@ public struct RuntimeHealthChecker {
         let swaggerUIHTTP = proxyPort.map { httpProber.statusRead(url: context.swaggerUIHealthURL($0)) }
         let guestControlObservation = guestControlReadiness()
         let guestAddressRead = guestControlObservation.guestAddressRead
-        let guestServicesRead = guestServiceHealthRead(guestAddressRead)
 
         return RuntimeHealthObservationReads(
             vmExecutable: fileState(path: context.vmExecutablePath),
@@ -123,9 +122,6 @@ public struct RuntimeHealthChecker {
             vitalDBObservation: vitalDBObservation(guestAddressRead),
             containerLogsMetadata: containerLogsMetadata(),
             proxyListenerObservation: proxyPort.map(proxyListenerObservation(port:)),
-            guestServiceStatuses: guestServicesRead.statuses,
-            guestServiceResources: guestServicesRead.resources,
-            guestServiceResourceReadIssues: guestServicesRead.resourceReadIssues,
             observedAt: observedAt
         )
     }
@@ -144,40 +140,6 @@ public struct RuntimeHealthChecker {
 
     public func launchdState(_ service: RuntimeManagedService) -> RuntimeServiceState {
         serviceManager.state(service: service)
-    }
-
-    private func guestServiceHealthRead(
-        _ guestAddressRead: RuntimeGuestAddressReadResult
-    ) -> (
-        statuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>,
-        resources: [RuntimeGuestServiceResource],
-        resourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
-    ) {
-        guard let guestControlGateway else {
-            return (.notReported, [], [])
-        }
-        guard let baseURL = guestControlBaseURL(guestAddressRead) else {
-            return (.notReported, [], [])
-        }
-        do {
-            let gateway = try guestControlGateway(baseURL)
-            let services = try gateway.stackStatus().services
-            var resources: [RuntimeGuestServiceResource] = []
-            var resourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = []
-            for service in services {
-                do {
-                    resources.append(try gateway.serviceResource(service.service))
-                } catch {
-                    resourceReadIssues.append(RuntimeGuestServiceResourceReadIssue(
-                        service: service.service,
-                        message: String(describing: error)
-                    ))
-                }
-            }
-            return (.loaded(services), resources, resourceReadIssues)
-        } catch {
-            return (.readFailed(String(describing: error)), [], [])
-        }
     }
 
     private func vitalDBObservation(

@@ -41,8 +41,7 @@ def status_timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def write_status(
-    path: Path,
+def build_status_document(
     *,
     settings: RelaySettings,
     state: str,
@@ -79,22 +78,22 @@ def write_status(
         last_error=error,
         last_error_samples=_error_samples(batch),
     )
-    document = _wire_status(status)
+    return _wire_status(status)
+
+
+def write_status_artifact(path: Path, document: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document, sort_keys=True) + "\n")
-    return document
 
 
-def write_unavailable_status(
-    path: Path, *, state: str, error: str
-) -> dict[str, object]:
+def build_unavailable_status_document(*, state: str, error: str) -> dict[str, object]:
     observed_at = status_timestamp()
-    document = {
+    return {
         "schemaVersion": 1,
         "observedAt": observed_at,
         "enabled": False,
         "state": state,
-        "scope": "unknown",
+        "scope": None,
         "targetUrl": None,
         "targetHost": None,
         "targetPort": None,
@@ -114,9 +113,6 @@ def write_unavailable_status(
         "lastError": error,
         "lastErrorSamples": [],
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, sort_keys=True) + "\n")
-    return document
 
 
 def _wire_status(status: RelayStatus) -> dict[str, object]:

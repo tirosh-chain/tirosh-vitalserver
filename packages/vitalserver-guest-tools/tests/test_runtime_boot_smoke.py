@@ -99,7 +99,7 @@ def test_runtime_boot_smoke_uses_operation_timeout_for_guest_restart(
     restart_requests = [
         timeout
         for method, url, timeout in observed_timeouts
-        if method == "POST" and url.endswith("/v1/services/app/restart")
+        if method == "POST" and url.endswith("/runtime/services/app/restart")
     ]
     assert restart_requests == [
         runtime_boot_smoke.GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
@@ -107,7 +107,7 @@ def test_runtime_boot_smoke_uses_operation_timeout_for_guest_restart(
     reconcile_requests = [
         timeout
         for method, url, timeout in observed_timeouts
-        if method == "POST" and url.endswith("/v1/stack/reconcile")
+        if method == "POST" and url.endswith("/runtime/stack/reconcile")
     ]
     assert reconcile_requests == [
         runtime_boot_smoke.GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
@@ -241,7 +241,7 @@ def test_runtime_boot_smoke_rejects_unready_guest_control_api(
             del method
             del timeout_seconds
             del body
-            if url.endswith("/v1/stack/status"):
+            if url.endswith("/runtime/stack"):
                 return {
                     "state": "loaded",
                     "observedAt": timestamp(NOW),
@@ -466,6 +466,11 @@ def test_runtime_boot_smoke_default_context_reads_explicit_metadata(
     runtime_dir.mkdir()
     write_default_context_documents(deploy_dir, run_id="explicit-run")
     monkeypatch.setattr(runtime_boot_smoke, "DEPLOY_DIR", deploy_dir)
+    monkeypatch.setattr(
+        runtime_boot_smoke,
+        "RUNTIME_CONFIG_FILE",
+        deploy_dir / "runtime-config.json",
+    )
     monkeypatch.setattr(runtime_boot_smoke, "RUNTIME_DIR", runtime_dir)
 
     context = default_context()
@@ -537,6 +542,11 @@ def test_runtime_boot_smoke_default_context_rejects_missing_or_invalid_inputs(
     write_default_context_documents(deploy_dir, run_id="explicit-run")
     mutate(deploy_dir)
     monkeypatch.setattr(runtime_boot_smoke, "DEPLOY_DIR", deploy_dir)
+    monkeypatch.setattr(
+        runtime_boot_smoke,
+        "RUNTIME_CONFIG_FILE",
+        deploy_dir / "runtime-config.json",
+    )
     monkeypatch.setattr(runtime_boot_smoke, "RUNTIME_DIR", runtime_dir)
 
     with pytest.raises(RuntimeError, match=expected_message):
@@ -785,26 +795,26 @@ def fake_guest_control_http_json(
             observed_timeouts.append((method, url, timeout_seconds))
         if method == "GET" and url.endswith("/ready"):
             return {"status": "ready"}
-        if method == "GET" and url.endswith("/v1/capabilities"):
+        if method == "GET" and url.endswith("/runtime/capabilities"):
             return {
                 "schemaVersion": 1,
                 "capabilities": capabilities,
             }
-        if method == "GET" and url.endswith("/v1/services"):
+        if method == "GET" and url.endswith("/runtime/services"):
             return {"services": ["postgres", "redis", "app", "edge"]}
-        if method == "GET" and url.endswith("/v1/services/app/status"):
+        if method == "GET" and url.endswith("/runtime/services/app/status"):
             return {
                 "service": "app",
                 "state": "running",
                 "health": "healthy",
             }
-        if method == "GET" and url.endswith("/v1/stack/status"):
+        if method == "GET" and url.endswith("/runtime/stack"):
             return {
                 "state": "loaded",
                 "observedAt": timestamp(NOW),
                 "services": stack_services,
             }
-        if method == "GET" and url.endswith("/v1/recorder-ingress/status"):
+        if method == "GET" and url.endswith("/runtime/recorder-ingress/status"):
             return {
                 "readState": "loaded",
                 "httpStatus": "200",
@@ -822,7 +832,7 @@ def fake_guest_control_http_json(
                     ],
                 },
             }
-        if method == "GET" and url.endswith("/v1/lab/scenarios"):
+        if method == "GET" and url.endswith("/runtime/lab/scenarios"):
             return {
                 "state": "loaded",
                 "scenarios": [
@@ -832,7 +842,7 @@ def fake_guest_control_http_json(
                     }
                 ],
             }
-        if method == "POST" and url.endswith("/v1/lab/sessions"):
+        if method == "POST" and url.endswith("/runtime/lab/sessions"):
             assert body == {
                 "scenarioId": "normal_monitoring",
                 "name": "RuntimeBootSmokeLab",
@@ -843,19 +853,19 @@ def fake_guest_control_http_json(
                 operation_id="op_lab_create_smoke",
                 state="accepted",
             )
-        if method == "GET" and url.endswith("/v1/lab/sessions/lab-session-1"):
+        if method == "GET" and url.endswith("/runtime/lab/sessions/lab-session-1"):
             return lab_session_response(operation_id=None, state="accepted")
-        if method == "POST" and url.endswith("/v1/lab/sessions/lab-session-1/start"):
+        if method == "POST" and url.endswith("/runtime/lab/sessions/lab-session-1/start"):
             return lab_session_response(
                 operation_id="op_lab_start_smoke",
                 state="running",
             )
-        if method == "POST" and url.endswith("/v1/lab/sessions/lab-session-1/stop"):
+        if method == "POST" and url.endswith("/runtime/lab/sessions/lab-session-1/stop"):
             return lab_session_response(
                 operation_id="op_lab_stop_smoke",
                 state="stopped",
             )
-        if method == "POST" and url.endswith("/v1/lab/vital-files/replay"):
+        if method == "POST" and url.endswith("/runtime/lab/vital-files/replay"):
             assert body == {
                 "vitalFilePath": (
                     "/mnt/tirosh-vital-files/runtime-boot-smoke-replay.vital"
@@ -867,7 +877,7 @@ def fake_guest_control_http_json(
                 operation_id="op_lab_replay_smoke",
                 state="accepted",
             )
-        if method == "POST" and url.endswith("/v1/services/app/restart"):
+        if method == "POST" and url.endswith("/runtime/services/app/restart"):
             operation = {
                 "operationId": "op_app_restart_smoke",
                 "service": "app",
@@ -876,7 +886,7 @@ def fake_guest_control_http_json(
             }
             operations["op_app_restart_smoke"] = operation
             return operation
-        if method == "POST" and url.endswith("/v1/stack/reconcile"):
+        if method == "POST" and url.endswith("/runtime/stack/reconcile"):
             operation = {
                 "operationId": "op_stack_reconcile_smoke",
                 "service": "guest-stack",
@@ -885,7 +895,7 @@ def fake_guest_control_http_json(
             }
             operations["op_stack_reconcile_smoke"] = operation
             return operation
-        if method == "GET" and "/v1/operations/" in url:
+        if method == "GET" and "/runtime/operations/" in url:
             operation_id = url.rsplit("/", 1)[-1]
             return operations[operation_id]
         raise AssertionError(f"unexpected guest control request: {method} {url}")

@@ -19,9 +19,6 @@ public struct RuntimeHealthSnapshot: Equatable {
     public let guestHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
-    public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
-    public let guestServiceResources: [RuntimeGuestServiceResource]
-    public let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     public let vitalDBObservation: VitalDBObservationDocument?
     public let failureReasons: [RuntimeFailureReason]
 
@@ -44,9 +41,6 @@ public struct RuntimeHealthSnapshot: Equatable {
         guestHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
-        guestServiceResources: [RuntimeGuestServiceResource] = [],
-        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         vitalDBObservation: VitalDBObservationDocument? = nil,
         failureReasons: [RuntimeFailureReason]
     ) {
@@ -68,9 +62,6 @@ public struct RuntimeHealthSnapshot: Equatable {
         self.guestHTTP = guestHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
-        self.guestServiceStatuses = guestServiceStatuses
-        self.guestServiceResources = guestServiceResources
-        self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
         self.vitalDBObservation = vitalDBObservation
         self.failureReasons = failureReasons
     }

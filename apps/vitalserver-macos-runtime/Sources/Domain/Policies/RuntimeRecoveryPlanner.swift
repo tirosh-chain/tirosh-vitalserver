@@ -14,8 +14,6 @@ public struct RuntimeRecoveryInput: Equatable {
     public let guestHTTP: String
     public let hostProxyReadinessHTTP: String
     public let hostProxyLivenessHTTP: String
-    public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
-    public let guestServiceResources: [RuntimeGuestServiceResource]
 
     public init(
         vmExecutable: RuntimeFileState,
@@ -29,9 +27,7 @@ public struct RuntimeRecoveryInput: Equatable {
         vmIP: String?,
         guestHTTP: String,
         hostProxyReadinessHTTP: String,
-        hostProxyLivenessHTTP: String,
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
-        guestServiceResources: [RuntimeGuestServiceResource] = []
+        hostProxyLivenessHTTP: String
     ) {
         self.vmExecutable = vmExecutable
         self.proxyExecutable = proxyExecutable
@@ -45,8 +41,6 @@ public struct RuntimeRecoveryInput: Equatable {
         self.guestHTTP = guestHTTP
         self.hostProxyReadinessHTTP = hostProxyReadinessHTTP
         self.hostProxyLivenessHTTP = hostProxyLivenessHTTP
-        self.guestServiceStatuses = guestServiceStatuses
-        self.guestServiceResources = guestServiceResources
     }
 }
 
@@ -55,7 +49,6 @@ public struct RuntimeRecoveryPlan: Equatable, Sendable {
     public let restartVM: Bool
     public let restartGuestLogSync: Bool
     public let restartProxy: Bool
-    public let reconcileGuestStack: Bool
     public let actionReasons: [RuntimeRecoveryActionReason]
     public let blockers: [String]
 
@@ -64,7 +57,6 @@ public struct RuntimeRecoveryPlan: Equatable, Sendable {
         restartVM: Bool,
         restartGuestLogSync: Bool,
         restartProxy: Bool,
-        reconcileGuestStack: Bool = false,
         actionReasons: [RuntimeRecoveryActionReason] = [],
         blockers: [String] = []
     ) {
@@ -72,7 +64,6 @@ public struct RuntimeRecoveryPlan: Equatable, Sendable {
         self.restartVM = restartVM
         self.restartGuestLogSync = restartGuestLogSync
         self.restartProxy = restartProxy
-        self.reconcileGuestStack = reconcileGuestStack
         self.actionReasons = actionReasons
         self.blockers = blockers
     }
@@ -86,7 +77,6 @@ public enum RuntimeRecoveryActionReason: Equatable, Sendable {
     case vmServiceNotLoaded(String)
     case missingVMIP
     case guestHTTPUnhealthy(String)
-    case guestServiceFailureRequiresReconcile
     case vmRestartRequiresProxyRestart
     case proxyServiceNotLoaded(String)
     case hostProxyLivenessUnhealthy(String)
@@ -100,8 +90,6 @@ public enum RuntimeRecoveryActionReason: Equatable, Sendable {
             "missing-vm-ip"
         case .guestHTTPUnhealthy(let status):
             "guest-http-unhealthy-\(runtimeRecoveryFailureToken(status))"
-        case .guestServiceFailureRequiresReconcile:
-            "guest-service-failure-requires-reconcile"
         case .vmRestartRequiresProxyRestart:
             "vm-restart-requires-proxy-restart"
         case .proxyServiceNotLoaded(let state):
@@ -144,22 +132,10 @@ public enum RuntimeRecoveryPlanner {
         let hostProxyLivenessHTTP = classifyHTTPStatus(input.hostProxyLivenessHTTP)
 
         let waitingForGuest = input.vmLifecycle?.isWaitingForGuest(at: input.now) ?? false
-        let guestServiceFailureRequiresReconcile = RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
-            guestServiceStatuses: input.guestServiceStatuses,
-            guestServiceResources: input.guestServiceResources
-        )
-
-        let guestStackReconcileReasons = guestStackReconcileReasons(
-            input: input,
-            guestHTTP: guestHTTP,
-            waitingForGuest: waitingForGuest,
-            guestServiceFailureRequiresReconcile: guestServiceFailureRequiresReconcile
-        )
         let vmRestartReasons = vmRestartReasons(
             input: input,
             guestHTTP: guestHTTP,
-            waitingForGuest: waitingForGuest,
-            guestServiceFailureRequiresReconcile: guestServiceFailureRequiresReconcile
+            waitingForGuest: waitingForGuest
         )
         let proxyRestartReasons = proxyRestartReasons(
             input: input,
@@ -174,8 +150,7 @@ public enum RuntimeRecoveryPlanner {
             restartVM: !vmRestartReasons.isEmpty,
             restartGuestLogSync: !vmRestartReasons.isEmpty,
             restartProxy: !proxyRestartReasons.isEmpty,
-            reconcileGuestStack: !guestStackReconcileReasons.isEmpty,
-            actionReasons: guestStackReconcileReasons + vmRestartReasons + proxyRestartReasons
+            actionReasons: vmRestartReasons + proxyRestartReasons
         )
     }
 
@@ -228,26 +203,19 @@ public enum RuntimeRecoveryPlanner {
         let hostProxyReadinessHTTP = classifyHTTPStatus(input.hostProxyReadinessHTTP)
         let hostProxyLivenessHTTP = classifyHTTPStatus(input.hostProxyLivenessHTTP)
         let waitingForGuest = input.vmLifecycle?.isWaitingForGuest(at: input.now) ?? false
-        let guestServiceFailureRequiresReconcile = RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
-            guestServiceStatuses: input.guestServiceStatuses,
-            guestServiceResources: input.guestServiceResources
-        )
-        let guestStackReconcileReasons = guestStackReconcileReasons(
+        let vmRestartReasons = vmRestartReasons(
             input: input,
             guestHTTP: guestHTTP,
-            waitingForGuest: waitingForGuest,
-            guestServiceFailureRequiresReconcile: guestServiceFailureRequiresReconcile
+            waitingForGuest: waitingForGuest
         )
         let canPlanVMRestart = input.vmService == .loaded
             && input.vmLifecycle != nil
-            && !waitingForGuest
-            && input.vmIP == nil
-        let canPlanGuestStackReconcile = !guestStackReconcileReasons.isEmpty
+            && !vmRestartReasons.isEmpty
 
-        if case .readFailed(let status) = guestHTTP, !canPlanGuestStackReconcile {
+        if case .readFailed(let status) = guestHTTP {
             blockers.append("recovery-blocked-guest-http-read-failed-\(runtimeRecoveryFailureToken(status))")
         }
-        if !canPlanVMRestart && !canPlanGuestStackReconcile {
+        if !canPlanVMRestart {
             if case .readFailed(let status) = hostProxyReadinessHTTP {
                 blockers.append("recovery-blocked-host-proxy-readiness-http-read-failed-\(runtimeRecoveryFailureToken(status))")
             }
@@ -257,7 +225,7 @@ public enum RuntimeRecoveryPlanner {
         }
 
         let vmRestartDependsOnGuestState = input.vmService == .loaded
-            && input.vmIP == nil
+            && !vmRestartReasons.isEmpty
         if vmRestartDependsOnGuestState, input.vmLifecycle == nil {
             blockers.append("recovery-blocked-missing-vm-lifecycle-for-vm-restart")
         }
@@ -265,31 +233,10 @@ public enum RuntimeRecoveryPlanner {
         return blockers
     }
 
-    private static func guestStackReconcileReasons(
-        input: RuntimeRecoveryInput,
-        guestHTTP: RuntimeRecoveryHTTPStatus,
-        waitingForGuest: Bool,
-        guestServiceFailureRequiresReconcile: Bool
-    ) -> [RuntimeRecoveryActionReason] {
-        guard !waitingForGuest, input.vmService == .loaded, input.vmIP != nil else {
-            return []
-        }
-
-        var reasons: [RuntimeRecoveryActionReason] = []
-        if !guestHTTP.isSuccessful, !guestHTTP.isReadFailure {
-            reasons.append(.guestHTTPUnhealthy(input.guestHTTP))
-        }
-        if guestServiceFailureRequiresReconcile {
-            reasons.append(.guestServiceFailureRequiresReconcile)
-        }
-        return reasons
-    }
-
     private static func vmRestartReasons(
         input: RuntimeRecoveryInput,
         guestHTTP: RuntimeRecoveryHTTPStatus,
-        waitingForGuest: Bool,
-        guestServiceFailureRequiresReconcile _: Bool
+        waitingForGuest: Bool
     ) -> [RuntimeRecoveryActionReason] {
         guard !waitingForGuest else {
             return []
@@ -302,7 +249,7 @@ public enum RuntimeRecoveryPlanner {
         if input.vmIP == nil {
             reasons.append(.missingVMIP)
         }
-        if input.vmIP == nil, !guestHTTP.isSuccessful, !guestHTTP.isReadFailure {
+        if !guestHTTP.isSuccessful, !guestHTTP.isReadFailure {
             reasons.append(.guestHTTPUnhealthy(input.guestHTTP))
         }
         return reasons

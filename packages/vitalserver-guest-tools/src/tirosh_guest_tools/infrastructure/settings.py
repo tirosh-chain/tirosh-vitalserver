@@ -19,7 +19,18 @@ from tirosh_guest_tools.infrastructure.settings_utils import (
     toml_table,
 )
 
-DEFAULT_SETTINGS_PATH = Path("/etc/tirosh/guest-tools.toml")
+SETTINGS_PATH_ENVIRONMENT = "VITALSERVER_RUNTIME_CONTROLLER_SETTINGS_PATH"
+_configured_settings_path = os.environ.get(SETTINGS_PATH_ENVIRONMENT)
+if _configured_settings_path == "":
+    raise GuestContractError(
+        f"{SETTINGS_PATH_ENVIRONMENT} must be a non-empty path when configured",
+        code="guest-tools-settings-path-invalid",
+    )
+DEFAULT_SETTINGS_PATH = Path(
+    _configured_settings_path
+    if _configured_settings_path is not None
+    else "/etc/tirosh/guest-tools.toml"
+)
 DEFAULT_SETTINGS_RESOURCE = "resources/guest-tools.toml"
 
 
@@ -27,14 +38,27 @@ DEFAULT_SETTINGS_RESOURCE = "resources/guest-tools.toml"
 class ShareSettings:
     runtime_tag: str
     runtime_mount: Path
+    runtime_mount_mode: ShareMountMode
     vital_files_tag: str
     vital_files_mount: Path
+    vital_files_mount_mode: ShareMountMode
+
+
+class ShareMountMode(StrEnum):
+    VIRTIOFS = "virtiofs"
+    NATIVE = "native"
 
 
 @dataclass(frozen=True)
 class PathSettings:
     deploy_dir: Path
     runtime_dir: Path
+    compose_file: Path
+    runtime_config_file: Path
+    runtime_settings_file: Path
+    redis_relay_config_file: Path
+    redis_relay_password_file: Path
+    compose_runtime_limits_file: Path
     guest_tools_home: Path
     python_wheel_dir: Path
     command_bin_dir: Path
@@ -43,6 +67,7 @@ class PathSettings:
 @dataclass(frozen=True)
 class ComposeSettings:
     project_name: str
+    environment_file: Path
     stop_timeout_seconds: int
 
 
@@ -117,12 +142,33 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
         shares=ShareSettings(
             runtime_tag=toml_str_value(shares, "runtimeTag"),
             runtime_mount=runtime_mount,
+            runtime_mount_mode=toml_enum_value(
+                shares,
+                "runtimeMountMode",
+                ShareMountMode,
+                choices="virtiofs, native",
+            ),
             vital_files_tag=toml_str_value(shares, "vitalFilesTag"),
             vital_files_mount=vital_files_mount,
+            vital_files_mount_mode=toml_enum_value(
+                shares,
+                "vitalFilesMountMode",
+                ShareMountMode,
+                choices="virtiofs, native",
+            ),
         ),
         paths=PathSettings(
             deploy_dir=deploy_dir,
             runtime_dir=runtime_dir,
+            compose_file=toml_path_value(paths, "composeFile"),
+            runtime_config_file=toml_path_value(paths, "runtimeConfigFile"),
+            runtime_settings_file=toml_path_value(paths, "runtimeSettingsFile"),
+            redis_relay_config_file=toml_path_value(paths, "redisRelayConfigFile"),
+            redis_relay_password_file=toml_path_value(paths, "redisRelayPasswordFile"),
+            compose_runtime_limits_file=toml_path_value(
+                paths,
+                "composeRuntimeLimitsFile",
+            ),
             guest_tools_home=guest_tools_home,
             python_wheel_dir=toml_path_value(paths, "pythonWheelDir"),
             command_bin_dir=toml_path_value(paths, "commandBinDir"),
@@ -131,6 +177,10 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
             project_name=toml_str_value(
                 toml_table(document, "compose"),
                 "projectName",
+            ),
+            environment_file=toml_path_value(
+                toml_table(document, "compose"),
+                "environmentFile",
             ),
             stop_timeout_seconds=toml_int_value(
                 toml_table(document, "compose"),

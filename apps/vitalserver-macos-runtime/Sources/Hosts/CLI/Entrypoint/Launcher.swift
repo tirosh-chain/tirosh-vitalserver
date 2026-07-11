@@ -120,7 +120,10 @@ struct Launcher {
         let fileStore = SystemRuntimeFileStore()
         let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
-        let lifecycleWriter = RuntimeControlAPIVMLifecycleResourceWriter()
+        let lifecycleWriter = FileRuntimeVMLifecycleResourceStore(
+            documentURL: paths.installed.vmLifecycle,
+            fileStore: fileStore
+        )
         try lifecycleWriter.writeVMLifecycleResource(
             state: .starting,
             operation: .startServices,

@@ -74,9 +74,9 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 |---|---|---|---|
 | `manifest.json` | build tool | host Updater | `schemaVersion`, `channel`, `helperVersion`, `releaseLabel`, artifact 목록, compatibility field를 포함 |
 | `checksums.txt` | build tool | host verifier | artifact path와 sha256/size 검증 기준 |
-| `POST /v1/maintenance/update-activation` | Host Updater | Guest Control API | `requestId`, `version`은 baseline 필수. result는 Guest operation document로 보존 |
-| `POST /v1/maintenance/update-shutdown` | host VM state control | Guest Control API | `requestId`, `version`은 baseline 필수. `poweroff-ready`는 Guest operation result로 보존 |
-| `POST /v1/maintenance/guest-poweroff` | host VM state control | Guest Control API | shutdown operation이 `poweroff-ready`인 뒤 별도 poweroff operation으로 실행 |
+| `POST /runtime/maintenance/update-activation` | Host Updater | Guest Control API | `requestId`, `version`은 baseline 필수. result는 Guest operation document로 보존 |
+| `POST /runtime/maintenance/update-shutdown` | host VM state control | Guest Control API | `requestId`, `version`은 baseline 필수. `poweroff-ready`는 Guest operation result로 보존 |
+| `POST /runtime/maintenance/guest-poweroff` | host VM state control | Guest Control API | shutdown operation이 `poweroff-ready`인 뒤 별도 poweroff operation으로 실행 |
 | Host operation lease | host Updater/Supervisor | Helper UI/watchdog | active operation owner. `operation`, owner, heartbeat, expiry를 명시 |
 | `runtime-progress.json` | host Updater/Supervisor | diagnostics/export | workflow step/progress display artifact. operation/step/status는 enum 계약으로 유지하지만 Runtime Control current read model, active operation, health owner가 아님 |
 | `runtime-status.json` | host Updater/Supervisor | diagnostics/export | diagnostics/status projection. current runtimeState, active operation, progress owner가 아님 |
@@ -220,7 +220,7 @@ update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 �
 | bundle staged | staged bundle path |
 | backup created | `backups/<timestamp>-before-<version>` |
 | artifacts replaced | runtime progress step |
-| guest activation requested | Guest Control `POST /v1/maintenance/update-activation` accepted operation |
+| guest activation requested | Guest Control `POST /runtime/maintenance/update-activation` accepted operation |
 | guest activation completed | Guest Control operation state `completed` |
 | health passed | explicit runtime health owner reads report healthy; `runtime-status.json` may only mirror this as diagnostics projection |
 | update committed | `runtime-version.json` version 갱신 |
@@ -236,7 +236,7 @@ update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 �
 ### Guest Activation Baseline
 
 Guest activation은 Guest Control maintenance operation으로 실행합니다. Host는
-`POST /v1/maintenance/update-activation`을 호출하고, Guest operation document를
+`POST /runtime/maintenance/update-activation`을 호출하고, Guest operation document를
 polling해서 activation 상태를 확인합니다.
 
 필수 동작:
@@ -269,7 +269,7 @@ activation operation result:
 
 ### Guest Update Shutdown Baseline
 
-Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥 내리지 않습니다. Host는 먼저 Guest Control `POST /v1/maintenance/update-shutdown`을 호출하고, Guest operation이 `poweroff-ready`를 남길 때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
+Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥 내리지 않습니다. Host는 먼저 Guest Control `POST /runtime/maintenance/update-shutdown`을 호출하고, Guest operation이 `poweroff-ready`를 남길 때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
 
 이 shutdown operation은 update-specific operation입니다. Settings restart, watchdog
 recovery, service repair가 같은 operation input을 재사용하거나 stale file artifact를
@@ -564,7 +564,7 @@ guest-side health 재검증
 | 단계 | 목적 |
 |---|---|
 | cloud-init seed refresh | 새 instance-id를 가진 `seed.iso`를 만들어 VM 부팅 시 `bootstrap.sh`가 다시 실행될 수 있게 함 |
-| guest activation request | Guest Control `POST /v1/maintenance/update-activation`으로 VM 안의 activation adapter가 image load/compose recreate를 수행하게 함 |
+| guest activation request | Guest Control `POST /runtime/maintenance/update-activation`으로 VM 안의 activation adapter가 image load/compose recreate를 수행하게 함 |
 
 호환성을 위해 update bundle에도 `001-refresh-cloud-init-seed` migration을 기본 포함합니다. 이유는 중요합니다. 이미 설치된 구버전 Helper가 bundle을 적용하면, 새 Swift apply 로직은 아직 실행될 수 없습니다. 하지만 구버전 apply도 migration은 실행하므로, 이 migration이 `seed.iso`를 갱신해 VM 부팅 시 새 `guest-deploy/bootstrap.sh`가 실행될 수 있게 합니다.
 
@@ -572,7 +572,7 @@ guest-side health 재검증
 
 ```text
 /mnt/tirosh/run/activate-update.log
-GET /v1/operations/{operationId}
+GET /runtime/operations/{operationId}
 ```
 
 호스트 update command는 이 operation이 `completed`가 될 때까지 기다린 뒤 runtime health check로 넘어갑니다.
@@ -585,7 +585,7 @@ host apply-bundle
   -> refresh cloud-init seed when guest deploy changed
   -> restart VM/proxy/watchdog
   -> run guest activation operation
-      -> POST /v1/maintenance/update-activation
+      -> POST /runtime/maintenance/update-activation
       -> VM 내부에서 image load
       -> docker compose recreate
       -> Guest Control/Postgres read model 갱신

@@ -107,6 +107,49 @@ public struct RuntimeVMLifecycleResourceState: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeProviderCommandAction: String, Codable, Equatable, Sendable {
+    case start
+    case stop
+    case restart
+}
+
+public enum RuntimeProviderCommandState: String, Codable, Equatable, Sendable {
+    case completed
+    case failed
+}
+
+public struct PlatformCommandFailure: Codable, Equatable, Sendable {
+    public let kind: String
+    public let message: String
+
+    public init(kind: String, message: String) {
+        self.kind = kind
+        self.message = message
+    }
+}
+
+public struct RuntimeProviderCommandResponse: Codable, Equatable, Sendable {
+    public let operationId: String
+    public let action: RuntimeProviderCommandAction
+    public let state: RuntimeProviderCommandState
+    public let provider: RuntimeVMLifecycleResourceState
+    public let failure: PlatformCommandFailure?
+
+    public init(
+        operationId: String,
+        action: RuntimeProviderCommandAction,
+        state: RuntimeProviderCommandState,
+        provider: RuntimeVMLifecycleResourceState,
+        failure: PlatformCommandFailure?
+    ) {
+        self.operationId = operationId
+        self.action = action
+        self.state = state
+        self.provider = provider
+        self.failure = failure
+    }
+}
+
 public struct RuntimeGuestAddressResourceState: Codable, Equatable, Sendable {
     public let state: RuntimeHostResourceReadState
     public let read: RuntimeGuestAddressReadResult?
@@ -390,7 +433,7 @@ public struct RuntimeOperationLeaseMutationResponse: Codable, Equatable, Sendabl
     }
 }
 
-public struct RuntimeOperationState: Codable, Equatable, Sendable {
+public struct PlatformOperationState: Codable, Equatable, Sendable {
     public let activeOperation: RuntimeOperation?
     public let install: RuntimeInstallOperationState
     public let lease: RuntimeOperationLeaseState
@@ -2404,180 +2447,6 @@ public struct RuntimeVitalDBObservationSnapshot: Codable, Equatable, Sendable {
             }
         case .unavailable:
             break
-        }
-    }
-}
-
-public enum RuntimeControlConditionStatus: String, Codable, Equatable, Sendable {
-    case trueValue = "True"
-    case falseValue = "False"
-    case unknown = "Unknown"
-}
-
-public struct RuntimeControlCondition: Codable, Equatable, Sendable {
-    public let type: String
-    public let status: RuntimeControlConditionStatus
-    public let reason: String
-    public let message: String?
-    public let observedAt: String?
-
-    public init(
-        type: String,
-        status: RuntimeControlConditionStatus,
-        reason: String,
-        message: String? = nil,
-        observedAt: String? = nil
-    ) {
-        self.type = type
-        self.status = status
-        self.reason = reason
-        self.message = message
-        self.observedAt = observedAt
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case type
-        case status
-        case reason
-        case message
-        case observedAt
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.type = try container.decode(String.self, forKey: .type)
-        self.status = try container.decode(RuntimeControlConditionStatus.self, forKey: .status)
-        self.reason = try container.decode(String.self, forKey: .reason)
-        self.message = try container.decodeIfPresent(String.self, forKey: .message)
-        self.observedAt = try container.decodeIfPresent(String.self, forKey: .observedAt)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(type, forKey: .type)
-        try container.encode(status, forKey: .status)
-        try container.encode(reason, forKey: .reason)
-        if let message {
-            try container.encode(message, forKey: .message)
-        } else {
-            try container.encodeNil(forKey: .message)
-        }
-        if let observedAt {
-            try container.encode(observedAt, forKey: .observedAt)
-        } else {
-            try container.encodeNil(forKey: .observedAt)
-        }
-    }
-}
-
-public struct RuntimeControlOverview: Codable, Equatable, Sendable {
-    public let status: RuntimeStatus
-    public let settings: RuntimeSettings
-    public let release: RuntimeReleaseInfo
-    public let install: RuntimeInstallInfo
-    public let vitalDBObservation: VitalDBObservationDocument?
-    public let vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot
-    public let vitalRecorder: RuntimeVitalRecorderSummary
-    public let conditions: [RuntimeControlCondition]
-
-    public init(
-        status: RuntimeStatus,
-        settings: RuntimeSettings,
-        release: RuntimeReleaseInfo,
-        install: RuntimeInstallInfo,
-        vitalDBObservation: VitalDBObservationDocument? = nil,
-        vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot? = nil,
-        statusEvaluationTime: String? = nil
-    ) {
-        let snapshot = vitalDBObservationSnapshot ?? .fromOptional(vitalDBObservation)
-        let currentObservation = snapshot.observation
-        self.status = status
-        self.settings = settings
-        self.release = release
-        self.install = install
-        self.vitalDBObservation = currentObservation
-        self.vitalDBObservationSnapshot = snapshot
-        self.vitalRecorder = RuntimeVitalRecorderSummary(
-            recorderIngressStatusRead: nil,
-            vitalDBObservation: currentObservation,
-            statusEvaluationTime: statusEvaluationTime
-        )
-        self.conditions = [
-            Self.vitalDBObservationCondition(snapshot)
-        ]
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case settings
-        case release
-        case install
-        case vitalDBObservation
-        case vitalDBObservationSnapshot
-        case vitalRecorder
-        case conditions
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.status = try container.decode(RuntimeStatus.self, forKey: .status)
-        self.settings = try container.decode(RuntimeSettings.self, forKey: .settings)
-        self.release = try container.decode(RuntimeReleaseInfo.self, forKey: .release)
-        self.install = try container.decode(RuntimeInstallInfo.self, forKey: .install)
-        self.vitalDBObservation = try container.decodeIfPresent(VitalDBObservationDocument.self, forKey: .vitalDBObservation)
-        self.vitalDBObservationSnapshot = try container.decode(
-            RuntimeVitalDBObservationSnapshot.self,
-            forKey: .vitalDBObservationSnapshot
-        )
-        self.vitalRecorder = try container.decode(RuntimeVitalRecorderSummary.self, forKey: .vitalRecorder)
-        self.conditions = try container.decodeIfPresent([RuntimeControlCondition].self, forKey: .conditions)
-            ?? [Self.vitalDBObservationCondition(vitalDBObservationSnapshot)]
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(status, forKey: .status)
-        try container.encode(settings, forKey: .settings)
-        try container.encode(release, forKey: .release)
-        try container.encode(install, forKey: .install)
-        if let vitalDBObservation {
-            try container.encode(vitalDBObservation, forKey: .vitalDBObservation)
-        } else {
-            try container.encodeNil(forKey: .vitalDBObservation)
-        }
-        try container.encode(vitalDBObservationSnapshot, forKey: .vitalDBObservationSnapshot)
-        try container.encode(vitalRecorder, forKey: .vitalRecorder)
-        try container.encode(conditions, forKey: .conditions)
-    }
-
-    private static func vitalDBObservationCondition(
-        _ snapshot: RuntimeVitalDBObservationSnapshot
-    ) -> RuntimeControlCondition {
-        switch snapshot.state {
-        case .loaded:
-            return RuntimeControlCondition(
-                type: "VitalDBObservationReady",
-                status: .trueValue,
-                reason: snapshot.readError == nil ? "Loaded" : "LoadedWithReadIssues",
-                message: snapshot.readError,
-                observedAt: snapshot.observation?.observedAt
-            )
-        case .unavailable:
-            return RuntimeControlCondition(
-                type: "VitalDBObservationReady",
-                status: .unknown,
-                reason: "Unavailable",
-                message: snapshot.readError,
-                observedAt: nil
-            )
-        case .failed:
-            return RuntimeControlCondition(
-                type: "VitalDBObservationReady",
-                status: .falseValue,
-                reason: "ReadFailed",
-                message: snapshot.readError,
-                observedAt: nil
-            )
         }
     }
 }

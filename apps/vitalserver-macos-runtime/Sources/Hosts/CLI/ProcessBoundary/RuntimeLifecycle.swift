@@ -98,7 +98,9 @@ struct RuntimeLifecycle {
         self.statusReporter = container.statusReporter
         self.guestAddressProvider = container.guestAddressProvider
         self.guestControlGatewayFactory = guestControlGatewayFactory
-        self.runtimeOperationLeaseOwnerFactory = runtimeOperationLeaseOwnerFactory ?? Self.defaultRuntimeOperationLeaseOwner
+        self.runtimeOperationLeaseOwnerFactory = runtimeOperationLeaseOwnerFactory ?? {
+            JSONFileRuntimeOperationLeaseRepository(url: container.installedPaths.runtimeOperationLease)
+        }
         self.healthChecker = container.healthChecker
         self.serviceController = container.serviceController
     }
@@ -446,7 +448,9 @@ struct RuntimeLifecycle {
                 operation = try usecase.restartService(command.service, gateway: gateway)
             case .reconcile:
                 operation = try usecase.reconcileServices(gateway: gateway)
-            case .redisBackup, .redisRestore, .repairDatastore, .updateActivation, .updateShutdown, .requestGuestPoweroff:
+            case .redisBackup, .redisRestore, .repairDatastore, .updateActivation, .updateShutdown,
+                 .requestGuestPoweroff, .applySettings, .applyAdminPassword,
+                 .applyRedisRelaySettings:
                 throw LauncherError.runtimeOperationFailed(
                     "guest service command does not accept maintenance command action=\(action.rawValue)"
                 )
@@ -585,41 +589,6 @@ private extension RuntimeLifecycle {
     }
 }
 
-private extension RuntimeLifecycle {
-    static func defaultRuntimeOperationLeaseOwner() -> any RuntimeOperationLeaseOwner {
-        do {
-            return try RuntimeControlAPIOperationLeaseOwner()
-        } catch {
-            return UnavailableRuntimeOperationLeaseOwner(reason: error.localizedDescription)
-        }
-    }
-}
-
-private struct UnavailableRuntimeOperationLeaseOwner: RuntimeOperationLeaseOwner {
-    let reason: String
-
-    func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
-        .failed("runtime control API operation lease owner unavailable: \(reason)")
-    }
-
-    func acquire(_ document: RuntimeOperationLeaseDocument) throws {
-        throw RuntimeOperationLeaseOwnerError.readFailed(
-            "runtime control API operation lease owner unavailable: \(reason)"
-        )
-    }
-
-    func heartbeat(operationId: String, heartbeatAt: String, expiresAt: String?) throws {
-        throw RuntimeOperationLeaseOwnerError.readFailed(
-            "runtime control API operation lease owner unavailable: \(reason)"
-        )
-    }
-
-    func release(operationId: String) throws {
-        throw RuntimeOperationLeaseOwnerError.readFailed(
-            "runtime control API operation lease owner unavailable: \(reason)"
-        )
-    }
-}
 
 private extension RuntimeLifecycle {
     static func prepareServiceForStop(
@@ -646,8 +615,11 @@ private extension RuntimeLifecycle {
         )
         log("VM process stopped before launchd unload")
         do {
-            let owner = try RuntimeControlAPIVMLifecycleOwner()
-            let read = try owner.loadVMLifecycleResource()
+            let owner = FileRuntimeVMLifecycleResourceStore(
+                documentURL: paths.installed.vmLifecycle,
+                fileStore: fileStore
+            )
+            let read = owner.loadVMLifecycleResource()
             guard read.state == .loaded, let current = read.document else {
                 log("skipped VM lifecycle stopped write after process stop state=\(read.state.rawValue) error=\(read.readError ?? "none")")
                 return

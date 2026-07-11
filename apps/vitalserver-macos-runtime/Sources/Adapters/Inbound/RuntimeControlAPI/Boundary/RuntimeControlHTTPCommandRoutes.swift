@@ -1,3 +1,4 @@
+import Foundation
 import Contracts
 import RuntimeControl
 
@@ -10,9 +11,41 @@ struct RuntimeControlHTTPCommandRoutes {
         request: RuntimeControlHTTPRequest
     ) async throws -> RuntimeControlHTTPResponse? {
         switch endpoint {
+        case .startRuntimeProvider, .stopRuntimeProvider, .restartRuntimeProvider:
+            let action: RuntimeProviderCommandAction
+            switch endpoint {
+            case .startRuntimeProvider:
+                action = .start
+            case .stopRuntimeProvider:
+                action = .stop
+            case .restartRuntimeProvider:
+                action = .restart
+            default:
+                preconditionFailure("unreachable Runtime Provider command endpoint")
+            }
+            let result = try await handler.controlRuntimeProvider(action)
+            return try RuntimeControlHTTPResponseFactory.json(
+                result,
+                status: result.state == .completed ? .ok : .serviceUnavailable
+            )
         case .applySettings:
-            let settingsRequest = try request.decodedBody(RuntimeApplySettingsRequest.self)
-            return try await RuntimeControlHTTPResponseFactory.json(handler.applySettings(settingsRequest.settings))
+            let settingsRequest = try request.decodedBody(RuntimeApplyProductSettingsRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.applyRuntimeProductSettings(settingsRequest.settings),
+                status: .accepted
+            )
+        case .applyAdminPassword:
+            let adminRequest = try request.decodedBody(RuntimeAdminPasswordRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.applyRuntimeAdminPassword(adminRequest.password),
+                status: .accepted
+            )
+        case .applyRedisRelaySettings:
+            let relayRequest = try request.decodedBody(RuntimeRedisRelaySettingsApplyRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.applyRuntimeRedisRelaySettings(relayRequest),
+                status: .accepted
+            )
         case .createLabSession:
             let createRequest = try request.decodedBody(RuntimeLabSessionCreateRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.createLabSession(createRequest))
@@ -65,13 +98,19 @@ struct RuntimeControlHTTPCommandRoutes {
             let uploadRequest = try request.decodedBody(RuntimeLabVitalFileUploadRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.uploadLabVitalFile(uploadRequest))
         case .startGuestService:
-            let controlRequest = try request.decodedBody(RuntimeGuestServiceControlRequest.self)
+            let controlRequest = RuntimeGuestServiceControlRequest(
+                service: try request.runtimeGuestServiceName()
+            )
             return try await RuntimeControlHTTPResponseFactory.json(handler.startGuestService(controlRequest))
         case .stopGuestService:
-            let controlRequest = try request.decodedBody(RuntimeGuestServiceControlRequest.self)
+            let controlRequest = RuntimeGuestServiceControlRequest(
+                service: try request.runtimeGuestServiceName()
+            )
             return try await RuntimeControlHTTPResponseFactory.json(handler.stopGuestService(controlRequest))
         case .restartGuestService:
-            let restartRequest = try request.decodedBody(RuntimeGuestServiceRestartRequest.self)
+            let restartRequest = RuntimeGuestServiceRestartRequest(
+                service: try request.runtimeGuestServiceName()
+            )
             return try await RuntimeControlHTTPResponseFactory.json(handler.restartGuestService(restartRequest))
         case .repairRuntimeServices:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairRuntimeServices())
@@ -92,13 +131,22 @@ struct RuntimeControlHTTPCommandRoutes {
             )
         case .verifyUpdateBundle:
             let bundleRequest = try request.decodedBody(RuntimeUpdateBundleRequest.self)
-            return try await RuntimeControlHTTPResponseFactory.json(
-                handler.verifyUpdateBundle(bundle: bundleRequest.bundle)
+            let response = try await handler.verifyUpdateBundle(bundle: bundleRequest.bundle)
+            return try RuntimeControlHTTPResponseFactory.json(
+                platformWorkflowOperation(response.result, kind: .updateVerify),
+                status: .accepted
             )
         case .applyUpdateBundle:
             let bundleRequest = try request.decodedBody(RuntimeUpdateBundleRequest.self)
+            let response = try await handler.applyUpdateBundle(bundle: bundleRequest.bundle)
+            return try RuntimeControlHTTPResponseFactory.json(
+                platformWorkflowOperation(response.result, kind: .updateApply),
+                status: .accepted
+            )
+        case .rollbackRelease:
             return try await RuntimeControlHTTPResponseFactory.json(
-                handler.applyUpdateBundle(bundle: bundleRequest.bundle)
+                handler.rollbackRelease(),
+                status: .accepted
             )
         case .rollbackBackup:
             let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
@@ -118,6 +166,11 @@ struct RuntimeControlHTTPCommandRoutes {
             let exportRequest = try request.decodedBody(RuntimeExportLogsRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.exportLogs(destination: exportRequest.destination)
+            )
+        case .createSupportExport:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.createPlatformSupportExport(),
+                status: .accepted
             )
         case .acquireOperationLease:
             let acquireRequest = try request.decodedBody(RuntimeOperationLeaseAcquireRequest.self)
@@ -146,19 +199,20 @@ struct RuntimeControlHTTPCommandRoutes {
             )
         case .uninstall:
             let uninstallRequest = try request.decodedBody(RuntimeUninstallRequest.self)
-            return try await RuntimeControlHTTPResponseFactory.json(
-                handler.uninstallRuntime(mode: uninstallRequest.mode)
+            let response = try await handler.uninstallRuntime(mode: uninstallRequest.mode)
+            return try RuntimeControlHTTPResponseFactory.json(
+                platformWorkflowOperation(response.result, kind: .uninstall),
+                status: .accepted
             )
-        case .capabilities,
-             .overview,
-             .overviewStream,
-             .status,
-             .statusStream,
+        case .platformCapabilities,
+             .runtimeCapabilities,
+             .platformState,
+             .platformStateStream,
              .operationState,
+             .platformWorkflow,
              .guestAddress,
              .vmLifecycle,
              .events,
-             .eventStream,
              .vitalDBObservation,
              .vitalDBObservationStream,
              .vitalDBRecorders,
@@ -180,6 +234,8 @@ struct RuntimeControlHTTPCommandRoutes {
              .guestServices,
              .guestServiceStatus,
              .guestServiceResource,
+             .redisRelayStatus,
+             .redisRelaySettings,
              .logText,
              .logStream,
              .backups,
@@ -187,5 +243,47 @@ struct RuntimeControlHTTPCommandRoutes {
              .runtimeDataBackups:
             return nil
         }
+    }
+
+    private func platformWorkflowOperation(
+        _ result: RuntimeCommandResult,
+        kind: PlatformWorkflowKind
+    ) -> PlatformWorkflowOperation {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let succeeded = result.exitCode == 0
+            && result.executionIssue == nil
+            && result.outputIssues.isEmpty
+        let failureKind: String
+        switch kind {
+        case .updateVerify:
+            failureKind = "updateVerifyFailed"
+        case .updateApply:
+            failureKind = "updateApplyFailed"
+        case .rollback:
+            failureKind = "rollbackFailed"
+        case .uninstall:
+            failureKind = "uninstallFailed"
+        case .supportExport:
+            failureKind = "supportExportFailed"
+        }
+        let failure = succeeded ? nil : PlatformWorkflowFailure(
+            kind: failureKind,
+            message: RuntimeProcessFailureMessageFormatter.message(
+                exitCode: result.exitCode,
+                stdout: result.stdout,
+                stderr: result.stderr,
+                outputIssues: result.outputIssues,
+                executionIssue: result.executionIssue
+            )
+        )
+        return PlatformWorkflowOperation(
+            operationId: UUID().uuidString.lowercased(),
+            kind: kind,
+            state: succeeded ? .completed : .failed,
+            startedAt: timestamp,
+            updatedAt: timestamp,
+            release: nil,
+            failure: failure
+        )
     }
 }

@@ -255,7 +255,7 @@ private final class InstallRuntimeUseCaseHarness {
             blockers: blockers,
             settingsState: .defaulted(path: "/private/tmp/tirosh-vitalserver-install.json", proxyPort: 80),
             artifactStates: [.absent(path: "/usr/local/bin/vitalserver-vm")],
-            serviceStates: RuntimeManagedService.stopOrder.map {
+            serviceStates: RuntimeManagedService.uninstallOrder.map {
                 RuntimeFreshInstallServiceState(label: $0.label, state: .notLoaded)
             },
             packageReceiptStates: [

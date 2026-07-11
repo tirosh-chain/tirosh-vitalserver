@@ -4,6 +4,7 @@ import Application
 import Domain
 import RuntimeControl
 @testable import MacControlPanelHost
+import MacPlatformAgent
 import SwiftUI
 import XCTest
 import Errors
@@ -13,7 +14,7 @@ import Errors
 final class RuntimeViewModelCapabilityTests: XCTestCase {
     func testViewModelInitializesStatusFromExplicitControlClientRead() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        client.status = RuntimeStatus(runtimeInstalled: true, runtimeVersion: "initial-version")
+        client.status = platformState(runtimeInstallationState: .executable, runtimeVersion: "initial-version")
 
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -22,8 +23,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
 
         XCTAssertEqual(client.loadStatusCount, 1)
-        XCTAssertEqual(viewModel.status.runtimeVersion, "initial-version")
-        XCTAssertTrue(viewModel.status.runtimeInstalled)
+        XCTAssertEqual(viewModel.status.installedVersion, "initial-version")
+        XCTAssertEqual(viewModel.status.runtimeInstallationState.isExecutable, true)
     }
 
     func testViewModelInitialSettingsResolutionReadsControlSettingsOnceBeforeLocalPortOverride() {
@@ -87,13 +88,163 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            initialStatus: RuntimeStatus(runtimeInstalled: true, runtimeVersion: "provided"),
+            initialStatus: platformState(runtimeInstallationState: .executable, runtimeVersion: "provided"),
             healthNotifications: NoopHealthNotifications()
         )
 
         XCTAssertEqual(client.loadStatusCount, 0)
-        XCTAssertEqual(viewModel.status.runtimeVersion, "provided")
-        XCTAssertTrue(viewModel.status.runtimeInstalled)
+        XCTAssertEqual(viewModel.status.installedVersion, "provided")
+        XCTAssertEqual(viewModel.status.runtimeInstallationState.isExecutable, true)
+    }
+
+    func testRedisRelayRefreshUsesDirectRuntimeOwnerResource() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let document = RuntimeRedisRelayStatus(
+            observedAt: "2026-07-11T00:00:00Z",
+            enabled: true,
+            state: "running",
+            scope: "vital_reconstruction"
+        )
+        client.redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
+            readState: .loaded,
+            document: document,
+            readError: nil
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshRedisRelayStatus()
+
+        XCTAssertEqual(client.loadRedisRelayStatusCount, 1)
+        XCTAssertEqual(viewModel.redisRelayStatusRead.document, document)
+        XCTAssertEqual(viewModel.redisRelayStatusRead.readState, .loaded)
+    }
+
+    func testRedisRelayRefreshPreservesDirectResourceReadFailure() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.redisRelayStatusError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "runtime owner unavailable"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshRedisRelayStatus()
+
+        XCTAssertEqual(viewModel.redisRelayStatusRead.readState, .readFailed)
+        XCTAssertNil(viewModel.redisRelayStatusRead.document)
+        XCTAssertEqual(viewModel.redisRelayStatusRead.readError, "runtime owner unavailable")
+    }
+
+    func testRefreshLoadsRedisRelaySettingsFromRuntimeOwnerInsteadOfHostSettings() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.settings.redisRelay.enabled = false
+        client.runtimeRedisRelaySettingsRead = loadedRedisRelaySettings(enabled: true)
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refresh()
+
+        XCTAssertEqual(viewModel.runtimeRedisRelaySettingsRead.state, .loaded)
+        XCTAssertTrue(viewModel.settings.redisRelay.enabled)
+        XCTAssertTrue(viewModel.canEditRuntimeRedisRelaySettings)
+    }
+
+    func testApplySettingsSendsRedisRelayChangeToRuntimeOwner() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeRedisRelaySettingsRead = loadedRedisRelaySettings(enabled: false)
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        await viewModel.refresh()
+        viewModel.settings.redisRelay.enabled = true
+        viewModel.settings.redisRelay.target.password = "new-secret"
+
+        await viewModel.applySettings()
+
+        XCTAssertEqual(client.appliedRuntimeRedisRelaySettings.count, 1)
+        XCTAssertTrue(client.appliedRuntimeRedisRelaySettings[0].enabled)
+        XCTAssertEqual(client.appliedRuntimeRedisRelaySettings[0].target.password, "new-secret")
+        XCTAssertEqual(client.applySettingsCount, 1)
+    }
+
+    func testRuntimeStackRefreshUsesDirectStackAndServiceResources() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeStackStatus = RuntimeGuestControlStackStatus(
+            state: "loaded",
+            observedAt: "2026-07-11T00:00:00Z",
+            services: [
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-11T00:00:00Z"
+                ),
+                RuntimeGuestControlServiceStatus(
+                    service: "worker",
+                    state: "running",
+                    health: "unknown",
+                    observedAt: "2026-07-11T00:00:00Z"
+                ),
+            ]
+        )
+        client.serviceResourcesByService["app"] = runtimeServiceResource(service: "app")
+        client.serviceResourceErrorsByService["worker"] = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "resource owner unavailable"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshRuntimeStack()
+
+        XCTAssertEqual(client.runtimeStackStatusCount, 1)
+        XCTAssertEqual(client.serviceResourceRequests, ["app", "worker"])
+        XCTAssertEqual(viewModel.runtimeStackStatus, client.runtimeStackStatus)
+        XCTAssertNil(viewModel.runtimeStackReadError)
+        XCTAssertEqual(viewModel.runtimeServiceResources.map(\.service), ["app"])
+        XCTAssertEqual(
+            viewModel.runtimeServiceResourceReadIssues,
+            [RuntimeGuestServiceResourceReadIssue(service: "worker", message: "resource owner unavailable")]
+        )
+    }
+
+    func testRuntimeStackRefreshPreservesStackReadFailureAndClearsResources() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeStackError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 3,
+            userInfo: [NSLocalizedDescriptionKey: "runtime stack unavailable"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.runtimeServiceResources = [runtimeServiceResource(service: "stale")]
+
+        await viewModel.refreshRuntimeStack()
+
+        XCTAssertNil(viewModel.runtimeStackStatus)
+        XCTAssertEqual(viewModel.runtimeStackReadError, "runtime stack unavailable")
+        XCTAssertEqual(viewModel.runtimeServiceResources, [])
+        XCTAssertEqual(viewModel.runtimeServiceResourceReadIssues, [])
     }
 
     func testRestrictedClientPreventsLocalOnlyOperations() async {
@@ -161,7 +312,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
     func testRepairProxyDoesNotRequirePresentationProxyPortFallback() async {
         let controlClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let hostClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        controlClient.status = RuntimeStatus(proxyPort: nil)
+        controlClient.status = platformState(proxyPort: nil)
         let viewModel = RuntimeViewModel(
             controlClient: controlClient,
             hostClient: hostClient,
@@ -257,13 +408,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
     func testRuntimeDataBackupActionsCallExplicitPorts() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.runtimeDataBackupsToLoad = [
-            RuntimeBackup(path: "/runtime/data/backups/vitalserver-helper/selected", sizeBytes: nil)
+            RuntimeBackup(path: "/platform/backups/runtime-data/vitalserver-helper/selected", sizeBytes: nil)
         ]
         let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
         viewModel.runtimeDataBackups = [
-            RuntimeBackup(path: "/runtime/data/backups/vitalserver-helper/selected", sizeBytes: nil)
+            RuntimeBackup(path: "/platform/backups/runtime-data/vitalserver-helper/selected", sizeBytes: nil)
         ]
-        viewModel.selectedRuntimeDataBackupPath = "/runtime/data/backups/vitalserver-helper/selected"
+        viewModel.selectedRuntimeDataBackupPath = "/platform/backups/runtime-data/vitalserver-helper/selected"
 
         await viewModel.createRuntimeDataBackup()
         await viewModel.restoreRuntimeDataBackup()
@@ -273,10 +424,10 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.restoreRuntimeDataBackupCount, 1)
         XCTAssertEqual(client.deleteBackupCount, 1)
         XCTAssertEqual(client.restoredRuntimeDataBackupURLs, [
-            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/selected")
+            URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper/selected")
         ])
         XCTAssertEqual(client.deletedBackupURLs, [
-            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/selected")
+            URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper/selected")
         ])
     }
 
@@ -629,8 +780,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(nativeShell.openedFileURLs, [
             URL(fileURLWithPath: "/logs"),
             URL(fileURLWithPath: "/backups"),
-            URL(fileURLWithPath: "/runtime/data/backups/redis"),
-            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper"),
+            URL(fileURLWithPath: "/platform/backups/runtime-data/redis"),
+            URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper"),
         ])
         XCTAssertEqual(nativeShell.openedWebURLs, [
             URL(string: RuntimeControlLocalAPIConstants.pwaURL),
@@ -644,11 +795,11 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
         let sourceURL = URL(fileURLWithPath: "/external/20260614T043455Z-manual", isDirectory: true)
-        let destinationURL = URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/20260614T043455Z-manual", isDirectory: true)
+        let destinationURL = URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper/20260614T043455Z-manual", isDirectory: true)
         nativeShell.directoryURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .directory,
-            "/runtime/data/backups/vitalserver-helper": .directory,
+            "/platform/backups/runtime-data/vitalserver-helper": .directory,
             destinationURL.path: .missing,
         ]
         client.runtimeDataBackupsToLoad = [
@@ -676,11 +827,11 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
         let sourceURL = URL(fileURLWithPath: "/external/redis-20260614T043455Z.tar.gz")
-        let destinationURL = URL(fileURLWithPath: "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz")
+        let destinationURL = URL(fileURLWithPath: "/platform/backups/runtime-data/redis/redis-20260614T043455Z.tar.gz")
         nativeShell.redisBackupArchiveURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .file,
-            "/runtime/data/backups/redis": .directory,
+            "/platform/backups/runtime-data/redis": .directory,
             destinationURL.path: .missing,
         ]
         client.redisBackupsToLoad = [
@@ -711,8 +862,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         nativeShell.redisBackupArchiveURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .file,
-            "/runtime/data/backups/redis": .directory,
-            "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz": .file,
+            "/platform/backups/runtime-data/redis": .directory,
+            "/platform/backups/runtime-data/redis/redis-20260614T043455Z.tar.gz": .file,
         ]
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -729,7 +880,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
     func testRestoreRedisBackupUsesSelectedManagedRedisArchive() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let selectedURL = URL(fileURLWithPath: "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz")
+        let selectedURL = URL(fileURLWithPath: "/platform/backups/runtime-data/redis/redis-20260614T043455Z.tar.gz")
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
@@ -751,8 +902,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         nativeShell.directoryURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .directory,
-            "/runtime/data/backups/vitalserver-helper": .directory,
-            "/runtime/data/backups/vitalserver-helper/20260614T043455Z-manual": .directory,
+            "/platform/backups/runtime-data/vitalserver-helper": .directory,
+            "/platform/backups/runtime-data/vitalserver-helper/20260614T043455Z-manual": .directory,
         ]
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -906,7 +1057,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
     func testHealthRefreshDoesNotPublishContainerObservationAsCurrentProductStatus() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        client.healthStatus = RuntimeStatus(runtimeVersion: "health-refreshed")
+        client.healthStatus = platformState(runtimeVersion: "health-refreshed")
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
@@ -915,7 +1066,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         await viewModel.refreshHealthStatus()
 
-        XCTAssertEqual(viewModel.status.runtimeVersion, "health-refreshed")
+        XCTAssertEqual(viewModel.status.installedVersion, "health-refreshed")
     }
 
     func testVitalRecorderRefreshUpdatesCurrentObservationSnapshot() async {
@@ -1368,8 +1519,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
                 )
             ]
         )
-        viewModel.status = RuntimeStatus(
-            runtimeInstalled: true,
+        viewModel.status = platformState(
             runtimeInstallationState: .executable,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
@@ -1387,9 +1537,6 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             runtimeControlStartedAt: observedAt,
             redisUIHTTP: "200",
             swaggerUIHTTP: "200",
-            cpuUsagePercent: 12.5,
-            memory: ResourceUsage(usedBytes: 512 * 1024 * 1024, totalBytes: 2 * 1024 * 1024 * 1024),
-            systemDisk: ResourceUsage(usedBytes: 10 * 1024 * 1024, totalBytes: 100 * 1024 * 1024),
             dataStorage: ResourceUsage(usedBytes: 20 * 1024 * 1024, totalBytes: 200 * 1024 * 1024),
             proxyPort: 8080
         )
@@ -1435,6 +1582,23 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
     }
 
+    private func runtimeServiceResource(service: String) -> RuntimeGuestServiceResource {
+        RuntimeGuestServiceResource(
+            service: service,
+            spec: RuntimeGuestServiceSpec(
+                state: "configured",
+                desiredState: "running",
+                updatedAt: "2026-07-11T00:00:00Z"
+            ),
+            status: RuntimeGuestServiceStatusRead(
+                state: "loaded",
+                observedState: "running",
+                observedAt: "2026-07-11T00:00:00Z"
+            ),
+            conditions: []
+        )
+    }
+
     private func render<V: View>(
         _ view: V,
         file: StaticString = #filePath,
@@ -1454,7 +1618,7 @@ private extension RuntimeControlCapabilities {
             canUninstallRuntime: false,
             canApplyBundle: false,
             canRollback: false,
-            canEditVMResources: false,
+            canEditRuntimeProviderResources: false,
             canEditNetworkExposure: false,
             canResetAdminPassword: false,
             canOpenLocalFiles: false,
@@ -1472,6 +1636,26 @@ private struct NoopHealthNotifications: HealthNotifying {
 }
 
 @MainActor
+private func loadedRedisRelaySettings(enabled: Bool) -> RuntimeRedisRelaySettingsRead {
+    RuntimeRedisRelaySettingsRead(
+        state: .loaded,
+        settings: RuntimeRedisRelaySettingsReadDocument(
+            enabled: enabled,
+            target: RuntimeRedisRelayTargetRead(
+                url: "redis://relay.example:6379/0",
+                username: "relay-user",
+                passwordConfigured: false,
+                tls: false
+            ),
+            scope: .vitalReconstruction,
+            includeRecorderNetworkContext: true,
+            intervalSeconds: 1,
+            scanCount: 1000
+        ),
+        readError: nil
+    )
+}
+
 private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     let capabilities: RuntimeControlCapabilities
     var loadStatusCount = 0
@@ -1481,6 +1665,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var runtimeEventQueries: [RuntimeEventQuery] = []
     var loadVitalDBRecordersCount = 0
     var loadVitalDBBedsCount = 0
+    var loadRedisRelayStatusCount = 0
+    var runtimeStackStatusCount = 0
+    var serviceResourceRequests: [String] = []
     var loadBackupsCount = 0
     var loadSettingsCount = 0
     var verifyUpdateBundleCount = 0
@@ -1510,6 +1697,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var exportLogsResult: RuntimeLogExportResult?
     var releaseInfoLoadError: Error?
     var backupLoadError: Error?
+    var redisRelayStatusError: Error?
+    var runtimeStackError: Error?
+    var serviceResourceErrorsByService: [String: Error] = [:]
+    var serviceResourcesByService: [String: RuntimeGuestServiceResource] = [:]
     var labScenariosToLoad = RuntimeLabScenarioList(state: .loaded, scenarios: [])
     var labVitalFilesToLoad = RuntimeLabVitalFileList(state: .loaded, vitalFiles: [])
     var labBedsToLoad = RuntimeLabBedList(state: .loaded, beds: [])
@@ -1538,13 +1729,25 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var lastLoadHealthStatusSettings: RuntimeSettings?
     var lastAppliedSettings: RuntimeSettings?
     var settings = RuntimeSettings()
-    var status = RuntimeStatus()
-    var operationState = RuntimeOperationState(activeOperation: nil, install: .unavailable())
-    var healthStatus = RuntimeStatus()
+    var status = platformState()
+    var operationState = PlatformOperationState(activeOperation: nil, install: .unavailable())
+    var healthStatus = platformState()
     var vitalDBObservation: VitalDBObservationDocument?
     var vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(updatedAt: "2026-07-01T00:00:00+00:00")
     var vitalDBBedHistory = RuntimeVitalBedHistory()
     var vitalDBBedVisibilityHistory = RuntimeVitalBedHistory(updatedAt: "2026-07-01T00:00:00+00:00")
+    var redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
+        readState: .notRead,
+        document: nil,
+        readError: nil
+    )
+    var runtimeRedisRelaySettingsRead = loadedRedisRelaySettings(enabled: false)
+    var appliedRuntimeRedisRelaySettings: [RuntimeRedisRelaySettingsApplyRequest] = []
+    var runtimeStackStatus = RuntimeGuestControlStackStatus(
+        state: "loaded",
+        observedAt: "2026-07-11T00:00:00Z",
+        services: []
+    )
 
     init(capabilities: RuntimeControlCapabilities) {
         self.capabilities = capabilities
@@ -1555,17 +1758,17 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return settings
     }
 
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
         loadStatusCount += 1
         lastLoadStatusSettings = settings
         return status
     }
 
-    func loadOperationState() -> RuntimeOperationState {
+    func loadOperationState() -> PlatformOperationState {
         operationState
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
         loadHealthStatusCount += 1
         lastLoadHealthStatusSettings = settings
         return healthStatus
@@ -1599,6 +1802,51 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
         RuntimeVitalRelationshipHistory()
+    }
+
+    func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult {
+        loadRedisRelayStatusCount += 1
+        if let redisRelayStatusError {
+            throw redisRelayStatusError
+        }
+        return redisRelayStatusRead
+    }
+
+    func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead {
+        runtimeRedisRelaySettingsRead
+    }
+
+    func applyRuntimeRedisRelaySettings(
+        _ settings: RuntimeRedisRelaySettingsApplyRequest
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        appliedRuntimeRedisRelaySettings.append(settings)
+        return RuntimeGuestControlServiceOperation(
+            operationId: "redis-relay-settings-1",
+            service: "redis-relay",
+            command: .applyRedisRelaySettings,
+            state: .completed,
+            createdAt: "2026-07-11T00:00:00Z",
+            updatedAt: "2026-07-11T00:00:01Z"
+        )
+    }
+
+    func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        runtimeStackStatusCount += 1
+        if let runtimeStackError {
+            throw runtimeStackError
+        }
+        return runtimeStackStatus
+    }
+
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        serviceResourceRequests.append(service)
+        if let error = serviceResourceErrorsByService[service] {
+            throw error
+        }
+        guard let resource = serviceResourcesByService[service] else {
+            throw RuntimeControlClientUnsupportedError.unavailable("service-resource-\(service)")
+        }
+        return resource
     }
 
     func hideVitalDBRecorders(
@@ -1985,8 +2233,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         RuntimeInstallInfo(
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
-            redisBackupsPath: "/runtime/data/backups/redis",
-            runtimeDataBackupsPath: "/runtime/data/backups/vitalserver-helper"
+            redisBackupsPath: "/platform/backups/runtime-data/redis",
+            runtimeDataBackupsPath: "/platform/backups/runtime-data/vitalserver-helper"
         )
     }
 

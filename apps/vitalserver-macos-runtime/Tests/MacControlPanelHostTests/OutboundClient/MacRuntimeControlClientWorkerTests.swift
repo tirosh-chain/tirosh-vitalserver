@@ -10,7 +10,7 @@ import Errors
 @MainActor
 final class MacRuntimeControlClientWorkerTests: XCTestCase {
     func testReadWorkerDelegatesReadModelsToInjectedReaders() async throws {
-        let statusReader = AdapterStubStatusReader()
+        let platformStateReader = AdapterStubStatusReader()
         let operationStateReader = AdapterStubOperationStateReader(activeOperation: .applyBundle)
         let observabilityReader = AdapterStubObservabilityReader()
         let fileReader = AdapterStubFileReader()
@@ -22,7 +22,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
                 vitalServerVersion: "runtime",
                 services: []
             ),
-            statusReader: statusReader,
+            platformStateReader: platformStateReader,
             operationStateReader: operationStateReader,
             observabilityReader: observabilityReader,
             fileReader: fileReader,
@@ -30,7 +30,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         )
 
         let settings = await worker.loadSettings()
-        let status = await worker.loadStatus(settings: settings)
+        let status = await worker.loadPlatformState(settings: settings)
         let health = await worker.loadHealthStatus(settings: settings)
         let operationState = await worker.loadOperationState()
         let limitedEvents = await worker.loadRuntimeEvents(limit: 5)
@@ -46,8 +46,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let installInfo = await worker.loadInstallInfo()
 
         XCTAssertEqual(settings.proxyPort, 19080)
-        XCTAssertEqual(status.runtimeVersion, "status")
-        XCTAssertEqual(health.runtimeVersion, "health")
+        XCTAssertEqual(status.installedVersion, "status")
+        XCTAssertEqual(health.installedVersion, "health")
         XCTAssertEqual(operationState.activeOperation, .applyBundle)
         XCTAssertEqual(operationState.lease.state, .failed)
         XCTAssertEqual(operationState.lease.readError, "lease read failed")
@@ -84,7 +84,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         )
         let client = MacRuntimeControlClient(
             releaseInfo: releaseInfo,
-            statusReader: AdapterStubStatusReader(),
+            platformStateReader: AdapterStubStatusReader(),
             observabilityReader: AdapterStubObservabilityReader(),
             fileReader: AdapterStubFileReader(),
             settingsReader: AdapterStubSettingsReader(),
@@ -97,8 +97,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let loadedReleaseInfo = try await client.loadReleaseInfo()
 
         XCTAssertEqual(client.loadSettings().proxyPort, 19080)
-        XCTAssertEqual(client.loadStatus(settings: RuntimeSettings()).runtimeVersion, "status")
-        XCTAssertEqual(healthStatus.runtimeVersion, "health")
+        XCTAssertEqual(client.loadPlatformState(settings: RuntimeSettings()).installedVersion, "status")
+        XCTAssertEqual(healthStatus.installedVersion, "health")
         XCTAssertEqual(client.loadRuntimeEvents(limit: 3).matchingCount, 3)
         XCTAssertEqual(client.loadRuntimeEvents(query: RuntimeEventQuery(limit: 4)).matchingCount, 4)
         XCTAssertNotNil(client.loadVitalDBObservationSnapshot().observation)
@@ -140,7 +140,6 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(environment.removedTemporaryFiles.map(\.path), [
             "/tmp/admin-password",
             "/tmp/recorder-ingress-settings.json",
-            "/tmp/redis-relay-settings.json",
         ])
         XCTAssertEqual(runner.shellCommands.count, 8)
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--clean") })
@@ -169,19 +168,19 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             message: "expired"
         )
 
-        let missing = SystemRuntimeOperationStateReader(
+        let missing = SystemPlatformOperationStateReader(
             operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
             now: { now }
         ).loadOperationState()
-        let failed = SystemRuntimeOperationStateReader(
+        let failed = SystemPlatformOperationStateReader(
             operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .failed("lease denied")),
             now: { now }
         ).loadOperationState()
-        let loaded = SystemRuntimeOperationStateReader(
+        let loaded = SystemPlatformOperationStateReader(
             operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .loaded(activeLease)),
             now: { now }
         ).loadOperationState()
-        let stale = SystemRuntimeOperationStateReader(
+        let stale = SystemPlatformOperationStateReader(
             operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .loaded(expiredLease)),
             now: { now }
         ).loadOperationState()
@@ -212,16 +211,16 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             message: "install step running"
         )
 
-        let unavailable = SystemRuntimeOperationStateReader(
+        let unavailable = SystemPlatformOperationStateReader(
             operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing)
         ).loadOperationState()
-        let loaded = SystemRuntimeOperationStateReader(
+        let loaded = SystemPlatformOperationStateReader(
             operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
             installStateReader: {
                 RuntimeInstallStateRead.loaded(installDocument)
             }
         ).loadOperationState()
-        let failed = SystemRuntimeOperationStateReader(
+        let failed = SystemPlatformOperationStateReader(
             operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
             installStateReader: {
                 RuntimeInstallStateRead.failed("runtime install state decode failed")
@@ -260,38 +259,11 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(environment.removedTemporaryFiles.map(\.path), [
             "/tmp/admin-password",
             "/tmp/recorder-ingress-settings.json",
-            "/tmp/redis-relay-settings.json",
         ])
         XCTAssertEqual(result.outputIssues.count, 1)
         XCTAssertEqual(result.outputIssues.first?.stream, .stderr)
         XCTAssertTrue(result.outputIssues.first?.message.contains("admin password file cleanup failed") == true)
         XCTAssertTrue(result.outputIssues.first?.message.contains("/tmp/admin-password") == true)
-    }
-
-    func testApplySettingsCleansPreparedTemporaryFilesWhenLaterPreparationFails() async throws {
-        let environment = AdapterFakeActionEnvironment()
-        environment.redisRelaySettingsWriteError = CocoaError(.fileWriteNoPermission)
-        let runner = AdapterFakePrivilegedCommandRunner()
-        let worker = MacRuntimeControlCommandWorker(
-            privilegedCommandRunner: runner,
-            actionEnvironment: environment,
-            logExporter: AdapterFakeLogExporter(),
-            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
-        )
-        var settings = RuntimeSettings()
-        settings.changeAdminPassword = true
-        settings.adminPassword = "secret"
-
-        do {
-            _ = try await worker.applySettings(settings)
-            XCTFail("Expected Redis relay settings file preparation failure")
-        } catch {
-            XCTAssertEqual(runner.shellCommands, [])
-            XCTAssertEqual(environment.removedTemporaryFiles.map(\.path), [
-                "/tmp/admin-password",
-                "/tmp/recorder-ingress-settings.json",
-            ])
-        }
     }
 
     func testCommandWorkerReportsMissingExecutableBoundaries() async {
@@ -476,25 +448,25 @@ final class RuntimeExecutableCommandPreflightTests: XCTestCase {
     }
 }
 
-private final class AdapterStubStatusReader: RuntimeStatusReading {
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        RuntimeStatus(runtimeVersion: "status")
+private final class AdapterStubStatusReader: PlatformStateReading {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
+        platformState(runtimeVersion: "status")
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        RuntimeStatus(runtimeVersion: "health")
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
+        platformState(runtimeVersion: "health")
     }
 }
 
-private final class AdapterStubOperationStateReader: RuntimeOperationStateReading {
+private final class AdapterStubOperationStateReader: PlatformOperationStateReading {
     let activeOperation: RuntimeOperation?
 
     init(activeOperation: RuntimeOperation? = nil) {
         self.activeOperation = activeOperation
     }
 
-    func loadOperationState() -> RuntimeOperationState {
-        RuntimeOperationState(
+    func loadOperationState() -> PlatformOperationState {
+        PlatformOperationState(
             activeOperation: activeOperation,
             install: .unavailable(),
             lease: .failed(readError: "lease read failed")
@@ -598,11 +570,9 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
     let executableStates: [String: RuntimeFileState]
     var removeError: Error?
     var removeErrorPaths: Set<String>?
-    var redisRelaySettingsWriteError: Error?
     private let lock = NSLock()
     private var protectedRemovedTemporaryFiles: [URL] = []
     private var protectedWrittenRecorderIngressSettings: [RuntimeRecorderIngressSettings] = []
-    private var protectedWrittenRedisRelaySettings: [RuntimeRedisRelaySettings] = []
 
     init(executableStates: [String: RuntimeFileState] = [
         RuntimeControlClientConstants.Paths.launcher: .executable,
@@ -613,10 +583,6 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
 
     var removedTemporaryFiles: [URL] {
         lock.withLock { protectedRemovedTemporaryFiles }
-    }
-
-    var writtenRedisRelaySettings: [RuntimeRedisRelaySettings] {
-        lock.withLock { protectedWrittenRedisRelaySettings }
     }
 
     var writtenRecorderIngressSettings: [RuntimeRecorderIngressSettings] {
@@ -636,16 +602,6 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
             protectedWrittenRecorderIngressSettings.append(settings)
         }
         return URL(fileURLWithPath: "/tmp/recorder-ingress-settings.json")
-    }
-
-    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
-        if let redisRelaySettingsWriteError {
-            throw redisRelaySettingsWriteError
-        }
-        lock.withLock {
-            protectedWrittenRedisRelaySettings.append(settings)
-        }
-        return URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
     }
 
     func removeItem(at url: URL) throws {
@@ -672,7 +628,7 @@ private struct AdapterStubGuestAddressProvider: RuntimeGuestAddressProvider {
     let result: RuntimeGuestAddressReadResult
 
     static let loaded = AdapterStubGuestAddressProvider(
-        result: .loaded(address: "192.168.64.2", source: .runtimeControlAPI)
+        result: .loaded(address: "192.168.64.2", source: .platformAgent)
     )
 
     func readGuestAddress() -> RuntimeGuestAddressReadResult {

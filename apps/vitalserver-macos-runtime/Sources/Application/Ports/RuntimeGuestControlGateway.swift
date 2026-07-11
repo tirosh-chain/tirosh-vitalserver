@@ -3,6 +3,12 @@ import Contracts
 public protocol RuntimeGuestControlGateway {
     func ready() throws -> RuntimeGuestControlReadiness
     func capabilities() throws -> RuntimeGuestControlCapabilities
+    func runtimeSettings() throws -> RuntimeProductSettingsRead
+    func applyRuntimeSettings(_ settings: GuestRuntimeSettingsDocument) throws -> RuntimeGuestControlServiceOperation
+    func applyAdminPassword(_ password: String) throws -> RuntimeGuestControlServiceOperation
+    func redisRelaySettings() throws -> RuntimeRedisRelaySettingsRead
+    func applyRedisRelaySettings(_ settings: RuntimeRedisRelaySettingsApplyRequest) throws -> RuntimeGuestControlServiceOperation
+    func runtimeEvents(query: RuntimeEventQuery) throws -> RuntimeOperationEventHistory
     func listServices() throws -> RuntimeGuestControlServiceList
     func stackStatus() throws -> RuntimeGuestControlStackStatus
     func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus
@@ -51,6 +57,30 @@ public extension RuntimeGuestControlGateway {
 
     func capabilities() throws -> RuntimeGuestControlCapabilities {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("capabilities")
+    }
+
+    func runtimeSettings() throws -> RuntimeProductSettingsRead {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("settings:get")
+    }
+
+    func applyRuntimeSettings(_: GuestRuntimeSettingsDocument) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("settings:apply")
+    }
+
+    func applyAdminPassword(_: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("admin-password:apply")
+    }
+
+    func redisRelaySettings() throws -> RuntimeRedisRelaySettingsRead {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("redis-relay:settings:get")
+    }
+
+    func applyRedisRelaySettings(_: RuntimeRedisRelaySettingsApplyRequest) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("redis-relay:settings:apply")
+    }
+
+    func runtimeEvents(query _: RuntimeEventQuery) throws -> RuntimeOperationEventHistory {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("events:get")
     }
 
     func serviceResource(_: String) throws -> RuntimeGuestServiceResource {

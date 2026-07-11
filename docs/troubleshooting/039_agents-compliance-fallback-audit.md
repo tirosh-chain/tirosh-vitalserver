@@ -878,7 +878,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test
 
 분류일: 2026-06-03
 
-P1 Runtime Control API boundary에서 VitalDB observation stream, SSE frame encoding, query parsing이 provider/read state를 축소하던 경로를 닫았다. `/vitaldb/observations/stream`은 더 이상 `snapshot.observation`만 전송하지 않고 JSON encoded `RuntimeVitalDBObservationSnapshot`을 전송해 `state`와 `readError`를 보존한다. SSE frame codec은 missing id/event/data와 invalid UTF-8 payload를 empty/default frame으로 만들지 않고 typed encoding error로 실패한다. Error response body는 fallible `try?` encoding 대신 deterministic JSON string encoder를 사용해 nil/empty body가 되지 않는다. Runtime event query는 duplicate parameter, value 없는 parameter, unknown event type을 bad request로 거절한다.
+P1 Runtime Control API boundary에서 VitalDB observation stream, SSE frame encoding, query parsing이 provider/read state를 축소하던 경로를 닫았다. `/runtime/vitaldb/observations/stream`은 더 이상 `snapshot.observation`만 전송하지 않고 JSON encoded `RuntimeVitalDBObservationSnapshot`을 전송해 `state`와 `readError`를 보존한다. SSE frame codec은 missing id/event/data와 invalid UTF-8 payload를 empty/default frame으로 만들지 않고 typed encoding error로 실패한다. Error response body는 fallible `try?` encoding 대신 deterministic JSON string encoder를 사용해 nil/empty body가 되지 않는다. Runtime event query는 duplicate parameter, value 없는 parameter, unknown event type을 bad request로 거절한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1314,7 +1314,7 @@ P1 PWA settings schema가 optional field 중심이라 partial `{ proxyPort: 1808
 
 SettingsPage는 settings가 아직 load되지 않았을 때 apply 가능한 domain-like draft를 만들지 않고, apply는 loaded settings가 있을 때만 진행된다. `runtimeSettingsPolicy`는 complete settings input만 검증하며, missing 값 보정을 검증 정책 안에서 수행하지 않는다.
 
-추가로 이미 closed 상태인 #226의 POST body parity를 정정했다. `/host/logs/read` body는 Swift/PWA request shape 테스트와 OpenAPI에서 `helperMessage`를 required nullable field로 표현하며, PWA hook은 legacy helper message 값이 없을 때 `helperMessage: null`을 명시적으로 보낸다.
+추가로 이미 closed 상태인 #226의 POST body parity를 정정했다. `/platform/logs/read` body는 Swift/PWA request shape 테스트와 OpenAPI에서 `helperMessage`를 required nullable field로 표현하며, PWA hook은 legacy helper message 값이 없을 때 `helperMessage: null`을 명시적으로 보낸다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1602,7 +1602,7 @@ P1 PWA `BedsPage`가 missing query data를 `[]`로 필터링해 empty bed list�
 
 Pass 68 이후 `RuntimeVitalBedRecord.bedID`, `observationCount`, `duplicateObservationCount`, `currentAnomalyCount`는 schema/generated type에서 required이므로 UI의 `hasBedID` filter, missing identity `Unknown` fallback, count `?? 0` fallback을 제거했다. Invalid/missing `lastSeenAt` sort value도 `0` timestamp로 만들지 않고 valid timestamp 뒤로 보낸다.
 
-Provider-owned bed summary/assignment summary를 UI가 재계산하는 #134/#135는 `/vitaldb/beds` API가 아직 array response만 제공하는 구조적 문제이므로 active로 유지한다.
+Provider-owned bed summary/assignment summary를 UI가 재계산하는 #134/#135는 `/runtime/vitaldb/beds` API가 아직 array response만 제공하는 구조적 문제이므로 active로 유지한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1644,7 +1644,7 @@ P1 PWA Beds/Recorders page가 list rows에서 summary/current/anomaly counts를 
 
 Summary는 `knownRecorders`, `currentRecorders`, `onlineRecorders`, `staleRecorders`, `recorderAnomalies`, `knownBeds`, `onlineBeds`, `staleBeds`, `bedAssignments`, `bedAnomalies`를 제공한다. Current recorder summary는 `presentInLatestObservation == true` record만 기준으로 계산하고, bed assignment/anomaly summary는 `notObserved` bed를 제외한 current bed 기준으로 계산한다.
 
-PWA `BedsPage`는 `/vitaldb/recorders` history response의 `beds + summary`를 소비한다. `RecordersPage`는 missing history data를 empty list로 렌더링하지 않고 contract error로 표시하며, `presentInLatestObservation === true` 만 current row로 취급한다. Required `vrcode`/count fields는 UI에서 filter 또는 `?? 0` fallback 없이 표시한다.
+PWA `BedsPage`는 `/runtime/vitaldb/recorders` history response의 `beds + summary`를 소비한다. `RecordersPage`는 missing history data를 empty list로 렌더링하지 않고 contract error로 표시하며, `presentInLatestObservation === true` 만 current row로 취급한다. Required `vrcode`/count fields는 UI에서 filter 또는 `?? 0` fallback 없이 표시한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|

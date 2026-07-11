@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from tirosh_guest_tools.adapters.outbound.observability.commands import run_command
-from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.infrastructure.common import (
-    DEPLOY_DIR,
+    COMPOSE_ENVIRONMENT_FILE,
+    COMPOSE_FILE,
     MOUNT_POINT,
     PROJECT_NAME,
 )
@@ -48,9 +49,11 @@ def compose_command(arguments: list[str]) -> list[str]:
     return [
         "docker",
         "compose",
+        "--env-file",
+        str(COMPOSE_ENVIRONMENT_FILE),
         "--project-name",
         PROJECT_NAME,
         "-f",
-        str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
+        str(COMPOSE_FILE),
         *arguments,
     ]

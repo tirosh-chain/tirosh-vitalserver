@@ -1,14 +1,22 @@
 import { useMemo, useState } from "react";
 
-import { useRuntimeEvents, useRuntimeOverview } from "@/console/hooks";
+import {
+  useLatestVitalDBObservation,
+  usePlatformState,
+  useRuntimeEvents,
+  useVitalDBRecorders
+} from "@/console/hooks";
 import type {
-  RuntimeControlOverview,
   RuntimeEventDocument,
+  RuntimeVitalDBObservationSnapshot,
   VitalDBAnomalyObservation,
   VitalDBObservationDocument
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
-import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
-import { formatRuntimeState } from "@/domain/runtime-control/formatting/runtimeState";
+import {
+  formatVitalRecorderObservationMetric,
+  vitalRecorderSummaryFromHistory,
+  type RuntimeVitalRecorderSummary
+} from "@/domain/runtime-control/formatting/vitalRecorder";
 import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
 import { ErrorState } from "@/components/ErrorState";
 import { KeyValueRows } from "@/components/KeyValueRows";
@@ -49,13 +57,17 @@ export function ObservabilityPage() {
     },
     [eventType, limit, period]
   );
-  const overviewQuery = useRuntimeOverview();
+  const observationQuery = useLatestVitalDBObservation();
+  const recordersQuery = useVitalDBRecorders();
+  const platformStateQuery = usePlatformState();
   const dailyEventsQuery = useRuntimeEvents(dailyEventRequest);
   const eventQuery = useRuntimeEvents(eventRequest);
 
-  const overview = overviewQuery.data;
-  const vitalDBObservationRead = selectVitalDBObservationRead(overview);
-  const recorderSummary = overview?.vitalRecorder;
+  const vitalDBObservationRead = selectVitalDBObservationRead(
+    observationQuery.data,
+    observationQuery.error
+  );
+  const recorderSummary = vitalRecorderSummaryFromHistory(recordersQuery.data);
   const eventRead = runtimeEventsRead(eventQuery);
   const dailyEventRead = runtimeEventsRead(dailyEventsQuery);
   const anomalyReadIssue = vitalDBObservationAnomalyReadIssue(
@@ -81,7 +93,9 @@ export function ObservabilityPage() {
             {
               label: "Guest log sync service",
               value: formatGuestLogSyncService(
-                overview?.status?.guestLogSyncServiceLoaded
+                platformStateQuery.data?.services.some(
+                  (service) => service.role === "log-sync" && service.state === "running"
+                )
               )
             },
             {
@@ -276,14 +290,14 @@ function RuntimeEventItem({ event }: { event: RuntimeEventDocument }) {
       <div className="event-meta">
         <span>{formatLocalDateTime(event.timestamp)}</span>
         <strong>{event.eventType}</strong>
-        <span>{formatRuntimeState(event.status)}</span>
-        <span className="event-operation">{event.operation ?? "Unknown"}</span>
+        <span>{event.operationState}</span>
+        <span className="event-operation">
+          {event.operationCommand || event.operationId}
+        </span>
       </div>
       <h3>{event.message || "Message not reported"}</h3>
       <p>{event.source ? `source: ${event.source}` : "source not reported"}</p>
-      {event.failureReasons?.length ? (
-        <p>{event.failureReasons.join(", ")}</p>
-      ) : null}
+      {event.failure ? <p>{`${event.failure.kind}: ${event.failure.message}`}</p> : null}
     </article>
   );
 }
@@ -309,9 +323,12 @@ type VitalDBObservationRead =
 type VitalDBObservationReadIssue = VitalDBObservationDocument["readIssues"][number];
 
 function selectVitalDBObservationRead(
-  overview: RuntimeControlOverview | undefined
+  snapshot: RuntimeVitalDBObservationSnapshot | undefined,
+  transportError: Error | null
 ): VitalDBObservationRead {
-  const snapshot = overview?.vitalDBObservationSnapshot;
+  if (transportError) {
+    return { state: "failed", readError: transportError.message };
+  }
   if (!snapshot?.state) {
     return { state: "notReported" };
   }
@@ -490,7 +507,7 @@ function formatGuestLogSyncService(value: boolean | null | undefined): string {
 }
 
 function formatRecorderAnomalyMetric(
-  recorderSummary: RuntimeControlOverview["vitalRecorder"] | undefined,
+  recorderSummary: RuntimeVitalRecorderSummary | undefined,
   read: VitalDBObservationRead
 ): string {
   const summaryValue = String(formatVitalRecorderObservationMetric(

@@ -1,10 +1,12 @@
 import type {
-  RuntimeApplySettingsRequest,
+  RuntimeApplyProductSettingsRequest,
+  RuntimeAdminPasswordRequest,
   RuntimeBackup,
   RuntimeBackupRequest,
   RuntimeCommandResponse,
-  RuntimeControlCapabilities,
-  RuntimeControlOverview,
+  ControlCapabilities,
+  PlatformCapabilities,
+  RuntimeCapabilities,
   RuntimeEventHistory,
   RuntimeExportLogsRequest,
   RuntimeGuestControlStackStatus,
@@ -27,9 +29,15 @@ import type {
   RuntimeLogExportResult,
   RuntimeLogTextRequest,
   RuntimeLogTextResponse,
-  RuntimeOperationState,
-  RuntimeSettings,
-  RuntimeStatus,
+  PlatformOperationState,
+  PlatformWorkflowOperation,
+  PlatformWorkflowResource,
+  RuntimeRedisRelayStatusReadResult,
+  RuntimeRedisRelaySettingsRead,
+  RuntimeRedisRelaySettingsApplyRequest,
+  RuntimeVitalDBObservationSnapshot,
+  RuntimeProductSettingsRead,
+  PlatformState,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest,
   RuntimeUpdateBundleSummaryResponse,
@@ -48,12 +56,25 @@ export type RuntimeEventQuery = {
 };
 
 export type RuntimeControlGateway = {
-  getCapabilities(): Promise<RuntimeControlCapabilities>;
-  getOverview(): Promise<RuntimeControlOverview>;
-  getStatus(): Promise<RuntimeStatus>;
-  getOperationState(): Promise<RuntimeOperationState>;
-  getSettings(): Promise<RuntimeSettings>;
-  applySettings(request: RuntimeApplySettingsRequest): Promise<RuntimeCommandResponse>;
+  getPlatformCapabilities(): Promise<PlatformCapabilities>;
+  getRuntimeCapabilities(): Promise<RuntimeCapabilities>;
+  getCapabilities(): Promise<ControlCapabilities>;
+  getPlatformState(): Promise<PlatformState>;
+  getRedisRelayStatus(): Promise<RuntimeRedisRelayStatusReadResult>;
+  getRuntimeRedisRelaySettings(): Promise<RuntimeRedisRelaySettingsRead>;
+  applyRuntimeRedisRelaySettings(
+    request: RuntimeRedisRelaySettingsApplyRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
+  getLatestVitalDBObservation(): Promise<RuntimeVitalDBObservationSnapshot>;
+  getOperationState(): Promise<PlatformOperationState>;
+  getPlatformWorkflow(): Promise<PlatformWorkflowResource>;
+  getRuntimeProductSettings(): Promise<RuntimeProductSettingsRead>;
+  applyRuntimeProductSettings(
+    request: RuntimeApplyProductSettingsRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
+  applyRuntimeAdminPassword(
+    request: RuntimeAdminPasswordRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
   getLabScenarios(): Promise<RuntimeLabScenarioList>;
   getLabBeds(): Promise<RuntimeLabBedList>;
   getLabRecorders(): Promise<RuntimeLabRecorderList>;
@@ -80,7 +101,7 @@ export type RuntimeControlGateway = {
   replayLabVitalFile(
     request: RuntimeLabVitalFileReplayRequest
   ): Promise<RuntimeLabSessionResponse>;
-  getGuestStackStatus(): Promise<RuntimeGuestControlStackStatus>;
+  getRuntimeStack(): Promise<RuntimeGuestControlStackStatus>;
   getGuestServiceResource(service: string): Promise<RuntimeGuestServiceResource>;
   startGuestService(
     request: RuntimeGuestServiceControlRequest
@@ -91,7 +112,7 @@ export type RuntimeControlGateway = {
   restartGuestService(
     request: RuntimeGuestServiceControlRequest
   ): Promise<RuntimeGuestControlServiceOperation>;
-  uninstallRuntime(request: RuntimeUninstallRequest): Promise<RuntimeCommandResponse>;
+  uninstallRuntime(request: RuntimeUninstallRequest): Promise<PlatformWorkflowOperation>;
   getRuntimeEvents(query?: RuntimeEventQuery): Promise<RuntimeEventHistory>;
   getRecorders(): Promise<VitalDBRecorders>;
   hideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;
@@ -104,15 +125,17 @@ export type RuntimeControlGateway = {
   getRelationships(): Promise<VitalDBRelationships>;
   readLogs(request: RuntimeLogTextRequest): Promise<RuntimeLogTextResponse>;
   exportLogs(request: RuntimeExportLogsRequest): Promise<RuntimeLogExportResult>;
+  createPlatformSupportExport(): Promise<PlatformWorkflowOperation>;
   summarizeUpdateBundle(
     request: RuntimeUpdateBundleRequest
   ): Promise<RuntimeUpdateBundleSummaryResponse>;
   verifyUpdateBundle(
     request: RuntimeUpdateBundleRequest
-  ): Promise<RuntimeCommandResponse>;
+  ): Promise<PlatformWorkflowOperation>;
   applyUpdateBundle(
     request: RuntimeUpdateBundleRequest
-  ): Promise<RuntimeCommandResponse>;
+  ): Promise<PlatformWorkflowOperation>;
+  rollbackRelease(): Promise<PlatformWorkflowOperation>;
   listHostBackups(): Promise<RuntimeBackup[]>;
   listRedisBackups(): Promise<RuntimeBackup[]>;
   listRuntimeDataBackups(): Promise<RuntimeBackup[]>;

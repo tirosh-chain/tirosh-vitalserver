@@ -6,7 +6,7 @@ After restarting the Helper VM, host runtime health stays `recovering` or
 `failed` even though the VM process, host proxy, guest HTTP, Redis UI, and
 Swagger UI are reachable.
 
-Guest Control `/v1/stack/status` returns HTTP 503 with:
+Guest Control `/runtime/stack` returns HTTP 503 with:
 
 ```text
 postgresOperationDocumentInvalid: postgres service operation document field is invalid: health

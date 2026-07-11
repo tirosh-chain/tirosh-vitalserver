@@ -265,20 +265,16 @@ public struct RuntimeConfigureRunner {
                 try updateRuntimeControlSettings { settings in
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: days,
-                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
-                        redisRelay: settings.redisRelay
+                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB
                     )
                 }
             case .setLogArchiveMaximumGiB(let gib):
                 try updateRuntimeControlSettings { settings in
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: settings.logArchiveRetentionDays,
-                        logArchiveMaximumGiB: gib,
-                        redisRelay: settings.redisRelay
+                        logArchiveMaximumGiB: gib
                     )
                 }
-            case .writeRedisRelayConfiguration(let redisRelay):
-                try writeRedisRelayConfiguration(redisRelay)
             case .reconcileGuestStackServices:
                 try actions.reconcileGuestStackServices()
             case .restrictSecretFile(let url):
@@ -300,15 +296,6 @@ public struct RuntimeConfigureRunner {
             withIntermediateDirectories: true
         )
         try fileStore.writeData(data, to: installedPaths.runtimeControlSettings, options: .atomic)
-    }
-
-    private func writeRedisRelayConfiguration(
-        _ settings: ConfigureRuntimeRedisRelaySettings
-    ) throws {
-        try RuntimeRedisRelayConfigurationWriter(
-            installedPaths: installedPaths,
-            fileStore: fileStore
-        ).writeConfigured(settings)
     }
 
     private func loadRuntimeControlSettings() throws -> RuntimeControlSettingsDocument {
@@ -483,29 +470,7 @@ public struct RuntimeConfigureRunner {
             return .logArchiveRetentionDays(value)
         case .logArchiveMaximumGiB(let value):
             return .logArchiveMaximumGiB(value)
-        case .redisRelaySettingsFile(let value):
-            return .redisRelay(try redisRelaySettings(from: value))
         }
-    }
-
-    private func redisRelaySettings(from url: URL) throws -> ConfigureRuntimeRedisRelaySettings {
-        let data = try actions.readSecretFile(url).data(using: .utf8) ?? Data()
-        let settings = try JSONDecoder().decode(RuntimeRedisRelaySettings.self, from: data)
-        return ConfigureRuntimeRedisRelaySettings(
-            enabled: settings.enabled,
-            target: ConfigureRuntimeRedisRelayTarget(
-                url: settings.target.url,
-                username: settings.target.username,
-                password: settings.target.password,
-                clearPassword: settings.target.clearPassword,
-                passwordConfigured: settings.target.passwordConfigured,
-                tls: settings.target.tls
-            ),
-            scope: ConfigureRuntimeRedisRelayScope(rawValue: settings.scope.rawValue) ?? .vitalReconstruction,
-            includeRecorderNetworkContext: settings.includeRecorderNetworkContext,
-            intervalSeconds: settings.intervalSeconds,
-            scanCount: settings.scanCount
-        )
     }
 
     private func recorderIngressSettings(from url: URL) throws -> RuntimeRecorderIngressSettings {

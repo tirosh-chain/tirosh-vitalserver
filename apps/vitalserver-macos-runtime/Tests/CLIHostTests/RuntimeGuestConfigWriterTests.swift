@@ -62,7 +62,7 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
     }
 
     private func makeRuntimeConfig(
-        publicHost: String = "",
+        publicHost: String = "127.0.0.1",
         publicPort: Int = Constants.Guest.publicPort,
         adminPassword: String
     ) -> GuestRuntimeConfigDocument {
@@ -71,8 +71,8 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
             redisHost: Constants.Guest.redisHost,
             redisPort: Constants.Guest.redisPort,
             trustProxy: true,
-            vitalServerURL: "",
-            remoteConsoleURL: "",
+            vitalServerURL: "http://127.0.0.1:80/",
+            remoteConsoleURL: "http://127.0.0.1:18322/",
             publicHost: publicHost,
             publicPort: publicPort,
             adminPassword: adminPassword,

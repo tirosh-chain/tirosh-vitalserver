@@ -6,7 +6,7 @@ import XCTest
 
 final class RuntimeControlAPIGuestAddressOwnerTests: XCTestCase {
     func testLoadGuestAddressResourceReadsHostOwnerAPI() throws {
-        let read = RuntimeGuestAddressReadResult.loaded(address: "192.168.64.10", source: .runtimeControlAPI)
+        let read = RuntimeGuestAddressReadResult.loaded(address: "192.168.64.10", source: .platformAgent)
         let client = GuestAddressCapturingRuntimeControlClientHTTPClient(response: jsonResponse(
             RuntimeGuestAddressResourceState.loaded(read)
         ))
@@ -19,12 +19,12 @@ final class RuntimeControlAPIGuestAddressOwnerTests: XCTestCase {
         XCTAssertEqual(try owner.loadGuestAddressResource(), .loaded(read))
         let request = try XCTUnwrap(client.requests.first)
         XCTAssertEqual(request.httpMethod, "GET")
-        XCTAssertEqual(request.url?.path, "/host/runtime/guest-address")
+        XCTAssertEqual(request.url?.path, "/platform/runtime-endpoint")
         XCTAssertEqual(request.value(forHTTPHeaderField: "X-Runtime-Control-Token"), "token")
     }
 
     func testPutGuestAddressResourceWritesHostOwnerAPI() throws {
-        let read = RuntimeGuestAddressReadResult.loaded(address: "192.168.64.11", source: .runtimeControlAPI)
+        let read = RuntimeGuestAddressReadResult.loaded(address: "192.168.64.11", source: .platformAgent)
         let client = GuestAddressCapturingRuntimeControlClientHTTPClient(response: jsonResponse(
             RuntimeGuestAddressResourceState.loaded(read)
         ))
@@ -37,7 +37,7 @@ final class RuntimeControlAPIGuestAddressOwnerTests: XCTestCase {
         XCTAssertEqual(try owner.putGuestAddressResource(address: "192.168.64.11"), .loaded(read))
         let request = try XCTUnwrap(client.requests.first)
         XCTAssertEqual(request.httpMethod, "PUT")
-        XCTAssertEqual(request.url?.path, "/host/runtime/guest-address")
+        XCTAssertEqual(request.url?.path, "/platform/runtime-endpoint")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
         XCTAssertTrue(try XCTUnwrap(request.httpBody).contains(Data(#""address":"192.168.64.11""#.utf8)))
     }

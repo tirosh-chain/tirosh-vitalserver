@@ -241,6 +241,84 @@ class PostgresOperationRepository:
             )
         return operation_from_json(document)
 
+    def query_events(
+        self,
+        *,
+        limit: int,
+        event_type: str | None,
+        since: datetime | None,
+        cursor: str | None,
+    ) -> dict[str, Any]:
+        cursor_id = _runtime_event_cursor_id(cursor)
+        conditions: list[str] = []
+        if event_type is not None:
+            state = event_type.removeprefix("operation-")
+            conditions.append(f"e.state = {sql_literal(state)}")
+        if since is not None:
+            conditions.append(
+                f"e.observed_at >= {sql_literal(since.isoformat())}::timestamptz"
+            )
+        if cursor_id is not None:
+            conditions.append(f"e.event_id < {cursor_id}")
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        sql = (
+            "SELECT COALESCE(jsonb_agg(item ORDER BY event_id DESC), '[]'::jsonb)::text "
+            "FROM (SELECT e.event_id, jsonb_build_object("
+            "'_eventId', e.event_id, "
+            "'schemaVersion', 1, "
+            "'id', 'runtime-operation-event-' || e.event_id::text, "
+            "'source', 'runtime-controller', "
+            "'eventType', 'operation-' || e.state, "
+            "'timestamp', e.observed_at, "
+            "'operationId', e.operation_id, "
+            "'operationService', o.document ->> 'service', "
+            "'operationCommand', o.document ->> 'command', "
+            "'operationState', e.state, "
+            "'message', concat_ws(' ', o.document ->> 'service', "
+            "o.document ->> 'command', e.state), "
+            "'failure', e.document -> 'failure'"
+            ") AS item FROM service_operation_events e "
+            "JOIN service_operations o ON o.operation_id = e.operation_id"
+            f"{where} ORDER BY e.event_id DESC LIMIT {limit + 1}) AS page;"
+        )
+        completed = run_psql(sql, stage="guest control runtime event history read")
+        text = (completed.stdout or "").strip()
+        if not text:
+            raise GuestControlDependencyError(
+                "runtime event history read returned no document",
+                kind="runtimeEventHistoryUnavailable",
+            )
+        try:
+            values = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise GuestControlDependencyError(
+                "runtime event history document is invalid JSON",
+                kind="runtimeEventHistoryInvalid",
+            ) from error
+        if not isinstance(values, list) or not all(isinstance(value, dict) for value in values):
+            raise GuestControlDependencyError(
+                "runtime event history document is not an event list",
+                kind="runtimeEventHistoryInvalid",
+            )
+        has_next = len(values) > limit
+        events = values[:limit]
+        next_cursor: str | None = None
+        if has_next and events:
+            event_id = events[-1].get("_eventId")
+            if not isinstance(event_id, int):
+                raise GuestControlDependencyError(
+                    "runtime event history cursor evidence is invalid",
+                    kind="runtimeEventHistoryInvalid",
+                )
+            next_cursor = f"event:{event_id}"
+        for event in events:
+            event.pop("_eventId", None)
+        return {
+            "events": events,
+            "nextCursor": next_cursor,
+            "matchingCount": None,
+        }
+
     def save_status(self, document: dict[str, Any]) -> None:
         try:
             observed_at = validate_redis_relay_status_document(document)
@@ -593,3 +671,27 @@ def required_object(document: dict[str, Any], field: str) -> dict[str, Any]:
 
 def string_or_empty(value: object) -> str:
     return value if isinstance(value, str) else ""
+
+
+def _runtime_event_cursor_id(cursor: str | None) -> int | None:
+    if cursor is None:
+        return None
+    prefix = "event:"
+    if not cursor.startswith(prefix):
+        raise GuestControlDependencyError(
+            "runtime event history cursor is invalid",
+            kind="runtimeEventCursorInvalid",
+        )
+    try:
+        value = int(cursor.removeprefix(prefix))
+    except ValueError as error:
+        raise GuestControlDependencyError(
+            "runtime event history cursor is invalid",
+            kind="runtimeEventCursorInvalid",
+        ) from error
+    if value < 1:
+        raise GuestControlDependencyError(
+            "runtime event history cursor is invalid",
+            kind="runtimeEventCursorInvalid",
+        )
+    return value

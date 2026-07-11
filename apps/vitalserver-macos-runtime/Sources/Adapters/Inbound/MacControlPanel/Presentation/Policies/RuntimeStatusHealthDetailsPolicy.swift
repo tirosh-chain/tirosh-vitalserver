@@ -73,45 +73,52 @@ public struct RuntimeStatusHealthDetailsPolicy {
     }
 
     public func healthDetails(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
+        runtimeStackStatus: RuntimeGuestControlStackStatus?,
+        runtimeStackReadError: String?,
+        runtimeServiceResources: [RuntimeGuestServiceResource],
+        runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
         recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
         now: Date
     ) -> [RuntimeStatusHealthDetailItem] {
         makeHealthDetails(
             status: status,
             operationState: operationState,
+            runtimeStackStatus: runtimeStackStatus,
+            runtimeStackReadError: runtimeStackReadError,
+            runtimeServiceResources: runtimeServiceResources,
+            runtimeServiceResourceReadIssues: runtimeServiceResourceReadIssues,
             recorderIngressStatusRead: recorderIngressStatusRead,
             now: now
         )
     }
 
     private func makeHealthDetails(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
+        runtimeStackStatus: RuntimeGuestControlStackStatus?,
+        runtimeStackReadError: String?,
+        runtimeServiceResources: [RuntimeGuestServiceResource],
+        runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
         recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
         now _: Date
     ) -> [RuntimeStatusHealthDetailItem] {
+        let runtimeInstallationValue = value(
+            vocabulary.installStateText(status.runtimeInstallationState),
+            installStateSeverity(status.runtimeInstallationState)
+        )
         var items = [
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,
-                value: value(
-                    vocabulary.installStateText(
-                        status.runtimeInstallationState
-                            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
-                    ),
-                    installStateSeverity(
-                        status.runtimeInstallationState
-                            ?? RuntimeFileState.unknown("runtime-installation-state-unavailable")
-                    )
-                )
+                value: runtimeInstallationValue
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmStateLabel,
-                value: value(vmStatePolicy.vmStateValue(status.vmState))
+                value: value(vmStatePolicy.vmStateValue(status.runtimeProviderState))
             ),
         ]
-        if let vmErrors = status.vmErrors, !vmErrors.isEmpty {
+        if let vmErrors = status.runtimeProviderErrors, !vmErrors.isEmpty {
             items.append(RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmErrorsLabel,
                 value: value(
@@ -120,12 +127,12 @@ public struct RuntimeStatusHealthDetailsPolicy {
                 )
             ))
         }
-        if !status.failureReasons.isEmpty {
+        if !status.healthIssues.isEmpty {
             items.append(RuntimeStatusHealthDetailItem(
                 label: vocabulary.failureReasonsLabel,
                 value: value(
-                    status.failureReasons.map(vocabulary.domainErrorText).joined(separator: ", "),
-                    status.failureReasons.contains { $0.domainSeverity == .critical } ? .critical : .warning
+                    status.healthIssues.map(vocabulary.domainErrorText).joined(separator: ", "),
+                    status.healthIssues.contains { $0.domainSeverity == .critical } ? .critical : .warning
                 )
             ))
         }
@@ -142,12 +149,12 @@ public struct RuntimeStatusHealthDetailsPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmIPAddressLabel,
                 value: value(
-                    status.vmIP ?? guestReadinessPolicy.pendingGuestStateText(
+                    status.runtimeEndpoint ?? guestReadinessPolicy.pendingGuestStateText(
                         status: status,
                         waitingText: vocabulary.waitingText,
                         staleText: vocabulary.guestStateStaleText
                     ),
-                    status.vmServiceState == .loaded && status.vmIP != nil ? .healthy : .warning
+                    status.serviceState(.runtimeProvider) == .loaded && status.runtimeEndpoint != nil ? .healthy : .warning
                 )
             ),
             RuntimeStatusHealthDetailItem(
@@ -157,16 +164,22 @@ public struct RuntimeStatusHealthDetailsPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.hostProxyName,
                 value: RuntimeStatusHealthDetailValue(
-                    text: reachabilityLabelPolicy.serviceReachabilityLabel(status.hostProxyHTTP),
-                    severity: status.proxyServiceState == .loaded && reachabilityPolicy.isSuccessfulHTTPStatus(status.hostProxyHTTP)
+                    text: reachabilityLabelPolicy.serviceReachabilityLabel(status.publicProxyHTTP),
+                    severity: status.serviceState(.publicProxy) == .loaded && reachabilityPolicy.isSuccessfulHTTPStatus(status.publicProxyHTTP)
                         ? .healthy
                         : .warning,
                     uptimeText: nil
                 )
             ),
         ])
-        items.append(contentsOf: guestServiceHealthDetails(status: status))
-        if let probeErrorItem = guestStackProbeErrorHealthDetail(status) {
+        items.append(contentsOf: guestServiceHealthDetails(
+            stackStatus: runtimeStackStatus,
+            stackReadError: runtimeStackReadError,
+            resources: runtimeServiceResources,
+            resourceReadIssues: runtimeServiceResourceReadIssues
+        ))
+        if let runtimeStackStatus,
+           let probeErrorItem = guestStackProbeErrorHealthDetail(runtimeStackStatus) {
             items.append(probeErrorItem)
         }
         items.append(contentsOf: [
@@ -177,21 +190,21 @@ public struct RuntimeStatusHealthDetailsPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.watchdogLabel,
                 value: value(serviceValuePolicy.serviceValue(
-                    state: status.watchdogServiceState
+                    state: status.serviceState(.watchdog)
                 ))
             ),
         ])
         return items
     }
 
-    private func guestStackProbeErrorHealthDetail(_ status: RuntimeStatus) -> RuntimeStatusHealthDetailItem? {
-        guard !status.guestStackProbeErrors.isEmpty else {
+    private func guestStackProbeErrorHealthDetail(_ stackStatus: RuntimeGuestControlStackStatus) -> RuntimeStatusHealthDetailItem? {
+        guard !stackStatus.probeErrors.isEmpty else {
             return nil
         }
         return RuntimeStatusHealthDetailItem(
             label: "\(vocabulary.guestProductServicesLabel) probes",
             value: value(
-                status.guestStackProbeErrors
+                stackStatus.probeErrors
                     .map { "\($0.source): \($0.message)" }
                     .joined(separator: ", "),
                 .warning
@@ -200,10 +213,10 @@ public struct RuntimeStatusHealthDetailsPolicy {
     }
 
     private func guestHTTPValue(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState
+        status: PlatformState,
+        operationState: PlatformOperationState
     ) -> RuntimeStatusHTTPValue {
-        let computedValue = httpValuePolicy.httpValue(status.guestHTTP, uptimeText: nil)
+        let computedValue = httpValuePolicy.httpValue(status.runtimeControllerHTTP, uptimeText: nil)
         return guestReadinessPolicy.guestHTTPValue(
             status: status,
             operationState: operationState,
@@ -213,51 +226,63 @@ public struct RuntimeStatusHealthDetailsPolicy {
         )
     }
 
-    private func guestServiceHealthDetails(status: RuntimeStatus) -> [RuntimeStatusHealthDetailItem] {
-        switch status.guestServicesReadState ?? .unavailable {
-        case .unavailable:
+    private func guestServiceHealthDetails(
+        stackStatus: RuntimeGuestControlStackStatus?,
+        stackReadError: String?,
+        resources: [RuntimeGuestServiceResource],
+        resourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
+    ) -> [RuntimeStatusHealthDetailItem] {
+        if let stackReadError {
+            return [
+                RuntimeStatusHealthDetailItem(
+                    label: vocabulary.guestProductServicesLabel,
+                    value: value(stackReadError, .warning)
+                ),
+            ]
+        }
+        guard let stackStatus else {
             return [
                 RuntimeStatusHealthDetailItem(
                     label: vocabulary.guestProductServicesLabel,
                     value: value(vocabulary.unavailableText, .warning)
                 ),
             ]
-        case .failed:
+        }
+        guard stackStatus.state == "loaded" else {
             return [
                 RuntimeStatusHealthDetailItem(
                     label: vocabulary.guestProductServicesLabel,
-                    value: value(status.guestServicesReadError ?? vocabulary.failedText, .warning)
+                    value: value("Runtime stack status is \(stackStatus.state)", .warning)
                 ),
             ]
-        case .loaded:
-            return orderedGuestServiceStatuses(status)
-                .filter { $0.service != "redis-relay" }
-                .map { serviceStatus in
-                    let resource = status.guestServiceResources.first { $0.service == serviceStatus.service }
-                    let readIssue = status.guestServiceResourceReadIssues.first { $0.service == serviceStatus.service }
-                    return RuntimeStatusHealthDetailItem(
-                        label: "\(vocabulary.guestProductServicesLabel): \(serviceStatus.service)",
-                        value: RuntimeStatusHealthDetailValue(
-                            text: guestServiceText(serviceStatus, resource: resource, readIssue: readIssue),
-                            severity: guestServiceSeverity(serviceStatus, readIssue: readIssue),
-                            uptimeText: nil
-                        )
-                    )
-                }
         }
+        return orderedGuestServiceStatuses(stackStatus)
+            .filter { $0.service != "redis-relay" }
+            .map { serviceStatus in
+                let resource = resources.first { $0.service == serviceStatus.service }
+                let readIssue = resourceReadIssues.first { $0.service == serviceStatus.service }
+                return RuntimeStatusHealthDetailItem(
+                    label: "\(vocabulary.guestProductServicesLabel): \(serviceStatus.service)",
+                    value: RuntimeStatusHealthDetailValue(
+                        text: guestServiceText(serviceStatus, resource: resource, readIssue: readIssue),
+                        severity: guestServiceSeverity(serviceStatus, readIssue: readIssue),
+                        uptimeText: nil
+                    )
+                )
+            }
     }
 
     private func orderedGuestServiceStatuses(
-        _ status: RuntimeStatus
+        _ stackStatus: RuntimeGuestControlStackStatus
     ) -> [RuntimeGuestControlServiceStatus] {
         var statusesByService: [String: RuntimeGuestControlServiceStatus] = [:]
-        for serviceStatus in status.guestServiceStatuses where statusesByService[serviceStatus.service] == nil {
+        for serviceStatus in stackStatus.services where statusesByService[serviceStatus.service] == nil {
             statusesByService[serviceStatus.service] = serviceStatus
         }
-        let orderedServices = status.guestServices ?? []
+        let orderedServices = stackStatus.services.map(\.service)
         var orderedStatuses = orderedServices.compactMap { statusesByService[$0] }
         let orderedServiceSet = Set(orderedServices)
-        orderedStatuses.append(contentsOf: status.guestServiceStatuses
+        orderedStatuses.append(contentsOf: stackStatus.services
             .filter { !orderedServiceSet.contains($0.service) }
             .sorted { $0.service < $1.service })
         return orderedStatuses

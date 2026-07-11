@@ -16,7 +16,7 @@ macOS Helper app bundle
     sw.js
 ```
 
-Runtime Control API local server는 같은 origin에서 PWA asset과 `/runtime/*`, `/vitaldb/*`, `/host/*` API를 제공합니다.
+Runtime Control API local server는 같은 origin에서 PWA asset과 `/runtime/*`, `/runtime/vitaldb/*`, `/host/*` API를 제공합니다.
 
 ## Air-Gapped Assumption
 
@@ -51,7 +51,7 @@ npm --prefix apps/vitalserver-runtime-pwa run dev
 | `/sw.js` | service worker cleanup shim |
 | `/registerSW.js` | compatibility hook for older cached PWA shells |
 | `/runtime/*` | runtime control API |
-| `/vitaldb/*` | VitalDB observability API |
+| `/runtime/vitaldb/*` | VitalDB observability API |
 | `/host/*` | host affordance API |
 | `/dev/runtime-control` | browser diagnostics page only |
 
@@ -60,7 +60,7 @@ npm --prefix apps/vitalserver-runtime-pwa run dev
 PWA route visibility is capability-driven.
 
 - Stable build에서도 PWA static assets와 product API는 제공할 수 있어야 합니다.
-- `/dev/runtime-control`은 browser diagnostics page로만 둡니다. Product Lab은 `/lab/*`를 사용하고 `/dev/testkit/*`는 stable/product profile에 노출하지 않습니다.
+- `/dev/runtime-control`은 browser diagnostics page로만 둡니다. Product Lab은 `/runtime/lab/*`를 사용하고 `/dev/testkit/*`는 stable/product profile에 노출하지 않습니다.
 - PWA는 `GET /runtime/capabilities`를 source of truth로 사용합니다.
 
 ## Update Bundle Impact

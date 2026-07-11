@@ -26,7 +26,7 @@ public extension RuntimeViewModel {
     }
 
     func openVitalServer() {
-        guard let proxyPort = status.proxyPort else {
+        guard let proxyPort = status.publicProxyPort else {
             message = RuntimeHTTPStatusText.missingProxyPort
             return
         }
@@ -42,7 +42,7 @@ public extension RuntimeViewModel {
     }
 
     func openRedisUI() {
-        guard let proxyPort = status.proxyPort else {
+        guard let proxyPort = status.publicProxyPort else {
             message = RuntimeHTTPStatusText.missingProxyPort
             return
         }
@@ -50,7 +50,7 @@ public extension RuntimeViewModel {
     }
 
     func openSwagger() {
-        guard let proxyPort = status.proxyPort else {
+        guard let proxyPort = status.publicProxyPort else {
             message = RuntimeHTTPStatusText.missingProxyPort
             return
         }

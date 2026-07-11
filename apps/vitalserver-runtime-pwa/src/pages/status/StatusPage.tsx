@@ -1,6 +1,12 @@
-import { useRuntimeOverview, useVitalDBRecorders } from "@/console/hooks";
+import {
+  usePlatformState,
+  useRuntimeProductSettings,
+  useRuntimeStack,
+  useVitalDBRecorders
+} from "@/console/hooks";
 import type {
-  RuntimeControlOverview,
+  PlatformState,
+  RuntimeProductSettings,
   VitalDBRecorders
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
@@ -19,7 +25,8 @@ import {
 } from "@/domain/runtime-control/formatting/time";
 import {
   formatVitalRecorderConnectionMetric,
-  formatVitalRecorderObservationMetric
+  formatVitalRecorderObservationMetric,
+  vitalRecorderSummaryFromHistory
 } from "@/domain/runtime-control/formatting/vitalRecorder";
 import { formatRecorderIngressStatusReadState } from "@/domain/runtime-control/formatting/recorderIngress";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
@@ -44,35 +51,46 @@ type RuntimeRecorderIngressFailure = {
 };
 
 export function StatusPage() {
-  const overviewQuery = useRuntimeOverview();
+  const platformStateQuery = usePlatformState();
 
-  if (overviewQuery.isPending) {
-    return <Panel title="Status">Loading runtime overview...</Panel>;
+  if (platformStateQuery.isPending) {
+    return <Panel title="Status">Loading platform state...</Panel>;
   }
 
-  if (overviewQuery.isError) {
+  if (platformStateQuery.isError) {
     return (
       <Panel title="Status">
-        <ErrorState error={overviewQuery.error} />
+        <ErrorState error={platformStateQuery.error} />
       </Panel>
     );
   }
 
-  return <StatusOverview overview={overviewQuery.data} />;
+  return <StatusOverview platformState={platformStateQuery.data} />;
 }
 
-function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
-  const status = overview.status;
-  const state = status?.runtimeState;
+function StatusOverview({
+  platformState
+}: {
+  platformState: PlatformState;
+}) {
+  const status = platformState;
+  const runtimeStackQuery = useRuntimeStack();
+  const runtimeStack = runtimeStackQuery.data;
+  const state = status?.platformHealth;
   const stats = status?.dataDirectoryStats;
   const recordersQuery = useVitalDBRecorders();
+  const runtimeSettingsQuery = useRuntimeProductSettings();
+  const runtimeSettings =
+    runtimeSettingsQuery.data?.state === "loaded"
+      ? runtimeSettingsQuery.data.settings ?? undefined
+      : undefined;
   const recorderIngressStatusRead =
     recordersQuery.data?.recorderIngressStatusRead ?? null;
   const recorderIngressStatus = recorderIngressStatusRead?.document ?? null;
-  const vitalRecorder = overview.vitalRecorder;
+  const vitalRecorder = vitalRecorderSummaryFromHistory(recordersQuery.data);
   const browserHostname = currentBrowserHostname();
-  const vitalServerURL = advertisedVitalServerURL(overview, browserHostname);
-  const remoteConsoleURL = advertisedRemoteConsoleURL(overview, browserHostname);
+  const vitalServerURL = advertisedVitalServerURL(runtimeSettings, browserHostname);
+  const remoteConsoleURL = advertisedRemoteConsoleURL(runtimeSettings, browserHostname);
   const recorderIngressDetailRows = recorderIngressDetails(recorderIngressStatus);
 
   return (
@@ -98,8 +116,8 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                 NOT_REPORTED
               ),
               detail: serviceStatusDetail(
-                status?.hostProxyHTTP,
-                status?.runtimeControlStartedAt
+                status?.publicProxyHTTP,
+                status?.platformAPIStartedAt
               )
             },
             {
@@ -112,13 +130,13 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                 NOT_REPORTED
               ),
               detail: serviceStatusDetail(
-                status?.runtimeControlHTTP,
-                status?.runtimeControlStartedAt
+                status?.platformAPIHTTP,
+                status?.platformAPIStartedAt
               )
             },
             {
               label: "Data directory",
-              value: overview.settings?.vitalFilesDirectory ?? NOT_REPORTED,
+              value: NOT_REPORTED,
               detail: formatDataDirectoryStats(
                 stats,
                 status?.dataDirectoryStatsError
@@ -194,22 +212,28 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             {
               label: "CPU",
               value:
-                status?.cpuUsagePercent === null ||
-                status?.cpuUsagePercent === undefined
+                runtimeStack?.cpuUsagePercent === null ||
+                runtimeStack?.cpuUsagePercent === undefined
                   ? NOT_REPORTED
-                  : `${Math.round(status.cpuUsagePercent)}%`
+                  : `${Math.round(runtimeStack.cpuUsagePercent)}%`
             },
             {
               label: "Memory available to VM",
-              value: formatResourceUsage(status?.memory)
+              value: formatResourceUsage(runtimeStack?.memory)
             },
             {
               label: "VM disk",
-              value: formatResourceUsage(status?.systemDisk)
+              value: formatResourceUsage(runtimeStack?.systemDisk)
             },
             {
               label: "Data storage",
               value: formatResourceUsage(status?.dataStorage)
+            },
+            {
+              label: "Runtime stack resource",
+              value: runtimeStackQuery.isError
+                ? runtimeStackQuery.error.message
+                : runtimeStack?.state ?? NOT_REPORTED
             }
           ]}
         />
@@ -219,43 +243,37 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
 }
 
 function advertisedVitalServerURL(
-  overview: RuntimeControlOverview,
+  settings: RuntimeProductSettings | undefined,
   browserHostname: string | undefined
 ): string | null {
-  const advertised = overview.settings?.vitalServerURL?.trim();
+  const advertised = settings?.vitalServerURL?.trim();
   if (advertised) {
     return advertised;
   }
-  if (!overview.settings) {
+  if (!settings) {
     return null;
   }
-  if (!overview.settings.publicHost.trim()) {
+  if (!settings.publicHost.trim()) {
     return sameHostRuntimeURL({
       hostname: browserHostname,
-      port: overview.settings.publicPort
+      port: settings.publicPort
     });
   }
   return runtimeURL({
-    host: overview.settings.publicHost,
-    port: overview.settings.publicPort
+    host: settings.publicHost,
+    port: settings.publicPort
   });
 }
 
 function advertisedRemoteConsoleURL(
-  overview: RuntimeControlOverview,
-  browserHostname: string | undefined
+  settings: RuntimeProductSettings | undefined,
+  _browserHostname: string | undefined
 ): string | null {
-  const advertised = overview.settings?.remoteConsoleURL?.trim();
+  const advertised = settings?.remoteConsoleURL?.trim();
   if (advertised) {
     return advertised;
   }
-  if (typeof overview.settings?.runtimeControlPort !== "number") {
-    return null;
-  }
-  return sameHostRuntimeURL({
-    hostname: browserHostname,
-    port: overview.settings.runtimeControlPort
-  });
+  return null;
 }
 
 function currentBrowserHostname(): string | undefined {

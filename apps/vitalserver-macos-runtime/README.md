@@ -59,8 +59,8 @@ runtime 상태와 VitalDB 관측값은 아래 흐름으로 정규화합니다.
 ```text
 vitaldb-observer
   -> Guest/Postgres VitalDB read model
-  -> Guest Control API /v1/vitaldb/*
-  -> Runtime Control API /runtime/*, /vitaldb/*
+  -> Guest Control API /runtime/vitaldb/*
+  -> Runtime Control API /runtime/*, /runtime/vitaldb/*
 ```
 
 `vitaldb-observer`는 Redis와 proxy/access log를 읽는 stateless collector입니다. 최종 observation

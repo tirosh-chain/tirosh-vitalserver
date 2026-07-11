@@ -36,7 +36,6 @@ final class RuntimeFileNameContractsTests: XCTestCase {
     func testRuntimeDiagnosticsArtifactFileNamesRemainStableForDiagnosticsAndExportArtifacts() {
         XCTAssertEqual(RuntimeDiagnosticsArtifactFileNames.runtimeStatus, "runtime-status.json")
         XCTAssertEqual(RuntimeDiagnosticsArtifactFileNames.runtimeProgress, "runtime-progress.json")
-        XCTAssertEqual(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease, "runtime-operation-lease.json")
         XCTAssertEqual(RuntimeDiagnosticsArtifactFileNames.runtimeEvents, "runtime-events.jsonl")
         XCTAssertEqual(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB, "runtime-observability.sqlite")
         XCTAssertEqual(RuntimeDiagnosticsArtifactFileNames.runtimeObservation, "runtime-observation.json")
@@ -49,5 +48,7 @@ final class RuntimeFileNameContractsTests: XCTestCase {
 
     func testRuntimeHostOwnerFileNamesRemainStableForHostOwnedState() {
         XCTAssertEqual(RuntimeHostOwnerFileNames.vmLifecycle, "vm-lifecycle.json")
+        XCTAssertEqual(RuntimeHostOwnerFileNames.runtimeEndpoint, "runtime-endpoint.json")
+        XCTAssertEqual(RuntimeHostOwnerFileNames.operationLease, "runtime-operation-lease.json")
     }
 }

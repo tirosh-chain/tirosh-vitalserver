@@ -12,7 +12,7 @@ final class RuntimeLifecycleGuestControlURLTests: XCTestCase {
     func testDefaultGuestControlURLUsesInjectedGuestAddressProviderRead() throws {
         let (lifecycle, _, _) = makeLifecycle(
             guestAddressProvider: StubGuestAddressProvider(
-                read: .loaded(address: "192.168.64.9", source: .runtimeControlAPI)
+                read: .loaded(address: "192.168.64.9", source: .platformAgent)
             )
         )
 
@@ -26,7 +26,7 @@ final class RuntimeLifecycleGuestControlURLTests: XCTestCase {
     func testDefaultGuestControlURLUsesInjectedGuestAddressProvider() throws {
         let (lifecycle, _, _) = makeLifecycle(
             guestAddressProvider: StubGuestAddressProvider(
-                read: .loaded(address: "192.168.64.21", source: .runtimeControlAPI)
+                read: .loaded(address: "192.168.64.21", source: .platformAgent)
             )
         )
 

@@ -12,7 +12,12 @@ from .replication import (
     replicate_allowed_keys_once,
 )
 from .settings import RelaySettingsError, load_settings
-from .status import status_timestamp, write_status, write_unavailable_status
+from .status import (
+    build_status_document,
+    build_unavailable_status_document,
+    status_timestamp,
+    write_status_artifact,
+)
 from .status_owner import GuestControlStatusOwnerPublisher
 
 
@@ -20,7 +25,7 @@ def run_forever(
     *,
     config_path: Path,
     status_path: Path,
-    status_owner_url: str | None = None,
+    status_owner_url: str,
 ) -> None:
     status_owner = GuestControlStatusOwnerPublisher(owner_url=status_owner_url)
     batches = 0
@@ -32,10 +37,10 @@ def run_forever(
         try:
             settings = load_settings(config_path)
         except RelaySettingsError as error:
-            _publish_status(
-                status_owner,
-                write_unavailable_status(
-                    status_path,
+            _record_status(
+                status_owner=status_owner,
+                status_path=status_path,
+                document=build_unavailable_status_document(
                     state="config_invalid",
                     error=str(error),
                 ),
@@ -45,10 +50,10 @@ def run_forever(
 
         delay = settings.interval_seconds
         if not settings.enabled:
-            _publish_status(
-                status_owner,
-                write_status(
-                    status_path,
+            _record_status(
+                status_owner=status_owner,
+                status_path=status_path,
+                document=build_status_document(
                     settings=settings,
                     state="disabled",
                     batches=batches,
@@ -59,10 +64,10 @@ def run_forever(
             continue
         if settings.target is None:
             last_error_at = status_timestamp()
-            _publish_status(
-                status_owner,
-                write_status(
-                    status_path,
+            _record_status(
+                status_owner=status_owner,
+                status_path=status_path,
+                document=build_status_document(
                     settings=settings,
                     state="config_invalid",
                     batches=batches,
@@ -96,10 +101,10 @@ def run_forever(
                 )
         except Exception as error:
             last_error_at = status_timestamp()
-            _publish_status(
-                status_owner,
-                write_status(
-                    status_path,
+            _record_status(
+                status_owner=status_owner,
+                status_path=status_path,
+                document=build_status_document(
                     settings=settings,
                     state="relay_failed",
                     batches=batches,
@@ -121,10 +126,10 @@ def run_forever(
         else:
             last_error_at = status_timestamp()
             error_message = _batch_error_message(result)
-        _publish_status(
-            status_owner,
-            write_status(
-                status_path,
+        _record_status(
+            status_owner=status_owner,
+            status_path=status_path,
+            document=build_status_document(
                 settings=settings,
                 state=state,
                 batch=result,
@@ -160,6 +165,19 @@ def _batch_error_message(result: RelayBatchResult) -> str:
         f"relay batch completed with {result.errors} errors "
         f"firstCode={first.code.value}"
     )
+
+
+def _record_status(
+    *,
+    status_owner: GuestControlStatusOwnerPublisher,
+    status_path: Path,
+    document: dict[str, object],
+) -> None:
+    _publish_status(status_owner, document)
+    try:
+        write_status_artifact(status_path, document)
+    except OSError as error:
+        print(f"redis relay status artifact write failed: {error}", file=stderr)
 
 
 def _publish_status(

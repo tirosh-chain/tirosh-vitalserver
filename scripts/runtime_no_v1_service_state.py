@@ -22,6 +22,9 @@ PWA = ROOT / "apps/vitalserver-runtime-pwa"
 
 def main() -> int:
     results = [
+        check_platform_state_is_canonical_independent_resource(),
+        check_platform_and_runtime_capabilities_have_separate_owners(),
+        check_platform_and_runtime_namespaces_are_canonical(),
         check_runtime_status_reader_uses_guest_control(),
         check_command_worker_uses_guest_address_provider(),
         check_runtime_container_observation_does_not_expose_compose_services(),
@@ -134,6 +137,7 @@ def main() -> int:
         check_maintenance_docs_do_not_promote_request_files_as_current_path(),
         check_observer_docs_use_guest_postgres_read_model_flow(),
         check_redis_relay_status_docs_use_guest_control_api_flow(),
+        check_native_control_panel_redis_relay_settings_are_runtime_owned(),
         check_redis_backup_restore_results_do_not_carry_request_id(),
         check_guest_tools_legacy_operation_result_model_removed(),
     ]
@@ -151,6 +155,310 @@ def main() -> int:
     return 0
 
 
+def check_platform_state_is_canonical_independent_resource() -> CheckResult:
+    endpoint_routing = read(
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIEndpointRouting.swift"
+    )
+    swift_models = read(
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlModels.swift"
+    )
+    swift_overview = read(
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
+    )
+    overview_block = text_between(
+        swift_overview,
+        "public struct RuntimeControlOverview:",
+        "private static func vitalDBObservationCondition",
+    )
+    pwa_schemas = read(
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+    )
+    pwa_client = read(
+        PWA / "src/infrastructure/console-api/runtimeControlApiClient.ts"
+    )
+    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi = json.loads(read(openapi_path))
+    paths = openapi.get("paths", {})
+    schemas = openapi.get("components", {}).get("schemas", {})
+    overview_properties = schemas.get("RuntimeControlOverview", {}).get("properties", {})
+    platform_properties = schemas.get("PlatformState", {}).get("properties", {})
+
+    missing: list[str] = []
+    for token in [
+        'path: "/platform"',
+        'path: "/platform/stream"',
+        "case .platformState:",
+        "case .platformStateStream:",
+    ]:
+        if token not in endpoint_routing:
+            missing.append(f"routing:{token}")
+    for token in [
+        "public struct PlatformState:",
+        "export const platformStateSchema = z",
+    ]:
+        source = swift_models if token.startswith("public struct") else pwa_schemas
+        if token not in source:
+            missing.append(token)
+    if 'return this.get("/platform", platformStateSchema);' not in pwa_client:
+        missing.append("PWA:PlatformState independent /platform read")
+    if "/platform" not in paths or "/platform/stream" not in paths:
+        missing.append("OpenAPI:/platform resources")
+    if "PlatformState" not in schemas:
+        missing.append("OpenAPI:PlatformState")
+
+    forbidden: list[str] = []
+    if 'path: "/runtime/status"' in endpoint_routing:
+        forbidden.append("routing:/runtime/status")
+    if "/runtime/status" in paths:
+        forbidden.append("OpenAPI:/runtime/status")
+    if "RuntimeStatus" in schemas:
+        forbidden.append("OpenAPI:RuntimeStatus")
+    if "public struct RuntimeStatus:" in swift_models:
+        forbidden.append("Swift:RuntimeStatus")
+    if "public let status: PlatformState" in overview_block:
+        forbidden.append("Swift overview embeds PlatformState")
+    if "status" in overview_properties:
+        forbidden.append("OpenAPI overview embeds PlatformState")
+
+    canonical_platform_fields = {
+        "runtimeInstallationState",
+        "services",
+        "platformHealth",
+        "readIssues",
+        "installedVersion",
+        "latestBackup",
+        "runtimeProviderState",
+        "runtimeProviderErrors",
+        "runtimeEndpoint",
+        "runtimeControllerHTTP",
+        "publicProxyHTTP",
+        "platformAPIHTTP",
+        "platformAPIStartedAt",
+        "dataStorage",
+        "dataStorageError",
+        "dataDirectoryStats",
+        "dataDirectoryStatsError",
+        "publicProxyPort",
+        "publicProxyPortReadState",
+        "healthIssues",
+    }
+    if set(platform_properties) != canonical_platform_fields:
+        missing.append(
+            "OpenAPI:PlatformState canonical fields "
+            f"actual={sorted(platform_properties)}"
+        )
+    for token in [
+        "case platformHealth",
+        "case runtimeProviderState",
+        "case runtimeEndpoint",
+        "case platformAPIHTTP",
+        "case publicProxyPort",
+        "case healthIssues",
+    ]:
+        if token not in swift_models:
+            missing.append(f"Swift:{token}")
+    for token in [
+        "platformHealth: runtimeStateSchema.optional()",
+        "runtimeProviderState: vmStateSchema.optional()",
+        "runtimeEndpoint: nullableString",
+        "platformAPIHTTP: nullableString",
+        "publicProxyPort: z.number().optional()",
+        "healthIssues: z.array(z.string()).optional()",
+    ]:
+        if token not in pwa_schemas:
+            missing.append(f"PWA:{token}")
+
+    if missing or forbidden:
+        return CheckResult(
+            "platform-state-canonical-independent-resource",
+            False,
+            f"missing={missing} forbidden={forbidden}",
+        )
+    return CheckResult(
+        "platform-state-canonical-independent-resource",
+        True,
+        "PlatformState uses the canonical cross-platform vocabulary, is served only from /platform, and is not embedded in Runtime overview",
+    )
+
+
+def check_platform_and_runtime_capabilities_have_separate_owners() -> CheckResult:
+    routing = read(
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIEndpointRouting.swift"
+    )
+    handler = read(
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlClientAPIReadHandler.swift"
+    )
+    pwa_client = read(
+        PWA / "src/infrastructure/console-api/runtimeControlApiClient.ts"
+    )
+    openapi = json.loads(
+        read(ROOT / "docs/runtime/macos/runtime-control.openapi.json")
+    )
+    paths = openapi.get("paths", {})
+    schemas = openapi.get("components", {}).get("schemas", {})
+    platform_schema = schemas.get("PlatformCapabilities", {})
+    runtime_schema = schemas.get("RuntimeCapabilities", {})
+
+    missing = [
+        token
+        for token, text in [
+            ('path: "/platform/capabilities"', routing),
+            ('path: "/runtime/capabilities"', routing),
+            ("PlatformCapabilities(client.capabilities)", handler),
+            ("try await client.runtimeCapabilities()", handler),
+            ("this.getPlatformCapabilities()", pwa_client),
+            ("this.getRuntimeCapabilities()", pwa_client),
+            ('available.has("services:start")', pwa_client),
+            ('available.has("lab:scenarios")', pwa_client),
+        ]
+        if token not in text
+    ]
+    if "/platform/capabilities" not in paths:
+        missing.append("OpenAPI:/platform/capabilities")
+    if "/runtime/capabilities" not in paths:
+        missing.append("OpenAPI:/runtime/capabilities")
+
+    issues: list[str] = []
+    if platform_schema.get("additionalProperties") is not False:
+        issues.append("PlatformCapabilities must be closed")
+    platform_properties = set(platform_schema.get("properties", {}))
+    if platform_properties != set(platform_schema.get("required", [])):
+        issues.append("PlatformCapabilities properties must all be required")
+    if {"canControlGuestServices", "canUseLab"} & platform_properties:
+        issues.append("PlatformCapabilities carries Runtime product capability")
+    if "canEditVMResources" in platform_properties:
+        issues.append("PlatformCapabilities carries VM-specific vocabulary")
+    if "canEditRuntimeProviderResources" not in platform_properties:
+        issues.append("PlatformCapabilities misses runtime-provider resource capability")
+    if runtime_schema.get("additionalProperties") is not False:
+        issues.append("RuntimeCapabilities must be closed")
+    if set(runtime_schema.get("required", [])) != {"schemaVersion", "capabilities"}:
+        issues.append("RuntimeCapabilities must require owner version and identifiers")
+    if "RuntimeControlCapabilities" in schemas:
+        issues.append("legacy mixed OpenAPI capability schema remains")
+
+    if missing or issues:
+        return CheckResult(
+            "platform-runtime-capability-owner-split",
+            False,
+            f"missing={missing} issues={issues}",
+        )
+    return CheckResult(
+        "platform-runtime-capability-owner-split",
+        True,
+        "Platform and Runtime capability resources are independent owner contracts",
+    )
+
+
+def check_platform_and_runtime_namespaces_are_canonical() -> CheckResult:
+    endpoint_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIEndpointRouting.swift"
+    )
+    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    pwa_client_path = PWA / "src/infrastructure/console-api/runtimeControlApiClient.ts"
+    texts = {
+        relative(endpoint_path): read(endpoint_path),
+        relative(openapi_path): read(openapi_path),
+        relative(pwa_client_path): read(pwa_client_path),
+    }
+    required = [
+        "/platform/runtime-provider",
+        "/platform/uninstall",
+        "/platform/update-bundles",
+        "/platform/backups",
+        "/runtime/lab/",
+        "/runtime/vitaldb/",
+        "/runtime/maintenance/datastore/repair",
+    ]
+    missing = {
+        path: [token for token in required if token not in text]
+        for path, text in texts.items()
+        if any(token not in text for token in required)
+    }
+    endpoint_and_openapi = [relative(endpoint_path), relative(openapi_path)]
+    for path in endpoint_and_openapi:
+        for token in [
+            "/platform/runtime-endpoint",
+            "/platform/operations",
+            "/platform/operations/lease",
+            "/platform/installation",
+        ]:
+            if token not in texts[path]:
+                missing.setdefault(path, []).append(token)
+    for path in endpoint_and_openapi:
+        if "/runtime/services/{service}" not in texts[path]:
+            missing.setdefault(path, []).append("/runtime/services/{service}")
+    if "/runtime/services/${encodeURIComponent(request.service)}" not in texts[relative(pwa_client_path)]:
+        missing.setdefault(relative(pwa_client_path), []).append(
+            "/runtime/services/${encodeURIComponent(request.service)}"
+        )
+    legacy = [
+        "/host/",
+        "/runtime/guest/",
+        '"/lab/',
+        '"/vitaldb/',
+        "/runtime/install",
+        "/runtime/uninstall",
+        "/runtime/services/repair-proxy",
+        "/runtime/services/repair-vm-disk",
+        "/platform/operation-state",
+    ]
+    present = [
+        f"{path}:{token}"
+        for path, text in texts.items()
+        for token in legacy
+        if token in text
+    ]
+    openapi = json.loads(texts[relative(openapi_path)])
+    schemas = openapi.get("components", {}).get("schemas", {})
+    if "PlatformOperationState" not in schemas:
+        missing.setdefault(relative(openapi_path), []).append("PlatformOperationState")
+    if "RuntimeOperationState" in schemas:
+        present.append(f"{relative(openapi_path)}:RuntimeOperationState")
+    for schema_name in [
+        "RuntimeProviderState",
+        "RuntimeProviderError",
+        "RuntimeEndpointResourceState",
+        "RuntimeEndpointReadResult",
+        "RuntimeProviderResourceState",
+        "RuntimeProviderLifecycleDocument",
+    ]:
+        if schema_name not in schemas:
+            missing.setdefault(relative(openapi_path), []).append(schema_name)
+    for legacy_schema in [
+        "RuntimeVMState",
+        "RuntimeVMError",
+        "RuntimeGuestAddressResourceState",
+        "RuntimeGuestAddressReadResult",
+        "RuntimeVMLifecycleResourceState",
+        "RuntimeVMLifecycleDocument",
+    ]:
+        if legacy_schema in schemas:
+            present.append(f"{relative(openapi_path)}:{legacy_schema}")
+    if missing or present:
+        return CheckResult(
+            "platform-runtime-canonical-namespaces",
+            False,
+            f"missing={missing} legacy={present[:20]}",
+        )
+    return CheckResult(
+        "platform-runtime-canonical-namespaces",
+        True,
+        "Platform and Runtime API paths use owner namespaces without compatibility aliases",
+    )
+
+
 def check_runtime_status_reader_uses_guest_control() -> CheckResult:
     path = (
         MACOS_RUNTIME
@@ -164,19 +472,11 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
     )
     text = read(path)
     required = [
-        "gateway.stackStatus()",
-        "gateway.serviceResource(",
-        "RuntimeGuestServicesRead",
-        "guestServiceResources",
-        "guestServiceResourceReadIssues",
         "guestAddressProvider = guestAddressProvider ?? ownerReaders.guestAddressProvider",
         "guestAddressProvider.readGuestAddress()",
-        "guestAddressRead.loadedAddress",
         "RuntimeHostStatusOwnerReaderBundle.live(",
         "vmLifecycleReader.loadVMLifecycleRead()",
         "vmLifecycleRead: vmLifecycleRead",
-        "redisRelayStatusRead(vmIP: guestAddressRead.loadedAddress)",
-        "guestControlGateway(baseURL).redisRelayStatus()",
         "RuntimePackageArtifactFileNames.runtimeVersion",
         "InstalledRuntimePaths.defaultInstalled.backupsDirectory",
     ]
@@ -191,6 +491,8 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
         "RuntimeStatusDocumentReader(",
         "paths.runtimeStatus",
         "RuntimeRedisRelayStatusReader(",
+        "redisRelayStatusRead(",
+        ".redisRelayStatus()",
         "paths.redisRelayStatus",
         "RuntimeInstallStateDocumentReader(",
         "paths.runtimeInstallState",
@@ -211,6 +513,10 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
         "statusRead.document?.vmIP",
         "statusRead.document?.vmState",
         "statusRead.document?.vmErrors",
+        "gateway.stackStatus()",
+        "gateway.serviceResource(",
+        "RuntimeGuestServicesRead",
+        "guestServiceResourcesRead(",
     ]
     missing = [token for token in required if token not in text]
     present = [token for token in forbidden if token in text]
@@ -258,14 +564,14 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
         present.append(f"{relative(runtime_paths_path)}:broad RuntimePaths file must be removed")
     if missing or present:
         return CheckResult(
-            "runtime-status-reader-guest-control-source",
+            "runtime-status-reader-no-product-stack-aggregation",
             False,
             f"missing={missing} forbidden_present={present} path={relative(path)}",
         )
     return CheckResult(
-        "runtime-status-reader-guest-control-source",
+        "runtime-status-reader-no-product-stack-aggregation",
         True,
-        "product service liveness and controller resources are read from Guest Control API "
+        "Host RuntimeStatus reader does not aggregate product stack or controller resources "
         f"path={relative(path)}",
     )
 
@@ -451,7 +757,7 @@ def check_runtime_status_assembly_carries_explicit_installation_state() -> Check
     missing = [token for token in required if token not in assembly_text]
     present = [token for token in forbidden if token in assembly_text]
     model_required = [
-        "public var runtimeInstallationState: RuntimeFileState?",
+            "public var runtimeInstallationState: RuntimeFileState",
     ]
     model_forbidden = [
         "public var effectiveRuntimeInstallationState",
@@ -515,11 +821,11 @@ def check_runtime_status_surfaces_use_explicit_installation_state() -> CheckResu
         ),
         (
             "apps/vitalserver-runtime-pwa/src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts",
-            "runtimeInstallationState: z.string().optional()",
+            "runtimeInstallationState: z.string()",
         ),
         (
             "apps/vitalserver-runtime-pwa/src/domain/runtime-control/contracts/generated/runtime-control.ts",
-            "runtimeInstallationState?: string",
+            "runtimeInstallationState: string",
         ),
         (
             "apps/vitalserver-runtime-pwa/src/pages/advanced/AdvancedPage.tsx",
@@ -531,7 +837,7 @@ def check_runtime_status_surfaces_use_explicit_installation_state() -> CheckResu
         ),
         (
             "docs/runtime/macos/runtime-control.openapi.json",
-            "Clients must use runtimeInstallationState for runtime installation decisions.",
+            "Explicit Platform Agent runtime installation state.",
         ),
         (
             "docs/runtime/macos/runtime-control-api.md",
@@ -636,15 +942,15 @@ def check_runtime_status_assembly_does_not_promote_status_http_snapshots(
         "latestBackupRead: RuntimeLatestBackupRead",
         "vmLifecycleRead.issue",
         "vmState(from: vmLifecycleRead.document)",
-        "vmErrors: vmLifecycleRead.document?.reportedVMErrors",
-        "vmIP: guestAddressRead.loadedAddress",
+        "runtimeProviderErrors: vmLifecycleRead.document?.reportedVMErrors",
+        "runtimeEndpoint: guestAddressRead.loadedAddress",
         "isCurrentRuntimeStateReadIssue",
         "readIssues.contains(where: isCurrentRuntimeStateReadIssue)",
         "currentHealthRead: RuntimeCurrentHealthRead?",
-        "runtimeState: currentHealth.runtimeState",
-        "failureReasons: currentHealth.failureReasons",
-        "proxyPort: proxyPortReadState?.port",
-        "runtimeVersion: runtimeVersionRead.version",
+        "platformHealth: currentHealth.runtimeState",
+        "healthIssues: currentHealth.failureReasons",
+        "publicProxyPort: proxyPortReadState?.port",
+        "installedVersion: runtimeVersionRead.version",
         "latestBackup: latestBackupRead.path",
     ]
     missing = [token for token in required if token not in text]
@@ -702,26 +1008,63 @@ def check_runtime_status_assembly_does_not_promote_status_http_snapshots(
 
 
 def check_runtime_status_read_issues_do_not_create_action_needed() -> CheckResult:
-    path = (
+    action_needed_path = (
         MACOS_RUNTIME
         / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies"
         / "RuntimeStatusActionNeededPolicy.swift"
     )
-    text = read(path)
-    forbidden = [
-        "if !status.readIssues.isEmpty",
+    health_details_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies"
+        / "RuntimeStatusHealthDetailsPolicy.swift"
+    )
+    advanced_vm_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies"
+        / "RuntimeStatusAdvancedVMHealthPolicy.swift"
+    )
+    overall_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies"
+        / "RuntimeStatusOverallHealthPolicy.swift"
+    )
+    texts = {
+        relative(action_needed_path): read(action_needed_path),
+        relative(health_details_path): read(health_details_path),
+        relative(advanced_vm_path): read(advanced_vm_path),
+        relative(overall_path): read(overall_path),
+    }
+    forbidden_by_path = {
+        relative(action_needed_path): [
+            "if !status.readIssues.isEmpty",
+            'RuntimeFileState.unknown("runtime-installation-state-unavailable")',
+        ],
+        relative(health_details_path): [
+            'RuntimeFileState.unknown("runtime-installation-state-unavailable")',
+        ],
+        relative(advanced_vm_path): [
+            'RuntimeFileState.unknown("runtime-installation-state-unavailable")',
+        ],
+        relative(overall_path): [
+            'RuntimeFileState.unknown("runtime-installation-state-unavailable")',
+        ],
+    }
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden_by_path.items()
+        for token in tokens
+        if token in texts[path]
     ]
-    present = [token for token in forbidden if token in text]
     if present:
         return CheckResult(
             "runtime-status-read-issues-no-action-needed",
             False,
-            f"forbidden_present={present} path={relative(path)}",
+            f"forbidden_present={present}",
         )
     return CheckResult(
         "runtime-status-read-issues-no-action-needed",
         True,
-        "RuntimeStatus read issues remain diagnostics and do not create action-needed state",
+        "RuntimeStatus read issues and missing owner fields remain diagnostics and do not create action-needed state",
     )
 
 
@@ -772,7 +1115,7 @@ def check_runtime_presentation_does_not_use_status_operation_progress(
         return CheckResult(
             "runtime-presentation-no-status-operation-progress",
             False,
-            "RuntimeStatusRefresher must present operations from explicit RuntimeOperationState",
+            "RuntimeStatusRefresher must present operations from explicit PlatformOperationState",
         )
     return CheckResult(
         "runtime-presentation-no-status-operation-progress",
@@ -790,7 +1133,7 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
     operation_resource_reader_path = (
         MACOS_RUNTIME
         / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
-        / "RuntimeOperationStateResourceReader.swift"
+        / "PlatformOperationStateResourceReader.swift"
     )
     status_document_readers_path = (
         MACOS_RUNTIME
@@ -799,8 +1142,8 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
     )
     mac_runtime_environment_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition"
-        / "MacRuntimeControlEnvironment.swift"
+        / "Sources/Hosts/MacPlatformAgent"
+        / "MacPlatformAgentService.swift"
     )
     swift_read_models_path = (
         MACOS_RUNTIME
@@ -868,7 +1211,7 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
     required = [
         (
             relative(read_worker_path),
-            "any RuntimeOperationStateResourceReading",
+            "any PlatformOperationStateResourceReading",
             read_worker_text,
         ),
         (
@@ -883,17 +1226,17 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
         ),
         (
             relative(operation_resource_reader_path),
-            "struct RuntimeOperationStateResourceSnapshot",
+            "struct PlatformOperationStateResourceSnapshot",
             operation_resource_reader_text,
         ),
         (
             relative(operation_resource_reader_path),
-            "func loadResourceSnapshot() -> RuntimeOperationStateResourceSnapshot",
+            "func loadResourceSnapshot() -> PlatformOperationStateResourceSnapshot",
             operation_resource_reader_text,
         ),
         (
             relative(operation_resource_reader_path),
-            "struct HostRuntimeOperationStateResourceReader",
+            "struct HostPlatformOperationStateResourceReader",
             operation_resource_reader_text,
         ),
         (
@@ -908,7 +1251,17 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
         ),
         (
             relative(mac_runtime_environment_path),
-            "let operationLeaseController = RuntimeControlOperationLeaseController()",
+            "let operationLeaseController = RuntimeControlOperationLeaseController(",
+            mac_runtime_environment_text,
+        ),
+        (
+            relative(mac_runtime_environment_path),
+            "let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(",
+            mac_runtime_environment_text,
+        ),
+        (
+            relative(mac_runtime_environment_path),
+            "url: installedPaths.runtimeOperationLease",
             mac_runtime_environment_text,
         ),
         (
@@ -978,17 +1331,17 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
         ),
         (
             relative(swift_contract_tests_path),
-            "testRuntimeOperationStateRequiresExplicitOwnerSubresourceFields",
+            "testPlatformOperationStateRequiresExplicitOwnerSubresourceFields",
             swift_contract_tests_text,
         ),
         (
             relative(swift_contract_tests_path),
-            "testRuntimeOperationStateRejectsInvalidLoadedFailedAndStaleSubresources",
+            "testPlatformOperationStateRejectsInvalidLoadedFailedAndStaleSubresources",
             swift_contract_tests_text,
         ),
         (
             relative(swift_client_contract_path),
-            "func loadOperationState() -> RuntimeOperationState",
+            "func loadOperationState() -> PlatformOperationState",
             client_contract_text,
         ),
         (
@@ -1094,11 +1447,6 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
             operation_resource_reader_text,
         ),
         (
-            relative(mac_runtime_environment_path),
-            "JSONFileRuntimeOperationLeaseRepository(",
-            mac_runtime_environment_text,
-        ),
-        (
             relative(read_worker_path),
             "loadOperationState(status:",
             read_worker_text,
@@ -1168,7 +1516,7 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
     return CheckResult(
         "runtime-operation-state-no-status-updated-at",
         True,
-        "RuntimeOperationState contract does not expose legacy RuntimeStatus snapshot freshness "
+        "PlatformOperationState contract does not expose legacy RuntimeStatus snapshot freshness "
         "and live operation-state reads do not consume install-state files or RuntimeStatus input",
     )
 
@@ -1705,7 +2053,6 @@ def check_runtime_diagnostics_artifact_file_names_are_separate() -> CheckResult:
     diagnostics_artifacts = [
         "runtimeStatus",
         "runtimeProgress",
-        "runtimeOperationLease",
         "runtimeEvents",
         "runtimeObservabilityDB",
         "runtimeObservation",
@@ -1912,6 +2259,16 @@ def check_runtime_current_owner_file_names_are_separate() -> CheckResult:
             host_owner_text,
         ),
         (
+            relative(host_owner_path),
+            'public static let runtimeEndpoint = "runtime-endpoint.json"',
+            host_owner_text,
+        ),
+        (
+            relative(host_owner_path),
+            'public static let operationLease = "runtime-operation-lease.json"',
+            host_owner_text,
+        ),
+        (
             "production",
             "RuntimeBootstrapEvidenceFileNames.vmIP",
             product_text,
@@ -1919,6 +2276,16 @@ def check_runtime_current_owner_file_names_are_separate() -> CheckResult:
         (
             "production",
             "RuntimeHostOwnerFileNames.vmLifecycle",
+            product_text,
+        ),
+        (
+            "production",
+            "RuntimeHostOwnerFileNames.runtimeEndpoint",
+            product_text,
+        ),
+        (
+            "production",
+            "RuntimeHostOwnerFileNames.operationLease",
             product_text,
         ),
         (
@@ -2586,7 +2953,7 @@ def check_runtime_state_document_has_no_capabilities() -> CheckResult:
     required = [
         "REQUIRED_GUEST_CONTROL_CAPABILITIES",
         "require_guest_control_capabilities",
-        "GUEST_CONTROL_API_BASE_URL}/v1/capabilities",
+        "GUEST_CONTROL_API_BASE_URL}/runtime/capabilities",
         '"source": "guest-control-api"',
     ]
     missing = [token for token in required if token not in text]
@@ -2600,7 +2967,7 @@ def check_runtime_state_document_has_no_capabilities() -> CheckResult:
         "runtime-state-document-no-capabilities",
         True,
         "runtime-observation.json no longer carries capability state; "
-        "boot smoke checks Guest Control /v1/capabilities",
+        "boot smoke checks Guest Control /runtime/capabilities",
     )
 
 
@@ -3012,8 +3379,8 @@ def check_redis_backup_has_guest_control_maintenance_api() -> CheckResult:
     contracts = read(contracts_path)
     required_by_path = {
         api_path: [
-            '["v1", "maintenance", "redis-backup"]',
-            '["v1", "maintenance", "redis-restore"]',
+            '["runtime", "maintenance", "redis-backup"]',
+            '["runtime", "maintenance", "redis-restore"]',
             "create_redis_backup().as_json()",
             "restore_redis_backup(",
             "RedisBackupMaintenanceAdapter()",
@@ -3138,7 +3505,7 @@ def check_update_activation_has_guest_control_maintenance_api() -> CheckResult:
     }
     required_by_path = {
         api_path: [
-            '["v1", "maintenance", "update-activation"]',
+            '["runtime", "maintenance", "update-activation"]',
             "usecases.activate_update(",
             "UpdateActivationMaintenanceAdapter()",
         ],
@@ -3271,7 +3638,7 @@ def check_host_update_activation_uses_guest_control_api() -> CheckResult:
         ],
         gateway_path: [
             "func activateUpdate(requestId: String, version: String)",
-            'path: "/v1/maintenance/update-activation"',
+            'path: "/runtime/maintenance/update-activation"',
             "RuntimeGuestControlUpdateActivationRequest",
         ],
         usecase_path: [
@@ -3280,7 +3647,7 @@ def check_host_update_activation_uses_guest_control_api() -> CheckResult:
             "expectedCommand: .updateActivation",
         ],
         guest_api_path: [
-            '["v1", "maintenance", "update-activation"]',
+            '["runtime", "maintenance", "update-activation"]',
         ],
     }
     missing = {
@@ -3377,8 +3744,8 @@ def check_host_update_shutdown_uses_guest_control_api() -> CheckResult:
         gateway_path: [
             "func prepareUpdateShutdown(requestId: String, version: String)",
             "func requestGuestPoweroff()",
-            'path: "/v1/maintenance/update-shutdown"',
-            'path: "/v1/maintenance/guest-poweroff"',
+            'path: "/runtime/maintenance/update-shutdown"',
+            'path: "/runtime/maintenance/guest-poweroff"',
         ],
         usecase_path: [
             "prepareUpdateShutdown(",
@@ -3459,7 +3826,7 @@ def check_update_shutdown_has_guest_control_maintenance_api() -> CheckResult:
     }
     required_by_path = {
         api_path: [
-            '["v1", "maintenance", "update-shutdown"]',
+            '["runtime", "maintenance", "update-shutdown"]',
             "usecases.prepare_update_shutdown(",
             "UpdateShutdownMaintenanceAdapter()",
         ],
@@ -3598,7 +3965,7 @@ def check_host_redis_backup_create_uses_guest_control_api() -> CheckResult:
         ],
         relative(gateway_path): [
             "func createRedisBackup() throws -> RuntimeGuestControlServiceOperation",
-            'path: "/v1/maintenance/redis-backup"',
+            'path: "/runtime/maintenance/redis-backup"',
         ],
         relative(usecase_path): [
             "RuntimeGuestMaintenanceControlUseCase",
@@ -3672,7 +4039,7 @@ def check_host_redis_restore_uses_guest_control_api() -> CheckResult:
         ],
         relative(gateway_path): [
             "func restoreRedisBackup(archive: String)",
-            'path: "/v1/maintenance/redis-restore"',
+            'path: "/runtime/maintenance/redis-restore"',
         ],
         relative(usecase_path): [
             "restoreRedisBackup(",
@@ -3753,7 +4120,7 @@ def check_host_datastore_repair_uses_guest_control_api() -> CheckResult:
         ],
         relative(gateway_path): [
             "func repairDatastore()",
-            'path: "/v1/maintenance/datastore-repair"',
+            'path: "/runtime/maintenance/datastore/repair"',
         ],
         relative(usecase_path): [
             "repairDatastore(",
@@ -3761,7 +4128,7 @@ def check_host_datastore_repair_uses_guest_control_api() -> CheckResult:
             "expectedCommand: .repairDatastore",
         ],
         relative(guest_api_path): [
-            '["v1", "maintenance", "datastore-repair"]',
+            '["runtime", "maintenance", "datastore", "repair"]',
             "usecases.repair_datastore().as_json()",
         ],
         relative(guest_usecase_path): [
@@ -4131,13 +4498,14 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
     )
     pwa_advanced_path = PWA / "src/pages/advanced/AdvancedPage.tsx"
+    pwa_hooks_path = PWA / "src/console/hooks.ts"
     pwa_lab_page_path = PWA / "src/pages/lab/LabPage.tsx"
     pwa_pages_test_path = PWA / "src/pages/pages.test.tsx"
     openapi_document = json.loads(read(openapi_path))
     capability_schema = (
         openapi_document.get("components", {})
         .get("schemas", {})
-        .get("RuntimeControlCapabilities", {})
+        .get("RuntimeCapabilities", {})
     )
     capability_properties = set(capability_schema.get("properties", {}))
     capability_required = set(capability_schema.get("required", []))
@@ -4150,8 +4518,10 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
             f"missing_required={sorted(capability_properties - capability_required)} "
             f"unknown_required={sorted(capability_required - capability_properties)}"
         )
-    if "canUseLab" not in capability_required:
-        capability_contract_issues.append("canUseLab must be required")
+    if capability_required != {"schemaVersion", "capabilities"}:
+        capability_contract_issues.append(
+            "RuntimeCapabilities must require schemaVersion and capabilities"
+        )
     if (
         "canUseTestTools" in capability_properties
         or "canUseTestTools" in capability_required
@@ -4166,21 +4536,22 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         relative(pwa_generated_path): read(pwa_generated_path),
         relative(pwa_schema_path): read(pwa_schema_path),
         relative(pwa_advanced_path): read(pwa_advanced_path),
+        relative(pwa_hooks_path): read(pwa_hooks_path),
         relative(pwa_lab_page_path): read(pwa_lab_page_path),
         relative(pwa_pages_test_path): read(pwa_pages_test_path),
     }
     required = {
         relative(endpoint_path): [
-            'path: "/lab/scenarios"',
-            'path: "/lab/sessions"',
-            'path: "/lab/vital-files/replay"',
-            'path: "/runtime/guest/stack/status"',
-            'path: "/runtime/guest/services/start"',
-            'path: "/runtime/guest/services/stop"',
-            'path: "/runtime/guest/services/restart"',
-            'path: "/vitaldb/recorders"',
-            'path: "/vitaldb/beds"',
-            'path: "/vitaldb/relationships"',
+            'path: "/runtime/lab/scenarios"',
+            'path: "/runtime/lab/sessions"',
+            'path: "/runtime/lab/vital-files/replay"',
+            'path: "/runtime/stack"',
+            'path: "/runtime/services/{service}/start"',
+            'path: "/runtime/services/{service}/stop"',
+            'path: "/runtime/services/{service}/restart"',
+            'path: "/runtime/vitaldb/recorders"',
+            'path: "/runtime/vitaldb/beds"',
+            'path: "/runtime/vitaldb/relationships"',
         ],
         relative(read_handler_path): [
             "try await client.loadLabScenarios()",
@@ -4192,25 +4563,25 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
             "client.loadVitalDBRelationships()",
         ],
         relative(openapi_path): [
-            '"canUseLab"',
-            '"/lab/scenarios"',
-            '"/lab/sessions"',
-            '"/lab/vital-files/replay"',
-            '"/runtime/guest/services"',
-            '"/runtime/guest/stack/status"',
-            '"/runtime/guest/services/start"',
-            '"/runtime/guest/services/stop"',
-            '"/runtime/guest/services/restart"',
-            '"/vitaldb/recorders"',
-            '"/vitaldb/beds"',
-            '"/vitaldb/relationships"',
+            '"RuntimeCapabilities"',
+            '"/runtime/lab/scenarios"',
+            '"/runtime/lab/sessions"',
+            '"/runtime/lab/vital-files/replay"',
+            '"/runtime/services"',
+            '"/runtime/stack"',
+            '"/runtime/services/{service}/start"',
+            '"/runtime/services/{service}/stop"',
+            '"/runtime/services/{service}/restart"',
+            '"/runtime/vitaldb/recorders"',
+            '"/runtime/vitaldb/beds"',
+            '"/runtime/vitaldb/relationships"',
             (
                 "Guest/Postgres-owned read model for bed-to-VRecorder assignments "
                 "and relationship anomalies"
             ),
         ],
         relative(pwa_generated_path): [
-            "canUseLab: boolean;",
+            "capabilities: string[];",
             (
                 "Guest/Postgres-owned read model for bed-to-VRecorder assignments "
                 "and relationship anomalies"
@@ -4222,27 +4593,35 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
             "self.canUseLab = canUseLab",
         ],
         relative(pwa_client_path): [
-            '"/lab/scenarios"',
-            '"/lab/sessions"',
-            '"/lab/vital-files/replay"',
-            '"/runtime/guest/stack/status"',
-            '"/runtime/guest/services/start"',
-            '"/runtime/guest/services/stop"',
-            '"/runtime/guest/services/restart"',
-            '"/vitaldb/recorders"',
-            '"/vitaldb/beds"',
-            '"/vitaldb/relationships"',
+            '"/runtime/lab/scenarios"',
+            '"/runtime/lab/sessions"',
+            '"/runtime/lab/vital-files/replay"',
+            '"/runtime/stack"',
+            '/runtime/services/${encodeURIComponent(request.service)}/start',
+            '/runtime/services/${encodeURIComponent(request.service)}/stop',
+            '/runtime/services/${encodeURIComponent(request.service)}/restart',
+            '"/runtime/vitaldb/recorders"',
+            '"/runtime/vitaldb/beds"',
+            '"/runtime/vitaldb/relationships"',
         ],
         relative(pwa_schema_path): [
-            "canUseLab: z.boolean()",
+            "capabilities: z.array(z.string())",
         ],
         relative(pwa_advanced_path): [
+            "useRuntimeStack",
+            "useRuntimeServiceResources",
             'stackStatus.state !== "loaded"',
             "Guest stack status is",
             "Failed to read Guest services",
         ],
+        relative(pwa_hooks_path): [
+            "export function useRuntimeStack()",
+            "runtimeControlGateway.getRuntimeStack()",
+            "export function useRuntimeServiceResources(services: string[])",
+            "runtimeControlGateway.getGuestServiceResource(service)",
+        ],
         relative(pwa_lab_page_path): [
-            "useRuntimeCapabilities",
+            "useControlCapabilities",
             "capabilities.data?.canUseLab",
             "labCapability === true",
         ],
@@ -4265,9 +4644,6 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         "/dev/testkit",
         "RuntimeTestKit",
         "MacTestKit",
-        "/runtime/services/start",
-        "/runtime/services/stop",
-        "/runtime/services/restart",
         "canUseTestTools",
         "Raw VitalDB observation snapshots remain the source of truth",
     ]
@@ -4282,6 +4658,16 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         for token in forbidden
         if token in text
     ]
+    matches.extend(
+        f"{relative(pwa_advanced_path)}:{token}"
+        for token in [
+            "runtimeStatus?.guestServiceResources",
+            "runtimeStatus?.guestServiceResourceReadIssues",
+            "runtimeStatus.guestServiceStatuses",
+            "runtimeStatus.guestServicesReadState",
+        ]
+        if token in texts[relative(pwa_advanced_path)]
+    )
     if missing or matches:
         return CheckResult(
             "runtime-control-api-v2-product-surface",
@@ -4458,8 +4844,8 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
         ],
         relative(lab_readme_path): [
             "Runtime v2 product service",
-            "Guest Control `/v1/lab/*`",
-            "Runtime Control `/lab/*`",
+            "Guest Control `/runtime/lab/*`",
+            "Runtime Control `/runtime/lab/*`",
             "must not call a TestKit container",
             "`/dev/testkit` product route",
             "Postgres-backed session/read-model state",
@@ -4710,6 +5096,28 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
         MACOS_RUNTIME
         / "Tests/DomainTests/Policies/RuntimeRecoveryPlannerTests.swift"
     )
+    swift_health_evaluator_path = (
+        MACOS_RUNTIME / "Sources/Domain/Policies/RuntimeHealthEvaluator.swift"
+    )
+    swift_health_snapshot_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeHealthSnapshot.swift"
+    )
+    swift_health_reads_path = (
+        MACOS_RUNTIME / "Sources/Contracts/Shared/RuntimeHealthObservationReads.swift"
+    )
+    swift_recovery_planner_path = (
+        MACOS_RUNTIME / "Sources/Domain/Policies/RuntimeRecoveryPlanner.swift"
+    )
+    swift_watchdog_policy_path = (
+        MACOS_RUNTIME / "Sources/Domain/Policies/RuntimeWatchdogRecoveryPolicy.swift"
+    )
+    swift_watchdog_runner_path = (
+        MACOS_RUNTIME / "Sources/Workflow/RuntimeWatchdog/RuntimeWatchdogRunner.swift"
+    )
+    swift_watchdog_usecase_path = (
+        MACOS_RUNTIME
+        / "Sources/Application/UseCases/RuntimeHealth/WatchdogRuntimeUseCase.swift"
+    )
     tests_path = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
     policy_tests_path = (
         GUEST_TOOLS / "tests/test_guest_service_reconcile_policy.py"
@@ -4764,8 +5172,8 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             "def do_PUT(self) -> None:",
         ],
         relative(swift_health_details_path): [
-            "status.guestServiceResources.first",
-            "status.guestServiceResourceReadIssues.first",
+            "resources.first",
+            "resourceReadIssues.first",
             '"spec \\(resource.spec.state)"',
             '"desired \\(desiredState)"',
             '"status \\(resource.status.state)"',
@@ -4777,8 +5185,8 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             '"last operation \\(lastOperationId)"',
         ],
         relative(swift_advanced_health_path): [
-            "runtimeStatus.guestServiceResources.first",
-            "runtimeStatus.guestServiceResourceReadIssues.first",
+            "resources.first",
+            "resourceReadIssues.first",
             '"spec \\(resource.spec.state)"',
             '"desired \\(desiredState)"',
             '"status \\(resource.status.state)"',
@@ -4834,9 +5242,9 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             "case guestServiceResource",
         ],
         relative(swift_endpoint_routing_path): [
-            'path: "/runtime/guest/services/{service}/resource"',
+            'path: "/runtime/services/{service}/resource"',
             "case .guestServiceResource:",
-            'components[4] == "resource"',
+            'expectedAction = "resource"',
         ],
         relative(swift_http_types_path): [
             "func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource",
@@ -4861,12 +5269,12 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             "try await commandWorker.guestServiceResource(service)",
         ],
         relative(swift_api_tests_path): [
-            'path: "/runtime/guest/services/recorder-ingress/resource"',
+            'path: "/runtime/services/recorder-ingress/resource"',
             "client.guestServiceResourceRequests",
             "func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource",
         ],
         relative(openapi_path): [
-            '"/runtime/guest/services/{service}/resource"',
+            '"/runtime/services/{service}/resource"',
             '"operationId": "getRuntimeGuestServiceResource"',
             '"$ref": "#/components/schemas/RuntimeGuestServiceResource"',
         ],
@@ -4882,10 +5290,10 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
         ],
         relative(pwa_api_client_path): [
             "runtimeGuestServiceResourceSchema",
-            "`/runtime/guest/services/${encodeURIComponent(service)}/resource`",
+            "`/runtime/services/${encodeURIComponent(service)}/resource`",
         ],
         relative(pwa_api_client_tests_path): [
-            '"/runtime/guest/services/app/resource"',
+            '"/runtime/services/app/resource"',
             'client.getGuestServiceResource("app")',
             'lastOperationId: "op-app"',
         ],
@@ -4901,60 +5309,56 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             "op-worker-2",
         ],
         relative(swift_status_assembly_path): [
-            "guestServiceFailureReasons(guestServicesRead)",
-            "let resourceByService = Dictionary(",
-            "read.resources.map { ($0.service, $0) }",
-            "resource?.spec.desiredState",
-            'desiredState == "stopped"',
+            "public enum PlatformStateAssembler",
+            "private static func currentFailureReasons(",
         ],
         relative(swift_status_assembly_tests_path): [
-            "testMakeStatusUsesGuestServiceDesiredStateBeforeAddingFailureReason",
-            'desiredState: "stopped"',
-            'desiredState: "running"',
-            'XCTAssertFalse(status.failureReasons.contains(.guestService(service: "app", state: "stopped")))',
-            'XCTAssertTrue(status.failureReasons.contains(.guestService(service: "worker", state: "stopped")))',
+            "testMakeStatusDoesNotAggregateRuntimeStackState",
+            "guestServiceObservationReadFailed",
         ],
         relative(swift_status_contract_path): [
-            "decodeRequiredArray(",
-            "loaded guest service reads must include",
-            "failed guest service reads must include guestServicesReadError",
-            "guestServicesReadState == .failed",
+            "public struct PlatformState:",
+            "public var dataStorage: ResourceUsage?",
+            "case dataStorage",
         ],
         relative(swift_status_contract_tests_path): [
-            "testRuntimeStatusRequiresGuestServiceArraysWhenReadStateIsLoaded",
-            "testRuntimeStatusRequiresGuestServiceReadErrorWhenReadStateIsFailed",
-            '"guestServicesReadState": "loaded"',
-            '"guestServicesReadState": "failed"',
+            "testPlatformStateRoundTripsExplicitCurrentFieldsThroughJSON",
+            'XCTAssertFalse(encodedText.contains("guestService"))',
+            'XCTAssertFalse(encodedText.contains("cpuUsagePercent"))',
+            'XCTAssertFalse(encodedText.contains("systemDisk"))',
         ],
         relative(swift_observation_health_policy_path): [
-            "guestServiceResources: [RuntimeGuestServiceResource]",
-            "guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]",
-            "let resourceByService = Dictionary(",
-            "resources.map { ($0.service, $0) }",
-            "resource?.spec.desiredState",
-            'desiredState == "stopped"',
-            "resourceReadIssueFailureReasons(guestServiceResourceReadIssues)",
+            "isOperatorVisibleOnlyAnomaly",
         ],
         relative(swift_runtime_health_checker_path): [
-            "let guestServicesRead = guestServiceHealthRead(guestAddressRead)",
-            "guestServiceResources: guestServicesRead.resources",
-            "guestServiceResourceReadIssues: guestServicesRead.resourceReadIssues",
-            "resources.append(try gateway.serviceResource(service.service))",
-            "resourceReadIssues.append(RuntimeGuestServiceResourceReadIssue(",
+            "public func observationReads() -> RuntimeHealthObservationReads",
+        ],
+        relative(swift_health_evaluator_path): [
+            "public struct RuntimeHealthInput",
+        ],
+        relative(swift_health_snapshot_path): [
+            "public struct RuntimeHealthSnapshot",
+        ],
+        relative(swift_health_reads_path): [
+            "public struct RuntimeHealthObservationReads",
+        ],
+        relative(swift_recovery_planner_path): [
+            "public enum RuntimeRecoveryPlanner",
+        ],
+        relative(swift_watchdog_policy_path): [
+            "public enum RuntimeWatchdogRecoveryPolicy",
+        ],
+        relative(swift_watchdog_runner_path): [
+            "public struct RuntimeWatchdogActions",
+        ],
+        relative(swift_watchdog_usecase_path): [
+            "watchdog platform recovery plan",
         ],
         relative(swift_health_evaluator_tests_path): [
-            "testGuestServiceDesiredStoppedSuppressesStoppedStatusFailure",
-            "testGuestServiceResourceReadIssueProducesTypedFailureReason",
-            'guestServiceResource(service: "app", desiredState: "stopped")',
-            'guestServiceResource(service: "redis", desiredState: "running")',
-            'XCTAssertFalse(snapshot.failureReasons.contains(.guestService(service: "app", state: "stopped")))',
-            'XCTAssertTrue(snapshot.failureReasons.contains(.guestService(service: "redis", state: "stopped")))',
-            'guestServiceObservationReadFailed("app_resource_controller_unavailable")',
+            "testHealthyInputHasNoFailureReasons",
         ],
         relative(swift_recovery_planner_tests_path): [
-            "testDesiredStoppedGuestServiceDoesNotReconcileGuestStack",
-            'guestServiceResource(service: "app", desiredState: "stopped")',
-            "XCTAssertFalse(plan.reconcileGuestStack)",
+            "testRuntimeReadinessFailureRestartsPlatformVMAndProxy",
         ],
     }
     texts = {path: read(ROOT / path) for path in required}
@@ -4978,9 +5382,20 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
         ],
         relative(swift_health_details_path): [
             "resource.conditions.first",
+            "status.guestServicesReadState",
+            "status.guestServiceStatuses",
+            "status.guestServiceResources",
+            "status.guestServiceResourceReadIssues",
+            "status.guestStackProbeErrors",
         ],
         relative(swift_advanced_health_path): [
             "resource.conditions.first",
+            "status.guestServicesReadState",
+            "status.guestServiceStatuses",
+            "status.guestServiceResources",
+            "status.guestServiceResourceReadIssues",
+            "status.guestStackProbeErrors",
+            "runtimeStatus.guestService",
         ],
         relative(pwa_advanced_page_path): [
             "resource.conditions[0]",
@@ -4990,9 +5405,45 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
         ],
         relative(swift_status_assembly_path): [
             "guestServicesRead.statuses.compactMap(guestServiceFailureReason)",
+            "RuntimeGuestServicesRead",
+            "guestServiceFailureReasons",
+            "guestServiceResourceReadIssues",
+            "guestStackProbeErrors",
         ],
         relative(swift_runtime_health_checker_path): [
             "try? gateway.serviceResource(service.service)",
+            "guestServiceHealthRead(",
+            "gateway.stackStatus()",
+            "gateway.serviceResource(",
+        ],
+        relative(swift_observation_health_policy_path): [
+            "guestService",
+            "requiresGuestStackReconcile",
+        ],
+        relative(swift_health_evaluator_path): ["guestService"],
+        relative(swift_health_snapshot_path): ["guestService"],
+        relative(swift_health_reads_path): ["guestService"],
+        relative(swift_recovery_planner_path): [
+            "guestService",
+            "reconcileGuestStack",
+        ],
+        relative(swift_watchdog_policy_path): [
+            "guestService",
+            "reconcileGuestStack",
+        ],
+        relative(swift_watchdog_runner_path): ["reconcileGuestStack"],
+        relative(swift_watchdog_usecase_path): [
+            "guestStackReconcile",
+            "reconcileGuestStack",
+        ],
+        relative(swift_health_evaluator_tests_path): [
+            "guestServiceStatuses",
+            "guestServiceResources",
+            "guestServiceResourceReadIssues",
+        ],
+        relative(swift_recovery_planner_tests_path): [
+            "reconcileGuestStack",
+            "guestServiceStatuses",
         ],
     }
     present = [
@@ -5494,18 +5945,27 @@ def check_swift_guest_readiness_presentation_does_not_use_runtime_state(
 
 
 def check_guest_service_control_has_separate_capability() -> CheckResult:
-    required_paths = [
-        MACOS_RUNTIME / "Sources/Contracts/RuntimeControl/RuntimeControlModels.swift",
-        PWA / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts",
-        PWA / "src/domain/runtime-control/contracts/generated/runtime-control.ts",
-        ROOT / "docs/runtime/macos/runtime-control.openapi.json",
-        PWA / "src/pages/advanced/AdvancedPage.tsx",
-    ]
-    missing = [
-        relative(path)
-        for path in required_paths
-        if "canControlGuestServices" not in read(path)
-    ]
+    required = {
+        PWA / "src/infrastructure/console-api/runtimeControlApiClient.ts": [
+            'available.has("services:start")',
+            'available.has("services:stop")',
+            'available.has("services:restart")',
+            "canControlGuestServices:",
+        ],
+        GUEST_TOOLS / "src/tirosh_guest_tools/application/guest_control/usecases.py": [
+            '"services:start"',
+            '"services:stop"',
+            '"services:restart"',
+        ],
+        PWA / "src/pages/advanced/AdvancedPage.tsx": [
+            "capabilities.data?.canControlGuestServices",
+        ],
+    }
+    missing = {
+        relative(path): [token for token in tokens if token not in read(path)]
+        for path, tokens in required.items()
+        if any(token not in read(path) for token in tokens)
+    }
     advanced = read(PWA / "src/pages/advanced/AdvancedPage.tsx")
     forbidden = "capabilities.data?.canControlRuntimeServices === true"
     if missing or forbidden in advanced:
@@ -5575,7 +6035,7 @@ def check_guest_capability_checks_use_guest_control_api() -> CheckResult:
         ],
         relative(gateway_path): [
             "func capabilities() throws -> RuntimeGuestControlCapabilities",
-            'path: "/v1/capabilities"',
+            'path: "/runtime/capabilities"',
         ],
         relative(guest_api_path): [
             "return HTTPStatus.OK, usecases.capabilities()",
@@ -5623,7 +6083,7 @@ def check_guest_capability_checks_use_guest_control_api() -> CheckResult:
     return CheckResult(
         "guest-capability-checks-guest-control-api",
         True,
-        "Guest capability checks consume Guest Control /v1/capabilities",
+        "Guest capability checks consume Guest Control /runtime/capabilities",
     )
 
 
@@ -5675,12 +6135,12 @@ def check_cli_consumes_guest_control_product_apis() -> CheckResult:
             "gateway.vitalDBRelationships()",
         ],
         relative(gateway_path): [
-            'path: "/v1/services"',
-            'path: "/v1/stack/status"',
-            'path: "/v1/vitaldb/observations/latest"',
-            'path: "/v1/vitaldb/relationships"',
-            'path: "/v1/lab/scenarios"',
-            'path: "/v1/lab/vital-files/replay"',
+            'path: "/runtime/services"',
+            'path: "/runtime/stack"',
+            'path: "/runtime/vitaldb/observations/latest"',
+            'path: "/runtime/vitaldb/relationships"',
+            'path: "/runtime/lab/scenarios"',
+            'path: "/runtime/lab/vital-files/replay"',
         ],
     }
     forbidden = [
@@ -5739,7 +6199,8 @@ def check_cli_guest_control_default_url_uses_guest_address_provider() -> CheckRe
     required = [
         "let guestAddressProvider: any RuntimeGuestAddressProvider",
         "self.guestAddressProvider = container.guestAddressProvider",
-        "guestAddressProvider ?? RuntimeControlAPIGuestAddressProvider()",
+        "guestAddressProvider ?? FileRuntimeGuestAddressResourceStore(",
+        "documentURL: installedPaths.runtimeEndpoint",
         "readGuestAddress()",
         "guestAddressRead.loadedAddress",
         "guestAddressRead.failureStatusText",
@@ -5767,6 +6228,8 @@ def check_cli_guest_control_default_url_uses_guest_address_provider() -> CheckRe
     present = [token for token in forbidden if token in text]
     if "RuntimeBootstrapGuestAddressProvider.live(" in lifecycle_composition_text:
         present.append("RuntimeLifecycleComposition:RuntimeBootstrapGuestAddressProvider.live(")
+    if "RuntimeControlAPIGuestAddressProvider()" in lifecycle_composition_text:
+        present.append("RuntimeLifecycleComposition:RuntimeControlAPIGuestAddressProvider()")
     if missing or present:
         return CheckResult(
             "cli-guest-control-default-url-guest-address",
@@ -5852,7 +6315,7 @@ def check_testkit_package_is_dev_tooling_only() -> CheckResult:
         "dev-only smoke/load",
         "product runtime stack에 포함되면 안 됩니다",
         "apps/vitalserver-lab",
-        "Guest Control `/v1/lab/*`",
+        "Guest Control `/runtime/lab/*`",
         "product-facing\nruntime 기능으로 다시 노출하지 않습니다",
     ]
     missing.extend(
@@ -6119,7 +6582,7 @@ def check_product_docs_do_not_promote_testkit_runtime_surface() -> CheckResult:
             "VitalServer developer verification checks",
         ],
         "docs/pwa/index.md": [
-            "Product Lab 기능은 `/lab/*` Runtime Control API 계약으로만 노출",
+            "Product Lab 기능은 `/runtime/lab/*` Runtime Control API 계약으로만 노출",
         ],
         "docs/runtime/macos/update.md": [
             "lab -> vitaldb-observer -> redis-relay",
@@ -6145,19 +6608,19 @@ def check_product_docs_do_not_promote_testkit_runtime_surface() -> CheckResult:
             "Product Lab/API 구현의 세부 contract",
             "Local browser diagnostics console은 `dev`에서만 노출",
             "Product Lab과 Postgres는 선택 TestKit service가 아니라",
-            "Runtime Control `/lab/*`, Guest Control `/v1/lab/*`, "
+            "Runtime Control `/runtime/lab/*`, Guest Control `/runtime/lab/*`, "
             "`apps/vitalserver-lab`",
             "Guest Control update activation operation을 생성",
         ],
         "docs/adr/0002-helper-client-boundary-for-local-and-remote-runtime.md": [
-            "`/runtime/*`, `/vitaldb/*`, `/host/*`, `/lab/*`",
+            "`/runtime/*`, `/runtime/vitaldb/*`, `/host/*`, `/runtime/lab/*`",
             "Legacy `/dev/testkit/*` route는 Runtime v2 product surface가 아니며",
             "Product Lab 계약으로 노출한다",
         ],
         "docs/recorder/vital-recorder-integration.md": [
             "Helper Product Lab 경로",
-            "Runtime Control API `/lab/*`",
-            "Guest Control API `/v1/lab/*`",
+            "Runtime Control API `/runtime/lab/*`",
+            "Guest Control API `/runtime/lab/*`",
             "apps/vitalserver-lab",
         ],
         "docs/product/productization.md": [
@@ -6203,12 +6666,12 @@ def check_product_docs_do_not_promote_testkit_runtime_surface() -> CheckResult:
             "Guest Control stack reconcile operation",
             "Guest Control update-shutdown operation",
             "Guest Control operation document",
-            "`/v1/operations/{operationId}`",
+            "`/runtime/operations/{operationId}`",
         ],
         "site-docs/dev/repository-map.md": [
             "Product Lab 수정",
-            "`apps/vitalserver-lab`, Runtime Control `/lab/*`, "
-            "Guest Control `/v1/lab/*`",
+            "`apps/vitalserver-lab`, Runtime Control `/runtime/lab/*`, "
+            "Guest Control `/runtime/lab/*`",
             "dev testkit 수정",
             "`apps/vitalserver-lab`",
             "dev-only simulated recorder와 smoke/load 검증 도구",
@@ -6232,7 +6695,7 @@ def check_product_docs_do_not_promote_testkit_runtime_surface() -> CheckResult:
         ],
         "docs/troubleshooting/070_golden-disk-runtime-boot-proof-gap.md": [
             "Product Lab 또는 다른 required product service",
-            "Guest Control `/v1/stack/status` 응답",
+            "Guest Control `/runtime/stack` 응답",
             "product stack services",
             "late-ready product services",
         ],
@@ -6530,7 +6993,7 @@ def check_api_catalog_exposes_runtime_support_specs() -> CheckResult:
                 '{"name":"VitalDB Observer","url":'
                 '"/swagger/docs/openapi/vitaldb-observer.openapi.yaml"}'
             ),
-            "source: /mnt/tirosh/deploy/docs",
+            "source: ${VITALSERVER_DOCS_DIR:-/mnt/tirosh/deploy/docs}",
             "target: /usr/share/nginx/html/docs",
         ],
         "apps/vitalserver-runtime-pwa/src/pages/advanced/AdvancedPage.tsx": [
@@ -6747,7 +7210,7 @@ def check_observer_docs_use_guest_postgres_read_model_flow() -> CheckResult:
                 "-> guest runtime-observation.json\n"
                 "  -> watchdog\n"
                 "  -> runtime-observability.sqlite\n"
-                "  -> Runtime Control API /vitaldb/*"
+                "  -> Runtime Control API /runtime/vitaldb/*"
             ),
         ],
         relative(observability_path): [
@@ -6773,11 +7236,11 @@ def check_observer_docs_use_guest_postgres_read_model_flow() -> CheckResult:
         relative(packaging_path): [
             "-> Guest Control VitalDB writer",
             "-> Postgres read model",
-            "-> Guest Control API /v1/vitaldb/*",
+            "-> Guest Control API /runtime/vitaldb/*",
         ],
         relative(observability_path): [
             "-> Guest/Postgres VitalDB read model",
-            "-> Guest Control API /v1/vitaldb/*",
+            "-> Guest Control API /runtime/vitaldb/*",
             "Guest Control API VitalDB read model read state",
             "Guest/Postgres에 저장된 snapshot row는 relationship projection을 재생성하는 canonical evidence",
         ],
@@ -6785,7 +7248,7 @@ def check_observer_docs_use_guest_postgres_read_model_flow() -> CheckResult:
             "Guest/Postgres read model의 1-minute bucket projection",
             "-> Guest/Postgres read model writer",
             "-> Postgres vitaldb observation/activity projection",
-            "-> Guest Control API /v1/vitaldb/*",
+            "-> Guest Control API /runtime/vitaldb/*",
             "Guest/Postgres read model을 current source로 명시",
         ],
     }
@@ -6829,10 +7292,18 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
     redis_relay_loop_path = (
         ROOT / "apps/vitalserver-redis-relay/vitalserver_redis_relay/relay_loop.py"
     )
+    redis_relay_status_path = (
+        ROOT / "apps/vitalserver-redis-relay/vitalserver_redis_relay/status.py"
+    )
     redis_relay_owner_path = (
         ROOT / "apps/vitalserver-redis-relay/vitalserver_redis_relay/status_owner.py"
     )
+    redis_relay_main_path = (
+        ROOT / "apps/vitalserver-redis-relay/vitalserver_redis_relay/__main__.py"
+    )
     redis_relay_readme_path = ROOT / "apps/vitalserver-redis-relay/README.md"
+    redis_relay_status_tests_path = ROOT / "apps/vitalserver-redis-relay/tests/test_status.py"
+    redis_relay_loop_tests_path = ROOT / "apps/vitalserver-redis-relay/tests/test_relay_loop.py"
     compose_path = MACOS_RUNTIME / "Support/Guest/compose.yaml"
     texts = {
         relative(observability_path): read(observability_path),
@@ -6840,8 +7311,12 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         relative(guest_control_usecases_path): read(guest_control_usecases_path),
         relative(postgres_operations_path): read(postgres_operations_path),
         relative(redis_relay_loop_path): read(redis_relay_loop_path),
+        relative(redis_relay_status_path): read(redis_relay_status_path),
         relative(redis_relay_owner_path): read(redis_relay_owner_path),
+        relative(redis_relay_main_path): read(redis_relay_main_path),
         relative(redis_relay_readme_path): read(redis_relay_readme_path),
+        relative(redis_relay_status_tests_path): read(redis_relay_status_tests_path),
+        relative(redis_relay_loop_tests_path): read(redis_relay_loop_tests_path),
         relative(compose_path): read(compose_path),
     }
     forbidden = [
@@ -6853,12 +7328,16 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         "Migration gap: Redis Relay status is still a Guest-side file adapter",
         "json.load(open(path))",
         "Docker health checks use this status file",
+        "write_status(",
+        "write_unavailable_status(",
+        '"scope": "unknown"',
+        "Redis relay status owner URL is not configured.",
     ]
     required = [
-        (relative(observability_path), "`PUT /v1/redis-relay/status` owner mutation"),
+        (relative(observability_path), "`PUT /runtime/redis-relay/status` owner mutation"),
         (relative(observability_path), "Guest/Postgres owner snapshot"),
-        (relative(observability_path), "Host RuntimeStatus는 shared status file을 직접 읽지 않습니다."),
-        (relative(guest_control_api_path), 'parts == ["v1", "redis-relay", "status"]'),
+        (relative(observability_path), "Host `RuntimeStatus`는 Redis Relay 상태를 조립하지 않습니다."),
+        (relative(guest_control_api_path), 'parts == ["runtime", "redis-relay", "status"]'),
         (relative(guest_control_api_path), "usecases.put_redis_relay_status"),
         (relative(guest_control_api_path), "redis_relay=operations"),
         (relative(guest_control_usecases_path), "def put_redis_relay_status"),
@@ -6866,8 +7345,24 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         (relative(postgres_operations_path), "def save_status"),
         (relative(postgres_operations_path), "def status"),
         (relative(redis_relay_loop_path), "GuestControlStatusOwnerPublisher"),
+        (relative(redis_relay_loop_path), "_record_status("),
+        (relative(redis_relay_loop_path), "write_status_artifact(status_path, document)"),
+        (relative(redis_relay_status_path), "def build_status_document("),
+        (relative(redis_relay_status_path), "def build_unavailable_status_document("),
+        (relative(redis_relay_status_path), "def write_status_artifact("),
+        (relative(redis_relay_status_path), '"scope": None'),
+        (relative(redis_relay_owner_path), "class StatusOwnerConfigurationError"),
+        (relative(redis_relay_owner_path), '"Redis relay status owner URL is required."'),
         (relative(redis_relay_owner_path), 'method="PUT"'),
-        (relative(redis_relay_readme_path), "`PUT /v1/redis-relay/status` owner mutation"),
+        (relative(redis_relay_main_path), "parser.error(\"--status-owner-url or REDIS_RELAY_STATUS_OWNER_URL is required\")"),
+        (relative(redis_relay_status_tests_path), "build_status_document("),
+        (relative(redis_relay_status_tests_path), "write_status_artifact("),
+        (relative(redis_relay_status_tests_path), 'assert document["scope"] is None'),
+        (
+            relative(redis_relay_loop_tests_path),
+            "test_record_status_publishes_owner_when_artifact_write_fails",
+        ),
+        (relative(redis_relay_readme_path), "`PUT /runtime/redis-relay/status` owner mutation"),
         (relative(redis_relay_readme_path), "they do not read the diagnostics status file as product liveness"),
         (relative(compose_path), "REDIS_RELAY_STATUS_OWNER_URL"),
         (relative(compose_path), "host.docker.internal:host-gateway"),
@@ -6907,6 +7402,62 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         True,
         "Redis Relay status is published through Guest Control owner mutation "
         "and read from Guest/Postgres snapshot; file remains diagnostics only",
+    )
+
+
+def check_native_control_panel_redis_relay_settings_are_runtime_owned() -> CheckResult:
+    environment_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
+        / "RuntimeActionEnvironment.swift"
+    )
+    errors_path = MACOS_RUNTIME / "Sources/Adapters/Outbound/Errors.swift"
+    worker_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands"
+        / "MacRuntimeControlCommandWorker.swift"
+    )
+    view_model_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/MacControlPanel/Presentation/ViewModels"
+        / "RuntimeViewModel.swift"
+    )
+    texts = {
+        relative(path): read(path)
+        for path in (environment_path, errors_path, worker_path, view_model_path)
+    }
+    forbidden = (
+        "writeRedisRelaySettingsFile",
+        "redisRelaySettingsFileID",
+        "redisRelaySettingsFileCreateFailed",
+        "tirosh-vitalserver-redis-relay-settings-",
+    )
+    matches = [
+        f"{path}:{token}"
+        for path, value in texts.items()
+        for token in forbidden
+        if token in value
+    ]
+    required = [
+        (relative(worker_path), "try gateway.applyRedisRelaySettings(settings)"),
+        (relative(view_model_path), "controlClient.applyRuntimeRedisRelaySettings("),
+    ]
+    missing = [
+        f"{path}:{token}"
+        for path, token in required
+        if token not in texts[path]
+    ]
+    if matches or missing:
+        return CheckResult(
+            "native-control-panel-redis-relay-settings-runtime-owned",
+            False,
+            f"matches={matches} missing={missing}",
+        )
+    return CheckResult(
+        "native-control-panel-redis-relay-settings-runtime-owned",
+        True,
+        "The native control panel applies Redis Relay settings only through "
+        "the Runtime Controller owner API and has no temporary Host writer",
     )
 
 
@@ -7463,6 +8014,8 @@ def check_runtime_event_sqlite_index_failure_does_not_fail_primary_append() -> C
         (relative(repository_path), "try primary.append(event)", repository),
         (relative(repository_path), "try secondary.append(event)", repository),
         (relative(repository_path), "CompositeRuntimeEventRepositoryError.secondaryAppendFailed", repository),
+        (relative(repository_path), '"sqlite=\\(secondaryReadError)"', repository),
+        (relative(repository_path), '"jsonl=\\($0)"', repository),
         (
             relative(tests_path),
             "testCompositeRepositoryLogsSecondaryAppendFailureWithoutFailingPrimaryAppend",
@@ -7470,6 +8023,7 @@ def check_runtime_event_sqlite_index_failure_does_not_fail_primary_append() -> C
         ),
         (relative(tests_path), "try repository.append(event(id: \"event-1\"", tests),
         (relative(tests_path), "XCTAssertEqual(page.state, .partiallyLoaded)", tests),
+        (relative(tests_path), 'page.readError?.contains("sqlite=")', tests),
     ]
     forbidden = [
         (relative(repository_path), "throw appendError", repository),
@@ -7479,6 +8033,7 @@ def check_runtime_event_sqlite_index_failure_does_not_fail_primary_append() -> C
             "throw CompositeRuntimeEventRepositoryError.secondaryAppendFailed",
             repository,
         ),
+        (relative(repository_path), "readError: [secondaryReadError, primaryPage.readError]", repository),
         (
             relative(tests_path),
             "XCTAssertThrowsError(\n            try repository.append(event(id: \"event-1\"",
@@ -7674,6 +8229,9 @@ def check_current_health_has_no_reported_vm_error_input(
         MACOS_RUNTIME
         / "Tests/DomainTests/Policies/RuntimeHealthEvaluatorTests.swift"
     )
+    contract_tests_path = (
+        MACOS_RUNTIME / "Tests/ContractsTests/ContractsTests.swift"
+    )
     usecase_text = read(usecase_path)
     evaluator_text = read(evaluator_path)
     policy_text = read(policy_path)
@@ -7686,6 +8244,7 @@ def check_current_health_has_no_reported_vm_error_input(
         "\n}\n",
     )
     tests_text = read(tests_path)
+    contract_tests_text = read(contract_tests_path)
     required = {
         relative(lifecycle_document_path): [
             "var reportedVMErrors: [RuntimeVMError]",
@@ -7749,6 +8308,24 @@ def check_current_health_has_no_reported_vm_error_input(
             'hasPrefix("guest-runtime-state-load-failed-")',
             'hasPrefix("guest-runtime-state-metadata-read-failed-")',
         ],
+        relative(contract_tests_path): [
+            "vm-runtime-state-missing",
+            "vm-runtime-state-invalid",
+            "vm-runtime-state-stale",
+            "vm-guest-bootstrap-result-missing",
+            "vm-guest-bootstrap-result-unavailable",
+            "guest-bootstrap-result-missing",
+            "guest-bootstrap-result-unavailable",
+            "guest-runtime-state-load-failed",
+            "guest-runtime-state-metadata-read-failed",
+            "runtime-status-document-missing",
+            "runtime-status-document-stale",
+            "runtime-status-document-invalid",
+            "container-observation-missing",
+            "container-observation-read-failed",
+            "vitaldb-observation-missing",
+            "vitaldb-observation-read-failed",
+        ],
     }
     texts = {
         relative(usecase_path): usecase_text,
@@ -7759,6 +8336,7 @@ def check_current_health_has_no_reported_vm_error_input(
         relative(failure_reason_path): failure_reason_text,
         f"{relative(lifecycle_document_path)}:reportedVMErrors": reported_vm_errors_text,
         relative(tests_path): tests_text,
+        relative(contract_tests_path): contract_tests_text,
     }
     missing = {
         path: [token for token in tokens if token not in texts[path]]
@@ -8035,11 +8613,38 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
         if token in swift_runtime_status_assembly_block:
             matches.append(f"{relative(swift_assembly_path)}:RuntimeStatus.{token}")
 
+    retired_product_fields = [
+        "guestServicesReadState",
+        "guestServices",
+        "guestServiceStatuses",
+        "guestServiceResources",
+        "guestServiceResourceReadIssues",
+        "guestStackProbeErrors",
+        "guestServicesReadError",
+        "cpuUsagePercent",
+        "memory",
+        "vitalServerMemory",
+        "recorderIngressMemory",
+        "redisMemory",
+        "systemDisk",
+    ]
+    swift_runtime_status_block = read(swift_status_path).split(
+        "public struct PlatformState:", 1
+    )[-1]
+    for field in retired_product_fields:
+        if field in swift_runtime_status_block:
+            matches.append(f"{relative(swift_status_path)}:RuntimeStatus.{field}")
+
     pwa_schema = read(pwa_schema_path)
     pwa_status_block = text_between(
         pwa_schema,
-        "export const runtimeStatusSchema",
+        "export const platformStateSchema",
         "const runtimeInstallOperationStateSchema",
+    )
+    pwa_status_shape_block = text_between(
+        pwa_status_block,
+        ".object({",
+        "  })\n  .passthrough()",
     )
     for token in [
         "vitalDBObservation",
@@ -8055,11 +8660,18 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
     ]:
         if token in pwa_status_block:
             matches.append(f"{relative(pwa_schema_path)}:runtimeStatusSchema.{token}")
+    for field in retired_product_fields:
+        if f"{field}:" in pwa_status_shape_block:
+            matches.append(f"{relative(pwa_schema_path)}:runtimeStatusSchema.{field}")
+        if f'"{field}"' not in pwa_status_block:
+            matches.append(
+                f"{relative(pwa_schema_path)}:missing retired-field rejection.{field}"
+            )
 
     pwa_generated = read(pwa_generated_path)
     pwa_generated_status_block = text_between(
         pwa_generated,
-        "RuntimeStatus: {",
+        "PlatformState: {",
         "RuntimeEventHistory:",
     )
     for token in [
@@ -8076,12 +8688,20 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
     ]:
         if token in pwa_generated_status_block:
             matches.append(f"{relative(pwa_generated_path)}:RuntimeStatus.{token}")
+    for field in retired_product_fields:
+        if f"{field}?:" in pwa_generated_status_block:
+            matches.append(f"{relative(pwa_generated_path)}:RuntimeStatus.{field}")
 
     openapi = read(openapi_path)
     openapi_status_block = text_between(
         openapi,
-        '"RuntimeStatus": {',
+        '"PlatformState": {',
         '"RuntimeEventHistory":',
+    )
+    openapi_status_properties_block = text_between(
+        openapi_status_block,
+        '"properties": {',
+        '"not": {',
     )
     for token in [
         '"vitalDBObservation"',
@@ -8097,6 +8717,13 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
     ]:
         if token in openapi_status_block:
             matches.append(f"{relative(openapi_path)}:RuntimeStatus.{token}")
+    for field in retired_product_fields:
+        if f'"{field}"' in openapi_status_properties_block:
+            matches.append(f"{relative(openapi_path)}:RuntimeStatus.{field}")
+        if f'"{field}"' not in openapi_status_block:
+            matches.append(
+                f"{relative(openapi_path)}:missing retired-field rejection.{field}"
+            )
 
     if matches:
         return CheckResult(
@@ -8107,7 +8734,7 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
     return CheckResult(
         "runtime-status-contract-no-vitaldb-observation",
         True,
-        "RuntimeStatus contract does not carry legacy VitalDB, runtime-state, "
+        "RuntimeStatus contract does not carry Runtime-owned product state, legacy VitalDB, runtime-state, "
         "operation, progress, message, timestamp, status document diagnostics, "
         "or install-state owner fields",
     )
@@ -8276,16 +8903,15 @@ def check_host_proxy_runtime_state_read_is_vm_bootstrap_only() -> CheckResult:
     text = read(path)
     required = [
         'vm_ip_file="${vm_home}/data/run/vm-ip"',
+        'runtime_endpoint_file="${vm_home}/run/runtime-endpoint.json"',
         "read_vm_ip()",
         "upstream_ready()",
         "proxy_ready()",
-        "publish_guest_address_owner()",
-        "load_guest_address_owner()",
-        'owner_address_state="loaded"',
-        "waiting for Runtime Control guest address owner",
-        "VITALSERVER_RUNTIME_CONTROL_API_BASE_URL",
-        "/host/runtime/guest-address",
-        "--data \"{\\\"address\\\":\\\"${address}\\\"}\"",
+        "publish_runtime_endpoint()",
+        'printf \'{"address":"%s","source":"platform-agent","state":"loaded"}',
+        'mv -f "${temporary}" "${runtime_endpoint_file}"',
+        "clear_runtime_endpoint()",
+        "waiting for Platform runtime endpoint source",
     ]
     forbidden = [
         'state_file="${vm_home}/data/run/runtime-observation.json"',
@@ -8294,6 +8920,9 @@ def check_host_proxy_runtime_state_read_is_vm_bootstrap_only() -> CheckResult:
         "waiting for VM runtime bootstrap",
         "waiting for VM runtime observation",
         'publish_guest_address_owner "${vm_ip}" || true',
+        "VITALSERVER_RUNTIME_CONTROL_API_BASE_URL",
+        "/platform/runtime-endpoint",
+        "load_guest_address_owner()",
         "guestHTTP",
         "containerServices",
         "composeServices",
@@ -8317,8 +8946,7 @@ def check_host_proxy_runtime_state_read_is_vm_bootstrap_only() -> CheckResult:
     return CheckResult(
         "host-proxy-runtime-state-bootstrap-only",
         True,
-        "Host proxy avoids runtime-state reads and uses explicit Guest address "
-        "owner reads plus HTTP readiness probes",
+        "Host proxy promotes bootstrap address evidence into the durable Platform endpoint owner and uses HTTP readiness probes",
     )
 
 
@@ -8453,7 +9081,7 @@ def check_dev_make_proxy_start_uses_guest_address_owner() -> CheckResult:
         (relative(cli_path), "RuntimeGuestAddressOwnerInput"),
         (relative(lifecycle_path), "print_runtime_guest_address_proxy_upstream"),
         (relative(lifecycle_path), "runtime_control_guest_address_request"),
-        (relative(lifecycle_path), "/host/runtime/guest-address"),
+        (relative(lifecycle_path), "/platform/runtime-endpoint"),
         (relative(lifecycle_path), 'method="PUT"'),
         (relative(lifecycle_path), 'method="GET"'),
     ]
@@ -8619,22 +9247,22 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
     )
     mac_api_handler_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition"
+        / "Sources/Hosts/MacPlatformAgent"
         / "MacRuntimeControlAPIHandler.swift"
     )
     mac_local_api_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition"
+        / "Sources/Hosts/MacPlatformAgent"
         / "MacRuntimeControlLocalAPI.swift"
     )
     mac_environment_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition"
-        / "MacRuntimeControlEnvironment.swift"
+        / "Sources/Hosts/MacPlatformAgent"
+        / "MacPlatformAgentService.swift"
     )
     mac_lease_controller_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition"
+        / "Sources/Hosts/MacPlatformAgent"
         / "RuntimeControlOperationLeaseController.swift"
     )
     json_file_operation_lease_repository_path = (
@@ -8728,27 +9356,27 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(runtime_lifecycle_path),
-            "RuntimeControlAPIOperationLeaseOwner()",
+            "JSONFileRuntimeOperationLeaseRepository(url: container.installedPaths.runtimeOperationLease)",
             runtime_lifecycle_text,
         ),
         (
             relative(api_owner_path),
-            'path: "/runtime/operation-state"',
+            'path: "/platform/operations"',
             api_owner_text,
         ),
         (
             relative(api_owner_path),
-            'path: "/host/runtime/operation-lease/acquire"',
+            'path: "/platform/operations/lease/acquire"',
             api_owner_text,
         ),
         (
             relative(api_owner_path),
-            'path: "/host/runtime/operation-lease/heartbeat"',
+            'path: "/platform/operations/lease/heartbeat"',
             api_owner_text,
         ),
         (
             relative(api_owner_path),
-            'path: "/host/runtime/operation-lease/release"',
+            'path: "/platform/operations/lease/release"',
             api_owner_text,
         ),
         (
@@ -8783,17 +9411,17 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(endpoint_routing_path),
-            'path: "/host/runtime/operation-lease/acquire", scope: .hostAffordance',
+            'path: "/platform/operations/lease/acquire", scope: .platformAffordance',
             endpoint_routing_text,
         ),
         (
             relative(endpoint_routing_path),
-            'path: "/host/runtime/operation-lease/heartbeat", scope: .hostAffordance',
+            'path: "/platform/operations/lease/heartbeat", scope: .platformAffordance',
             endpoint_routing_text,
         ),
         (
             relative(endpoint_routing_path),
-            'path: "/host/runtime/operation-lease/release", scope: .hostAffordance',
+            'path: "/platform/operations/lease/release", scope: .platformAffordance',
             endpoint_routing_text,
         ),
         (
@@ -8848,7 +9476,17 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(mac_environment_path),
-            "RuntimeControlOperationLeaseController()",
+            "RuntimeControlOperationLeaseController(",
+            mac_environment_text,
+        ),
+        (
+            relative(mac_environment_path),
+            "let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(",
+            mac_environment_text,
+        ),
+        (
+            relative(mac_environment_path),
+            "url: installedPaths.runtimeOperationLease",
             mac_environment_text,
         ),
         (
@@ -8883,32 +9521,32 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(api_tests_path),
-            'path: "/host/runtime/operation-lease/acquire"',
+            'path: "/platform/operations/lease/acquire"',
             api_tests_text,
         ),
         (
             relative(api_tests_path),
-            "testRuntimeControlClientReadHandlerAdaptsHostAffordances",
+            "testRuntimeControlClientReadHandlerAdaptsPlatformAffordances",
             api_tests_text,
         ),
         (
             relative(runtime_control_docs_path),
-            "Host operation lease mutation은 Host affordance API",
+            "Platform operation lease mutation은 Platform affordance API",
             runtime_control_docs_text,
         ),
         (
             relative(operation_lease_race_troubleshooting_path),
-            "Current operation 표시는 Runtime Control operation-state API와 Host operation lease owner에서 오고",
+            "Current operation 표시는 Runtime Control operation-state API와 durable Platform operation lease owner에서 오고",
             operation_lease_race_troubleshooting_text,
         ),
         (
             relative(operation_lease_race_troubleshooting_path),
-            "`runtime-operation-lease.json`은 active owner가 아니라 diagnostics/export artifact로만 남을 수 있습니다.",
+            "`vm/run/runtime-operation-lease.json`은 그 owner document이며 API와 CLI workflow가 같은 lock/atomic-write repository를 공유합니다.",
             operation_lease_race_troubleshooting_text,
         ),
         (
             relative(update_shutdown_troubleshooting_path),
-            "/runtime/operation-state",
+            "/platform/operations",
             update_shutdown_troubleshooting_text,
         ),
         (
@@ -8918,17 +9556,17 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(openapi_path),
-            '"/host/runtime/operation-lease/acquire"',
+            '"/platform/operations/lease/acquire"',
             openapi_text,
         ),
         (
             relative(openapi_path),
-            '"/host/runtime/operation-lease/heartbeat"',
+            '"/platform/operations/lease/heartbeat"',
             openapi_text,
         ),
         (
             relative(openapi_path),
-            '"/host/runtime/operation-lease/release"',
+            '"/platform/operations/lease/release"',
             openapi_text,
         ),
         (
@@ -8938,7 +9576,7 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(log_export_contract_path),
-            "diagnostics/status/\\(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease)",
+            "diagnostics/platform/\\(RuntimeHostOwnerFileNames.operationLease)",
             log_export_contract_text,
         ),
         (
@@ -8977,9 +9615,9 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         for path, token, text in required
         if token not in text
     ]
-    if json_file_operation_lease_repository_path.exists():
+    if not json_file_operation_lease_repository_path.exists():
         missing.append(
-            f"{relative(json_file_operation_lease_repository_path)}:file-backed operation lease owner must be removed"
+            f"{relative(json_file_operation_lease_repository_path)}:durable Platform operation lease owner is missing"
         )
     forbidden = [
         (
@@ -8991,16 +9629,6 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
             relative(operations_path),
             "installedPaths.runtimeOperationLease",
             operations_text,
-        ),
-        (
-            relative(runtime_lifecycle_path),
-            "JSONFileRuntimeOperationLeaseRepository(",
-            runtime_lifecycle_text,
-        ),
-        (
-            relative(runtime_lifecycle_path),
-            "installedPaths.runtimeOperationLease",
-            runtime_lifecycle_text,
         ),
         (
             relative(bundle_path),
@@ -9133,26 +9761,6 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
             mac_local_api_text,
         ),
         (
-            relative(mac_environment_path),
-            "JSONFileRuntimeOperationLeaseRepository(",
-            mac_environment_text,
-        ),
-        (
-            relative(mac_environment_path),
-            "InstalledRuntimePaths.defaultInstalled.runtimeOperationLease",
-            mac_environment_text,
-        ),
-        (
-            relative(operation_lease_race_troubleshooting_path),
-            "Current operation 표시는 `runtime-operation-lease.json` owner contract",
-            operation_lease_race_troubleshooting_text,
-        ),
-        (
-            relative(operation_lease_race_troubleshooting_path),
-            "managed operation 소유권은 `runtime-status.json`이 아니라 별도 durable lease 문서",
-            operation_lease_race_troubleshooting_text,
-        ),
-        (
             relative(operation_lease_race_troubleshooting_path),
             'cat "/Library/Application Support/TiroshVitalServer/status/runtime-operation-lease.json"',
             operation_lease_race_troubleshooting_text,
@@ -9208,17 +9816,17 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
     )
     api_handler_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition"
+        / "Sources/Hosts/MacPlatformAgent"
         / "MacRuntimeControlAPIHandler.swift"
     )
     mac_environment_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition"
-        / "MacRuntimeControlEnvironment.swift"
+        / "Sources/Hosts/MacPlatformAgent"
+        / "MacPlatformAgentService.swift"
     )
     controller_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition"
+        / "Sources/Hosts/MacPlatformAgent"
         / "RuntimeControlVMLifecycleController.swift"
     )
     outbound_client_path = (
@@ -9245,6 +9853,16 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
         MACOS_RUNTIME
         / "Tests/OutboundAdaptersTests"
         / "RuntimeVMLifecycleStoreTests.swift"
+    )
+    provider_store_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Persistence"
+        / "FileRuntimeVMLifecycleResourceStore.swift"
+    )
+    provider_store_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests"
+        / "FileRuntimeVMLifecycleResourceStoreTests.swift"
     )
     status_owner_readers_path = (
         MACOS_RUNTIME
@@ -9330,9 +9948,11 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
         relative(openapi_path): read(openapi_path),
         relative(api_docs_path): read(api_docs_path),
         relative(guest_control_docs_path): read(guest_control_docs_path),
+        relative(provider_store_path): read(provider_store_path),
+        relative(provider_store_tests_path): read(provider_store_tests_path),
     }
     required = [
-        (relative(endpoint_routing_path), 'path: "/host/runtime/vm-lifecycle", scope: .hostAffordance'),
+        (relative(endpoint_routing_path), 'path: "/platform/runtime-provider", scope: .platformAffordance'),
         (relative(read_routes_path), "handler.loadVMLifecycleResource()"),
         (relative(command_routes_path), "handler.putVMLifecycleResource(lifecycleRequest)"),
         (relative(requests_path), "public struct RuntimeVMLifecyclePutRequest"),
@@ -9343,9 +9963,15 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
         (relative(api_handler_path), "vmLifecycleClient.putVMLifecycleResource(request.document)"),
         (relative(mac_environment_path), "RuntimeControlVMLifecycleController("),
         (relative(controller_path), "final class RuntimeControlVMLifecycleController"),
-        (relative(controller_path), '.missing(readError: "VM lifecycle document missing")'),
+        (relative(controller_path), "FileRuntimeVMLifecycleResourceStore("),
+        (relative(provider_store_path), "public struct FileRuntimeVMLifecycleResourceStore"),
+        (relative(provider_store_path), "RuntimeVMLifecycleResourceReading"),
+        (relative(provider_store_path), "RuntimeVMLifecycleResourceWriting"),
+        (relative(provider_store_path), "options: .atomic"),
+        (relative(provider_store_tests_path), "testWritePersistsLifecycleForAnotherReader"),
+        (relative(provider_store_tests_path), "testInvalidDocumentStaysFailedInsteadOfMissing"),
         (relative(outbound_client_path), "public struct RuntimeControlAPIVMLifecycleOwner"),
-        (relative(outbound_client_path), 'path: "/host/runtime/vm-lifecycle"'),
+        (relative(outbound_client_path), 'path: "/platform/runtime-provider"'),
         (relative(outbound_client_path), "invalidVMLifecycleState"),
         (relative(resource_reader_path), "public protocol RuntimeVMLifecycleResourceReading"),
         (relative(resource_reader_path), "public struct RuntimeControlAPIVMLifecycleResourceReader"),
@@ -9353,27 +9979,28 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
         (relative(resource_reader_path), "public struct UnavailableRuntimeVMLifecycleResourceReader"),
         (relative(resource_reader_path), "enum RuntimeVMLifecycleResourceReadMapper"),
         (relative(mac_environment_path), "vmLifecycleResourceReader: vmLifecycleController"),
-        (relative(mac_client_path), "statusReader: Self.liveStatusReader()"),
+        (relative(mac_client_path), "platformStateReader: Self.livePlatformStateReader()"),
         (relative(mac_client_path), "vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading"),
         (relative(mac_client_path), "vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()"),
         (relative(status_owner_readers_path), "RuntimeVMLifecycleResourceReadMapper.statusRead"),
         (relative(health_checker_path), "RuntimeVMLifecycleResourceReadMapper.loadResult"),
         (relative(lifecycle_composition_path), "vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()"),
-        (relative(launcher_path), "RuntimeControlAPIVMLifecycleResourceWriter()"),
+        (relative(launcher_path), "FileRuntimeVMLifecycleResourceStore("),
+        (relative(launcher_path), "documentURL: paths.installed.vmLifecycle"),
         (relative(launcher_path), "writeVMLifecycleResource"),
         (relative(vm_delegate_composition_path), "lifecycleWriter: any RuntimeVMLifecycleResourceWriting"),
         (relative(vm_termination_composition_path), "lifecycleWriter: any RuntimeVMLifecycleResourceWriting"),
         (relative(api_tests_path), "testRouterServesAndUpdatesHostVMLifecycleResourceWithoutLoadingStatus"),
         (relative(controller_tests_path), "testLoadReportsMissingDistinctly"),
         (relative(outbound_client_tests_path), "testHTTPFailureDoesNotBecomeMissingResource"),
-        (relative(watchdog_composition_path), "RuntimeControlAPIVMLifecycleOwner().putVMLifecycleResource"),
-        (relative(cli_lifecycle_path), "RuntimeControlAPIVMLifecycleOwner()"),
+        (relative(watchdog_composition_path), "FileRuntimeVMLifecycleResourceStore("),
+        (relative(cli_lifecycle_path), "FileRuntimeVMLifecycleResourceStore("),
         (relative(cli_lifecycle_path), "skipped VM lifecycle stopped write after process stop"),
-        (relative(openapi_path), '"/host/runtime/vm-lifecycle"'),
-        (relative(openapi_path), '"RuntimeVMLifecycleResourceState"'),
-        (relative(api_docs_path), "`GET /host/runtime/vm-lifecycle`"),
-        (relative(api_docs_path), "`PUT /host/runtime/vm-lifecycle`"),
-        (relative(guest_control_docs_path), "`GET`/`PUT /host/runtime/vm-lifecycle`"),
+        (relative(openapi_path), '"/platform/runtime-provider"'),
+        (relative(openapi_path), '"RuntimeProviderResourceState"'),
+        (relative(api_docs_path), "`GET /platform/runtime-provider`"),
+        (relative(api_docs_path), "`PUT /platform/runtime-provider`"),
+        (relative(guest_control_docs_path), "`GET`/`PUT /platform/runtime-provider`"),
     ]
     missing = [
         f"{path}:{token}"
@@ -9461,15 +10088,24 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
         / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
     )
     api_handler_path = (
-        MACOS_RUNTIME / "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlAPIHandler.swift"
+        MACOS_RUNTIME / "Sources/Hosts/MacPlatformAgent/MacRuntimeControlAPIHandler.swift"
     )
     mac_environment_path = (
-        MACOS_RUNTIME / "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlEnvironment.swift"
+        MACOS_RUNTIME / "Sources/Hosts/MacPlatformAgent/MacPlatformAgentService.swift"
     )
     controller_path = (
         MACOS_RUNTIME
-        / "Sources/Hosts/MacControlPanel/Composition/RuntimeControlGuestAddressController.swift"
+        / "Sources/Hosts/MacPlatformAgent/RuntimeControlGuestAddressController.swift"
     )
+    durable_store_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/Persistence/FileRuntimeGuestAddressResourceStore.swift"
+    )
+    durable_store_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/OutboundAdaptersTests/FileRuntimeGuestAddressResourceStoreTests.swift"
+    )
+    proxy_path = MACOS_RUNTIME / "Support/Packaging/proxy-run.template"
     outbound_client_path = (
         MACOS_RUNTIME
         / "Sources/Adapters/Outbound/RuntimeControlAPI/RuntimeControlAPIGuestAddressOwner.swift"
@@ -9520,6 +10156,9 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
         relative(api_handler_path): read(api_handler_path),
         relative(mac_environment_path): read(mac_environment_path),
         relative(controller_path): read(controller_path),
+        relative(durable_store_path): read(durable_store_path),
+        relative(durable_store_tests_path): read(durable_store_tests_path),
+        relative(proxy_path): read(proxy_path),
         relative(outbound_client_path): read(outbound_client_path),
         relative(resource_reader_path): read(resource_reader_path),
         relative(mac_client_path): read(mac_client_path),
@@ -9533,7 +10172,7 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
         relative(vm_ip_troubleshooting_path): read(vm_ip_troubleshooting_path),
     }
     required = [
-        (relative(endpoint_routing_path), 'path: "/host/runtime/guest-address", scope: .hostAffordance'),
+        (relative(endpoint_routing_path), 'path: "/platform/runtime-endpoint", scope: .platformAffordance'),
         (relative(read_routes_path), "handler.loadGuestAddressResource()"),
         (relative(command_routes_path), "handler.putGuestAddressResource(guestAddressRequest)"),
         (relative(requests_path), "public struct RuntimeGuestAddressPutRequest"),
@@ -9542,27 +10181,35 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
         (relative(api_handler_path), "guestAddressClient.putGuestAddressResource(address: request.address)"),
         (relative(mac_environment_path), "RuntimeControlGuestAddressController("),
         (relative(controller_path), "final class RuntimeControlGuestAddressController"),
-        (relative(controller_path), '.missing(readError: "Guest address resource missing")'),
+        (relative(controller_path), "any RuntimeGuestAddressResourceReading"),
+        (relative(controller_path), "any RuntimeGuestAddressResourceWriting"),
+        (relative(durable_store_path), "public struct FileRuntimeGuestAddressResourceStore"),
+        (relative(durable_store_path), "options: .atomic"),
+        (relative(durable_store_path), "source: .platformAgent"),
+        (relative(durable_store_tests_path), "testPutPersistsEndpointForAnotherReader"),
+        (relative(proxy_path), 'runtime_endpoint_file="${vm_home}/run/runtime-endpoint.json"'),
+        (relative(proxy_path), "publish_runtime_endpoint()"),
+        (relative(proxy_path), '"source":"platform-agent"'),
         (relative(outbound_client_path), "public struct RuntimeControlAPIGuestAddressOwner"),
-        (relative(outbound_client_path), 'path: "/host/runtime/guest-address"'),
+        (relative(outbound_client_path), 'path: "/platform/runtime-endpoint"'),
         (relative(outbound_client_path), "invalidGuestAddressState"),
         (relative(resource_reader_path), "public struct RuntimeControlAPIGuestAddressProvider"),
         (relative(resource_reader_path), "RuntimeGuestAddressResourceReadMapper.readResult"),
-        (relative(mac_environment_path), "guestAddressProvider: guestAddressController"),
-        (relative(mac_client_path), "statusReader: Self.liveStatusReader()"),
+        (relative(mac_environment_path), "guestAddressProvider: runtimeEndpointStore"),
+        (relative(mac_client_path), "platformStateReader: Self.livePlatformStateReader()"),
         (relative(mac_client_path), "guestAddressProvider: any RuntimeGuestAddressProvider"),
         (relative(mac_client_path), "guestAddressProvider: RuntimeControlAPIGuestAddressProvider()"),
         (relative(status_owner_readers_path), "UnavailableRuntimeGuestAddressProvider("),
         (relative(api_tests_path), "testRouterServesAndUpdatesHostGuestAddressResourceWithoutLoadingStatus"),
         (relative(controller_tests_path), "testPutAndLoadPreserveExplicitOwnerAddress"),
         (relative(outbound_client_tests_path), "testHTTPFailureDoesNotBecomeMissingResource"),
-        (relative(openapi_path), '"/host/runtime/guest-address"'),
-        (relative(openapi_path), '"RuntimeGuestAddressResourceState"'),
-        (relative(api_docs_path), "`GET /host/runtime/guest-address`"),
-        (relative(api_docs_path), "`PUT /host/runtime/guest-address`"),
-        (relative(guest_control_docs_path), "`GET`/`PUT /host/runtime/guest-address`"),
-        (relative(vm_ip_troubleshooting_path), "Runtime Control Guest address owner (`GET /host/runtime/guest-address`)"),
-        (relative(vm_ip_troubleshooting_path), "may be published through `PUT /host/runtime/guest-address`"),
+        (relative(openapi_path), '"/platform/runtime-endpoint"'),
+        (relative(openapi_path), '"RuntimeEndpointResourceState"'),
+        (relative(api_docs_path), "`GET /platform/runtime-endpoint`"),
+        (relative(api_docs_path), "`PUT /platform/runtime-endpoint`"),
+        (relative(guest_control_docs_path), "`vm/run/runtime-endpoint.json` is the durable owner document"),
+        (relative(vm_ip_troubleshooting_path), "durable runtime endpoint owner (`vm/run/runtime-endpoint.json`)"),
+        (relative(vm_ip_troubleshooting_path), "Platform proxy adapter explicitly promotes into the owner document"),
     ]
     missing = [
         f"{path}:{token}"
@@ -9622,7 +10269,7 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
     return CheckResult(
         "host-guest-address-runtime-control-api-owner-surface",
         True,
-        "Host Guest address has a Runtime Control API owner resource surface with explicit missing/failed/loaded states",
+        "Platform runtime endpoint has a durable owner repository exposed through the API with explicit missing/failed/loaded states",
     )
 
 
@@ -9856,6 +10503,20 @@ def check_redis_relay_status_read_result_preserves_explicit_read_contract() -> C
 
 
 def check_redis_relay_status_document_preserves_complete_owner_contract() -> CheckResult:
+    runtime_status_contract = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/RuntimeControl/RuntimeControlModels.swift"
+    )
+    runtime_status_reader = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads"
+        / "RuntimeStatusReader.swift"
+    )
+    endpoint_routing = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlAPIEndpointRouting.swift"
+    )
     swift_contract = (
         MACOS_RUNTIME
         / "Sources/Contracts/Shared/RuntimeRedisRelayStatus.swift"
@@ -9901,6 +10562,9 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
     guest_api_tests = GUEST_TOOLS / "tests/test_guest_control_api.py"
     guest_usecase_tests = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
     texts = {
+        relative(runtime_status_contract): read(runtime_status_contract),
+        relative(runtime_status_reader): read(runtime_status_reader),
+        relative(endpoint_routing): read(endpoint_routing),
         relative(swift_contract): read(swift_contract),
         relative(swift_contract_tests): read(swift_contract_tests),
         relative(gateway_tests): read(gateway_tests),
@@ -9917,13 +10581,16 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         relative(guest_usecase_tests): read(guest_usecase_tests),
     }
     required = {
+        relative(endpoint_routing): [
+            'path: "/runtime/redis-relay/status"',
+        ],
         relative(swift_contract): [
             "public var schemaVersion: Int",
             "schemaVersion: try container.decode(Int.self, forKey: .schemaVersion)",
             "observedAt: try container.decode(String.self, forKey: .observedAt)",
             "enabled: try container.decode(Bool.self, forKey: .enabled)",
             "state: try container.decode(String.self, forKey: .state)",
-            "scope: try container.decode(String.self, forKey: .scope)",
+            "scope: try container.decodeRequiredNullable(String.self, forKey: .scope)",
             "targetUrl: try container.decodeRequiredNullable(String.self, forKey: .targetUrl)",
             "targetUsernameConfigured: try container.decode(",
             "targetPasswordConfigured: try container.decode(",
@@ -9943,7 +10610,9 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         ],
         relative(swift_contract_tests): [
             "testRedisRelayStatusRequiresCompleteOwnerDocumentPayload",
+            "XCTAssertTrue(encodedJSON[\"scope\"] is NSNull)",
             "XCTAssertTrue(encodedJSON[\"targetUrl\"] is NSNull)",
+            "String(describing: error).contains(\"scope\")",
             "XCTAssertTrue(String(describing: error).contains(\"copied\"))",
         ],
         relative(gateway_tests): [
@@ -9960,13 +10629,17 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
             "published: z.number().int()",
             "duplicates: z.number().int()",
             "const runtimeRedisRelayStatusSchema = z",
+            "scope: requiredNullableString",
             "targetUrl: requiredNullableString",
             "settingsFingerprint: requiredNullableString",
             "lastBatch: runtimeRedisRelayBatchSchema.nullable()",
-            "redisRelayStatus: runtimeRedisRelayStatusSchema.nullable().optional()",
+            "export const runtimeRedisRelayStatusReadResultSchema = z",
+            '"Redis Relay status must be read from its Runtime owner resource"',
         ],
         relative(pwa_schema_tests): [
-            "requires complete Redis Relay status owner documents on RuntimeStatus",
+            "requires complete Redis Relay status owner resource documents",
+            "scope: null",
+            "toThrow(/scope/)",
             "published: 0",
             "duplicates: 0",
             "toThrow(/published/)",
@@ -9976,14 +10649,17 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
             "published: number;",
             "duplicates: number;",
             "RuntimeRedisRelayStatus: {",
-            "redisRelayStatus?: components[\"schemas\"][\"RuntimeRedisRelayStatus\"] | null;",
+            "scope: string | null;",
+            '"/runtime/redis-relay/status": {',
+            "RuntimeRedisRelayStatusReadResult: {",
         ],
         relative(openapi): [
             "\"RuntimeRedisRelayBatch\"",
             "\"RuntimeRedisRelayStatus\"",
             "\"published\"",
             "\"duplicates\"",
-            "\"redisRelayStatus\"",
+            '"/runtime/redis-relay/status"',
+            '"RuntimeRedisRelayStatusReadResult"',
             "\"$ref\": \"#/components/schemas/RuntimeRedisRelayStatus\"",
         ],
         relative(guest_postgres_repository): [
@@ -9994,6 +10670,7 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         relative(guest_domain_models): [
             "class RedisRelayStatusContractError",
             "REDIS_RELAY_REQUIRED_NULLABLE_STRING_FIELDS",
+            "\"scope\"",
             "\"targetUrl\"",
             "\"settingsFingerprint\"",
             "\"lastSuccessAt\"",
@@ -10017,6 +10694,8 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
             "redis_relay_status_document()",
             "test_postgres_repository_rejects_incomplete_redis_relay_status_document",
             "test_postgres_repository_rejects_incomplete_stored_redis_relay_status_document",
+            "validate_redis_relay_status_document(nullable_scope)",
+            "del missing_scope[\"scope\"]",
             "targetUrl",
             "totals.published",
             "lastBatch",
@@ -10024,6 +10703,7 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         relative(guest_api_tests): [
             "def redis_relay_status_document(",
             "\"schemaVersion\": 1",
+            "\"scope\": \"vital_reconstruction\"",
             "\"published\": copied",
             "\"duplicates\": 0",
             "\"lastBatch\": None",
@@ -10035,6 +10715,7 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         relative(guest_usecase_tests): [
             "def redis_relay_status_document(",
             "\"schemaVersion\": 1",
+            "\"scope\": \"vital_reconstruction\"",
             "\"published\": copied",
             "\"duplicates\": 0",
             "\"lastBatch\": None",
@@ -10056,6 +10737,14 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
             "validate_redis_relay_status_document(document) in save_status and status"
         )
     forbidden = {
+        relative(runtime_status_contract): [
+            "case redisRelayStatus",
+            "public var redisRelayStatus:",
+        ],
+        relative(runtime_status_reader): [
+            "redisRelayStatusRead(",
+            ".redisRelayStatus()",
+        ],
         relative(swift_contract): [
             "try container.decodeIfPresent(Int.self, forKey: .scanned) ?? 0",
             "try container.decodeIfPresent(Int.self, forKey: .copied) ?? 0",
@@ -10065,6 +10754,7 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
             "try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false",
             "try container.decodeIfPresent(String.self, forKey: .state) ?? \"unknown\"",
             "try container.decodeIfPresent(String.self, forKey: .scope) ?? \"unknown\"",
+            "scope: try container.decode(String.self, forKey: .scope)",
             "try container.decodeIfPresent(Int.self, forKey: .batches) ?? 0",
             "try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .totals)",
             "?? RuntimeRedisRelayBatch()",
@@ -10080,6 +10770,9 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         relative(guest_usecase_tests): [
             "\"totals\": {\"copied\": 8}",
             "\"totals\": {\"copied\": 1}",
+        ],
+        relative(pwa_generated): [
+            'redisRelayStatus?: components["schemas"]["RuntimeRedisRelayStatus"] | null;',
         ],
     }
     present = [
@@ -10194,12 +10887,12 @@ def check_runtime_boot_smoke_uses_guest_control_stack_status() -> CheckResult:
     path = GUEST_TOOLS / "src/tirosh_guest_tools/application/runtime_boot_smoke.py"
     text = read(path)
     required = [
-        "/v1/stack/status",
+        "/runtime/stack",
         "read_guest_control_stack_status",
         "observed_stack_services",
         "product-lab-recorder-flow",
         "LAB_REPLAY_SMOKE_VITAL_FILE",
-        "/v1/lab/vital-files/replay",
+        "/runtime/lab/vital-files/replay",
         "prepare_lab_replay_smoke_vital_file",
         "replaySessionId",
         '"guest-control-api"',
@@ -10237,6 +10930,8 @@ def check_runtime_proof_acceptance_targets_are_explicit() -> CheckResult:
         "runtime/proof/smoke:",
         "runtime/proof/no-v1-service-state:",
         "runtime/proof/python-focused:",
+        "runtime/proof/conformance:",
+        "runtime/conformance:",
         "runtime/proof/swift-focused:",
         "runtime/proof/http-e2e:",
         "runtime/proof/review:",
@@ -10247,6 +10942,8 @@ def check_runtime_proof_acceptance_targets_are_explicit() -> CheckResult:
         "apps/vitalserver-lab/tests",
         "packages/vitalserver-guest-tools/tests/test_guest_control_api.py",
         "packages/vitalserver-devtools/tests/unit/test_macos_release_plans.py",
+        "packages/vitalserver-devtools/tests/unit/test_runtime_v2_conformance.py",
+        "scripts/runtime_v2_conformance.py",
         "pwa/check",
         "pwa/test",
         "pwa/build",
@@ -10255,6 +10952,8 @@ def check_runtime_proof_acceptance_targets_are_explicit() -> CheckResult:
         "runtime/e2e/smoke",
         "runtime/proof/smoke",
         "Run focused Python Runtime v2 product/package tests",
+        "Test the OS-neutral Platform/Runtime conformance rules",
+        "Validate a live implementation at RUNTIME_V2_CONFORMANCE_BASE_URL",
         "Run focused Swift Host-side Runtime v2 acceptance tests",
         "Run Runtime Control HTTP E2E smoke test",
         "Run static, Python, and PWA Runtime v2 review gates",
@@ -10281,8 +10980,8 @@ def check_runtime_proof_acceptance_targets_are_explicit() -> CheckResult:
     return CheckResult(
         "runtime-proof-acceptance-targets",
         True,
-        "Runtime v2 review, Swift focused, HTTP E2E, and VM smoke "
-        "acceptance targets are explicit",
+        "Runtime v2 conformance, review, Swift focused, HTTP E2E, and VM "
+        "smoke acceptance targets are explicit",
     )
 
 

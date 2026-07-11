@@ -1,0 +1,21 @@
+[Unit]
+Description=VitalServer Platform Agent
+After=network-online.target dbus.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/vitalserver/current/bin/vitalserver-platform-agent --config /etc/vitalserver/platform-agent.json
+Restart=on-failure
+RestartSec=5
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/etc/vitalserver /opt/vitalserver
+ReadWritePaths=/var/lib/vitalserver /var/log/vitalserver
+
+[Install]
+WantedBy=multi-user.target

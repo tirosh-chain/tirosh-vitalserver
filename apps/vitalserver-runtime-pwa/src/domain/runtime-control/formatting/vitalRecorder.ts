@@ -1,9 +1,16 @@
-import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
+import type { VitalDBRecorders } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
-type RuntimeVitalRecorderSummary = NonNullable<
-  RuntimeControlOverview["vitalRecorder"]
->;
+export type RuntimeVitalRecorderSummary = {
+  source: "vitalDBObservation" | "unavailable";
+  activeConnections?: number | null;
+  knownRecorders?: number | null;
+  onlineRecorders?: number | null;
+  staleRecorders?: number | null;
+  knownBeds?: number | null;
+  recorderAnomalies?: number | null;
+  observedAt?: string | null;
+};
 
 type VitalRecorderObservationMetric = keyof Pick<
   RuntimeVitalRecorderSummary,
@@ -37,4 +44,35 @@ export function formatVitalRecorderConnectionMetric(
   recorder: RuntimeVitalRecorderSummary | null | undefined
 ): number | string {
   return recorder?.activeConnections ?? NOT_REPORTED;
+}
+
+export function vitalRecorderSummaryFromHistory(
+  history: VitalDBRecorders | undefined
+): RuntimeVitalRecorderSummary | undefined {
+  if (!history) {
+    return undefined;
+  }
+  const ingress = history.recorderIngressStatusRead?.document;
+  if (history.state === "readFailed") {
+    return {
+      source: "unavailable",
+      activeConnections: ingress?.activeRecorderConnections ?? null,
+      knownRecorders: null,
+      onlineRecorders: null,
+      staleRecorders: null,
+      knownBeds: null,
+      recorderAnomalies: null,
+      observedAt: null
+    };
+  }
+  return {
+    source: "vitalDBObservation",
+    activeConnections: ingress?.activeRecorderConnections ?? null,
+    knownRecorders: history.summary.knownRecorders,
+    onlineRecorders: history.summary.onlineRecorders,
+    staleRecorders: history.summary.staleRecorders,
+    knownBeds: history.summary.knownBeds,
+    recorderAnomalies: history.summary.recorderAnomalies,
+    observedAt: history.updatedAt
+  };
 }

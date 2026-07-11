@@ -6,8 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 import { RuntimeControlGatewayProvider } from "@/console/runtimeControlGatewayContext";
 import type { RuntimeControlGateway } from "./runtimeControlGateway";
 import {
-  useApplyRuntimeSettings,
+  useApplyRuntimeAdminPassword,
+  useApplyRuntimeProductSettings,
   useApplyUpdateBundle,
+  useCreatePlatformSupportExport,
+  useRollbackRelease,
   useCreateRedisBackup,
   useCreateRuntimeDataBackup,
   useDeleteHostBackup,
@@ -28,6 +31,8 @@ import {
   useLabVitalFiles,
   useReplayLabVitalFile,
   useRedisBackups,
+  useRedisRelayStatus,
+  useLatestVitalDBObservation,
   useRepairDatastore,
   useRepairProxy,
   useRepairRuntime,
@@ -36,12 +41,13 @@ import {
   useStartLabSession,
   useRollbackBackup,
   useRestoreRuntimeDataBackup,
-  useRuntimeCapabilities,
+  useControlCapabilities,
   useRuntimeDataBackups,
   useRuntimeEvents,
-  useRuntimeOperationState,
-  useRuntimeOverview,
-  useRuntimeSettings,
+  usePlatformOperationState,
+  useRuntimeServiceResources,
+  useRuntimeStack,
+  useRuntimeProductSettings,
   useStartGuestService,
   useStopGuestService,
   useStopLabSession,
@@ -65,10 +71,20 @@ describe("console hooks", () => {
     const gateway = createGateway();
     const wrapper = createWrapper(gateway);
 
-    await expectQuery(useRuntimeOverview, wrapper, gateway.getOverview);
-    await expectQuery(useRuntimeOperationState, wrapper, gateway.getOperationState);
-    await expectQuery(useRuntimeCapabilities, wrapper, gateway.getCapabilities);
-    await expectQuery(useRuntimeSettings, wrapper, gateway.getSettings);
+    await expectQuery(
+      useLatestVitalDBObservation,
+      wrapper,
+      gateway.getLatestVitalDBObservation
+    );
+    await expectQuery(useRuntimeStack, wrapper, gateway.getRuntimeStack);
+    await expectQuery(useRedisRelayStatus, wrapper, gateway.getRedisRelayStatus);
+    await expectQuery(usePlatformOperationState, wrapper, gateway.getOperationState);
+    await expectQuery(useControlCapabilities, wrapper, gateway.getCapabilities);
+    await expectQuery(
+      useRuntimeProductSettings,
+      wrapper,
+      gateway.getRuntimeProductSettings
+    );
     await expectQuery(useVitalDBRecorders, wrapper, gateway.getRecorders);
     await expectQuery(useVitalDBBeds, wrapper, gateway.getBeds);
     await expectQuery(useVitalDBRelationships, wrapper, gateway.getRelationships);
@@ -79,6 +95,17 @@ describe("console hooks", () => {
     await expectQuery(useHostBackups, wrapper, gateway.listHostBackups);
     await expectQuery(useRedisBackups, wrapper, gateway.listRedisBackups);
     await expectQuery(useRuntimeDataBackups, wrapper, gateway.listRuntimeDataBackups);
+
+    const serviceResources = renderHook(
+      () => useRuntimeServiceResources(["app"]),
+      { wrapper }
+    );
+    await waitFor(() =>
+      expect(serviceResources.result.current[0]?.resource).toEqual(
+        guestServiceResource()
+      )
+    );
+    expect(gateway.getGuestServiceResource).toHaveBeenCalledWith("app");
 
     const events = renderHook(
       () => useRuntimeEvents({ limit: 5, type: "update", since: "2026-05-31T00:00:00Z" }),
@@ -114,22 +141,33 @@ describe("console hooks", () => {
     const wrapper = createWrapper(gateway);
 
     await mutateHook(
-      () => useApplyRuntimeSettings(),
-      { settings: fullSettings({ proxyPort: 18080 }) },
+      () => useApplyRuntimeProductSettings(),
+      { settings: productSettings() },
       wrapper
     );
-    expect(gateway.applySettings).toHaveBeenCalledWith({
-      settings: fullSettings({ proxyPort: 18080 })
+    expect(gateway.applyRuntimeProductSettings).toHaveBeenCalledWith({
+      settings: productSettings()
+    });
+    await mutateHook(
+      () => useApplyRuntimeAdminPassword(),
+      { password: "new-admin-secret" },
+      wrapper
+    );
+    expect(gateway.applyRuntimeAdminPassword).toHaveBeenCalledWith({
+      password: "new-admin-secret"
     });
 
     await mutateHook(() => useExportHostLogs(), "/tmp/logs.zip", wrapper);
     expect(gateway.exportLogs).toHaveBeenCalledWith({
       destination: { kind: "localPath", value: "/tmp/logs.zip" }
     });
+    await mutateHook(() => useCreatePlatformSupportExport(), undefined, wrapper);
+    expect(gateway.createPlatformSupportExport).toHaveBeenCalledWith();
 
     await mutateHook(() => useSummarizeUpdateBundle(), "/tmp/update.tar.gz", wrapper);
     await mutateHook(() => useVerifyUpdateBundle(), "/tmp/update.tar.gz", wrapper);
     await mutateHook(() => useApplyUpdateBundle(), "/tmp/update.tar.gz", wrapper);
+    await mutateHook(() => useRollbackRelease(), undefined, wrapper);
     expect(gateway.summarizeUpdateBundle).toHaveBeenCalledWith({
       bundle: { kind: "localPath", value: "/tmp/update.tar.gz" }
     });
@@ -139,6 +177,7 @@ describe("console hooks", () => {
     expect(gateway.applyUpdateBundle).toHaveBeenCalledWith({
       bundle: { kind: "localPath", value: "/tmp/update.tar.gz" }
     });
+    expect(gateway.rollbackRelease).toHaveBeenCalledWith();
 
     await mutateHook(() => useRollbackBackup(), "/tmp/backup", wrapper);
     await mutateHook(() => useDeleteHostBackup(), "/tmp/backup", wrapper);
@@ -296,8 +335,32 @@ function createWrapper(gateway: GatewayMock) {
 function createGateway(): GatewayMock {
   const command = vi.fn().mockResolvedValue(commandResult);
   return {
-    applySettings: vi.fn().mockResolvedValue(commandResult),
+    applyRuntimeAdminPassword: vi.fn().mockResolvedValue({
+      operationId: "op_admin_1",
+      service: "runtime-admin",
+      command: "apply-admin-password",
+      state: "completed",
+      createdAt: "2026-07-01T00:00:00Z",
+      updatedAt: "2026-07-01T00:00:01Z"
+    }),
+    applyRuntimeRedisRelaySettings: vi.fn().mockResolvedValue({
+      operationId: "op_relay_settings_1",
+      service: "redis-relay-settings",
+      command: "apply-redis-relay-settings",
+      state: "completed",
+      createdAt: "2026-07-01T00:00:00Z",
+      updatedAt: "2026-07-01T00:00:01Z"
+    }),
+    applyRuntimeProductSettings: vi.fn().mockResolvedValue({
+      operationId: "op_settings_1",
+      service: "runtime-settings",
+      command: "apply-settings",
+      state: "completed",
+      createdAt: "2026-07-01T00:00:00Z",
+      updatedAt: "2026-07-01T00:00:01Z"
+    }),
     applyUpdateBundle: vi.fn().mockResolvedValue(commandResult),
+    rollbackRelease: vi.fn().mockResolvedValue(commandResult),
     createRedisBackup: vi.fn().mockResolvedValue(commandResult),
     createRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     createLabBeds: vi.fn().mockResolvedValue({
@@ -327,9 +390,14 @@ function createGateway(): GatewayMock {
     deleteRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     deleteUpdateBackup: vi.fn().mockResolvedValue(commandResult),
     exportLogs: vi.fn().mockResolvedValue({ destination: "file:///tmp/logs.zip" }),
+    createPlatformSupportExport: vi.fn().mockResolvedValue(platformWorkflowOperation("update-verify")),
     getBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
     getCapabilities: vi.fn().mockResolvedValue(fullCapabilities()),
-    getOverview: vi.fn().mockResolvedValue({ status: { runtimeState: "healthy" } }),
+    getPlatformCapabilities: vi.fn().mockResolvedValue(platformCapabilities()),
+    getRuntimeCapabilities: vi.fn().mockResolvedValue({
+      schemaVersion: 1,
+      capabilities: ["services:start", "services:stop", "services:restart", "lab:scenarios"]
+    }),
     getOperationState: vi.fn().mockResolvedValue({
       activeOperation: "apply-bundle",
       install: { state: "unavailable", document: null, readError: null },
@@ -345,7 +413,7 @@ function createGateway(): GatewayMock {
     hideBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
     hideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     getRuntimeEvents: vi.fn().mockResolvedValue({ events: [] }),
-    getGuestStackStatus: vi.fn().mockResolvedValue({
+    getRuntimeStack: vi.fn().mockResolvedValue({
       state: "loaded",
       observedAt: "2026-07-01T00:00:00+00:00",
       services: [],
@@ -373,8 +441,48 @@ function createGateway(): GatewayMock {
       readError: null
     }),
     getLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
-    getSettings: vi.fn().mockResolvedValue(fullSettings({ proxyPort: 18080 })),
-    getStatus: vi.fn().mockResolvedValue({ runtimeState: "healthy" }),
+    getLatestVitalDBObservation: vi.fn().mockResolvedValue({
+      state: "missing",
+      observation: null,
+      readError: null
+    }),
+    getRuntimeProductSettings: vi.fn().mockResolvedValue({
+      state: "loaded",
+      settings: productSettings(),
+      readError: null
+    }),
+    getPlatformState: vi.fn().mockResolvedValue({
+      runtimeInstallationState: "executable",
+      services: [],
+      platformHealth: "healthy"
+    }),
+    getRedisRelayStatus: vi.fn().mockResolvedValue({
+      readState: "readFailed",
+      document: null,
+      readError: "runtime owner unavailable"
+    }),
+    getRuntimeRedisRelaySettings: vi.fn().mockResolvedValue({
+      state: "loaded",
+      settings: {
+        enabled: false,
+        target: {
+          url: "redis://redis.example:6379/0",
+          username: "",
+          passwordConfigured: false,
+          tls: false
+        },
+        scope: "vital_reconstruction",
+        includeRecorderNetworkContext: false,
+        intervalSeconds: 1,
+        scanCount: 1000
+      },
+      readError: null
+    }),
+    getPlatformWorkflow: vi.fn().mockResolvedValue({
+      state: "missing",
+      operation: null,
+      readError: null
+    }),
     listHostBackups: vi.fn().mockResolvedValue([]),
     listRedisBackups: vi.fn().mockResolvedValue([]),
     listRuntimeDataBackups: vi.fn().mockResolvedValue([]),
@@ -403,7 +511,7 @@ function createGateway(): GatewayMock {
     stopGuestService: vi.fn().mockResolvedValue(guestServiceOperation("stop")),
     stopLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
     summarizeUpdateBundle: vi.fn().mockResolvedValue({ summary: "ok" }),
-    uninstallRuntime: vi.fn().mockResolvedValue(commandResult),
+    uninstallRuntime: vi.fn().mockResolvedValue(platformWorkflowOperation("uninstall")),
     unhideBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
     unhideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     uploadLabVitalFile: vi.fn().mockResolvedValue({
@@ -423,7 +531,8 @@ function fullCapabilities() {
     canUninstallRuntime: true,
     canApplyBundle: true,
     canRollback: true,
-    canEditVMResources: true,
+    canRollbackRelease: true,
+    canEditRuntimeProviderResources: true,
     canEditNetworkExposure: true,
     canResetAdminPassword: true,
     canOpenLocalFiles: true,
@@ -436,10 +545,40 @@ function fullCapabilities() {
   };
 }
 
+function platformCapabilities() {
+  const { canControlGuestServices: _, canUseLab: __, ...platform } = fullCapabilities();
+  return platform;
+}
+
 function fullSettings(overrides: Partial<ReturnType<typeof fullSettingsShape>> = {}) {
   return {
     ...fullSettingsShape(),
     ...overrides
+  };
+}
+
+function productSettings() {
+  const settings = fullSettings();
+  return {
+    automaticBackupEnabled: settings.automaticBackupEnabled,
+    backupRetentionCount: settings.backupRetentionCount,
+    backupScheduleTimes: settings.backupScheduleTimes,
+    containerMemoryLimitsEnabled: settings.containerMemoryLimitsEnabled,
+    publicHost: settings.publicHost,
+    publicPort: settings.publicPort,
+    recorderIngress: settings.recorderIngress,
+    recorderIngressContainerMemoryLimitMiB:
+      settings.recorderIngressContainerMemoryLimitMiB,
+    recorderIngressSendDataMode: settings.recorderIngressSendDataMode,
+    recorderIngressSendDataReplayBatchSize:
+      settings.recorderIngressSendDataReplayBatchSize,
+    recorderIngressSendDataReplayMaxMiBPerSecond:
+      settings.recorderIngressSendDataReplayMaxMiBPerSecond,
+    redisContainerMemoryLimitMiB: settings.redisContainerMemoryLimitMiB,
+    remoteConsoleURL: settings.remoteConsoleURL,
+    vitalServerContainerMemoryLimitMiB:
+      settings.vitalServerContainerMemoryLimitMiB,
+    vitalServerURL: settings.vitalServerURL
   };
 }
 
@@ -531,6 +670,22 @@ const commandResult = {
     executionIssue: null
   }
 };
+
+function platformWorkflowOperation(
+  kind: "update-verify" | "update-apply" | "rollback" | "uninstall"
+) {
+  return {
+    schemaVersion: 1 as const,
+    operationId: `${kind}-1`,
+    kind,
+    state: "completed" as const,
+    startedAt: "2026-07-01T00:00:00Z",
+    updatedAt: "2026-07-01T00:00:01Z",
+    release: null,
+    artifact: null,
+    failure: null
+  };
+}
 
 function guestServiceOperation(command: "start" | "stop" | "restart") {
   return {

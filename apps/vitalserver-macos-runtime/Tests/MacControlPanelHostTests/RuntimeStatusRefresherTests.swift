@@ -8,7 +8,7 @@ import Errors
 @MainActor
 final class RuntimeStatusRefresherTests: XCTestCase {
     func testRefreshHealthStatusLoadsHealthSnapshotAndFormatsMessage() async {
-        let healthStatus = RuntimeStatus(runtimeInstalled: true)
+        let healthStatus = platformState(runtimeInstallationState: .executable)
         let snapshots = StubStatusSnapshotLoader(healthStatus: healthStatus)
         let refresher = RuntimeStatusRefresher(snapshots: snapshots)
 
@@ -25,14 +25,13 @@ final class RuntimeStatusRefresherTests: XCTestCase {
     }
 
     func testRefreshStatusIncludesOperationStatePresentationWhenIdle() async {
-        let status = RuntimeStatus(
-            runtimeInstalled: true,
+        let status = platformState(
             runtimeInstallationState: .executable,
             runtimeState: .updating
         )
         let snapshots = StubStatusSnapshotLoader(
             status: status,
-            operationState: RuntimeOperationState(
+            operationState: PlatformOperationState(
                 activeOperation: .applyBundle,
                 install: .unavailable()
             )
@@ -49,8 +48,7 @@ final class RuntimeStatusRefresherTests: XCTestCase {
     }
 
     func testRefreshStatusDoesNotUseLegacyStatusMessageWhileBusy() async {
-        let status = RuntimeStatus(
-            runtimeInstalled: true,
+        let status = platformState(
             runtimeInstallationState: .executable,
             runtimeState: .updating
         )
@@ -65,8 +63,7 @@ final class RuntimeStatusRefresherTests: XCTestCase {
     }
 
     func testHealthCheckStatusPrefixesCompletedMessageWithoutOperationStateOverride() async {
-        let status = RuntimeStatus(
-            runtimeInstalled: true,
+        let status = platformState(
             runtimeInstallationState: .executable,
             runtimeState: .updating
         )
@@ -84,10 +81,10 @@ final class RuntimeStatusRefresherTests: XCTestCase {
     }
 
     func testOperationDetailUsesOperationStateInsteadOfLegacyProgressMessage() async {
-        let status = RuntimeStatus()
+        let status = platformState()
         let snapshots = StubStatusSnapshotLoader(
             status: status,
-            operationState: RuntimeOperationState(
+            operationState: PlatformOperationState(
                 activeOperation: .applyBundle,
                 install: .unavailable()
             )
@@ -108,37 +105,37 @@ final class RuntimeStatusRefresherTests: XCTestCase {
 
 @MainActor
 private final class StubStatusSnapshotLoader: RuntimeStatusSnapshotLoading {
-    let status: RuntimeStatus
-    let healthStatus: RuntimeStatus
-    let operationState: RuntimeOperationState
+    let status: PlatformState
+    let healthStatus: PlatformState
+    let operationState: PlatformOperationState
     private(set) var loadStatusCount = 0
     private(set) var loadHealthStatusCount = 0
     private(set) var loadOperationStateCount = 0
 
     init(
-        status: RuntimeStatus = RuntimeStatus(),
-        healthStatus: RuntimeStatus = RuntimeStatus(),
-        operationState: RuntimeOperationState? = nil
+        status: PlatformState = platformState(),
+        healthStatus: PlatformState = platformState(),
+        operationState: PlatformOperationState? = nil
     ) {
         self.status = status
         self.healthStatus = healthStatus
-        self.operationState = operationState ?? RuntimeOperationState(
+        self.operationState = operationState ?? PlatformOperationState(
             activeOperation: nil,
             install: .unavailable()
         )
     }
 
-    func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadPlatformState(settings: RuntimeSettings) async -> PlatformState {
         loadStatusCount += 1
         return status
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
         loadHealthStatusCount += 1
         return healthStatus
     }
 
-    func loadOperationState() async -> RuntimeOperationState {
+    func loadOperationState() async -> PlatformOperationState {
         loadOperationStateCount += 1
         return operationState
     }

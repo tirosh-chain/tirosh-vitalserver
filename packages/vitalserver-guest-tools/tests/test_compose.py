@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import re
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,25 @@ from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
 from tirosh_guest_tools.domain.errors import GuestContractError, GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.infrastructure import common
+
+
+def configure_compose_paths(monkeypatch: Any, root: Path) -> None:
+    monkeypatch.setattr(compose, "DEPLOY_DIR", root)
+    monkeypatch.setattr(
+        compose,
+        "RUNTIME_CONFIG_FILE",
+        root / RuntimeFileName.RUNTIME_CONFIG.value,
+    )
+    monkeypatch.setattr(
+        compose,
+        "RUNTIME_SETTINGS_FILE",
+        root / RuntimeFileName.RUNTIME_SETTINGS.value,
+    )
+    monkeypatch.setattr(
+        compose,
+        "COMPOSE_RUNTIME_LIMITS_FILE",
+        root / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value,
+    )
 
 
 def test_container_bind_source_directories_cover_compose_runtime_binds() -> None:
@@ -34,8 +54,11 @@ def test_container_bind_source_directories_cover_compose_runtime_binds() -> None
             if not isinstance(volume, dict) or volume.get("type") != "bind":
                 continue
             source = volume.get("source")
-            if isinstance(source, str) and source.startswith(runtime_root + "/"):
-                runtime_bind_sources.add(source)
+            if isinstance(source, str):
+                match = re.fullmatch(r"\$\{[A-Z0-9_]+:-(.+)\}", source)
+                explicit_source = match.group(1) if match else source
+                if explicit_source.startswith(runtime_root + "/"):
+                    runtime_bind_sources.add(explicit_source)
 
     prepared_sources = {
         str(path)
@@ -225,7 +248,7 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
@@ -293,7 +316,7 @@ def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     compose.load_runtime_env()
@@ -391,7 +414,7 @@ def test_load_runtime_env_writes_compose_runtime_memory_limits(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     compose.load_runtime_env()
@@ -431,7 +454,7 @@ def test_load_runtime_env_uses_redis_heavy_default_memory_limits(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     compose.load_runtime_env()
@@ -475,7 +498,7 @@ def test_load_runtime_env_removes_compose_runtime_memory_limits_when_disabled(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     compose.load_runtime_env()
@@ -491,13 +514,20 @@ def test_compose_command_uses_runtime_limits_override_when_present(
         "services: {}\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(common, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(common, "COMPOSE_FILE", tmp_path / RuntimeFileName.COMPOSE.value)
+    monkeypatch.setattr(
+        common,
+        "COMPOSE_RUNTIME_LIMITS_FILE",
+        tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value,
+    )
 
     command = common.compose_command(["config"])
 
     assert command == [
         "docker",
         "compose",
+        "--env-file",
+        str(common.COMPOSE_ENVIRONMENT_FILE),
         "--project-name",
         common.PROJECT_NAME,
         "-f",
@@ -530,7 +560,7 @@ def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_re
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
@@ -582,7 +612,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_mode(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     with pytest.raises(GuestContractError) as error:
@@ -616,7 +646,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_replay_settings(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     with pytest.raises(GuestContractError) as error:
@@ -650,7 +680,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_settings_object(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     with pytest.raises(GuestContractError) as error:
@@ -691,7 +721,7 @@ def test_load_runtime_env_rejects_recorder_ingress_concurrency_inversion(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     with pytest.raises(GuestContractError) as error:

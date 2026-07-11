@@ -84,7 +84,8 @@ def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
     update_activation.activate_runtime()
 
     compose_down = (
-        "run:docker compose --project-name vitalserver "
+        "run:docker compose --env-file /mnt/tirosh/deploy/.env "
+        "--project-name vitalserver "
         "-f /mnt/tirosh/deploy/compose.yaml down --remove-orphans"
     )
     assert events == [

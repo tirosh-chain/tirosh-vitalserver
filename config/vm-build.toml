@@ -38,6 +38,10 @@ dmg_staging_dir = ".tmp/vitalserver-vm-dmg"
 template_file = "ai.tirosh.vitalserver.helper.vm.plist.template"
 installed_plist = "ai.tirosh.vitalserver.helper.vm.plist"
 
+[macos.launchd.platform_agent]
+template_file = "ai.tirosh.vitalserver.helper.platform-agent.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.platform-agent.plist"
+
 [macos.launchd.proxy]
 template_file = "ai.tirosh.vitalserver.helper.proxy.plist.template"
 installed_plist = "ai.tirosh.vitalserver.helper.proxy.plist"

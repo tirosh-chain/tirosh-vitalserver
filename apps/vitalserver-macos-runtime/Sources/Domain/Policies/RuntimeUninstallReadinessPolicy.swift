@@ -21,7 +21,7 @@ public enum RuntimeUninstallReadinessPolicy {
     public static func blockers(input: RuntimeUninstallReadinessInput) -> [String] {
         var blockers: [String] = []
 
-        for service in RuntimeManagedService.stopOrder {
+        for service in RuntimeManagedService.uninstallOrder {
             guard let state = input.serviceStates[service] else {
                 blockers.append("launchd-service-state-missing:label=\(service.label)")
                 continue

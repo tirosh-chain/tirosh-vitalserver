@@ -58,7 +58,6 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
 
     func testShutdownExecutesRequestAndWaitsForReadyResult() throws {
         let harness = ShutdownHarness(operationReads: [
-            updateShutdownOperation(state: .running),
             updateShutdownOperation(state: .completed, shutdownPhase: "poweroff-ready"),
         ])
 
@@ -86,7 +85,6 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
 
     func testShutdownProgressUsesContextStatusAndOperation() throws {
         let harness = ShutdownHarness(operationReads: [
-            updateShutdownOperation(state: .running),
             updateShutdownOperation(state: .completed, shutdownPhase: "poweroff-ready"),
         ])
         let context = RuntimeGuestShutdownWorkflowContext(

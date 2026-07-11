@@ -117,9 +117,10 @@ usually `192.168.64.1`.
 
 The relay writes JSON status to `/run/tirosh/status/redis-relay-status.json`
 as a diagnostics artifact and publishes the same document to the Guest Control
-`PUT /v1/redis-relay/status` owner mutation when `REDIS_RELAY_STATUS_OWNER_URL`
-is configured. Product consumers read the Guest/Postgres owner snapshot through
-`GET /v1/redis-relay/status`; they do not read the status file directly. The
+`PUT /runtime/redis-relay/status` owner mutation. `REDIS_RELAY_STATUS_OWNER_URL` is a
+required runtime contract; the relay refuses to start when it is missing or
+empty. Product consumers read the Guest/Postgres owner snapshot through
+`GET /runtime/redis-relay/status`; they do not read the status file directly. The
 status never includes the target password.
 
 - `enabled` and `state` describe the relay process contract.

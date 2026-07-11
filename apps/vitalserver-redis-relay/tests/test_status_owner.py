@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from vitalserver_redis_relay.status_owner import GuestControlStatusOwnerPublisher
+import pytest
+
+from vitalserver_redis_relay.status_owner import (
+    GuestControlStatusOwnerPublisher,
+    StatusOwnerConfigurationError,
+)
 
 
 class FakeResponse:
@@ -27,14 +32,14 @@ def test_status_owner_publisher_puts_status_document(monkeypatch) -> None:
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
     result = GuestControlStatusOwnerPublisher(
-        owner_url="http://guest-control:18330/v1/redis-relay/status",
+        owner_url="http://guest-control:18330/runtime/redis-relay/status",
         timeout_seconds=2.0,
     ).publish({"observedAt": "2026-07-01T00:00:00Z", "state": "running"})
 
     assert result.published is True
     assert result.error is None
     request, timeout = requests[0]
-    assert request.full_url == "http://guest-control:18330/v1/redis-relay/status"
+    assert request.full_url == "http://guest-control:18330/runtime/redis-relay/status"
     assert request.get_method() == "PUT"
     assert timeout == 2.0
     assert json.loads(request.data.decode("utf-8")) == {
@@ -43,10 +48,8 @@ def test_status_owner_publisher_puts_status_document(monkeypatch) -> None:
     }
 
 
-def test_status_owner_publisher_reports_missing_owner_url() -> None:
-    result = GuestControlStatusOwnerPublisher(owner_url=None).publish(
-        {"observedAt": "2026-07-01T00:00:00Z"}
-    )
+def test_status_owner_publisher_rejects_missing_owner_url() -> None:
+    with pytest.raises(StatusOwnerConfigurationError) as error:
+        GuestControlStatusOwnerPublisher(owner_url="")
 
-    assert result.published is False
-    assert result.error == "Redis relay status owner URL is not configured."
+    assert str(error.value) == "Redis relay status owner URL is required."

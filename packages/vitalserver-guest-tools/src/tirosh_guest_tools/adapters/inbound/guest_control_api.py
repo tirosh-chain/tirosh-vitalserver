@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from tirosh_guest_tools.adapters.outbound.compose import ComposeGuestControlAdapter
 from tirosh_guest_tools.adapters.outbound.maintenance import (
@@ -21,6 +22,13 @@ from tirosh_guest_tools.adapters.outbound.product_lab import ProductLabServiceAd
 from tirosh_guest_tools.adapters.outbound.recorder_ingress import (
     RecorderIngressStatusServiceAdapter,
 )
+from tirosh_guest_tools.adapters.outbound.runtime_settings import (
+    FileRuntimeSettingsRepository,
+)
+from tirosh_guest_tools.adapters.outbound.runtime_admin import FileRuntimeAdminRepository
+from tirosh_guest_tools.adapters.outbound.redis_relay_settings import (
+    FileRedisRelaySettingsRepository,
+)
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
     UUIDOperationIdFactory,
@@ -30,7 +38,21 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
     RedisRelayStatusContractError,
     ServiceNotFoundError,
+    VitalDBReadModelDependencyError,
 )
+from tirosh_guest_tools.domain.runtime_settings import (
+    RuntimeSettingsContractError,
+    validated_runtime_settings,
+)
+from tirosh_guest_tools.domain.runtime_admin import (
+    RuntimeAdminPasswordContractError,
+    validated_admin_password,
+)
+from tirosh_guest_tools.domain.redis_relay_settings import (
+    RedisRelaySettingsContractError,
+    validated_redis_relay_settings,
+)
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 18330
@@ -54,6 +76,14 @@ def build_default_usecases() -> GuestControlUseCases:
         product_lab=ProductLabServiceAdapter(),
         recorder_ingress=RecorderIngressStatusServiceAdapter(),
         redis_relay=operations,
+        runtime_settings=FileRuntimeSettingsRepository(
+            SETTINGS.paths.runtime_settings_file
+        ),
+        runtime_admin=FileRuntimeAdminRepository(SETTINGS.paths.runtime_config_file),
+        redis_relay_settings=FileRedisRelaySettingsRepository(
+            SETTINGS.paths.redis_relay_config_file,
+            SETTINGS.paths.redis_relay_password_file,
+        ),
         vitaldb_read_model=vitaldb_read_model,
         redis_backup=RedisBackupMaintenanceAdapter(),
         datastore_repair=DatastoreRepairMaintenanceAdapter(),
@@ -86,9 +116,11 @@ def make_handler(usecases: GuestControlUseCases) -> type[BaseHTTPRequestHandler]
 
         def _handle_request(self, method: str) -> None:
             try:
+                parsed = urlparse(self.path)
                 status, document = route_request(
                     method=method,
-                    path=urlparse(self.path).path,
+                    path=parsed.path,
+                    query=parse_qs(parsed.query, keep_blank_values=True),
                     body=self._request_body(),
                     usecases=usecases,
                 )
@@ -121,6 +153,15 @@ def make_handler(usecases: GuestControlUseCases) -> type[BaseHTTPRequestHandler]
                         },
                     )
                     return
+                self._write_json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "detail": error.message,
+                        "code": error.kind,
+                    },
+                )
+                return
+            except VitalDBReadModelDependencyError as error:
                 self._write_json(
                     HTTPStatus.SERVICE_UNAVAILABLE,
                     {
@@ -163,10 +204,12 @@ def route_request(
     *,
     method: str,
     path: str,
+    query: dict[str, list[str]] | None = None,
     body: bytes = b"",
     usecases: GuestControlUseCases,
 ) -> tuple[HTTPStatus, dict[str, Any]]:
     parts = [unquote(part) for part in path.split("/") if part]
+    query = query or {}
 
     if method == "GET" and parts == ["health"]:
         return HTTPStatus.OK, {"status": "ok"}
@@ -180,19 +223,61 @@ def route_request(
         )
         return status, readiness
 
-    if method == "GET" and parts == ["v1", "capabilities"]:
+    if method == "GET" and parts == ["runtime", "capabilities"]:
         return HTTPStatus.OK, usecases.capabilities()
 
-    if method == "GET" and parts == ["v1", "services"]:
+    if method == "GET" and parts == ["runtime", "events"]:
+        return HTTPStatus.OK, usecases.get_runtime_events(
+            limit=_query_int(query, "limit", default=50, minimum=1, maximum=500),
+            event_type=_optional_query_string(query, "type"),
+            since=_optional_query_datetime(query, "since"),
+            cursor=_optional_query_string(query, "cursor"),
+        )
+
+    if method == "GET" and parts == ["runtime", "settings"]:
+        return HTTPStatus.OK, usecases.get_runtime_settings()
+
+    if method == "PUT" and parts == ["runtime", "settings"]:
+        request = _json_body(body)
+        settings = request.get("settings")
+        if not isinstance(settings, dict):
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail="JSON request settings field must be an object.",
+                code="runtimeSettingsInvalid",
+            )
+        try:
+            validated = validated_runtime_settings(settings)
+        except RuntimeSettingsContractError as error:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=str(error),
+                code="runtimeSettingsInvalid",
+            ) from error
+        return HTTPStatus.ACCEPTED, usecases.apply_runtime_settings(validated).as_json()
+
+    if method == "POST" and parts == ["runtime", "admin-password"]:
+        request = _json_body(body)
+        try:
+            password = validated_admin_password(request.get("password"))
+        except RuntimeAdminPasswordContractError as error:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=str(error),
+                code="runtimeAdminPasswordInvalid",
+            ) from error
+        return HTTPStatus.ACCEPTED, usecases.apply_admin_password(password).as_json()
+
+    if method == "GET" and parts == ["runtime", "services"]:
         return HTTPStatus.OK, {"services": usecases.list_services()}
 
-    if method == "GET" and parts == ["v1", "stack", "status"]:
+    if method == "GET" and parts == ["runtime", "stack"]:
         return HTTPStatus.OK, usecases.get_stack_status().as_json()
 
     if (
         method == "GET"
         and len(parts) == 4
-        and parts[:2] == ["v1", "services"]
+        and parts[:2] == ["runtime", "services"]
         and parts[3] == "status"
     ):
         return HTTPStatus.OK, usecases.get_service_status(parts[2]).as_json()
@@ -200,7 +285,7 @@ def route_request(
     if (
         method == "GET"
         and len(parts) == 4
-        and parts[:2] == ["v1", "services"]
+        and parts[:2] == ["runtime", "services"]
         and parts[3] == "resource"
     ):
         return HTTPStatus.OK, usecases.get_guest_service_resource(parts[2])
@@ -208,7 +293,7 @@ def route_request(
     if (
         method == "PUT"
         and len(parts) == 4
-        and parts[:2] == ["v1", "services"]
+        and parts[:2] == ["runtime", "services"]
         and parts[3] == "spec"
     ):
         return HTTPStatus.OK, usecases.update_guest_service_spec(
@@ -219,7 +304,7 @@ def route_request(
     if (
         method == "POST"
         and len(parts) == 4
-        and parts[:2] == ["v1", "services"]
+        and parts[:2] == ["runtime", "services"]
         and parts[3] == "observe"
     ):
         return HTTPStatus.ACCEPTED, usecases.observe_guest_service(parts[2])
@@ -227,7 +312,7 @@ def route_request(
     if (
         method == "POST"
         and len(parts) == 4
-        and parts[:2] == ["v1", "services"]
+        and parts[:2] == ["runtime", "services"]
         and parts[3] == "reconcile"
     ):
         return HTTPStatus.ACCEPTED, usecases.reconcile_guest_service(
@@ -237,7 +322,7 @@ def route_request(
     if (
         method == "POST"
         and len(parts) == 4
-        and parts[:2] == ["v1", "services"]
+        and parts[:2] == ["runtime", "services"]
         and parts[3] in {"start", "stop", "restart"}
     ):
         command = parts[3]
@@ -249,53 +334,53 @@ def route_request(
             operation = usecases.restart_service(parts[2])
         return HTTPStatus.ACCEPTED, operation.as_json()
 
-    if method == "POST" and parts == ["v1", "stack", "reconcile"]:
+    if method == "POST" and parts == ["runtime", "stack", "reconcile"]:
         return HTTPStatus.ACCEPTED, usecases.reconcile_services().as_json()
 
-    if method == "GET" and parts == ["v1", "lab", "scenarios"]:
+    if method == "GET" and parts == ["runtime", "lab", "scenarios"]:
         return HTTPStatus.OK, usecases.list_lab_scenarios()
 
-    if method == "GET" and parts == ["v1", "lab", "vital-files"]:
+    if method == "GET" and parts == ["runtime", "lab", "vital-files"]:
         return HTTPStatus.OK, usecases.list_lab_vital_files()
 
-    if method == "GET" and parts == ["v1", "lab", "beds"]:
+    if method == "GET" and parts == ["runtime", "lab", "beds"]:
         return HTTPStatus.OK, usecases.list_lab_beds()
 
-    if method == "GET" and parts == ["v1", "lab", "recorders"]:
+    if method == "GET" and parts == ["runtime", "lab", "recorders"]:
         return HTTPStatus.OK, usecases.list_lab_recorders()
 
-    if method == "POST" and parts == ["v1", "lab", "beds", "create"]:
+    if method == "POST" and parts == ["runtime", "lab", "beds", "create"]:
         return HTTPStatus.ACCEPTED, usecases.create_lab_beds(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "lab", "beds", "delete"]:
+    if method == "POST" and parts == ["runtime", "lab", "beds", "delete"]:
         return HTTPStatus.ACCEPTED, usecases.delete_lab_beds(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "lab", "beds", "reset"]:
+    if method == "POST" and parts == ["runtime", "lab", "beds", "reset"]:
         return HTTPStatus.ACCEPTED, usecases.reset_lab_beds()
 
-    if method == "POST" and parts == ["v1", "lab", "recorders", "create"]:
+    if method == "POST" and parts == ["runtime", "lab", "recorders", "create"]:
         return HTTPStatus.ACCEPTED, usecases.create_lab_recorders(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "lab", "recorders", "delete"]:
+    if method == "POST" and parts == ["runtime", "lab", "recorders", "delete"]:
         return HTTPStatus.ACCEPTED, usecases.delete_lab_recorders(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "lab", "recorders", "reset"]:
+    if method == "POST" and parts == ["runtime", "lab", "recorders", "reset"]:
         return HTTPStatus.ACCEPTED, usecases.reset_lab_recorders()
 
-    if method == "POST" and parts == ["v1", "lab", "sessions"]:
+    if method == "POST" and parts == ["runtime", "lab", "sessions"]:
         return HTTPStatus.ACCEPTED, usecases.create_lab_session(_json_body(body))
 
     if (
         method == "GET"
         and len(parts) == 4
-        and parts[:3] == ["v1", "lab", "sessions"]
+        and parts[:3] == ["runtime", "lab", "sessions"]
     ):
         return HTTPStatus.OK, usecases.get_lab_session(parts[3])
 
     if (
         method == "POST"
         and len(parts) == 5
-        and parts[:3] == ["v1", "lab", "sessions"]
+        and parts[:3] == ["runtime", "lab", "sessions"]
         and parts[4] == "start"
     ):
         return HTTPStatus.ACCEPTED, usecases.start_lab_session(parts[3])
@@ -303,52 +388,67 @@ def route_request(
     if (
         method == "POST"
         and len(parts) == 5
-        and parts[:3] == ["v1", "lab", "sessions"]
+        and parts[:3] == ["runtime", "lab", "sessions"]
         and parts[4] == "stop"
     ):
         return HTTPStatus.ACCEPTED, usecases.stop_lab_session(parts[3])
 
-    if method == "POST" and parts == ["v1", "lab", "vital-files", "replay"]:
+    if method == "POST" and parts == ["runtime", "lab", "vital-files", "replay"]:
         return HTTPStatus.ACCEPTED, usecases.replay_lab_vital_file(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "lab", "vital-files", "upload"]:
+    if method == "POST" and parts == ["runtime", "lab", "vital-files", "upload"]:
         return HTTPStatus.ACCEPTED, usecases.upload_lab_vital_file(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "maintenance", "redis-backup"]:
+    if method == "POST" and parts == ["runtime", "maintenance", "redis-backup"]:
         return HTTPStatus.ACCEPTED, usecases.create_redis_backup().as_json()
 
-    if method == "POST" and parts == ["v1", "maintenance", "redis-restore"]:
+    if method == "POST" and parts == ["runtime", "maintenance", "redis-restore"]:
         return HTTPStatus.ACCEPTED, usecases.restore_redis_backup(
             _required_string(_json_body(body), "archive")
         ).as_json()
 
-    if method == "POST" and parts == ["v1", "maintenance", "datastore-repair"]:
+    if method == "POST" and parts == ["runtime", "maintenance", "datastore", "repair"]:
         return HTTPStatus.ACCEPTED, usecases.repair_datastore().as_json()
 
-    if method == "POST" and parts == ["v1", "maintenance", "update-activation"]:
+    if method == "POST" and parts == ["runtime", "maintenance", "update-activation"]:
         request = _json_body(body)
         return HTTPStatus.ACCEPTED, usecases.activate_update(
             request_id=_required_string(request, "requestId"),
             version=_required_string(request, "version"),
         ).as_json()
 
-    if method == "POST" and parts == ["v1", "maintenance", "update-shutdown"]:
+    if method == "POST" and parts == ["runtime", "maintenance", "update-shutdown"]:
         request = _json_body(body)
         return HTTPStatus.ACCEPTED, usecases.prepare_update_shutdown(
             request_id=_required_string(request, "requestId"),
             version=_required_string(request, "version"),
         ).as_json()
 
-    if method == "POST" and parts == ["v1", "maintenance", "guest-poweroff"]:
+    if method == "POST" and parts == ["runtime", "maintenance", "guest-poweroff"]:
         return HTTPStatus.ACCEPTED, usecases.request_guest_poweroff().as_json()
 
-    if method == "GET" and parts == ["v1", "recorder-ingress", "status"]:
+    if method == "GET" and parts == ["runtime", "recorder-ingress", "status"]:
         return HTTPStatus.OK, usecases.get_recorder_ingress_status()
 
-    if method == "GET" and parts == ["v1", "redis-relay", "status"]:
+    if method == "GET" and parts == ["runtime", "redis-relay", "status"]:
         return HTTPStatus.OK, usecases.get_redis_relay_status()
 
-    if method == "PUT" and parts == ["v1", "redis-relay", "status"]:
+    if method == "GET" and parts == ["runtime", "redis-relay", "settings"]:
+        return HTTPStatus.OK, usecases.get_redis_relay_settings()
+
+    if method == "PUT" and parts == ["runtime", "redis-relay", "settings"]:
+        request = _json_body(body)
+        try:
+            validated_redis_relay_settings(request)
+        except RedisRelaySettingsContractError as error:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=str(error),
+                code="redisRelaySettingsInvalid",
+            ) from error
+        return HTTPStatus.ACCEPTED, usecases.apply_redis_relay_settings(request).as_json()
+
+    if method == "PUT" and parts == ["runtime", "redis-relay", "status"]:
         try:
             return HTTPStatus.OK, usecases.put_redis_relay_status(_json_body(body))
         except RedisRelayStatusContractError as error:
@@ -358,45 +458,73 @@ def route_request(
                 code="redisRelayStatusInvalid",
             ) from error
 
-    if method == "GET" and parts == ["v1", "vitaldb", "observations", "latest"]:
+    if method == "GET" and parts == ["runtime", "vitaldb", "observations", "latest"]:
         return HTTPStatus.OK, usecases.get_latest_vitaldb_observation()
 
-    if method == "GET" and parts == ["v1", "vitaldb", "recorders"]:
+    if method == "GET" and parts == ["runtime", "vitaldb", "recorders"]:
         return HTTPStatus.OK, usecases.list_vitaldb_recorders()
 
-    if method == "POST" and parts == ["v1", "vitaldb", "recorders", "hide"]:
+    if (
+        method == "GET"
+        and len(parts) == 4
+        and parts[:3] == ["runtime", "vitaldb", "recorders"]
+    ):
+        recorder = usecases.get_vitaldb_recorder(parts[3])
+        if recorder is None:
+            raise GuestControlAPIError(
+                HTTPStatus.NOT_FOUND,
+                detail=f"VitalDB recorder not found: {parts[3]}",
+                code="vitalDBRecorderNotFound",
+            )
+        return HTTPStatus.OK, recorder
+
+    if method == "POST" and parts == ["runtime", "vitaldb", "recorders", "hide"]:
         return HTTPStatus.ACCEPTED, usecases.hide_vitaldb_recorders(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "vitaldb", "recorders", "unhide"]:
+    if method == "POST" and parts == ["runtime", "vitaldb", "recorders", "unhide"]:
         return HTTPStatus.ACCEPTED, usecases.unhide_vitaldb_recorders(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "vitaldb", "recorders", "delete"]:
+    if method == "POST" and parts == ["runtime", "vitaldb", "recorders", "delete"]:
         return HTTPStatus.ACCEPTED, usecases.delete_vitaldb_recorders(_json_body(body))
 
     if (
         method == "GET"
         and len(parts) == 5
-        and parts[:3] == ["v1", "vitaldb", "recorders"]
+        and parts[:3] == ["runtime", "vitaldb", "recorders"]
         and parts[4] == "activity"
     ):
         return HTTPStatus.OK, usecases.get_vitaldb_recorder_activity(parts[3])
 
-    if method == "GET" and parts == ["v1", "vitaldb", "beds"]:
+    if method == "GET" and parts == ["runtime", "vitaldb", "beds"]:
         return HTTPStatus.OK, usecases.list_vitaldb_beds()
 
-    if method == "POST" and parts == ["v1", "vitaldb", "beds", "hide"]:
+    if (
+        method == "GET"
+        and len(parts) == 4
+        and parts[:3] == ["runtime", "vitaldb", "beds"]
+    ):
+        bed = usecases.get_vitaldb_bed(parts[3])
+        if bed is None:
+            raise GuestControlAPIError(
+                HTTPStatus.NOT_FOUND,
+                detail=f"VitalDB bed not found: {parts[3]}",
+                code="vitalDBBedNotFound",
+            )
+        return HTTPStatus.OK, bed
+
+    if method == "POST" and parts == ["runtime", "vitaldb", "beds", "hide"]:
         return HTTPStatus.ACCEPTED, usecases.hide_vitaldb_beds(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "vitaldb", "beds", "unhide"]:
+    if method == "POST" and parts == ["runtime", "vitaldb", "beds", "unhide"]:
         return HTTPStatus.ACCEPTED, usecases.unhide_vitaldb_beds(_json_body(body))
 
-    if method == "POST" and parts == ["v1", "vitaldb", "beds", "delete"]:
+    if method == "POST" and parts == ["runtime", "vitaldb", "beds", "delete"]:
         return HTTPStatus.ACCEPTED, usecases.delete_vitaldb_beds(_json_body(body))
 
-    if method == "GET" and parts == ["v1", "vitaldb", "relationships"]:
+    if method == "GET" and parts == ["runtime", "vitaldb", "relationships"]:
         return HTTPStatus.OK, usecases.get_vitaldb_relationships()
 
-    if method == "GET" and len(parts) == 3 and parts[:2] == ["v1", "operations"]:
+    if method == "GET" and len(parts) == 3 and parts[:2] == ["runtime", "operations"]:
         operation = usecases.get_operation(parts[2])
         if operation is None:
             raise GuestControlAPIError(
@@ -446,6 +574,72 @@ def _required_string(document: dict[str, Any], field: str) -> str:
             code="requestFieldRequired",
         )
     return value
+
+
+def _optional_query_string(
+    query: dict[str, list[str]], field: str
+) -> str | None:
+    values = query.get(field)
+    if values is None:
+        return None
+    if len(values) != 1 or not values[0].strip():
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail=f"query parameter must be one non-empty value: {field}",
+            code="queryParameterInvalid",
+        )
+    return values[0].strip()
+
+
+def _query_int(
+    query: dict[str, list[str]],
+    field: str,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = _optional_query_string(query, field)
+    if value is None:
+        return default
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail=f"query parameter must be an integer: {field}",
+            code="queryParameterInvalid",
+        ) from error
+    if result < minimum or result > maximum:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail=f"query parameter is outside {minimum}...{maximum}: {field}",
+            code="queryParameterInvalid",
+        )
+    return result
+
+
+def _optional_query_datetime(
+    query: dict[str, list[str]], field: str
+) -> datetime | None:
+    value = _optional_query_string(query, field)
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail=f"query parameter must be an ISO-8601 timestamp: {field}",
+            code="queryParameterInvalid",
+        ) from error
+    if parsed.tzinfo is None:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail=f"query timestamp must include a timezone: {field}",
+            code="queryParameterInvalid",
+        )
+    return parsed
 
 
 def serve_guest_control_api(

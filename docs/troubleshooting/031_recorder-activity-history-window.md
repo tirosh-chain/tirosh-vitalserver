@@ -41,7 +41,7 @@ Recorder activity가 실제 장시간 트래픽 추세를 보여주지 못합니
 3. Guest runtime observation writer가 `vitaldb-observer`의 `/api/v1/observations`를 호출한 뒤 Host-readable runtime-state bridge에 observation을 포함했습니다.
 4. Host watchdog/status/event path가 이 Host-readable bridge를 읽고 observation을 event/status projection에 전달했습니다.
 5. `RuntimeObservationRecorder`가 event를 JSONL/SQLite event store에 기록한 뒤, event에 포함된 observation을 Host SQLite projection에 저장했습니다.
-6. Runtime Control API의 `/vitaldb/recorders`는 Host SQLite projection을 읽어 `RuntimeVitalRecorderHistory`를 구성했습니다.
+6. Runtime Control API의 `/runtime/vitaldb/recorders`는 Host SQLite projection을 읽어 `RuntimeVitalRecorderHistory`를 구성했습니다.
 
 이 legacy 구조에서 Host SQLite observation history는 독립적인 projection loop가 아니라 watchdog event recording의 부수효과였습니다. 따라서 watchdog이 돌지 않거나, guest state가 stale 처리되거나, event recording은 성공했지만 observation append가 실패하면 장시간 history가 끊겼습니다.
 
@@ -57,14 +57,14 @@ Recorder activity가 실제 장시간 트래픽 추세를 보여주지 못합니
 Remote Console이 받은 recorder history의 시간 범위를 먼저 확인합니다.
 
 ```sh
-curl -s http://<remote-console-host>:18321/vitaldb/recorders \
+curl -s http://<remote-console-host>:18321/runtime/vitaldb/recorders \
   | jq '.recorders[] | {vrcode, samples: (.activityTimeline // [] | length), first: (.activityTimeline // [] | first?.observedAt), last: (.activityTimeline // [] | last?.observedAt)}'
 ```
 
 특정 recorder의 bucket 범위를 봅니다.
 
 ```sh
-curl -s http://<remote-console-host>:18321/vitaldb/recorders \
+curl -s http://<remote-console-host>:18321/runtime/vitaldb/recorders \
   | jq '.recorders[] | select(.vrcode=="<VRCODE>") | [.activityTimeline[]?.buckets[]?.bucketStartedAt] | {count: length, first: min, last: max}'
 ```
 
@@ -95,7 +95,7 @@ docker exec vitalserver-vitaldb-observer env \
 
 1. Recorder packet activity의 durable SoT는 Guest/Postgres read model의 1-minute bucket projection이어야 합니다.
 2. Packet collection부터 Postgres read model write까지의 흐름은 명시적인 pipeline이어야 합니다.
-3. `/vitaldb/recorders`, `/vitaldb/recorders/{vrcode}/activity`, Remote Console은 rolling snapshot을 재해석하지 말고 Guest/Postgres bucket projection을 조회해야 합니다.
+3. `/runtime/vitaldb/recorders`, `/runtime/vitaldb/recorders/{vrcode}/activity`, Remote Console은 rolling snapshot을 재해석하지 말고 Guest/Postgres bucket projection을 조회해야 합니다.
 4. Runtime status/event recording은 activity history persistence의 부수효과가 되면 안 됩니다.
 5. Activity projection append/read 실패는 best-effort 로그로만 끝내지 말고 Guest Control/API read state에서 확인 가능한 projection failure로 남겨야 합니다.
 6. `Total packets`는 선택한 visible buckets 합계로 계산하고, history coverage가 부족하면 장시간 합계처럼 표시하지 않아야 합니다.
@@ -108,8 +108,8 @@ Recorder send_data
   -> vitaldb-observer 1-minute RecorderActivityBucket observation
   -> Guest/Postgres read model writer
   -> Postgres vitaldb observation/activity projection
-  -> Guest Control API /v1/vitaldb/*
-  -> Runtime Control API /vitaldb/recorders and /vitaldb/recorders/{vrcode}/activity
+  -> Guest Control API /runtime/vitaldb/*
+  -> Runtime Control API /runtime/vitaldb/recorders and /runtime/vitaldb/recorders/{vrcode}/activity
   -> Remote Console chart
 ```
 
@@ -131,16 +131,16 @@ Recorder send_data
 - `RuntimeObservationRecorder`는 event 기록만 담당하도록 정리했습니다. VitalDB observation persistence는 명시적 projection 경로로 이동했습니다.
 - Remote Console의 `Packets` 지표는 chart y-axis 최대값이 아니라 최신 non-zero bucket 값을 보여주도록 수정했습니다.
 
-- `/vitaldb/recorders` response에 `activityHistory` metadata를 추가해 SQLite projection source, bucket coverage, read error를 명시했습니다.
+- `/runtime/vitaldb/recorders` response에 `activityHistory` metadata를 추가해 SQLite projection source, bucket coverage, read error를 명시했습니다.
 - Remote Console은 `activityHistory.readError`가 있으면 activity chart 영역에서 history가 불완전하다는 오류를 표시합니다.
 
 2026-05-31 hotfix 원칙:
 
-- `/vitaldb/recorders`의 current recorder status는 SQLite projection에서 추정하지 않습니다.
+- `/runtime/vitaldb/recorders`의 current recorder status는 SQLite projection에서 추정하지 않습니다.
 - current status source는 Guest owner가 제공하는 Product API/Postgres read model입니다.
 - Host `runtime-status.json`은 recorder/VitalDB current status fallback이 아닙니다. Guest read가 unavailable/failed이면 그 상태를 API read state로 보존하고, Host status projection이나 Host SQLite projection으로 product recorder state를 만들지 않습니다.
 - SQLite observation/bucket projection은 history source입니다. Projection이 current status보다 오래됐을 때 더 최신처럼 선택하면 안 됩니다.
-- Guest/Postgres read 실패는 빈 current status로 숨기지 않고 `/vitaldb/recorders.activityHistory.readError` 또는 explicit read state에 보존합니다.
+- Guest/Postgres read 실패는 빈 current status로 숨기지 않고 `/runtime/vitaldb/recorders.activityHistory.readError` 또는 explicit read state에 보존합니다.
 - `vitaldb-observer`는 Redis `utime_*` fractional timestamp와 observer `observedAt` second precision 사이의 subsecond skew만 허용합니다. 큰 future timestamp는 stale로 남깁니다.
 
 ## Prevention
@@ -161,6 +161,6 @@ latest rolling window를 장시간 history처럼 보이게 만들면 안 됩니�
 
 - 2026-05-30: iPhone Remote Console에서 `Last 6 hours` 선택 후에도 bar가 최근 구간에만 몰리고 `Total packets`가 rolling window 수준으로 표시되는 증상을 등록했습니다.
 - 2026-05-30: 패킷 수집부터 SQLite 조회까지의 흐름을 확인했습니다. SQLite 삽입은 존재하지만 watchdog event recording에 종속되어 있고, append/read 실패가 명시 상태로 드러나지 않는 구조를 추가 원인으로 등록했습니다.
-- 2026-05-30: recorder activity 1-minute bucket projection을 SQLite에 명시적으로 추가하고, `/vitaldb/recorders` read model이 projection bucket을 activity timeline으로 사용하도록 전환했습니다.
-- 2026-05-30: SQLite activity projection read failure를 `/vitaldb/recorders.activityHistory.readError`로 노출하고, Remote Console에서 불완전한 activity history를 표시하도록 수정했습니다.
-- 2026-05-31: VRecorder 상태 변화가 30-60초 늦게 보이는 증상을 확인했습니다. `/vitaldb/recorders`가 Host watchdog이 쌓는 SQLite/status projection을 current status처럼 사용하던 구조를 분리하고, Guest/Postgres read model을 current source로 명시했습니다.
+- 2026-05-30: recorder activity 1-minute bucket projection을 SQLite에 명시적으로 추가하고, `/runtime/vitaldb/recorders` read model이 projection bucket을 activity timeline으로 사용하도록 전환했습니다.
+- 2026-05-30: SQLite activity projection read failure를 `/runtime/vitaldb/recorders.activityHistory.readError`로 노출하고, Remote Console에서 불완전한 activity history를 표시하도록 수정했습니다.
+- 2026-05-31: VRecorder 상태 변화가 30-60초 늦게 보이는 증상을 확인했습니다. `/runtime/vitaldb/recorders`가 Host watchdog이 쌓는 SQLite/status projection을 current status처럼 사용하던 구조를 분리하고, Guest/Postgres read model을 current source로 명시했습니다.

@@ -6,9 +6,9 @@ import RuntimeControl
 import XCTest
 
 final class RuntimeControlAPIOperationLeaseOwnerTests: XCTestCase {
-    func testLoadOperationLeaseReadsRuntimeOperationStateAPI() throws {
+    func testLoadOperationLeaseReadsPlatformOperationStateAPI() throws {
         let lease = operationLeaseDocument()
-        let state = RuntimeOperationState(
+        let state = PlatformOperationState(
             activeOperation: nil,
             install: .unavailable(),
             lease: .loaded(lease)
@@ -23,12 +23,12 @@ final class RuntimeControlAPIOperationLeaseOwnerTests: XCTestCase {
         XCTAssertEqual(owner.loadOperationLease(), .loaded(lease))
         let request = try XCTUnwrap(client.requests.first)
         XCTAssertEqual(request.httpMethod, "GET")
-        XCTAssertEqual(request.url?.path, "/runtime/operation-state")
+        XCTAssertEqual(request.url?.path, "/platform/operations")
         XCTAssertEqual(request.value(forHTTPHeaderField: "X-Runtime-Control-Token"), "token")
     }
 
     func testUnavailableLeaseMapsToMissing() throws {
-        let state = RuntimeOperationState(
+        let state = PlatformOperationState(
             activeOperation: nil,
             install: .unavailable(),
             lease: .unavailable()
@@ -41,7 +41,7 @@ final class RuntimeControlAPIOperationLeaseOwnerTests: XCTestCase {
     }
 
     func testFailedLeasePreservesReadFailure() throws {
-        let state = RuntimeOperationState(
+        let state = PlatformOperationState(
             activeOperation: nil,
             install: .unavailable(),
             lease: .failed(readError: "postgres read failed")
@@ -76,9 +76,9 @@ final class RuntimeControlAPIOperationLeaseOwnerTests: XCTestCase {
 
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST", "POST", "POST"])
         XCTAssertEqual(client.requests.map { $0.url?.path }, [
-            "/host/runtime/operation-lease/acquire",
-            "/host/runtime/operation-lease/heartbeat",
-            "/host/runtime/operation-lease/release",
+            "/platform/operations/lease/acquire",
+            "/platform/operations/lease/heartbeat",
+            "/platform/operations/lease/release",
         ])
         XCTAssertTrue(try XCTUnwrap(client.requests[0].httpBody).contains(Data(#""operationId":"operation-1""#.utf8)))
         XCTAssertTrue(try XCTUnwrap(client.requests[1].httpBody).contains(Data(#""heartbeatAt":"2026-07-09T00:01:00Z""#.utf8)))

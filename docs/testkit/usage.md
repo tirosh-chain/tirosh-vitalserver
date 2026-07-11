@@ -301,7 +301,7 @@ print(f"bytes={transfer_total_bytes_sent(summary)}")
 
 TestKit FastAPI server는 local 개발과 부하검증을 위한 보조 server입니다.
 Runtime v2 제품 UI와 CLI는 이 API를 직접 제어하지 않습니다. 제품 runtime의
-Lab 기능은 `apps/vitalserver-lab`과 Guest Control `/v1/lab/*` 경계가
+Lab 기능은 `apps/vitalserver-lab`과 Guest Control `/runtime/lab/*` 경계가
 소유합니다.
 
 ```sh
@@ -313,8 +313,8 @@ uv run vitalserver-testkit serve \
 위 명령은 local 개발용입니다. TestKit server를 직접 띄우는 경우 생성된
 virtual VRecorder는 지정한 target URL로 접속합니다. 제품 runtime에서
 mounted `.vital` replay를 검증해야 하면 TestKit server가 아니라 Product
-Lab `POST /lab/vital-files/replay` 또는 Guest Control
-`POST /v1/lab/vital-files/replay`를 사용합니다.
+Lab `POST /runtime/lab/vital-files/replay` 또는 Guest Control
+`POST /runtime/lab/vital-files/replay`를 사용합니다.
 
 API는 bed registry와 session lifecycle을 분리한다.
 
@@ -362,7 +362,7 @@ operation persistence는 Product Lab/Guest Control API 문서를 기준으로
 }
 ```
 
-TestKit API의 SoT는 “시뮬레이터가 무엇을 실행 중인지”이다. VitalServer가 실제로 recorder를 인식했는지는 기존 `vitaldb-observer`와 Runtime Control API `/vitaldb/recorders` 결과를 기준으로 판단한다.
+TestKit API의 SoT는 “시뮬레이터가 무엇을 실행 중인지”이다. VitalServer가 실제로 recorder를 인식했는지는 기존 `vitaldb-observer`와 Runtime Control API `/runtime/vitaldb/recorders` 결과를 기준으로 판단한다.
 
 ## `.vital` 파일 업로드 검증
 

@@ -259,8 +259,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         try controller.disableRuntimeServicesForUninstall()
 
-        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.stopOrder.map(\.label))
-        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: false, count: RuntimeManagedService.stopOrder.count))
+        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.uninstallOrder.map(\.label))
+        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: false, count: RuntimeManagedService.uninstallOrder.count))
     }
 
     func testDisableRuntimeServicesForUninstallStopsAtFirstFailure() {
@@ -298,8 +298,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         try controller.clearDisabledOverridesAfterUninstall()
 
-        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.stopOrder.map(\.label))
-        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: true, count: RuntimeManagedService.stopOrder.count))
+        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.uninstallOrder.map(\.label))
+        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: true, count: RuntimeManagedService.uninstallOrder.count))
     }
 
     func testClearDisabledOverridesAfterUninstallStopsAtFirstFailure() {
@@ -790,6 +790,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertThrowsError(try controller.setStartOnBoot(true))
         XCTAssertEqual(serviceManager.setEnabledLabels, [
+            RuntimeManagedService.platformAgent.label,
             RuntimeManagedService.vm.label,
             RuntimeManagedService.guestLogSync.label,
             RuntimeManagedService.watchdog.label,

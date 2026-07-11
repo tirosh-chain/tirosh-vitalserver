@@ -17,9 +17,6 @@ public struct RuntimeHealthInput: Equatable {
     public let hostProxyHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
-    public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
-    public let guestServiceResources: [RuntimeGuestServiceResource]
-    public let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     public let configurationFailureReasons: [RuntimeFailureReason]
     public let proxyPortFailureReasons: [RuntimeFailureReason]
@@ -40,9 +37,6 @@ public struct RuntimeHealthInput: Equatable {
         hostProxyHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
-        guestServiceResources: [RuntimeGuestServiceResource] = [],
-        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>,
         configurationFailureReasons: [RuntimeFailureReason] = [],
         proxyPortFailureReasons: [RuntimeFailureReason] = []
@@ -62,9 +56,6 @@ public struct RuntimeHealthInput: Equatable {
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
-        self.guestServiceStatuses = guestServiceStatuses
-        self.guestServiceResources = guestServiceResources
-        self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
         self.vitalDBObservation = vitalDBObservation
         self.configurationFailureReasons = configurationFailureReasons
         self.proxyPortFailureReasons = proxyPortFailureReasons
@@ -91,12 +82,6 @@ public enum RuntimeHealthEvaluator {
             failureReasons.append(.hostProxyHTTP(input.hostProxyHTTP))
             failureReasons.append(contentsOf: input.proxyPortFailureReasons)
         }
-        failureReasons.append(contentsOf: RuntimeObservationHealthPolicy.failureReasons(
-            guestServiceStatuses: input.guestServiceStatuses,
-            guestServiceResources: input.guestServiceResources,
-            guestServiceResourceReadIssues: input.guestServiceResourceReadIssues
-        ))
-
         return RuntimeHealthSnapshot(
             vmExecutable: input.vmExecutable,
             proxyExecutable: input.proxyExecutable,
@@ -116,9 +101,6 @@ public enum RuntimeHealthEvaluator {
             guestHTTP: input.guestReadiness.guestHTTPStatusText,
             redisUIHTTP: input.redisUIHTTP,
             swaggerUIHTTP: input.swaggerUIHTTP,
-            guestServiceStatuses: input.guestServiceStatuses,
-            guestServiceResources: input.guestServiceResources,
-            guestServiceResourceReadIssues: input.guestServiceResourceReadIssues,
             vitalDBObservation: input.vitalDBObservation.observedValue,
             failureReasons: failureReasons
         )

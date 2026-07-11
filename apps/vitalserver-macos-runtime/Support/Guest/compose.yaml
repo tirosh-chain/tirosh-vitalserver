@@ -100,7 +100,7 @@ services:
         source: ${VITALSERVER_VITAL_FILES_DIR:-/mnt/tirosh-vital-files}
         target: /opt/vitalserver/vital_files
       - type: bind
-        source: /mnt/tirosh/vr-release
+        source: ${VITALSERVER_VR_RELEASE_DIR:-/mnt/tirosh/vr-release}
         target: /opt/vitalserver/service/vr_release
       - type: volume
         source: vital-tmp-files
@@ -129,10 +129,10 @@ services:
       - "8080"
     volumes:
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-raw
+        source: ${VITALSERVER_RECORDER_INGRESS_RAW_DIR:-/mnt/tirosh/run/recorder-ingress-raw}
         target: /var/lib/vitalserver-recorder-ingress/raw
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-recovery
+        source: ${VITALSERVER_RECORDER_INGRESS_RECOVERY_DIR:-/mnt/tirosh/run/recorder-ingress-recovery}
         target: /var/lib/vitalserver-recorder-ingress/recovery
     healthcheck:
       test:
@@ -222,13 +222,13 @@ services:
         source: audit-logs
         target: /var/log/vitalserver-audit
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-failures
+        source: ${VITALSERVER_RECORDER_INGRESS_FAILURES_DIR:-/mnt/tirosh/run/recorder-ingress-failures}
         target: /var/log/vitalserver-recorder-ingress/failures
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-raw
+        source: ${VITALSERVER_RECORDER_INGRESS_RAW_DIR:-/mnt/tirosh/run/recorder-ingress-raw}
         target: /var/lib/vitalserver-recorder-ingress/raw
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-recovery
+        source: ${VITALSERVER_RECORDER_INGRESS_RECOVERY_DIR:-/mnt/tirosh/run/recorder-ingress-recovery}
         target: /var/lib/vitalserver-recorder-ingress/recovery
     healthcheck:
       test:
@@ -288,20 +288,20 @@ services:
     environment:
       REDIS_RELAY_CONFIG_PATH: "${REDIS_RELAY_CONFIG_PATH:-/run/tirosh/config/redis-relay.toml}"
       REDIS_RELAY_STATUS_PATH: "${REDIS_RELAY_STATUS_PATH:-/run/tirosh/status/redis-relay-status.json}"
-      REDIS_RELAY_STATUS_OWNER_URL: "${REDIS_RELAY_STATUS_OWNER_URL:-http://host.docker.internal:18330/v1/redis-relay/status}"
+      REDIS_RELAY_STATUS_OWNER_URL: "${REDIS_RELAY_STATUS_OWNER_URL:-http://host.docker.internal:18330/runtime/redis-relay/status}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - type: bind
-        source: /mnt/tirosh/deploy/redis-relay-config
+        source: ${VITALSERVER_REDIS_RELAY_CONFIG_DIR:-/mnt/tirosh/deploy/redis-relay-config}
         target: /run/tirosh/config
         read_only: true
       - type: bind
-        source: /mnt/tirosh/deploy/redis-relay-secrets
+        source: ${VITALSERVER_REDIS_RELAY_SECRETS_DIR:-/mnt/tirosh/deploy/redis-relay-secrets}
         target: /run/tirosh/secrets
         read_only: true
       - type: bind
-        source: /mnt/tirosh/run/redis-relay-status
+        source: ${VITALSERVER_REDIS_RELAY_STATUS_DIR:-/mnt/tirosh/run/redis-relay-status}
         target: /run/tirosh/status
     healthcheck:
       test:
@@ -387,11 +387,11 @@ services:
       URLS_PRIMARY_NAME: "VitalServer"
     volumes:
       - type: bind
-        source: /mnt/tirosh/deploy/docs
+        source: ${VITALSERVER_DOCS_DIR:-/mnt/tirosh/deploy/docs}
         target: /usr/share/nginx/html/docs
         read_only: true
       - type: bind
-        source: /mnt/tirosh/deploy/docs/openapi.yaml
+        source: ${VITALSERVER_OPENAPI_PATH:-/mnt/tirosh/deploy/docs/openapi.yaml}
         target: /usr/share/nginx/html/openapi.yaml
         read_only: true
     healthcheck:
@@ -416,7 +416,7 @@ services:
       - "80:80"
     volumes:
       - type: bind
-        source: /mnt/tirosh/deploy/nginx/vitalserver.conf
+        source: ${VITALSERVER_NGINX_CONFIG_PATH:-/mnt/tirosh/deploy/nginx/vitalserver.conf}
         target: /etc/nginx/conf.d/default.conf
         read_only: true
       - type: volume

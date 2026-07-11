@@ -13,7 +13,7 @@ final class RuntimeLogExporterTests: XCTestCase {
         let destinations = Set(RuntimeLogExportSupplementalSource.defaultItems().map(\.relativeDestination))
 
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)"))
-        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease)"))
+        XCTAssertTrue(destinations.contains("diagnostics/platform/\(RuntimeHostOwnerFileNames.operationLease)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)-wal"))

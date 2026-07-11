@@ -32,7 +32,7 @@ struct RuntimeInfoPanel: View {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.helperVersion, helperAppVersion)
                 statusRow(AppConstants.Labels.vitalServerVersion, viewModel.releaseInfo.vitalServerVersion)
-                statusRow(AppConstants.Labels.installedRuntimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.installedRuntimeVersion, viewModel.status.installedVersion ?? AppConstants.StatusText.unknown)
                 statusRow(AppConstants.Labels.packageIdentifier, viewModel.installationInfo.packageIdentifier)
             }
         }

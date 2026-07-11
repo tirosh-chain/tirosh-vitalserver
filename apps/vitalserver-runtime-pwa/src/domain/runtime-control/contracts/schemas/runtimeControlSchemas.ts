@@ -30,7 +30,7 @@ const knownVMStateSchema = z.enum([
   ]);
 const runtimeStateSchema = z.union([knownRuntimeStateSchema, z.string()]);
 const vmStateSchema = z.union([knownVMStateSchema, z.string()]).nullable();
-const runtimeEventTypeSchema = z.union([z.enum(runtimeEventTypeValues), z.string()]);
+const runtimeEventTypeSchema = z.enum(runtimeEventTypeValues);
 const recorderStatusSchema = z.enum([
   "online",
   "stale",
@@ -92,7 +92,7 @@ const runtimeRedisRelayStatusSchema = z
     observedAt: z.string(),
     enabled: z.boolean(),
     state: z.string(),
-    scope: z.string(),
+    scope: requiredNullableString,
     targetUrl: requiredNullableString,
     targetUsernameConfigured: z.boolean(),
     targetPasswordConfigured: z.boolean(),
@@ -105,6 +105,41 @@ const runtimeRedisRelayStatusSchema = z
     lastError: requiredNullableString
   })
   .passthrough();
+export const runtimeRedisRelayStatusReadResultSchema = z
+  .object({
+    readState: z.enum(["notRead", "loaded", "invalidResponse", "readFailed"]),
+    document: runtimeRedisRelayStatusSchema.nullable(),
+    readError: z.string().nullable()
+  })
+  .strict()
+  .superRefine((read, context) => {
+    if (read.readState === "loaded") {
+      if (read.document === null) {
+        context.addIssue({
+          code: "custom",
+          path: ["document"],
+          message: "loaded Redis Relay status reads must include document"
+        });
+      }
+      if (read.readError !== null && read.readError.trim() !== "") {
+        context.addIssue({
+          code: "custom",
+          path: ["readError"],
+          message: "loaded Redis Relay status reads must not include readError"
+        });
+      }
+    }
+    if (
+      (read.readState === "invalidResponse" || read.readState === "readFailed") &&
+      (read.readError === null || read.readError.trim() === "")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: `${read.readState} Redis Relay status reads must include readError`
+      });
+    }
+  });
 const runtimeRecorderIngressSettingsSchema = z
   .object({
     sendDataMaxPendingItems: z.number().int(),
@@ -129,6 +164,26 @@ const runtimeRecorderIngressSettingsSchema = z
     rawArchiveAutoExportRequestTimeoutSeconds: z.number().int()
   })
   .passthrough();
+
+export const runtimeRedisRelaySettingsReadSchema = z.object({
+  state: z.enum(["loaded", "unavailable", "failed"]),
+  settings: z
+    .object({
+      enabled: z.boolean(),
+      target: z.object({
+        url: z.string(),
+        username: z.string(),
+        passwordConfigured: z.boolean(),
+        tls: z.boolean()
+      }),
+      scope: redisRelayScopeSchema,
+      includeRecorderNetworkContext: z.boolean(),
+      intervalSeconds: z.number().min(0.1),
+      scanCount: z.number().int().min(1)
+    })
+    .nullable(),
+  readError: z.string().nullable()
+});
 const recorderIngressMemoryGuardStatusSchema = z.enum([
   "healthy",
   "warm",
@@ -141,10 +196,6 @@ const recorderIngressMemoryGuardStatusSchema = z.enum([
   "unavailable",
   "disabled"
 ]);
-const vitalRecorderSummarySourceSchema = z.enum([
-  "vitalDBObservation",
-  "unavailable"
-]);
 const vitalDBObservationReadStateSchema = z.enum([
   "loaded",
   "unavailable",
@@ -153,20 +204,6 @@ const vitalDBObservationReadStateSchema = z.enum([
 const vitalRecorderHistoryStateSchema = z.enum([
   "loaded",
   "partiallyLoaded",
-  "readFailed"
-]);
-const runtimeGuestServicesReadStateSchema = z.enum([
-  "unavailable",
-  "loaded",
-  "failed"
-]);
-const runtimeGuestAddressSourceSchema = z.enum(["runtime-control-api"]);
-const runtimeGuestAddressReadStateSchema = z.enum([
-  "notReported",
-  "loaded",
-  "missing",
-  "invalid",
-  "stale",
   "readFailed"
 ]);
 const runtimeOperationResourceReadStateSchema = z.enum([
@@ -210,14 +247,6 @@ const runtimeGuestServiceStatusReadSchema = z
       .optional()
   })
   .passthrough();
-const runtimeGuestAddressReadResultSchema = z
-  .object({
-    state: runtimeGuestAddressReadStateSchema,
-    address: nullableString,
-    source: runtimeGuestAddressSourceSchema.nullable().optional(),
-    reason: nullableString
-  })
-  .passthrough();
 const runtimeGuestServiceConditionSchema = z
   .object({
     type: z.string(),
@@ -234,12 +263,6 @@ export const runtimeGuestServiceResourceSchema = z
     status: runtimeGuestServiceStatusReadSchema,
     conditions: z.array(runtimeGuestServiceConditionSchema),
     lastOperationId: nullableString
-  })
-  .passthrough();
-const runtimeGuestServiceResourceReadIssueSchema = z
-  .object({
-    service: z.string(),
-    message: z.string()
   })
   .passthrough();
 const runtimeProbeErrorSchema = z
@@ -264,7 +287,7 @@ export const runtimeGuestControlServiceOperationSchema = z
   .object({
     operationId: z.string(),
     service: z.string(),
-    command: z.enum(["start", "stop", "restart", "reconcile"]),
+    command: z.enum(["start", "stop", "restart", "reconcile", "apply-settings"]),
     state: z.enum(["accepted", "running", "completed", "failed", "cancelled"]),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -307,22 +330,28 @@ export const runtimeCommandResponseSchema = z
   })
   .passthrough();
 
-export const runtimeCapabilitiesSchema = z
+export const platformCapabilitiesSchema = z
   .object({
     canInstallRuntime: z.boolean(),
     canUninstallRuntime: z.boolean(),
     canApplyBundle: z.boolean(),
     canRollback: z.boolean(),
-    canEditVMResources: z.boolean(),
+    canRollbackRelease: z.boolean(),
+    canEditRuntimeProviderResources: z.boolean(),
     canEditNetworkExposure: z.boolean(),
     canResetAdminPassword: z.boolean(),
     canOpenLocalFiles: z.boolean(),
     canStreamLogs: z.boolean(),
     canControlRuntimeServices: z.boolean(),
-    canControlGuestServices: z.boolean(),
     canExportLogs: z.boolean(),
-    canViewReleaseMetadata: z.boolean(),
-    canUseLab: z.boolean()
+    canViewReleaseMetadata: z.boolean()
+  })
+  .passthrough();
+
+export const runtimeCapabilitiesSchema = z
+  .object({
+    schemaVersion: z.number().int(),
+    capabilities: z.array(z.string())
   })
   .passthrough();
 
@@ -392,55 +421,53 @@ export const runtimeSettingsSchema = z
   })
   .passthrough();
 
+export const runtimeProductSettingsSchema = z
+  .object({
+    automaticBackupEnabled: z.boolean(),
+    backupRetentionCount: z.number().int().positive(),
+    backupScheduleTimes: z.array(z.string()),
+    containerMemoryLimitsEnabled: z.boolean(),
+    publicHost: z.string(),
+    publicPort: z.number().int().min(1).max(65535),
+    recorderIngress: runtimeRecorderIngressSettingsSchema,
+    recorderIngressContainerMemoryLimitMiB: z.number().int().positive(),
+    recorderIngressSendDataMode: recorderIngressSendDataModeSchema,
+    recorderIngressSendDataReplayBatchSize: z.number().int().positive(),
+    recorderIngressSendDataReplayMaxMiBPerSecond: z.number().int().positive(),
+    redisContainerMemoryLimitMiB: z.number().int().positive(),
+    remoteConsoleURL: z.string(),
+    vitalServerContainerMemoryLimitMiB: z.number().int().positive(),
+    vitalServerURL: z.string()
+  })
+  .passthrough();
+
+export const runtimeProductSettingsReadSchema = z
+  .object({
+    state: z.enum(["loaded", "unavailable", "failed"]),
+    settings: runtimeProductSettingsSchema.nullable(),
+    readError: requiredNullableString
+  })
+  .superRefine((read, context) => {
+    if (read.state === "loaded" && read.settings == null) {
+      context.addIssue({
+        code: "custom",
+        path: ["settings"],
+        message: "loaded runtime settings reads must include settings"
+      });
+    }
+    if (read.state !== "loaded" && isBlank(read.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: `${read.state} runtime settings reads must include readError`
+      });
+    }
+  });
+
 const runtimeDataDirectoryStatsSchema = z
   .object({
     fileCount: z.number().optional(),
     sizeBytes: z.number().optional()
-  })
-  .passthrough();
-
-const runtimeDomainErrorSchema = z
-  .object({
-    code: z.string().optional(),
-    category: z
-      .enum([
-        "installation",
-        "vmLifecycle",
-        "hostProxy",
-        "hostService",
-        "guestNetworking",
-        "guestAgent",
-        "guestBootstrap",
-        "guestStorage",
-        "container",
-        "vitalDB",
-        "auxiliaryUI",
-        "hostResources",
-        "configuration",
-        "observability",
-        "unknown"
-      ])
-      .optional(),
-    severity: z.enum(["warning", "critical"]).optional(),
-    recoveryAction: z
-      .enum([
-        "installRuntime",
-        "restartVMService",
-        "restartProxyService",
-        "restartWatchdogService",
-        "waitForGuest",
-        "restartGuestAgent",
-        "repairGuestBootstrap",
-        "reconcileGuestStack",
-        "repairProxyConfiguration",
-        "freeProxyPort",
-        "inspectVitalDBObservation",
-        "backupAndRecreateVM",
-        "fixConfiguration",
-        "freeHostResources",
-        "inspectLogs"
-      ])
-      .optional()
   })
   .passthrough();
 
@@ -738,7 +765,7 @@ export const vitalDBObservationSchema = z
   })
   .passthrough();
 
-const runtimeVitalDBObservationSnapshotSchema = z
+export const runtimeVitalDBObservationSnapshotSchema = z
   .object({
     state: vitalDBObservationReadStateSchema,
     observation: vitalDBObservationSchema.nullable(),
@@ -762,87 +789,120 @@ const runtimeVitalDBObservationSnapshotSchema = z
     }
   });
 
-const runtimeControlConditionSchema = z
+export const platformStateSchema = z
   .object({
-    type: z.string(),
-    status: z.enum(["True", "False", "Unknown"]),
-    reason: z.string(),
-    message: requiredNullableString,
-    observedAt: requiredNullableString
-  })
-  .passthrough();
-
-export const runtimeStatusSchema = z
-  .object({
-    runtimeInstalled: z.boolean().optional(),
-    runtimeInstallationState: z.string().optional(),
-    vmServiceLoaded: z.boolean().optional(),
-    proxyServiceLoaded: z.boolean().optional(),
-    guestLogSyncServiceLoaded: z.boolean().optional(),
-    sleepPreventionServiceLoaded: nullableBoolean,
-    watchdogServiceLoaded: z.boolean().optional(),
-    runtimeState: runtimeStateSchema.optional(),
-    runtimeVersion: nullableString,
-    vmState: vmStateSchema.optional(),
-    vmErrors: z.array(z.string()).nullable().optional(),
-    guestAddressRead: runtimeGuestAddressReadResultSchema.nullable().optional(),
+    runtimeInstallationState: z.string(),
+    services: z.array(
+      z
+        .object({
+          role: z.enum([
+            "runtime-provider",
+            "public-proxy",
+            "log-sync",
+            "sleep-prevention",
+            "watchdog"
+          ]),
+          state: z.enum([
+            "running",
+            "stopped",
+            "not-installed",
+            "unavailable",
+            "read-failed",
+            "permission-denied",
+            "failed"
+          ]),
+          readError: requiredNullableString
+        })
+        .passthrough()
+        .superRefine((service, context) => {
+          if (
+            ["unavailable", "read-failed", "permission-denied", "failed"].includes(service.state) &&
+            isBlank(service.readError)
+          ) {
+            context.addIssue({
+              code: "custom",
+              path: ["readError"],
+              message: "failed Platform service state must include readError"
+            });
+          }
+        })
+    ),
+    platformHealth: runtimeStateSchema.optional(),
+    readIssues: z
+      .array(
+        z.object({ source: z.string(), message: z.string() }).passthrough()
+      )
+      .optional(),
+    installedVersion: nullableString,
+    runtimeProviderState: vmStateSchema.optional(),
+    runtimeProviderErrors: z.array(z.string()).nullable().optional(),
     latestBackup: nullableString,
-    vmIP: nullableString,
-    guestHTTP: nullableString,
-    hostProxyHTTP: nullableString,
-    runtimeControlHTTP: nullableString,
-    runtimeControlStartedAt: nullableString,
-    redisUIHTTP: nullableString,
-    swaggerUIHTTP: nullableString,
-    cpuUsagePercent: nullableNumber,
-    memory: resourceUsageSchema.optional(),
-    systemDisk: resourceUsageSchema.optional(),
+    runtimeEndpoint: nullableString,
+    runtimeControllerHTTP: nullableString,
+    publicProxyHTTP: nullableString,
+    platformAPIHTTP: nullableString,
+    platformAPIStartedAt: nullableString,
     dataStorage: resourceUsageSchema.optional(),
-    guestServicesReadState: runtimeGuestServicesReadStateSchema.nullable().optional(),
-    guestServices: z.array(z.string()).nullable().optional(),
-    guestServiceStatuses: z
-      .array(runtimeGuestControlServiceStatusSchema)
-      .nullable()
-      .optional(),
-    guestServiceResources: z
-      .array(runtimeGuestServiceResourceSchema)
-      .nullable()
-      .optional(),
-    guestServiceResourceReadIssues: z
-      .array(runtimeGuestServiceResourceReadIssueSchema)
-      .nullable()
-      .optional(),
-    guestStackProbeErrors: z.array(runtimeProbeErrorSchema).optional(),
-    guestServicesReadError: nullableString,
+    dataStorageError: nullableString,
     dataDirectoryStats: runtimeDataDirectoryStatsSchema.nullable().optional(),
     dataDirectoryStatsError: nullableString,
-    proxyPort: z.number().optional(),
-    failureReasons: z.array(z.string()).optional(),
-    redisRelayStatus: runtimeRedisRelayStatusSchema.nullable().optional()
+    publicProxyPort: z.number().optional(),
+    publicProxyPortReadState: z.string().nullable().optional(),
+    healthIssues: z.array(z.string()).optional()
   })
   .passthrough()
   .superRefine((status, context) => {
-    if (status.guestServicesReadState === "loaded") {
-      for (const field of [
-        "guestServiceStatuses",
-        "guestServiceResources",
-        "guestServiceResourceReadIssues"
-      ] as const) {
-        if (!Array.isArray(status[field])) {
-          context.addIssue({
-            code: "custom",
-            path: [field],
-            message: `loaded guest service reads must include ${field}`
-          });
-        }
+    for (const field of [
+      "redisRelayStatus",
+      "guestServicesReadState",
+      "guestServices",
+      "guestServiceStatuses",
+      "guestServiceResources",
+      "guestServiceResourceReadIssues",
+      "guestStackProbeErrors",
+      "guestServicesReadError",
+      "cpuUsagePercent",
+      "memory",
+      "vitalServerMemory",
+      "recorderIngressMemory",
+      "redisMemory",
+      "systemDisk",
+      "runtimeInstalled",
+      "vmServiceLoaded",
+      "proxyServiceLoaded",
+      "guestLogSyncServiceLoaded",
+      "sleepPreventionServiceLoaded",
+      "watchdogServiceLoaded",
+      "vmServiceState",
+      "proxyServiceState",
+      "guestLogSyncServiceState",
+      "sleepPreventionServiceState",
+      "watchdogServiceState",
+      "runtimeState",
+      "runtimeVersion",
+      "vmState",
+      "vmErrors",
+      "guestAddressRead",
+      "vmIP",
+      "guestHTTP",
+      "hostProxyHTTP",
+      "runtimeControlHTTP",
+      "runtimeControlStartedAt",
+      "redisUIHTTP",
+      "swaggerUIHTTP",
+      "proxyPort",
+      "failureReasons"
+    ] as const) {
+      if (Object.prototype.hasOwnProperty.call(status, field)) {
+        context.addIssue({
+          code: "custom",
+          path: [field],
+          message:
+            field === "redisRelayStatus"
+              ? "Redis Relay status must be read from its Runtime owner resource"
+              : `${field} belongs to a Runtime owner resource, not PlatformState`
+        });
       }
-    }
-    if (status.guestServicesReadState === "failed" && isBlank(status.guestServicesReadError)) {
-      context.addIssue({
-        code: "custom",
-        path: ["guestServicesReadError"],
-        message: "failed guest service reads must include guestServicesReadError"
-      });
     }
   });
 
@@ -902,7 +962,7 @@ const runtimeOperationLeaseStateSchema = z
     }
   });
 
-export const runtimeOperationStateSchema = z
+export const platformOperationStateSchema = z
   .object({
     activeOperation: requiredNullableString,
     install: runtimeInstallOperationStateSchema,
@@ -910,63 +970,91 @@ export const runtimeOperationStateSchema = z
   })
   .passthrough();
 
-const runtimeVitalRecorderSummarySchema = z
+export const platformWorkflowOperationSchema = z
   .object({
-    source: vitalRecorderSummarySourceSchema,
-    activeConnections: z.number().optional(),
-    knownRecorders: z.number().optional(),
-    onlineRecorders: z.number().optional(),
-    staleRecorders: z.number().optional(),
-    knownBeds: z.number().optional(),
-    recorderAnomalies: z.number().optional(),
-    observedAt: nullableString,
-    latestRecorder: z
+    schemaVersion: z.literal(1),
+    operationId: z.string().min(1),
+    kind: z.enum([
+      "update-verify",
+      "update-apply",
+      "rollback",
+      "uninstall",
+      "support-export"
+    ]),
+    state: z.enum(["accepted", "running", "completed", "failed"]),
+    startedAt: z.string().min(1),
+    updatedAt: z.string().min(1),
+    release: z
       .object({
-        vrcode: z.string(),
-        ip: nullableString,
-        lastSeenAt: nullableString,
-        source: vitalRecorderSummarySourceSchema
+        platformVersion: z.string().min(1),
+        runtimeBundleVersion: z.string().min(1)
       })
-      .passthrough()
+      .nullable(),
+    artifact: z
+      .object({
+        path: z.string().min(1),
+        sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        sizeBytes: z.number().int().nonnegative()
+      })
+      .nullable(),
+    failure: z
+      .object({ kind: z.string().min(1), message: z.string().min(1) })
       .nullable()
-      .optional()
   })
-  .passthrough()
-  .superRefine((summary, context) => {
-    if (summary.source !== "vitalDBObservation") {
-      return;
+  .strict()
+  .superRefine((operation, context) => {
+    if (operation.state === "failed" && operation.failure === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["failure"],
+        message: "failed Platform workflow must include failure evidence"
+      });
     }
-
-    for (const field of [
-      "knownRecorders",
-      "onlineRecorders",
-      "staleRecorders",
-      "knownBeds",
-      "recorderAnomalies",
-      "observedAt"
-    ] as const) {
-      if (summary[field] == null) {
-        context.addIssue({
-          code: "custom",
-          path: [field],
-          message: "VitalDB-backed recorder summaries must include observed metrics"
-        });
-      }
+    if (operation.state !== "failed" && operation.failure !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["failure"],
+        message: "non-failed Platform workflow must not include failure evidence"
+      });
+    }
+    if (
+      operation.kind === "support-export" &&
+      operation.state === "completed" &&
+      operation.artifact === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["artifact"],
+        message: "completed support export must include artifact evidence"
+      });
+    }
+    if (
+      operation.artifact !== null &&
+      (operation.kind !== "support-export" || operation.state !== "completed")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["artifact"],
+        message: "artifact evidence is only valid for a completed support export"
+      });
     }
   });
 
-export const runtimeOverviewSchema = z
+export const platformWorkflowResourceSchema = z
   .object({
-    status: runtimeStatusSchema,
-    settings: runtimeSettingsSchema,
-    release: unknownRecord,
-    install: unknownRecord,
-    vitalDBObservation: vitalDBObservationSchema.nullable(),
-    vitalDBObservationSnapshot: runtimeVitalDBObservationSnapshotSchema,
-    vitalRecorder: runtimeVitalRecorderSummarySchema,
-    conditions: z.array(runtimeControlConditionSchema)
+    state: z.enum(["loaded", "missing", "unavailable", "failed"]),
+    operation: platformWorkflowOperationSchema.nullable(),
+    readError: z.string().nullable()
   })
-  .passthrough();
+  .strict()
+  .superRefine((resource, context) => {
+    if (resource.state === "loaded" && resource.operation === null) {
+      context.addIssue({ code: "custom", path: ["operation"], message: "loaded workflow resource must include operation" });
+    }
+    if ((resource.state === "unavailable" || resource.state === "failed") && isBlank(resource.readError)) {
+      context.addIssue({ code: "custom", path: ["readError"], message: `${resource.state} workflow resource must include readError` });
+    }
+  });
 
 export const runtimeBackupSchema = z
   .object({
@@ -977,25 +1065,24 @@ export const runtimeBackupSchema = z
 
 export const runtimeEventDocumentSchema = z
   .object({
-    schemaVersion: z.number(),
+    schemaVersion: z.literal(1),
     id: z.string(),
     source: z.string(),
     eventType: runtimeEventTypeSchema,
     timestamp: z.string(),
-    product: z.string(),
-    status: runtimeStateSchema.optional(),
-    previousStatus: nullableString,
-    operation: z.string().optional(),
+    operationId: z.string(),
+    operationService: z.string(),
+    operationCommand: z.string(),
+    operationState: z.enum(["accepted", "running", "completed", "failed", "cancelled"]),
     message: z.string(),
-    runtimeVersion: z.string(),
-    vmState: vmStateSchema.optional(),
-    vmErrors: z.array(z.string()).nullable().optional(),
-    failureReasons: z.array(z.string()),
-    domainErrors: z.array(runtimeDomainErrorSchema).nullable().optional(),
-    progress: unknownRecord.nullable().optional(),
-    vitalDBObservation: vitalDBObservationSchema.nullable().optional()
+    failure: z
+      .object({
+        kind: z.string(),
+        message: z.string()
+      })
+      .nullable()
   })
-  .passthrough();
+  .strict();
 
 export const runtimeEventHistorySchema = z
   .object({

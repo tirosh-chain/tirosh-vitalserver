@@ -25,7 +25,7 @@ The Runtime Control API can show this shape:
 }
 ```
 
-`/runtime/operation-state` may also report:
+`/platform/operations` may also report:
 
 ```json
 {

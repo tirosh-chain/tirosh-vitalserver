@@ -37,8 +37,8 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
     }
 
     public func availability(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         now: Date
     ) -> RuntimeStatusVitalServerAvailabilityValue {
         let text: String
@@ -53,10 +53,10 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         } else if let operation = operationState.operationForPresentation,
                   RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation) {
             text = vocabulary.updatingText
-        } else if status.runtimeInstallationState?.isExecutable != true {
+        } else if !status.runtimeInstallationState.isExecutable {
             text = vocabulary.unavailableText
         } else {
-            text = labelPolicy.serviceReachabilityLabel(status.hostProxyHTTP)
+            text = labelPolicy.serviceReachabilityLabel(status.publicProxyHTTP)
         }
         return RuntimeStatusVitalServerAvailabilityValue(
             text: text,
@@ -66,8 +66,8 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
     }
 
     private func availabilitySeverity(
-        _ status: RuntimeStatus,
-        operationState: RuntimeOperationState
+        _ status: PlatformState,
+        operationState: PlatformOperationState
     ) -> RuntimeStatusReachabilityPolicy.Severity {
         if let operation = operationState.operationForPresentation,
            RuntimeActiveOperationPolicy.isInstallOperation(operation) ||
@@ -78,9 +78,9 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
             return .warning
         }
-        if status.runtimeInstallationState?.isExecutable != true {
+        if !status.runtimeInstallationState.isExecutable {
             return .critical
         }
-        return reachabilityPolicy.httpSeverity(status.hostProxyHTTP)
+        return reachabilityPolicy.httpSeverity(status.publicProxyHTTP)
     }
 }

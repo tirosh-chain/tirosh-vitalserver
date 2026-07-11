@@ -1,4 +1,5 @@
 @testable import MacControlPanelHost
+@testable import MacPlatformAgent
 import Contracts
 import Foundation
 import RuntimeControl
@@ -94,44 +95,9 @@ final class RuntimeSectionTests: XCTestCase {
     }
 
     @MainActor
-    func testRuntimeControlAPIHandlerAppliesLocalAPISettingsOnlyAfterSuccessfulApply() async throws {
-        let client = HostFakeRuntimeControlClient()
-        let store = InMemoryRuntimeControlLocalAPISettingsStore(runtimeControlPort: 18_321)
-        let handler = makeRuntimeControlAPIHandler(client: client, localAPISettingsStore: store)
-        var settings = RuntimeSettings(cpuCount: 4, memoryGiB: 8)
-        settings.runtimeControlPort = 18_444
-
-        let response = try await handler.applySettings(settings)
-
-        XCTAssertEqual(response.result.exitCode, 0)
-        XCTAssertEqual(store.runtimeControlPort, 18_444)
-    }
-
-    @MainActor
-    func testRuntimeControlAPIHandlerDoesNotApplyLocalAPISettingsAfterFailedApply() async throws {
-        let client = HostFakeRuntimeControlClient()
-        client.applySettingsResult = RuntimeCommandResult(
-            exitCode: 2,
-            stdout: "",
-            stderr: "Advertised URLs must be absolute http/https URLs."
-        )
-        let store = InMemoryRuntimeControlLocalAPISettingsStore(runtimeControlPort: 18_321)
-        let handler = makeRuntimeControlAPIHandler(client: client, localAPISettingsStore: store)
-        var settings = RuntimeSettings(cpuCount: 4, memoryGiB: 8)
-        settings.runtimeControlPort = 18_444
-
-        let response = try await handler.applySettings(settings)
-
-        XCTAssertEqual(response.result.exitCode, 2)
-        XCTAssertEqual(response.result.stderr, "Advertised URLs must be absolute http/https URLs.")
-        XCTAssertEqual(store.runtimeControlPort, 18_321)
-    }
-
-    @MainActor
     func testRuntimeControlAPIHandlerDelegatesOperationLeaseOwnerMutationsToOperationLeaseClient() async throws {
         let client = HostFakeRuntimeControlClient()
-        let store = InMemoryRuntimeControlLocalAPISettingsStore(runtimeControlPort: 18_321)
-        let handler = makeRuntimeControlAPIHandler(client: client, localAPISettingsStore: store)
+        let handler = makeRuntimeControlAPIHandler(client: client)
         let lease = RuntimeOperationLeaseDocument(
             operationId: "operation-1",
             operation: .applyBundle,
@@ -159,16 +125,39 @@ final class RuntimeSectionTests: XCTestCase {
     }
 
     @MainActor
-    func testRuntimeControlAPIServerIsIndependentFromDevConsole() {
-        XCTAssertTrue(MacRuntimeControlEnvironment.shouldStartRuntimeControlAPIServer())
+    func testControlPanelDoesNotOwnPlatformAPIServer() {
+        XCTAssertFalse(MacRuntimeControlEnvironment.shouldStartRuntimeControlAPIServer())
         XCTAssertFalse(MacRuntimeControlEnvironment.shouldServeRuntimeControlDevConsole(testEnabled: false))
         XCTAssertTrue(MacRuntimeControlEnvironment.shouldServeRuntimeControlDevConsole(testEnabled: true))
     }
 
     @MainActor
+    func testPlatformAgentPersistsManagedSupportExportWorkflow() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = HostFakeRuntimeControlClient()
+        client.exportLogData = Data("support evidence".utf8)
+        let workflow = root.appendingPathComponent("run/platform-workflow.json")
+        let handler = makeRuntimeControlAPIHandler(
+            client: client,
+            platformWorkflowDocument: workflow,
+            supportDirectory: root.appendingPathComponent("support", isDirectory: true)
+        )
+
+        let completed = try await handler.createPlatformSupportExport()
+        let resource = try await handler.loadPlatformWorkflow()
+
+        XCTAssertEqual(completed.state, .completed)
+        XCTAssertEqual(resource.state, .loaded)
+        XCTAssertEqual(resource.operation, completed)
+        XCTAssertNotNil(completed.artifact)
+    }
+
+    @MainActor
     private func makeRuntimeControlAPIHandler(
         client: HostFakeRuntimeControlClient,
-        localAPISettingsStore: InMemoryRuntimeControlLocalAPISettingsStore
+        platformWorkflowDocument: URL = InstalledRuntimePaths.defaultInstalled.hostRunDirectory.appendingPathComponent("platform-workflow.json"),
+        supportDirectory: URL = InstalledRuntimePaths.defaultInstalled.productRoot.appendingPathComponent("support", isDirectory: true)
     ) -> MacRuntimeControlAPIHandler {
         MacRuntimeControlAPIHandler(
             commandClient: client,
@@ -183,12 +172,13 @@ final class RuntimeSectionTests: XCTestCase {
                     vitalServerVersion: "runtime",
                     services: []
                 ),
-                statusReader: HostStubStatusReader(),
+                platformStateReader: HostStubStatusReader(),
                 observabilityReader: HostStubObservabilityReader(),
                 fileReader: HostStubFileReader(),
                 settingsReader: HostStubSettingsReader()
             ),
-            localAPISettings: RuntimeControlLocalAPISettingsCoordinator(store: localAPISettingsStore)
+            platformWorkflowDocument: platformWorkflowDocument,
+            supportDirectory: supportDirectory
         )
     }
 }
@@ -208,13 +198,14 @@ private final class HostFakeRuntimeControlClient:
     var releasedOperationLeaseIDs: [String] = []
     var guestAddressResource: RuntimeGuestAddressResourceState = .missing()
     var vmLifecycleResource: RuntimeVMLifecycleResourceState = .missing()
+    var exportLogData: Data?
 
     func loadSettings() -> RuntimeSettings { RuntimeSettings() }
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus { RuntimeStatus() }
-    func loadOperationState() -> RuntimeOperationState {
-        RuntimeOperationState(activeOperation: nil, install: .unavailable())
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState { platformState() }
+    func loadOperationState() -> PlatformOperationState {
+        PlatformOperationState(activeOperation: nil, install: .unavailable())
     }
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus { RuntimeStatus() }
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState { platformState() }
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory { RuntimeEventHistory(events: []) }
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory { RuntimeEventHistory(events: []) }
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
@@ -269,7 +260,10 @@ private final class HostFakeRuntimeControlClient:
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
-        RuntimeLogExportResult(destination: destination)
+        if let exportLogData {
+            try exportLogData.write(to: destination, options: .withoutOverwriting)
+        }
+        return RuntimeLogExportResult(destination: destination)
     }
     func acquireOperationLease(
         _ document: RuntimeOperationLeaseDocument
@@ -301,7 +295,7 @@ private final class HostFakeRuntimeControlClient:
     }
 
     func putGuestAddressResource(address: String) async throws -> RuntimeGuestAddressResourceState {
-        guestAddressResource = .loaded(.loaded(address: address, source: .runtimeControlAPI))
+        guestAddressResource = .loaded(.loaded(address: address, source: .platformAgent))
         return guestAddressResource
     }
 
@@ -321,9 +315,9 @@ private struct HostStubSettingsReader: RuntimeSettingsReading {
     func load() -> RuntimeSettings { RuntimeSettings() }
 }
 
-private struct HostStubStatusReader: RuntimeStatusReading {
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus { RuntimeStatus() }
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus { RuntimeStatus() }
+private struct HostStubStatusReader: PlatformStateReading {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState { platformState() }
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState { platformState() }
 }
 
 private struct HostStubObservabilityReader: RuntimeObservabilityReading {

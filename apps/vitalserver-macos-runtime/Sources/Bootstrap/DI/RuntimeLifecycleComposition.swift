@@ -36,7 +36,9 @@ public struct RuntimeLifecycleComposition {
         let installedPaths = paths.installed
         let resolvedHTTPProber = httpProber ?? CurlRuntimeHTTPProber(commandRunner: commandRunner)
         let resolvedServiceManager = serviceManager ?? LaunchdRuntimeServiceManager(commandRunner: commandRunner)
-        let resolvedGuestAddressProvider = guestAddressProvider ?? RuntimeControlAPIGuestAddressProvider()
+        let resolvedGuestAddressProvider = guestAddressProvider ?? FileRuntimeGuestAddressResourceStore(
+            documentURL: installedPaths.runtimeEndpoint
+        )
         let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
         let statusReporter = RuntimeStatusReporter(
             statusArtifactSink: runtimeStatusArtifactSink ?? JSONFileRuntimeStatusArtifactSink(

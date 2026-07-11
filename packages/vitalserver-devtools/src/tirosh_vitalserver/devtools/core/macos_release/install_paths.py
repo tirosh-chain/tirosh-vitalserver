@@ -33,6 +33,13 @@ def settings_install_app_bundle(settings: MacOSReleaseSettings) -> str:
     )
 
 
+def settings_install_platform_agent(settings: MacOSReleaseSettings) -> str:
+    return (
+        f"{settings_install_app_bundle(settings)}/Contents/MacOS/"
+        "vitalserver-platform-agent"
+    )
+
+
 def settings_install_nginx_prefix(settings: MacOSReleaseSettings) -> str:
     return f"{settings_install_prefix(settings)}/nginx"
 
@@ -62,6 +69,10 @@ def install_runtime_logs(context: PackageContext) -> str:
 
 def install_app_bundle(context: PackageContext) -> str:
     return settings_install_app_bundle(context.settings)
+
+
+def install_platform_agent(context: PackageContext) -> str:
+    return settings_install_platform_agent(context.settings)
 
 
 def install_nginx_prefix(context: PackageContext) -> str:

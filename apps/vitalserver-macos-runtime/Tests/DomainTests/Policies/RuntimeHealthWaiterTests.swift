@@ -210,7 +210,7 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             configuration: RuntimeHealthWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
             observe: {
                 observation(snapshot: unhealthySnapshot(
-                    vmIP: nil,
+                    hostProxyHTTP: "500",
                     reasons: []
                 ))
             },
@@ -253,6 +253,7 @@ final class RuntimeHealthWaiterTests: XCTestCase {
 
     private func unhealthySnapshot(
         vmIP: String? = "192.168.64.2",
+        hostProxyHTTP: String = "200",
         reasons: [RuntimeFailureReason]
     ) -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
@@ -264,11 +265,11 @@ final class RuntimeHealthWaiterTests: XCTestCase {
             proxyService: .loaded,
             watchdogService: .loaded,
             vmState: reasons.isEmpty ? .running : .unreachable,
-            guestAddressRead: vmIP.map { .loaded(address: $0, source: .runtimeControlAPI) }
+            guestAddressRead: vmIP.map { .loaded(address: $0, source: .platformAgent) }
                 ?? .missing("vm-ip file missing"),
             vmIP: vmIP,
             proxyPort: 80,
-            hostProxyHTTP: "200",
+            hostProxyHTTP: hostProxyHTTP,
             guestHTTP: "200",
             redisUIHTTP: "200",
             swaggerUIHTTP: "200",

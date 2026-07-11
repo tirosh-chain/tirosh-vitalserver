@@ -7,7 +7,8 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     public var canUninstallRuntime: Bool
     public var canApplyBundle: Bool
     public var canRollback: Bool
-    public var canEditVMResources: Bool
+    public var canRollbackRelease: Bool
+    public var canEditRuntimeProviderResources: Bool
     public var canEditNetworkExposure: Bool
     public var canResetAdminPassword: Bool
     public var canOpenLocalFiles: Bool
@@ -23,7 +24,8 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
         canUninstallRuntime: Bool = true,
         canApplyBundle: Bool = true,
         canRollback: Bool = true,
-        canEditVMResources: Bool = true,
+        canRollbackRelease: Bool = false,
+        canEditRuntimeProviderResources: Bool = true,
         canEditNetworkExposure: Bool = true,
         canResetAdminPassword: Bool = true,
         canOpenLocalFiles: Bool = true,
@@ -38,7 +40,8 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
         self.canUninstallRuntime = canUninstallRuntime
         self.canApplyBundle = canApplyBundle
         self.canRollback = canRollback
-        self.canEditVMResources = canEditVMResources
+        self.canRollbackRelease = canRollbackRelease
+        self.canEditRuntimeProviderResources = canEditRuntimeProviderResources
         self.canEditNetworkExposure = canEditNetworkExposure
         self.canResetAdminPassword = canResetAdminPassword
         self.canOpenLocalFiles = canOpenLocalFiles
@@ -51,20 +54,56 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     }
 }
 
-public struct RuntimeContainerMemoryUsage: Codable, Equatable, Sendable {
-    public var usedBytes: Int64
-    public var limitBytes: Int64?
+/// Capabilities owned by the Platform Agent. This contract deliberately omits
+/// Runtime Controller product capabilities such as service control and Lab.
+public struct PlatformCapabilities: Codable, Equatable, Sendable {
+    public var canInstallRuntime: Bool
+    public var canUninstallRuntime: Bool
+    public var canApplyBundle: Bool
+    public var canRollback: Bool
+    public var canRollbackRelease: Bool
+    public var canEditRuntimeProviderResources: Bool
+    public var canEditNetworkExposure: Bool
+    public var canResetAdminPassword: Bool
+    public var canOpenLocalFiles: Bool
+    public var canStreamLogs: Bool
+    public var canControlRuntimeServices: Bool
+    public var canExportLogs: Bool
+    public var canViewReleaseMetadata: Bool
 
-    public init(usedBytes: Int64, limitBytes: Int64? = nil) {
-        self.usedBytes = usedBytes
-        self.limitBytes = limitBytes
+    public init(_ capabilities: RuntimeControlCapabilities = RuntimeControlCapabilities()) {
+        self.canInstallRuntime = capabilities.canInstallRuntime
+        self.canUninstallRuntime = capabilities.canUninstallRuntime
+        self.canApplyBundle = capabilities.canApplyBundle
+        self.canRollback = capabilities.canRollback
+        self.canRollbackRelease = capabilities.canRollbackRelease
+        self.canEditRuntimeProviderResources = capabilities.canEditRuntimeProviderResources
+        self.canEditNetworkExposure = capabilities.canEditNetworkExposure
+        self.canResetAdminPassword = capabilities.canResetAdminPassword
+        self.canOpenLocalFiles = capabilities.canOpenLocalFiles
+        self.canStreamLogs = capabilities.canStreamLogs
+        self.canControlRuntimeServices = capabilities.canControlRuntimeServices
+        self.canExportLogs = capabilities.canExportLogs
+        self.canViewReleaseMetadata = capabilities.canViewReleaseMetadata
+    }
+}
+
+/// Runtime Controller-owned capability document. Values are passed through
+/// from the Runtime Controller and are not reconstructed from Platform state.
+public struct RuntimeCapabilities: Codable, Equatable, Sendable {
+    public let schemaVersion: Int
+    public let capabilities: [String]
+
+    public init(schemaVersion: Int, capabilities: [String]) {
+        self.schemaVersion = schemaVersion
+        self.capabilities = capabilities
     }
 
-    public var percent: Double? {
-        guard let limitBytes, limitBytes > 0 else {
-            return nil
-        }
-        return min(max((Double(usedBytes) / Double(limitBytes)) * 100.0, 0), 100)
+    public init(_ document: RuntimeGuestControlCapabilities) {
+        self.init(
+            schemaVersion: document.schemaVersion,
+            capabilities: document.capabilities
+        )
     }
 }
 
@@ -621,7 +660,7 @@ public struct RuntimeDataDirectoryStats: Codable, Equatable, Sendable {
     }
 }
 
-public struct RuntimeStatusReadIssue: Codable, Equatable, Sendable {
+public struct PlatformStateReadIssue: Codable, Equatable, Sendable {
     public var source: String
     public var message: String
 
@@ -631,351 +670,237 @@ public struct RuntimeStatusReadIssue: Codable, Equatable, Sendable {
     }
 }
 
-public enum RuntimeServiceStateSource: String, Codable, Equatable, Sendable {
-    case liveLaunchd = "live-launchd"
+public enum PlatformServiceRole: String, Codable, Equatable, Sendable {
+    case runtimeProvider = "runtime-provider"
+    case publicProxy = "public-proxy"
+    case logSync = "log-sync"
+    case sleepPrevention = "sleep-prevention"
+    case watchdog
 }
 
-public enum RuntimeGuestServicesReadState: String, Codable, Equatable, Sendable {
+public enum PlatformServiceState: String, Codable, Equatable, Sendable {
+    case running
+    case stopped
+    case notInstalled = "not-installed"
     case unavailable
-    case loaded
+    case readFailed = "read-failed"
+    case permissionDenied = "permission-denied"
     case failed
 }
 
-public struct RuntimeStatus: Codable, Equatable, Sendable {
-    private enum CodingKeys: String, CodingKey {
-        case runtimeInstalled
-        case runtimeInstallationState
-        case vmServiceLoaded
-        case proxyServiceLoaded
-        case guestLogSyncServiceLoaded
-        case sleepPreventionServiceLoaded
-        case watchdogServiceLoaded
-        case vmServiceState
-        case proxyServiceState
-        case guestLogSyncServiceState
-        case sleepPreventionServiceState
-        case watchdogServiceState
-        case vmServiceStateSource
-        case proxyServiceStateSource
-        case guestLogSyncServiceStateSource
-        case sleepPreventionServiceStateSource
-        case watchdogServiceStateSource
-        case runtimeState
-        case readIssues
-        case runtimeVersion
-        case latestBackup
-        case vmState
-        case vmErrors
-        case vmIP
-        case guestHTTP
-        case hostProxyHTTP
-        case runtimeControlHTTP
-        case runtimeControlStartedAt
-        case redisUIHTTP
-        case swaggerUIHTTP
-        case guestServicesReadState
-        case guestServices
-        case guestServiceStatuses
-        case guestServiceResources
-        case guestServiceResourceReadIssues
-        case guestStackProbeErrors
-        case guestServicesReadError
-        case cpuUsagePercent
-        case memory
-        case vitalServerMemory
-        case recorderIngressMemory
-        case redisMemory
-        case systemDisk
-        case dataStorage
-        case dataStorageError
-        case dataDirectoryStats
-        case dataDirectoryStatsError
-        case proxyPort
-        case proxyPortReadState
-        case failureReasons
-        case redisRelayStatus
-    }
-
-    public var runtimeInstalled: Bool
-    public var runtimeInstallationState: RuntimeFileState?
-    public var vmServiceLoaded: Bool
-    public var proxyServiceLoaded: Bool
-    public var guestLogSyncServiceLoaded: Bool
-    public var sleepPreventionServiceLoaded: Bool?
-    public var watchdogServiceLoaded: Bool
-    public var vmServiceState: RuntimeServiceState?
-    public var proxyServiceState: RuntimeServiceState?
-    public var guestLogSyncServiceState: RuntimeServiceState?
-    public var sleepPreventionServiceState: RuntimeServiceState?
-    public var watchdogServiceState: RuntimeServiceState?
-    public var vmServiceStateSource: RuntimeServiceStateSource?
-    public var proxyServiceStateSource: RuntimeServiceStateSource?
-    public var guestLogSyncServiceStateSource: RuntimeServiceStateSource?
-    public var sleepPreventionServiceStateSource: RuntimeServiceStateSource?
-    public var watchdogServiceStateSource: RuntimeServiceStateSource?
-    public var runtimeState: RuntimeState?
-    public var readIssues: [RuntimeStatusReadIssue]
-    public var runtimeVersion: String?
-    public var latestBackup: String?
-    public var vmState: RuntimeVMState?
-    public var vmErrors: [RuntimeVMError]?
-    public var vmIP: String?
-    public var guestHTTP: String?
-    public var hostProxyHTTP: String?
-    public var runtimeControlHTTP: String?
-    public var runtimeControlStartedAt: String?
-    public var redisUIHTTP: String?
-    public var swaggerUIHTTP: String?
-    public var guestServicesReadState: RuntimeGuestServicesReadState?
-    public var guestServices: [String]?
-    public var guestServiceStatuses: [RuntimeGuestControlServiceStatus]
-    public var guestServiceResources: [RuntimeGuestServiceResource]
-    public var guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
-    public var guestStackProbeErrors: [GuestRuntimeProbeError]
-    public var guestServicesReadError: String?
-    public var cpuUsagePercent: Double?
-    public var memory: ResourceUsage?
-    public var vitalServerMemory: RuntimeContainerMemoryUsage?
-    public var recorderIngressMemory: RuntimeContainerMemoryUsage?
-    public var redisMemory: RuntimeContainerMemoryUsage?
-    public var systemDisk: ResourceUsage?
-    public var dataStorage: ResourceUsage?
-    public var dataStorageError: String?
-    public var dataDirectoryStats: RuntimeDataDirectoryStats?
-    public var dataDirectoryStatsError: String?
-    public var proxyPort: Int?
-    public var proxyPortReadState: RuntimeProxyPortReadState?
-    public var failureReasons: [RuntimeFailureReason]
-    public var redisRelayStatus: RuntimeRedisRelayStatus?
+public struct PlatformServiceStatus: Codable, Equatable, Sendable {
+    public let role: PlatformServiceRole
+    public let state: PlatformServiceState
+    public let readError: String?
 
     public init(
-        runtimeInstalled: Bool = false,
-        runtimeInstallationState: RuntimeFileState? = nil,
-        vmServiceLoaded: Bool = false,
-        proxyServiceLoaded: Bool = false,
-        guestLogSyncServiceLoaded: Bool = false,
-        sleepPreventionServiceLoaded: Bool? = nil,
-        watchdogServiceLoaded: Bool = false,
-        vmServiceState: RuntimeServiceState? = nil,
-        proxyServiceState: RuntimeServiceState? = nil,
-        guestLogSyncServiceState: RuntimeServiceState? = nil,
-        sleepPreventionServiceState: RuntimeServiceState? = nil,
-        watchdogServiceState: RuntimeServiceState? = nil,
-        vmServiceStateSource: RuntimeServiceStateSource? = nil,
-        proxyServiceStateSource: RuntimeServiceStateSource? = nil,
-        guestLogSyncServiceStateSource: RuntimeServiceStateSource? = nil,
-        sleepPreventionServiceStateSource: RuntimeServiceStateSource? = nil,
-        watchdogServiceStateSource: RuntimeServiceStateSource? = nil,
-        runtimeState: RuntimeState? = nil,
-        readIssues: [RuntimeStatusReadIssue] = [],
-        runtimeVersion: String? = nil,
-        latestBackup: String? = nil,
-        vmState: RuntimeVMState? = nil,
-        vmErrors: [RuntimeVMError]? = nil,
-        vmIP: String? = nil,
-        guestHTTP: String? = nil,
-        hostProxyHTTP: String? = nil,
-        runtimeControlHTTP: String? = nil,
-        runtimeControlStartedAt: String? = nil,
-        redisUIHTTP: String? = nil,
-        swaggerUIHTTP: String? = nil,
-        guestServicesReadState: RuntimeGuestServicesReadState? = .unavailable,
-        guestServices: [String]? = nil,
-        guestServiceStatuses: [RuntimeGuestControlServiceStatus] = [],
-        guestServiceResources: [RuntimeGuestServiceResource] = [],
-        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
-        guestStackProbeErrors: [GuestRuntimeProbeError] = [],
-        guestServicesReadError: String? = nil,
-        cpuUsagePercent: Double? = nil,
-        memory: ResourceUsage? = nil,
-        vitalServerMemory: RuntimeContainerMemoryUsage? = nil,
-        recorderIngressMemory: RuntimeContainerMemoryUsage? = nil,
-        redisMemory: RuntimeContainerMemoryUsage? = nil,
-        systemDisk: ResourceUsage? = nil,
-        dataStorage: ResourceUsage? = nil,
-        dataStorageError: String? = nil,
-        dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
-        dataDirectoryStatsError: String? = nil,
-        proxyPort: Int? = nil,
-        proxyPortReadState: RuntimeProxyPortReadState? = nil,
-        failureReasons: [RuntimeFailureReason] = [],
-        redisRelayStatus: RuntimeRedisRelayStatus? = nil
+        role: PlatformServiceRole,
+        state: PlatformServiceState,
+        readError: String? = nil
     ) {
-        self.runtimeInstalled = runtimeInstalled
-        self.runtimeInstallationState = runtimeInstallationState
-        self.vmServiceLoaded = vmServiceLoaded
-        self.proxyServiceLoaded = proxyServiceLoaded
-        self.guestLogSyncServiceLoaded = guestLogSyncServiceLoaded
-        self.sleepPreventionServiceLoaded = sleepPreventionServiceLoaded
-        self.watchdogServiceLoaded = watchdogServiceLoaded
-        self.vmServiceState = vmServiceState
-        self.proxyServiceState = proxyServiceState
-        self.guestLogSyncServiceState = guestLogSyncServiceState
-        self.sleepPreventionServiceState = sleepPreventionServiceState
-        self.watchdogServiceState = watchdogServiceState
-        self.vmServiceStateSource = vmServiceStateSource
-        self.proxyServiceStateSource = proxyServiceStateSource
-        self.guestLogSyncServiceStateSource = guestLogSyncServiceStateSource
-        self.sleepPreventionServiceStateSource = sleepPreventionServiceStateSource
-        self.watchdogServiceStateSource = watchdogServiceStateSource
-        self.runtimeState = runtimeState
-        self.readIssues = readIssues
-        self.runtimeVersion = runtimeVersion
-        self.latestBackup = latestBackup
-        self.vmState = vmState
-        self.vmErrors = vmErrors
-        self.vmIP = vmIP
-        self.guestHTTP = guestHTTP
-        self.hostProxyHTTP = hostProxyHTTP
-        self.runtimeControlHTTP = runtimeControlHTTP
-        self.runtimeControlStartedAt = runtimeControlStartedAt
-        self.redisUIHTTP = redisUIHTTP
-        self.swaggerUIHTTP = swaggerUIHTTP
-        self.guestServicesReadState = guestServicesReadState
-        self.guestServices = guestServices
-        self.guestServiceStatuses = guestServiceStatuses
-        self.guestServiceResources = guestServiceResources
-        self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
-        self.guestStackProbeErrors = guestStackProbeErrors
-        self.guestServicesReadError = guestServicesReadError
-        self.cpuUsagePercent = cpuUsagePercent
-        self.memory = memory
-        self.vitalServerMemory = vitalServerMemory
-        self.recorderIngressMemory = recorderIngressMemory
-        self.redisMemory = redisMemory
-        self.systemDisk = systemDisk
-        self.dataStorage = dataStorage
-        self.dataStorageError = dataStorageError
-        self.dataDirectoryStats = dataDirectoryStats
-        self.dataDirectoryStatsError = dataDirectoryStatsError
-        self.proxyPort = proxyPort
-        self.proxyPortReadState = proxyPortReadState
-        self.failureReasons = failureReasons
-        self.redisRelayStatus = redisRelayStatus
+        self.role = role
+        self.state = state
+        self.readError = readError
+    }
+
+    public init(role: PlatformServiceRole, state: RuntimeServiceState) {
+        self.role = role
+        switch state {
+        case .loaded:
+            self.state = .running
+            self.readError = nil
+        case .notLoaded:
+            self.state = .stopped
+            self.readError = nil
+        case .readFailed(let reason):
+            self.state = .readFailed
+            self.readError = reason.isEmpty ? "platform service state read failed" : reason
+        case .permissionDenied(let reason):
+            self.state = .permissionDenied
+            self.readError = reason.isEmpty ? "platform service state permission denied" : reason
+        case .unknown(let reason):
+            self.state = .unavailable
+            self.readError = reason.isEmpty ? "platform service state unavailable" : reason
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case role
+        case state
+        case readError
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let guestServicesReadState = try container.decodeIfPresent(
-            RuntimeGuestServicesReadState.self,
-            forKey: .guestServicesReadState
-        ) ?? .unavailable
-        let guestServiceStatuses: [RuntimeGuestControlServiceStatus]
-        let guestServiceResources: [RuntimeGuestServiceResource]
-        let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
-        switch guestServicesReadState {
-        case .loaded:
-            guestServiceStatuses = try Self.decodeRequiredArray(
-                [RuntimeGuestControlServiceStatus].self,
-                forKey: .guestServiceStatuses,
-                from: container
+        let role = try container.decode(PlatformServiceRole.self, forKey: .role)
+        let state = try container.decode(PlatformServiceState.self, forKey: .state)
+        guard container.contains(.readError) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.readError,
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Platform service readError must be explicit null or string"
+                )
             )
-            guestServiceResources = try Self.decodeRequiredArray(
-                [RuntimeGuestServiceResource].self,
-                forKey: .guestServiceResources,
-                from: container
-            )
-            guestServiceResourceReadIssues = try Self.decodeRequiredArray(
-                [RuntimeGuestServiceResourceReadIssue].self,
-                forKey: .guestServiceResourceReadIssues,
-                from: container
-            )
-        case .unavailable, .failed:
-            guestServiceStatuses = try container.decodeIfPresent(
-                [RuntimeGuestControlServiceStatus].self,
-                forKey: .guestServiceStatuses
-            ) ?? []
-            guestServiceResources = try container.decodeIfPresent(
-                [RuntimeGuestServiceResource].self,
-                forKey: .guestServiceResources
-            ) ?? []
-            guestServiceResourceReadIssues = try container.decodeIfPresent(
-                [RuntimeGuestServiceResourceReadIssue].self,
-                forKey: .guestServiceResourceReadIssues
-            ) ?? []
         }
-        let guestServicesReadError = try container.decodeIfPresent(
-            String.self,
-            forKey: .guestServicesReadError
-        )
-        if guestServicesReadState == .failed,
-           guestServicesReadError?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+        let readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        let readErrorIsBlank = readError?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+        if [.unavailable, .readFailed, .permissionDenied, .failed].contains(state) && readErrorIsBlank {
             throw DecodingError.dataCorruptedError(
-                forKey: .guestServicesReadError,
+                forKey: .readError,
                 in: container,
-                debugDescription: "failed guest service reads must include guestServicesReadError"
+                debugDescription: "failed Platform service state must include readError"
             )
         }
+        self.init(role: role, state: state, readError: readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(role, forKey: .role)
+        try container.encode(state, forKey: .state)
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+
+    public var runtimeServiceState: RuntimeServiceState {
+        switch state {
+        case .running:
+            .loaded
+        case .stopped, .notInstalled:
+            .notLoaded
+        case .unavailable:
+            .unknown(readError ?? "platform service state unavailable")
+        case .readFailed:
+            .readFailed(readError ?? "platform service state read failed")
+        case .permissionDenied:
+            .permissionDenied(readError ?? "platform service state permission denied")
+        case .failed:
+            .readFailed(readError ?? "platform service state read failed")
+        }
+    }
+}
+
+public struct PlatformState: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case runtimeInstallationState
+        case services
+        case platformHealth
+        case readIssues
+        case installedVersion
+        case latestBackup
+        case runtimeProviderState
+        case runtimeProviderErrors
+        case runtimeEndpoint
+        case runtimeControllerHTTP
+        case publicProxyHTTP
+        case platformAPIHTTP
+        case platformAPIStartedAt
+        case dataStorage
+        case dataStorageError
+        case dataDirectoryStats
+        case dataDirectoryStatsError
+        case publicProxyPort
+        case publicProxyPortReadState
+        case healthIssues
+    }
+
+    public var runtimeInstallationState: RuntimeFileState
+    public var services: [PlatformServiceStatus]
+    public var platformHealth: RuntimeState?
+    public var readIssues: [PlatformStateReadIssue]
+    public var installedVersion: String?
+    public var latestBackup: String?
+    public var runtimeProviderState: RuntimeVMState?
+    public var runtimeProviderErrors: [RuntimeVMError]?
+    public var runtimeEndpoint: String?
+    public var runtimeControllerHTTP: String?
+    public var publicProxyHTTP: String?
+    public var platformAPIHTTP: String?
+    public var platformAPIStartedAt: String?
+    public var dataStorage: ResourceUsage?
+    public var dataStorageError: String?
+    public var dataDirectoryStats: RuntimeDataDirectoryStats?
+    public var dataDirectoryStatsError: String?
+    public var publicProxyPort: Int?
+    public var publicProxyPortReadState: RuntimeProxyPortReadState?
+    public var healthIssues: [RuntimeFailureReason]
+
+    public init(
+        runtimeInstallationState: RuntimeFileState,
+        services: [PlatformServiceStatus] = [],
+        platformHealth: RuntimeState? = nil,
+        readIssues: [PlatformStateReadIssue] = [],
+        installedVersion: String? = nil,
+        latestBackup: String? = nil,
+        runtimeProviderState: RuntimeVMState? = nil,
+        runtimeProviderErrors: [RuntimeVMError]? = nil,
+        runtimeEndpoint: String? = nil,
+        runtimeControllerHTTP: String? = nil,
+        publicProxyHTTP: String? = nil,
+        platformAPIHTTP: String? = nil,
+        platformAPIStartedAt: String? = nil,
+        dataStorage: ResourceUsage? = nil,
+        dataStorageError: String? = nil,
+        dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
+        dataDirectoryStatsError: String? = nil,
+        publicProxyPort: Int? = nil,
+        publicProxyPortReadState: RuntimeProxyPortReadState? = nil,
+        healthIssues: [RuntimeFailureReason] = []
+    ) {
+        self.runtimeInstallationState = runtimeInstallationState
+        self.services = services
+        self.platformHealth = platformHealth
+        self.readIssues = readIssues
+        self.installedVersion = installedVersion
+        self.latestBackup = latestBackup
+        self.runtimeProviderState = runtimeProviderState
+        self.runtimeProviderErrors = runtimeProviderErrors
+        self.runtimeEndpoint = runtimeEndpoint
+        self.runtimeControllerHTTP = runtimeControllerHTTP
+        self.publicProxyHTTP = publicProxyHTTP
+        self.platformAPIHTTP = platformAPIHTTP
+        self.platformAPIStartedAt = platformAPIStartedAt
+        self.dataStorage = dataStorage
+        self.dataStorageError = dataStorageError
+        self.dataDirectoryStats = dataDirectoryStats
+        self.dataDirectoryStatsError = dataDirectoryStatsError
+        self.publicProxyPort = publicProxyPort
+        self.publicProxyPortReadState = publicProxyPortReadState
+        self.healthIssues = healthIssues
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
-            runtimeInstalled: try container.decodeIfPresent(Bool.self, forKey: .runtimeInstalled) ?? false,
-            runtimeInstallationState: try container.decodeIfPresent(RuntimeFileState.self, forKey: .runtimeInstallationState),
-            vmServiceLoaded: try container.decodeIfPresent(Bool.self, forKey: .vmServiceLoaded) ?? false,
-            proxyServiceLoaded: try container.decodeIfPresent(Bool.self, forKey: .proxyServiceLoaded) ?? false,
-            guestLogSyncServiceLoaded: try container.decodeIfPresent(Bool.self, forKey: .guestLogSyncServiceLoaded) ?? false,
-            sleepPreventionServiceLoaded: try container.decodeIfPresent(Bool.self, forKey: .sleepPreventionServiceLoaded),
-            watchdogServiceLoaded: try container.decodeIfPresent(Bool.self, forKey: .watchdogServiceLoaded) ?? false,
-            vmServiceState: try container.decodeIfPresent(RuntimeServiceState.self, forKey: .vmServiceState),
-            proxyServiceState: try container.decodeIfPresent(RuntimeServiceState.self, forKey: .proxyServiceState),
-            guestLogSyncServiceState: try container.decodeIfPresent(RuntimeServiceState.self, forKey: .guestLogSyncServiceState),
-            sleepPreventionServiceState: try container.decodeIfPresent(RuntimeServiceState.self, forKey: .sleepPreventionServiceState),
-            watchdogServiceState: try container.decodeIfPresent(RuntimeServiceState.self, forKey: .watchdogServiceState),
-            vmServiceStateSource: try container.decodeIfPresent(RuntimeServiceStateSource.self, forKey: .vmServiceStateSource),
-            proxyServiceStateSource: try container.decodeIfPresent(RuntimeServiceStateSource.self, forKey: .proxyServiceStateSource),
-            guestLogSyncServiceStateSource: try container.decodeIfPresent(RuntimeServiceStateSource.self, forKey: .guestLogSyncServiceStateSource),
-            sleepPreventionServiceStateSource: try container.decodeIfPresent(RuntimeServiceStateSource.self, forKey: .sleepPreventionServiceStateSource),
-            watchdogServiceStateSource: try container.decodeIfPresent(RuntimeServiceStateSource.self, forKey: .watchdogServiceStateSource),
-            runtimeState: try container.decodeIfPresent(RuntimeState.self, forKey: .runtimeState),
-            readIssues: try container.decodeIfPresent([RuntimeStatusReadIssue].self, forKey: .readIssues) ?? [],
-            runtimeVersion: try container.decodeIfPresent(String.self, forKey: .runtimeVersion),
+            runtimeInstallationState: try container.decode(RuntimeFileState.self, forKey: .runtimeInstallationState),
+            services: try container.decode([PlatformServiceStatus].self, forKey: .services),
+            platformHealth: try container.decodeIfPresent(RuntimeState.self, forKey: .platformHealth),
+            readIssues: try container.decodeIfPresent([PlatformStateReadIssue].self, forKey: .readIssues) ?? [],
+            installedVersion: try container.decodeIfPresent(String.self, forKey: .installedVersion),
             latestBackup: try container.decodeIfPresent(String.self, forKey: .latestBackup),
-            vmState: try container.decodeIfPresent(RuntimeVMState.self, forKey: .vmState),
-            vmErrors: try container.decodeIfPresent([RuntimeVMError].self, forKey: .vmErrors),
-            vmIP: try container.decodeIfPresent(String.self, forKey: .vmIP),
-            guestHTTP: try container.decodeIfPresent(String.self, forKey: .guestHTTP),
-            hostProxyHTTP: try container.decodeIfPresent(String.self, forKey: .hostProxyHTTP),
-            runtimeControlHTTP: try container.decodeIfPresent(String.self, forKey: .runtimeControlHTTP),
-            runtimeControlStartedAt: try container.decodeIfPresent(String.self, forKey: .runtimeControlStartedAt),
-            redisUIHTTP: try container.decodeIfPresent(String.self, forKey: .redisUIHTTP),
-            swaggerUIHTTP: try container.decodeIfPresent(String.self, forKey: .swaggerUIHTTP),
-            guestServicesReadState: guestServicesReadState,
-            guestServices: try container.decodeIfPresent([String].self, forKey: .guestServices),
-            guestServiceStatuses: guestServiceStatuses,
-            guestServiceResources: guestServiceResources,
-            guestServiceResourceReadIssues: guestServiceResourceReadIssues,
-            guestStackProbeErrors: try container.decodeIfPresent([GuestRuntimeProbeError].self, forKey: .guestStackProbeErrors) ?? [],
-            guestServicesReadError: guestServicesReadError,
-            cpuUsagePercent: try container.decodeIfPresent(Double.self, forKey: .cpuUsagePercent),
-            memory: try container.decodeIfPresent(ResourceUsage.self, forKey: .memory),
-            vitalServerMemory: try container.decodeIfPresent(RuntimeContainerMemoryUsage.self, forKey: .vitalServerMemory),
-            recorderIngressMemory: try container.decodeIfPresent(RuntimeContainerMemoryUsage.self, forKey: .recorderIngressMemory),
-            redisMemory: try container.decodeIfPresent(RuntimeContainerMemoryUsage.self, forKey: .redisMemory),
-            systemDisk: try container.decodeIfPresent(ResourceUsage.self, forKey: .systemDisk),
+            runtimeProviderState: try container.decodeIfPresent(RuntimeVMState.self, forKey: .runtimeProviderState),
+            runtimeProviderErrors: try container.decodeIfPresent([RuntimeVMError].self, forKey: .runtimeProviderErrors),
+            runtimeEndpoint: try container.decodeIfPresent(String.self, forKey: .runtimeEndpoint),
+            runtimeControllerHTTP: try container.decodeIfPresent(String.self, forKey: .runtimeControllerHTTP),
+            publicProxyHTTP: try container.decodeIfPresent(String.self, forKey: .publicProxyHTTP),
+            platformAPIHTTP: try container.decodeIfPresent(String.self, forKey: .platformAPIHTTP),
+            platformAPIStartedAt: try container.decodeIfPresent(String.self, forKey: .platformAPIStartedAt),
             dataStorage: try container.decodeIfPresent(ResourceUsage.self, forKey: .dataStorage),
             dataStorageError: try container.decodeIfPresent(String.self, forKey: .dataStorageError),
             dataDirectoryStats: try container.decodeIfPresent(RuntimeDataDirectoryStats.self, forKey: .dataDirectoryStats),
             dataDirectoryStatsError: try container.decodeIfPresent(String.self, forKey: .dataDirectoryStatsError),
-            proxyPort: try container.decodeIfPresent(Int.self, forKey: .proxyPort),
-            proxyPortReadState: try container.decodeIfPresent(RuntimeProxyPortReadState.self, forKey: .proxyPortReadState),
-            failureReasons: try container.decodeIfPresent([RuntimeFailureReason].self, forKey: .failureReasons) ?? [],
-            redisRelayStatus: try container.decodeIfPresent(RuntimeRedisRelayStatus.self, forKey: .redisRelayStatus)
+            publicProxyPort: try container.decodeIfPresent(Int.self, forKey: .publicProxyPort),
+            publicProxyPortReadState: try container.decodeIfPresent(RuntimeProxyPortReadState.self, forKey: .publicProxyPortReadState),
+            healthIssues: try container.decodeIfPresent([RuntimeFailureReason].self, forKey: .healthIssues) ?? []
         )
     }
 
-    private static func decodeRequiredArray<T: Decodable>(
-        _ type: [T].Type,
-        forKey key: CodingKeys,
-        from container: KeyedDecodingContainer<CodingKeys>
-    ) throws -> [T] {
-        guard container.contains(key) else {
-            throw DecodingError.keyNotFound(
-                key,
-                DecodingError.Context(
-                    codingPath: container.codingPath,
-                    debugDescription: "loaded guest service reads must include \(key.stringValue)"
-                )
-            )
-        }
-        return try container.decode(type, forKey: key)
+    public func serviceState(_ role: PlatformServiceRole) -> RuntimeServiceState? {
+        services.first(where: { $0.role == role })?.runtimeServiceState
     }
 
 }

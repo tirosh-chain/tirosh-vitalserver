@@ -13,18 +13,20 @@ class StatusOwnerPublishResult:
     error: str | None = None
 
 
+class StatusOwnerConfigurationError(RuntimeError):
+    pass
+
+
 class GuestControlStatusOwnerPublisher:
-    def __init__(self, *, owner_url: str | None, timeout_seconds: float = 3.0) -> None:
-        self._owner_url = owner_url.strip() if owner_url else None
+    def __init__(self, *, owner_url: str, timeout_seconds: float = 3.0) -> None:
+        self._owner_url = owner_url.strip()
+        if not self._owner_url:
+            raise StatusOwnerConfigurationError(
+                "Redis relay status owner URL is required.",
+            )
         self._timeout_seconds = timeout_seconds
 
     def publish(self, document: dict[str, Any]) -> StatusOwnerPublishResult:
-        if self._owner_url is None:
-            return StatusOwnerPublishResult(
-                published=False,
-                error="Redis relay status owner URL is not configured.",
-            )
-
         request = urllib.request.Request(
             self._owner_url,
             data=json.dumps(document, sort_keys=True).encode("utf-8"),

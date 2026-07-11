@@ -32,6 +32,8 @@ E2E_LOOP_COUNT ?= 0
 E2E_LOOP_INTERVAL ?= 10
 CHAOS_LOOP_COUNT ?= 5
 CHAOS_LOOP_INTERVAL ?= 0
+RUNTIME_V2_CONFORMANCE_BASE_URL ?= http://127.0.0.1:18321
+RUNTIME_V2_CONFORMANCE_ARGS ?=
 
 include make/submodule.mk
 include make/proxy.mk
@@ -40,6 +42,7 @@ include make/compose.mk
 include make/testkit.mk
 include make/python.mk
 include make/pwa.mk
+include make/platform-agent.mk
 include make/vm.mk
 
 .PHONY: \
@@ -54,7 +57,7 @@ include make/vm.mk
 	dist/install/dev dist/install/dev/verified dist/installed/health dist/installed/smoke dist/uninstall/dev \
 	runtime/up runtime/up-bridged runtime/down runtime/status runtime/health \
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
-	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke runtime/proof/smoke runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/review runtime/proof/acceptance \
+	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke runtime/conformance runtime/proof/conformance runtime/proof/smoke runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/review runtime/proof/acceptance \
 	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop \
 	docs/build docs/serve \
 	devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
@@ -141,10 +144,14 @@ runtime/proof/python-focused:
 		packages/vitalserver-devtools/tests/unit/test_guest_image_usecases.py \
 		packages/vitalserver-devtools/tests/unit/test_rootfs_base.py \
 		packages/vitalserver-devtools/tests/unit/test_runtime_lifecycle_wait.py
+runtime/proof/conformance:
+	$(PYTEST_RUNNER) packages/vitalserver-devtools/tests/unit/test_runtime_v2_conformance.py
+runtime/conformance:
+	$(PYTHON) scripts/runtime_v2_conformance.py --base-url "$(RUNTIME_V2_CONFORMANCE_BASE_URL)" $(RUNTIME_V2_CONFORMANCE_ARGS)
 runtime/proof/swift-focused:
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --package-path "$(VM_SWIFT_PACKAGE_DIR)" --filter "$(VM_RUNTIME_PROOF_SWIFT_FOCUSED_FILTER)"
 runtime/proof/http-e2e: runtime/e2e/smoke
-runtime/proof/review: runtime/proof/no-v1-service-state runtime/proof/python-focused pwa/check pwa/test pwa/build
+runtime/proof/review: runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/conformance platform-agent/proof pwa/check pwa/test pwa/build
 runtime/proof/acceptance: runtime/proof/review runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/smoke
 runtime/permission/audit:
 	$(PYTHON) scripts/runtime_permission_audit.py $(RUNTIME_PERMISSION_AUDIT_ARGS)
@@ -393,6 +400,9 @@ help/runtime:
 	@printf "  runtime/proof/no-v1-service-state\n"
 	@printf "                                Static proof that product service state does not use v1 files\n"
 	@printf "  runtime/proof/python-focused     Run focused Python Runtime v2 product/package tests\n"
+	@printf "  runtime/proof/conformance        Test the OS-neutral Platform/Runtime conformance rules\n"
+	@printf "  platform-agent/proof             Test and offline cross-build Linux/Windows Platform Agents\n"
+	@printf "  runtime/conformance              Validate a live implementation at RUNTIME_V2_CONFORMANCE_BASE_URL\n"
 	@printf "  runtime/proof/swift-focused      Run focused Swift Host-side Runtime v2 acceptance tests\n"
 	@printf "  runtime/proof/http-e2e           Run Runtime Control HTTP E2E smoke test\n"
 	@printf "  runtime/proof/review             Run static, Python, and PWA Runtime v2 review gates\n"

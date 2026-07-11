@@ -597,258 +597,53 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try Data(repeating: 1, count: 5).write(to: nested.appendingPathComponent("two.vital"))
         try Data(repeating: 1, count: 7).write(to: nested.appendingPathComponent(".hidden.vital"))
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
-        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+        let status = reader.loadPlatformState(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
 
         XCTAssertEqual(status.dataDirectoryStats?.fileCount, 2)
         XCTAssertEqual(status.dataDirectoryStats?.sizeBytes, 8)
         XCTAssertNil(status.dataDirectoryStatsError)
     }
 
-    func testStatusReaderLoadsGuestServicesThroughGuestStackStatus() throws {
+    func testStatusReaderDoesNotAggregateRuntimeStackResources() throws {
         let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
-        let vmIPFile = directory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
-        try "192.168.64.2\n".write(to: vmIPFile, atomically: true, encoding: .utf8)
-        try writeRuntimeStatusDocument(
-            runtimeStatus,
-            extraFields: """
-              "vmIP": "192.168.64.2",
-            """
-        )
         let gateway = FakeRuntimeGuestControlGateway(
-            services: ["app", "postgres"],
+            services: ["app"],
             statuses: [
                 "app": RuntimeGuestControlServiceStatus(
                     service: "app",
                     state: "running",
                     health: "healthy",
-                    observedAt: "2026-07-01T00:00:00+00:00",
-                    memory: ResourceUsage(usedBytes: 1, totalBytes: 10)
-                ),
-                "postgres": RuntimeGuestControlServiceStatus(
-                    service: "postgres",
-                    state: "running",
-                    health: "healthy",
                     observedAt: "2026-07-01T00:00:00+00:00"
                 ),
-            ],
-            cpuUsagePercent: 12.5,
-            memory: ResourceUsage(usedBytes: 2, totalBytes: 10),
-            systemDisk: ResourceUsage(usedBytes: 3, totalBytes: 10),
-            probeErrors: [
-                GuestRuntimeProbeError(
-                    source: "docker stats",
-                    message: "timed out after 1 seconds"
-                )
             ]
         )
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.2"),
             guestControlGateway: { gateway }
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        _ = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.guestServicesReadState, .loaded)
-        XCTAssertEqual(status.guestServices, ["app", "postgres"])
-        XCTAssertEqual(status.guestServiceStatuses.map(\.service), ["app", "postgres"])
-        XCTAssertEqual(status.guestServiceResources.map(\.service), ["app", "postgres"])
-        XCTAssertEqual(status.guestServiceResources.first?.status.observedState, "running")
-        XCTAssertEqual(status.guestServiceResourceReadIssues, [])
-        XCTAssertEqual(status.cpuUsagePercent, 12.5)
-        XCTAssertEqual(status.memory, ResourceUsage(usedBytes: 2, totalBytes: 10))
-        XCTAssertEqual(status.systemDisk, ResourceUsage(usedBytes: 3, totalBytes: 10))
-        XCTAssertEqual(status.guestStackProbeErrors, [
-            GuestRuntimeProbeError(
-                source: "docker stats",
-                message: "timed out after 1 seconds"
-            )
-        ])
-        XCTAssertEqual(status.vitalServerMemory, RuntimeContainerMemoryUsage(usedBytes: 1, limitBytes: 10))
-        XCTAssertNil(status.guestServicesReadError)
-        XCTAssertEqual(gateway.stackStatusCount, 1)
+        XCTAssertEqual(gateway.stackStatusCount, 0)
         XCTAssertEqual(gateway.listServicesCount, 0)
         XCTAssertEqual(gateway.statusRequests, [])
-        XCTAssertEqual(gateway.resourceRequests, ["app", "postgres"])
+        XCTAssertEqual(gateway.resourceRequests, [])
+        XCTAssertEqual(gateway.redisRelayStatusCount, 0)
     }
-
-    func testStatusReaderLoadsRedisRelayStatusThroughGuestControlAPI() throws {
-        let directory = try temporaryDirectory()
-        let vmIPFile = directory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
-        try "192.168.64.2\n".write(to: vmIPFile, atomically: true, encoding: .utf8)
-        let redisRelayStatus = RuntimeRedisRelayStatus(
-            observedAt: "2026-07-01T00:00:00Z",
-            enabled: true,
-            state: "running",
-            scope: "vital_reconstruction",
-            targetUrl: "redis://relay.example:6379/0",
-            targetUsernameConfigured: true,
-            targetPasswordConfigured: true,
-            settingsFingerprint: "relay-settings",
-            batches: 3,
-            totals: RuntimeRedisRelayBatch(copied: 8)
-        )
-        let gateway = FakeRuntimeGuestControlGateway(
-            services: ["app"],
-            statuses: [
-                    "app": RuntimeGuestControlServiceStatus(
-                        service: "app",
-                        state: "running",
-                        health: "healthy",
-                        observedAt: "2026-07-01T00:00:00+00:00"
-                    ),
-            ],
-            redisRelayStatusReadResult: RuntimeRedisRelayStatusReadResult(
-                document: redisRelayStatus,
-                readError: nil
-            )
-        )
-        let reader = SystemRuntimeStatusReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
-            guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.2"),
-            guestControlGateway: { gateway }
-        )
-
-        let status = reader.loadStatus(settings: RuntimeSettings())
-
-        XCTAssertEqual(status.redisRelayStatus, redisRelayStatus)
-        XCTAssertEqual(gateway.redisRelayStatusCount, 1)
-    }
-
-    func testStatusReaderPreservesGuestStackStatusReadFailure() throws {
-        let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
-        let vmIPFile = directory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
-        try "192.168.64.2\n".write(to: vmIPFile, atomically: true, encoding: .utf8)
-        try writeRuntimeStatusDocument(
-            runtimeStatus,
-            extraFields: """
-              "vmIP": "192.168.64.2",
-            """
-        )
-        let gateway = FakeRuntimeGuestControlGateway(
-            services: ["app"],
-            statuses: [:],
-            stackStatusFailure: RuntimeGuestControlGatewayTestError(message: "stack status timed out")
-        )
-        let reader = SystemRuntimeStatusReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
-            guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.2"),
-            guestControlGateway: { gateway }
-        )
-
-        let status = reader.loadStatus(settings: RuntimeSettings())
-
-        XCTAssertEqual(status.guestServicesReadState, .failed)
-        XCTAssertNil(status.guestServices)
-        XCTAssertEqual(status.guestServiceStatuses, [])
-        XCTAssertTrue(status.guestServicesReadError?.contains("stack status timed out") == true)
-    }
-
-    func testStatusReaderDoesNotReadGuestServicesWhenVMIPIsMissing() throws {
-        let directory = try temporaryDirectory()
-        let gateway = FakeRuntimeGuestControlGateway(
-            services: ["app"],
-            statuses: [
-                "app": RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "healthy",
-                    observedAt: "2026-07-01T00:00:00+00:00"
-                ),
-            ]
-        )
-        let reader = SystemRuntimeStatusReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
-            guestAddressProvider: stubGuestAddressProvider(read: .missing("Guest address resource missing")),
-            guestControlGateway: { gateway }
-        )
-
-        let status = reader.loadStatus(settings: RuntimeSettings())
-
-        XCTAssertEqual(status.guestServicesReadState, .unavailable)
-        XCTAssertNil(status.guestServices)
-        XCTAssertEqual(status.guestServiceStatuses, [])
-        XCTAssertNil(status.guestServicesReadError)
-        XCTAssertEqual(gateway.listServicesCount, 0)
-        XCTAssertEqual(gateway.stackStatusCount, 0)
-        XCTAssertEqual(gateway.statusRequests, [])
-    }
-
-    func testStatusReaderDoesNotUseRuntimeStateVMIPForGuestServices() throws {
-        let directory = try temporaryDirectory()
-        let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
-        try #"{"vmIP":"192.168.64.2","guestHTTP":"200"}"#.write(to: runtimeState, atomically: true, encoding: .utf8)
-        let gateway = FakeRuntimeGuestControlGateway(
-            services: ["app"],
-            statuses: [
-                "app": RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "healthy",
-                    observedAt: "2026-07-01T00:00:00+00:00"
-                ),
-            ]
-        )
-        let reader = SystemRuntimeStatusReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
-            guestAddressProvider: stubGuestAddressProvider(read: .missing("Guest address resource missing")),
-            guestControlGateway: { gateway }
-        )
-
-        let status = reader.loadStatus(settings: RuntimeSettings())
-
-        XCTAssertEqual(status.guestServicesReadState, .unavailable)
-        XCTAssertEqual(gateway.stackStatusCount, 0)
-    }
-
-    func testStatusReaderDoesNotUseRuntimeStatusVMIPForGuestServices() throws {
-        let directory = try temporaryDirectory()
-        let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
-        try writeRuntimeStatusDocument(
-            runtimeStatus,
-            extraFields: """
-              "vmIP": "192.168.64.2",
-            """
-        )
-        let gateway = FakeRuntimeGuestControlGateway(
-            services: ["app"],
-            statuses: [
-                "app": RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "healthy",
-                    observedAt: "2026-07-01T00:00:00+00:00"
-                ),
-            ]
-        )
-        let reader = SystemRuntimeStatusReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
-            guestAddressProvider: stubGuestAddressProvider(read: .missing("Guest address resource missing")),
-            guestControlGateway: { gateway }
-        )
-
-        let status = reader.loadStatus(settings: RuntimeSettings())
-
-        XCTAssertNil(status.vmIP)
-        XCTAssertEqual(status.guestServicesReadState, .unavailable)
-        XCTAssertEqual(gateway.stackStatusCount, 0)
-    }
-
 
     func testStatusReaderReportsDataDirectoryStatsReadFailure() throws {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryReadFailureFileStore(readableDirectory: dataDirectory)
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+        let status = reader.loadPlatformState(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
 
         XCTAssertNil(status.dataDirectoryStats)
         XCTAssertNotNil(status.dataDirectoryStatsError)
@@ -857,12 +652,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderReportsMissingDataDirectoryRoot() throws {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(pathStates: [dataDirectory.path: .missing])
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+        let status = reader.loadPlatformState(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
 
         XCTAssertNil(status.dataDirectoryStats)
         XCTAssertEqual(status.dataDirectoryStatsError, "data directory missing path=\(dataDirectory.path)")
@@ -871,14 +666,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderReportsDataDirectoryRootInspectionFailure() throws {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(
                 pathStates: [dataDirectory.path: .inspectFailed("permission denied")]
             )
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+        let status = reader.loadPlatformState(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
 
         XCTAssertNil(status.dataDirectoryStats)
         XCTAssertEqual(
@@ -890,14 +685,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderReportsUnexpectedDataDirectoryRootState() throws {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files")
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(
                 pathStates: [dataDirectory.path: .file]
             )
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+        let status = reader.loadPlatformState(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
 
         XCTAssertNil(status.dataDirectoryStats)
         XCTAssertEqual(
@@ -910,7 +705,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
         let staleEntry = dataDirectory.appendingPathComponent("stale.vital")
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(
                 pathStates: [
@@ -923,7 +718,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             )
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+        let status = reader.loadPlatformState(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
 
         XCTAssertNil(status.dataDirectoryStats)
         XCTAssertEqual(
@@ -934,12 +729,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testStatusReaderReportsDataStorageUsageReadFailure() throws {
         let directory = try temporaryDirectory()
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             storageUsageProvider: StubStorageUsageProvider(result: .failed("volume read failed"))
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: "/Volumes/Vital Files"))
+        let status = reader.loadPlatformState(settings: RuntimeSettings(vitalFilesDirectory: "/Volumes/Vital Files"))
 
         XCTAssertNil(status.dataStorage)
         XCTAssertEqual(status.dataStorageError, "volume read failed")
@@ -947,14 +742,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testStatusReaderClearsDataStorageUsageReadFailureAfterSuccessfulRead() throws {
         let directory = try temporaryDirectory()
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             storageUsageProvider: StubStorageUsageProvider(
                 result: .loaded(ResourceUsage(usedBytes: 4, totalBytes: 10))
             )
         )
 
-        let status = reader.loadStatus(
+        let status = reader.loadPlatformState(
             settings: RuntimeSettings(vitalFilesDirectory: "/Volumes/Vital Files")
         )
 
@@ -964,11 +759,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testStatusReaderDoesNotPromoteMissingRuntimeStatusDocumentToReadIssue() throws {
         let directory = try temporaryDirectory()
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertEqual(
             status.readIssues.map(\.source),
@@ -979,14 +774,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderIgnoresGuestRuntimeStateInspectionFailure() throws {
         let directory = try temporaryDirectory()
         let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(pathStates: [
                 runtimeState.path: .inspectFailed("permission denied"),
             ])
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertFalse(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
@@ -994,14 +789,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderIgnoresRuntimeStatusInspectionFailure() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(pathStates: [
                 runtimeStatus.path: .inspectFailed("permission denied"),
             ])
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeStatus" })
     }
@@ -1009,14 +804,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderIgnoresUnexpectedGuestRuntimeStatePathState() throws {
         let directory = try temporaryDirectory()
         let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             fileStore: DataDirectoryPathStateFileStore(pathStates: [
                 runtimeState.path: .directory,
             ])
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertFalse(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
@@ -1024,14 +819,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderPreservesRuntimeLauncherInspectionFailure() throws {
         let directory = try temporaryDirectory()
         let launcher = directory.appendingPathComponent("launcher")
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: launcher.path,
             runtimeExecutableState: { _ in .inspectFailed("permission denied") }
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertFalse(status.runtimeInstalled)
+        XCTAssertEqual(status.runtimeInstallationState.isExecutable, false)
         XCTAssertEqual(status.runtimeInstallationState, .inspectFailed("permission denied"))
         XCTAssertTrue(status.readIssues.contains {
             $0.source == "runtimeInstallation"
@@ -1042,14 +837,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderPreservesPresentButNonExecutableRuntimeLauncher() throws {
         let directory = try temporaryDirectory()
         let launcher = directory.appendingPathComponent("launcher")
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: launcher.path,
             runtimeExecutableState: { _ in .present }
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertFalse(status.runtimeInstalled)
+        XCTAssertEqual(status.runtimeInstallationState.isExecutable, false)
         XCTAssertEqual(status.runtimeInstallationState, .present)
         XCTAssertTrue(status.readIssues.contains {
             $0.source == "runtimeInstallation"
@@ -1082,7 +877,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "failureReasons": []
         }
         """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             proxyPortReader: RuntimeHostProxyPortReader(
                 plistPath: proxyLaunchDaemon.path,
@@ -1092,11 +887,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         var settings = RuntimeSettings()
         settings.proxyPort = 19090
 
-        let status = reader.loadStatus(settings: settings)
+        let status = reader.loadPlatformState(settings: settings)
 
-        XCTAssertNil(status.proxyPort)
+        XCTAssertNil(status.publicProxyPort)
         XCTAssertEqual(
-            status.proxyPortReadState,
+            status.publicProxyPortReadState,
             .missing("proxy launch daemon plist missing path=\(proxyLaunchDaemon.path)")
         )
         XCTAssertFalse(status.readIssues.contains { $0.source == "proxyPort" })
@@ -1108,7 +903,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
         try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
         try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 19090)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             proxyPortReader: RuntimeHostProxyPortReader(
                 plistPath: proxyLaunchDaemon.path,
@@ -1116,10 +911,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             )
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.proxyPort, 19090)
-        XCTAssertEqual(status.proxyPortReadState, .loaded(19090))
+        XCTAssertEqual(status.publicProxyPort, 19090)
+        XCTAssertEqual(status.publicProxyPortReadState, .loaded(19090))
         XCTAssertFalse(status.readIssues.contains { $0.source == "proxyPort" })
     }
 
@@ -1128,7 +923,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         let proxyLaunchDaemon = URL(fileURLWithPath: "/runtime/proxy.plist")
         try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             proxyPortReader: RuntimeHostProxyPortReader(
                 plistPath: proxyLaunchDaemon.path,
@@ -1138,10 +933,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         var settings = RuntimeSettings()
         settings.proxyPort = 19090
 
-        let status = reader.loadStatus(settings: settings)
+        let status = reader.loadPlatformState(settings: settings)
 
-        XCTAssertNil(status.proxyPort)
-        XCTAssertEqual(status.proxyPortReadState, .readFailed("proxy plist denied"))
+        XCTAssertNil(status.publicProxyPort)
+        XCTAssertEqual(status.publicProxyPortReadState, .readFailed("proxy plist denied"))
         XCTAssertFalse(status.readIssues.contains { $0.source == "proxyPort" })
     }
 
@@ -1170,15 +965,15 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         """.write(to: runtimeVersion, atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: olderBackup, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: latestBackup, withIntermediateDirectories: true)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             runtimeVersionFile: runtimeVersion,
             backupsDirectory: backupsDirectory
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.runtimeVersion, "2.0.0")
+        XCTAssertEqual(status.installedVersion, "2.0.0")
         XCTAssertEqual(
             status.latestBackup.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path },
             latestBackup.resolvingSymlinksInPath().path
@@ -1201,16 +996,16 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "vmDisk": "vm-disk.img"
         }
         """.write(to: runtimeVersion, atomically: true, encoding: .utf8)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             runtimeVersionFile: runtimeVersion,
             backupsDirectory: backupsDirectory
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertNil(status.latestBackup)
-        XCTAssertTrue(status.readIssues.contains(RuntimeStatusReadIssue(
+        XCTAssertTrue(status.readIssues.contains(PlatformStateReadIssue(
             source: "latestBackup",
             message: "backup directory missing path=\(backupsDirectory.path)"
         )))
@@ -1219,7 +1014,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderDoesNotUseOperationLeaseForCurrentStatusFields() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
-        let operationLease = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeOperationLease)
+        let operationLease = directory.appendingPathComponent(RuntimeHostOwnerFileNames.operationLease)
         try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
         try """
         {
@@ -1233,11 +1028,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "message": "applying bundle"
         }
         """.write(to: operationLease, atomically: true, encoding: .utf8)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertFalse(status.readIssues.contains { $0.source == "activeOperation" })
     }
@@ -1248,11 +1043,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let runtimeProgress = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeProgress)
         try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
         try writeRuntimeProgressDocument(runtimeProgress)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeProgress" })
     }
@@ -1277,11 +1072,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             """
         )
         try Data("not-json".utf8).write(to: runtimeProgress)
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeProgress" })
     }
@@ -1291,13 +1086,13 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
         try Data("not-json".utf8).write(to: runtimeStatus)
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.runtimeState, .critical)
+        XCTAssertEqual(status.platformHealth, .critical)
         XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeStatus" })
     }
 
@@ -1337,13 +1132,13 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         }
         """.write(to: runtimeInstallState, atomically: true, encoding: .utf8)
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.runtimeState, .critical)
+        XCTAssertEqual(status.platformHealth, .critical)
         XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeInstallState" })
         XCTAssertFalse(RuntimeActiveOperationPolicy.isInitializationInProgress(status))
     }
@@ -1353,11 +1148,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let runtimeInstallState = directory.appendingPathComponent(RuntimeWorkflowArtifactFileNames.runtimeInstallState)
         try Data("not-json".utf8).write(to: runtimeInstallState)
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
         XCTAssertFalse(status.readIssues.contains { $0.source == "runtimeInstallState" })
     }
@@ -1367,14 +1162,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let runtimeState = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
         try Data("not-json".utf8).write(to: runtimeState)
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertNil(status.memory)
-        XCTAssertNil(status.systemDisk)
         XCTAssertFalse(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
 
@@ -1407,14 +1200,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         }
         """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertNil(status.vmState)
-        XCTAssertNil(status.vmErrors)
+        XCTAssertNil(status.runtimeProviderState)
+        XCTAssertNil(status.runtimeProviderErrors)
         XCTAssertTrue(status.readIssues.contains { $0.source == "vmLifecycle" })
     }
 
@@ -1433,17 +1226,17 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             terminalReason: "guest-disk-io"
         )
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             vmLifecycleResourceReader: StubRuntimeVMLifecycleResourceReader(
                 resource: .loaded(vmLifecycle)
             )
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.vmState, .failed)
-        XCTAssertEqual(status.vmErrors, [.guestDiskIO])
+        XCTAssertEqual(status.runtimeProviderState, .failed)
+        XCTAssertEqual(status.runtimeProviderErrors, [.guestDiskIO])
         XCTAssertFalse(status.readIssues.contains { $0.source == "vmLifecycle" })
     }
 
@@ -1459,25 +1252,20 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             """
         )
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             runSyncCommand: { _, _ in
                 RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Operation not permitted")
             }
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.vmServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
-        XCTAssertEqual(status.proxyServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
-        XCTAssertEqual(status.watchdogServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
-        XCTAssertEqual(status.vmServiceStateSource, .liveLaunchd)
-        XCTAssertEqual(status.proxyServiceStateSource, .liveLaunchd)
-        XCTAssertEqual(status.watchdogServiceStateSource, .liveLaunchd)
-        XCTAssertEqual(status.guestLogSyncServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
-        XCTAssertEqual(status.guestLogSyncServiceStateSource, .liveLaunchd)
-        XCTAssertEqual(status.sleepPreventionServiceStateSource, .liveLaunchd)
-        XCTAssertFalse(status.guestLogSyncServiceLoaded)
+        XCTAssertEqual(status.serviceState(.runtimeProvider), .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertEqual(status.serviceState(.publicProxy), .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertEqual(status.serviceState(.watchdog), .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertEqual(status.serviceState(.logSync), .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertEqual(status.serviceState(.logSync)?.isLoaded, false)
         XCTAssertTrue(status.readIssues.contains {
             $0.source == "vmService"
                 && $0.message == "exitCode=1 stderr=Operation not permitted"
@@ -1498,20 +1286,15 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
     func testStatusReaderMarksServiceStatesAsLiveLaunchdWhenStatusDocumentIsMissing() throws {
         let directory = try temporaryDirectory()
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             runSyncCommand: { _, _ in
                 RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service")
             }
         )
 
-        let status = reader.loadStatus(settings: RuntimeSettings())
+        let status = reader.loadPlatformState(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.vmServiceStateSource, .liveLaunchd)
-        XCTAssertEqual(status.proxyServiceStateSource, .liveLaunchd)
-        XCTAssertEqual(status.guestLogSyncServiceStateSource, .liveLaunchd)
-        XCTAssertEqual(status.sleepPreventionServiceStateSource, .liveLaunchd)
-        XCTAssertEqual(status.watchdogServiceStateSource, .liveLaunchd)
     }
 
     func testHealthStatusPreservesHTTPProbeReadFailureAsStatusReadIssue() async throws {
@@ -1531,7 +1314,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             """
         )
 
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.33"),
             proxyPortReader: RuntimeHostProxyPortReader(
@@ -1557,10 +1340,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = await reader.loadHealthStatus(settings: RuntimeSettings())
 
-        XCTAssertNil(status.guestHTTP)
-        XCTAssertNil(status.hostProxyHTTP)
-        XCTAssertNil(status.redisUIHTTP)
-        XCTAssertNil(status.swaggerUIHTTP)
+        XCTAssertNil(status.runtimeControllerHTTP)
+        XCTAssertNil(status.publicProxyHTTP)
+        XCTAssertNil(status.runtimeControllerHTTP)
+        XCTAssertNil(status.runtimeControllerHTTP)
         XCTAssertTrue(status.readIssues.contains {
             $0.source == "guestHTTP"
                 && $0.message.contains("guest control timed out")
@@ -1602,7 +1385,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 ]
             )
         )
-        let reader = SystemRuntimeStatusReader(
+        let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             guestAddressProvider: stubGuestAddressProvider(address: "192.168.64.33"),
             guestControlGateway: { gateway },
@@ -1616,7 +1399,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = await reader.loadHealthStatus(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.guestHTTP, "unavailable")
+        XCTAssertEqual(status.runtimeControllerHTTP, "unavailable")
         XCTAssertTrue(status.readIssues.contains {
             $0.source == "guestHTTP"
                 && $0.message.contains("postgresCommandFailed")
@@ -1764,15 +1547,15 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let observabilityPaths = RuntimeObservabilityPaths(
             runtimeObservabilityDB: directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB).path
         )
-        let statusReader = SystemRuntimeStatusReader(
+        let platformStateReader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path
         )
         let observabilityReader = SystemRuntimeObservabilityReader.live(paths: observabilityPaths)
 
-        let status = statusReader.loadStatus(settings: RuntimeSettings())
+        let status = platformStateReader.loadPlatformState(settings: RuntimeSettings())
         let history = observabilityReader.loadVitalDBRecorders()
 
-        XCTAssertEqual(status.runtimeState, .critical)
+        XCTAssertEqual(status.platformHealth, .critical)
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
         XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
@@ -1847,15 +1630,15 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testMacRuntimeControlClientUsesSeparateStatusAndObservabilityReaders() {
         let client = MacRuntimeControlClient(
             releaseInfo: .generated,
-            statusReader: StubStatusReader(),
+            platformStateReader: StubStatusReader(),
             observabilityReader: StubObservabilityReader()
         )
 
-        let status = client.loadStatus(settings: RuntimeSettings())
+        let status = client.loadPlatformState(settings: RuntimeSettings())
         let events = client.loadRuntimeEvents(query: RuntimeEventQuery(limit: 1))
         let observation = client.loadVitalDBObservationSnapshot().observation
 
-        XCTAssertEqual(status.runtimeVersion, "status-reader")
+        XCTAssertEqual(status.installedVersion, "status-reader")
         XCTAssertEqual(events.matchingCount, 7)
         XCTAssertEqual(observation?.observedAt, "2026-05-30T00:00:00Z")
     }
@@ -2000,13 +1783,13 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     }
 }
 
-private final class StubStatusReader: RuntimeStatusReading {
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        RuntimeStatus(runtimeVersion: "status-reader")
+private final class StubStatusReader: PlatformStateReading {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
+        platformState(runtimeVersion: "status-reader")
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        RuntimeStatus(runtimeVersion: "status-reader-health")
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
+        platformState(runtimeVersion: "status-reader-health")
     }
 }
 
@@ -2401,7 +2184,7 @@ private struct RuntimeGuestControlGatewayTestError: Error, CustomStringConvertib
 }
 
 private func stubGuestAddressProvider(address: String) -> any RuntimeGuestAddressProvider {
-    stubGuestAddressProvider(read: .loaded(address: address, source: .runtimeControlAPI))
+    stubGuestAddressProvider(read: .loaded(address: address, source: .platformAgent))
 }
 
 private func stubGuestAddressProvider(read: RuntimeGuestAddressReadResult) -> any RuntimeGuestAddressProvider {

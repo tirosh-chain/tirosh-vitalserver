@@ -121,8 +121,8 @@ public struct RuntimeControlAPIOperationLeaseOwner: RuntimeOperationLeaseOwner {
 
     public func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
         do {
-            let response = try send(method: "GET", path: "/runtime/operation-state", body: nil)
-            let state = try decode(RuntimeOperationState.self, from: response).lease
+            let response = try send(method: "GET", path: "/platform/operations", body: nil)
+            let state = try decode(PlatformOperationState.self, from: response).lease
             return try loadResult(from: state)
         } catch {
             return .failed(errorDescription(error))
@@ -135,7 +135,7 @@ public struct RuntimeControlAPIOperationLeaseOwner: RuntimeOperationLeaseOwner {
         }
         let response = try send(
             method: "POST",
-            path: "/host/runtime/operation-lease/acquire",
+            path: "/platform/operations/lease/acquire",
             body: try encoder.encode(Body(document: document))
         )
         let mutation = try decode(RuntimeOperationLeaseMutationResponse.self, from: response)
@@ -154,7 +154,7 @@ public struct RuntimeControlAPIOperationLeaseOwner: RuntimeOperationLeaseOwner {
         }
         let response = try send(
             method: "POST",
-            path: "/host/runtime/operation-lease/heartbeat",
+            path: "/platform/operations/lease/heartbeat",
             body: try encoder.encode(Body(
                 operationId: operationId,
                 heartbeatAt: heartbeatAt,
@@ -175,7 +175,7 @@ public struct RuntimeControlAPIOperationLeaseOwner: RuntimeOperationLeaseOwner {
         }
         let response = try send(
             method: "POST",
-            path: "/host/runtime/operation-lease/release",
+            path: "/platform/operations/lease/release",
             body: try encoder.encode(Body(operationId: operationId))
         )
         let mutation = try decode(RuntimeOperationLeaseMutationResponse.self, from: response)

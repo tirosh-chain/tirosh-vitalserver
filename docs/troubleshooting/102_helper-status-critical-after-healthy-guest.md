@@ -16,11 +16,11 @@ Typical evidence:
 - `launchctl print system/ai.tirosh.vitalserver.helper.vm` shows the VM service running.
 - `launchctl print system/ai.tirosh.vitalserver.helper.proxy` shows the proxy service running.
 - `curl http://127.0.0.1/ready` or the browser reaches the VitalServer app.
-- Runtime Control `failureReasons` contain `guest-service-observation-read-failed-.../v1/stack/status`. Status diagnostics may only show the last published status context; current failure reasons come from Runtime Control owner reads, not `runtime-status.json`.
+- Runtime Control `failureReasons` contain `guest-service-observation-read-failed-.../runtime/stack`. Status diagnostics may only show the last published status context; current failure reasons come from Runtime Control owner reads, not `runtime-status.json`.
 
 ## Cause
 
-The watchdog and status readers call the Guest Control `/v1/stack/status` contract to observe guest service state. That endpoint can take more than one second during or immediately after startup because it gathers status and resource observations for multiple containers.
+The watchdog and status readers call the Guest Control `/runtime/stack` contract to observe guest service state. That endpoint can take more than one second during or immediately after startup because it gathers status and resource observations for multiple containers.
 
 A one-second Host status-read timeout can therefore classify the guest service observation as a read failure even when the VM, Guest Control API, host proxy, and VitalServer app are already reachable.
 
@@ -28,7 +28,7 @@ A one-second Host status-read timeout can therefore classify the guest service o
 
 ```bash
 VM_IP="$(cat '/Library/Application Support/VitalServerHelper/vm/data/run/vm-ip')"
-curl -sS -i --max-time 10 "http://${VM_IP}:18330/v1/stack/status"
+curl -sS -i --max-time 10 "http://${VM_IP}:18330/runtime/stack"
 /usr/local/bin/vitalserver-vm runtime guest-stack-status --guest-control-url "http://${VM_IP}:18330"
 cat '/Library/Application Support/VitalServerHelper/status/runtime-status.json'
 ```
@@ -37,7 +37,7 @@ If the direct Guest Control call succeeds but Runtime Control still reports `gue
 
 ## Fix Direction
 
-Keep `/v1/stack/status` as an explicit Guest Control contract. Do not infer guest service health from host proxy reachability or application HTML.
+Keep `/runtime/stack` as an explicit Guest Control contract. Do not infer guest service health from host proxy reachability or application HTML.
 
 The Host status-read timeout must be long enough for the explicit guest service observation to complete under normal startup load. Timeout failures should still remain visible as read failures when the endpoint exceeds that explicit budget.
 

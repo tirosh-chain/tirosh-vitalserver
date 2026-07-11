@@ -28,7 +28,6 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case backupRetention
     case logArchiveRetentionDays
     case logArchiveMaximumGiB
-    case redisRelaySettingsFile
     case restart
     case unknown(String)
 
@@ -92,8 +91,6 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .logArchiveRetentionDays
         case "--log-archive-maximum-gib":
             self = .logArchiveMaximumGiB
-        case "--redis-relay-settings-file":
-            self = .redisRelaySettingsFile
         case "--restart":
             self = .restart
         default:
@@ -161,8 +158,6 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--log-archive-retention-days"
         case .logArchiveMaximumGiB:
             return "--log-archive-maximum-gib"
-        case .redisRelaySettingsFile:
-            return "--redis-relay-settings-file"
         case .restart:
             return "--restart"
         case .unknown(let value):

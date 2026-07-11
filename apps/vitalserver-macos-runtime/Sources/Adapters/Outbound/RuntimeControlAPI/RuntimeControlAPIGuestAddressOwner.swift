@@ -33,7 +33,7 @@ public struct RuntimeControlAPIGuestAddressOwner {
     }
 
     public func loadGuestAddressResource() throws -> RuntimeGuestAddressResourceState {
-        let response = try send(method: "GET", path: "/host/runtime/guest-address", body: nil)
+        let response = try send(method: "GET", path: "/platform/runtime-endpoint", body: nil)
         return try validated(decode(RuntimeGuestAddressResourceState.self, from: response))
     }
 
@@ -43,7 +43,7 @@ public struct RuntimeControlAPIGuestAddressOwner {
         }
         let response = try send(
             method: "PUT",
-            path: "/host/runtime/guest-address",
+            path: "/platform/runtime-endpoint",
             body: try encoder.encode(Body(address: address))
         )
         return try validated(decode(RuntimeGuestAddressResourceState.self, from: response))

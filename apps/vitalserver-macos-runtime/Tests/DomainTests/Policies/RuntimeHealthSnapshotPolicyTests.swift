@@ -61,7 +61,7 @@ final class RuntimeHealthSnapshotPolicyTests: XCTestCase {
         watchdogService: RuntimeServiceState = .loaded,
         vmState: RuntimeVMState = .running,
         vmErrors: [RuntimeVMError] = [],
-        guestAddressRead: RuntimeGuestAddressReadResult = .loaded(address: "192.168.64.2", source: .runtimeControlAPI),
+        guestAddressRead: RuntimeGuestAddressReadResult = .loaded(address: "192.168.64.2", source: .platformAgent),
         vmIP: String? = "192.168.64.2",
         hostProxyHTTP: String = "200",
         guestHTTP: String = "200",

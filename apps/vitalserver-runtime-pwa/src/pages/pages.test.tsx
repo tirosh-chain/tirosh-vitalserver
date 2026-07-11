@@ -6,7 +6,9 @@ import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import { AppSettingsProvider } from "@/config/AppSettingsContext";
 
 const hooks = vi.hoisted(() => ({
-  useApplyRuntimeSettings: vi.fn(),
+  useApplyRuntimeAdminPassword: vi.fn(),
+  useApplyRuntimeRedisRelaySettings: vi.fn(),
+  useApplyRuntimeProductSettings: vi.fn(),
   useApplyUpdateBundle: vi.fn(),
   useCreateRedisBackup: vi.fn(),
   useCreateRuntimeDataBackup: vi.fn(),
@@ -15,13 +17,14 @@ const hooks = vi.hoisted(() => ({
   useDeleteVitalDBBeds: vi.fn(),
   useDeleteVitalDBRecorders: vi.fn(),
   useDeleteUpdateBackup: vi.fn(),
-  useExportHostLogs: vi.fn(),
+  useCreatePlatformSupportExport: vi.fn(),
   useCreateLabBeds: vi.fn(),
   useCreateLabRecorders: vi.fn(),
   useCreateLabSession: vi.fn(),
   useDeleteLabBeds: vi.fn(),
   useDeleteLabRecorders: vi.fn(),
-  useGuestStackStatus: vi.fn(),
+  useRuntimeStack: vi.fn(),
+  useRuntimeServiceResources: vi.fn(),
   useHideVitalDBBeds: vi.fn(),
   useHideVitalDBRecorders: vi.fn(),
   useHostBackups: vi.fn(),
@@ -41,13 +44,17 @@ const hooks = vi.hoisted(() => ({
   useRepairVMDisk: vi.fn(),
   useRestartGuestService: vi.fn(),
   useRollbackBackup: vi.fn(),
+  useRollbackRelease: vi.fn(),
   useRestoreRuntimeDataBackup: vi.fn(),
-  useRuntimeCapabilities: vi.fn(),
+  useControlCapabilities: vi.fn(),
   useRuntimeDataBackups: vi.fn(),
   useRuntimeEvents: vi.fn(),
-  useRuntimeOperationState: vi.fn(),
-  useRuntimeOverview: vi.fn(),
-  useRuntimeSettings: vi.fn(),
+  usePlatformOperationState: vi.fn(),
+  usePlatformWorkflow: vi.fn(),
+  useLatestVitalDBObservation: vi.fn(),
+  usePlatformState: vi.fn(),
+  useRuntimeProductSettings: vi.fn(),
+  useRuntimeRedisRelaySettings: vi.fn(),
   useStartLabSession: vi.fn(),
   useStartGuestService: vi.fn(),
   useStopGuestService: vi.fn(),
@@ -84,6 +91,18 @@ const commandResult = {
     outputIssues: [],
     executionIssue: null
   }
+};
+
+const completedApplyWorkflow = {
+  schemaVersion: 1 as const,
+  operationId: "update-apply-1",
+  kind: "update-apply" as const,
+  state: "completed" as const,
+  startedAt: "2026-07-01T00:00:00Z",
+  updatedAt: "2026-07-01T00:00:01Z",
+  release: null,
+  artifact: null,
+  failure: null
 };
 
 function Wrapper({ children }: PropsWithChildren) {
@@ -157,14 +176,6 @@ afterEach(() => {
 
 describe("runtime console pages", () => {
   it("renders status metrics without using container observation as recorder ingress source", () => {
-    const baseOverview = overview();
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        status: baseOverview.status
-      })
-    );
-
     renderPage(<StatusPage />);
 
     expect(screen.getByText("Overall health")).toBeInTheDocument();
@@ -194,20 +205,17 @@ describe("runtime console pages", () => {
   });
 
   it("renders same-host service URLs as browser-reachable links", () => {
-    const baseOverview = overview();
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        settings: {
-          ...baseOverview.settings,
-          vitalServerURL: "",
-          remoteConsoleURL: "",
-          publicHost: "",
-          publicPort: 18080,
-          runtimeControlPort: 18321
-        }
-      })
-    );
+    hooks.useRuntimeProductSettings.mockReturnValue(query({
+      state: "loaded",
+      settings: {
+        ...productSettings(),
+        vitalServerURL: "",
+        remoteConsoleURL: "",
+        publicHost: "",
+        publicPort: 18080
+      },
+      readError: null
+    }));
 
     renderPage(<StatusPage />);
 
@@ -215,35 +223,30 @@ describe("runtime console pages", () => {
     expect(
       screen.getByRole("link", { name: `http://${hostname}:18080/` })
     ).toHaveAttribute("href", `http://${hostname}:18080/`);
-    expect(
-      screen.getByRole("link", { name: `http://${hostname}:18321/` })
-    ).toHaveAttribute("href", `http://${hostname}:18321/`);
+    expect(screen.queryByRole("link", { name: /18321/ })).not.toBeInTheDocument();
   });
 
   it("does not infer missing status endpoint or resource fields", () => {
-    const baseOverview = overview();
-    hooks.useRuntimeOverview.mockReturnValue(
+    hooks.useRuntimeProductSettings.mockReturnValue(query({
+      state: "unavailable",
+      settings: null,
+      readError: "settings unavailable"
+    }));
+    hooks.usePlatformState.mockReturnValue(
       query({
-        ...baseOverview,
-        settings: {
-          ...baseOverview.settings,
-          vitalServerURL: "",
-          remoteConsoleURL: "",
-          publicHost: "",
-          publicPort: undefined,
-          runtimeControlPort: undefined
-        },
-        status: {
-          ...baseOverview.status,
-          proxyPort: undefined,
-          cpuUsagePercent: undefined,
-          dataDirectoryStats: {
-            sizeBytes: 4096
-          },
-          memory: {
-            usedBytes: 2048
-          }
+        ...platformState(),
+        proxyPort: undefined,
+        dataDirectoryStats: {
+          sizeBytes: 4096
         }
+      })
+    );
+    hooks.useRuntimeStack.mockReturnValue(
+      query({
+        ...guestStackStatus(),
+        cpuUsagePercent: undefined,
+        memory: { usedBytes: 2048 },
+        systemDisk: undefined
       })
     );
 
@@ -256,257 +259,91 @@ describe("runtime console pages", () => {
     expect(screen.queryByRole("link", { name: /18321/ })).not.toBeInTheDocument();
   });
 
-  it("renders settings, validation, and applies edited values", () => {
+
+  it("edits and applies Runtime-owned product settings", () => {
     const apply = pendingMutation();
-    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
+    hooks.useApplyRuntimeProductSettings.mockReturnValue(apply);
 
     renderPage(<SettingsPage />);
 
-    fireEvent.change(screen.getByLabelText("CPU cores"), {
-      target: { value: "3" }
-    });
-    fireEvent.change(screen.getByLabelText("Custom advertised host"), {
-      target: { value: "edge.local" }
-    });
+    expect(screen.getByText("Advertised product endpoints")).toBeInTheDocument();
+    expect(screen.getByText("Recorder load control")).toBeInTheDocument();
+    expect(screen.queryByText("VM resources")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Advertised port"), {
-      target: { value: "443" }
+      target: { value: "8080" }
     });
-    fireEvent.change(screen.getByLabelText("Max replay throughput"), {
-      target: { value: "25" }
-    });
-    fireEvent.change(screen.getByLabelText(/VitalServer limit/), {
-      target: { value: "40" }
-    });
-    fireEvent.change(screen.getByLabelText(/Recorder ingress limit/), {
-      target: { value: "8" }
-    });
-    fireEvent.change(screen.getByLabelText(/Redis limit/), {
-      target: { value: "12" }
-    });
-    fireEvent.click(screen.getByLabelText("Start on boot"));
-    fireEvent.click(screen.getByLabelText("Auto recovery"));
-    fireEvent.click(screen.getByLabelText("Prevent system sleep"));
-    fireEvent.click(
-      screen.getByLabelText("Activate required runtime changes after save")
-    );
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
 
-    expect(apply.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        settings: expect.objectContaining({
-          cpuCount: 3,
-          publicHost: "edge.local",
-          publicPort: 443,
-          recorderIngressSendDataReplayMaxMiBPerSecond: 25,
-          containerMemoryLimitsEnabled: true,
-          vitalServerContainerMemoryLimitMiB: 1638,
-          recorderIngressContainerMemoryLimitMiB: 328,
-          redisContainerMemoryLimitMiB: 492,
-          startOnBoot: false,
-          autoRecoveryEnabled: false,
-          preventSystemSleep: false,
-          restartAfterSave: false
-        })
-      }),
-      expect.any(Object)
+    expect(apply.mutate).toHaveBeenCalledWith({
+      settings: expect.objectContaining({ publicPort: 8080 })
+    });
+  });
+
+  it("replaces the Runtime administrator password without placing it in settings", () => {
+    const applyAdmin = pendingMutation();
+    hooks.useApplyRuntimeAdminPassword.mockReturnValue(applyAdmin);
+
+    renderPage(<SettingsPage />);
+
+    fireEvent.change(screen.getByLabelText("New administrator password"), {
+      target: { value: "new-admin-secret" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Replace password" }));
+
+    expect(applyAdmin.mutate).toHaveBeenCalledWith(
+      { password: "new-admin-secret" },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
     );
   });
 
-  it("normalizes enabled container memory limits to the combined cap", () => {
+  it("applies Runtime-owned Redis Relay settings without reading a password", () => {
+    const applyRelay = pendingMutation();
+    hooks.useApplyRuntimeRedisRelaySettings.mockReturnValue(applyRelay);
+    renderPage(<SettingsPage />);
+
+    expect(screen.getByText("Password currently configured: no")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Target URL"), {
+      target: { value: "redis://relay.example:6379/1" }
+    });
+    fireEvent.change(screen.getByLabelText("New target password"), {
+      target: { value: "relay-secret" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply relay" }));
+
+    expect(applyRelay.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: expect.objectContaining({
+          url: "redis://relay.example:6379/1",
+          password: "relay-secret"
+        })
+      })
+    );
+  });
+
+  it("keeps unavailable Runtime settings distinct from an empty settings form", () => {
+    hooks.useRuntimeProductSettings.mockReturnValue(query({
+      state: "unavailable",
+      settings: null,
+      readError: "settings owner missing"
+    }));
+
+    renderPage(<SettingsPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("settings owner missing");
+    expect(screen.queryByLabelText("Advertised port")).not.toBeInTheDocument();
+  });
+
+  it("reports invalid advanced recorder settings without applying", () => {
     const apply = pendingMutation();
-    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
-    hooks.useRuntimeSettings.mockReturnValue(query(settings({
-      memoryGiB: 4,
-      containerMemoryLimitsEnabled: true,
-      vitalServerContainerMemoryLimitMiB: 4096,
-      recorderIngressContainerMemoryLimitMiB: 512,
-      redisContainerMemoryLimitMiB: 1024
-    })));
-
+    hooks.useApplyRuntimeProductSettings.mockReturnValue(apply);
     renderPage(<SettingsPage />);
 
-    expect(screen.getByText("Container limit total: 70% / 70% of VM memory")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-
-    expect(apply.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        settings: expect.objectContaining({
-          containerMemoryLimitsEnabled: true,
-          vitalServerContainerMemoryLimitMiB: 1311,
-          recorderIngressContainerMemoryLimitMiB: 512,
-          redisContainerMemoryLimitMiB: 1024
-        })
-      }),
-      expect.any(Object)
-    );
-  });
-
-  it("enables activation automatically for container memory limit changes", () => {
-    const apply = pendingMutation();
-    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
-    hooks.useRuntimeSettings.mockReturnValue(query(settings({
-      restartAfterSave: false,
-      containerMemoryLimitsEnabled: true,
-      vitalServerContainerMemoryLimitMiB: 2048,
-      recorderIngressContainerMemoryLimitMiB: 256,
-      redisContainerMemoryLimitMiB: 512
-    })));
-
-    renderPage(<SettingsPage />);
-
-    expect(
-      screen.getByLabelText("Activate required runtime changes after save")
-    ).not.toBeChecked();
-
-    fireEvent.change(screen.getByLabelText(/VitalServer limit/), {
-      target: { value: "40" }
+    fireEvent.change(screen.getByLabelText("Recorder ingress advanced settings"), {
+      target: { value: "{" }
     });
 
-    expect(
-      screen.getByLabelText("Activate required runtime changes after save")
-    ).toBeChecked();
-
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-
-    expect(apply.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        settings: expect.objectContaining({
-          restartAfterSave: true,
-          vitalServerContainerMemoryLimitMiB: 1638
-        })
-      }),
-      expect.any(Object)
-    );
-  });
-
-  it("does not render an empty settings draft before settings load", () => {
-    hooks.useRuntimeSettings.mockReturnValue(query(undefined));
-
-    renderPage(<SettingsPage />);
-
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Settings response is incomplete"
-    );
-    expect(screen.queryByLabelText("CPU cores")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Start on boot")).not.toBeInTheDocument();
+    expect(screen.getByText(/Recorder ingress settings JSON is invalid/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
-  });
-
-  it("uses provider-owned settings values without form fallbacks", () => {
-    renderPage(<SettingsPage />);
-
-    expect(
-      screen.getByText(/Applied: Automatic backups on · 03:15 · .* · keep 7 archives/)
-    ).toBeInTheDocument();
-    expect(screen.getByText("Applied: keep 14 days · max 1 GiB")).toBeInTheDocument();
-    expect(screen.getByLabelText("VM disk GiB")).toHaveAttribute("min", "20");
-    expect(
-      screen.getByText("VM disk can only be increased. Minimum for this install is 20 GiB.")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Change activation")).toBeInTheDocument();
-    expect(
-      screen.getByText("No runtime activation required for these changes.")
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
-    const hostname = globalThis.location.hostname;
-    expect(
-      screen.getByText(`Default advertised URL: http://${hostname}:18080/`)
-    ).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("VitalServer listen port"), {
-      target: { value: "" }
-    });
-    expect(
-      screen.getByText("Default advertised URL: Proxy port is not available.")
-    ).toBeInTheDocument();
-  });
-
-  it("shows VM restart activation when vital files directory changes", () => {
-    renderPage(<SettingsPage />);
-
-    fireEvent.change(screen.getByLabelText("Vital files directory"), {
-      target: { value: "/Users/shared/new-vital" }
-    });
-    fireEvent.click(
-      screen.getByLabelText("Activate required runtime changes after save")
-    );
-
-    expect(
-      screen.getByText(
-        "Saved changes will not become active until the VM runtime restarts. Required by: Vital files directory."
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Requires VM restart. Required by: Vital files directory.")
-    ).toBeInTheDocument();
-  });
-
-  it("shows unapplied settings state for backup and log edits", () => {
-    renderPage(<SettingsPage />);
-
-    fireEvent.change(screen.getByLabelText("Backup times"), {
-      target: { value: "03:15, 15:15" }
-    });
-    fireEvent.change(screen.getByLabelText("Log archive retention"), {
-      target: { value: "10" }
-    });
-
-    expect(
-      screen.getByText(/Not applied yet\. Applied: Automatic backups on · 03:15 · .* · keep 7 archives/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Not applied yet. Applied: keep 14 days · max 1 GiB")
-    ).toBeInTheDocument();
-  });
-
-  it("does not erase custom advertised URL draft values when toggled off", () => {
-    renderPage(<SettingsPage />);
-
-    expect(screen.getByLabelText("Custom advertised host")).toHaveValue(
-      "host.local"
-    );
-
-    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
-    expect(screen.queryByLabelText("Custom advertised host")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
-    expect(screen.getByLabelText("Custom advertised host")).toHaveValue(
-      "host.local"
-    );
-  });
-
-  it("shows explicit start-on-boot disabled reasons", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(
-      query({ ...capabilities(), canControlRuntimeServices: false })
-    );
-
-    renderPage(<SettingsPage />);
-
-    expect(screen.getByLabelText("Start on boot")).toBeDisabled();
-    expect(
-      screen.getByText("Runtime service control capability is unavailable.")
-    ).toBeInTheDocument();
-  });
-
-  it("does not guess Remote Console readiness with a timed redirect after settings apply", () => {
-    const apply = mutation(commandResult);
-    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
-
-    renderPage(<SettingsPage />);
-
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    fireEvent.change(screen.getByLabelText("Remote Console port"), {
-      target: { value: "18322" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-
-    expect(setTimeoutSpy).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/Remote Console port changed to 18322/)
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Remote Console" })).not.toBeInTheDocument();
   });
 
   it("renders recorder lists, filters history, and selects recorder details", () => {
@@ -723,16 +560,16 @@ describe("runtime console pages", () => {
     expect(screen.getByText("duplicate-ip")).toBeInTheDocument();
     expect(screen.getByText("10.0.0.10")).toBeInTheDocument();
     expect(screen.getByText("runtime updated")).toBeInTheDocument();
-    expect(screen.getByText("runtime recovered")).toBeInTheDocument();
+    expect(screen.getByText("runtime reconcile failed")).toBeInTheDocument();
     expect(
-      screen.getByText("runtime recovered").compareDocumentPosition(
+      screen.getByText("runtime reconcile failed").compareDocumentPosition(
         screen.getByText("runtime updated")
       ) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Period"), { target: { value: "7d" } });
     fireEvent.change(screen.getByLabelText("Filter"), {
-      target: { value: "recovery-deferred" }
+      target: { value: "operation-failed" }
     });
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "100" } });
 
@@ -740,19 +577,15 @@ describe("runtime console pages", () => {
   });
 
   it("keeps observability read failures distinct from empty data", () => {
-    const baseOverview = overview();
-    hooks.useRuntimeOverview.mockReturnValue(
+    hooks.useLatestVitalDBObservation.mockReturnValue(query({
+      state: "failed",
+      observation: null,
+      readError: "sqlite denied"
+    }));
+    hooks.usePlatformState.mockReturnValue(
       query({
-        ...baseOverview,
-        status: {
-          ...baseOverview.status,
-          guestLogSyncServiceLoaded: undefined
-        },
-        vitalDBObservationSnapshot: {
-          state: "failed",
-          observation: null,
-          readError: "sqlite denied"
-        }
+        ...platformState(),
+        services: platformState().services.filter((service) => service.role !== "log-sync")
       })
     );
     hooks.useRuntimeEvents.mockReturnValue(query({ nextCursor: null }));
@@ -781,17 +614,11 @@ describe("runtime console pages", () => {
         }
       ]
     };
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        vitalDBObservation,
-        vitalDBObservationSnapshot: {
-          state: "loaded",
-          observation: vitalDBObservation,
-          readError: null
-        }
-      })
-    );
+    hooks.useLatestVitalDBObservation.mockReturnValue(query({
+      state: "loaded",
+      observation: vitalDBObservation,
+      readError: null
+    }));
 
     renderPage(<ObservabilityPage />);
 
@@ -823,17 +650,11 @@ describe("runtime console pages", () => {
         }
       ]
     };
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        vitalDBObservation,
-        vitalDBObservationSnapshot: {
-          state: "loaded",
-          observation: vitalDBObservation,
-          readError: null
-        }
-      })
-    );
+    hooks.useLatestVitalDBObservation.mockReturnValue(query({
+      state: "loaded",
+      observation: vitalDBObservation,
+      readError: null
+    }));
 
     renderPage(<ObservabilityPage />);
 
@@ -852,17 +673,11 @@ describe("runtime console pages", () => {
       anomalies: [],
       readIssues: []
     };
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        vitalDBObservation,
-        vitalDBObservationSnapshot: {
-          state: "loaded",
-          observation: vitalDBObservation,
-          readError: "projection=read failed"
-        }
-      })
-    );
+    hooks.useLatestVitalDBObservation.mockReturnValue(query({
+      state: "loaded",
+      observation: vitalDBObservation,
+      readError: "projection=read failed"
+    }));
 
     renderPage(<ObservabilityPage />);
 
@@ -879,11 +694,17 @@ describe("runtime console pages", () => {
       query({
         events: [
           {
+            schemaVersion: 1,
             id: "event-missing-message",
+            source: "",
             timestamp: "2026-05-31T01:00:00Z",
-            eventType: "status-changed",
-            status: "healthy",
-            failureReasons: []
+            eventType: "operation-completed",
+            operationId: "operation-1",
+            operationService: "runtime-settings",
+            operationCommand: "apply-settings",
+            operationState: "completed",
+            message: "",
+            failure: null
           }
         ],
         nextCursor: null,
@@ -897,9 +718,18 @@ describe("runtime console pages", () => {
     expect(screen.getByText("source not reported")).toBeInTheDocument();
   });
 
-  it("reads and exports logs with host path validation", () => {
-    const exportLogs = mutation({ destination: "file:///tmp/vitalserver-logs.zip" });
-    hooks.useExportHostLogs.mockReturnValue(exportLogs);
+  it("reads logs and creates a managed support bundle", () => {
+    const exportLogs = mutation({
+      ...completedApplyWorkflow,
+      operationId: "support-export-1",
+      kind: "support-export" as const,
+      artifact: {
+        path: "/var/lib/vitalserver/support/support.zip",
+        sha256: "a".repeat(64),
+        sizeBytes: 42
+      }
+    });
+    hooks.useCreatePlatformSupportExport.mockReturnValue(exportLogs);
 
     renderPage(<LogsPage />);
 
@@ -909,10 +739,10 @@ describe("runtime console pages", () => {
     });
     fireEvent.change(screen.getByLabelText("Lines"), { target: { value: "100" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "Live" }));
-    fireEvent.click(screen.getByRole("button", { name: "Export Logs" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Support Bundle" }));
 
-    expect(exportLogs.mutate).toHaveBeenCalledWith("/tmp/vitalserver-logs.zip");
-    expect(screen.getByText(/Exported to/)).toBeInTheDocument();
+    expect(exportLogs.mutate).toHaveBeenCalledWith();
+    expect(screen.getByText(/\/var\/lib\/vitalserver\/support\/support.zip/)).toBeInTheDocument();
   });
 
   it("does not render missing log response data as an empty log", () => {
@@ -939,7 +769,7 @@ describe("runtime console pages", () => {
   });
 
   it("shows log export capability read failure separately from unsupported export", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(
+    hooks.useControlCapabilities.mockReturnValue(
       failedQuery(new Error("capabilities denied"))
     );
 
@@ -949,11 +779,11 @@ describe("runtime console pages", () => {
       "Failed to read export capability"
     );
     expect(screen.getByRole("alert")).toHaveTextContent("capabilities denied");
-    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create Support Bundle" })).toBeDisabled();
   });
 
   it("shows unsupported log export as explicit unsupported capability", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(
+    hooks.useControlCapabilities.mockReturnValue(
       query({ ...capabilities(), canExportLogs: false })
     );
 
@@ -963,11 +793,11 @@ describe("runtime console pages", () => {
       screen.getByText("Log export is not supported by this Runtime Control API.")
     ).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create Support Bundle" })).toBeDisabled();
   });
 
   it("does not render missing log export capability as unsupported export", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(query(undefined));
+    hooks.useControlCapabilities.mockReturnValue(query(undefined));
 
     renderPage(<LogsPage />);
 
@@ -977,13 +807,13 @@ describe("runtime console pages", () => {
     expect(
       screen.queryByText("Log export is not supported by this Runtime Control API.")
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create Support Bundle" })).toBeDisabled();
   });
 
   it("runs update inspection, verification, and apply actions", () => {
     const summarize = pendingMutation();
     const verify = pendingMutation();
-    const apply = mutation(commandResult);
+    const apply = mutation(completedApplyWorkflow);
     hooks.useSummarizeUpdateBundle.mockReturnValue(summarize);
     hooks.useVerifyUpdateBundle.mockReturnValue(verify);
     hooks.useApplyUpdateBundle.mockReturnValue(apply);
@@ -999,8 +829,33 @@ describe("runtime console pages", () => {
 
     expect(summarize.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
     expect(verify.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
-    expect(apply.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz", expect.any(Object));
+    expect(apply.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
     expect(screen.getByText(/Helper is relaunching/)).toBeInTheDocument();
+  });
+
+  it("keeps update apply disabled when the Platform trust policy is verify-only", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({ ...capabilities(), canApplyBundle: false })
+    );
+
+    renderPage(<UpdatePage />);
+
+    fireEvent.change(screen.getByLabelText("Offline bundle"), {
+      target: { value: "/tmp/update.tar.gz" }
+    });
+    expect(screen.getByRole("button", { name: "Verify" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Apply Bundle" })).toBeDisabled();
+    expect(screen.getByText(/trusted publisher verification policy/)).toBeInTheDocument();
+  });
+
+  it("schedules an owner-selected Platform release rollback", () => {
+    const rollback = pendingMutation();
+    hooks.useRollbackRelease.mockReturnValue(rollback);
+
+    renderPage(<UpdatePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rollback Release" }));
+    expect(rollback.mutate).toHaveBeenCalledWith();
   });
 
   it("renders advanced recovery controls and dispatches selected actions", () => {
@@ -1016,7 +871,7 @@ describe("runtime console pages", () => {
     const repairDatastore = pendingMutation();
     const repairVMDisk = pendingMutation();
     const repairProxy = pendingMutation();
-    hooks.useApplyRuntimeSettings.mockReturnValue(applySettings);
+    hooks.useApplyRuntimeProductSettings.mockReturnValue(applySettings);
     hooks.useRollbackBackup.mockReturnValue(rollback);
     hooks.useCreateRedisBackup.mockReturnValue(createRedisBackup);
     hooks.useCreateRuntimeDataBackup.mockReturnValue(createRuntimeDataBackup);
@@ -1031,12 +886,12 @@ describe("runtime console pages", () => {
 
     renderPage(<AdvancedPage />);
 
-    expect(screen.getByText("VM health")).toBeInTheDocument();
+    expect(screen.getByText("Runtime provider health")).toBeInTheDocument();
     expect(screen.getByText("Advanced network")).toBeInTheDocument();
-    expect(screen.getByText("Admin operations")).toBeInTheDocument();
+    expect(screen.queryByText("Admin operations")).not.toBeInTheDocument();
     expect(screen.getByText("Sleep prevention service")).toBeInTheDocument();
-    expect(screen.getByText("Redis UI")).toBeInTheDocument();
-    expect(screen.getAllByText("Swagger UI")).toHaveLength(2);
+    expect(screen.getByText("Redis UI service")).toBeInTheDocument();
+    expect(screen.getByText("Swagger UI service")).toBeInTheDocument();
     expect(screen.getByText("API catalog")).toBeInTheDocument();
     expect(screen.getByText("VitalServer API")).toBeInTheDocument();
     expect(screen.getByText("Runtime Control API")).toBeInTheDocument();
@@ -1056,11 +911,6 @@ describe("runtime console pages", () => {
       target: { value: "http://127.0.0.1:18080/" }
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Apply Settings" })[0]);
-    fireEvent.click(screen.getByLabelText("Reset admin password"));
-    fireEvent.change(screen.getByLabelText("New admin password"), {
-      target: { value: "new-admin-password" }
-    });
-    fireEvent.click(screen.getAllByRole("button", { name: "Apply Settings" })[1]);
     fireEvent.click(screen.getByRole("row", { name: /backup-a/ }));
     fireEvent.click(screen.getByRole("button", { name: "Rollback" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Redis-only Backup" }));
@@ -1084,12 +934,6 @@ describe("runtime console pages", () => {
         remoteConsoleURL: "http://console.example.test/"
       })
     });
-    expect(applySettings.mutate).toHaveBeenNthCalledWith(2, {
-      settings: expect.objectContaining({
-        changeAdminPassword: true,
-        adminPassword: "new-admin-password"
-      })
-    });
     expect(rollback.mutate).toHaveBeenCalledWith("/tmp/backup-a");
     expect(createRedisBackup.mutate).toHaveBeenCalledWith("");
     expect(createRuntimeDataBackup.mutate).toHaveBeenCalledWith("");
@@ -1104,7 +948,7 @@ describe("runtime console pages", () => {
   });
 
   it("shows Guest service read failures without falling back to compose observations", () => {
-    hooks.useGuestStackStatus.mockReturnValue(
+    hooks.useRuntimeStack.mockReturnValue(
       failedQuery(new Error("guest control api timed out"))
     );
 
@@ -1116,16 +960,11 @@ describe("runtime console pages", () => {
     expect(screen.queryByText("VitalDB Observer")).not.toBeInTheDocument();
   });
 
-  it("shows Guest service desired, observed, and resource read states from RuntimeStatus", () => {
-    const runtimeOverview = overview();
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...runtimeOverview,
-        status: {
-          ...runtimeOverview.status,
-          guestServicesReadState: "loaded",
-          guestServiceStatuses: [],
-          guestServiceResources: [
+  it("shows Runtime service desired, observed, and resource read states from direct resources", () => {
+    hooks.useRuntimeServiceResources.mockReturnValue([
+      {
+        service: "app",
+        resource:
             {
               service: "app",
               spec: {
@@ -1156,6 +995,11 @@ describe("runtime console pages", () => {
               ],
               lastOperationId: "op-app-1"
             },
+        error: null
+      },
+      {
+        service: "worker",
+        resource:
             {
               service: "worker",
               spec: {
@@ -1176,6 +1020,11 @@ describe("runtime console pages", () => {
               conditions: [],
               lastOperationId: "op-worker-2"
             },
+        error: null
+      },
+      {
+        service: "scheduler",
+        resource:
             {
               service: "scheduler",
               spec: {
@@ -1190,17 +1039,15 @@ describe("runtime console pages", () => {
               },
               conditions: [],
               lastOperationId: null
-            }
-          ],
-          guestServiceResourceReadIssues: [
-            {
-              service: "postgres",
-              message: "resource document decode failed"
-            }
-          ]
-        }
-      })
-    );
+            },
+        error: null
+      },
+      {
+        service: "postgres",
+        resource: undefined,
+        error: new Error("resource document decode failed")
+      }
+    ]);
 
     renderPage(<AdvancedPage />);
 
@@ -1234,7 +1081,7 @@ describe("runtime console pages", () => {
   });
 
   it("shows non-loaded Guest stack status without treating it as an empty service list", () => {
-    hooks.useGuestStackStatus.mockReturnValue(
+    hooks.useRuntimeStack.mockReturnValue(
       query({
         state: "failed",
         observedAt: "2026-05-31T01:00:00Z",
@@ -1251,7 +1098,7 @@ describe("runtime console pages", () => {
   });
 
   it("gates Guest service actions with Guest service control capability", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(
+    hooks.useControlCapabilities.mockReturnValue(
       query({
         ...capabilities(),
         canControlRuntimeServices: true,
@@ -1287,9 +1134,10 @@ describe("runtime console pages", () => {
 
     expect(deleteUpdateBackup.mutate).toHaveBeenCalledWith("/tmp/backup-a");
     expect(deleteRuntimeDataBackup.mutate).toHaveBeenCalledWith("/tmp/runtime-data-a");
-    expect(screen.getByText("Standard uninstall is temporarily unavailable.")).toBeInTheDocument();
-    expect(uninstall.mutate).toHaveBeenCalledOnce();
-    expect(uninstall.mutate).toHaveBeenCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "Standard Uninstall" }));
+    expect(uninstall.mutate).toHaveBeenCalledTimes(2);
+    expect(uninstall.mutate).toHaveBeenNthCalledWith(1, true);
+    expect(uninstall.mutate).toHaveBeenNthCalledWith(2, false);
   });
 
   it("manages Product Lab scenarios, sessions, and vital file replay", () => {
@@ -1362,7 +1210,7 @@ describe("runtime console pages", () => {
   });
 
   it("keeps Product Lab visible but disables Lab commands when Lab capability is unavailable", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(
+    hooks.useControlCapabilities.mockReturnValue(
       query({
         ...capabilities(),
         canUseLab: false
@@ -1412,11 +1260,11 @@ describe("runtime console pages", () => {
   });
 
   it("shows page-level query errors", () => {
-    hooks.useRuntimeOverview.mockReturnValue(failedQuery(new Error("overview denied")));
+    hooks.usePlatformState.mockReturnValue(failedQuery(new Error("platform denied")));
     hooks.useVitalDBBeds.mockReturnValue(failedQuery(new Error("beds denied")));
 
     const { rerender } = renderPage(<StatusPage />);
-    expect(screen.getByRole("alert")).toHaveTextContent("overview denied");
+    expect(screen.getByRole("alert")).toHaveTextContent("platform denied");
 
     rerender(
       <Wrapper>
@@ -1428,11 +1276,41 @@ describe("runtime console pages", () => {
 });
 
 function setupDefaultHooks() {
-  hooks.useRuntimeCapabilities.mockReturnValue(query(capabilities()));
-  hooks.useRuntimeOverview.mockReturnValue(query(overview()));
-  hooks.useRuntimeOperationState.mockReturnValue(query(operationState()));
-  hooks.useGuestStackStatus.mockReturnValue(query(guestStackStatus()));
-  hooks.useRuntimeSettings.mockReturnValue(query(settings()));
+  hooks.useControlCapabilities.mockReturnValue(query(capabilities()));
+  hooks.useLatestVitalDBObservation.mockReturnValue(
+    query(overview().vitalDBObservationSnapshot)
+  );
+  hooks.usePlatformState.mockReturnValue(query(platformState()));
+  hooks.usePlatformOperationState.mockReturnValue(query(operationState()));
+  hooks.usePlatformWorkflow.mockReturnValue(query({
+    state: "missing",
+    operation: null,
+    readError: null
+  }));
+  hooks.useRuntimeStack.mockReturnValue(query(guestStackStatus()));
+  hooks.useRuntimeServiceResources.mockReturnValue([]);
+  hooks.useRuntimeProductSettings.mockReturnValue(query({
+    state: "loaded",
+    settings: productSettings(),
+    readError: null
+  }));
+  hooks.useRuntimeRedisRelaySettings.mockReturnValue(query({
+    state: "loaded",
+    settings: {
+      enabled: false,
+      target: {
+        url: "redis://redis.example:6379/0",
+        username: "",
+        passwordConfigured: false,
+        tls: false
+      },
+      scope: "vital_reconstruction",
+      includeRecorderNetworkContext: false,
+      intervalSeconds: 1,
+      scanCount: 1000
+    },
+    readError: null
+  }));
   hooks.useVitalDBRecorders.mockReturnValue(query(recorders()));
   hooks.useVitalDBBeds.mockReturnValue(query(bedHistory()));
   hooks.useVitalDBRelationships.mockReturnValue(query(relationships()));
@@ -1479,7 +1357,8 @@ function setupDefaultHooks() {
   hooks.useLabSession.mockReturnValue(query(labSessionResponse("accepted")));
 
   for (const mock of [
-    hooks.useApplyRuntimeSettings,
+    hooks.useApplyRuntimeAdminPassword,
+    hooks.useApplyRuntimeRedisRelaySettings,
     hooks.useApplyUpdateBundle,
     hooks.useCreateRedisBackup,
     hooks.useCreateRuntimeDataBackup,
@@ -1493,13 +1372,14 @@ function setupDefaultHooks() {
     hooks.useDeleteVitalDBBeds,
     hooks.useDeleteVitalDBRecorders,
     hooks.useDeleteUpdateBackup,
-    hooks.useExportHostLogs,
+    hooks.useCreatePlatformSupportExport,
     hooks.useHideVitalDBBeds,
     hooks.useHideVitalDBRecorders,
     hooks.useRepairDatastore,
     hooks.useRepairProxy,
     hooks.useRepairRuntime,
     hooks.useRepairVMDisk,
+    hooks.useRollbackRelease,
     hooks.useRestartGuestService,
     hooks.useRollbackBackup,
     hooks.useRestoreRuntimeDataBackup,
@@ -1520,12 +1400,19 @@ function setupDefaultHooks() {
     mock.mockReturnValue(pendingMutation());
   }
 
+  hooks.useApplyRuntimeProductSettings.mockReturnValue(
+    pendingMutation()
+  );
+
 }
 
 function guestStackStatus() {
   return {
     state: "loaded",
     observedAt: "2026-05-31T01:00:00Z",
+    cpuUsagePercent: 12,
+    memory: { usedBytes: 2048, totalBytes: 4096 },
+    systemDisk: { availableBytes: 8192, totalBytes: 16384 },
     services: [
       {
         service: "app",
@@ -1556,7 +1443,8 @@ function capabilities() {
     canUninstallRuntime: true,
     canApplyBundle: true,
     canRollback: true,
-    canEditVMResources: true,
+    canRollbackRelease: true,
+    canEditRuntimeProviderResources: true,
     canEditNetworkExposure: true,
     canResetAdminPassword: true,
     canOpenLocalFiles: true,
@@ -1566,6 +1454,9 @@ function capabilities() {
     canExportLogs: true,
     canViewReleaseMetadata: true,
     canUseLab: true,
+    canApplyRuntimeProductSettings: true,
+    canApplyRuntimeAdminPassword: true,
+    canApplyRuntimeRedisRelaySettings: true,
     canApplySettings: true,
     canApplyRuntimeSettings: true,
     canControlRecovery: true,
@@ -1600,31 +1491,6 @@ function overview() {
 
   return {
     settings: settings(),
-    status: {
-      runtimeState: "healthy",
-      operation: "idle",
-      runtimeVersion: "1.2.3",
-      vmIP: "192.168.64.8",
-      proxyPort: 18080,
-      startedAt: "2026-05-31T00:00:00Z",
-      runtimeControlStartedAt: "2026-05-31T00:00:00Z",
-      guestHTTP: "HTTP 200",
-      hostProxyHTTP: "HTTP 200",
-      runtimeControlHTTP: "HTTP 200",
-      vmServiceLoaded: true,
-      proxyServiceLoaded: true,
-      watchdogServiceLoaded: true,
-      guestLogSyncServiceLoaded: true,
-      sleepPreventionServiceLoaded: true,
-      redisUIHTTP: "HTTP 200",
-      swaggerUIHTTP: "HTTP 200",
-      cpuUsagePercent: 12,
-      dataDirectoryStats: { fileCount: 2, sizeBytes: 4096 },
-      memory: { usedBytes: 2048, totalBytes: 4096 },
-      systemDisk: { availableBytes: 8192, totalBytes: 16384 },
-      dataStorage: { usedBytes: 1024, totalBytes: 2048 },
-      failureReasons: []
-    },
     vitalDBObservation,
     vitalDBObservationSnapshot: {
       state: "loaded",
@@ -1650,6 +1516,30 @@ function overview() {
         observedAt: "2026-05-31T01:00:00Z"
       }
     ]
+  };
+}
+
+function platformState() {
+  return {
+    runtimeInstallationState: "executable",
+    platformHealth: "healthy",
+    installedVersion: "1.2.3",
+    runtimeEndpoint: "192.168.64.8",
+    publicProxyPort: 18080,
+    platformAPIStartedAt: "2026-05-31T00:00:00Z",
+    runtimeControllerHTTP: "HTTP 200",
+    publicProxyHTTP: "HTTP 200",
+    platformAPIHTTP: "HTTP 200",
+    services: [
+      { role: "runtime-provider" as const, state: "running" as const, readError: null },
+      { role: "public-proxy" as const, state: "running" as const, readError: null },
+      { role: "log-sync" as const, state: "running" as const, readError: null },
+      { role: "sleep-prevention" as const, state: "running" as const, readError: null },
+      { role: "watchdog" as const, state: "running" as const, readError: null }
+    ],
+    dataDirectoryStats: { fileCount: 2, sizeBytes: 4096 },
+    dataStorage: { usedBytes: 1024, totalBytes: 2048 },
+    healthIssues: []
   };
 }
 
@@ -1736,6 +1626,31 @@ function settings(overrides = {}) {
       }
     ],
     ...overrides
+  };
+}
+
+function productSettings() {
+  const value = settings();
+  return {
+    automaticBackupEnabled: value.automaticBackupEnabled,
+    backupRetentionCount: value.backupRetentionCount,
+    backupScheduleTimes: value.backupScheduleTimes,
+    containerMemoryLimitsEnabled: value.containerMemoryLimitsEnabled,
+    publicHost: value.publicHost,
+    publicPort: value.publicPort,
+    recorderIngress: value.recorderIngress,
+    recorderIngressContainerMemoryLimitMiB:
+      value.recorderIngressContainerMemoryLimitMiB,
+    recorderIngressSendDataMode: value.recorderIngressSendDataMode,
+    recorderIngressSendDataReplayBatchSize:
+      value.recorderIngressSendDataReplayBatchSize,
+    recorderIngressSendDataReplayMaxMiBPerSecond:
+      value.recorderIngressSendDataReplayMaxMiBPerSecond,
+    redisContainerMemoryLimitMiB: value.redisContainerMemoryLimitMiB,
+    remoteConsoleURL: value.remoteConsoleURL,
+    vitalServerContainerMemoryLimitMiB:
+      value.vitalServerContainerMemoryLimitMiB,
+    vitalServerURL: value.vitalServerURL
   };
 }
 
@@ -2025,24 +1940,30 @@ function events() {
   return {
     events: [
       {
-        id: "event-1",
+        schemaVersion: 1,
+        id: "runtime-operation-event-1",
         timestamp: "2026-05-31T01:00:00Z",
-        eventType: "status-changed",
-        status: "healthy",
-        operation: "apply",
-        source: "runtime",
+        eventType: "operation-completed",
+        operationId: "operation-1",
+        operationService: "runtime-settings",
+        operationCommand: "apply-settings",
+        operationState: "completed",
+        source: "runtime-controller",
         message: "runtime updated",
-        failureReasons: []
+        failure: null
       },
       {
-        id: "event-2",
+        schemaVersion: 1,
+        id: "runtime-operation-event-2",
         timestamp: "2026-05-31T01:05:00Z",
-        eventType: "recovery-deferred",
-        status: "degraded",
-        operation: "watchdog",
-        source: "runtime",
-        message: "runtime recovered",
-        failureReasons: []
+        eventType: "operation-failed",
+        operationId: "operation-2",
+        operationService: "runtime-provider",
+        operationCommand: "reconcile",
+        operationState: "failed",
+        source: "runtime-controller",
+        message: "runtime reconcile failed",
+        failure: { kind: "reconcileFailed", message: "provider unavailable" }
       }
     ],
     nextCursor: null,

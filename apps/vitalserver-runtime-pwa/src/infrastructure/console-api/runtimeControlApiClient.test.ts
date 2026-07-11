@@ -15,6 +15,22 @@ type RecordedRequest = {
 };
 
 describe("RuntimeControlApiClient", () => {
+  it("schedules a managed Platform support export without a caller path", async () => {
+    const operation = {
+      ...platformWorkflowOperation("update-verify"),
+      operationId: "support-export-1",
+      kind: "support-export" as const,
+      state: "accepted" as const
+    };
+    const { client, requests } = clientWithResponses({
+      "/platform/support-exports": operation
+    });
+
+    await expect(client.createPlatformSupportExport()).resolves.toEqual(operation);
+    expect(requests[0]?.init.method).toBe("POST");
+    expect(requests[0]?.init.body).toBeUndefined();
+  });
+
   it("sends authenticated GET requests with query parameters", async () => {
     const { client, requests } = clientWithResponses({
       "/runtime/events": { events: [], nextCursor: null, matchingCount: 0 }
@@ -36,16 +52,60 @@ describe("RuntimeControlApiClient", () => {
     });
   });
 
-  it("sends JSON bodies for runtime command endpoints", async () => {
+  it("reads and applies Runtime-owned Redis Relay settings", async () => {
+    const read = {
+      state: "loaded",
+      settings: {
+        enabled: false,
+        target: {
+          url: "redis://redis.example:6379/0",
+          username: "",
+          passwordConfigured: false,
+          tls: false
+        },
+        scope: "vital_reconstruction",
+        includeRecorderNetworkContext: false,
+        intervalSeconds: 1,
+        scanCount: 1000
+      },
+      readError: null
+    };
+    const apply = {
+      enabled: true,
+      target: {
+        url: "redis://relay.example:6379/1",
+        username: "relay",
+        password: "secret",
+        clearPassword: false,
+        tls: true
+      },
+      scope: "waveform_trend_only" as const,
+      includeRecorderNetworkContext: true,
+      intervalSeconds: 0.5,
+      scanCount: 250
+    };
     const { client, requests } = clientWithResponses({
-      "/runtime/settings": commandResponse(),
-      "/runtime/uninstall": commandResponse(),
-      "/runtime/services/repair-proxy": commandResponse(),
-      "DELETE /host/backups/update": commandResponse(),
-      "DELETE /host/backups/vitalserver-helper": commandResponse()
+      "/runtime/redis-relay/settings": read,
+      "PUT /runtime/redis-relay/settings": runtimeSettingsOperation()
     });
 
-    await client.applySettings({ settings: fullSettings({ proxyPort: 18080 }) });
+    await expect(client.getRuntimeRedisRelaySettings()).resolves.toEqual(read);
+    await client.applyRuntimeRedisRelaySettings(apply);
+
+    expect(requests.map((request) => request.init.method)).toEqual(["GET", "PUT"]);
+    expect(JSON.parse(String(requests[1]?.init.body))).toEqual(apply);
+  });
+
+  it("sends JSON bodies for runtime command endpoints", async () => {
+    const { client, requests } = clientWithResponses({
+      "/runtime/settings": runtimeSettingsOperation(),
+      "/platform/uninstall": platformWorkflowOperation("uninstall"),
+      "/platform/proxy/repair": commandResponse(),
+      "DELETE /platform/backups/update": commandResponse(),
+      "DELETE /platform/backups/runtime-data": commandResponse()
+    });
+
+    await client.applyRuntimeProductSettings({ settings: productSettings() });
     await client.uninstallRuntime({ mode: "clean" });
     await client.repairProxy(18080);
     await client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/update" } });
@@ -61,7 +121,7 @@ describe("RuntimeControlApiClient", () => {
       "DELETE"
     ]);
     expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
-      settings: fullSettings({ proxyPort: 18080 })
+      settings: productSettings()
     });
     expect(JSON.parse(String(requests[2]?.init.body))).toEqual({
       proxyPort: 18080
@@ -73,8 +133,8 @@ describe("RuntimeControlApiClient", () => {
 
   it("keeps absent JSON bodies distinct from explicit JSON command payloads", async () => {
     const { client, requests } = clientWithResponses({
-      "/runtime/redis/backups": commandResponse(),
-      "/runtime/services/repair-proxy": commandResponse()
+      "/platform/backups/redis": commandResponse(),
+      "/platform/proxy/repair": commandResponse()
     });
 
     await client.createRedisBackup();
@@ -105,10 +165,23 @@ describe("RuntimeControlApiClient", () => {
 
   it("covers read endpoints and host affordance endpoints", async () => {
     const { client } = clientWithResponses({
-      "/runtime/capabilities": fullCapabilities(),
-      "/runtime/overview": fullRuntimeOverview(),
-      "/runtime/status": { runtimeState: "healthy" },
-      "/runtime/operation-state": {
+      "/platform/capabilities": platformCapabilities(),
+      "/runtime/capabilities": {
+        schemaVersion: 1,
+        capabilities: ["services:start", "services:stop", "services:restart", "lab:scenarios"]
+      },
+      "/runtime/vitaldb/observations/latest": {
+        state: "unavailable",
+        observation: null,
+        readError: "not observed"
+      },
+      "/platform": { runtimeInstallationState: "executable", services: [], platformHealth: "healthy" },
+      "/runtime/redis-relay/status": {
+        readState: "readFailed",
+        document: null,
+        readError: "owner unavailable"
+      },
+      "/platform/operations": {
         activeOperation: "apply-bundle",
         install: {
           state: "unavailable",
@@ -131,13 +204,17 @@ describe("RuntimeControlApiClient", () => {
           staleReason: "expired"
         }
       },
-      "/runtime/settings": fullSettings({ proxyPort: 80 }),
-      "/lab/scenarios": {
+      "/runtime/settings": {
+        state: "loaded",
+        settings: productSettings(),
+        readError: null
+      },
+      "/runtime/lab/scenarios": {
         state: "loaded",
         scenarios: [{ scenarioId: "baseline", name: "Baseline", category: "generated" }],
         readError: null
       },
-      "/lab/beds": {
+      "/runtime/lab/beds": {
         state: "loaded",
         beds: [
           {
@@ -151,7 +228,7 @@ describe("RuntimeControlApiClient", () => {
         ],
         readError: null
       },
-      "/lab/recorders": {
+      "/runtime/lab/recorders": {
         state: "loaded",
         recorders: [
           {
@@ -170,11 +247,11 @@ describe("RuntimeControlApiClient", () => {
         ],
         readError: null
       },
-      "/lab/sessions": labSessionResponse(),
-      "/lab/sessions/lab-1": labSessionResponse(),
-      "/lab/sessions/lab-1/start": labSessionResponse(),
-      "/lab/sessions/lab-1/stop": labSessionResponse(),
-      "/lab/vital-files": {
+      "/runtime/lab/sessions": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1/start": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1/stop": labSessionResponse(),
+      "/runtime/lab/vital-files": {
         state: "loaded",
         vitalFiles: [
           {
@@ -187,15 +264,15 @@ describe("RuntimeControlApiClient", () => {
         ],
         readError: null
       },
-      "/lab/vital-files/upload": {
+      "/runtime/lab/vital-files/upload": {
         state: "loaded",
         upload: null,
         operationId: "lab-vital-file-upload",
         labOperationId: null,
         readError: null
       },
-      "/lab/vital-files/replay": labSessionResponse(),
-      "/runtime/guest/stack/status": {
+      "/runtime/lab/vital-files/replay": labSessionResponse(),
+      "/runtime/stack": {
         state: "loaded",
         observedAt: "2026-07-01T00:00:00+00:00",
         services: [
@@ -208,52 +285,70 @@ describe("RuntimeControlApiClient", () => {
         ],
         probeErrors: []
       },
-      "/runtime/guest/services/app/resource": guestServiceResource(),
-      "/runtime/guest/services/start": guestServiceOperation("start"),
-      "/runtime/guest/services/stop": guestServiceOperation("stop"),
-      "/runtime/guest/services/restart": guestServiceOperation("restart"),
-      "/vitaldb/recorders": fullVitalRecorderHistory(),
-      "/vitaldb/recorders/hide": fullVitalRecorderHistory(),
-      "/vitaldb/recorders/unhide": fullVitalRecorderHistory(),
-      "/vitaldb/recorders/delete": fullVitalRecorderHistory(),
-      "/vitaldb/beds": fullVitalBedHistory(),
-      "/vitaldb/beds/hide": fullVitalBedHistory(),
-      "/vitaldb/beds/unhide": fullVitalBedHistory(),
-      "/vitaldb/beds/delete": fullVitalBedHistory(),
-      "/vitaldb/relationships": {
+      "/runtime/services/app/resource": guestServiceResource(),
+      "/runtime/services/app/start": guestServiceOperation("start"),
+      "/runtime/services/app/stop": guestServiceOperation("stop"),
+      "/runtime/services/app/restart": guestServiceOperation("restart"),
+      "/runtime/vitaldb/recorders": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/recorders/hide": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/recorders/unhide": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/recorders/delete": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/beds": fullVitalBedHistory(),
+      "/runtime/vitaldb/beds/hide": fullVitalBedHistory(),
+      "/runtime/vitaldb/beds/unhide": fullVitalBedHistory(),
+      "/runtime/vitaldb/beds/delete": fullVitalBedHistory(),
+      "/runtime/vitaldb/relationships": {
         state: "loaded",
         assignments: [],
         events: [],
         readError: null
       },
-      "/host/logs/read": { text: "log" },
-      "/host/logs/export": { destination: "file:///tmp/logs.zip" },
-      "/host/update-bundles/summary": { summary: "ok" },
-      "/host/update-bundles/verify": commandResponse(),
-      "/host/update-bundles/apply": commandResponse(),
-      "/host/backups": [{ path: "/tmp/backup", sizeBytes: 1 }],
-      "/host/backups/redis": [{ path: "/tmp/redis", sizeBytes: null }],
-      "/host/backups/vitalserver-helper": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
-      "/host/backups/rollback": commandResponse(),
-      "DELETE /host/backups/update": commandResponse(),
-      "DELETE /host/backups/vitalserver-helper": commandResponse(),
-      "/host/backups/redis/restore": commandResponse(),
-      "/host/backups/vitalserver-helper/restore": commandResponse(),
-      "/runtime/redis/backups": commandResponse(),
-      "/runtime/data/backups": commandResponse(),
-      "/runtime/services/repair-runtime": commandResponse(),
-      "/runtime/services/repair-datastore": commandResponse(),
-      "/runtime/services/repair-vm-disk": commandResponse()
+      "/platform/logs/read": { text: "log" },
+      "/platform/logs/export": { destination: "file:///tmp/logs.zip" },
+      "/platform/workflows/current": {
+        state: "missing",
+        operation: null,
+        readError: null
+      },
+      "/platform/update-bundles/summary": { summary: "ok" },
+      "/platform/update-bundles/verify": platformWorkflowOperation("update-verify"),
+      "/platform/update-bundles/apply": platformWorkflowOperation("update-apply"),
+      "/platform/releases/rollback": platformWorkflowOperation("rollback"),
+      "/platform/backups": [{ path: "/tmp/backup", sizeBytes: 1 }],
+      "/platform/backups/redis": [{ path: "/tmp/redis", sizeBytes: null }],
+      "/platform/backups/runtime-data": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
+      "/platform/backups/rollback": commandResponse(),
+      "DELETE /platform/backups/update": commandResponse(),
+      "DELETE /platform/backups/runtime-data": commandResponse(),
+      "/platform/backups/redis/restore": commandResponse(),
+      "/platform/backups/runtime-data/restore": commandResponse(),
+      "POST /platform/backups/redis": commandResponse(),
+      "POST /platform/backups/runtime-data": commandResponse(),
+      "/platform/services/repair": commandResponse(),
+      "/runtime/maintenance/datastore/repair": commandResponse(),
+      "/platform/runtime-provider/disk/repair": commandResponse()
     });
 
     await expect(client.getCapabilities()).resolves.toMatchObject({ canUseLab: true });
-    await expect(client.getOverview()).resolves.toMatchObject({ status: { runtimeState: "healthy" } });
-    await expect(client.getStatus()).resolves.toMatchObject({ runtimeState: "healthy" });
+    await expect(client.getLatestVitalDBObservation()).resolves.toEqual({
+      state: "unavailable",
+      observation: null,
+      readError: "not observed"
+    });
+    await expect(client.getPlatformState()).resolves.toMatchObject({ platformHealth: "healthy" });
+    await expect(client.getRedisRelayStatus()).resolves.toEqual({
+      readState: "readFailed",
+      document: null,
+      readError: "owner unavailable"
+    });
     await expect(client.getOperationState()).resolves.toMatchObject({
       activeOperation: "apply-bundle",
       lease: { state: "stale", staleReason: "expired" }
     });
-    await expect(client.getSettings()).resolves.toMatchObject({ proxyPort: 80 });
+    await expect(client.getRuntimeProductSettings()).resolves.toMatchObject({
+      state: "loaded",
+      settings: { publicPort: 80 }
+    });
     await expect(client.getLabScenarios()).resolves.toMatchObject({ state: "loaded" });
     await expect(client.getLabBeds()).resolves.toMatchObject({ beds: [{ name: "OR-A" }] });
     await expect(client.getLabRecorders()).resolves.toMatchObject({
@@ -282,7 +377,7 @@ describe("RuntimeControlApiClient", () => {
       sessionName: "Replay",
       targetURL: null
     })).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
-    await expect(client.getGuestStackStatus()).resolves.toMatchObject({
+    await expect(client.getRuntimeStack()).resolves.toMatchObject({
       state: "loaded",
       services: [{ service: "app" }]
     });
@@ -306,9 +401,15 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getRelationships()).resolves.toMatchObject({ assignments: [] });
     await expect(client.readLogs({ source: "containers", helperMessage: "", lineLimit: 100 })).resolves.toEqual({ text: "log" });
     await expect(client.exportLogs({ destination: { kind: "localPath", value: "/tmp/logs.zip" } })).resolves.toEqual({ destination: "file:///tmp/logs.zip" });
+    await expect(client.getPlatformWorkflow()).resolves.toEqual({
+      state: "missing",
+      operation: null,
+      readError: null
+    });
     await expect(client.summarizeUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual({ summary: "ok" });
-    await expect(client.verifyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(commandResponse());
-    await expect(client.applyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(commandResponse());
+    await expect(client.verifyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(platformWorkflowOperation("update-verify"));
+    await expect(client.applyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(platformWorkflowOperation("update-apply"));
+    await expect(client.rollbackRelease()).resolves.toEqual(platformWorkflowOperation("rollback"));
     await expect(client.listHostBackups()).resolves.toHaveLength(1);
     await expect(client.listRedisBackups()).resolves.toHaveLength(1);
     await expect(client.listRuntimeDataBackups()).resolves.toHaveLength(1);
@@ -324,36 +425,21 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.repairVMDisk()).resolves.toEqual(commandResponse());
   });
 
-  it("accepts explicit null bridged interface in runtime overview settings", async () => {
-    const { client } = clientWithResponses({
-      "/runtime/overview": {
-        ...fullRuntimeOverview(),
-        settings: fullSettings({ bridgedInterface: null })
-      }
-    });
-
-    await expect(client.getOverview()).resolves.toMatchObject({
-      settings: {
-        bridgedInterface: null
-      }
-    });
-  });
-
   it("throws API, contract, and network errors", async () => {
-    const api = clientWithResponses({ "/runtime/status": { message: "nope" } }, 500);
-    await expect(api.client.getStatus()).rejects.toBeInstanceOf(RuntimeControlAPIError);
+    const api = clientWithResponses({ "/platform": { message: "nope" } }, 500);
+    await expect(api.client.getPlatformState()).rejects.toBeInstanceOf(RuntimeControlAPIError);
 
-    const logContract = clientWithResponses({ "/host/logs/read": {} });
+    const logContract = clientWithResponses({ "/platform/logs/read": {} });
     await expect(
       logContract.client.readLogs({ source: "containers", helperMessage: null, lineLimit: 100 })
     ).rejects.toBeInstanceOf(RuntimeControlContractError);
 
-    const exportContract = clientWithResponses({ "/host/logs/export": {} });
+    const exportContract = clientWithResponses({ "/platform/logs/export": {} });
     await expect(
       exportContract.client.exportLogs({ destination: { kind: "localPath", value: "/tmp/logs.zip" } })
     ).rejects.toBeInstanceOf(RuntimeControlContractError);
 
-    const updateSummaryContract = clientWithResponses({ "/host/update-bundles/summary": {} });
+    const updateSummaryContract = clientWithResponses({ "/platform/update-bundles/summary": {} });
     await expect(
       updateSummaryContract.client.summarizeUpdateBundle({
         bundle: { kind: "localPath", value: "/tmp/u.zip" }
@@ -366,24 +452,26 @@ describe("RuntimeControlApiClient", () => {
         throw new Error("offline");
       }) as typeof fetch
     });
-    await expect(network.getStatus()).rejects.toBeInstanceOf(RuntimeControlNetworkError);
+    await expect(network.getPlatformState()).rejects.toBeInstanceOf(RuntimeControlNetworkError);
   });
 
   it("keeps PWA API contract chaos failures typed by boundary", async () => {
     const api = clientWithResponses(
-      { "/runtime/status": { code: "handlerFailed", message: "permission denied" } },
+      { "/platform": { code: "handlerFailed", message: "permission denied" } },
       500
     );
-    await expect(api.client.getStatus()).rejects.toMatchObject({
+    await expect(api.client.getPlatformState()).rejects.toMatchObject({
       kind: "api",
       status: 500,
       body: JSON.stringify({ code: "handlerFailed", message: "permission denied" })
     });
 
-    const contract = clientWithResponses({ "/runtime/status": { runtimeState: 42 } });
-    await expect(contract.client.getStatus()).rejects.toMatchObject({
+    const contract = clientWithResponses({
+      "/platform": { runtimeInstallationState: "executable", services: [], platformHealth: 42 }
+    });
+    await expect(contract.client.getPlatformState()).rejects.toMatchObject({
       kind: "contract",
-      path: "/runtime/status"
+      path: "/platform"
     });
 
     const network = new RuntimeControlApiClient({
@@ -392,13 +480,13 @@ describe("RuntimeControlApiClient", () => {
         throw new TypeError("fetch failed");
       }) as typeof fetch
     });
-    await expect(network.getStatus()).rejects.toMatchObject({
+    await expect(network.getPlatformState()).rejects.toMatchObject({
       kind: "network",
-      url: "http://helper.local/runtime/status"
+      url: "http://helper.local/platform"
     });
 
     const summary = summarizeRuntimeControlError(
-      new RuntimeControlContractError("/runtime/status", new Error("invalid shape"))
+      new RuntimeControlContractError("/platform", new Error("invalid shape"))
     );
     expect(summary).toMatchObject({
       kind: "contract",
@@ -439,7 +527,8 @@ function fullCapabilities() {
     canUninstallRuntime: true,
     canApplyBundle: true,
     canRollback: true,
-    canEditVMResources: true,
+    canRollbackRelease: true,
+    canEditRuntimeProviderResources: true,
     canEditNetworkExposure: true,
     canResetAdminPassword: true,
     canOpenLocalFiles: true,
@@ -452,10 +541,51 @@ function fullCapabilities() {
   };
 }
 
+function platformCapabilities() {
+  const { canControlGuestServices: _, canUseLab: __, ...platform } = fullCapabilities();
+  return platform;
+}
+
 function fullSettings(overrides: Partial<ReturnType<typeof fullSettingsShape>> = {}) {
   return {
     ...fullSettingsShape(),
     ...overrides
+  };
+}
+
+function productSettings() {
+  const settings = fullSettings({ publicPort: 80 });
+  return {
+    automaticBackupEnabled: settings.automaticBackupEnabled,
+    backupRetentionCount: settings.backupRetentionCount,
+    backupScheduleTimes: settings.backupScheduleTimes,
+    containerMemoryLimitsEnabled: settings.containerMemoryLimitsEnabled,
+    publicHost: settings.publicHost,
+    publicPort: settings.publicPort,
+    recorderIngress: settings.recorderIngress,
+    recorderIngressContainerMemoryLimitMiB:
+      settings.recorderIngressContainerMemoryLimitMiB,
+    recorderIngressSendDataMode: settings.recorderIngressSendDataMode,
+    recorderIngressSendDataReplayBatchSize:
+      settings.recorderIngressSendDataReplayBatchSize,
+    recorderIngressSendDataReplayMaxMiBPerSecond:
+      settings.recorderIngressSendDataReplayMaxMiBPerSecond,
+    redisContainerMemoryLimitMiB: settings.redisContainerMemoryLimitMiB,
+    remoteConsoleURL: settings.remoteConsoleURL,
+    vitalServerContainerMemoryLimitMiB:
+      settings.vitalServerContainerMemoryLimitMiB,
+    vitalServerURL: settings.vitalServerURL
+  };
+}
+
+function runtimeSettingsOperation() {
+  return {
+    operationId: "op_settings_1",
+    service: "runtime-settings",
+    command: "apply-settings",
+    state: "completed",
+    createdAt: "2026-07-01T00:00:00Z",
+    updatedAt: "2026-07-01T00:00:01Z"
   };
 }
 
@@ -538,37 +668,6 @@ function recorderIngressSettings() {
   };
 }
 
-function fullRuntimeOverview() {
-  return {
-    status: {
-      runtimeState: "healthy"
-    },
-    settings: fullSettings(),
-    release: {},
-    install: {},
-    vitalDBObservation: null,
-    vitalDBObservationSnapshot: {
-      state: "unavailable",
-      observation: null,
-      readError: null
-    },
-    vitalRecorder: {
-      source: "unavailable",
-      observedAt: null,
-      latestRecorder: null
-    },
-    conditions: [
-      {
-        type: "VitalDBObservationReady",
-        status: "Unknown",
-        reason: "Unavailable",
-        message: null,
-        observedAt: null
-      }
-    ]
-  };
-}
-
 function commandResponse() {
   return {
     result: {
@@ -578,6 +677,20 @@ function commandResponse() {
       outputIssues: [],
       executionIssue: null
     }
+  };
+}
+
+function platformWorkflowOperation(kind: "update-verify" | "update-apply" | "rollback" | "uninstall") {
+  return {
+    schemaVersion: 1,
+    operationId: `${kind}-1`,
+    kind,
+    state: "completed" as const,
+    startedAt: "2026-07-01T00:00:00Z",
+    updatedAt: "2026-07-01T00:00:01Z",
+    release: null,
+    artifact: null,
+    failure: null
   };
 }
 

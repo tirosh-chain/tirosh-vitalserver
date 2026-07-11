@@ -1,14 +1,13 @@
 import Foundation
 
 public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
-    case capabilities
-    case overview
-    case overviewStream
-    case status
-    case statusStream
+    case platformCapabilities
+    case runtimeCapabilities
+    case platformState
+    case platformStateStream
     case operationState
+    case platformWorkflow
     case events
-    case eventStream
     case vitalDBObservation
     case vitalDBObservationStream
     case vitalDBRecorders
@@ -26,6 +25,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case health
     case settings
     case applySettings
+    case applyAdminPassword
     case release
     case installInfo
     case labScenarios
@@ -48,6 +48,9 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case guestServices
     case guestServiceStatus
     case guestServiceResource
+    case redisRelayStatus
+    case redisRelaySettings
+    case applyRedisRelaySettings
     case startGuestService
     case stopGuestService
     case restartGuestService
@@ -68,11 +71,13 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case updateBundleSummary
     case verifyUpdateBundle
     case applyUpdateBundle
+    case rollbackRelease
     case rollbackBackup
     case deleteBackup
     case deleteUpdateBackup
     case deleteRuntimeDataBackup
     case exportLogs
+    case createSupportExport
     case acquireOperationLease
     case heartbeatOperationLease
     case releaseOperationLease
@@ -80,4 +85,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case putGuestAddress
     case vmLifecycle
     case putVMLifecycle
+    case startRuntimeProvider
+    case stopRuntimeProvider
+    case restartRuntimeProvider
 }

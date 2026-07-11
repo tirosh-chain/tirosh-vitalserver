@@ -87,7 +87,6 @@ enum RuntimeControlClientConstants {
         static let optionBackupRetention = "--backup-retention"
         static let optionLogArchiveRetentionDays = "--log-archive-retention-days"
         static let optionLogArchiveMaximumGiB = "--log-archive-maximum-gib"
-        static let optionRedisRelaySettingsFile = "--redis-relay-settings-file"
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
         static let optionRestart = "--restart"

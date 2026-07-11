@@ -26,14 +26,6 @@ public struct RuntimeControlCommandResponse: Codable, Equatable, Sendable {
     }
 }
 
-public struct RuntimeApplySettingsRequest: Codable, Equatable, Sendable {
-    public let settings: RuntimeSettings
-
-    public init(settings: RuntimeSettings) {
-        self.settings = settings
-    }
-}
-
 public struct RuntimeUninstallRequest: Codable, Equatable, Sendable {
     public let mode: RuntimeUninstallMode
 

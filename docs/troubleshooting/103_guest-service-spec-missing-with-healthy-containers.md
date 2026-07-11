@@ -15,13 +15,13 @@ The Helper advanced status shows Guest product services with a green health indi
 Healthy | desired missing | observed failed | SpecMissing: Guest service desired state is not configured.
 ```
 
-The same guest can still serve VitalServer traffic, and `/v1/stack/status` can report containers as `running` and `healthy`.
+The same guest can still serve VitalServer traffic, and `/runtime/stack` can report containers as `running` and `healthy`.
 
 ## Cause
 
 Container health and Guest service control resources are separate contracts.
 
-`/v1/stack/status` reports observed container state. `/v1/services/{service}/resource` reports the service-control resource, including the desired state that reconcile/start/stop decisions use.
+`/runtime/stack` reports observed container state. `/runtime/services/{service}/resource` reports the service-control resource, including the desired state that reconcile/start/stop decisions use.
 
 When the guest service resource repository has no resource for a known product service, Guest Control used to return a synthetic `SpecMissing` resource. That preserved the missing-state signal, but it also left fresh installs with no explicit desired state for normal product services.
 

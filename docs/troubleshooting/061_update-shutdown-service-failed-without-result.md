@@ -44,7 +44,7 @@ tail -n 200 "/Library/Application Support/VitalServerHelper/vm/data/run/guest-re
 ls -l "/Library/Application Support/VitalServerHelper/vm/data/run/prepare-update-shutdown-result.json"
 ls -l "/Library/Application Support/VitalServerHelper/vm/data/run/prepare-update-shutdown.log"
 curl -fsS -H "X-Runtime-Control-Token: ${RUNTIME_CONTROL_TOKEN}" \
-  "http://127.0.0.1:${RUNTIME_CONTROL_PORT:-18321}/runtime/operation-state" | jq .
+  "http://127.0.0.1:${RUNTIME_CONTROL_PORT:-18321}/platform/operations" | jq .
 tail -n 200 "/Library/Application Support/VitalServerHelper/logs/runtime/launchd.out.log"
 ```
 

@@ -3,19 +3,14 @@ import Foundation
 import RuntimeControl
 
 enum RuntimeControlHTTPResponseFactory {
-    static func json<T: Encodable>(_ value: T) throws -> RuntimeControlHTTPResponse {
+    static func json<T: Encodable>(
+        _ value: T,
+        status: RuntimeControlHTTPStatus = .ok
+    ) throws -> RuntimeControlHTTPResponse {
         RuntimeControlHTTPResponse(
-            status: .ok,
+            status: status,
             headers: ["Content-Type": "application/json"],
             body: try JSONEncoder().encode(value)
-        )
-    }
-
-    static func eventStream(_ history: RuntimeEventHistory) throws -> RuntimeControlHTTPResponse {
-        RuntimeControlHTTPResponse(
-            status: .ok,
-            headers: RuntimeControlServerSentEventCodec.streamHeaders,
-            body: try RuntimeControlServerSentEventCodec.encode(history)
         )
     }
 

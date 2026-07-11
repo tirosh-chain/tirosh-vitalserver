@@ -1,5 +1,5 @@
 import type {
-  RuntimeControlCapabilities,
+  ControlCapabilities,
   RuntimeSettings
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
@@ -340,7 +340,7 @@ export function runtimeSettingsActivationDecision(
 export function startOnBootControlState(input: {
   startOnBootConfigurable: boolean;
   capabilityReadState: RuntimeCapabilityReadState;
-  capabilities: RuntimeControlCapabilities | undefined;
+  capabilities: ControlCapabilities | undefined;
 }): RuntimeSettingsControlState {
   if (!input.startOnBootConfigurable) {
     return {

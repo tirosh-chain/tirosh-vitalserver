@@ -13,7 +13,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertFalse(plan.restartProxy)
     }
 
-    func testGuestReadinessFailureReconcilesGuestComposeAfterWakeTransitions() {
+    func testRuntimeReadinessFailureRestartsPlatformVMAndProxy() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             vmLifecycle: runningLifecycle(),
             guestHTTP: "503",
@@ -22,29 +22,26 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         ))
 
         XCTAssertTrue(plan.canRecover)
-        XCTAssertFalse(plan.restartVM)
-        XCTAssertFalse(plan.restartProxy)
-        XCTAssertTrue(plan.reconcileGuestStack)
+        XCTAssertTrue(plan.restartVM)
+        XCTAssertTrue(plan.restartProxy)
         XCTAssertEqual(plan.actionReasons, [
             .guestHTTPUnhealthy("503"),
+            .vmRestartRequiresProxyRestart,
         ])
     }
 
-    func testGuestReadinessFailureWithoutVMLifecycleCanReconcileGuestCompose() {
+    func testRuntimeReadinessFailureWithoutVMLifecycleBlocksVMRestart() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             guestHTTP: "503",
             hostProxyReadinessHTTP: "502",
             hostProxyLivenessHTTP: "204"
         ))
 
-        XCTAssertTrue(plan.canRecover)
+        XCTAssertFalse(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertFalse(plan.restartProxy)
-        XCTAssertTrue(plan.reconcileGuestStack)
-        XCTAssertEqual(plan.blockers, [])
-        XCTAssertEqual(plan.actionReasons, [
-            .guestHTTPUnhealthy("503"),
-        ])
+        XCTAssertEqual(plan.blockers, ["recovery-blocked-missing-vm-lifecycle-for-vm-restart"])
+        XCTAssertEqual(plan.actionReasons, [])
     }
 
     func testProxyLivenessFailureRestartsProxy() {
@@ -171,83 +168,11 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertFalse(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertFalse(plan.restartProxy)
-        XCTAssertFalse(plan.reconcileGuestStack)
         XCTAssertEqual(plan.blockers, [
             "recovery-blocked-guest-http-read-failed-failed",
             "recovery-blocked-host-proxy-readiness-http-read-failed-failed",
             "recovery-blocked-host-proxy-liveness-http-read-failed-failed",
         ])
-        XCTAssertEqual(plan.actionReasons, [])
-    }
-
-    func testGuestServiceFailureReconcilesWithoutLegacyComposeObservation() {
-        let plan = RuntimeRecoveryPlanner.plan(input(
-            vmLifecycle: runningLifecycle(),
-            guestServiceStatuses: .loaded([
-                RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "unhealthy",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ])
-        ))
-
-        XCTAssertTrue(plan.canRecover)
-        XCTAssertTrue(plan.reconcileGuestStack)
-        XCTAssertEqual(plan.actionReasons, [
-            .guestServiceFailureRequiresReconcile,
-        ])
-    }
-
-    func testHealthyGuestServiceStatusesDoNotReconcileGuestStack() {
-        let plan = RuntimeRecoveryPlanner.plan(input(
-            vmLifecycle: runningLifecycle(),
-            guestServiceStatuses: .loaded([
-                RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "running",
-                    health: "healthy",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ])
-        ))
-
-        XCTAssertTrue(plan.canRecover)
-        XCTAssertFalse(plan.reconcileGuestStack)
-        XCTAssertEqual(plan.actionReasons, [])
-    }
-
-    func testDesiredStoppedGuestServiceDoesNotReconcileGuestStack() {
-        let plan = RuntimeRecoveryPlanner.plan(input(
-            vmLifecycle: runningLifecycle(),
-            guestServiceStatuses: .loaded([
-                RuntimeGuestControlServiceStatus(
-                    service: "app",
-                    state: "stopped",
-                    health: "unknown",
-                    observedAt: "2026-07-01T00:00:00Z"
-                ),
-            ]),
-            guestServiceResources: [
-                guestServiceResource(service: "app", desiredState: "stopped"),
-            ]
-        ))
-
-        XCTAssertTrue(plan.canRecover)
-        XCTAssertFalse(plan.reconcileGuestStack)
-        XCTAssertEqual(plan.actionReasons, [])
-    }
-
-    func testMissingGuestServiceStatusesDoNotCreateVMRestartReason() {
-        let plan = RuntimeRecoveryPlanner.plan(input(
-            vmLifecycle: runningLifecycle(),
-            guestServiceStatuses: .missing
-        ))
-
-        XCTAssertTrue(plan.canRecover)
-        XCTAssertFalse(plan.restartVM)
-        XCTAssertFalse(plan.restartProxy)
         XCTAssertEqual(plan.actionReasons, [])
     }
 
@@ -299,9 +224,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         vmIP: String? = "192.168.64.2",
         guestHTTP: String = "200",
         hostProxyReadinessHTTP: String = "200",
-        hostProxyLivenessHTTP: String = "204",
-        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
-        guestServiceResources: [RuntimeGuestServiceResource] = []
+        hostProxyLivenessHTTP: String = "204"
     ) -> RuntimeRecoveryInput {
         RuntimeRecoveryInput(
             vmExecutable: vmExecutable,
@@ -315,21 +238,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
             vmIP: vmIP,
             guestHTTP: guestHTTP,
             hostProxyReadinessHTTP: hostProxyReadinessHTTP,
-            hostProxyLivenessHTTP: hostProxyLivenessHTTP,
-            guestServiceStatuses: guestServiceStatuses,
-            guestServiceResources: guestServiceResources
-        )
-    }
-
-    private func guestServiceResource(
-        service: String,
-        desiredState: String
-    ) -> RuntimeGuestServiceResource {
-        RuntimeGuestServiceResource(
-            service: service,
-            spec: RuntimeGuestServiceSpec(state: desiredState, desiredState: desiredState),
-            status: RuntimeGuestServiceStatusRead(state: desiredState),
-            conditions: []
+            hostProxyLivenessHTTP: hostProxyLivenessHTTP
         )
     }
 

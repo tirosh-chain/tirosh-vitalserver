@@ -110,8 +110,8 @@ struct RuntimeAdvancedPanel: View {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.runtimeState) { statusBadge }
                 statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.activeOperationText(viewModel.operationState))
-                statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
-                if !viewModel.status.failureReasons.isEmpty {
+                statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.installedVersion ?? AppConstants.StatusText.unknown)
+                if !viewModel.status.healthIssues.isEmpty {
                     statusRow(AppConstants.Labels.failureReasons) {
                         Text(viewModel.presentationFormatter.failureReasonText(viewModel.status))
                             .fontWeight(.medium)
@@ -150,14 +150,19 @@ struct RuntimeAdvancedPanel: View {
         displayPolicy.advancedServiceHealth(
             status: viewModel.status,
             operationState: viewModel.operationState,
+            runtimeStackStatus: viewModel.runtimeStackStatus,
+            runtimeStackReadError: viewModel.runtimeStackReadError,
+            runtimeServiceResources: viewModel.runtimeServiceResources,
+            runtimeServiceResourceReadIssues: viewModel.runtimeServiceResourceReadIssues,
             redisRelaySettings: viewModel.runtimeSettings.redisRelay,
+            redisRelayStatusRead: viewModel.redisRelayStatusRead,
             now: uptimeNow
         )
     }
 
     private var apiCatalogCard: some View {
         advancedDisclosureCard(AppConstants.Labels.sectionAPICatalog, isExpanded: $showingAPICatalog) {
-            if let proxyPort = viewModel.status.proxyPort {
+            if let proxyPort = viewModel.status.publicProxyPort {
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
                     ForEach(apiCatalogItems(proxyPort: proxyPort)) { item in
                         statusRow(item.label) {
@@ -595,12 +600,23 @@ struct RuntimeAdvancedPanel: View {
                 redisRelayStatusSummary
                 applyActionRow
             }
+            .disabled(!viewModel.canEditRuntimeRedisRelaySettings)
+
+            if !viewModel.canEditRuntimeRedisRelaySettings {
+                Text(
+                    viewModel.runtimeRedisRelaySettingsRead.readError
+                        ?? "Runtime Redis Relay settings owner is unavailable."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
     @ViewBuilder
     private var redisRelayStatusSummary: some View {
-        if let status = viewModel.status.redisRelayStatus {
+        if let status = viewModel.redisRelayStatusRead.document {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 8) {
                 statusRow(AppConstants.Labels.redisRelayStatus, status.state)
                 statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(status.observedAt))
@@ -640,6 +656,17 @@ struct RuntimeAdvancedPanel: View {
                 }
             }
             .padding(.top, 4)
+        } else {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 8) {
+                statusRow(
+                    AppConstants.Labels.redisRelayStatus,
+                    viewModel.redisRelayStatusRead.readState.rawValue
+                )
+                if let readError = viewModel.redisRelayStatusRead.readError,
+                   !readError.isEmpty {
+                    statusRow(AppConstants.Labels.redisRelayLastError, readError)
+                }
+            }
         }
     }
 
@@ -684,7 +711,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var canApplySettingsForCurrentConnection: Bool {
-        viewModel.capabilities.canEditVMResources
+        viewModel.capabilities.canEditRuntimeProviderResources
             || viewModel.capabilities.canEditNetworkExposure
             || viewModel.capabilities.canOpenLocalFiles
             || viewModel.capabilities.canResetAdminPassword
@@ -724,7 +751,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var statusBadge: some View {
-        Text(viewModel.presentationFormatter.runtimeStateText(viewModel.status.runtimeState))
+        Text(viewModel.presentationFormatter.runtimeStateText(viewModel.status.platformHealth))
             .font(.headline)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -734,7 +761,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var statusColor: Color {
-        switch viewModel.status.runtimeState {
+        switch viewModel.status.platformHealth {
         case .some(.healthy):
             return .green
         case .some(.installing), .some(.initializing), .some(.updating), .some(.recovering):

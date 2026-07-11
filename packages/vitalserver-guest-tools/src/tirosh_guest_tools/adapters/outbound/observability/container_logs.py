@@ -6,10 +6,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
-from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.operations import ContainerLogAction
 from tirosh_guest_tools.infrastructure.common import (
-    DEPLOY_DIR,
+    COMPOSE_ENVIRONMENT_FILE,
+    COMPOSE_FILE,
     PROJECT_NAME,
     RUNTIME_DIR,
     mount_runtime_share,
@@ -121,10 +121,12 @@ def docker_compose_logs_command(arguments: list[str]) -> list[str]:
     return [
         "docker",
         "compose",
+        "--env-file",
+        str(COMPOSE_ENVIRONMENT_FILE),
         "--project-name",
         PROJECT_NAME,
         "-f",
-        str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
+        str(COMPOSE_FILE),
         "logs",
         "--no-color",
         *arguments,

@@ -22,7 +22,7 @@ Update apply 또는 rollback 중 Helper의 Diagnostics가 짧은 시간 안에 �
 
 이 구조에서는 상태 writer가 여러 개이고, 별도의 durable operation owner가 없기 때문에 watchdog과 update apply가 status read-model을 lock처럼 공유하는 race가 생깁니다.
 
-Update 실패 후 rollback으로 전환되는 구간에서는 `updating`과 `recovering` 우선순위도 분리되어야 합니다. Current operation 표시는 Runtime Control operation-state API와 Host operation lease owner에서 오고, recovery/update current state는 explicit workflow/health owner read에서 조립해야 합니다. `runtime-operation-lease.json`은 active owner가 아니라 diagnostics/export artifact로만 남을 수 있습니다. rollback workflow는 runtime service restart와 health wait를 함께 수행하므로, apply-bundle failure recovery가 rollback 성공 뒤에 다시 service restart를 추가로 수행하면 같은 service state가 두 번 흔들릴 수 있습니다.
+Update 실패 후 rollback으로 전환되는 구간에서는 `updating`과 `recovering` 우선순위도 분리되어야 합니다. Current operation 표시는 Runtime Control operation-state API와 durable Platform operation lease owner에서 오고, recovery/update current state는 explicit workflow/health owner read에서 조립해야 합니다. macOS의 `vm/run/runtime-operation-lease.json`은 그 owner document이며 API와 CLI workflow가 같은 lock/atomic-write repository를 공유합니다. rollback workflow는 runtime service restart와 health wait를 함께 수행하므로, apply-bundle failure recovery가 rollback 성공 뒤에 다시 service restart를 추가로 수행하면 같은 service state가 두 번 흔들릴 수 있습니다.
 
 ## Checks
 
@@ -30,10 +30,10 @@ Runtime Control operation-state owner를 먼저 확인합니다.
 
 ```sh
 curl -fsS -H "X-Runtime-Control-Token: ${RUNTIME_CONTROL_TOKEN}" \
-  "http://127.0.0.1:${RUNTIME_CONTROL_PORT:-18321}/runtime/operation-state" | jq .
+  "http://127.0.0.1:${RUNTIME_CONTROL_PORT:-18321}/platform/operations" | jq .
 ```
 
-log export 또는 local diagnostics가 필요할 때만 operation lease artifact presence를 확인합니다. 이 artifact는 current operation owner가 아니며, troubleshooting 판단은 Runtime Control operation-state API 결과를 기준으로 합니다.
+Runtime Control API를 사용할 수 없으면 durable operation lease owner document를 직접 확인합니다. 이 문서는 current owner state이며 decode/read failure를 missing으로 취급하면 안 됩니다.
 
 runtime status projection과 event history를 diagnostics로 함께 확인합니다.
 
@@ -54,7 +54,7 @@ ps aux | rg 'vitalserver-vm runtime apply-bundle|osascript'
 
 ## Fix Direction
 
-managed operation 소유권은 `runtime-status.json`이 아니라 Host operation lease owner contract로 표현하고, Runtime Control API를 통해 mutate/read합니다.
+managed operation 소유권은 `runtime-status.json`이 아니라 durable Platform operation lease owner contract로 표현하고, CLI workflow와 Runtime Control API가 같은 repository를 mutate/read합니다.
 
 - apply-bundle은 시작 시 Host operation lease owner를 acquire합니다.
 - 기존 lease가 있으면 새 managed operation은 덮어쓰지 않고 실패합니다.

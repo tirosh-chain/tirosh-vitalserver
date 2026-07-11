@@ -28,7 +28,7 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 | recorder ingress stdout | `vitalserver-recorder-ingress` | container log collector | collector 호환 raw event log |
 | Redis List `vitalserver:audit_events` | `vitalserver-recorder-ingress` | 운영 조회/디버깅 | Redis 3.2 호환 보조 조회 sink |
 | `/recorder-ingress/status` | `vitalserver-recorder-ingress` | Guest Control API, operator | recorder ingress runtime counters |
-| `/api/v1/observations` | `vitaldb-observer` | Guest/Postgres read model writer | VitalDB recorder/bed/anomaly snapshot |
+| `/api/runtime/observations` | `vitaldb-observer` | Guest/Postgres read model writer | VitalDB recorder/bed/anomaly snapshot |
 | vitaldb-observer stdout JSONL | `vitaldb-observer` | container log collector, operator diagnostics | observer collection/readiness diagnostic history |
 | `/run/tirosh/status/redis-relay-status.json` | `vitalserver-redis-relay` | Guest Control API, operator diagnostics | relay process/progress/error snapshot |
 
@@ -52,7 +52,7 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 
 각 app은 제품 전체 상태를 판단하지 않습니다.
 
-Redis Relay의 Docker health는 relay process와 status writer가 살아 있는지를 나타냅니다. Target Redis 인증, 네트워크, atomic publish 실패는 container liveness로 숨기지 않고 relay status document의 `state`, `lastErrorAt`, `lastError`, `lastSuccessAt`, `batches`, `totals`로 드러냅니다. Relay container는 `/run/tirosh/status/redis-relay-status.json`을 diagnostics artifact로 쓰고 같은 document를 `PUT /v1/redis-relay/status` owner mutation으로 publish합니다. Guest Control API의 `GET /v1/redis-relay/status`는 Guest/Postgres owner snapshot에서 relay status read state와 document를 명시적으로 노출하고, Host RuntimeStatus는 그 API 응답만 소비합니다. `settingsFingerprint`는 password를 포함하지 않는 설정 계약 hash이며, Helper UI가 표시하는 target/scope 설정과 guest relay process가 실제로 읽은 설정이 같은지 확인하는 단서입니다.
+Redis Relay의 Docker health는 relay process와 status writer가 살아 있는지를 나타냅니다. Target Redis 인증, 네트워크, atomic publish 실패는 container liveness로 숨기지 않고 relay status document의 `state`, `lastErrorAt`, `lastError`, `lastSuccessAt`, `batches`, `totals`로 드러냅니다. Relay container는 `/run/tirosh/status/redis-relay-status.json`을 diagnostics artifact로 쓰고 같은 document를 `PUT /runtime/redis-relay/status` owner mutation으로 publish합니다. Guest Control API의 `GET /runtime/redis-relay/status`는 Guest/Postgres owner snapshot에서 relay status read state와 document를 명시적으로 노출합니다. Client는 `/runtime/redis-relay/status` resource로 이 결과를 직접 읽으며 Host `RuntimeStatus`는 Redis Relay 상태를 조립하지 않습니다. `settingsFingerprint`는 password를 포함하지 않는 설정 계약 hash이며, Helper UI가 표시하는 target/scope 설정과 guest relay process가 실제로 읽은 설정이 같은지 확인하는 단서입니다.
 
 | Redis Relay state | 의미 |
 |---|---|
@@ -123,7 +123,7 @@ runtimeState/failureReasons, Host service liveness, HTTP probe, VM IP, VM
 lifecycle state/errors는 각각 explicit current owner reads, live launchd read,
 explicit probe read, Guest address provider, VM lifecycle read에서 가져옵니다.
 Workflow progress는 RuntimeStatus current read model에 포함하지 않고, operation
-detail은 RuntimeOperationState/operation lease/API owner 계약에서 읽습니다.
+detail은 PlatformOperationState/operation lease/API owner 계약에서 읽습니다.
 
 ### 2-4. Status, event, recovery decision
 
@@ -164,11 +164,10 @@ Runtime Control API는 정규화된 결과를 노출합니다.
   - `limit`: 1-500, 기본 100
   - `type`: event type filter
   - `since`: ISO-8601 timestamp lower bound
-- `GET /runtime/events/stream`: long-lived SSE runtime event stream. `Last-Event-ID`로 reconnect cursor를 전달할 수 있음
-- `GET /vitaldb/observations/latest`: 최신 VitalDB observation snapshot
-- `GET /vitaldb/observations/stream`: long-lived SSE VitalDB observation snapshot stream
-- raw log 조회는 `/host/logs/read` 계열 host affordance로 유지합니다.
-- `GET /host/logs/stream`: long-lived SSE host log text stream. product runtime event stream과는 별도 host affordance입니다.
+- `GET /runtime/vitaldb/observations/latest`: 최신 VitalDB observation snapshot
+- `GET /runtime/vitaldb/observations/stream`: long-lived SSE VitalDB observation snapshot stream
+- raw log 조회는 `/platform/logs/read` 계열 host affordance로 유지합니다.
+- `GET /platform/logs/stream`: long-lived SSE host log text stream. product runtime event stream과는 별도 host affordance입니다.
 
 Container raw log나 Redis audit list를 API의 canonical source로 직접 노출하지 않습니다. 필요하면 별도 audit 조회 endpoint를 만들되, `runtime-events`와 같은 operational event stream과 분리합니다.
 
@@ -216,7 +215,7 @@ containers
   -> Redis audit list
   -> vitaldb-observer snapshot
   -> Guest/Postgres VitalDB read model
-  -> Guest Control API /v1/vitaldb/*
+  -> Guest Control API /runtime/vitaldb/*
 
 guest collectors
   -> container-logs.log
@@ -231,8 +230,8 @@ host watchdog
 Runtime Control API
   -> /runtime/status
   -> /runtime/events via RuntimeEventHistory read model with readError on backing read failure
-  -> /vitaldb/observations/latest via Guest Control API / Guest/Postgres read model
-  -> /host/logs/read
+  -> /runtime/vitaldb/observations/latest via Guest Control API / Guest/Postgres read model
+  -> /platform/logs/read
 ```
 
 ## 4. 수집 정보 지도
@@ -307,8 +306,8 @@ Recorder `online` and `stale` are explicit observer states. Consumers must not i
 | HTTP | host/guest endpoints | host proxy, guest HTTP, recorder ingress | Yes |
 | 부가 HTTP | Redis UI, Swagger UI | HTTP status | Display only |
 | guest diagnostics artifact | `runtime-observation.json` | VM IP, resource, diagnostics evidence | No for product service liveness |
-| Guest Control API | `/v1/stack/status`, `/v1/services/*` | product service list/status and operations | Yes |
-| Guest/Postgres read models | `/v1/vitaldb/*` | recorder/bed/activity/relationship snapshots | Yes |
+| Guest Control API | `/runtime/stack`, `/runtime/services/*` | product service list/status and operations | Yes |
+| Guest/Postgres read models | `/runtime/vitaldb/*` | recorder/bed/activity/relationship snapshots | Yes |
 | port conflict | `lsof` | proxy port listener | Yes |
 | bootstrap | result/log | bootstrap failure reason | Yes |
 | container logs | file metadata | present, size, updatedAt | Diagnostics |
@@ -339,7 +338,7 @@ Recorder `online` and `stale` are explicit observer states. Consumers must not i
 | VM/package build config | `vm-build.toml` | build config | `packages/vitalserver-devtools` | Docker image, guest deploy path, bundle 구성 기준 |
 | Runtime health snapshot | runtime evaluator 결과 | watchdog/runtime | Runtime Control API, UI | 현재 runtime 상태 판단 기준 |
 | Runtime event history | Runtime Control `/runtime/events` API + `RuntimeEventHistory` read model | watchdog/runtime | Runtime Control API, diagnostics | JSONL/SQLite는 backing diagnostics artifact/index이며 current health/recovery owner가 아님 |
-| VitalDB observation latest/history | Guest/Postgres read model | Guest/Product runtime | Runtime Control API `/vitaldb/*`, UI/Lab 후보 | Host SQLite가 product SoT가 아님 |
+| VitalDB observation latest/history | Guest/Postgres read model | Guest/Product runtime | Runtime Control API `/runtime/vitaldb/*`, UI/Lab 후보 | Host SQLite가 product SoT가 아님 |
 | VitalDB raw observation | `vitaldb-observer` API snapshot | `vitaldb-observer` container | Guest/Postgres read model writer | stateless collector/producer |
 | VitalDB observer diagnostic log | container stdout, `container-logs.log` | `vitaldb-observer` | operator diagnostics | raw diagnostic history, not canonical product history |
 | Runtime observation artifact | guest `runtime-observation.json` | `tirosh-write-runtime-observation` | Host diagnostics, VM/resource status | VM 내부 진단 evidence를 host runtime support export로 전달하는 artifact |
@@ -356,7 +355,7 @@ Recorder `online` and `stale` are explicit observer states. Consumers must not i
 |---|---|
 | 현재 runtime이 정상인가? | API `/runtime/status` read model assembled from explicit owner reads |
 | 언제 상태가 바뀌었나? | Runtime Control API `/runtime/events` (`RuntimeEventHistory`), with JSONL/SQLite backing artifacts preserving read issues |
-| guest service가 살아 있나? | Guest Control API `GET /v1/stack/status` |
+| guest service가 살아 있나? | Guest Control API `GET /runtime/stack` |
 | container가 무슨 로그를 냈나? | `container-logs.log` |
 | VRecorder command가 어떤 흐름으로 전달됐나? | recorder ingress event log / Redis List |
 | VRecorder/bed/anomaly 최신 관측 결과는? | Guest/Postgres read model, Guest Control API, Runtime Control API `RuntimeVitalDBObservationSnapshot` |
@@ -397,9 +396,9 @@ Runtime operational event type은 API와 JSONL의 public contract입니다.
 | `recovery-triggered` | watchdog | recovery policy가 복구 작업을 시작함 |
 | `recovery-completed` | watchdog | recovery 작업 후 runtime이 다시 관측됨 |
 | `watchdog-skipped` | watchdog | protected/grace 상태라 recovery를 건너뜀 |
-| `recovery-planned` | watchdog | recovery policy가 Guest stack reconcile, VM restart, proxy restart 같은 복구 action 계획을 생성함 |
+| `recovery-planned` | watchdog | Host recovery policy가 VM restart, proxy restart 같은 platform 복구 action 계획을 생성함 |
 | `recovery-suppressed` | watchdog | disk/filesystem 보호 등으로 자동 recovery를 금지함 |
-| `service-restart-dispatched` | watchdog | Guest stack reconcile operation 또는 VM/proxy/guest-log-sync service restart 명령을 보냄 |
+| `service-restart-dispatched` | watchdog | VM/proxy/guest-log-sync 같은 Host-owned service restart 명령을 보냄 |
 | `runtime-command-started` | host runtime | start/stop/configure/update 등 host command 시작 |
 | `runtime-command-completed` | host runtime | host command 성공 종료 |
 | `runtime-command-failed` | host runtime | host command 실패 종료 |
@@ -505,7 +504,7 @@ audit_event_index (
 | bed/VRecorder assignment projection | Guest/Postgres read model |
 | Helper/PWA 조회 API | Runtime Control API가 Guest/Product API를 소비 |
 
-이 구조는 수집/계산 장애를 traffic path와 Host watchdog core loop에서 분리하면서도, 제품이 보는 최종 관측 SoT를 Guest/Postgres read model로 유지하기 위한 결정입니다. Observer container는 자체 SQLite를 갖지 않고 `/api/v1/observations` snapshot을 제공합니다. Guest writer가 이 snapshot을 Postgres read model에 저장하고, Runtime Control API는 Guest/Product API를 소비합니다. Host `runtime-observability.sqlite`는 transitional diagnostics 또는 migration evidence로만 남아야 하며 product read source로 승격하면 안 됩니다. Observer stdout JSONL은 `server_started`, `readiness_failed`, `observation_collected`, `observation_failed` 같은 진단 이벤트만 남깁니다. 이 로그는 raw history이고, Runtime Control API가 보는 canonical observation history는 아닙니다.
+이 구조는 수집/계산 장애를 traffic path와 Host watchdog core loop에서 분리하면서도, 제품이 보는 최종 관측 SoT를 Guest/Postgres read model로 유지하기 위한 결정입니다. Observer container는 자체 SQLite를 갖지 않고 `/api/runtime/observations` snapshot을 제공합니다. Guest writer가 이 snapshot을 Postgres read model에 저장하고, Runtime Control API는 Guest/Product API를 소비합니다. Host `runtime-observability.sqlite`는 transitional diagnostics 또는 migration evidence로만 남아야 하며 product read source로 승격하면 안 됩니다. Observer stdout JSONL은 `server_started`, `readiness_failed`, `observation_collected`, `observation_failed` 같은 진단 이벤트만 남깁니다. 이 로그는 raw history이고, Runtime Control API가 보는 canonical observation history는 아닙니다.
 
 ### 9-1. External Redis relay
 
@@ -532,7 +531,7 @@ Relay는 source Redis에서 `SCAN`, `TYPE`, `PTTL`, `DUMP`를 사용합니다. T
 - target password는 settings/read model/TOML에 원문으로 저장하지 않고 secret file로 전달합니다.
 - Runtime Control settings/read model에는 password 원문 대신 `passwordConfigured`만 노출합니다.
 - relay 장애는 VitalServer traffic path 장애로 승격하지 않고 relay degraded/status로 보고합니다.
-- relay container는 `/run/tirosh/status/redis-relay-status.json`을 diagnostic artifact로 publish하고, 같은 document를 `PUT /v1/redis-relay/status` owner mutation으로 Guest Control API에 보냅니다. `GET /v1/redis-relay/status`는 Guest/Postgres owner snapshot을 읽어 `loaded`, `invalidResponse`, `readFailed`를 구분해 노출하고, Host RuntimeStatus는 shared status file을 직접 읽지 않습니다.
+- relay container는 `/run/tirosh/status/redis-relay-status.json`을 diagnostic artifact로 publish하고, 같은 document를 `PUT /runtime/redis-relay/status` owner mutation으로 Guest Control API에 보냅니다. `GET /runtime/redis-relay/status`는 Guest/Postgres owner snapshot을 읽어 `loaded`, `invalidResponse`, `readFailed`를 구분해 노출합니다. Runtime surface의 `/runtime/redis-relay/status`는 이 read result를 그대로 전달하며 Host `RuntimeStatus`나 shared status file을 current product state로 사용하지 않습니다.
 - relay container는 publisher입니다. Target Redis consumer group pending recovery, DLQ, decode idempotency, downstream 재처리는 target 쪽 consumer가 소유합니다.
 - target Redis 수신 계약과 consumer 권장 흐름은 site dev 문서의 `Redis Relay`를 기준으로 봅니다.
 - `running_with_errors`는 부분 성공 상태입니다. 현재 batch의 실패 원인은 status JSON의 `lastErrorSamples`에서 key/stage/code/errorType/message로 확인합니다.
@@ -551,12 +550,12 @@ Relay는 source Redis에서 `SCAN`, `TYPE`, `PTTL`, `DUMP`를 사용합니다. T
 ### 10-2. explicit recorder-ingress read model
 
 Swift 쪽은 `RuntimeContainerObservation` read model을 사용하지 않습니다.
-recorder-ingress 상태는 Guest Control API `GET /v1/recorder-ingress/status`
+recorder-ingress 상태는 Guest Control API `GET /runtime/recorder-ingress/status`
 결과를 `RuntimeRecorderIngressStatusReadResult`로 전달합니다.
 
 현재 포함 항목:
 
-- Guest Control API `GET /v1/recorder-ingress/status` read 결과
+- Guest Control API `GET /runtime/recorder-ingress/status` read 결과
 - recorder ingress status counter snapshot
 
 이 모델은 Guest Control API가 제공한 explicit read 결과입니다. Helper UI는 `RuntimeRecorderIngressStatusReadResult`를 그대로 받아 read state와 recorder-ingress counter를 표시할 수 있지만, 접근 실패를 service liveness나 product recovery state로 추정하지 않습니다. audit write failure counter는 관측값으로 보존하지만 즉시 runtime recovery 실패로 판단하지 않습니다. Recorder-ingress counter는 active connection 보조 정보와 diagnostics evidence이며, ingress-only recorder를 product recorder로 생성하거나 Guest/Postgres read model의 recorder online/stale/lastSeen/IP state를 수정하는 source가 아닙니다.
@@ -568,7 +567,7 @@ recorder-ingress 상태는 Guest Control API `GET /v1/recorder-ingress/status`
 
 ### 10-3. recorder ingress status를 Guest Control read로 관측
 
-watchdog과 health checker는 Host proxy를 직접 curl하지 않고 Guest Control API `GET /v1/recorder-ingress/status`를 소비합니다. Guest가 container network 안에서 recorder-ingress status endpoint를 읽고, Host는 그 read document를 diagnostics evidence로 보존합니다.
+watchdog과 health checker는 Host proxy를 직접 curl하지 않고 Guest Control API `GET /runtime/recorder-ingress/status`를 소비합니다. Guest가 container network 안에서 recorder-ingress status endpoint를 읽고, Host는 그 read document를 diagnostics evidence로 보존합니다.
 
 현재 판단:
 
@@ -615,6 +614,6 @@ SQLite read model을 도입합니다.
 - raw log는 export/debug 대상이고, operational event는 API/자동화 대상입니다.
 - 같은 event를 여러 sink에 남길 수는 있지만, canonical source와 sink 목적을 문서에 명시합니다.
 - Swagger UI는 단일 화면에서 VitalServer, Runtime Control API, Recorder Ingress API spec을 선택하는 multi-spec catalog로 제공합니다. Recorder Ingress spec은 raw proxy traffic이 아니라 `/recorder-ingress/health`, `/recorder-ingress/status` 같은 sidecar 운영 endpoint만 문서화합니다.
-- Helper Status 화면은 현재 runtime snapshot을 보여주고, Events 화면은 `RuntimeEventHistory` 기반의 status/event history를 보여줍니다. VRecorder 접속 수와 recorder별 snapshot은 Guest Control API `GET /v1/recorder-ingress/status`가 제공하는 explicit `RuntimeRecorderIngressStatusReadResult`로 전달합니다. `containerObservation.recorderIngressStatus`는 current product display source가 아닙니다.
+- Helper Status 화면은 현재 runtime snapshot을 보여주고, Events 화면은 `RuntimeEventHistory` 기반의 status/event history를 보여줍니다. VRecorder 접속 수와 recorder별 snapshot은 Guest Control API `GET /runtime/recorder-ingress/status`가 제공하는 explicit `RuntimeRecorderIngressStatusReadResult`로 전달합니다. `containerObservation.recorderIngressStatus`는 current product display source가 아닙니다.
 - Helper UI의 상태 문구, severity, service 행 구성, HTTP 상태 표시, uptime formatting은 SwiftUI view가 아니라 `RuntimeStatusDisplayPolicy`와 `RuntimeEventDisplayPolicy`가 소유합니다. View는 policy output을 렌더링만 하며, 새 상태/행/표시 규칙을 추가할 때는 먼저 해당 policy를 수정합니다.
 - Product service uptime은 Guest Control API가 명시적으로 제공할 때만 표시합니다. Guest `docker inspect .State.StartedAt`나 compose observation에서 Host가 uptime을 재구성하지 않습니다.

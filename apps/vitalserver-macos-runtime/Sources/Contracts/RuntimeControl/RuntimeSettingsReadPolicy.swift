@@ -86,16 +86,13 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
 public struct RuntimeLogArchiveSettingsReadInput: Equatable, Sendable {
     public let retentionDays: Int
     public let maximumGiB: Int
-    public let redisRelay: RuntimeRedisRelaySettings
 
     public init(
         retentionDays: Int,
-        maximumGiB: Int,
-        redisRelay: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings()
+        maximumGiB: Int
     ) {
         self.retentionDays = retentionDays
         self.maximumGiB = maximumGiB
-        self.redisRelay = redisRelay
     }
 }
 
@@ -325,7 +322,6 @@ public enum RuntimeSettingsReadPolicy {
         var next = settings
         next.logArchiveRetentionDays = input.retentionDays
         next.logArchiveMaximumGiB = input.maximumGiB
-        next.redisRelay = input.redisRelay
         if !RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(input.retentionDays) {
             next = appendReadIssue(
                 source: "logArchiveSettings.logArchiveRetentionDays",

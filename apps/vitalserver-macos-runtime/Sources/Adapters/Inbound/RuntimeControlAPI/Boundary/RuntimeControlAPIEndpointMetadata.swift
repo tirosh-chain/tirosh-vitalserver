@@ -1,17 +1,16 @@
 public extension RuntimeControlAPIEndpoint {
     var streamCapability: RuntimeControlAPIStreamCapability {
         switch self {
-        case .overviewStream,
-             .statusStream,
-             .eventStream,
+        case .platformStateStream,
              .vitalDBObservationStream,
              .logStream:
             return .supported
-        case .capabilities,
-             .overview,
-             .status,
+        case .platformCapabilities,
+             .runtimeCapabilities,
+             .platformState,
              .events,
              .operationState,
+             .platformWorkflow,
              .vitalDBObservation,
              .vitalDBRecorders,
              .vitalDBRecorder,
@@ -28,6 +27,8 @@ public extension RuntimeControlAPIEndpoint {
              .health,
              .settings,
              .applySettings,
+             .applyAdminPassword,
+             .applyRedisRelaySettings,
              .release,
              .installInfo,
              .labScenarios,
@@ -50,6 +51,8 @@ public extension RuntimeControlAPIEndpoint {
              .guestServices,
              .guestServiceStatus,
              .guestServiceResource,
+             .redisRelayStatus,
+             .redisRelaySettings,
              .startGuestService,
              .stopGuestService,
              .restartGuestService,
@@ -69,32 +72,36 @@ public extension RuntimeControlAPIEndpoint {
              .updateBundleSummary,
              .verifyUpdateBundle,
              .applyUpdateBundle,
+             .rollbackRelease,
              .rollbackBackup,
              .deleteBackup,
              .deleteUpdateBackup,
              .deleteRuntimeDataBackup,
              .exportLogs,
+             .createSupportExport,
              .acquireOperationLease,
              .heartbeatOperationLease,
              .releaseOperationLease,
              .guestAddress,
              .putGuestAddress,
              .vmLifecycle,
-             .putVMLifecycle:
+             .putVMLifecycle,
+             .startRuntimeProvider,
+             .stopRuntimeProvider,
+             .restartRuntimeProvider:
             return .unsupported
         }
     }
 
     var clientAccess: RuntimeControlAPIClientAccess {
         switch self {
-        case .capabilities,
-             .overview,
-             .overviewStream,
-             .status,
-             .statusStream,
+        case .platformCapabilities,
+             .runtimeCapabilities,
+             .platformState,
+             .platformStateStream,
              .operationState,
+             .platformWorkflow,
              .events,
-             .eventStream,
              .vitalDBObservation,
              .vitalDBObservationStream,
              .vitalDBRecorders,
@@ -115,11 +122,16 @@ public extension RuntimeControlAPIEndpoint {
              .guestStackStatus,
              .guestServices,
              .guestServiceStatus,
-             .guestServiceResource:
+             .guestServiceResource,
+             .redisRelayStatus:
+            return .browserSafe
+        case .redisRelaySettings:
             return .browserSafe
         case .exportLogs:
             return .nativeShellOnly
         case .applySettings,
+             .applyAdminPassword,
+             .applyRedisRelaySettings,
              .createLabBeds,
              .deleteLabBeds,
              .resetLabBeds,
@@ -157,17 +169,22 @@ public extension RuntimeControlAPIEndpoint {
              .updateBundleSummary,
              .verifyUpdateBundle,
              .applyUpdateBundle,
+             .rollbackRelease,
              .rollbackBackup,
              .deleteBackup,
              .deleteUpdateBackup,
              .deleteRuntimeDataBackup,
+             .createSupportExport,
              .acquireOperationLease,
              .heartbeatOperationLease,
              .releaseOperationLease,
              .guestAddress,
              .putGuestAddress,
              .vmLifecycle,
-             .putVMLifecycle:
+             .putVMLifecycle,
+             .startRuntimeProvider,
+             .stopRuntimeProvider,
+             .restartRuntimeProvider:
             return .localServerMediated
         }
     }

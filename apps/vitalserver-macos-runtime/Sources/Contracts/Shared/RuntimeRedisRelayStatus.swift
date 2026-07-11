@@ -64,7 +64,7 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
     public var observedAt: String
     public var enabled: Bool
     public var state: String
-    public var scope: String
+    public var scope: String?
     public var targetUrl: String?
     public var targetUsernameConfigured: Bool
     public var targetPasswordConfigured: Bool
@@ -81,7 +81,7 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
         observedAt: String,
         enabled: Bool,
         state: String,
-        scope: String,
+        scope: String?,
         targetUrl: String? = nil,
         targetUsernameConfigured: Bool = false,
         targetPasswordConfigured: Bool = false,
@@ -135,7 +135,7 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
             observedAt: try container.decode(String.self, forKey: .observedAt),
             enabled: try container.decode(Bool.self, forKey: .enabled),
             state: try container.decode(String.self, forKey: .state),
-            scope: try container.decode(String.self, forKey: .scope),
+            scope: try container.decodeRequiredNullable(String.self, forKey: .scope),
             targetUrl: try container.decodeRequiredNullable(String.self, forKey: .targetUrl),
             targetUsernameConfigured: try container.decode(
                 Bool.self,
@@ -164,7 +164,7 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
         try container.encode(observedAt, forKey: .observedAt)
         try container.encode(enabled, forKey: .enabled)
         try container.encode(state, forKey: .state)
-        try container.encode(scope, forKey: .scope)
+        try container.encodeNullable(scope, forKey: .scope)
         try container.encodeNullable(targetUrl, forKey: .targetUrl)
         try container.encode(targetUsernameConfigured, forKey: .targetUsernameConfigured)
         try container.encode(targetPasswordConfigured, forKey: .targetPasswordConfigured)

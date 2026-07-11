@@ -18,7 +18,7 @@ cat "/Library/Application Support/TiroshVitalServer/vm/data/run/bootstrap.log"
 cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-observation.json"
 ```
 
-Current Host reads should consume the Runtime Control Guest address owner (`GET /host/runtime/guest-address`) and Runtime Control status. The `vm/data/run/vm-ip` file is bootstrap evidence that may be published through `PUT /host/runtime/guest-address`; it is not the current VM IP owner or a routing fallback. `runtime-observation.json` and `runtime-status.json` are useful diagnostics artifacts, but they are not current VM IP or active operation owners.
+Current Platform reads consume the durable runtime endpoint owner (`vm/run/runtime-endpoint.json`), exposed by `GET /platform/runtime-endpoint`. The `vm/data/run/vm-ip` file is bootstrap evidence that the Platform proxy adapter explicitly promotes into the owner document; it is not a current-state fallback. `runtime-observation.json` and `runtime-status.json` are diagnostics artifacts, not current endpoint or active operation owners.
 
 원인:
 

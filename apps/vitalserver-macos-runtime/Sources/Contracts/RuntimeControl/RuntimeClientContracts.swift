@@ -32,9 +32,9 @@ public protocol RuntimeControlClient {
     var capabilities: RuntimeControlCapabilities { get }
 
     func loadSettings() -> RuntimeSettings
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
-    func loadOperationState() -> RuntimeOperationState
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState
+    func loadOperationState() -> PlatformOperationState
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot
@@ -68,9 +68,17 @@ public protocol RuntimeControlClient {
     func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse
     func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse
     func guestStackStatus() async throws -> RuntimeGuestControlStackStatus
+    func runtimeCapabilities() async throws -> RuntimeCapabilities
+    func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead
+    func applyRuntimeProductSettings(_ settings: GuestRuntimeSettingsDocument) async throws -> RuntimeGuestControlServiceOperation
+    func applyRuntimeAdminPassword(_ password: String) async throws -> RuntimeGuestControlServiceOperation
+    func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead
+    func applyRuntimeRedisRelaySettings(_ settings: RuntimeRedisRelaySettingsApplyRequest) async throws -> RuntimeGuestControlServiceOperation
+    func loadRuntimeOperationEvents(query: RuntimeEventQuery) async throws -> RuntimeOperationEventHistory
     func listGuestServices() async throws -> RuntimeGuestControlServiceList
     func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus
     func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource
+    func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult
     func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation
     func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation
     func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation
@@ -79,6 +87,46 @@ public protocol RuntimeControlClient {
 }
 
 public extension RuntimeControlClient {
+    func runtimeCapabilities() async throws -> RuntimeCapabilities {
+        throw RuntimeControlClientUnsupportedError.unavailable("runtime-capabilities")
+    }
+
+    func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead {
+        throw RuntimeControlClientUnsupportedError.unavailable("settings:get")
+    }
+
+    func applyRuntimeProductSettings(
+        _ settings: GuestRuntimeSettingsDocument
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("settings:apply")
+    }
+
+    func applyRuntimeAdminPassword(_: String) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("admin-password:apply")
+    }
+
+    func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead {
+        throw RuntimeControlClientUnsupportedError.unavailable("redis-relay:settings:get")
+    }
+
+    func applyRuntimeRedisRelaySettings(_: RuntimeRedisRelaySettingsApplyRequest) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("redis-relay:settings:apply")
+    }
+
+    func loadRuntimeOperationEvents(
+        query _: RuntimeEventQuery
+    ) async throws -> RuntimeOperationEventHistory {
+        throw RuntimeControlClientUnsupportedError.unavailable("events:get")
+    }
+
+    func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult {
+        RuntimeRedisRelayStatusReadResult(
+            readState: .readFailed,
+            document: nil,
+            readError: "Redis Relay status owner is unavailable"
+        )
+    }
+
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         loadVitalDBRecorders()
     }
@@ -253,6 +301,7 @@ public protocol RuntimeHostClient {
     func repairDatastore() async throws -> RuntimeCommandResult
     func repairVMDisk() async throws -> RuntimeCommandResult
     func repairRuntimeServices() async throws -> RuntimeCommandResult
+    func controlRuntimeProvider(_ action: RuntimeProviderCommandAction) async throws -> RuntimeCommandResult
     func createRedisBackup() async throws -> RuntimeCommandResult
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
     func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
@@ -268,6 +317,10 @@ public protocol RuntimeHostClient {
 }
 
 public extension RuntimeHostClient {
+    func controlRuntimeProvider(_ action: RuntimeProviderCommandAction) async throws -> RuntimeCommandResult {
+        throw RuntimeControlClientUnsupportedError.unavailable("runtime-provider-\(action.rawValue)")
+    }
+
     func acquireOperationLease(
         _ document: RuntimeOperationLeaseDocument
     ) async throws -> RuntimeOperationLeaseMutationResponse {

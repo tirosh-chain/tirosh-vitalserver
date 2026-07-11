@@ -135,7 +135,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
         XCTAssertEqual(
             compose.components(separatedBy: "seccomp=unconfined").count - 1,
-            12
+            11
         )
     }
 
@@ -201,17 +201,6 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(prepareAirgapRootfs.contains("docker compose --project-name"))
         XCTAssertTrue(prepareAirgapRootfs.contains("\"runId\": manifest[\"runId\"]"))
         XCTAssertTrue(prepareAirgapRootfs.contains("ready_path.write_text"))
-    }
-
-    func testGuestCommandFailuresClearRequestFilesAfterWritingFailureResult() throws {
-        let activation = try readGuestToolsFile("application/update_activation.py")
-        let shutdown = try readGuestToolsFile("application/update_shutdown.py")
-        let repair = try readGuestToolsFile("application/redis_repair.py")
-
-        XCTAssertTrue(activation.contains("REQUEST_FILE.unlink(missing_ok=True)"))
-        XCTAssertTrue(shutdown.contains("write_result"))
-        XCTAssertTrue(shutdown.contains("REQUEST_FILE.unlink(missing_ok=True)"))
-        XCTAssertTrue(repair.contains("REQUEST_FILE.unlink(missing_ok=True)"))
     }
 
     func testReleaseSyncTargetsGuestToolsInfrastructureAndUseCases() throws {

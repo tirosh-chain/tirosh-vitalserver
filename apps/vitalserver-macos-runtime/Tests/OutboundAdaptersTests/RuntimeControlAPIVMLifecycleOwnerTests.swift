@@ -19,7 +19,7 @@ final class RuntimeControlAPIVMLifecycleOwnerTests: XCTestCase {
         XCTAssertEqual(try owner.loadVMLifecycleResource(), .loaded(document))
         let request = try XCTUnwrap(client.requests.first)
         XCTAssertEqual(request.httpMethod, "GET")
-        XCTAssertEqual(request.url?.path, "/host/runtime/vm-lifecycle")
+        XCTAssertEqual(request.url?.path, "/platform/runtime-provider")
         XCTAssertEqual(request.value(forHTTPHeaderField: "X-Runtime-Control-Token"), "token")
     }
 
@@ -37,7 +37,7 @@ final class RuntimeControlAPIVMLifecycleOwnerTests: XCTestCase {
         XCTAssertEqual(try owner.putVMLifecycleResource(document), .loaded(document))
         let request = try XCTUnwrap(client.requests.first)
         XCTAssertEqual(request.httpMethod, "PUT")
-        XCTAssertEqual(request.url?.path, "/host/runtime/vm-lifecycle")
+        XCTAssertEqual(request.url?.path, "/platform/runtime-provider")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
         XCTAssertTrue(try XCTUnwrap(request.httpBody).contains(Data(#""message":"bootstrapping""#.utf8)))
     }

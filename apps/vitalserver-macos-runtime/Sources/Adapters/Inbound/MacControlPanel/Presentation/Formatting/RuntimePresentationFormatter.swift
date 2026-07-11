@@ -89,16 +89,16 @@ public struct RuntimePresentationFormatter {
         ].joined(separator: "\n")
     }
 
-    public func statusDisplayMessage(_ status: RuntimeStatus) -> String? {
+    public func statusDisplayMessage(_ status: PlatformState) -> String? {
         var lines: [String] = []
-        if !status.failureReasons.isEmpty {
+        if !status.healthIssues.isEmpty {
             lines.append("\(vocabulary.failureReasonsLabel): \(failureReasonText(status))")
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
-    public func failureReasonText(_ status: RuntimeStatus) -> String {
-        status.failureReasons.map(vocabulary.domainErrorText).joined(separator: ", ")
+    public func failureReasonText(_ status: PlatformState) -> String {
+        status.healthIssues.map(vocabulary.domainErrorText).joined(separator: ", ")
     }
 
     public func runtimeStateText(_ state: RuntimeState?) -> String {
@@ -109,17 +109,17 @@ public struct RuntimePresentationFormatter {
         vocabulary.operationText(operation?.rawValue)
     }
 
-    public func activeOperationText(_ operationState: RuntimeOperationState) -> String {
+    public func activeOperationText(_ operationState: PlatformOperationState) -> String {
         operationText(operationState.operationForPresentation)
     }
 
-    public func updateOperationInProgress(_ operationState: RuntimeOperationState) -> Bool {
+    public func updateOperationInProgress(_ operationState: PlatformOperationState) -> Bool {
         RuntimeActiveOperationPolicy.isUpdateOperation(operationState.operationForPresentation)
     }
 
     public func updateOperationDisplayMessage(
-        _ status: RuntimeStatus,
-        operationState: RuntimeOperationState
+        _ status: PlatformState,
+        operationState: PlatformOperationState
     ) -> String? {
         guard updateOperationInProgress(operationState) else {
             return nil

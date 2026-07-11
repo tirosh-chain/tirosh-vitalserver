@@ -8,8 +8,8 @@ import Errors
 /// SwiftUI and the development API call through this actor so MainActor only publishes results.
 public actor MacRuntimeControlReadWorker {
     private let releaseInfo: RuntimeReleaseInfo
-    private let statusReader: any RuntimeStatusReading
-    private let operationStateReader: any RuntimeOperationStateReading
+    private let platformStateReader: any PlatformStateReading
+    private let operationStateReader: any PlatformOperationStateReading
     private let observabilityReader: any RuntimeObservabilityReading
     private let fileReader: any RuntimeHostFileReading
     private let settingsReader: any RuntimeSettingsReading
@@ -36,11 +36,11 @@ public actor MacRuntimeControlReadWorker {
         let fileReader = SystemRuntimeHostFileReader()
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(
+            platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
                 vmLifecycleResourceReader: vmLifecycleResourceReader
             ),
-            operationStateReader: SystemRuntimeOperationStateReader.live(
+            operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader
             ),
             observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
@@ -51,14 +51,14 @@ public actor MacRuntimeControlReadWorker {
 
     init(
         releaseInfo: RuntimeReleaseInfo,
-        statusReader: any RuntimeStatusReading,
-        operationStateReader: any RuntimeOperationStateReading = SystemRuntimeOperationStateReader.live(),
+        platformStateReader: any PlatformStateReading,
+        operationStateReader: any PlatformOperationStateReading = SystemPlatformOperationStateReader.live(),
         observabilityReader: any RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
         fileReader: any RuntimeHostFileReading,
         settingsReader: any RuntimeSettingsReading
     ) {
         self.releaseInfo = releaseInfo
-        self.statusReader = statusReader
+        self.platformStateReader = platformStateReader
         self.operationStateReader = operationStateReader
         self.observabilityReader = observabilityReader
         self.fileReader = fileReader
@@ -69,15 +69,15 @@ public actor MacRuntimeControlReadWorker {
         settingsReader.load()
     }
 
-    public func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        statusReader.loadStatus(settings: settings)
+    public func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
+        platformStateReader.loadPlatformState(settings: settings)
     }
 
-    public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        await statusReader.loadHealthStatus(settings: settings)
+    public func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
+        await platformStateReader.loadHealthStatus(settings: settings)
     }
 
-    public func loadOperationState() async -> RuntimeOperationState {
+    public func loadOperationState() async -> PlatformOperationState {
         operationStateReader.loadOperationState()
     }
 
@@ -152,12 +152,12 @@ public actor MacRuntimeControlReadWorker {
     }
 }
 
-protocol RuntimeOperationStateReading: Sendable {
-    func loadOperationState() -> RuntimeOperationState
+protocol PlatformOperationStateReading: Sendable {
+    func loadOperationState() -> PlatformOperationState
 }
 
-struct SystemRuntimeOperationStateReader: RuntimeOperationStateReading, @unchecked Sendable {
-    private let resourceReader: any RuntimeOperationStateResourceReading
+struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unchecked Sendable {
+    private let resourceReader: any PlatformOperationStateResourceReading
     private let now: @Sendable () -> Date
 
     init(
@@ -168,7 +168,7 @@ struct SystemRuntimeOperationStateReader: RuntimeOperationStateReading, @uncheck
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.init(
-            resourceReader: HostRuntimeOperationStateResourceReader(
+            resourceReader: HostPlatformOperationStateResourceReader(
                 operationLeaseReader: operationLeaseReader,
                 installStateReader: installStateReader
             ),
@@ -177,7 +177,7 @@ struct SystemRuntimeOperationStateReader: RuntimeOperationStateReading, @uncheck
     }
 
     init(
-        resourceReader: any RuntimeOperationStateResourceReading,
+        resourceReader: any PlatformOperationStateResourceReading,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.resourceReader = resourceReader
@@ -196,13 +196,13 @@ struct SystemRuntimeOperationStateReader: RuntimeOperationStateReading, @uncheck
         operationLeaseReader: any RuntimeOperationLeaseReading
     ) -> Self {
         return Self(
-            resourceReader: HostRuntimeOperationStateResourceReader.live(operationLeaseReader: operationLeaseReader)
+            resourceReader: HostPlatformOperationStateResourceReader.live(operationLeaseReader: operationLeaseReader)
         )
     }
 
-    func loadOperationState() -> RuntimeOperationState {
+    func loadOperationState() -> PlatformOperationState {
         let snapshot = resourceReader.loadResourceSnapshot()
-        return RuntimeOperationState(
+        return PlatformOperationState(
             activeOperation: nil,
             install: RuntimeInstallOperationState.fromInstallStateRead(snapshot.install),
             lease: leaseState(from: snapshot.lease, now: now())

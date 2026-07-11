@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   runtimeCommandResponseSchema,
+  platformCapabilitiesSchema,
   runtimeCapabilitiesSchema,
   runtimeEventHistorySchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
-  runtimeOperationStateSchema,
-  runtimeOverviewSchema,
-  runtimeStatusSchema,
+  platformOperationStateSchema,
+  platformWorkflowOperationSchema,
+  runtimeRedisRelayStatusReadResultSchema,
+  platformStateSchema,
   runtimeSettingsSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBObservationSchema,
@@ -17,6 +19,27 @@ import {
 } from "./runtimeControlSchemas";
 
 describe("runtime control contract schemas", () => {
+  it("requires artifact evidence only for a completed support export", () => {
+    const completed = {
+      schemaVersion: 1,
+      operationId: "workflow-0123456789abcdef0123456789abcdef",
+      kind: "support-export",
+      state: "completed",
+      startedAt: "2026-07-11T00:00:00Z",
+      updatedAt: "2026-07-11T00:00:01Z",
+      release: null,
+      artifact: {
+        path: "/var/lib/vitalserver/support/support.tar.gz",
+        sha256: "a".repeat(64),
+        sizeBytes: 42
+      },
+      failure: null
+    };
+    expect(platformWorkflowOperationSchema.parse(completed)).toEqual(completed);
+    expect(() => platformWorkflowOperationSchema.parse({ ...completed, artifact: null })).toThrow();
+    expect(() => platformWorkflowOperationSchema.parse({ ...completed, kind: "update-apply" })).toThrow();
+  });
+
   it("accepts a command response from Runtime Control API", () => {
     expect(
       runtimeCommandResponseSchema.parse({
@@ -61,7 +84,7 @@ describe("runtime control contract schemas", () => {
 
   it("preserves operation state read meanings", () => {
     expect(
-      runtimeOperationStateSchema.parse({
+      platformOperationStateSchema.parse({
         activeOperation: "apply-bundle",
         install: {
           state: "failed",
@@ -92,7 +115,7 @@ describe("runtime control contract schemas", () => {
 
   it("rejects failed or stale operation state without explicit reason", () => {
     expect(() =>
-      runtimeOperationStateSchema.parse({
+      platformOperationStateSchema.parse({
         activeOperation: null,
         install: {
           state: "failed",
@@ -111,7 +134,7 @@ describe("runtime control contract schemas", () => {
 
   it("rejects operation state payloads that omit explicit null fields", () => {
     expect(() =>
-      runtimeOperationStateSchema.parse({
+      platformOperationStateSchema.parse({
         install: {
           state: "unavailable"
         },
@@ -122,127 +145,86 @@ describe("runtime control contract schemas", () => {
     ).toThrow();
   });
 
-  it("accepts unknown runtime state values in overview responses", () => {
-    expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          status: {
-            runtimeState: "surprising-from-helper"
-          }
-        })
-      ).status.runtimeState
-    ).toBe("surprising-from-helper");
+  it("accepts unknown platform health values in PlatformState responses", () => {
+    expect(platformStateSchema.parse({ services: [], runtimeInstallationState: "missing", platformHealth: "surprising-from-helper" }).platformHealth)
+      .toBe("surprising-from-helper");
   });
 
-  it("accepts Remote Console status fields in overview responses", () => {
+  it("accepts Remote Console fields in PlatformState responses", () => {
     expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          status: {
-            runtimeControlHTTP: "200",
-            runtimeControlStartedAt: "2026-05-26T04:30:00Z"
-          }
-        })
-      ).status
-    ).toMatchObject({
-      runtimeControlHTTP: "200",
-      runtimeControlStartedAt: "2026-05-26T04:30:00Z"
-    });
-  });
-
-  it("accepts overview status responses without container observation", () => {
-    expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          status: {
-            runtimeState: "healthy",
-            runtimeVersion: "loaded"
-          }
-        })
-      ).status
-    ).toMatchObject({
-      runtimeState: "healthy",
-      runtimeVersion: "loaded"
-    });
-  });
-
-  it("requires explicit Guest service arrays when RuntimeStatus says Guest services are loaded", () => {
-    expect(
-      runtimeStatusSchema.parse({
-        runtimeState: "healthy",
-        guestServicesReadState: "loaded",
-        guestServiceStatuses: [],
-        guestServiceResources: [],
-        guestServiceResourceReadIssues: [],
-        guestStackProbeErrors: [
-          {
-            source: "docker stats",
-            message: "timed out after 1 seconds"
-          }
-        ]
+      platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+        platformAPIHTTP: "200",
+        platformAPIStartedAt: "2026-05-26T04:30:00Z"
       })
     ).toMatchObject({
-      guestServicesReadState: "loaded",
-      guestServiceStatuses: [],
-      guestServiceResources: [],
-      guestServiceResourceReadIssues: [],
-      guestStackProbeErrors: [
-        {
-          source: "docker stats",
-          message: "timed out after 1 seconds"
-        }
-      ]
+      platformAPIHTTP: "200",
+      platformAPIStartedAt: "2026-05-26T04:30:00Z"
     });
-
-    expect(() =>
-      runtimeStatusSchema.parse({
-        runtimeState: "healthy",
-        guestServicesReadState: "loaded",
-        guestServiceStatuses: []
-      })
-    ).toThrow(/guestServiceResources/);
   });
 
-  it("preserves explicit RuntimeStatus installation state separately from legacy installed bool", () => {
+  it("accepts PlatformState responses without container observation", () => {
     expect(
-      runtimeStatusSchema.parse({
-        runtimeInstalled: true,
+      platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+        platformHealth: "healthy",
+        installedVersion: "loaded"
+      })
+    ).toMatchObject({
+      platformHealth: "healthy",
+      installedVersion: "loaded"
+    });
+  });
+
+  it("rejects Runtime-owned product state from Host PlatformState", () => {
+    for (const field of [
+      "redisRelayStatus",
+      "guestServicesReadState",
+      "guestServices",
+      "guestServiceStatuses",
+      "guestServiceResources",
+      "guestServiceResourceReadIssues",
+      "guestStackProbeErrors",
+      "guestServicesReadError",
+      "cpuUsagePercent",
+      "memory",
+      "vitalServerMemory",
+      "recorderIngressMemory",
+      "redisMemory",
+      "systemDisk"
+    ]) {
+      expect(() =>
+        platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+          platformHealth: "healthy",
+          [field]: null
+        })
+      ).toThrow(new RegExp(field));
+    }
+  });
+
+  it("requires explicit PlatformState installation state instead of legacy installed bool", () => {
+    expect(
+      platformStateSchema.parse({
+        services: [],
         runtimeInstallationState: "present"
       })
     ).toMatchObject({
-      runtimeInstalled: true,
       runtimeInstallationState: "present"
     });
-  });
-
-  it("requires an explicit read error when RuntimeStatus says Guest service reads failed", () => {
     expect(() =>
-      runtimeStatusSchema.parse({
-        runtimeState: "degraded",
-        guestServicesReadState: "failed",
-        guestServicesReadError: ""
+      platformStateSchema.parse({
+        services: [],
+        runtimeInstalled: true,
+        runtimeInstallationState: "present"
       })
-    ).toThrow(/guestServicesReadError/);
-
-    expect(
-      runtimeStatusSchema.parse({
-        runtimeState: "degraded",
-        guestServicesReadState: "failed",
-        guestServicesReadError: "guest control api timed out"
-      })
-    ).toMatchObject({
-      guestServicesReadState: "failed",
-      guestServicesReadError: "guest control api timed out"
-    });
+    ).toThrow(/runtimeInstalled/);
   });
 
-  it("requires complete Redis Relay status owner documents on RuntimeStatus", () => {
+  it("requires complete Redis Relay status owner resource documents", () => {
     const redisRelayStatus = {
       schemaVersion: 1,
       observedAt: "2026-07-01T00:00:00Z",
       enabled: true,
       state: "running",
-      scope: "vital_reconstruction",
+      scope: null,
       targetUrl: null,
       targetUsernameConfigured: false,
       targetPasswordConfigured: false,
@@ -266,12 +248,14 @@ describe("runtime control contract schemas", () => {
     };
 
     expect(
-      runtimeStatusSchema.parse({
-        runtimeState: "healthy",
-        redisRelayStatus
-      }).redisRelayStatus
+      runtimeRedisRelayStatusReadResultSchema.parse({
+        readState: "loaded",
+        document: redisRelayStatus,
+        readError: null
+      }).document
     ).toMatchObject({
       state: "running",
+      scope: null,
       targetUrl: null,
       totals: {
         copied: 0,
@@ -281,19 +265,31 @@ describe("runtime control contract schemas", () => {
     });
 
     expect(() =>
-      runtimeStatusSchema.parse({
-        runtimeState: "healthy",
-        redisRelayStatus: {
+      runtimeRedisRelayStatusReadResultSchema.parse({
+        readState: "loaded",
+        document: {
+          ...redisRelayStatus,
+          scope: undefined
+        },
+        readError: null
+      })
+    ).toThrow(/scope/);
+
+    expect(() =>
+      runtimeRedisRelayStatusReadResultSchema.parse({
+        readState: "loaded",
+        document: {
           ...redisRelayStatus,
           targetUrl: undefined
-        }
+        },
+        readError: null
       })
     ).toThrow(/targetUrl/);
 
     expect(() =>
-      runtimeStatusSchema.parse({
-        runtimeState: "healthy",
-        redisRelayStatus: {
+      runtimeRedisRelayStatusReadResultSchema.parse({
+        readState: "loaded",
+        document: {
           ...redisRelayStatus,
           totals: {
             scanned: 0,
@@ -305,200 +301,64 @@ describe("runtime control contract schemas", () => {
             missing: 0,
             errors: 0
           }
-        }
+        },
+        readError: null
       })
     ).toThrow(/published/);
-  });
-
-  it("accepts only Runtime Control API as the current Guest address source", () => {
-    expect(
-      runtimeStatusSchema.parse({
-        runtimeState: "healthy",
-        guestAddressRead: {
-          state: "loaded",
-          address: "192.168.64.2",
-          source: "runtime-control-api",
-          reason: null
-        }
-      }).guestAddressRead
-    ).toMatchObject({
-      state: "loaded",
-      source: "runtime-control-api"
-    });
 
     expect(() =>
-      runtimeStatusSchema.parse({
-        runtimeState: "healthy",
+      platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+        platformHealth: "healthy",
+        redisRelayStatus
+      })
+    ).toThrow(/Runtime owner resource/);
+  });
+
+  it("rejects legacy Guest address evidence from PlatformState", () => {
+    expect(() =>
+      platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+        platformHealth: "healthy",
         guestAddressRead: {
           state: "loaded",
           address: "192.168.64.2",
-          source: "vm-ip",
+          source: "platform-agent",
           reason: null
         }
       })
-    ).toThrow();
+    ).toThrow(/guestAddressRead/);
   });
 
-  it("accepts unknown VM states in overview responses", () => {
+  it("accepts unknown runtime provider states in PlatformState responses", () => {
+    expect(platformStateSchema.parse({ services: [], runtimeInstallationState: "missing", runtimeProviderState: "hibernating" }).runtimeProviderState)
+      .toBe("hibernating");
+  });
+
+  it("requires canonical Platform service state and explicit read error", () => {
     expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          status: {
-            vmState: "hibernating"
-          }
-        })
-      ).status.vmState
-    ).toBe("hibernating");
-  });
-
-  it("preserves VitalDB observation snapshot read-state semantics", () => {
-    expect(() =>
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          vitalDBObservationSnapshot: {
-            state: "unavailable"
-          }
-        })
-      )
-    ).toThrow();
+      platformStateSchema.parse({
+        services: [{ role: "runtime-provider", state: "running", readError: null }],
+        runtimeInstallationState: "executable"
+      }).services[0]
+    ).toEqual({ role: "runtime-provider", state: "running", readError: null });
 
     expect(() =>
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          vitalDBObservationSnapshot: {
-            state: "loaded",
-            observation: null,
-            readError: null
-          }
-        })
-      )
+      platformStateSchema.parse({
+        services: [{ role: "runtime-provider", state: "loaded", readError: null }],
+        runtimeInstallationState: "executable"
+      })
     ).toThrow();
-
     expect(() =>
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          vitalDBObservationSnapshot: {
-            state: "failed",
-            observation: null,
-            readError: ""
-          }
-        })
-      )
+      platformStateSchema.parse({
+        services: [{ role: "runtime-provider", state: "running" }],
+        runtimeInstallationState: "executable"
+      })
     ).toThrow();
-
-    expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          vitalDBObservationSnapshot: {
-            state: "loaded",
-            observation: fullVitalDBObservation(),
-            readError: null
-          }
-        })
-      ).vitalDBObservationSnapshot
-    ).toMatchObject({
-      state: "loaded",
-      observation: {
-        source: "vitaldb-observer"
-      }
-    });
-  });
-
-  it("requires explicit RuntimeOverview nullable fields and conditions", () => {
-    const { vitalDBObservation: _observation, conditions: _conditions, ...missingOverviewFields } =
-      fullRuntimeOverviewShape();
-
-    expect(() => runtimeOverviewSchema.parse(missingOverviewFields)).toThrow();
     expect(() =>
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          conditions: [
-            {
-              type: "VitalDBObservationReady",
-              status: "Unknown",
-              reason: "Unavailable"
-            }
-          ]
-        })
-      )
+      platformStateSchema.parse({
+        services: [{ role: "runtime-provider", state: "read-failed", readError: "" }],
+        runtimeInstallationState: "executable"
+      })
     ).toThrow();
-  });
-
-  it("requires explicit Vital Recorder summary source and observed metrics", () => {
-    expect(() =>
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          vitalRecorder: {
-            knownRecorders: 1
-          }
-        })
-      )
-    ).toThrow();
-
-    expect(() =>
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          vitalRecorder: {
-            source: "vitalDBObservation",
-            knownRecorders: 1,
-            onlineRecorders: 1,
-            staleRecorders: 0,
-            knownBeds: 1,
-            observedAt: "2026-05-31T01:00:00Z",
-            latestRecorder: null
-          }
-        })
-      )
-    ).toThrow();
-
-    expect(() =>
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          vitalRecorder: {
-            source: "vitalDBObservation",
-            knownRecorders: 1,
-            onlineRecorders: 1,
-            staleRecorders: 0,
-            knownBeds: 1,
-            recorderAnomalies: 0,
-            observedAt: "2026-05-31T01:00:00Z",
-            latestRecorder: {
-              ip: "10.0.0.2",
-              lastSeenAt: "2026-05-31T01:00:00Z"
-            }
-          }
-        })
-      )
-    ).toThrow();
-
-    expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          vitalRecorder: {
-            source: "vitalDBObservation",
-            knownRecorders: 1,
-            onlineRecorders: 1,
-            staleRecorders: 0,
-            knownBeds: 1,
-            recorderAnomalies: 0,
-            observedAt: "2026-05-31T01:00:00Z",
-            latestRecorder: {
-              vrcode: "VR_TEST",
-              ip: "10.0.0.2",
-              lastSeenAt: "2026-05-31T01:00:00Z",
-              source: "vitalDBObservation"
-            }
-          }
-        })
-      ).vitalRecorder
-    ).toMatchObject({
-      source: "vitalDBObservation",
-      knownRecorders: 1,
-      recorderAnomalies: 0,
-      latestRecorder: {
-        vrcode: "VR_TEST"
-      }
-    });
   });
 
   it("requires complete VitalDB recorder activity observations", () => {
@@ -664,58 +524,7 @@ describe("runtime control contract schemas", () => {
     });
   });
 
-  it("accepts recovery-suppressed runtime events from the Helper", () => {
-    expect(
-      runtimeEventHistorySchema.parse({
-        events: [
-          fullRuntimeEvent({
-            eventType: "recovery-suppressed",
-            timestamp: "2026-05-29T11:00:00Z",
-            status: "critical",
-            message: "watchdog recovery suppressed"
-          })
-        ],
-        nextCursor: null,
-        matchingCount: 1
-      }).events?.[0]?.eventType
-    ).toBe("recovery-suppressed");
-  });
-
-  it("accepts recovery-deferred runtime events from the Helper", () => {
-    expect(
-      runtimeEventHistorySchema.parse({
-        events: [
-          fullRuntimeEvent({
-            eventType: "recovery-deferred",
-            timestamp: "2026-06-01T01:43:20Z",
-            status: "degraded",
-            message: "watchdog recovery deferred"
-          })
-        ],
-        nextCursor: null,
-        matchingCount: 1
-      }).events?.[0]?.eventType
-    ).toBe("recovery-deferred");
-  });
-
-  it("accepts unknown runtime event types from the Helper", () => {
-    expect(
-      runtimeEventHistorySchema.parse({
-        events: [
-          fullRuntimeEvent({
-            eventType: "runtime-checkpoint-progressed",
-            timestamp: "2026-06-01T01:43:20Z",
-            status: "critical",
-            message: "future event introduced"
-          })
-        ],
-        nextCursor: null,
-        matchingCount: 1
-      }).events?.[0]?.eventType
-    ).toBe("runtime-checkpoint-progressed");
-  });
-
-  it("requires runtime event identity and diagnostic owner fields", () => {
+  it("requires the Runtime Controller operation event owner contract", () => {
     expect(() =>
       runtimeEventHistorySchema.parse({
         events: [
@@ -738,9 +547,9 @@ describe("runtime control contract schemas", () => {
         matchingCount: 1
       }).events?.[0]
     ).toMatchObject({
-      id: "event-1",
-      source: "host-runtime",
-      eventType: "status-changed",
+      id: "runtime-operation-event-1",
+      source: "runtime-controller",
+      eventType: "operation-completed",
       timestamp: "2026-05-29T11:00:00Z"
     });
   });
@@ -1153,16 +962,24 @@ describe("runtime control contract schemas", () => {
     });
   });
 
-  it("requires the complete runtime capability contract", () => {
+  it("requires independent complete Platform and Runtime capability contracts", () => {
     expect(() =>
-      runtimeCapabilitiesSchema.parse({
-        canUseLab: true
-      })
+      platformCapabilitiesSchema.parse({ canInstallRuntime: true })
     ).toThrow();
+    expect(platformCapabilitiesSchema.parse(platformCapabilities())).toEqual(
+      platformCapabilities()
+    );
 
+    expect(() => runtimeCapabilitiesSchema.parse({ capabilities: [] })).toThrow();
     expect(
-      runtimeCapabilitiesSchema.parse(fullCapabilities())
-    ).toEqual(fullCapabilities());
+      runtimeCapabilitiesSchema.parse({
+        schemaVersion: 1,
+        capabilities: ["services:list", "lab:scenarios"]
+      })
+    ).toEqual({
+      schemaVersion: 1,
+      capabilities: ["services:list", "lab:scenarios"]
+    });
   });
 
   it("requires the complete runtime settings contract", () => {
@@ -1199,7 +1016,8 @@ function fullCapabilities() {
     canUninstallRuntime: true,
     canApplyBundle: true,
     canRollback: true,
-    canEditVMResources: true,
+    canRollbackRelease: true,
+    canEditRuntimeProviderResources: true,
     canEditNetworkExposure: true,
     canResetAdminPassword: true,
     canOpenLocalFiles: true,
@@ -1212,42 +1030,9 @@ function fullCapabilities() {
   };
 }
 
-function fullRuntimeOverview(overrides: Record<string, unknown> = {}) {
-  return {
-    ...fullRuntimeOverviewShape(),
-    ...overrides
-  };
-}
-
-function fullRuntimeOverviewShape() {
-  return {
-    status: {
-      runtimeState: "healthy" as const
-    },
-    settings: fullSettings(),
-    release: {},
-    install: {},
-    vitalDBObservation: null,
-    vitalDBObservationSnapshot: {
-      state: "unavailable" as const,
-      observation: null,
-      readError: null
-    },
-    vitalRecorder: {
-      source: "unavailable" as const,
-      observedAt: null,
-      latestRecorder: null
-    },
-    conditions: [
-      {
-        type: "VitalDBObservationReady",
-        status: "Unknown" as const,
-        reason: "Unavailable",
-        message: null,
-        observedAt: null
-      }
-    ]
-  };
+function platformCapabilities() {
+  const { canControlGuestServices: _, canUseLab: __, ...platform } = fullCapabilities();
+  return platform;
 }
 
 function fullSettings() {
@@ -1468,14 +1253,16 @@ function fullRelationships(overrides: Record<string, unknown> = {}) {
 function fullRuntimeEvent(overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: 1,
-    id: "event-1",
-    source: "host-runtime",
-    eventType: "status-changed",
+    id: "runtime-operation-event-1",
+    source: "runtime-controller",
+    eventType: "operation-completed",
     timestamp: "2026-05-29T11:00:00Z",
-    product: "VitalServer",
-    message: "status changed",
-    runtimeVersion: "1.2.3",
-    failureReasons: [],
+    operationId: "runtime-settings-1",
+    operationService: "runtime-settings",
+    operationCommand: "apply-settings",
+    operationState: "completed",
+    message: "runtime-settings apply-settings completed",
+    failure: null,
     ...overrides
   };
 }

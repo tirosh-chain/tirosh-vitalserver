@@ -78,10 +78,11 @@ final class RuntimeChaosScenarioTests: XCTestCase {
 
         XCTAssertEqual(eventHistory.events.map(\.id), ["jsonl-event"])
         XCTAssertNotNil(eventHistory.readError)
-        XCTAssertEqual(recorderHistory.activityHistory.source, .unavailable)
+        XCTAssertEqual(recorderHistory.activityHistory.source, .notProvided)
         XCTAssertNotNil(recorderHistory.readError)
         XCTAssertNotNil(recorderHistory.activityHistory.readError)
-        XCTAssertNotNil(relationships.readError)
+        XCTAssertTrue(relationships.readError?.contains("guestControl=") == true)
+        XCTAssertFalse(relationships.readError?.contains("sqlite") == true)
         XCTAssertFalse(FileManager.default.fileExists(atPath: statusDirectory.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: database.path))
     }
@@ -101,7 +102,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertFalse(snapshot.readError?.isEmpty == true)
     }
 
-    func testObservabilityRelationshipChaosPreservesBothReadFailures() {
+    func testObservabilityRelationshipReadDoesNotUseHostSQLiteProjection() {
         let reader = SystemRuntimeObservabilityReader.live(
             paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/dev/null/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)")
         )
@@ -110,8 +111,8 @@ final class RuntimeChaosScenarioTests: XCTestCase {
 
         XCTAssertEqual(history.assignments, [])
         XCTAssertEqual(history.events, [])
-        XCTAssertTrue(history.readError?.contains("assignments=") == true)
-        XCTAssertTrue(history.readError?.contains("events=") == true)
+        XCTAssertTrue(history.readError?.contains("guestControl=") == true)
+        XCTAssertFalse(history.readError?.contains("sqlite") == true)
     }
 
     func testLogExportChaosRecordsCollectionAndSupplementalIssuesInManifest() async throws {
@@ -179,8 +180,8 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertNotNil(snapshot.readError)
         XCTAssertEqual(relationships.assignments, [])
         XCTAssertEqual(relationships.events, [])
-        XCTAssertTrue(relationships.readError?.contains("assignments=") == true)
-        XCTAssertTrue(relationships.readError?.contains("events=") == true)
+        XCTAssertTrue(relationships.readError?.contains("guestControl=") == true)
+        XCTAssertFalse(relationships.readError?.contains("sqlite") == true)
     }
 
     func testInstalledPermissionChaosPropagatesBackupReadDeniedInsteadOfEmptyList() {
@@ -397,10 +398,6 @@ private struct ChaosActionEnvironment: RuntimeActionEnvironment {
         URL(fileURLWithPath: "/tmp/recorder-ingress-settings.json")
     }
 
-    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
-        URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
-    }
-
     func removeItem(at url: URL) throws {}
 
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
@@ -416,6 +413,6 @@ private struct ChaosNoopLogExporter: RuntimeLogExporting {
 
 private struct ChaosGuestAddressProvider: RuntimeGuestAddressProvider {
     func readGuestAddress() -> RuntimeGuestAddressReadResult {
-        .loaded(address: "192.168.64.2", source: .runtimeControlAPI)
+        .loaded(address: "192.168.64.2", source: .platformAgent)
     }
 }

@@ -61,48 +61,43 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         ])
     }
 
-    private func notInstalledStatus() -> RuntimeStatus {
-        RuntimeStatus()
+    private func notInstalledStatus() -> PlatformState {
+        platformState()
     }
 
-    private func startingStatus() -> RuntimeStatus {
-        var status = RuntimeStatus()
-        status.runtimeInstalled = true
+    private func startingStatus() -> PlatformState {
+        var status = platformState()
         status.runtimeInstallationState = .executable
-        status.runtimeState = RuntimeState.installing
+        status.platformHealth = RuntimeState.installing
         return status
     }
 
-    private func criticalStatus() -> RuntimeStatus {
-        var status = RuntimeStatus()
-        status.runtimeInstalled = true
+    private func criticalStatus() -> PlatformState {
+        var status = platformState()
         status.runtimeInstallationState = .executable
-        status.runtimeState = RuntimeState.critical
+        status.platformHealth = RuntimeState.critical
         return status
     }
 
-    private func degradedStatus() -> RuntimeStatus {
-        var status = RuntimeStatus()
-        status.runtimeInstalled = true
+    private func degradedStatus() -> PlatformState {
+        var status = platformState()
         status.runtimeInstallationState = .executable
-        status.runtimeState = RuntimeState.degraded
+        status.platformHealth = RuntimeState.degraded
         return status
     }
 
-    private func readyStatus() -> RuntimeStatus {
-        var status = RuntimeStatus()
-        status.runtimeInstalled = true
+    private func readyStatus() -> PlatformState {
+        var status = platformState()
         status.runtimeInstallationState = .executable
-        status.vmServiceLoaded = true
-        status.proxyServiceLoaded = true
-        status.watchdogServiceLoaded = true
-        status.vmServiceState = .loaded
-        status.proxyServiceState = .loaded
-        status.watchdogServiceState = .loaded
-        status.runtimeState = RuntimeState.healthy
-        status.vmIP = "192.0.2.10"
-        status.guestHTTP = "200"
-        status.hostProxyHTTP = "200"
+        status.services = [
+            PlatformServiceStatus(role: .runtimeProvider, state: .loaded),
+            PlatformServiceStatus(role: .publicProxy, state: .loaded),
+            PlatformServiceStatus(role: .watchdog, state: .loaded),
+        ]
+        status.platformHealth = RuntimeState.healthy
+        status.runtimeEndpoint = "192.0.2.10"
+        status.runtimeControllerHTTP = "200"
+        status.publicProxyHTTP = "200"
         return status
     }
 }

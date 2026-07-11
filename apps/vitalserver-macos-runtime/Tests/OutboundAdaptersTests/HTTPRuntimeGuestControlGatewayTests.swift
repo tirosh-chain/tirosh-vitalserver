@@ -131,7 +131,191 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
             "maintenance:update-shutdown:create",
         ])
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/capabilities"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/capabilities"])
+    }
+
+    func testRuntimeSettingsReadIsOwnedByGuestController() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: #"{"state":"failed","settings":null,"readError":"settings file is invalid"}"#
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let read = try gateway.runtimeSettings()
+
+        XCTAssertEqual(read.state, .failed)
+        XCTAssertNil(read.settings)
+        XCTAssertEqual(read.readError, "settings file is invalid")
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/runtime/settings"]
+        )
+    }
+
+    func testApplyRuntimeSettingsUsesGuestProductContract() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: """
+            {
+              "operationId": "runtime-settings-1",
+              "service": "runtime-settings",
+              "command": "apply-settings",
+              "state": "completed",
+              "createdAt": "2026-07-01T00:00:00+00:00",
+              "updatedAt": "2026-07-01T00:00:01+00:00"
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+        let settings = GuestRuntimeSettingsDocument(
+            vitalServerURL: "http://vitalserver.local/",
+            remoteConsoleURL: "http://console.local/",
+            publicHost: "vitalserver.local",
+            publicPort: 80
+        )
+
+        let operation = try gateway.applyRuntimeSettings(settings)
+
+        XCTAssertEqual(operation.command, .applySettings)
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["PUT"])
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/runtime/settings"]
+        )
+        let body = try XCTUnwrap(client.requests.first?.httpBody)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let encodedSettings = try XCTUnwrap(object["settings"] as? [String: Any])
+        XCTAssertEqual(encodedSettings["publicHost"] as? String, "vitalserver.local")
+    }
+
+    func testApplyAdminPasswordUsesRuntimeOwnerCommandWithoutReturningSecret() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: """
+            {
+              "operationId": "runtime-admin-1",
+              "service": "runtime-admin",
+              "command": "apply-admin-password",
+              "state": "completed",
+              "createdAt": "2026-07-01T00:00:00+00:00",
+              "updatedAt": "2026-07-01T00:00:01+00:00"
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let operation = try gateway.applyAdminPassword("new-admin-secret")
+
+        XCTAssertEqual(operation.command, .applyAdminPassword)
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/runtime/admin-password"]
+        )
+        let body = try XCTUnwrap(client.requests.first?.httpBody)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(object["password"] as? String, "new-admin-secret")
+        XCTAssertFalse(String(data: try JSONEncoder().encode(operation), encoding: .utf8)?.contains("new-admin-secret") == true)
+    }
+
+    func testRedisRelaySettingsUseRuntimeOwnerAPIWithoutReturningSecret() throws {
+        let readClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: #"{"state":"loaded","settings":{"enabled":false,"target":{"url":"redis://redis.example:6379/0","username":"","passwordConfigured":true,"tls":false},"scope":"vital_reconstruction","includeRecorderNetworkContext":false,"intervalSeconds":1.0,"scanCount":1000},"readError":null}"#
+        ))
+        let readGateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330", httpClient: readClient
+        )
+
+        let read = try readGateway.redisRelaySettings()
+
+        XCTAssertEqual(read.settings?.target.passwordConfigured, true)
+        XCTAssertEqual(readClient.requests.map(\.httpMethod), ["GET"])
+        XCTAssertFalse(String(data: try JSONEncoder().encode(read), encoding: .utf8)?.contains("password\":") == true)
+
+        let applyClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: #"{"operationId":"relay-settings-1","service":"redis-relay-settings","command":"apply-redis-relay-settings","state":"completed","createdAt":"2026-07-01T00:00:00+00:00","updatedAt":"2026-07-01T00:00:01+00:00"}"#
+        ))
+        let applyGateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330", httpClient: applyClient
+        )
+        let request = RuntimeRedisRelaySettingsApplyRequest(
+            enabled: true,
+            target: RuntimeRedisRelayTargetApply(
+                url: "redis://relay.example:6379/1",
+                username: "relay",
+                password: "relay-secret",
+                clearPassword: false,
+                tls: true
+            ),
+            scope: .waveformTrendOnly,
+            includeRecorderNetworkContext: true,
+            intervalSeconds: 0.5,
+            scanCount: 250
+        )
+
+        let operation = try applyGateway.applyRedisRelaySettings(request)
+
+        XCTAssertEqual(operation.command, .applyRedisRelaySettings)
+        XCTAssertEqual(applyClient.requests.map(\.httpMethod), ["PUT"])
+        XCTAssertEqual(
+            applyClient.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/redis-relay/settings"
+        )
+        XCTAssertFalse(String(data: try JSONEncoder().encode(operation), encoding: .utf8)?.contains("relay-secret") == true)
+    }
+
+    func testRuntimeEventsPreserveOpaqueGuestCursor() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "events": [{
+                "schemaVersion": 1,
+                "id": "runtime-operation-event-9",
+                "source": "runtime-controller",
+                "eventType": "operation-completed",
+                "timestamp": "2026-07-01T00:00:01+00:00",
+                "operationId": "runtime-settings-1",
+                "operationService": "runtime-settings",
+                "operationCommand": "apply-settings",
+                "operationState": "completed",
+                "message": "runtime-settings apply-settings completed",
+                "failure": null
+              }],
+              "nextCursor": "event:9",
+              "matchingCount": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let history = try gateway.runtimeEvents(query: RuntimeEventQuery(
+            limit: 20,
+            eventType: RuntimeEventType(rawValue: "operation-completed"),
+            cursor: "event:12"
+        ))
+
+        XCTAssertEqual(history.events.first?.operationCommand, "apply-settings")
+        XCTAssertEqual(history.nextCursor, "event:9")
+        XCTAssertEqual(
+            client.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/events?limit=20&type=operation-completed&cursor=event:12"
+        )
     }
 
     func testListServicesRequestsGuestControlServicesEndpoint() throws {
@@ -148,7 +332,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
 
         XCTAssertEqual(result, RuntimeGuestControlServiceList(services: ["app", "recorder-ingress", "postgres"]))
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/services"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/services"])
     }
 
     func testServiceCommandsPostAndDecodeOperation() throws {
@@ -177,7 +361,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(operation.command, .start)
         XCTAssertEqual(operation.state, .completed)
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/services/app/start"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/services/app/start"])
     }
 
     func testStackStatusRequestsGuestControlStackStatusEndpoint() throws {
@@ -233,7 +417,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
             )
         ])
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/stack/status"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/stack"])
     }
 
     func testStopAndRestartServiceCommandsEncodeServiceAsOnePathSegment() throws {
@@ -260,8 +444,8 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
 
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST", "POST"])
         XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, [
-            "http://127.0.0.1:18330/v1/services/recorder%2Fingress/stop",
-            "http://127.0.0.1:18330/v1/services/recorder%2Fingress/restart",
+            "http://127.0.0.1:18330/runtime/services/recorder%2Fingress/stop",
+            "http://127.0.0.1:18330/runtime/services/recorder%2Fingress/restart",
         ])
     }
 
@@ -291,7 +475,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(operation.command, .reconcile)
         XCTAssertEqual(operation.state, .completed)
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/stack/reconcile"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/stack/reconcile"])
     }
 
     func testRedisBackupPostsMaintenanceEndpointAndDecodesResult() throws {
@@ -326,7 +510,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/maintenance/redis-backup"]
+            ["http://127.0.0.1:18330/runtime/maintenance/redis-backup"]
         )
     }
 
@@ -364,7 +548,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/maintenance/redis-restore"]
+            ["http://127.0.0.1:18330/runtime/maintenance/redis-restore"]
         )
         XCTAssertEqual(
             client.requests.first?.httpBody.flatMap { String(data: $0, encoding: .utf8) },
@@ -400,7 +584,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/maintenance/datastore-repair"]
+            ["http://127.0.0.1:18330/runtime/maintenance/datastore/repair"]
         )
     }
 
@@ -441,7 +625,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/maintenance/update-activation"]
+            ["http://127.0.0.1:18330/runtime/maintenance/update-activation"]
         )
         let body = try XCTUnwrap(client.requests.first?.httpBody)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -475,7 +659,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(status.health, "healthy")
         XCTAssertEqual(status.container, "vitalserver-app-1")
         XCTAssertEqual(status.exitCode, 0)
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/services/app/status"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/services/app/status"])
     }
 
     func testServiceResourceDecodesControllerResource() throws {
@@ -526,7 +710,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(resource.status.observedState, "running")
         XCTAssertEqual(resource.conditions.first?.reason, "DesiredStateObserved")
         XCTAssertEqual(resource.lastOperationId, "op_app_reconcile_1")
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/services/app/resource"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/services/app/resource"])
     }
 
     func testHTTPErrorPreservesGuestControlErrorDocument() throws {
@@ -595,7 +779,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/vitaldb/observations/latest"]
+            ["http://127.0.0.1:18330/runtime/vitaldb/observations/latest"]
         )
     }
 
@@ -636,7 +820,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/vitaldb/recorders"]
+            ["http://127.0.0.1:18330/runtime/vitaldb/recorders"]
         )
     }
 
@@ -667,9 +851,9 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
             [
-                "http://127.0.0.1:18330/v1/vitaldb/recorders/hide",
-                "http://127.0.0.1:18330/v1/vitaldb/recorders/unhide",
-                "http://127.0.0.1:18330/v1/vitaldb/recorders/delete",
+                "http://127.0.0.1:18330/runtime/vitaldb/recorders/hide",
+                "http://127.0.0.1:18330/runtime/vitaldb/recorders/unhide",
+                "http://127.0.0.1:18330/runtime/vitaldb/recorders/delete",
             ]
         )
         for request in client.requests {
@@ -717,7 +901,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/vitaldb/recorders/VR-001/activity"]
+            ["http://127.0.0.1:18330/runtime/vitaldb/recorders/VR-001/activity"]
         )
     }
 
@@ -758,7 +942,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/vitaldb/beds"]
+            ["http://127.0.0.1:18330/runtime/vitaldb/beds"]
         )
     }
 
@@ -789,9 +973,9 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
             [
-                "http://127.0.0.1:18330/v1/vitaldb/beds/hide",
-                "http://127.0.0.1:18330/v1/vitaldb/beds/unhide",
-                "http://127.0.0.1:18330/v1/vitaldb/beds/delete",
+                "http://127.0.0.1:18330/runtime/vitaldb/beds/hide",
+                "http://127.0.0.1:18330/runtime/vitaldb/beds/unhide",
+                "http://127.0.0.1:18330/runtime/vitaldb/beds/delete",
             ]
         )
         for request in client.requests {
@@ -841,7 +1025,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/vitaldb/relationships"]
+            ["http://127.0.0.1:18330/runtime/vitaldb/relationships"]
         )
     }
 
@@ -872,7 +1056,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
 
         XCTAssertEqual(scenarios.state, .loaded)
         XCTAssertEqual(scenarios.scenarios.map(\.scenarioId), ["normal_monitoring"])
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/lab/scenarios"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/lab/scenarios"])
     }
 
     func testLabVitalFilesDecodeRuntimeLabCatalog() throws {
@@ -903,7 +1087,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
 
         XCTAssertEqual(catalog.state, .loaded)
         XCTAssertEqual(catalog.vitalFiles.map(\.relativePath), ["MORA04/sample.vital"])
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/lab/vital-files"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/lab/vital-files"])
     }
 
     func testLabBedsAndRecordersDecodeRuntimeLabReadModels() throws {
@@ -964,7 +1148,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
 
         XCTAssertEqual(beds.state, .loaded)
         XCTAssertEqual(beds.beds.first?.name, "OR-A")
-        XCTAssertEqual(bedsClient.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/lab/beds"])
+        XCTAssertEqual(bedsClient.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/lab/beds"])
         XCTAssertEqual(recorders.state, .loaded)
         XCTAssertEqual(recorders.recorders.first?.vrcode, "LAB-lab-session-1-1")
         XCTAssertEqual(recorders.recorders.first?.messagesSent, 1)
@@ -972,7 +1156,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(recorders.recorders.first?.lastSendError, nil)
         XCTAssertEqual(
             recorderClient.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/lab/recorders"]
+            ["http://127.0.0.1:18330/runtime/lab/recorders"]
         )
     }
 
@@ -998,7 +1182,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(response.labOperationId, "lab_op_lab_1")
         XCTAssertEqual(response.session?.sessionId, "lab-session-1")
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
-        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/lab/sessions"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/runtime/lab/sessions"])
         let body = try XCTUnwrap(client.requests.first?.httpBody)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(object["scenarioId"] as? String, "normal_monitoring")
@@ -1021,7 +1205,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
 
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/lab/sessions/session%2Fwith%20space/start"]
+            ["http://127.0.0.1:18330/runtime/lab/sessions/session%2Fwith%20space/start"]
         )
     }
 
@@ -1070,7 +1254,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/recorder-ingress/status"]
+            ["http://127.0.0.1:18330/runtime/recorder-ingress/status"]
         )
     }
 
@@ -1124,7 +1308,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/redis-relay/status"]
+            ["http://127.0.0.1:18330/runtime/redis-relay/status"]
         )
     }
 
@@ -1149,7 +1333,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/lab/vital-files/replay"]
+            ["http://127.0.0.1:18330/runtime/lab/vital-files/replay"]
         )
         let body = try XCTUnwrap(client.requests.first?.httpBody)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -1179,7 +1363,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/v1/lab/vital-files/upload"]
+            ["http://127.0.0.1:18330/runtime/lab/vital-files/upload"]
         )
         let body = try XCTUnwrap(client.requests.first?.httpBody)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])

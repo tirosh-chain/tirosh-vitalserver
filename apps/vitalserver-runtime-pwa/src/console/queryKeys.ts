@@ -1,11 +1,17 @@
 import type { RuntimeLogSource } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
 export const consoleQueryKeys = {
-  overview: ["console", "overview"] as const,
+  platformState: ["platform", "state"] as const,
+  redisRelayStatus: ["runtime", "redis-relay", "status"] as const,
+  redisRelaySettings: ["runtime", "redis-relay", "settings"] as const,
+  vitalDBObservation: ["runtime", "vitaldb", "observations", "latest"] as const,
   operationState: ["console", "operation-state"] as const,
-  guestStackStatus: ["console", "guest-stack-status"] as const,
+  platformWorkflow: ["platform", "workflows", "current"] as const,
+  runtimeStack: ["runtime", "stack"] as const,
+  runtimeServiceResource: (service: string) =>
+    ["runtime", "services", service, "resource"] as const,
   capabilities: ["console", "capabilities"] as const,
-  settings: ["console", "settings"] as const,
+  runtimeProductSettings: ["runtime", "settings"] as const,
   labScenarios: ["lab", "scenarios"] as const,
   labBeds: ["lab", "beds"] as const,
   labRecorders: ["lab", "recorders"] as const,

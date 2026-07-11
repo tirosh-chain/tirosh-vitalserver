@@ -400,7 +400,7 @@ final class ContractsTests: XCTestCase {
           "proxyService": "loaded",
           "watchdogService": "loaded",
           "vmState": "hibernating",
-          "vmErrors": ["vm-runtime-state-stale", "vm-service-state-paused"],
+          "vmErrors": ["vm-future-error", "vm-service-state-paused"],
           "vmIP": null,
           "proxyPort": 80,
           "hostProxyHTTP": "failed",
@@ -479,9 +479,6 @@ final class ContractsTests: XCTestCase {
             .missingDisk,
             .serviceNotLoaded("not loaded"),
             .missingIPAddress,
-            .unknown("vm-runtime-state-missing"),
-            .unknown("vm-runtime-state-invalid"),
-            .unknown("vm-runtime-state-stale"),
             .launchFailed("virtualization"),
             .invalidConfiguration("network"),
             .hostResourceUnavailable("memory"),
@@ -491,8 +488,6 @@ final class ContractsTests: XCTestCase {
             .guestDiskIO,
             .guestHTTP("failed"),
             .guestHTTPProbeFailed("failed"),
-            .unknown("vm-guest-bootstrap-result-missing"),
-            .unknown("vm-guest-bootstrap-result-unavailable"),
             .guestBootstrapMissingRuntimePackages,
             .guestBootstrapDockerRuntimeFailed,
             .guestBootstrapFailed,
@@ -504,9 +499,6 @@ final class ContractsTests: XCTestCase {
             "vm-missing-disk",
             "vm-service-state-not loaded",
             "vm-missing-ip-address",
-            "vm-runtime-state-missing",
-            "vm-runtime-state-invalid",
-            "vm-runtime-state-stale",
             "vm-launch-failed-virtualization",
             "vm-invalid-configuration-network",
             "vm-host-resource-unavailable-memory",
@@ -516,8 +508,6 @@ final class ContractsTests: XCTestCase {
             "vm-guest-disk-io-error",
             "vm-guest-http-failed",
             "vm-guest-http-probe-failed-failed",
-            "vm-guest-bootstrap-result-missing",
-            "vm-guest-bootstrap-result-unavailable",
             "vm-guest-bootstrap-missing-runtime-packages",
             "vm-guest-bootstrap-docker-runtime-failed",
             "vm-guest-bootstrap-failed",
@@ -534,128 +524,50 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeVMError.diskAttachmentInvalid.recoveryAction, .backupAndRecreateVM)
         XCTAssertTrue(RuntimeVMError.diskAttachmentInvalid.requiresDataPreservationBeforeRecovery)
 
-        XCTAssertEqual(RuntimeVMError.unknown("vm-runtime-state-missing").category, .unknown)
-        XCTAssertEqual(RuntimeVMError.unknown("vm-runtime-state-missing").recoveryAction, .inspectLogs)
-        XCTAssertFalse(RuntimeVMError.unknown("vm-runtime-state-missing").requiresDataPreservationBeforeRecovery)
-        XCTAssertEqual(RuntimeVMError.unknown("vm-runtime-state-invalid").category, .unknown)
-        XCTAssertEqual(RuntimeVMError.unknown("vm-runtime-state-invalid").recoveryAction, .inspectLogs)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-future-error").category, .unknown)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-future-error").recoveryAction, .inspectLogs)
+        XCTAssertFalse(RuntimeVMError.unknown("vm-future-error").requiresDataPreservationBeforeRecovery)
         XCTAssertEqual(RuntimeVMError.guestHTTPProbeFailed("failed").category, .networking)
         XCTAssertEqual(RuntimeVMError.guestHTTPProbeFailed("failed").recoveryAction, .waitForGuest)
-
-        XCTAssertEqual(RuntimeVMError.unknown("vm-guest-bootstrap-result-missing").category, .unknown)
-        XCTAssertEqual(RuntimeVMError.unknown("vm-guest-bootstrap-result-missing").recoveryAction, .inspectLogs)
-        XCTAssertEqual(RuntimeVMError.unknown("vm-guest-bootstrap-result-unavailable").category, .unknown)
-        XCTAssertEqual(RuntimeVMError.unknown("vm-guest-bootstrap-result-unavailable").recoveryAction, .inspectLogs)
     }
 
     func testRuntimeFailureReasonsDecodeAsTypedCodes() throws {
-        let json = """
-        [
-          "missing-vm-bin",
-          "vm-service-not loaded",
-          "guest-log-sync-service-not-loaded",
-          "host-proxy-http-502",
-          "guest-http-probe-failed-failed",
-          "recorder-ingress-http-failed",
-          "container-service-app-state-unhealthy",
-          "container-observation-missing",
-          "container-observation-read-failed-permission_denied",
-          "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
-          "vitaldb-observation-missing",
-          "vitaldb-observation-read-failed-decode_failed",
-          "proxy-port-80-in-use-by-nginx-1234",
-          "host-proxy-listener-scan-unavailable",
-          "host-proxy-listener-scan-inspection-failed-path=/usr/sbin/lsof reason=permission denied",
-          "host-proxy-listener-scan-failed-port-80-exit-1",
-          "guest-bootstrap-result-missing",
-          "guest-bootstrap-result-unavailable",
-          "guest-bootstrap-missing-runtime-packages",
-          "guest-bootstrap-docker-runtime-failed",
-          "vm-runtime-state-missing",
-          "vm-disk-attachment-invalid",
-          "guest-runtime-state-load-failed-decode_failed",
-          "guest-runtime-state-metadata-read-failed-stat_permission_denied",
-          "vm-launch-failed-virtualization",
-          "vm-invalid-configuration-network",
-          "vm-host-resource-unavailable-memory",
-          "guest-filesystem-error",
-          "guest-filesystem-read-only",
-          "guest-disk-io-error",
-          "future-reason"
+        let cases: [(String, RuntimeFailureReason)] = [
+            ("missing-vm-bin", .missingVMBin),
+            ("vm-service-not loaded", .vmService("not loaded")),
+            ("guest-log-sync-service-not-loaded", .guestLogSyncService("not-loaded")),
+            ("host-proxy-http-502", .hostProxyHTTP("502")),
+            ("guest-http-probe-failed-failed", .guestHTTPProbeFailed("failed")),
+            ("recorder-ingress-http-failed", .recorderIngressHTTP("failed")),
+            ("container-service-app-state-unhealthy", .containerService(service: "app", state: "unhealthy")),
+            ("vitaldb-anomaly-duplicate-ip-subject-10.0.0.10", .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10")),
+            ("proxy-port-80-in-use-by-nginx-1234", .proxyPortInUse(port: 80, listeners: "nginx-1234")),
+            ("host-proxy-listener-scan-unavailable", .hostProxyListenerScanUnavailable),
+            (
+                "host-proxy-listener-scan-inspection-failed-path=/usr/sbin/lsof reason=permission denied",
+                .hostProxyListenerScanInspectionFailed("path=/usr/sbin/lsof reason=permission denied")
+            ),
+            ("host-proxy-listener-scan-failed-port-80-exit-1", .hostProxyListenerScanFailed(port: 80, exitCode: 1)),
+            ("guest-bootstrap-missing-runtime-packages", .guestBootstrapMissingRuntimePackages),
+            ("guest-bootstrap-docker-runtime-failed", .guestBootstrapDockerRuntimeFailed),
+            ("vm-disk-attachment-invalid", .vmDiskAttachmentInvalid),
+            ("vm-launch-failed-virtualization", .vmLaunchFailed("virtualization")),
+            ("vm-invalid-configuration-network", .vmConfigurationInvalid("network")),
+            ("vm-host-resource-unavailable-memory", .hostResourceUnavailable("memory")),
+            ("guest-filesystem-error", .guestFilesystemError),
+            ("guest-filesystem-read-only", .guestFilesystemReadOnly),
+            ("guest-disk-io-error", .guestDiskIO),
+            ("future-reason", .unknown("future-reason")),
         ]
-        """
-        let reasons = try JSONDecoder().decode([RuntimeFailureReason].self, from: Data(json.utf8))
+        let rawValues = cases.map { $0.0 }
+        let json = try JSONSerialization.data(withJSONObject: rawValues)
+        let reasons = try JSONDecoder().decode([RuntimeFailureReason].self, from: json)
 
-        XCTAssertEqual(reasons[0], .missingVMBin)
-        XCTAssertEqual(reasons[1], .vmService("not loaded"))
-        XCTAssertEqual(reasons[2], .guestLogSyncService("not-loaded"))
-        XCTAssertEqual(reasons[3], .hostProxyHTTP("502"))
-        XCTAssertEqual(reasons[4], .guestHTTPProbeFailed("failed"))
-        XCTAssertEqual(reasons[5], .recorderIngressHTTP("failed"))
-        XCTAssertEqual(reasons[6], .containerService(service: "app", state: "unhealthy"))
-        XCTAssertEqual(reasons[7], .unknown("container-observation-missing"))
-        XCTAssertEqual(reasons[8], .unknown("container-observation-read-failed-permission_denied"))
-        XCTAssertEqual(reasons[9], .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10"))
-        XCTAssertEqual(reasons[10], .unknown("vitaldb-observation-missing"))
-        XCTAssertEqual(reasons[11], .unknown("vitaldb-observation-read-failed-decode_failed"))
-        XCTAssertEqual(reasons[12], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[13], .hostProxyListenerScanUnavailable)
-        XCTAssertEqual(
-            reasons[14],
-            .hostProxyListenerScanInspectionFailed("path=/usr/sbin/lsof reason=permission denied")
-        )
-        XCTAssertEqual(reasons[15], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
-        XCTAssertEqual(reasons[16], .unknown("guest-bootstrap-result-missing"))
-        XCTAssertEqual(reasons[17], .unknown("guest-bootstrap-result-unavailable"))
-        XCTAssertEqual(reasons[18], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[19], .guestBootstrapDockerRuntimeFailed)
-        XCTAssertEqual(reasons[20], .unknown("vm-runtime-state-missing"))
-        XCTAssertEqual(reasons[21], .vmDiskAttachmentInvalid)
-        XCTAssertEqual(reasons[22], .unknown("guest-runtime-state-load-failed-decode_failed"))
-        XCTAssertEqual(reasons[23], .unknown("guest-runtime-state-metadata-read-failed-stat_permission_denied"))
-        XCTAssertEqual(reasons[24], .vmLaunchFailed("virtualization"))
-        XCTAssertEqual(reasons[25], .vmConfigurationInvalid("network"))
-        XCTAssertEqual(reasons[26], .hostResourceUnavailable("memory"))
-        XCTAssertEqual(reasons[27], .guestFilesystemError)
-        XCTAssertEqual(reasons[28], .guestFilesystemReadOnly)
-        XCTAssertEqual(reasons[29], .guestDiskIO)
-        XCTAssertEqual(reasons[30], .unknown("future-reason"))
+        XCTAssertEqual(reasons, cases.map { $0.1 })
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
-        XCTAssertEqual(roundTripped.map(\.rawValue), [
-            "missing-vm-bin",
-            "vm-service-not loaded",
-            "guest-log-sync-service-not-loaded",
-            "host-proxy-http-502",
-            "guest-http-probe-failed-failed",
-            "recorder-ingress-http-failed",
-            "container-service-app-state-unhealthy",
-            "container-observation-missing",
-            "container-observation-read-failed-permission_denied",
-            "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
-            "vitaldb-observation-missing",
-            "vitaldb-observation-read-failed-decode_failed",
-            "proxy-port-80-in-use-by-nginx-1234",
-            "host-proxy-listener-scan-unavailable",
-            "host-proxy-listener-scan-inspection-failed-path=/usr/sbin/lsof reason=permission denied",
-            "host-proxy-listener-scan-failed-port-80-exit-1",
-            "guest-bootstrap-result-missing",
-            "guest-bootstrap-result-unavailable",
-            "guest-bootstrap-missing-runtime-packages",
-            "guest-bootstrap-docker-runtime-failed",
-            "vm-runtime-state-missing",
-            "vm-disk-attachment-invalid",
-            "guest-runtime-state-load-failed-decode_failed",
-            "guest-runtime-state-metadata-read-failed-stat_permission_denied",
-            "vm-launch-failed-virtualization",
-            "vm-invalid-configuration-network",
-            "vm-host-resource-unavailable-memory",
-            "guest-filesystem-error",
-            "guest-filesystem-read-only",
-            "guest-disk-io-error",
-            "future-reason",
-        ])
+        XCTAssertEqual(roundTripped.map(\.rawValue), rawValues)
     }
 
     func testRuntimeFailureReasonsDefineDomainClassificationAndRecovery() {
@@ -681,19 +593,9 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(RuntimeFailureReason(rawValue: "vm-disk-attachment-invalid"), .vmDiskAttachmentInvalid)
 
-        XCTAssertEqual(RuntimeFailureReason(vmError: .unknown("vm-runtime-state-missing")), .unknown("vm-runtime-state-missing"))
-        XCTAssertEqual(RuntimeFailureReason.unknown("vm-runtime-state-missing").domainCategory, .unknown)
-        XCTAssertEqual(RuntimeFailureReason.unknown("vm-runtime-state-missing").recoveryAction, .inspectLogs)
-        XCTAssertEqual(RuntimeFailureReason.unknown("guest-runtime-state-load-failed-decode_failed").domainCategory, .unknown)
-        XCTAssertEqual(RuntimeFailureReason.unknown("guest-runtime-state-load-failed-decode_failed").recoveryAction, .inspectLogs)
-        XCTAssertEqual(
-            RuntimeFailureReason.unknown("guest-runtime-state-metadata-read-failed-stat_permission_denied").domainCategory,
-            .unknown
-        )
-        XCTAssertEqual(
-            RuntimeFailureReason.unknown("guest-runtime-state-metadata-read-failed-stat_permission_denied").recoveryAction,
-            .inspectLogs
-        )
+        XCTAssertEqual(RuntimeFailureReason(vmError: .unknown("future-vm-error")), .unknown("future-vm-error"))
+        XCTAssertEqual(RuntimeFailureReason.unknown("future-reason").domainCategory, .unknown)
+        XCTAssertEqual(RuntimeFailureReason.unknown("future-reason").recoveryAction, .inspectLogs)
 
         XCTAssertEqual(RuntimeFailureReason(vmError: .diskAttachmentInvalid), .vmDiskAttachmentInvalid)
         XCTAssertEqual(RuntimeFailureReason.vmDiskAttachmentInvalid.domainCategory, .guestStorage)
@@ -727,16 +629,6 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").domainSeverity, .warning)
         XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").recoveryAction, .waitForGuest)
 
-        for legacyStatusDocumentReason in [
-            "runtime-status-document-missing",
-            "runtime-status-document-stale",
-            "runtime-status-document-invalid",
-        ] {
-            let reason = RuntimeFailureReason(rawValue: legacyStatusDocumentReason)
-            XCTAssertEqual(reason, .unknown(legacyStatusDocumentReason))
-            XCTAssertEqual(reason.rawValue, legacyStatusDocumentReason)
-        }
-
         XCTAssertEqual(RuntimeFailureReason.launchdServiceCrashed(service: "vm", exitCode: 78).domainCategory, .vmLifecycle)
         XCTAssertEqual(RuntimeFailureReason.launchdServiceCrashed(service: "vm", exitCode: 78).recoveryAction, .restartVMService)
 
@@ -758,10 +650,6 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").domainCategory, .container)
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").recoveryAction, .reconcileGuestStack)
 
-        XCTAssertEqual(RuntimeFailureReason.unknown("guest-bootstrap-result-missing").domainCategory, .unknown)
-        XCTAssertEqual(RuntimeFailureReason.unknown("guest-bootstrap-result-missing").recoveryAction, .inspectLogs)
-        XCTAssertEqual(RuntimeFailureReason.unknown("guest-bootstrap-result-unavailable").domainCategory, .unknown)
-        XCTAssertEqual(RuntimeFailureReason.unknown("guest-bootstrap-result-unavailable").recoveryAction, .inspectLogs)
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed.domainCategory, .guestBootstrap)
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed.recoveryAction, .repairGuestBootstrap)
     }
@@ -882,6 +770,27 @@ final class ContractsTests: XCTestCase {
         let roundTripped = try JSONDecoder().decode(RuntimeEventDocument.self, from: try JSONEncoder().encode(event))
         XCTAssertNil(roundTripped.status)
         XCTAssertNil(roundTripped.operation)
+    }
+
+    func testRuntimeOperationEventHistoryRequiresAndWritesExplicitNullablePagination() throws {
+        let history = RuntimeOperationEventHistory(
+            events: [],
+            nextCursor: nil,
+            matchingCount: nil
+        )
+        let encoded = try JSONEncoder().encode(history)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        XCTAssertTrue(object["nextCursor"] is NSNull)
+        XCTAssertTrue(object["matchingCount"] is NSNull)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeOperationEventHistory.self,
+                from: Data(#"{"events":[]}"#.utf8)
+            )
+        )
     }
 
     private func decodeFixture<T: Decodable>(_ type: T.Type, named name: String) throws -> T {

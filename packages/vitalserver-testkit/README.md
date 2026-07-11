@@ -9,7 +9,7 @@ Python 패키지입니다. upstream VitalServer를 직접 수정하지 않고, s
 외부 payload를 흘려보내고 처리량과 실패율을 확인하는 데 집중합니다.
 
 Runtime v2의 virtual recorder scenario, Lab session, `.vital` replay product 계약은
-`apps/vitalserver-lab`과 Guest Control `/v1/lab/*`가 소유합니다. TestKit 구현은 필요한
+`apps/vitalserver-lab`과 Guest Control `/runtime/lab/*`가 소유합니다. TestKit 구현은 필요한
 동안 개발용 검증 CLI/API로만 남기며, `/dev/testkit` 또는 TestKit container를 product-facing
 runtime 기능으로 다시 노출하지 않습니다.
 
@@ -424,7 +424,7 @@ TESTKIT_CLI="uv run vitalserver-testkit" make testkit/smoke
 ```
 
 Runtime v2에서 TestKit은 dev/load 검증 도구입니다. macOS Helper, PWA, CLI의 정식
-Lab 기능은 `apps/vitalserver-lab`과 Guest Control `/v1/lab/*` 계약이 소유하며,
+Lab 기능은 `apps/vitalserver-lab`과 Guest Control `/runtime/lab/*` 계약이 소유하며,
 TestKit route나 TestKit API를 product-facing runtime 기능으로 다시 노출하지 않습니다.
 
 ## 관련 문서

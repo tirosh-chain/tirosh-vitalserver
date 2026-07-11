@@ -89,37 +89,52 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     }
 
     public func serviceHealth(
-        status: RuntimeStatus,
-        operationState: RuntimeOperationState,
+        status: PlatformState,
+        operationState: PlatformOperationState,
+        runtimeStackStatus: RuntimeGuestControlStackStatus?,
+        runtimeStackReadError: String?,
+        runtimeServiceResources: [RuntimeGuestServiceResource],
+        runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
         redisRelaySettings: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
+        redisRelayStatusRead: RuntimeRedisRelayStatusReadResult,
         now: Date
     ) -> [RuntimeStatusAdvancedServiceHealthItem] {
         let operation = operationState.operationForPresentation
         return serviceHealth(
             status: status,
+            runtimeStackStatus: runtimeStackStatus,
+            runtimeStackReadError: runtimeStackReadError,
+            runtimeServiceResources: runtimeServiceResources,
+            runtimeServiceResourceReadIssues: runtimeServiceResourceReadIssues,
             redisRelaySettings: redisRelaySettings,
+            redisRelayStatusRead: redisRelayStatusRead,
             operationState: OperationPresentationState(
                 installInProgress: RuntimeActiveOperationPolicy.isInstallOperation(operation),
                 initializationInProgress: RuntimeActiveOperationPolicy.isInitializationInProgress(status),
                 recoveryInProgress: RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation),
                 updateInProgress: RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation)
             ),
-            runtimeOperationState: operationState,
+            platformOperationState: operationState,
             now: now
         )
     }
 
     private func serviceHealth(
-        status: RuntimeStatus,
+        status: PlatformState,
+        runtimeStackStatus: RuntimeGuestControlStackStatus?,
+        runtimeStackReadError: String?,
+        runtimeServiceResources: [RuntimeGuestServiceResource],
+        runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
         redisRelaySettings: RuntimeRedisRelaySettings,
+        redisRelayStatusRead: RuntimeRedisRelayStatusReadResult,
         operationState: OperationPresentationState,
-        runtimeOperationState: RuntimeOperationState,
+        platformOperationState: PlatformOperationState,
         now _: Date
     ) -> [RuntimeStatusAdvancedServiceHealthItem] {
         var items = [
             serviceStateItem(
                 vocabulary.proxyServiceLabel,
-                state: status.proxyServiceState,
+                state: status.serviceState(.publicProxy),
                 installInProgress: operationState.installInProgress,
                 initializationInProgress: operationState.initializationInProgress,
                 recoveryInProgress: operationState.recoveryInProgress,
@@ -127,7 +142,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             ),
             serviceStateItem(
                 vocabulary.guestLogSyncServiceLabel,
-                state: status.guestLogSyncServiceState,
+                state: status.serviceState(.logSync),
                 installInProgress: operationState.installInProgress,
                 initializationInProgress: operationState.initializationInProgress,
                 recoveryInProgress: operationState.recoveryInProgress,
@@ -135,7 +150,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             ),
             serviceStateItem(
                 vocabulary.sleepPreventionServiceLabel,
-                state: status.sleepPreventionServiceState,
+                state: status.serviceState(.sleepPrevention),
                 installInProgress: operationState.installInProgress,
                 initializationInProgress: operationState.initializationInProgress,
                 recoveryInProgress: operationState.recoveryInProgress,
@@ -143,7 +158,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             ),
             serviceStateItem(
                 vocabulary.watchdogServiceLabel,
-                state: status.watchdogServiceState,
+                state: status.serviceState(.watchdog),
                 installInProgress: operationState.installInProgress,
                 initializationInProgress: operationState.initializationInProgress,
                 recoveryInProgress: operationState.recoveryInProgress,
@@ -152,6 +167,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             redisRelayItem(
                 status: status,
                 settings: redisRelaySettings,
+                statusRead: redisRelayStatusRead,
                 installInProgress: operationState.installInProgress,
                 initializationInProgress: operationState.initializationInProgress,
                 recoveryInProgress: operationState.recoveryInProgress,
@@ -159,7 +175,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             ),
             vitalServerItem(
                 status: status,
-                runtimeOperationState: runtimeOperationState,
+                platformOperationState: platformOperationState,
                 vocabulary.vitalServerName,
                 uptimeText: nil,
                 action: .openVitalServer,
@@ -170,7 +186,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             ),
             httpServiceItem(
                 vocabulary.hostProxyName,
-                httpStatus: status.hostProxyHTTP,
+                httpStatus: status.publicProxyHTTP,
                 uptimeText: nil,
                 action: .openVitalServer,
                 installInProgress: operationState.installInProgress,
@@ -180,7 +196,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             ),
             httpServiceItem(
                 vocabulary.redisUIName,
-                httpStatus: status.redisUIHTTP,
+                httpStatus: nil,
                 uptimeText: nil,
                 action: .openRedisUI,
                 installInProgress: operationState.installInProgress,
@@ -190,7 +206,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             ),
             httpServiceItem(
                 vocabulary.swaggerUIName,
-                httpStatus: status.swaggerUIHTTP,
+                httpStatus: nil,
                 uptimeText: nil,
                 action: .openSwagger,
                 installInProgress: operationState.installInProgress,
@@ -200,7 +216,10 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             ),
         ]
         items.insert(contentsOf: guestServiceItems(
-            status: status,
+            stackStatus: runtimeStackStatus,
+            stackReadError: runtimeStackReadError,
+            resources: runtimeServiceResources,
+            resourceReadIssues: runtimeServiceResourceReadIssues,
             installInProgress: operationState.installInProgress,
             initializationInProgress: operationState.initializationInProgress,
             recoveryInProgress: operationState.recoveryInProgress,
@@ -222,14 +241,33 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     }
 
     private func guestServiceItems(
-        status: RuntimeStatus,
+        stackStatus: RuntimeGuestControlStackStatus?,
+        stackReadError: String?,
+        resources: [RuntimeGuestServiceResource],
+        resourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
         installInProgress: Bool,
         initializationInProgress: Bool,
         recoveryInProgress: Bool,
         updateInProgress: Bool
     ) -> [RuntimeStatusAdvancedServiceHealthItem] {
-        switch status.guestServicesReadState ?? .unavailable {
-        case .unavailable:
+        if let stackReadError {
+            return [
+                serviceStateItem(
+                    vocabulary.guestProductServicesLabel,
+                    value: operationValue(
+                        installInProgress: installInProgress,
+                        initializationInProgress: initializationInProgress,
+                        recoveryInProgress: recoveryInProgress,
+                        updateInProgress: updateInProgress
+                    ) ?? RuntimeStatusAdvancedServiceHealthValue(
+                        text: stackReadError,
+                        severity: .warning,
+                        uptimeText: nil
+                    )
+                ),
+            ]
+        }
+        guard let stackStatus else {
             return [
                 serviceStateItem(
                     vocabulary.guestProductServicesLabel,
@@ -245,7 +283,8 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                     )
                 ),
             ]
-        case .failed:
+        }
+        guard stackStatus.state == "loaded" else {
             return [
                 serviceStateItem(
                     vocabulary.guestProductServicesLabel,
@@ -255,39 +294,42 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                         recoveryInProgress: recoveryInProgress,
                         updateInProgress: updateInProgress
                     ) ?? RuntimeStatusAdvancedServiceHealthValue(
-                        text: status.guestServicesReadError ?? vocabulary.failedText,
+                        text: "Runtime stack status is \(stackStatus.state)",
                         severity: .warning,
                         uptimeText: nil
                     )
                 ),
             ]
-        case .loaded:
-            var items: [RuntimeStatusAdvancedServiceHealthItem] = orderedGuestServiceStatuses(status).compactMap { serviceStatus in
+        }
+        var items: [RuntimeStatusAdvancedServiceHealthItem] = orderedGuestServiceStatuses(stackStatus).compactMap { serviceStatus in
                 guard serviceStatus.service != ComposeService.redisRelay.rawValue else {
                     return nil
                 }
                 return RuntimeStatusAdvancedServiceHealthItem(
                     label: guestServiceLabel(serviceStatus.service),
-                    value: guestServiceValue(serviceStatus, runtimeStatus: status),
+                    value: guestServiceValue(
+                        serviceStatus,
+                        resources: resources,
+                        resourceReadIssues: resourceReadIssues
+                    ),
                     httpStatus: nil,
                     action: nil
                 )
             }
-            if let probeItem = guestStackProbeErrorItem(status) {
-                items.append(probeItem)
-            }
-            return items
+        if let probeItem = guestStackProbeErrorItem(stackStatus) {
+            items.append(probeItem)
         }
+        return items
     }
 
-    private func guestStackProbeErrorItem(_ status: RuntimeStatus) -> RuntimeStatusAdvancedServiceHealthItem? {
-        guard !status.guestStackProbeErrors.isEmpty else {
+    private func guestStackProbeErrorItem(_ stackStatus: RuntimeGuestControlStackStatus) -> RuntimeStatusAdvancedServiceHealthItem? {
+        guard !stackStatus.probeErrors.isEmpty else {
             return nil
         }
         return RuntimeStatusAdvancedServiceHealthItem(
             label: "\(vocabulary.guestProductServicesLabel) probes",
             value: RuntimeStatusAdvancedServiceHealthValue(
-                text: status.guestStackProbeErrors
+                text: stackStatus.probeErrors
                     .map { "\($0.source): \($0.message)" }
                     .joined(separator: ", "),
                 severity: .warning,
@@ -299,16 +341,16 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     }
 
     private func orderedGuestServiceStatuses(
-        _ status: RuntimeStatus
+        _ stackStatus: RuntimeGuestControlStackStatus
     ) -> [RuntimeGuestControlServiceStatus] {
         var statusesByService: [String: RuntimeGuestControlServiceStatus] = [:]
-        for serviceStatus in status.guestServiceStatuses where statusesByService[serviceStatus.service] == nil {
+        for serviceStatus in stackStatus.services where statusesByService[serviceStatus.service] == nil {
             statusesByService[serviceStatus.service] = serviceStatus
         }
-        let orderedServices = status.guestServices ?? []
+        let orderedServices = stackStatus.services.map(\.service)
         var orderedStatuses = orderedServices.compactMap { statusesByService[$0] }
         let orderedServiceSet = Set(orderedServices)
-        orderedStatuses.append(contentsOf: status.guestServiceStatuses
+        orderedStatuses.append(contentsOf: stackStatus.services
             .filter { !orderedServiceSet.contains($0.service) }
             .sorted { $0.service < $1.service })
         return orderedStatuses
@@ -320,10 +362,11 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
 
     private func guestServiceValue(
         _ serviceStatus: RuntimeGuestControlServiceStatus,
-        runtimeStatus: RuntimeStatus
+        resources: [RuntimeGuestServiceResource],
+        resourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     ) -> RuntimeStatusAdvancedServiceHealthValue {
-        let resource = runtimeStatus.guestServiceResources.first { $0.service == serviceStatus.service }
-        let readIssue = runtimeStatus.guestServiceResourceReadIssues.first { $0.service == serviceStatus.service }
+        let resource = resources.first { $0.service == serviceStatus.service }
+        let readIssue = resourceReadIssues.first { $0.service == serviceStatus.service }
         return RuntimeStatusAdvancedServiceHealthValue(
             text: guestServiceText(serviceStatus, resource: resource, readIssue: readIssue),
             severity: guestServiceSeverity(serviceStatus, readIssue: readIssue),
@@ -444,8 +487,8 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     }
 
     private func vitalServerItem(
-        status: RuntimeStatus,
-        runtimeOperationState: RuntimeOperationState,
+        status: PlatformState,
+        platformOperationState: PlatformOperationState,
         _ label: String,
         uptimeText: String?,
         action: RuntimeStatusServiceActionID,
@@ -455,7 +498,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         let computedValue = httpValuePolicy.serviceValue(
-            httpStatus: status.guestHTTP,
+            httpStatus: status.runtimeControllerHTTP,
             uptimeText: uptimeText,
             installInProgress: installInProgress,
             initializationInProgress: initializationInProgress,
@@ -464,7 +507,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         )
         let guestHTTPValue = guestReadinessPolicy.guestHTTPValue(
             status: status,
-            operationState: runtimeOperationState,
+            operationState: platformOperationState,
             computedValue: computedValue,
             waitingText: vocabulary.waitingText,
             staleText: vocabulary.guestStateStaleText
@@ -472,14 +515,15 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         return RuntimeStatusAdvancedServiceHealthItem(
             label: label,
             value: value(guestHTTPValue),
-            httpStatus: status.guestHTTP,
+            httpStatus: status.runtimeControllerHTTP,
             action: action
         )
     }
 
     private func redisRelayItem(
-        status: RuntimeStatus,
+        status: PlatformState,
         settings: RuntimeRedisRelaySettings,
+        statusRead: RuntimeRedisRelayStatusReadResult,
         installInProgress: Bool,
         initializationInProgress: Bool,
         recoveryInProgress: Bool,
@@ -503,24 +547,20 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             initializationInProgress: initializationInProgress,
             recoveryInProgress: recoveryInProgress,
             updateInProgress: updateInProgress
-        ) ?? redisRelayValue(status: status)
+        ) ?? redisRelayValue(statusRead: statusRead)
 
         return RuntimeStatusAdvancedServiceHealthItem(
             label: vocabulary.redisRelayLabel,
             value: serviceValue,
-            httpStatus: status.redisRelayStatus?.lastError,
+            httpStatus: statusRead.document?.lastError ?? statusRead.readError,
             action: nil
         )
     }
 
     private func redisRelayValue(
-        status: RuntimeStatus
+        statusRead: RuntimeRedisRelayStatusReadResult
     ) -> RuntimeStatusAdvancedServiceHealthValue {
-        if let guestStatus = guestServiceStatus(ComposeService.redisRelay.rawValue, in: status) {
-            return guestServiceValue(guestStatus, runtimeStatus: status)
-        }
-
-        if let relayStatus = status.redisRelayStatus,
+        if let relayStatus = statusRead.document,
            isRedisRelayFailureState(relayStatus.state) || relayStatus.lastError != nil {
             return RuntimeStatusAdvancedServiceHealthValue(
                 text: vocabulary.failedText,
@@ -529,7 +569,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             )
         }
 
-        if let relayStatus = status.redisRelayStatus, !relayStatus.state.isEmpty {
+        if let relayStatus = statusRead.document, !relayStatus.state.isEmpty {
             return RuntimeStatusAdvancedServiceHealthValue(
                 text: vocabulary.containerStateText(relayStatus.state),
                 severity: redisRelaySeverity(state: relayStatus.state),
@@ -537,11 +577,20 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             )
         }
 
-        return RuntimeStatusAdvancedServiceHealthValue(
-            text: vocabulary.notReportedText,
-            severity: .warning,
-            uptimeText: nil
-        )
+        switch statusRead.readState {
+        case .invalidResponse, .readFailed:
+            return RuntimeStatusAdvancedServiceHealthValue(
+                text: vocabulary.failedText,
+                severity: .warning,
+                uptimeText: nil
+            )
+        case .notRead, .loaded:
+            return RuntimeStatusAdvancedServiceHealthValue(
+                text: vocabulary.notReportedText,
+                severity: .warning,
+                uptimeText: nil
+            )
+        }
     }
 
     private func value(_ value: RuntimeStatusServiceValue) -> RuntimeStatusAdvancedServiceHealthValue {
@@ -597,13 +646,4 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         }
     }
 
-    private func guestServiceStatus(
-        _ service: String,
-        in status: RuntimeStatus
-    ) -> RuntimeGuestControlServiceStatus? {
-        guard (status.guestServicesReadState ?? .unavailable) == .loaded else {
-            return nil
-        }
-        return status.guestServiceStatuses.first { $0.service == service }
-    }
 }

@@ -8,14 +8,15 @@ PWA owns browser runtime control presentation. Runtime Control API owns runtime 
 
 | 영역 | SoT | PWA 책임 |
 |---|---|---|
-| Runtime status | `GET /runtime/overview`, `GET /runtime/status` | status summary, health details, resource usage 표시 |
+| Platform status | `GET /platform` | install, Provider와 Platform service 상태 표시 |
+| Product status | `GET /runtime/stack`, `/runtime/services/*`, `/runtime/vitaldb/*` | Runtime owner resource를 독립적으로 표시 |
 | Runtime events | `GET /runtime/events` | period/type/limit filter와 최신순 event list 표시 |
-| Logs | `/host/logs/read`, `/host/logs/stream` | source/line/live controls, text rendering |
+| Logs | `/platform/logs/read`, `/platform/logs/stream` | source/line/live controls, text rendering |
 | Settings | `GET/PUT /runtime/settings` | validation, capability gating, apply confirmation |
 | Operations | Runtime command routes | command availability, confirmation, result 표시 |
-| VRecorder | `/vitaldb/recorders`, `/vitaldb/recorders/{vrcode}/activity`, `/vitaldb/relationships` | recorder list/detail/activity chart 표시 |
-| Bed | `/vitaldb/beds`, `/vitaldb/relationships` | bed list/detail/relation 표시 |
-| Product Lab | `/lab/*` | virtual recorder scenario와 `.vital` replay session 표시/제어 |
+| VRecorder | `/runtime/vitaldb/recorders`, `/runtime/vitaldb/recorders/{vrcode}/activity`, `/runtime/vitaldb/relationships` | recorder list/detail/activity chart 표시 |
+| Bed | `/runtime/vitaldb/beds`, `/runtime/vitaldb/relationships` | bed list/detail/relation 표시 |
+| Product Lab | `/runtime/lab/*` | virtual recorder scenario와 `.vital` replay session 표시/제어 |
 | Diagnostics | More/Advanced product diagnostics | logs, API catalog, support evidence 표시 |
 | Capability | `GET /runtime/capabilities` | route visibility와 command availability 결정 |
 
@@ -46,7 +47,7 @@ src/
 - OpenAPI generated type은 compile-time contract이고, Zod schema는 runtime contract gate입니다.
 - `app`은 concrete `RuntimeControlApiClient`를 만들고 `RuntimeControlGatewayProvider`로 주입하는 composition root입니다.
 - `pages`와 `components`는 HTTP client를 직접 import하지 않습니다.
-- Recorder activity chart는 `/vitaldb/recorders`의 embedded `activityTimeline`을 materialize하지 않고 `/vitaldb/recorders/{vrcode}/activity` window response를 React Query key `(vrcode, bucketSeconds, period, pageIndex)`로 조회합니다. Slider drag 중에는 page label만 바꾸고, commit/debounce 후 window를 fetch합니다.
+- Recorder activity chart는 `/runtime/vitaldb/recorders`의 embedded `activityTimeline`을 materialize하지 않고 `/runtime/vitaldb/recorders/{vrcode}/activity` window response를 React Query key `(vrcode, bucketSeconds, period, pageIndex)`로 조회합니다. Slider drag 중에는 page label만 바꾸고, commit/debounce 후 window를 fetch합니다.
 
 ## Runtime Control Gateway
 
@@ -87,7 +88,7 @@ Schema는 OpenAPI type보다 보수적으로 동작할 수 있습니다. 특히 
 PWA는 native Helper와 달리 host OS 권한을 직접 갖지 않습니다. 따라서 기능 노출은 `runtime/capabilities`를 기준으로 합니다.
 
 - `canControlRuntime=false`: start/stop/repair/uninstall 같은 command를 비활성화합니다.
-- Product Lab route는 제품 기능으로 취급하고 `/lab/*` 계약을 사용합니다.
+- Product Lab route는 제품 기능으로 취급하고 `/runtime/lab/*` 계약을 사용합니다.
 - `canUseLab=false`: Product Lab route는 유지하되 Lab command affordance를 disabled/unavailable로 표시합니다. 테스트/진단 전용 implementation surface는 More/Advanced diagnostics로 분리합니다.
 - host file path 기반 기능은 PWA에서 직접 열지 않고 API가 제공하는 download/export endpoint 또는 native shell affordance로 분리합니다.
 
@@ -95,7 +96,7 @@ PWA는 native Helper와 달리 host OS 권한을 직접 갖지 않습니다. 따
 
 Product Lab은 virtual recorder scenario와 `.vital` replay/upload의 제품 경계입니다. TestKit은 현재 구현 adapter일 수 있지만 PWA는 TestKit container API를 제품 route로 직접 호출하지 않습니다.
 
-- Lab UI는 `/lab/scenarios`, `/lab/sessions`, `/lab/vital-files/replay`, `/lab/vital-files/upload` 계약을 사용합니다.
+- Lab UI는 `/runtime/lab/scenarios`, `/runtime/lab/sessions`, `/runtime/lab/vital-files/replay`, `/runtime/lab/vital-files/upload` 계약을 사용합니다.
 - TestKit API contract와 Product Lab contract를 혼합하지 않습니다.
 - TestKit 상태는 runtime status/observability의 product state로 승격하지 않습니다.
 - Legacy `/dev/testkit/*` routes are not product routes. If implementation diagnostics are needed, they should be explicit More/Advanced diagnostics and must not drive Product Lab state.

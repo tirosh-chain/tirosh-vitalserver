@@ -214,8 +214,6 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     postWriteEffects.append("log-archive-retention-days:\(days)")
                 case .setLogArchiveMaximumGiB(let gib):
                     postWriteEffects.append("log-archive-maximum-gib:\(gib)")
-                case .writeRedisRelayConfiguration(let settings):
-                    postWriteEffects.append("redis-relay:\(settings.enabled):\(settings.target.url)")
                 case .reconcileGuestStackServices:
                     postWriteEffects.append("guest-stack-reconcile")
                 case .restartRuntimeServices:
@@ -238,9 +236,9 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             redisHost: "redis",
             redisPort: 6379,
             trustProxy: true,
-            vitalServerURL: "",
-            remoteConsoleURL: "",
-            publicHost: "",
+            vitalServerURL: "http://127.0.0.1:18080/",
+            remoteConsoleURL: "http://127.0.0.1:18322/",
+            publicHost: "127.0.0.1",
             publicPort: 80,
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/old",
@@ -248,9 +246,9 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             swaggerUiPort: 18082
         )
         var guestSettings = GuestRuntimeSettingsDocument(
-            vitalServerURL: "",
-            remoteConsoleURL: "",
-            publicHost: "",
+            vitalServerURL: "http://127.0.0.1:18080/",
+            remoteConsoleURL: "http://127.0.0.1:18322/",
+            publicHost: "127.0.0.1",
             publicPort: 80,
             automaticBackupEnabled: true,
             backupScheduleTimes: ["03:15"],

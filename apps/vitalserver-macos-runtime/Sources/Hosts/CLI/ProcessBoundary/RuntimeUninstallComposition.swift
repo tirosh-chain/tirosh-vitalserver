@@ -120,7 +120,7 @@ public enum RuntimeUninstallComposition {
             defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory,
             externalVitalFilesDirectory: vitalFilesDirectoryRead.externalDirectory,
             configuredVitalFilesDirectoryReadFailure: vitalFilesDirectoryRead.failure,
-            launchDaemonPlists: RuntimeManagedService.stopOrder.map {
+            launchDaemonPlists: RuntimeManagedService.uninstallOrder.map {
                 URL(fileURLWithPath: RuntimeManagedServicePaths.launchDaemonPlist($0))
             } + [context.installedPaths.automaticBackupLaunchDaemon],
             runtimeTools: [
@@ -133,7 +133,7 @@ public enum RuntimeUninstallComposition {
             paths: uninstallPaths,
             readers: RuntimeUninstallStateReaders(
                 serviceStates: {
-                    Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
+                    Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map { service in
                         (service, operations.serviceState(service))
                     })
                 },

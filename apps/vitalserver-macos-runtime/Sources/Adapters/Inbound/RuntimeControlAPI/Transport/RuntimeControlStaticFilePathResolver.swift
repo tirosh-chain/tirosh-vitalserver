@@ -106,10 +106,9 @@ struct RuntimeControlStaticFilePathResolver: Sendable {
     private func isAPIRoute(_ path: String) -> Bool {
         let normalized = normalizedPath(path)
         return normalized == RuntimeControlDevConsoleDocument.path
+            || normalized == "/platform"
+            || normalized.hasPrefix("/platform/")
             || normalized.hasPrefix("/runtime/")
-            || normalized.hasPrefix("/vitaldb/")
-            || normalized.hasPrefix("/lab/")
-            || normalized.hasPrefix("/host/")
             || normalized.hasPrefix("/dev/")
     }
 }

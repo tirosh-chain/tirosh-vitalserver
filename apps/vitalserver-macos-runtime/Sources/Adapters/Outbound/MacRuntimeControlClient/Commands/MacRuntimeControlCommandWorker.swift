@@ -103,19 +103,12 @@ public actor MacRuntimeControlCommandWorker {
                 label: "recorder ingress settings file"
             ))
 
-            let redisRelaySettingsFile = try actionEnvironment.writeRedisRelaySettingsFile(settings.redisRelay)
-            temporaryFiles.append(RuntimeTemporarySettingsFile(
-                url: redisRelaySettingsFile,
-                label: "Redis relay settings file"
-            ))
-
             let result = await runPrivileged(RuntimeCommandFactory.shellCommand(
                 executable: RuntimeControlClientConstants.Paths.launcher,
                 arguments: RuntimeCommandFactory.configureRuntimeArguments(
                     settings: settings,
                     adminPasswordFile: adminPasswordFile?.path,
-                    recorderIngressSettingsFile: recorderIngressSettingsFile.path,
-                    redisRelaySettingsFile: redisRelaySettingsFile.path
+                    recorderIngressSettingsFile: recorderIngressSettingsFile.path
                 )
             ))
             let cleanupIssues = cleanupTemporarySettingsFiles(temporaryFiles)
@@ -226,6 +219,13 @@ public actor MacRuntimeControlCommandWorker {
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .repair))
     }
 
+    public func controlRuntimeProvider(
+        _ action: RuntimeProviderCommandAction
+    ) async throws -> RuntimeCommandResult {
+        try ensureExecutable(.launcher)
+        return await runPrivileged(RuntimeCommandFactory.runtimeProviderCommand(action: action))
+    }
+
     public func createRedisBackup() async throws -> RuntimeCommandResult {
         let controller = guestMaintenanceController
         return try await runGuestControlCommand { gateway in
@@ -257,6 +257,56 @@ public actor MacRuntimeControlCommandWorker {
         }
     }
 
+    public func runtimeCapabilities() async throws -> RuntimeCapabilities {
+        return try await runGuestControlCommand { gateway in
+            RuntimeCapabilities(try gateway.capabilities())
+        }
+    }
+
+    public func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead {
+        try await runGuestControlCommand { gateway in
+            try gateway.runtimeSettings()
+        }
+    }
+
+    public func applyRuntimeProductSettings(
+        _ settings: GuestRuntimeSettingsDocument
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await runGuestControlCommand { gateway in
+            try gateway.applyRuntimeSettings(settings)
+        }
+    }
+
+    public func applyRuntimeAdminPassword(
+        _ password: String
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await runGuestControlCommand { gateway in
+            try gateway.applyAdminPassword(password)
+        }
+    }
+
+    public func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead {
+        try await runGuestControlCommand { gateway in
+            try gateway.redisRelaySettings()
+        }
+    }
+
+    public func applyRuntimeRedisRelaySettings(
+        _ settings: RuntimeRedisRelaySettingsApplyRequest
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await runGuestControlCommand { gateway in
+            try gateway.applyRedisRelaySettings(settings)
+        }
+    }
+
+    public func loadRuntimeOperationEvents(
+        query: RuntimeEventQuery
+    ) async throws -> RuntimeOperationEventHistory {
+        try await runGuestControlCommand { gateway in
+            try gateway.runtimeEvents(query: query)
+        }
+    }
+
     public func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
         return try await runGuestControlCommand { gateway in
             try gateway.serviceStatus(service)
@@ -266,6 +316,12 @@ public actor MacRuntimeControlCommandWorker {
     public func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
         return try await runGuestControlCommand { gateway in
             try gateway.serviceResource(service)
+        }
+    }
+
+    public func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult {
+        return try await runGuestControlCommand { gateway in
+            try gateway.redisRelayStatus()
         }
     }
 

@@ -293,6 +293,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(page.state, .partiallyLoaded)
         XCTAssertEqual(page.events.map(\.id), ["event-1"])
         XCTAssertNotNil(page.readError)
+        XCTAssertTrue(page.readError?.contains("sqlite=") == true)
         XCTAssertTrue(logs.contains { $0.contains("runtime event sqlite append failed eventID=event-1") })
     }
 
@@ -313,6 +314,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(page.state, .partiallyLoaded)
         XCTAssertEqual(page.events.map(\.id), ["event-1"])
         XCTAssertNotNil(page.readError)
+        XCTAssertTrue(page.readError?.contains("sqlite=") == true)
         XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events, [])
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("events.sqlite").path))
     }
@@ -453,6 +455,8 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(page.events.map(\.id), ["event-1"])
         XCTAssertEqual(page.matchingCount, 1)
         XCTAssertNotNil(page.readError)
+        XCTAssertTrue(page.readError?.contains("sqlite=") == true)
+        XCTAssertFalse(page.readError?.contains("jsonl=") == true)
         XCTAssertTrue(logs.contains { $0.contains("served events from jsonl primary") })
     }
 

@@ -41,6 +41,15 @@ function renderApp(gateway: ReturnType<typeof createGateway>) {
 function createGateway() {
   return {
     getCapabilities: vi.fn().mockResolvedValue({ canUseLab: true }),
+    getPlatformState: vi.fn().mockResolvedValue({
+      runtimeInstallationState: "executable",
+      services: [],
+      platformHealth: "healthy",
+      publicProxyHTTP: "HTTP 200",
+      platformAPIHTTP: "HTTP 200",
+      dataDirectoryStats: { fileCount: 1, sizeBytes: 1024 },
+      dataStorage: { usedBytes: 1024, totalBytes: 2048 }
+    }),
     getOverview: vi.fn().mockResolvedValue({
       settings: {
         readIssues: [],
@@ -65,15 +74,6 @@ function createGateway() {
     backupScheduleTimes: ["03:15"],
         backupRetentionCount: 30,
         restartAfterSave: true
-      },
-      status: {
-        runtimeState: "healthy",
-        hostProxyHTTP: "HTTP 200",
-        runtimeControlHTTP: "HTTP 200",
-        dataDirectoryStats: { fileCount: 1, sizeBytes: 1024 },
-        memory: { usedBytes: 1024, totalBytes: 2048 },
-        systemDisk: { availableBytes: 1024, totalBytes: 2048 },
-        dataStorage: { usedBytes: 1024, totalBytes: 2048 }
       },
       vitalRecorder: {
         activeConnections: 0,

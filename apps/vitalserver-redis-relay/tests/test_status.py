@@ -12,7 +12,11 @@ from vitalserver_redis_relay.settings import (
     RelaySettings,
     default_publish_contract,
 )
-from vitalserver_redis_relay.status import write_status, write_unavailable_status
+from vitalserver_redis_relay.status import (
+    build_status_document,
+    build_unavailable_status_document,
+    write_status_artifact,
+)
 
 
 def test_status_masks_password(tmp_path: Path) -> None:
@@ -35,15 +39,16 @@ def test_status_masks_password(tmp_path: Path) -> None:
         status_interval_seconds=5.0,
     )
 
-    write_status(
-        status_path,
+    document = build_status_document(
         settings=settings,
         state="running",
         batch=RelayBatchResult(copied=1, published=1),
         last_success_at="2026-06-18T00:00:01Z",
     )
+    write_status_artifact(status_path, document)
 
-    document = json.loads(status_path.read_text())
+    artifact_document = json.loads(status_path.read_text())
+    assert artifact_document == document
     assert document["targetUrl"] == "redis://default@target:6379/0"
     assert document["targetPasswordConfigured"] is True
     assert document["batches"] == 0
@@ -86,8 +91,14 @@ def test_status_fingerprint_changes_when_connection_contract_changes(
         status_interval_seconds=5.0,
     )
 
-    write_status(first_status_path, settings=base, state="running")
-    write_status(second_status_path, settings=changed, state="running")
+    write_status_artifact(
+        first_status_path,
+        build_status_document(settings=base, state="running"),
+    )
+    write_status_artifact(
+        second_status_path,
+        build_status_document(settings=changed, state="running"),
+    )
 
     first = json.loads(first_status_path.read_text())
     second = json.loads(second_status_path.read_text())
@@ -97,15 +108,17 @@ def test_status_fingerprint_changes_when_connection_contract_changes(
 def test_unavailable_status_reports_explicit_error_observation(tmp_path: Path) -> None:
     status_path = tmp_path / "status.json"
 
-    write_unavailable_status(
-        status_path,
+    document = build_unavailable_status_document(
         state="config_invalid",
         error="config file missing",
     )
+    write_status_artifact(status_path, document)
 
-    document = json.loads(status_path.read_text())
+    artifact_document = json.loads(status_path.read_text())
+    assert artifact_document == document
     assert document["enabled"] is False
     assert document["state"] == "config_invalid"
+    assert document["scope"] is None
     assert document["settingsFingerprint"] is None
     assert document["lastSuccessAt"] is None
     assert document["lastErrorAt"] == document["observedAt"]
@@ -127,8 +140,7 @@ def test_status_reports_last_batch_error_samples(tmp_path: Path) -> None:
         status_interval_seconds=5.0,
     )
 
-    write_status(
-        status_path,
+    document = build_status_document(
         settings=settings,
         state="running_with_errors",
         batch=RelayBatchResult(
@@ -146,8 +158,10 @@ def test_status_reports_last_batch_error_samples(tmp_path: Path) -> None:
         error="relay batch completed with errors",
         last_error_at="2026-06-18T00:00:02Z",
     )
+    write_status_artifact(status_path, document)
 
-    document = json.loads(status_path.read_text())
+    artifact_document = json.loads(status_path.read_text())
+    assert artifact_document == document
     assert "error_samples" not in document["lastBatch"]
     assert "error_samples" not in document["totals"]
     assert document["lastErrorSamples"] == [

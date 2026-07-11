@@ -3,6 +3,15 @@ import Contracts
 import Foundation
 import RuntimeControl
 
+public protocol RuntimeGuestAddressResourceReading {
+    func loadGuestAddressResource() -> RuntimeGuestAddressResourceState
+}
+
+public protocol RuntimeGuestAddressResourceWriting {
+    @discardableResult
+    func putGuestAddressResource(address: String) throws -> RuntimeGuestAddressResourceState
+}
+
 public enum RuntimeGuestAddressResourceReadMapper {
     public static func readResult(
         from resource: RuntimeGuestAddressResourceState

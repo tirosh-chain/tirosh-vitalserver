@@ -113,11 +113,18 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-102 | Helper 설치 후 guest는 healthy인데 status가 Critical로 남음 | Runtime health / macOS Helper UI | active | [Helper status stays Critical after guest is healthy](102_helper-status-critical-after-healthy-guest.md) |
 | TS-103 | Guest service가 healthy인데 `SpecMissing`으로 표시됨 | Runtime health / Guest containers / macOS Helper UI | active | [Guest service spec missing while containers are healthy](103_guest-service-spec-missing-with-healthy-containers.md) |
 | TS-104 | 새 설치 후 runtime은 healthy인데 Helper가 Installing으로 남음 | Runtime health / macOS Helper UI / Packaging | active | [Helper stays Installing after provisioned install](104_helper-stays-installing-after-provisioned.md) |
-| TS-105 | Guest product services가 `/v1/stack/status` timeout으로 Degraded 표시 | Runtime health / Guest containers / macOS Helper UI | active | [Guest stack status times out on docker stats](105_guest-stack-status-timeout-from-docker-stats.md) |
+| TS-105 | Guest product services가 `/runtime/stack` timeout으로 Degraded 표시 | Runtime health / Guest containers / macOS Helper UI | active | [Guest stack status times out on docker stats](105_guest-stack-status-timeout-from-docker-stats.md) |
 | TS-106 | Product Lab recorder start가 `/api/send` 404로 실패 | Product Lab / Recorder streaming / macOS Helper UI | active | [Product Lab recorder send 404](106_product-lab-recorder-send-404.md) |
 | TS-107 | 새 Helper 설치본이 이미 수정된 guest-tools 동작을 포함하지 않음 | Packaging / Guest bootstrap / Clean install | active | [Stale guest-tools rootfs cache in clean install](107_stale-guest-tools-rootfs-cache-in-clean-install.md) |
 | TS-108 | Product Lab은 `sent`인데 VitalDB recorder detail과 생체신호가 비어 있음 | Product Lab / Recorder streaming / Observability | active | [Product Lab send succeeds but VitalDB tracks are empty](108_product-lab-send-without-vitaldb-tracks.md) |
-| TS-109 | VM 재시작 후 `/v1/stack/status`가 stale service health 문서 때문에 503 | Runtime health / Guest containers / Data store | active | [Guest stack status fails on stale service health document](109_guest-stack-status-fails-on-stale-service-health.md) |
+| TS-109 | VM 재시작 후 `/runtime/stack`가 stale service health 문서 때문에 503 | Runtime health / Guest containers / Data store | active | [Guest stack status fails on stale service health document](109_guest-stack-status-fails-on-stale-service-health.md) |
+| TS-110 | UI를 실행하지 않으면 VM launcher가 Platform API 연결 실패로 boot 전에 중단 | Packaging / Local development | resolved | [VM launcher requires UI-hosted Platform API](110_vm-launcher-requires-ui-hosted-platform-api.md) |
+| TS-111 | amd64 Linux bundle의 container image가 실제로는 arm64 | Packaging / Guest containers | resolved | [Linux Runtime image archive architecture mismatch](111_linux-runtime-image-archive-architecture-mismatch.md) |
+| TS-112 | Linux 설치 중단이 성공처럼 보이거나 partial state를 남김 | Packaging / Update | resolved | [Linux installation interruption reports or leaves partial state](112_linux-install-interruption-partial-state.md) |
+| TS-113 | Linux Native Provider와 installer의 Compose project가 다름 | Runtime health / Guest containers | resolved | [Linux Native Provider Compose project mismatch](113_linux-native-provider-compose-project-mismatch.md) |
+| TS-114 | `/tmp`의 Linux update bundle을 Agent가 찾지 못함 | Packaging / Update | resolved | [Linux update bundle is invisible to the Platform Agent](114_linux_update_bundle_invisible_private_tmp.md) |
+| TS-115 | config가 가리키는 Linux support export tool이 release에 없음 | Packaging / Update | resolved | [Linux Platform Agent restarts because support export tool is missing](115_linux_platform_agent_support_export_tool_missing.md) |
+| TS-116 | Linux update acceptance가 support export를 중첩 실행해 409로 rollback | Packaging / Update | resolved | [Linux update rolls back when installed acceptance starts support export](116_linux_update_acceptance_nested_support_workflow.md) |
 
 ## Follow-up 규칙
 

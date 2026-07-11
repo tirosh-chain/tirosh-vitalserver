@@ -412,7 +412,7 @@ private final class RuntimeUninstallWorkflowHarness {
     ) {
         self.externalVitalFilesDirectory = externalVitalFilesDirectory
         self.configuredVitalFilesDirectoryReadFailure = configuredVitalFilesDirectoryReadFailure
-        self.serviceStates = Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map {
+        self.serviceStates = Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map {
             ($0, RuntimeServiceState.notLoaded)
         })
         self.existing = [
@@ -445,7 +445,7 @@ private final class RuntimeUninstallWorkflowHarness {
                 defaultVitalFilesDirectory: URL(fileURLWithPath: "/product/vm/data/vital-files"),
                 externalVitalFilesDirectory: externalVitalFilesDirectory.map(URL.init(fileURLWithPath:)),
                 configuredVitalFilesDirectoryReadFailure: configuredVitalFilesDirectoryReadFailure,
-                launchDaemonPlists: RuntimeManagedService.stopOrder.map {
+                launchDaemonPlists: RuntimeManagedService.uninstallOrder.map {
                     URL(fileURLWithPath: "/Library/LaunchDaemons/\($0.label).plist")
                 },
                 runtimeTools: [

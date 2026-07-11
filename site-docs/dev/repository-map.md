@@ -24,7 +24,7 @@
 | recorder/bed 관측 수정             | `apps/vitaldb-observer`와 macOS runtime의 observability reader                                       |
 | update/recovery 흐름 수정          | `apps/vitalserver-macos-runtime/Sources/Workflow`와 `Sources/Hosts/CLI`                              |
 | packaging 또는 release bundle 수정 | `packages/vitalserver-devtools`, `apps/vitalserver-macos-runtime/Support`, `Makefile`                |
-| Product Lab 수정                   | `apps/vitalserver-lab`, Runtime Control `/lab/*`, Guest Control `/v1/lab/*`                          |
+| Product Lab 수정                   | `apps/vitalserver-lab`, Runtime Control `/runtime/lab/*`, Guest Control `/runtime/lab/*`                          |
 | dev testkit 수정                   | `packages/vitalserver-testkit`                                                                       |
 | 문서 수정                          | `site-docs/`와 `docs/`                                                                               |
 
