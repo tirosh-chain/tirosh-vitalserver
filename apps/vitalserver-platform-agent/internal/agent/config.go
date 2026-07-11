@@ -35,6 +35,7 @@ type DeliveryConfig struct {
 	SchedulerScript      string `json:"schedulerScript"`
 	ApplyPolicy          string `json:"applyPolicy"`
 	TrustedBundleDigests string `json:"trustedBundleDigests"`
+	TrustedBundleInbox   string `json:"trustedBundleInbox"`
 }
 
 const (
@@ -73,6 +74,9 @@ func LoadConfig(path string) (Config, error) {
 		if value == "" {
 			return Config{}, fmt.Errorf("platform agent config field is required: %s", name)
 		}
+	}
+	if _, err := loopbackOrigin(config.ListenAddress); err != nil {
+		return Config{}, fmt.Errorf("platform agent config listenAddress is invalid: %w", err)
 	}
 	for _, role := range contract.PlatformServiceRoles {
 		name, exists := config.PlatformServices[role]
@@ -137,6 +141,9 @@ func LoadConfig(path string) (Config, error) {
 			if config.Delivery.TrustedBundleDigests == "" {
 				return Config{}, fmt.Errorf("platform agent delivery trustedBundleDigests is required for applyPolicy=%s", DeliveryApplyPolicySHA256Allowlist)
 			}
+			if config.Delivery.TrustedBundleInbox == "" {
+				return Config{}, fmt.Errorf("platform agent delivery trustedBundleInbox is required for applyPolicy=%s", DeliveryApplyPolicySHA256Allowlist)
+			}
 		default:
 			return Config{}, fmt.Errorf(
 				"unsupported platform agent delivery applyPolicy=%q",
@@ -158,6 +165,9 @@ func LoadConfig(path string) (Config, error) {
 		}
 		if config.Delivery.TrustedBundleDigests != "" {
 			config.Delivery.TrustedBundleDigests = resolvePath(base, config.Delivery.TrustedBundleDigests)
+		}
+		if config.Delivery.TrustedBundleInbox != "" {
+			config.Delivery.TrustedBundleInbox = resolvePath(base, config.Delivery.TrustedBundleInbox)
 		}
 	}
 	return config, nil

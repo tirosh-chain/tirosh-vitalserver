@@ -631,7 +631,6 @@ public enum RuntimeSettingsInitialValues {
 
 public enum RuntimeControlLocalAPIConnectionDefaults {
     public static let headerName = "X-Runtime-Control-Token"
-    public static let token = "vitalserver-helper-dev"
 
     public static func baseURL(
         runtimeControlPort: Int = RuntimeSettingsInitialValues.runtimeControlPort

@@ -40,6 +40,14 @@ function Protect-OwnerFile {
     }
 }
 
+function Protect-OwnerDirectory {
+    param([string]$Path)
+    & icacls.exe $Path /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows owner directory ACL hardening failed path=$Path exitCode=$LASTEXITCODE"
+    }
+}
+
 function Assert-SafeBundle {
     param([string]$Root)
     $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd([IO.Path]::DirectorySeparatorChar)
@@ -157,9 +165,11 @@ $runRoot = Join-Path $ProgramDataRoot "run"
 $proofRoot = Join-Path $ProgramDataRoot "proof"
 $secretRoot = Join-Path $ProgramDataRoot "secrets"
 $vmRoot = Join-Path $ProgramDataRoot "vm"
-foreach ($directory in @($configRoot, $runRoot, $proofRoot, $secretRoot, $vmRoot)) {
+$inboxRoot = Join-Path $ProgramDataRoot "inbox"
+foreach ($directory in @($configRoot, $runRoot, $proofRoot, $secretRoot, $vmRoot, $inboxRoot)) {
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
 }
+Protect-OwnerDirectory -Path $inboxRoot
 
 $platformConfigPath = Join-Path $configRoot "platform-agent.json"
 $providerConfigPath = Join-Path $configRoot "hyperv-runtime-provider.json"
@@ -201,6 +211,7 @@ if ($existingConfigCount -eq 0) {
             schedulerKind = "windows-scheduled-task"
             schedulerScript = (Join-Path $releaseRoot "packaging\schedule-workflow-windows.ps1")
             applyPolicy = "verify-only"
+            trustedBundleInbox = $inboxRoot
         }
         platformServices = [ordered]@{
             "runtime-provider" = "VitalServerHyperVRuntime"
@@ -246,6 +257,13 @@ if ($existingConfigCount -eq 0) {
         $platformConfig.delivery | Add-Member -NotePropertyName supportExportTool -NotePropertyValue $supportExportTool
     }
     $platformConfig.delivery.schedulerScript = (Join-Path $releaseRoot "packaging\schedule-workflow-windows.ps1")
+    if ($platformConfig.delivery.PSObject.Properties.Name -contains 'trustedBundleInbox') {
+        if ($platformConfig.delivery.trustedBundleInbox -ne $inboxRoot) {
+            throw "Existing Windows Platform config has a different trusted bundle inbox owner path=$($platformConfig.delivery.trustedBundleInbox)"
+        }
+    } else {
+        $platformConfig.delivery | Add-Member -NotePropertyName trustedBundleInbox -NotePropertyValue $inboxRoot
+    }
     Write-JSONNoBOM -Document $platformConfig -Path $platformConfigPath
     Protect-OwnerFile -Path $platformConfigPath
 }

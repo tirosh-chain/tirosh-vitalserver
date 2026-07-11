@@ -342,12 +342,17 @@ final class RuntimeControlContractsTests: XCTestCase {
 
     func testRuntimeSettingsReadPolicyAppliesLogArchiveSettings() {
         let settings = RuntimeSettingsReadPolicy.applyLogArchiveSettings(
-            RuntimeLogArchiveSettingsReadInput(retentionDays: 10, maximumGiB: 3),
+            RuntimeLogArchiveSettingsReadInput(
+                retentionDays: 10,
+                maximumGiB: 3,
+                runtimeControlPort: 18444
+            ),
             to: RuntimeSettings()
         )
 
         XCTAssertEqual(settings.logArchiveRetentionDays, 10)
         XCTAssertEqual(settings.logArchiveMaximumGiB, 3)
+        XCTAssertEqual(settings.runtimeControlPort, 18444)
         XCTAssertEqual(settings.readIssues, [])
     }
 
@@ -367,6 +372,25 @@ final class RuntimeControlContractsTests: XCTestCase {
             RuntimeSettingsReadIssue(
                 source: "logArchiveSettings.logArchiveMaximumGiB",
                 message: "logArchiveMaximumGiB is out of range: 21"
+            ),
+        ])
+    }
+
+    func testRuntimeSettingsReadPolicyPreservesInvalidRuntimeControlPortAsExplicitReadIssue() {
+        let settings = RuntimeSettingsReadPolicy.applyLogArchiveSettings(
+            RuntimeLogArchiveSettingsReadInput(
+                retentionDays: 10,
+                maximumGiB: 3,
+                runtimeControlPort: 65_536
+            ),
+            to: RuntimeSettings()
+        )
+
+        XCTAssertEqual(settings.runtimeControlPort, RuntimeSettingsInitialValues.runtimeControlPort)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "runtimeControlSettings.runtimeControlPort",
+                message: "runtimeControlPort is out of range: 65536"
             ),
         ])
     }
@@ -392,7 +416,11 @@ final class RuntimeControlContractsTests: XCTestCase {
                 backupScheduleTimes: ["03:15", "15:15"],
                 backupRetentionCount: 12
             )),
-            logArchiveSettings: .loaded(RuntimeLogArchiveSettingsReadInput(retentionDays: 8, maximumGiB: 2)),
+            logArchiveSettings: .loaded(RuntimeLogArchiveSettingsReadInput(
+                retentionDays: 8,
+                maximumGiB: 2,
+                runtimeControlPort: 18444
+            )),
             proxyPort: .loaded(19090),
             startOnBoot: .loaded(false)
         ))
@@ -411,6 +439,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(settings.backupRetentionCount, 12)
         XCTAssertEqual(settings.logArchiveRetentionDays, 8)
         XCTAssertEqual(settings.logArchiveMaximumGiB, 2)
+        XCTAssertEqual(settings.runtimeControlPort, 18444)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.startOnBoot)
         XCTAssertTrue(settings.startOnBootConfigurable)

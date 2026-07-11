@@ -132,6 +132,9 @@ func ValidateDelivery(config *DeliveryConfig) error {
 		if _, err := readTrustedBundleDigests(config.TrustedBundleDigests); err != nil {
 			return err
 		}
+		if err := validateTrustedBundleInbox(config.TrustedBundleInbox); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -164,21 +167,32 @@ func (controller *deliveryController) summarize(ctx context.Context, bundle stri
 }
 
 func (controller *deliveryController) schedule(ctx context.Context, action, bundle string) (contract.PlatformWorkflowOperation, error) {
-	return controller.scheduleCommand(
+	command := []string{
+		controller.config.UpdateTool,
+		action,
+		"--bundle", bundle,
+	}
+	stagedBundle := ""
+	operation, err := controller.scheduleCommand(
 		ctx,
 		"update-"+action,
-		[]string{
-			controller.config.UpdateTool,
-			action,
-			"--bundle", bundle,
-		},
+		command,
 		func() error {
 			if action == "apply" {
-				return controller.requireTrustedBundle(bundle)
+				staged, err := controller.stageTrustedBundle(bundle)
+				if err != nil {
+					return err
+				}
+				stagedBundle = staged
+				command[len(command)-1] = staged
 			}
 			return nil
 		},
 	)
+	if err != nil && stagedBundle != "" {
+		_ = os.Remove(stagedBundle)
+	}
+	return operation, err
 }
 
 func (controller *deliveryController) scheduleRollback(ctx context.Context) (contract.PlatformWorkflowOperation, error) {
@@ -349,28 +363,82 @@ func windowsPowerShellArguments(arguments []string) ([]string, error) {
 	return result, nil
 }
 
-func (controller *deliveryController) requireTrustedBundle(bundle string) error {
+func (controller *deliveryController) stageTrustedBundle(bundle string) (string, error) {
 	if controller.config.ApplyPolicy != DeliveryApplyPolicySHA256Allowlist {
-		return errUpdateApplyUnavailable
+		return "", errUpdateApplyUnavailable
 	}
 	digests, err := readTrustedBundleDigests(controller.config.TrustedBundleDigests)
 	if err != nil {
-		return err
+		return "", err
+	}
+	inbox, err := validatedTrustedBundleInbox(controller.config.TrustedBundleInbox)
+	if err != nil {
+		return "", err
 	}
 	file, err := os.Open(bundle)
 	if err != nil {
-		return fmt.Errorf("%w: bundle read failed path=%s: %v", errTrustedDigestUnavailable, bundle, err)
+		return "", fmt.Errorf("%w: bundle read failed path=%s: %v", errTrustedDigestUnavailable, bundle, err)
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("%w: bundle metadata read failed path=%s: %v", errTrustedDigestUnavailable, bundle, err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%w: bundle is not a regular file path=%s", errTrustedDigestUnavailable, bundle)
+	}
+	staged, err := os.CreateTemp(inbox, "trusted-update-*.bundle")
+	if err != nil {
+		return "", fmt.Errorf("%w: trusted bundle staging create failed directory=%s: %v", errTrustedDigestUnavailable, inbox, err)
+	}
+	stagedPath := staged.Name()
+	removeStaged := true
+	defer func() {
+		if removeStaged {
+			_ = os.Remove(stagedPath)
+		}
+	}()
 	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return fmt.Errorf("%w: bundle hash failed path=%s: %v", errTrustedDigestUnavailable, bundle, err)
+	if _, err := io.Copy(io.MultiWriter(staged, hash), file); err != nil {
+		_ = staged.Close()
+		return "", fmt.Errorf("%w: bundle stage failed path=%s: %v", errTrustedDigestUnavailable, bundle, err)
+	}
+	if err := staged.Sync(); err != nil {
+		_ = staged.Close()
+		return "", fmt.Errorf("%w: trusted bundle sync failed path=%s: %v", errTrustedDigestUnavailable, stagedPath, err)
+	}
+	if err := staged.Chmod(0o600); err != nil {
+		_ = staged.Close()
+		return "", fmt.Errorf("%w: trusted bundle permission hardening failed path=%s: %v", errTrustedDigestUnavailable, stagedPath, err)
+	}
+	if err := staged.Close(); err != nil {
+		return "", fmt.Errorf("%w: trusted bundle close failed path=%s: %v", errTrustedDigestUnavailable, stagedPath, err)
 	}
 	actual := hex.EncodeToString(hash.Sum(nil))
 	if _, trusted := digests[actual]; !trusted {
-		return fmt.Errorf("%w: sha256=%s", errUpdateBundleUntrusted, actual)
+		return "", fmt.Errorf("%w: sha256=%s", errUpdateBundleUntrusted, actual)
 	}
-	return nil
+	removeStaged = false
+	return stagedPath, nil
+}
+
+func validateTrustedBundleInbox(path string) error {
+	_, err := validatedTrustedBundleInbox(path)
+	return err
+}
+
+func validatedTrustedBundleInbox(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("%w: trusted bundle inbox is not configured", errTrustedDigestUnavailable)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("%w: trusted bundle inbox is unavailable path=%s: %v", errTrustedDigestUnavailable, path, err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("%w: trusted bundle inbox is not a directory owner path=%s", errTrustedDigestUnavailable, path)
+	}
+	return path, nil
 }
 
 func readTrustedBundleDigests(path string) (map[string]struct{}, error) {

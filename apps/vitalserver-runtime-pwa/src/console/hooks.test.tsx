@@ -92,9 +92,13 @@ describe("console hooks", () => {
     await expectQuery(useLabBeds, wrapper, gateway.getLabBeds);
     await expectQuery(useLabRecorders, wrapper, gateway.getLabRecorders);
     await expectQuery(useLabVitalFiles, wrapper, gateway.getLabVitalFiles);
-    await expectQuery(useHostBackups, wrapper, gateway.listHostBackups);
-    await expectQuery(useRedisBackups, wrapper, gateway.listRedisBackups);
-    await expectQuery(useRuntimeDataBackups, wrapper, gateway.listRuntimeDataBackups);
+    await expectQuery(() => useHostBackups(true), wrapper, gateway.listHostBackups);
+    await expectQuery(() => useRedisBackups(true), wrapper, gateway.listRedisBackups);
+    await expectQuery(
+      () => useRuntimeDataBackups(true),
+      wrapper,
+      gateway.listRuntimeDataBackups
+    );
 
     const serviceResources = renderHook(
       () => useRuntimeServiceResources(["app"]),
@@ -119,7 +123,13 @@ describe("console hooks", () => {
     });
 
     const logs = renderHook(
-      () => useHostLogs({ source: "containers", lineLimit: 100, live: false }),
+      () =>
+        useHostLogs({
+          source: "containers",
+          lineLimit: 100,
+          live: false,
+          enabled: true
+        }),
       { wrapper }
     );
     await waitFor(() => expect(logs.result.current.data).toEqual({ text: "logs" }));
@@ -134,6 +144,31 @@ describe("console hooks", () => {
       expect(labSession.result.current.data).toEqual(labSessionResponse())
     );
     expect(gateway.getLabSession).toHaveBeenCalledWith("lab-1");
+  });
+
+  it("does not read optional Host resources without the advertised capability", async () => {
+    const gateway = createGateway();
+    const wrapper = createWrapper(gateway);
+
+    renderHook(
+      () =>
+        useHostLogs({
+          source: "containers",
+          lineLimit: 100,
+          live: true,
+          enabled: false
+        }),
+      { wrapper }
+    );
+    renderHook(() => useHostBackups(false), { wrapper });
+    renderHook(() => useRedisBackups(false), { wrapper });
+    renderHook(() => useRuntimeDataBackups(false), { wrapper });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(gateway.readLogs).not.toHaveBeenCalled();
+    expect(gateway.listHostBackups).not.toHaveBeenCalled();
+    expect(gateway.listRedisBackups).not.toHaveBeenCalled();
+    expect(gateway.listRuntimeDataBackups).not.toHaveBeenCalled();
   });
 
   it("runs runtime, update, backup, and repair mutations through the gateway", async () => {

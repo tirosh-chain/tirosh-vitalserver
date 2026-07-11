@@ -1317,7 +1317,14 @@ class GuestControlUseCases:
         except UpdateShutdownDependencyError as error:
             mark_failed(error)
 
-        return self._operations.get(operation.operation_id) or running
+        persisted = self._operations.get(operation.operation_id)
+        if persisted is None:
+            raise GuestControlDependencyError(
+                "update shutdown operation state is missing after persistence "
+                f"operationId={operation.operation_id}",
+                kind="operationStateMissing",
+            )
+        return persisted
 
     def request_guest_poweroff(self) -> ServiceOperation:
         operation = accept_service_operation(

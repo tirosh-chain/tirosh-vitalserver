@@ -42,12 +42,10 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             vmLifecycleResourceReader: vmLifecycleStore,
             commandWorker: commandWorker
         )
-        let localAPISettings = RuntimeControlLocalAPISettingsCoordinator.live()
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
             snapshotReader: readWorker,
-            localAPISettings: localAPISettings,
             healthNotifications: HealthNotificationCenter(),
             nativeShell: SystemRuntimeNativeShell(),
             helperMessageLog: FileRuntimeHelperMessageLog()

@@ -37,7 +37,11 @@ func TestDeliverySchedulesDurableTransientUpdateOperation(t *testing.T) {
 	workflow := filepath.Join(root, "platform-workflow.json")
 	runner := &stubDeliveryRunner{}
 	bundle := filepath.Join(root, "update.tar.gz")
+	inbox := filepath.Join(root, "trusted-inbox")
 	if err := os.WriteFile(bundle, []byte("bundle"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(inbox, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	digests := filepath.Join(root, "trusted-bundle-digests.json")
@@ -53,6 +57,7 @@ func TestDeliverySchedulesDurableTransientUpdateOperation(t *testing.T) {
 			SchedulerKind:        DeliverySchedulerSystemdTransient,
 			ApplyPolicy:          DeliveryApplyPolicySHA256Allowlist,
 			TrustedBundleDigests: digests,
+			TrustedBundleInbox:   inbox,
 		},
 		runner: runner,
 		now:    func() time.Time { return time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC) },
@@ -74,11 +79,24 @@ func TestDeliverySchedulesDurableTransientUpdateOperation(t *testing.T) {
 	arguments := strings.Join(runner.calls[0].arguments, " ")
 	for _, expected := range []string{
 		"--no-block", "--service-type=exec", "update-linux.py apply",
-		"--bundle " + bundle, "--operation-document " + workflow,
+		"--operation-document " + workflow,
 	} {
 		if !strings.Contains(arguments, expected) {
 			t.Fatalf("scheduler arguments miss %q: %s", expected, arguments)
 		}
+	}
+	staged := stringArgumentAfter(t, runner.calls[0].arguments, "--bundle")
+	if staged == bundle || filepath.Dir(staged) != inbox {
+		t.Fatalf("trusted update must schedule an Agent-owned staged bundle original=%s staged=%s", bundle, staged)
+	}
+	if data, err := os.ReadFile(staged); err != nil || string(data) != "bundle" {
+		t.Fatalf("trusted staged bundle differs data=%q err=%v", data, err)
+	}
+	if err := os.WriteFile(bundle, []byte("replaced after scheduling"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(staged); err != nil || string(data) != "bundle" {
+		t.Fatalf("staged bundle changed with source after scheduling data=%q err=%v", data, err)
 	}
 }
 
@@ -228,7 +246,11 @@ func TestDeliveryRejectsBundleMissingFromTrustedDigestOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	bundle := filepath.Join(root, "update.tar.gz")
+	inbox := filepath.Join(root, "trusted-inbox")
 	if err := os.WriteFile(bundle, []byte("bundle"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(inbox, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	runner := &stubDeliveryRunner{}
@@ -239,6 +261,7 @@ func TestDeliveryRejectsBundleMissingFromTrustedDigestOwner(t *testing.T) {
 			SchedulerKind:        DeliverySchedulerSystemdTransient,
 			ApplyPolicy:          DeliveryApplyPolicySHA256Allowlist,
 			TrustedBundleDigests: digests,
+			TrustedBundleInbox:   inbox,
 		},
 		runner: runner,
 		now:    time.Now,
@@ -251,6 +274,10 @@ func TestDeliveryRejectsBundleMissingFromTrustedDigestOwner(t *testing.T) {
 	}
 	if _, err := os.Stat(controller.config.WorkflowDocument); !os.IsNotExist(err) {
 		t.Fatalf("untrusted bundle created workflow owner: %v", err)
+	}
+	entries, err := os.ReadDir(inbox)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("untrusted bundle must not remain in the trusted inbox entries=%+v err=%v", entries, err)
 	}
 }
 
@@ -330,4 +357,15 @@ func containsString(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func stringArgumentAfter(t *testing.T, arguments []string, name string) string {
+	t.Helper()
+	for index, argument := range arguments {
+		if argument == name && index+1 < len(arguments) {
+			return arguments[index+1]
+		}
+	}
+	t.Fatalf("argument is missing: %s in %+v", name, arguments)
+	return ""
 }

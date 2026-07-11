@@ -32,6 +32,31 @@ func TestLoadConfigRequiresEveryServiceRoleExplicitly(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRequiresNumericLoopbackListenAddress(t *testing.T) {
+	for name, listenAddress := range map[string]string{
+		"wildcard":        "0.0.0.0:18321",
+		"private-network": "192.168.1.8:18321",
+		"hostname":        "localhost:18321",
+		"zero-port":       "127.0.0.1:0",
+		"missing-port":    "127.0.0.1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			document := strings.Replace(
+				validConfigWithDelivery(`{
+      "workflowDocument":"workflow.json", "updateTool":"update", "rollbackTool":"rollback", "schedulerExecutable":"schedule", "schedulerKind":"systemd-transient",
+      "applyPolicy":"verify-only"
+    }`),
+				`"listenAddress":"127.0.0.1:18321"`,
+				`"listenAddress":"`+listenAddress+`"`,
+				1,
+			)
+			if _, err := LoadConfig(writeConfig(t, document)); err == nil || !strings.Contains(err.Error(), "listenAddress") {
+				t.Fatalf("listenAddress=%q error=%v", listenAddress, err)
+			}
+		})
+	}
+}
+
 func TestLoadConfigRejectsUnknownAndEmptyServiceBindings(t *testing.T) {
 	for name, services := range map[string]string{
 		"unknown": `{
@@ -73,6 +98,10 @@ func TestLoadConfigRequiresDigestOwnerOnlyForSHA256ApplyPolicy(t *testing.T) {
       "workflowDocument":"workflow.json", "updateTool":"update", "rollbackTool":"rollback", "schedulerExecutable":"schedule", "schedulerKind":"systemd-transient",
       "applyPolicy":"sha256-allowlist"
     }`,
+		"allowlist-without-inbox": `{
+      "workflowDocument":"workflow.json", "updateTool":"update", "rollbackTool":"rollback", "schedulerExecutable":"schedule", "schedulerKind":"systemd-transient",
+      "applyPolicy":"sha256-allowlist", "trustedBundleDigests":"trusted.json"
+    }`,
 		"unknown-policy": `{
       "workflowDocument":"workflow.json", "updateTool":"update", "rollbackTool":"rollback", "schedulerExecutable":"schedule", "schedulerKind":"systemd-transient",
       "applyPolicy":"guess"
@@ -88,15 +117,16 @@ func TestLoadConfigRequiresDigestOwnerOnlyForSHA256ApplyPolicy(t *testing.T) {
 
 	path := writeConfig(t, validConfigWithDelivery(`{
     "workflowDocument":"workflow.json", "updateTool":"update", "rollbackTool":"rollback", "schedulerExecutable":"schedule", "schedulerKind":"systemd-transient",
-    "applyPolicy":"sha256-allowlist", "trustedBundleDigests":"trusted.json"
+    "applyPolicy":"sha256-allowlist", "trustedBundleDigests":"trusted.json", "trustedBundleInbox":"inbox"
   }`))
 	config, err := LoadConfig(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(filepath.Dir(path), "trusted.json")
-	if config.Delivery == nil || config.Delivery.TrustedBundleDigests != want {
-		t.Fatalf("trusted digest owner path was not resolved: %+v", config.Delivery)
+	wantDigest := filepath.Join(filepath.Dir(path), "trusted.json")
+	wantInbox := filepath.Join(filepath.Dir(path), "inbox")
+	if config.Delivery == nil || config.Delivery.TrustedBundleDigests != wantDigest || config.Delivery.TrustedBundleInbox != wantInbox {
+		t.Fatalf("trusted delivery owner paths were not resolved: %+v", config.Delivery)
 	}
 }
 

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import stat
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from io import BytesIO
 from pathlib import Path
+from threading import Thread
+from uuid import uuid4
 
 import pytest
 
@@ -27,6 +30,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     UpdateActivationResult,
     UpdateShutdownResult,
 )
+from vitalserver_redis_relay.status_owner import GuestControlStatusOwnerPublisher
 
 
 class FakeClock:
@@ -235,8 +239,12 @@ def handle_with_test_handler(
     path: str,
     body: bytes,
     usecases: GuestControlUseCases,
+    allowed_routes: frozenset[tuple[str, str]] | None = None,
 ) -> tuple[HTTPStatus, dict[str, object]]:
-    handler_type = guest_control_api.make_handler(usecases)
+    handler_type = guest_control_api.make_handler(
+        usecases,
+        allowed_routes=allowed_routes,
+    )
     handler = object.__new__(handler_type)
     captured: dict[str, int] = {}
     handler.path = path
@@ -777,6 +785,73 @@ def test_health_route_does_not_query_services(usecases: GuestControlUseCases) ->
 
     assert status == HTTPStatus.OK
     assert document == {"status": "ok"}
+
+
+def test_redis_relay_status_owner_handler_exposes_only_its_mutation(
+    usecases: GuestControlUseCases,
+) -> None:
+    allowed_routes = frozenset(
+        {("PUT", guest_control_api.REDIS_RELAY_STATUS_OWNER_PATH)}
+    )
+    accepted_status, accepted = handle_with_test_handler(
+        method="PUT",
+        path=guest_control_api.REDIS_RELAY_STATUS_OWNER_PATH,
+        body=json.dumps(redis_relay_status_document()).encode("utf-8"),
+        usecases=usecases,
+        allowed_routes=allowed_routes,
+    )
+    denied_status, denied = handle_with_test_handler(
+        method="GET",
+        path="/health",
+        body=b"",
+        usecases=usecases,
+        allowed_routes=allowed_routes,
+    )
+
+    assert accepted_status == HTTPStatus.OK
+    assert accepted["readState"] == "loaded"
+    assert denied_status == HTTPStatus.NOT_FOUND
+    assert denied == {
+        "code": "statusOwnerRouteNotFound",
+        "detail": "The status owner transport does not serve this route.",
+    }
+
+
+def test_redis_relay_status_owner_socket_publishes_to_guest_control_owner(
+    usecases: GuestControlUseCases,
+) -> None:
+    socket_path = Path("/tmp") / f"vitalserver-guest-control-{uuid4().hex}.sock"
+    server = guest_control_api.create_redis_relay_status_owner_server(
+        socket_path=socket_path,
+        usecases=usecases,
+    )
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert stat.S_IMODE(socket_path.stat().st_mode) == 0o600
+        document = redis_relay_status_document()
+        result = GuestControlStatusOwnerPublisher(
+            owner_socket_path=socket_path,
+            timeout_seconds=1,
+        ).publish(document)
+        status, snapshot = route_request(
+            method="GET",
+            path=guest_control_api.REDIS_RELAY_STATUS_OWNER_PATH,
+            usecases=usecases,
+        )
+
+        assert result.published is True
+        assert status == HTTPStatus.OK
+        assert snapshot == {
+            "readState": "loaded",
+            "document": document,
+            "readError": None,
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=1)
+        socket_path.unlink(missing_ok=True)
 
 
 def test_ready_route_reports_dependency_readiness(

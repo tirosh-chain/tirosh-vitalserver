@@ -12,19 +12,23 @@ public struct RuntimeControlAPIVMLifecycleOwner {
     private let decoder: JSONDecoder
 
     public init(
-        baseURL: String = RuntimeControlLocalAPIConnectionDefaults.baseURL(),
-        token: String = RuntimeControlLocalAPIConnectionDefaults.token,
+        baseURL: String? = nil,
+        token: String? = nil,
         headerName: String = RuntimeControlLocalAPIConnectionDefaults.headerName,
         timeout: TimeInterval = 5,
         httpClient: any RuntimeControlClientHTTPClient = URLSessionRuntimeControlClientHTTPClient(),
         encoder: JSONEncoder = JSONEncoder(),
         decoder: JSONDecoder = JSONDecoder()
     ) throws {
-        guard let url = URL(string: baseURL) else {
-            throw RuntimeControlClientHTTPClientError.invalidBaseURL(baseURL)
+        let credentials = try RuntimeControlAPIAutomationCredentials(
+            baseURL: baseURL,
+            token: token
+        )
+        guard let url = URL(string: credentials.baseURL) else {
+            throw RuntimeControlClientHTTPClientError.invalidBaseURL(credentials.baseURL)
         }
         self.baseURL = url
-        self.token = token
+        self.token = credentials.token
         self.headerName = headerName
         self.timeout = timeout
         self.httpClient = httpClient

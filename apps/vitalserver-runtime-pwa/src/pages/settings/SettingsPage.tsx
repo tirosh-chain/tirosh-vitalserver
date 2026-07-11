@@ -9,6 +9,7 @@ import {
   useRuntimeRedisRelaySettings
 } from "@/console/hooks";
 import {
+  canApplyRuntimeProductSettings,
   canApplyRuntimeAdminPassword,
   canApplyRuntimeRedisRelaySettings
 } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
@@ -85,6 +86,9 @@ export function SettingsPage() {
 
   const parsed = parsedSettings(draft);
   const validationError = parsed instanceof Error ? parsed.message : null;
+  const canApplyProductSettings = canApplyRuntimeProductSettings(
+    capabilities.data
+  );
   const update = <K extends keyof RuntimeProductSettings>(
     field: K,
     value: RuntimeProductSettings[K]
@@ -103,9 +107,13 @@ export function SettingsPage() {
         actions={
           <ConfirmButton
             confirmMessage="Apply product runtime settings and reconcile the Compose stack?"
-            disabled={parsed instanceof Error || apply.isPending}
+            disabled={
+              !canApplyProductSettings ||
+              parsed instanceof Error ||
+              apply.isPending
+            }
             onClick={() => {
-              if (!(parsed instanceof Error)) {
+              if (canApplyProductSettings && !(parsed instanceof Error)) {
                 apply.mutate({ settings: parsed });
               }
             }}

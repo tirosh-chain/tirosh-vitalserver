@@ -279,6 +279,24 @@ describe("runtime console pages", () => {
     });
   });
 
+  it("does not apply Runtime settings when the Runtime Controller omits settings:apply", () => {
+    const apply = pendingMutation();
+    hooks.useApplyRuntimeProductSettings.mockReturnValue(apply);
+    hooks.useControlCapabilities.mockReturnValue(
+      query({
+        ...capabilities(),
+        canApplyRuntimeProductSettings: false
+      })
+    );
+
+    renderPage(<SettingsPage />);
+
+    const button = screen.getByRole("button", { name: "Apply" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(apply.mutate).not.toHaveBeenCalled();
+  });
+
   it("replaces the Runtime administrator password without placing it in settings", () => {
     const applyAdmin = pendingMutation();
     hooks.useApplyRuntimeAdminPassword.mockReturnValue(applyAdmin);
@@ -775,10 +793,10 @@ describe("runtime console pages", () => {
 
     renderPage(<LogsPage />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Failed to read export capability"
-    );
-    expect(screen.getByRole("alert")).toHaveTextContent("capabilities denied");
+    expect(screen.getByText("Failed to read log streaming capability")).toBeInTheDocument();
+    expect(screen.getByText("Failed to read export capability")).toBeInTheDocument();
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
+    expect(screen.getAllByRole("alert")[0]).toHaveTextContent("capabilities denied");
     expect(screen.getByRole("button", { name: "Create Support Bundle" })).toBeDisabled();
   });
 
@@ -796,14 +814,33 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("button", { name: "Create Support Bundle" })).toBeDisabled();
   });
 
+  it("does not request logs when log streaming is unsupported", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({ ...capabilities(), canStreamLogs: false })
+    );
+
+    renderPage(<LogsPage />);
+
+    expect(
+      screen.getByText("Log streaming is not supported by this Runtime Control API.")
+    ).toBeInTheDocument();
+    expect(hooks.useHostLogs).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false })
+    );
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+  });
+
   it("does not render missing log export capability as unsupported export", () => {
     hooks.useControlCapabilities.mockReturnValue(query(undefined));
 
     renderPage(<LogsPage />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Export capability response is incomplete"
-    );
+    expect(
+      screen.getByText("Log streaming capability response is incomplete")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Export capability response is incomplete")
+    ).toBeInTheDocument();
     expect(
       screen.queryByText("Log export is not supported by this Runtime Control API.")
     ).not.toBeInTheDocument();
@@ -945,6 +982,27 @@ describe("runtime console pages", () => {
     expect(startGuestService.mutate).toHaveBeenCalledWith("app");
     expect(stopGuestService.mutate).toHaveBeenCalledWith("app");
     expect(restartGuestService.mutate).toHaveBeenCalledWith("app");
+  });
+
+  it("does not read or enable backup resources without rollback capability", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({ ...capabilities(), canRollback: false })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(
+      screen.getAllByText(
+        "Backup and rollback operations are not supported by this Runtime Control API."
+      )
+    ).toHaveLength(4);
+    expect(hooks.useHostBackups).toHaveBeenCalledWith(false);
+    expect(hooks.useRedisBackups).toHaveBeenCalledWith(false);
+    expect(hooks.useRuntimeDataBackups).toHaveBeenCalledWith(false);
+    expect(screen.getByRole("button", { name: "Create Backup" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Create Redis-only Backup" })
+    ).toBeDisabled();
   });
 
   it("shows Guest service read failures without falling back to compose observations", () => {

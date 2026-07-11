@@ -88,6 +88,16 @@ class RuntimeContractHandler(BaseHTTPRequestHandler):
                 },
                 "readError": None,
             },
+            "/runtime/redis-relay/status": {
+                "readState": "loaded",
+                "document": {
+                    "schemaVersion": 1,
+                    "observedAt": "2026-07-11T00:00:00Z",
+                    "enabled": False,
+                    "state": "disabled",
+                },
+                "readError": None,
+            },
             "/runtime/events?limit=10": {
                 "events": [],
                 "nextCursor": None,
@@ -266,6 +276,7 @@ def test_linux_installed_acceptance_writes_complete_owner_proof(
         "runtime-stack",
         "runtime-settings",
         "redis-relay-settings",
+        "redis-relay-status-owner",
         "runtime-events",
         "product-pwa",
         "platform-support-export",

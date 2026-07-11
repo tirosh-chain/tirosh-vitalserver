@@ -2076,8 +2076,8 @@ export interface components {
         PlatformState: {
             /** @description Explicit Platform Agent runtime installation state. Missing, present-but-not-executable, inspection failure, and executable are distinct. */
             runtimeInstallationState: string;
-            /** @description Platform Agent-owned service states keyed by cross-platform role. Platform implementations map launchd, Windows Service, or systemd state into the same roles. */
-            services: components["schemas"]["PlatformServiceStatus"][];
+            /** @description Platform Agent-owned service states keyed by cross-platform role. Every fixed cross-platform role is present exactly once; a platform reports unavailable or not-installed rather than omitting a role. Platform implementations map launchd, Windows Service, or systemd state into the same roles. */
+            services: components["schemas"]["PlatformServiceStatus"][] & (unknown & unknown & unknown & unknown & unknown);
             platformHealth?: components["schemas"]["RuntimeState"];
             readIssues?: ({
                 source: string;

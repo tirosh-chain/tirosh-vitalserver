@@ -87,6 +87,12 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         productRoot.appendingPathComponent("runtime-control-settings.json")
     }
 
+    public var runtimeControlAPIToken: URL {
+        productRoot
+            .appendingPathComponent("secrets", isDirectory: true)
+            .appendingPathComponent("runtime-control-api-token")
+    }
+
     public var installLog: URL {
         productLogsDirectory.appendingPathComponent("install.log")
     }

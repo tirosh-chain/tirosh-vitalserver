@@ -288,7 +288,8 @@ services:
     environment:
       REDIS_RELAY_CONFIG_PATH: "${REDIS_RELAY_CONFIG_PATH:-/run/tirosh/config/redis-relay.toml}"
       REDIS_RELAY_STATUS_PATH: "${REDIS_RELAY_STATUS_PATH:-/run/tirosh/status/redis-relay-status.json}"
-      REDIS_RELAY_STATUS_OWNER_URL: "${REDIS_RELAY_STATUS_OWNER_URL:-http://host.docker.internal:18330/runtime/redis-relay/status}"
+      REDIS_RELAY_STATUS_OWNER_SOCKET: "${REDIS_RELAY_STATUS_OWNER_SOCKET:-}"
+      REDIS_RELAY_STATUS_OWNER_URL: "${REDIS_RELAY_STATUS_OWNER_URL-http://host.docker.internal:18330/runtime/redis-relay/status}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -303,11 +304,15 @@ services:
       - type: bind
         source: ${VITALSERVER_REDIS_RELAY_STATUS_DIR:-/mnt/tirosh/run/redis-relay-status}
         target: /run/tirosh/status
+      - type: bind
+        source: ${VITALSERVER_RUNTIME_RUN_DIR:-/mnt/tirosh/run}
+        target: /run/tirosh/status-owner
+        read_only: true
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          python -c "import os,sys; sys.exit(0 if os.environ.get('REDIS_RELAY_STATUS_OWNER_URL') else 1)"
+          python -c "import os,sys; socket=os.environ.get('REDIS_RELAY_STATUS_OWNER_SOCKET'); url=os.environ.get('REDIS_RELAY_STATUS_OWNER_URL'); sys.exit(0 if (socket and os.path.exists(socket)) or url else 1)"
       interval: 10s
       timeout: 5s
       retries: 30

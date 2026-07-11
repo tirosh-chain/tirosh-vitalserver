@@ -34,6 +34,23 @@ def test_windows_lifecycle_verifier_accepts_one_explicit_identity_chain(tmp_path
     }
 
 
+def test_windows_lifecycle_verifier_distinguishes_component_inputs_from_sealing_digest(
+    tmp_path: Path,
+) -> None:
+    paths = write_evidence_chain(tmp_path)
+    with zipfile.ZipFile(paths["sealed_bundle"]) as archive:
+        release = json.loads(archive.read("VitalServer-Windows/release.json"))
+    clean_host = json.loads(paths["clean_host"].read_text())
+
+    assert "acceptanceManifestSHA256" in release["inputs"]
+    assert clean_host["releaseInputs"] == {
+        name: value
+        for name, value in release["inputs"].items()
+        if name != "acceptanceManifestSHA256"
+    }
+    assert run_verifier(paths, tmp_path / "result.json").returncode == 0
+
+
 def test_windows_lifecycle_verifier_rejects_mixed_clean_uninstall_identity(tmp_path: Path) -> None:
     paths = write_evidence_chain(tmp_path)
     clean = json.loads(paths["clean_uninstall"].read_text())
@@ -102,14 +119,30 @@ def write_evidence_chain(root: Path) -> dict[str, Path]:
 
 
 def write_bundle(path: Path, platform_version: str, runtime_version: str, run_id: str) -> tuple[Path, dict, str]:
+    component_inputs = {
+        "platformAgentSHA256": "a" * 64,
+        "runtimeProviderSHA256": "b" * 64,
+        "pwaTreeSHA256": "c" * 64,
+        "hyperVImageManifestSHA256": "d" * 64,
+        "packagingTreeSHA256": "e" * 64,
+    }
+    proof_document = {
+        "schemaVersion": 1,
+        "status": "passed",
+        "runId": run_id,
+        "supportExportMode": "execute",
+        "releaseInputs": component_inputs,
+    }
+    proof_bytes = json.dumps(proof_document, sort_keys=True).encode()
     release = {
         "schemaVersion": 1, "state": "releaseCandidate", "platformVersion": platform_version,
         "runtimeBundleVersion": runtime_version, "installedAcceptanceRunId": run_id,
-        "inputs": {"artifact": f"{platform_version}-{runtime_version}"},
+        "inputs": {
+            **component_inputs,
+            "acceptanceManifestSHA256": hashlib.sha256(proof_bytes).hexdigest(),
+        },
     }
-    proof_document = {"schemaVersion": 1, "status": "passed", "runId": run_id}
     release_bytes = json.dumps(release, sort_keys=True).encode()
-    proof_bytes = json.dumps(proof_document, sort_keys=True).encode()
     members = {
         "release.json": release_bytes,
         "proof/windows-hyperv-acceptance.json": proof_bytes,
@@ -123,10 +156,16 @@ def write_bundle(path: Path, platform_version: str, runtime_version: str, run_id
 
 
 def runtime_acceptance(run_id: str, release: dict, release_sha: str, boot: str) -> dict:
+    component_inputs = {
+        name: value
+        for name, value in release["inputs"].items()
+        if name != "acceptanceManifestSHA256"
+    }
     return proof(
         run_id, None, RUNTIME_STAGES,
         platformVersion=release["platformVersion"], runtimeBundleVersion=release["runtimeBundleVersion"],
-        releaseManifestSHA256=release_sha, releaseInputs=release["inputs"], hostBootSessionId=boot,
+        releaseManifestSHA256=release_sha, releaseInputs=component_inputs, hostBootSessionId=boot,
+        supportExportMode="execute",
         supportExportOperationId=f"support-{run_id}", supportArtifactSHA256="a" * 64,
         supportArtifactSizeBytes=42,
     )

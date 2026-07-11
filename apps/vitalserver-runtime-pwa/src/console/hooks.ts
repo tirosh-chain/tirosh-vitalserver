@@ -437,6 +437,7 @@ export function useHostLogs(request: {
   source: RuntimeLogSource;
   lineLimit: number;
   live: boolean;
+  enabled: boolean;
 }) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
@@ -447,7 +448,8 @@ export function useHostLogs(request: {
         helperMessage: null,
         lineLimit: request.lineLimit
       })),
-    refetchInterval: request.live ? 2_000 : false
+    enabled: request.enabled,
+    refetchInterval: request.enabled && request.live ? 2_000 : false
   });
 }
 
@@ -507,29 +509,32 @@ export function useRollbackRelease() {
   });
 }
 
-export function useHostBackups() {
+export function useHostBackups(enabled: boolean) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.hostBackups,
     queryFn: () => runtimeControlGateway.listHostBackups(),
+    enabled,
     refetchInterval: 10_000
   });
 }
 
-export function useRedisBackups() {
+export function useRedisBackups(enabled: boolean) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.redisBackups,
     queryFn: () => runtimeControlGateway.listRedisBackups(),
+    enabled,
     refetchInterval: 10_000
   });
 }
 
-export function useRuntimeDataBackups() {
+export function useRuntimeDataBackups(enabled: boolean) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.runtimeDataBackups,
     queryFn: () => runtimeControlGateway.listRuntimeDataBackups(),
+    enabled,
     refetchInterval: 10_000
   });
 }

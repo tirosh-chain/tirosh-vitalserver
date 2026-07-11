@@ -70,28 +70,13 @@ final class RuntimeSectionTests: XCTestCase {
     @MainActor
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {
         XCTAssertEqual(
-            RuntimeControlLocalAPIConstants.devConsoleURL,
+            RuntimeControlLocalAPIConstants.devConsoleURL(port: 18321),
             "http://127.0.0.1:18321/dev/runtime-control"
         )
         XCTAssertEqual(
-            RuntimeControlLocalAPIConstants.pwaURL,
+            RuntimeControlLocalAPIConstants.pwaURL(port: 18321),
             "http://127.0.0.1:18321/"
         )
-    }
-
-    @MainActor
-    func testRuntimeControlLocalAPISettingsPersistConfiguredPort() {
-        let store = InMemoryRuntimeControlLocalAPISettingsStore()
-        let coordinator = RuntimeControlLocalAPISettingsCoordinator(store: store)
-        var changedPorts: [Int] = []
-        coordinator.onPortChanged = { changedPorts.append($0) }
-
-        coordinator.apply(port: 18_444)
-        let settings = coordinator.settingsWithLocalAPIPort(RuntimeSettings())
-
-        XCTAssertEqual(store.runtimeControlPort, 18_444)
-        XCTAssertEqual(settings.runtimeControlPort, 18_444)
-        XCTAssertEqual(changedPorts, [18_444])
     }
 
     @MainActor

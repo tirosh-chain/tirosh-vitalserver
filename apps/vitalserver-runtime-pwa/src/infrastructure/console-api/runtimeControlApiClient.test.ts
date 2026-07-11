@@ -52,6 +52,37 @@ describe("RuntimeControlApiClient", () => {
     });
   });
 
+  it("uses an opaque same-origin browser session instead of a shipped API token", async () => {
+    const requests: RecordedRequest[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, init: init ?? {} });
+      if (new URL(url).pathname === "/platform/browser-session") {
+        return new Response(null, { status: 204 });
+      }
+      return new Response(JSON.stringify(platformCapabilities()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }) as typeof fetch;
+    const client = new RuntimeControlApiClient({
+      token: "",
+      useBrowserSession: true,
+      fetchImpl
+    });
+
+    await expect(client.getPlatformCapabilities()).resolves.toEqual(platformCapabilities());
+
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/platform/browser-session",
+      "/platform/capabilities"
+    ]);
+    for (const request of requests) {
+      expect(request.init.credentials).toBe("same-origin");
+      expect(request.init.headers).toEqual({ Accept: "application/json" });
+    }
+  });
+
   it("reads and applies Runtime-owned Redis Relay settings", async () => {
     const read = {
       state: "loaded",
@@ -94,6 +125,41 @@ describe("RuntimeControlApiClient", () => {
 
     expect(requests.map((request) => request.init.method)).toEqual(["GET", "PUT"]);
     expect(JSON.parse(String(requests[1]?.init.body))).toEqual(apply);
+  });
+
+  it("parses all Runtime settings apply operation responses at the HTTP boundary", async () => {
+    const adminOperation = runtimeSettingsOperation(
+      "apply-admin-password",
+      "runtime-admin"
+    );
+    const relayOperation = runtimeSettingsOperation(
+      "apply-redis-relay-settings",
+      "redis-relay-settings"
+    );
+    const { client } = clientWithResponses({
+      "POST /runtime/admin-password": adminOperation,
+      "PUT /runtime/redis-relay/settings": relayOperation
+    });
+
+    await expect(
+      client.applyRuntimeAdminPassword({ password: "new-admin-secret" })
+    ).resolves.toEqual(adminOperation);
+    await expect(
+      client.applyRuntimeRedisRelaySettings({
+        enabled: false,
+        target: {
+          url: "redis://relay.example:6379/0",
+          username: "",
+          password: "",
+          clearPassword: false,
+          tls: false
+        },
+        scope: "vital_reconstruction",
+        includeRecorderNetworkContext: false,
+        intervalSeconds: 1,
+        scanCount: 1000
+      })
+    ).resolves.toEqual(relayOperation);
   });
 
   it("sends JSON bodies for runtime command endpoints", async () => {
@@ -175,7 +241,7 @@ describe("RuntimeControlApiClient", () => {
         observation: null,
         readError: "not observed"
       },
-      "/platform": { runtimeInstallationState: "executable", services: [], platformHealth: "healthy" },
+      "/platform": { runtimeInstallationState: "executable", services: platformServices(), platformHealth: "healthy" },
       "/runtime/redis-relay/status": {
         readState: "readFailed",
         document: null,
@@ -467,7 +533,7 @@ describe("RuntimeControlApiClient", () => {
     });
 
     const contract = clientWithResponses({
-      "/platform": { runtimeInstallationState: "executable", services: [], platformHealth: 42 }
+      "/platform": { runtimeInstallationState: "executable", services: platformServices(), platformHealth: 42 }
     });
     await expect(contract.client.getPlatformState()).rejects.toMatchObject({
       kind: "contract",
@@ -578,15 +644,31 @@ function productSettings() {
   };
 }
 
-function runtimeSettingsOperation() {
+function runtimeSettingsOperation(
+  command:
+    | "apply-settings"
+    | "apply-admin-password"
+    | "apply-redis-relay-settings" = "apply-settings",
+  service = "runtime-settings"
+) {
   return {
     operationId: "op_settings_1",
-    service: "runtime-settings",
-    command: "apply-settings",
+    service,
+    command,
     state: "completed",
     createdAt: "2026-07-01T00:00:00Z",
     updatedAt: "2026-07-01T00:00:01Z"
   };
+}
+
+function platformServices() {
+  return [
+    { role: "runtime-provider", state: "running", readError: null },
+    { role: "public-proxy", state: "running", readError: null },
+    { role: "log-sync", state: "running", readError: null },
+    { role: "sleep-prevention", state: "running", readError: null },
+    { role: "watchdog", state: "running", readError: null }
+  ];
 }
 
 function fullSettingsShape() {

@@ -236,6 +236,51 @@ def main() -> int:
 
         stage("redis-relay-settings", redis_relay_settings)
 
+        def redis_relay_status_owner() -> str:
+            deadline = time.monotonic() + args.timeout_seconds
+            last_reason = "not read"
+            while time.monotonic() < deadline:
+                try:
+                    document = fetch_json(
+                        args.base_url,
+                        "/runtime/redis-relay/status",
+                        token,
+                        args.http_timeout_seconds,
+                    )
+                    require_fields(
+                        document,
+                        ("readState", "document", "readError"),
+                        "Redis Relay status owner",
+                    )
+                    status_document = document["document"]
+                    if (
+                        document["readState"] == "loaded"
+                        and isinstance(status_document, dict)
+                        and document["readError"] is None
+                    ):
+                        require_fields(
+                            status_document,
+                            ("schemaVersion", "observedAt", "enabled", "state"),
+                            "Redis Relay status owner document",
+                        )
+                        return (
+                            "Redis Relay published its status through the Runtime "
+                            "Controller owner transport."
+                        )
+                    last_reason = (
+                        f"readState={document['readState']} "
+                        f"readError={document['readError']}"
+                    )
+                except RuntimeError as error:
+                    last_reason = str(error)
+                time.sleep(1)
+            raise RuntimeError(
+                "Redis Relay status owner did not report a loaded document "
+                f"before deadline lastRead={last_reason}"
+            )
+
+        stage("redis-relay-status-owner", redis_relay_status_owner)
+
         def runtime_events() -> str:
             document = fetch_json(args.base_url, "/runtime/events?limit=10", token, args.http_timeout_seconds)
             require_fields(document, ("events", "nextCursor", "matchingCount"), "Runtime event history")

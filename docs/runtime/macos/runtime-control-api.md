@@ -20,15 +20,15 @@ launchd service `ai.tirosh.vitalserver.helper.platform-agent`가 Runtime Control
 server를 headless process로 조립합니다. Control Panel을 종료해도 API와 PWA는 계속
 제공됩니다. `/platform/*`는 Platform Agent owner를, `/runtime/*`는 Runtime Controller
 contract를 소비합니다. `/dev/runtime-control` 확인 화면은 dev profile 뒤에 두고,
-Lab 기능은 `/runtime/lab/*` product API만 사용합니다. Stable/PWA용 인증은 현재
-transitional token에서 pairing/session token 정책으로 교체해야 합니다.
+Lab 기능은 `/runtime/lab/*` product API만 사용합니다. PWA는 static bundle에 API token을
+넣지 않고 같은 loopback origin에서 발급한 browser session을 사용합니다.
 
 | 항목 | 값 |
 |---|---|
 | Base URL | `http://127.0.0.1:18321` |
 | Interface | loopback only |
 | Auth header | `X-Runtime-Control-Token` |
-| Transitional local token | `vitalserver-helper-dev` |
+| Automation token | `/Library/Application Support/VitalServerHelper/secrets/runtime-control-api-token`의 per-install root-owned secret |
 
 Local server는 Runtime Control PWA static assets, read-only runtime endpoint, PWA overview, Redis backup 생성/조회, rollback backup 조회, 일부 host log endpoint를 구현합니다. Product build에서는 `apps/vitalserver-runtime-pwa/dist/` 결과물이 Helper app resource `Contents/Resources/runtime-control-pwa/`에 포함되고, local server가 아래 주소에서 제공합니다.
 
@@ -36,7 +36,12 @@ Local server는 Runtime Control PWA static assets, read-only runtime endpoint, P
 http://127.0.0.1:18321/
 ```
 
-PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/runtime/vitaldb/*`, `/runtime/lab/*`, `/host/*`, `/dev/*` API 요청은 기존 Runtime Control API authorization 정책을 따릅니다.
+PWA static file 요청은 token 없이 처리합니다. PWA는 같은 origin의
+`POST /platform/browser-session`으로 `HttpOnly; SameSite=Strict` cookie를 받고,
+cookie로 인증된 mutation은 정확히 같은 loopback origin을 다시 확인합니다. root-owned
+automation token은 installer/acceptance처럼 browser 밖의 관리 도구만 사용합니다.
+이것은 LAN 및 다른 browser origin을 막는 local-browser transport boundary이며, same-user
+OS identity authorization을 대신하지는 않습니다.
 
 Capability는 owner별로 독립적으로 읽습니다. `GET /platform/capabilities`는 설치, update, Host service와 local file 같은 Platform Agent 기능을 제공하고, `GET /runtime/capabilities`는 Runtime Controller가 직접 보고한 `schemaVersion`과 capability identifier 목록을 그대로 제공합니다. PWA는 두 응답을 버튼 표시를 위해 함께 사용할 수 있지만 한 owner의 응답으로 다시 저장하거나 다른 owner의 상태에서 capability를 추론하지 않습니다.
 

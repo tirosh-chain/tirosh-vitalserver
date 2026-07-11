@@ -85,9 +85,11 @@ Schema는 OpenAPI type보다 보수적으로 동작할 수 있습니다. 특히 
 
 ## Capability Gating
 
-PWA는 native Helper와 달리 host OS 권한을 직접 갖지 않습니다. 따라서 기능 노출은 `runtime/capabilities`를 기준으로 합니다.
+PWA는 native Helper와 달리 host OS 권한을 직접 갖지 않습니다. 따라서 기능 노출은 `runtime/capabilities`와 `platform/capabilities`의 명시적 응답을 합성한 결과를 기준으로 합니다. capability을 받지 못했거나 `false`인 경우에는 해당 API를 먼저 호출해 실패 여부를 추측하지 않습니다.
 
 - `canControlRuntime=false`: start/stop/repair/uninstall 같은 command를 비활성화합니다.
+- `canStreamLogs=false`: 로그 읽기 요청을 보내지 않고, 로그 스트리밍 미지원 상태를 명시적으로 표시합니다.
+- `canRollback=false`: `/platform/backups*` 읽기·변경 요청을 보내지 않고, 백업/롤백 미지원 상태를 표시합니다.
 - Product Lab route는 제품 기능으로 취급하고 `/runtime/lab/*` 계약을 사용합니다.
 - `canUseLab=false`: Product Lab route는 유지하되 Lab command affordance를 disabled/unavailable로 표시합니다. 테스트/진단 전용 implementation surface는 More/Advanced diagnostics로 분리합니다.
 - host file path 기반 기능은 PWA에서 직접 열지 않고 API가 제공하는 download/export endpoint 또는 native shell affordance로 분리합니다.

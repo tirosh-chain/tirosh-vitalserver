@@ -70,6 +70,88 @@ func TestPlatformDeliveryRoutesPublishDurableWorkflow(t *testing.T) {
 	}
 }
 
+func TestStaticPWAGetsLoopbackBrowserSessionWithoutInstalledAPIToken(t *testing.T) {
+	pwa := t.TempDir()
+	const installedToken = "installer-owned-secret"
+	if err := os.WriteFile(filepath.Join(pwa, "index.html"), []byte("<html>Runtime PWA</html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(Config{
+		ListenAddress: "127.0.0.1:18321",
+		APIToken:      installedToken,
+		PWA:           pwa,
+	}, stubServices{}, time.Now())
+
+	staticRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	staticResponse := httptest.NewRecorder()
+	handler.ServeHTTP(staticResponse, staticRequest)
+	if staticResponse.Code != http.StatusOK || strings.Contains(staticResponse.Body.String(), installedToken) {
+		t.Fatalf("static PWA response must not expose the installed API token: status=%d body=%s", staticResponse.Code, staticResponse.Body.String())
+	}
+
+	bootstrapRequest := httptest.NewRequest(http.MethodPost, browserSessionBootstrapPath, nil)
+	bootstrapRequest.Header.Set("Origin", "http://127.0.0.1:18321")
+	bootstrapResponse := httptest.NewRecorder()
+	handler.ServeHTTP(bootstrapResponse, bootstrapRequest)
+	if bootstrapResponse.Code != http.StatusNoContent || bootstrapResponse.Body.Len() != 0 {
+		t.Fatalf("browser bootstrap status=%d body=%q", bootstrapResponse.Code, bootstrapResponse.Body.String())
+	}
+	cookies := bootstrapResponse.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != browserSessionCookieName || !cookies[0].HttpOnly ||
+		cookies[0].SameSite != http.SameSiteStrictMode || strings.Contains(cookies[0].Value, installedToken) {
+		t.Fatalf("browser session cookie must be opaque and HttpOnly: %+v", cookies)
+	}
+
+	readRequest := httptest.NewRequest(http.MethodGet, "/platform/capabilities", nil)
+	readRequest.AddCookie(cookies[0])
+	readResponse := httptest.NewRecorder()
+	handler.ServeHTTP(readResponse, readRequest)
+	if readResponse.Code != http.StatusOK {
+		t.Fatalf("session-authenticated PWA read status=%d body=%s", readResponse.Code, readResponse.Body.String())
+	}
+
+	unsafeRequest := httptest.NewRequest(http.MethodPost, "/platform/uninstall", nil)
+	unsafeRequest.AddCookie(cookies[0])
+	unsafeRequest.Header.Set("Origin", "http://127.0.0.1:5174")
+	unsafeResponse := httptest.NewRecorder()
+	handler.ServeHTTP(unsafeResponse, unsafeRequest)
+	if unsafeResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("cross-origin session mutation status=%d body=%s", unsafeResponse.Code, unsafeResponse.Body.String())
+	}
+}
+
+func TestBrowserSessionBootstrapRejectsCrossOriginRequest(t *testing.T) {
+	pwa := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pwa, "index.html"), []byte("<html>Runtime PWA</html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(Config{
+		ListenAddress: "127.0.0.1:18321",
+		APIToken:      "installer-owned-secret",
+		PWA:           pwa,
+	}, stubServices{}, time.Now())
+
+	request := httptest.NewRequest(http.MethodPost, browserSessionBootstrapPath, nil)
+	request.Header.Set("Origin", "https://attacker.example")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized || response.Header().Get("Set-Cookie") != "" ||
+		!strings.Contains(response.Body.String(), "browserSessionOriginInvalid") {
+		t.Fatalf("cross-origin bootstrap status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+	}
+}
+
+func TestProtectedRoutesDoNotTreatAnEmptyConfiguredTokenAsCredentials(t *testing.T) {
+	handler := NewHandler(Config{}, stubServices{}, time.Now())
+	request := httptest.NewRequest(http.MethodGet, "/platform/capabilities", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("empty token protected route status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestPlatformDeliveryKeepsApplyUnavailableWithoutTrustedPublisherPolicy(t *testing.T) {
 	handler := NewHandler(Config{
 		APIToken: "test-token",
@@ -172,7 +254,11 @@ func TestPlatformDeliveryPublishesAndSchedulesSupportExport(t *testing.T) {
 func TestPlatformDeliveryAppliesOnlyAllowlistedBundleDigest(t *testing.T) {
 	root := t.TempDir()
 	bundle := filepath.Join(root, "update.tar.gz")
+	inbox := filepath.Join(root, "trusted-inbox")
 	if err := os.WriteFile(bundle, []byte("trusted bundle"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(inbox, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256([]byte("trusted bundle"))
@@ -188,6 +274,7 @@ func TestPlatformDeliveryAppliesOnlyAllowlistedBundleDigest(t *testing.T) {
 			SchedulerKind:        DeliverySchedulerSystemdTransient,
 			ApplyPolicy:          DeliveryApplyPolicySHA256Allowlist,
 			TrustedBundleDigests: digests,
+			TrustedBundleInbox:   inbox,
 		},
 	}, stubServices{}, time.Now())
 	handler.delivery.runner = &stubDeliveryRunner{}

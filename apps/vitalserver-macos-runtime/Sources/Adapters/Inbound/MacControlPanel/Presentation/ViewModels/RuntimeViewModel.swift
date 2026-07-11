@@ -104,7 +104,6 @@ public final class RuntimeViewModel: ObservableObject {
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
-    private let localAPISettings: (any RuntimeControlLocalAPISettingsApplying)?
     private let snapshots: RuntimePresentationSnapshotLoader
     private let statusRefresher: RuntimeStatusRefresher
     private let observabilityRefresher: RuntimeObservabilityRefresher
@@ -125,19 +124,16 @@ public final class RuntimeViewModel: ObservableObject {
         snapshotReader: (any RuntimeViewModelSnapshotReading)? = nil,
         initialSettings: RuntimeSettings? = nil,
         initialStatus: PlatformState? = nil,
-        localAPISettings: (any RuntimeControlLocalAPISettingsApplying)? = nil,
         healthNotifications: any HealthNotifying = NoopHealthNotifier(),
         nativeShell: any RuntimeNativeShell = NoopRuntimeNativeShell(),
         helperMessageLog: any RuntimeHelperMessageLogging = NoopRuntimeHelperMessageLog()
     ) {
         self.controlClient = controlClient
         self.hostClient = hostClient
-        self.localAPISettings = localAPISettings
         self.helperMessageLog = helperMessageLog
         let loadedSettings = initialSettings ?? controlClient.loadSettings()
-        let resolvedSettings = localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
         let displaySettings = Self.settingsWithAdvertisedServiceURLPresets(
-            resolvedSettings,
+            loadedSettings,
             fillMissing: initialSettings == nil
         )
         let displayRuntimeSettings = Self.settingsWithAdvertisedServiceURLPresets(
@@ -154,8 +150,7 @@ public final class RuntimeViewModel: ObservableObject {
         let snapshots = RuntimePresentationSnapshotLoader(
             controlClient: controlClient,
             hostClient: hostClient,
-            snapshotReader: snapshotReader,
-            localAPISettings: localAPISettings
+            snapshotReader: snapshotReader
         )
         self.snapshots = snapshots
         self.statusRefresher = RuntimeStatusRefresher(snapshots: snapshots)
@@ -470,7 +465,6 @@ public final class RuntimeViewModel: ObservableObject {
                     return
                 }
             }
-            localAPISettings?.apply(settings: settingsToApply)
             settings.adminPassword = ""
             settings.changeAdminPassword = false
             await waitForAppliedSettings()

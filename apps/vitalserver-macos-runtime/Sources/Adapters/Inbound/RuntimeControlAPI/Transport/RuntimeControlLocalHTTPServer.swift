@@ -13,17 +13,20 @@ public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
     public let servesDevConsole: Bool
     public let staticFileDirectory: URL?
     public let bindsToLoopbackOnly: Bool
+    public let browserSession: RuntimeControlLoopbackBrowserSession?
 
     public init(
         port: UInt16,
         servesDevConsole: Bool = false,
         staticFileDirectory: URL? = nil,
-        bindsToLoopbackOnly: Bool = false
+        bindsToLoopbackOnly: Bool = true,
+        browserSession: RuntimeControlLoopbackBrowserSession? = nil
     ) {
         self.port = port
         self.servesDevConsole = servesDevConsole
         self.staticFileDirectory = staticFileDirectory
         self.bindsToLoopbackOnly = bindsToLoopbackOnly
+        self.browserSession = browserSession
     }
 }
 
@@ -200,6 +203,31 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
 
         if request.method == .options {
             send(preflightResponse(for: request), on: connection)
+            return
+        }
+
+        if request.path == RuntimeControlLoopbackBrowserSession.bootstrapPath {
+            guard let browserSession = configuration.browserSession else {
+                send(RuntimeControlHTTPResponseFactory.error(
+                    status: .unauthorized,
+                    code: .unauthorized,
+                    message: "Local browser session support is unavailable."
+                ), on: connection)
+                return
+            }
+            send(browserSession.bootstrapResponse(for: request, port: activePort), on: connection)
+            return
+        }
+
+        if let browserSession = configuration.browserSession,
+           browserSession.allows(request: request),
+           browserSession.needsOriginCheck(request: request),
+           !browserSession.isSameOrigin(request: request, port: activePort) {
+            send(RuntimeControlHTTPResponseFactory.error(
+                status: .unauthorized,
+                code: .unauthorized,
+                message: "Local browser session origin is missing or invalid."
+            ), on: connection)
             return
         }
 

@@ -30,34 +30,9 @@ struct RuntimeControlLocalHTTPCORSPolicy {
             return false
         }
 
-        if host == "localhost"
+        return host == "localhost"
             || host == "::1"
             || host == "0:0:0:0:0:0:0:1"
-            || host.hasPrefix("127.") {
-            return true
-        }
-
-        if host.hasSuffix(".local") {
-            return true
-        }
-
-        return isPrivateIPv4Address(host)
-    }
-
-    private func isPrivateIPv4Address(_ host: String) -> Bool {
-        let parts = host.split(separator: ".")
-        guard parts.count == 4 else {
-            return false
-        }
-
-        let octets = parts.compactMap { UInt8($0) }
-        guard octets.count == 4 else {
-            return false
-        }
-
-        return octets[0] == 10
-            || (octets[0] == 172 && (16...31).contains(octets[1]))
-            || (octets[0] == 192 && octets[1] == 168)
-            || (octets[0] == 169 && octets[1] == 254)
+            || host.hasPrefix("127.")
     }
 }

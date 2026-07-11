@@ -18,6 +18,21 @@ macOS Helper app bundle
 
 Runtime Control API local server는 같은 origin에서 PWA asset과 `/runtime/*`, `/runtime/vitaldb/*`, `/host/*` API를 제공합니다.
 
+## Local Browser Session Boundary
+
+설치된 Platform Agent는 numeric loopback address에만 bind합니다. PWA 정적 asset에는
+Platform Agent API token을 넣지 않습니다. 같은 origin의 PWA는 시작 시
+`POST /platform/browser-session`을 호출하고, Agent는 body에 비밀을 반환하지 않은 채
+opaque `HttpOnly; SameSite=Strict` session cookie를 발급합니다. Cookie로 인증된
+`POST`/`PUT`/`DELETE` 요청은 정확히 같은 loopback origin을 다시 제시해야 합니다.
+
+설치 프로그램과 acceptance 도구가 쓰는 root-owned API token은 별도 automation
+credential로 유지합니다. 이 경계는 LAN이나 다른 browser origin의 호출 및 정적 PWA에
+비밀을 넣는 문제를 막기 위한 local-browser transport boundary입니다. 같은 OS 사용자로
+실행되는 악성 local process를 식별하거나 권한 분리하지는 않습니다. remote administration,
+multi-user authorization, 또는 role separation이 필요하면 OS identity broker/pairing/role
+model을 별도 계약으로 설계해야 합니다.
+
 ## Air-Gapped Assumption
 
 기본 배포 대상은 air-gapped 환경입니다.

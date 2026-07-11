@@ -59,6 +59,7 @@ function Write-UninstallProof {
 }
 
 $startedAt = [DateTime]::UtcNow.ToString('o')
+$cleanProofPath = Join-Path (Join-Path $env:ProgramData 'VitalServer-UninstallProof') ("windows-uninstall-$OperationId.json")
 Write-Workflow -State 'running' -StartedAt $startedAt -Failure $null
 try {
     $installPath = Join-Path $ProgramDataRoot 'install.json'
@@ -125,9 +126,7 @@ try {
         Get-ChildItem -LiteralPath (Join-Path $ProgramDataRoot 'run') -Force -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -ne [IO.Path]::GetFullPath($OperationDocument) } |
             Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Workflow -State 'completed' -StartedAt $startedAt -Failure $null
     } else {
-        Write-Workflow -State 'completed' -StartedAt $startedAt -Failure $null
         Remove-Item -LiteralPath $ProgramDataRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
@@ -154,8 +153,11 @@ try {
         throw 'Windows clean uninstall left managed ProgramData or Runtime data VHDX state.'
     }
 
-    $proofRoot = if ($Mode -eq 'clean') { Join-Path $env:ProgramData 'VitalServer-UninstallProof' } else { Join-Path $ProgramDataRoot 'proof' }
-    $proofPath = Join-Path $proofRoot ("windows-uninstall-$OperationId.json")
+    $proofPath = if ($Mode -eq 'clean') {
+        $cleanProofPath
+    } else {
+        Join-Path (Join-Path $ProgramDataRoot 'proof') ("windows-uninstall-$OperationId.json")
+    }
     $proof = [ordered]@{
         schemaVersion = 1
         operationId = $OperationId
@@ -167,14 +169,40 @@ try {
         postconditionsPassed = $true
     }
     Write-UninstallProof -Path $proofPath -Document $proof
+    if ($Mode -eq 'standard') {
+        Write-Workflow -State 'completed' -StartedAt $startedAt -Failure $null
+    }
+    # Clean uninstall removes its internal workflow owner. Its external proof is
+    # published only after the root removal and every terminal postcondition.
     Write-Output "VitalServer Windows uninstall completed mode=$Mode proof=$proofPath"
     exit 0
 } catch {
     $reason = $_.Exception.Message
-    try {
-        Write-Workflow -State 'failed' -StartedAt $startedAt -Failure ([ordered]@{ kind = 'uninstallFailed'; message = $reason })
-    } catch {
-        Write-Warning "Windows uninstall failure owner write failed reason=$($_.Exception.Message)"
+    if ($Mode -eq 'clean') {
+        try {
+            Write-UninstallProof -Path $cleanProofPath -Document ([ordered]@{
+                schemaVersion = 1
+                operationId = $OperationId
+                mode = $Mode
+                state = 'failed'
+                removedAt = [DateTime]::UtcNow.ToString('o')
+                runtimeDataPreserved = $false
+                runtimeDataVHDXPath = $null
+                postconditionsPassed = $false
+                failure = [ordered]@{ kind = 'uninstallFailed'; message = $reason }
+            })
+        } catch {
+            Write-Warning "Windows clean uninstall failure proof write failed reason=$($_.Exception.Message)"
+        }
+    }
+    if ($Mode -ne 'clean' -or (Test-Path -LiteralPath $ProgramDataRoot)) {
+        try {
+            Write-Workflow -State 'failed' -StartedAt $startedAt -Failure ([ordered]@{ kind = 'uninstallFailed'; message = $reason })
+        } catch {
+            Write-Warning "Windows uninstall failure owner write failed reason=$($_.Exception.Message)"
+        }
+    } else {
+        Write-Warning 'Windows clean uninstall workflow owner was removed; external failure proof is authoritative.'
     }
     Write-Error $reason
     exit 1

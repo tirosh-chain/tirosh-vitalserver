@@ -22,6 +22,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .diskGiB(96),
                 .network(.shared),
                 .proxyPort(18080),
+                .runtimeControlPort(18444),
                 .vitalFilesDirectory(URL(fileURLWithPath: "/data/vital-files")),
                 .publicHost("stale.example"),
                 .publicPort(8080),
@@ -42,6 +43,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertTrue(result.restart)
         XCTAssertEqual(harness.resizedDisks, [96])
         XCTAssertEqual(harness.proxyPorts, [18080])
+        XCTAssertEqual(harness.platformAgentRestartCount, 1)
         XCTAssertEqual(harness.startOnBootValues, [false])
         XCTAssertEqual(harness.systemSleepPreventionValues, [false])
         XCTAssertEqual(harness.restrictedFiles, [harness.paths.guestRuntimeConfig])
@@ -74,6 +76,12 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestSettings.recorderIngressSendDataReplayBatchSize, 8)
         XCTAssertEqual(guestSettings.recorderIngressSendDataReplayMaxMiBPerSecond, 12)
         XCTAssertEqual(guestSettings.backupRetentionCount, 20)
+        let runtimeControlSettingsData = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
+        let runtimeControlSettings = try JSONDecoder().decode(
+            RuntimeControlSettingsDocument.self,
+            from: runtimeControlSettingsData
+        )
+        XCTAssertEqual(runtimeControlSettings.runtimeControlPort, 18444)
     }
 
     func testConfigureWritesLogArchiveSettingsWithoutRestartRequirement() throws {
@@ -110,6 +118,19 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         let data = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
         let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)
         XCTAssertEqual(settings, RuntimeControlSettingsDocument(logArchiveRetentionDays: 12, logArchiveMaximumGiB: 2))
+    }
+
+    func testConfigureRejectsInvalidRuntimeControlPortBeforeWritingDocuments() throws {
+        let harness = try Harness()
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.runtimeControlPort(65_536)]
+        ))) { error in
+            XCTAssertTrue(String(describing: error).contains("--runtime-control-port must be between 1 and 65535"))
+        }
+
+        XCTAssertNil(harness.fileStore.files[harness.paths.runtimeControlSettings])
+        XCTAssertEqual(harness.platformAgentRestartCount, 0)
     }
 
     func testConfigureReconcilesGuestComposeForRecorderIngressReplayThroughputChangeWhenRestartIsRequested() throws {
@@ -294,6 +315,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         var automaticBackupSchedules: [(enabled: Bool, scheduleTimes: [String])] = []
         var reconcileGuestStackCount = 0
         var restartCount = 0
+        var platformAgentRestartCount = 0
         var runner: RuntimeConfigureRunner!
 
         init() throws {
@@ -329,6 +351,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     },
                     setInstalledProxyPort: { [weak self] port in
                         self?.proxyPorts.append(port)
+                    },
+                    restartPlatformAgent: { [weak self] in
+                        self?.platformAgentRestartCount += 1
                     },
                     readSecretFile: { url in
                         guard let data = self.fileStore.files[url],

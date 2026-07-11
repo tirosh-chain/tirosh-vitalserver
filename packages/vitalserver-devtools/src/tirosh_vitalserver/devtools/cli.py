@@ -508,7 +508,7 @@ def main() -> int:
     )
     runtime_proxy_upstream.add_argument(
         "--runtime-control-api-token",
-        default="vitalserver-helper-dev",
+        required=True,
     )
     runtime_proxy_upstream.add_argument(
         "--runtime-control-api-token-header",

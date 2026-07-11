@@ -10,6 +10,7 @@ import Errors
 public struct RuntimeConfigureActions {
     public var resizeVMDiskIfNeeded: (Int) throws -> Void
     public var setInstalledProxyPort: (Int) throws -> Void
+    public var restartPlatformAgent: () throws -> Void
     public var readSecretFile: (URL) throws -> String
     public var restrictSecretFile: (URL) throws -> Void
     public var setStartOnBoot: (Bool) throws -> Void
@@ -21,6 +22,7 @@ public struct RuntimeConfigureActions {
     public init(
         resizeVMDiskIfNeeded: @escaping (Int) throws -> Void,
         setInstalledProxyPort: @escaping (Int) throws -> Void,
+        restartPlatformAgent: @escaping () throws -> Void,
         readSecretFile: @escaping (URL) throws -> String,
         restrictSecretFile: @escaping (URL) throws -> Void,
         setStartOnBoot: @escaping (Bool) throws -> Void,
@@ -31,6 +33,7 @@ public struct RuntimeConfigureActions {
     ) {
         self.resizeVMDiskIfNeeded = resizeVMDiskIfNeeded
         self.setInstalledProxyPort = setInstalledProxyPort
+        self.restartPlatformAgent = restartPlatformAgent
         self.readSecretFile = readSecretFile
         self.restrictSecretFile = restrictSecretFile
         self.setStartOnBoot = setStartOnBoot
@@ -77,6 +80,7 @@ public struct RuntimeConfigureCompositionOperations {
     let fileStore: RuntimeFileStore
     let resizeVMDiskIfNeeded: (Int) throws -> Void
     let setInstalledProxyPort: (Int) throws -> Void
+    let restartPlatformAgent: () throws -> Void
     let readSecretFile: (URL) throws -> String
     let restrictSecretFile: (URL) throws -> Void
     let setStartOnBoot: (Bool) throws -> Void
@@ -90,6 +94,7 @@ public struct RuntimeConfigureCompositionOperations {
         fileStore: RuntimeFileStore,
         resizeVMDiskIfNeeded: @escaping (Int) throws -> Void,
         setInstalledProxyPort: @escaping (Int) throws -> Void,
+        restartPlatformAgent: @escaping () throws -> Void,
         readSecretFile: @escaping (URL) throws -> String,
         restrictSecretFile: @escaping (URL) throws -> Void,
         setStartOnBoot: @escaping (Bool) throws -> Void,
@@ -102,6 +107,7 @@ public struct RuntimeConfigureCompositionOperations {
         self.fileStore = fileStore
         self.resizeVMDiskIfNeeded = resizeVMDiskIfNeeded
         self.setInstalledProxyPort = setInstalledProxyPort
+        self.restartPlatformAgent = restartPlatformAgent
         self.readSecretFile = readSecretFile
         self.restrictSecretFile = restrictSecretFile
         self.setStartOnBoot = setStartOnBoot
@@ -125,6 +131,7 @@ public enum RuntimeConfigureComposition {
             actions: RuntimeConfigureActions(
                 resizeVMDiskIfNeeded: operations.resizeVMDiskIfNeeded,
                 setInstalledProxyPort: operations.setInstalledProxyPort,
+                restartPlatformAgent: operations.restartPlatformAgent,
                 readSecretFile: operations.readSecretFile,
                 restrictSecretFile: operations.restrictSecretFile,
                 setStartOnBoot: operations.setStartOnBoot,
@@ -255,6 +262,15 @@ public struct RuntimeConfigureRunner {
                 try actions.resizeVMDiskIfNeeded(diskGiB)
             case .setInstalledProxyPort(let port):
                 try actions.setInstalledProxyPort(port)
+            case .setRuntimeControlPort(let port):
+                try updateRuntimeControlSettings { settings in
+                    settings = RuntimeControlSettingsDocument(
+                        logArchiveRetentionDays: settings.logArchiveRetentionDays,
+                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
+                        runtimeControlPort: port
+                    )
+                }
+                try actions.restartPlatformAgent()
             case .setStartOnBoot(let enabled):
                 try actions.setStartOnBoot(enabled)
             case .setSystemSleepPrevention(let enabled):
@@ -265,14 +281,16 @@ public struct RuntimeConfigureRunner {
                 try updateRuntimeControlSettings { settings in
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: days,
-                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB
+                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
+                        runtimeControlPort: settings.runtimeControlPort
                     )
                 }
             case .setLogArchiveMaximumGiB(let gib):
                 try updateRuntimeControlSettings { settings in
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: settings.logArchiveRetentionDays,
-                        logArchiveMaximumGiB: gib
+                        logArchiveMaximumGiB: gib,
+                        runtimeControlPort: settings.runtimeControlPort
                     )
                 }
             case .reconcileGuestStackServices:
@@ -424,6 +442,8 @@ public struct RuntimeConfigureRunner {
             return .bridgedInterface(value)
         case .proxyPort(let value):
             return .proxyPort(value)
+        case .runtimeControlPort(let value):
+            return .runtimeControlPort(value)
         case .vitalFilesDirectory(let value):
             return .vitalFilesDirectory(value)
         case .vitalServerURL(let value):

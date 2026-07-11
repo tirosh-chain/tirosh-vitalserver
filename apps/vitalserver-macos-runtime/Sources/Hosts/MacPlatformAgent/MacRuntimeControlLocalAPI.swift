@@ -7,17 +7,7 @@ import Errors
 @MainActor
 public enum RuntimeControlLocalAPIConstants {
     public static let defaultPort = UInt16(RuntimeSettingsInitialValues.runtimeControlPort)
-    public static let token = RuntimeControlLocalAPIConnectionDefaults.token
     public static let pwaResourceDirectory = "runtime-control-pwa"
-    public static var port: UInt16 {
-        validatedPort(UserDefaultsRuntimeControlLocalAPISettingsStore.shared.runtimeControlPort)
-    }
-    public static var devConsoleURL: String {
-        devConsoleURL(port: Int(port))
-    }
-    public static var pwaURL: String {
-        pwaURL(port: Int(port))
-    }
     public static func devConsoleURL(port: Int) -> String {
         "http://127.0.0.1:\(port)/dev/runtime-control"
     }
@@ -37,6 +27,7 @@ public enum MacRuntimeControlLocalAPI {
         operationLeaseClient: any RuntimeOperationLeaseMutationClient,
         guestAddressClient: any RuntimeGuestAddressResourceClient,
         vmLifecycleClient: any RuntimeVMLifecycleResourceClient,
+        automationToken: String,
         port: Int,
         servesDevConsole: Bool = GeneratedRelease.testEnabled,
         staticFileDirectory: URL? = nil,
@@ -56,16 +47,22 @@ public enum MacRuntimeControlLocalAPI {
             scheduleHelperRelaunch: scheduleHelperRelaunch,
             scheduleHelperTermination: scheduleHelperTermination
         )
+        let browserSession = RuntimeControlLoopbackBrowserSession()
         let apiRouter = RuntimeControlAPIRouter(
             handler: apiHandler,
-            authorization: RuntimeControlAPIAuthorization(token: RuntimeControlLocalAPIConstants.token)
+            authorization: RuntimeControlAPIAuthorization(
+                token: automationToken,
+                browserSession: browserSession
+            )
         )
         return RuntimeControlLocalHTTPServer(
             configuration: RuntimeControlLocalHTTPServerConfiguration(
                 port: RuntimeControlLocalAPIConstants.validatedPort(port),
                 servesDevConsole: servesDevConsole,
                 staticFileDirectory: staticFileDirectory ?? Bundle.main.resourceURL?
-                    .appendingPathComponent(RuntimeControlLocalAPIConstants.pwaResourceDirectory, isDirectory: true)
+                    .appendingPathComponent(RuntimeControlLocalAPIConstants.pwaResourceDirectory, isDirectory: true),
+                bindsToLoopbackOnly: true,
+                browserSession: browserSession
             ),
             router: apiRouter,
             stateHandler: stateHandler

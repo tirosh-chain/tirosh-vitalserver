@@ -2180,7 +2180,7 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
-    func testLocalHTTPServerAllowsPrivateNetworkCORSPreflight() async throws {
+    func testLocalHTTPServerRejectsPrivateNetworkCORSPreflight() async throws {
         let (server, port) = try await makeStartedServer(token: "dev-token")
         defer {
             server.stop()
@@ -2196,7 +2196,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let (_, httpResponse) = try await Self.fetchWithRetry(request)
 
         XCTAssertEqual(httpResponse.statusCode, 204)
-        XCTAssertEqual(httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Origin"), origin)
+        XCTAssertNil(httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Origin"))
     }
 
     @MainActor
@@ -2282,6 +2282,67 @@ final class RuntimeControlAPITests: XCTestCase {
         let error = try JSONDecoder().decode(RuntimeControlErrorResponse.self, from: data)
 
         XCTAssertEqual(httpResponse.statusCode, 401)
+        XCTAssertEqual(error.code, .unauthorized)
+    }
+
+    @MainActor
+    func testLocalHTTPServerUsesSameOriginBrowserSessionWithoutStaticPWAToken() async throws {
+        let session = RuntimeControlLoopbackBrowserSession(token: "browser-session-token")
+        let (server, port) = try await makeStartedServer(
+            token: "native-owner-token",
+            browserSession: session
+        )
+        defer {
+            server.stop()
+        }
+
+        var bootstrap = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)\(RuntimeControlLoopbackBrowserSession.bootstrapPath)")))
+        bootstrap.httpMethod = "POST"
+        bootstrap.setValue("http://127.0.0.1:\(port)", forHTTPHeaderField: "Origin")
+        let (bootstrapData, bootstrapResponse) = try await Self.fetchWithRetry(bootstrap)
+
+        XCTAssertEqual(bootstrapResponse.statusCode, 204)
+        XCTAssertTrue(bootstrapData.isEmpty)
+        let setCookie = try XCTUnwrap(bootstrapResponse.value(forHTTPHeaderField: "Set-Cookie"))
+        XCTAssertTrue(setCookie.contains("\(RuntimeControlLoopbackBrowserSession.cookieName)=browser-session-token"))
+        XCTAssertTrue(setCookie.contains("HttpOnly"))
+        XCTAssertTrue(setCookie.contains("SameSite=Strict"))
+        XCTAssertFalse(setCookie.contains("native-owner-token"))
+
+        var read = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/platform")))
+        read.setValue("\(RuntimeControlLoopbackBrowserSession.cookieName)=browser-session-token", forHTTPHeaderField: "Cookie")
+        let (_, readResponse) = try await Self.fetchWithRetry(read)
+        XCTAssertEqual(readResponse.statusCode, 200)
+
+        var crossOriginMutation = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/platform/uninstall")))
+        crossOriginMutation.httpMethod = "POST"
+        crossOriginMutation.setValue("\(RuntimeControlLoopbackBrowserSession.cookieName)=browser-session-token", forHTTPHeaderField: "Cookie")
+        crossOriginMutation.setValue("http://127.0.0.1:5174", forHTTPHeaderField: "Origin")
+        let (mutationData, mutationResponse) = try await Self.fetchWithRetry(crossOriginMutation)
+        let mutationError = try JSONDecoder().decode(RuntimeControlErrorResponse.self, from: mutationData)
+        XCTAssertEqual(mutationResponse.statusCode, 401)
+        XCTAssertEqual(mutationError.code, .unauthorized)
+    }
+
+    @MainActor
+    func testLocalHTTPServerRejectsCrossOriginBrowserSessionBootstrap() async throws {
+        let session = RuntimeControlLoopbackBrowserSession(token: "browser-session-token")
+        let (server, port) = try await makeStartedServer(
+            token: "native-owner-token",
+            browserSession: session
+        )
+        defer {
+            server.stop()
+        }
+
+        var request = URLRequest(url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)\(RuntimeControlLoopbackBrowserSession.bootstrapPath)")))
+        request.httpMethod = "POST"
+        request.setValue("https://attacker.example", forHTTPHeaderField: "Origin")
+        let (data, response) = try await Self.fetchWithRetry(request)
+        let error = try JSONDecoder().decode(RuntimeControlErrorResponse.self, from: data)
+
+        XCTAssertEqual(response.statusCode, 401)
+        XCTAssertNil(response.value(forHTTPHeaderField: "Set-Cookie"))
         XCTAssertEqual(error.code, .unauthorized)
     }
 
@@ -2434,17 +2495,22 @@ final class RuntimeControlAPITests: XCTestCase {
     @MainActor
     private func makeStartedServer(
         token: String,
-        servesDevConsole: Bool = false
+        servesDevConsole: Bool = false,
+        browserSession: RuntimeControlLoopbackBrowserSession? = nil
     ) async throws -> (RuntimeControlLocalHTTPServer, UInt16) {
         let server = RuntimeControlLocalHTTPServer(
             configuration: RuntimeControlLocalHTTPServerConfiguration(
                 port: 0,
                 servesDevConsole: servesDevConsole,
-                bindsToLoopbackOnly: true
+                bindsToLoopbackOnly: true,
+                browserSession: browserSession
             ),
             router: RuntimeControlAPIRouter(
                 handler: StubRuntimeControlAPIReadHandler(),
-                authorization: RuntimeControlAPIAuthorization(token: token)
+                authorization: RuntimeControlAPIAuthorization(
+                    token: token,
+                    browserSession: browserSession
+                )
             )
         )
         do {

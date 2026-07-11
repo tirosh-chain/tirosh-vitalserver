@@ -118,8 +118,13 @@ usually `192.168.64.1`.
 The relay writes JSON status to `/run/tirosh/status/redis-relay-status.json`
 as a diagnostics artifact and publishes the same document to the Guest Control
 `PUT /runtime/redis-relay/status` owner mutation. `REDIS_RELAY_STATUS_OWNER_URL` is a
-required runtime contract; the relay refuses to start when it is missing or
-empty. Product consumers read the Guest/Postgres owner snapshot through
+required VM-runtime transport contract; Linux Native instead provides the same
+owner mutation through `REDIS_RELAY_STATUS_OWNER_SOCKET`. Exactly one transport
+must be configured, and the relay refuses to start when both or neither are
+configured. Linux mounts the root-owned socket directory read-only into the
+relay container, so the container can publish only its status mutation without
+opening the Runtime Controller's loopback API on a bridge or LAN address.
+Product consumers read the Guest/Postgres owner snapshot through
 `GET /runtime/redis-relay/status`; they do not read the status file directly. The
 status never includes the target password.
 

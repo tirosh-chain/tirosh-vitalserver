@@ -9,6 +9,18 @@ and keeps missing, invalid, unavailable, and failed owner reads distinct. A
 configuration file is mandatory; missing configuration is startup failure, not
 an implicit disabled state.
 
+### Local browser boundary
+
+The installed Agent accepts only a numeric loopback listen address. Its
+root-owned API token remains an automation credential and is never embedded in
+the static PWA. The PWA instead creates a same-origin `POST
+/platform/browser-session` session; the Agent returns an opaque HttpOnly,
+SameSite=Strict cookie and requires the exact local origin again for cookie
+authenticated mutations. This is a local-browser boundary, not OS-user
+authorization: it does not protect against a malicious process running as the
+same local user. Remote administration needs a separately designed authenticated
+broker with explicit identity and roles.
+
 Current bring-up status:
 
 - shared Platform contract and explicit durable resource readers exist;
@@ -49,10 +61,13 @@ Current bring-up status:
   Boot template, and writes an explicit provision owner document. It refuses
   to replace mismatched existing VM or network resources;
 - the Hyper-V image compiler accepts only a passed `linux/amd64` rootfs proof
-  with a staged native-mount deploy payload, verifies an EFI System Partition,
-  converts the system and persistent Runtime data disks to dynamic VHDX, and
-  carries a NoCloud ISO that configures the fixed internal address and native
-  mount layout. This avoids a Windows Host shared-folder dependency;
+  with a staged native-mount deploy payload that records SHA-256/byte identity
+  for the exact system raw disk, persistent Runtime data raw disk, and NoCloud
+  ISO. It snapshots and rechecks those inputs before conversion, verifies an
+  EFI System Partition plus the required `vital-runtime` ext4 data label,
+  converts both disks to dynamic VHDX, and carries a NoCloud ISO that configures
+  the fixed internal address and native mount layout. This avoids a Windows Host
+  shared-folder dependency;
 - production validation of the product Hyper-V VHDX, Windows artifact
   assembly, and installed acceptance remain open.
 
@@ -69,7 +84,9 @@ python3 scripts/build_update_trust_catalog.py \
 Deliver the archive identity through authenticated release metadata separate
 from the archive itself. The installed Linux/Windows trust tools require that
 publisher-provided digest and verify the exact local byte stream before
-enabling update apply.
+enabling update apply. On apply, the Platform Agent copies and hashes that
+stream into its root/SYSTEM-owned trusted-bundle inbox before it schedules the
+privileged workflow; the worker never reopens the caller-selected path.
 
 Run tests and cross-build both product targets:
 
@@ -128,8 +145,11 @@ The acceptance candidate carries `state=acceptanceCandidate`, an explicit
 pending proof document, and no acceptance run ID. Windows update rejects that
 state. The sealed ZIP carries `state=releaseCandidate` and is accepted only
 when the returned proof binds the exact Agent, Provider, PWA, Hyper-V image,
-and packaging/config tree hashes. This avoids both circular proof requirements
-and accepting unproved installer-script changes.
+and packaging/config tree hashes, with `supportExportMode=execute` and an
+artifact proof. Update and rollback acceptance defer that artifact-producing
+sub-workflow explicitly, because their enclosing durable Platform workflow is
+already active. This avoids both circular proof requirements and accepting
+unproved installer-script changes.
 The publisher trust-catalog builder independently rejects an unsealed Windows
 candidate, so it cannot be allowlisted as an update archive.
 
@@ -149,7 +169,11 @@ an output path outside managed ProgramData, invokes the explicit `clean` mode,
 waits for the external uninstall proof, and independently checks that Program
 Files, ProgramData, system/data disks, seed, Services, VM, NAT, and switch are
 absent. The uninstaller writes `postconditionsPassed=true` only after those
-checks, never before attempting the destructive cleanup.
+checks, never before attempting the destructive cleanup. If cleanup fails after
+the internal workflow document is removed, it writes an external `failed` proof
+with the explicit reason so the terminal runner fails immediately rather than
+mistaking an absent document for completion; it does not recreate the deleted
+ProgramData workflow owner.
 
 The publisher/build host must finally run
 `make platform-agent/proof/windows-lifecycle`. The verifier consumes the sealed

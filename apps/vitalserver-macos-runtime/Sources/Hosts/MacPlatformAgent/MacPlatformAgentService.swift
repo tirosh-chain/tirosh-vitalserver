@@ -8,26 +8,17 @@ import RuntimeControl
 @MainActor
 public final class MacPlatformAgentService {
     private let server: RuntimeControlLocalHTTPServer
-    private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
 
-    private init(
-        server: RuntimeControlLocalHTTPServer,
-        localAPISettings: RuntimeControlLocalAPISettingsCoordinator
-    ) {
+    private init(server: RuntimeControlLocalHTTPServer) {
         self.server = server
-        self.localAPISettings = localAPISettings
-        self.localAPISettings.onPortChanged = { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                Darwin.exit(EXIT_SUCCESS)
-            }
-        }
     }
 
     public static func live(
         installedPaths: InstalledRuntimePaths = .defaultInstalled,
         servesDevConsole: Bool = GeneratedRelease.testEnabled,
-        port: Int? = nil
-    ) -> MacPlatformAgentService {
+        port: Int? = nil,
+        automationToken: String? = nil
+    ) throws -> MacPlatformAgentService {
         let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(
             url: installedPaths.runtimeOperationLease
         )
@@ -62,11 +53,22 @@ public final class MacPlatformAgentService {
             vmLifecycleResourceReader: vmLifecycleController,
             commandWorker: commandWorker
         )
-        let settings = port.map {
-            RuntimeControlLocalAPISettingsCoordinator(
-                store: InMemoryRuntimeControlLocalAPISettingsStore(runtimeControlPort: $0)
-            )
-        } ?? RuntimeControlLocalAPISettingsCoordinator.live()
+        let selectedPort: Int
+        if let port {
+            selectedPort = port
+        } else {
+            selectedPort = try RuntimeControlLocalAPISettingsReader(
+                documentURL: installedPaths.runtimeControlSettings
+            ).loadPort()
+        }
+        let selectedAutomationToken: String
+        if let automationToken {
+            selectedAutomationToken = automationToken
+        } else {
+            selectedAutomationToken = try RuntimeControlAPIAutomationTokenStore(
+                tokenURL: installedPaths.runtimeControlAPIToken
+            ).loadOrCreate()
+        }
         let pwaDirectory = installedPaths.managerApp
             .appendingPathComponent("Contents/Resources", isDirectory: true)
             .appendingPathComponent(RuntimeControlLocalAPIConstants.pwaResourceDirectory, isDirectory: true)
@@ -76,11 +78,12 @@ public final class MacPlatformAgentService {
             operationLeaseClient: operationLeaseController,
             guestAddressClient: guestAddressController,
             vmLifecycleClient: vmLifecycleController,
-            port: settings.runtimeControlPort,
+            automationToken: selectedAutomationToken,
+            port: selectedPort,
             servesDevConsole: servesDevConsole,
             staticFileDirectory: pwaDirectory
         )
-        return MacPlatformAgentService(server: server, localAPISettings: settings)
+        return MacPlatformAgentService(server: server)
     }
 
     public func run() throws -> Never {

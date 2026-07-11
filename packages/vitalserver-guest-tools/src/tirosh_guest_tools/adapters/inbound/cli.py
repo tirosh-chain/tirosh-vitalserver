@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from tirosh_guest_tools.adapters.inbound.guest_control_api import (
@@ -256,9 +257,22 @@ def vitalserver_guest_control_api() -> int:
     parser = argparse.ArgumentParser(description="Run the Guest Control API.")
     parser.add_argument("--host", default=GUEST_CONTROL_API_DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=GUEST_CONTROL_API_DEFAULT_PORT)
+    parser.add_argument(
+        "--redis-relay-status-owner-socket",
+        type=Path,
+        default=(
+            Path(configured)
+            if (configured := os.environ.get("REDIS_RELAY_STATUS_OWNER_SOCKET"))
+            else None
+        ),
+    )
     args = parser.parse_args()
     configure_logging(SETTINGS.logging)
-    serve_guest_control_api(host=args.host, port=args.port)
+    serve_guest_control_api(
+        host=args.host,
+        port=args.port,
+        redis_relay_status_owner_socket=args.redis_relay_status_owner_socket,
+    )
     return 0
 
 

@@ -19,6 +19,14 @@ RUNTIME_STAGES = {
     "runtime-events", "product-pwa", "platform-support-export", "runtime-provider-stop",
     "runtime-provider-start", "runtime-after-provider-restart",
 }
+RELEASE_COMPONENT_INPUTS = {
+    "platformAgentSHA256",
+    "runtimeProviderSHA256",
+    "pwaTreeSHA256",
+    "hyperVImageManifestSHA256",
+    "packagingTreeSHA256",
+}
+SEALING_ACCEPTANCE_INPUT = "acceptanceManifestSHA256"
 
 
 def parse_args() -> argparse.Namespace:
@@ -187,7 +195,9 @@ def load_bundle(path: Path) -> dict[str, Any]:
         if actual != digest:
             fail(f"Windows bundle member checksum differs path={path} member={relative}")
     release = parse_json_bytes(files.get(f"{ROOT}/release.json"), f"bundle release path={path}")
-    proof = parse_json_bytes(files.get(f"{ROOT}/proof/windows-hyperv-acceptance.json"), f"bundle acceptance path={path}")
+    proof_name = f"{ROOT}/proof/windows-hyperv-acceptance.json"
+    proof_bytes = files.get(proof_name)
+    proof = parse_json_bytes(proof_bytes, f"bundle acceptance path={path}")
     if release.get("schemaVersion") != 1 or release.get("state") != "releaseCandidate":
         fail(f"Windows bundle is not a sealed releaseCandidate path={path}")
     require_nonempty(release, "platformVersion", f"bundle release path={path}")
@@ -195,6 +205,13 @@ def load_bundle(path: Path) -> dict[str, Any]:
     require_nonempty(release, "installedAcceptanceRunId", f"bundle release path={path}")
     if proof.get("status") != "passed" or proof.get("runId") != release["installedAcceptanceRunId"]:
         fail(f"Windows bundle sealing proof identity differs path={path}")
+    component_inputs = release_component_inputs(release, f"bundle release path={path}")
+    if proof.get("releaseInputs") != component_inputs:
+        fail(f"Windows bundle sealing proof component inputs differ path={path}")
+    if proof.get("supportExportMode") != "execute":
+        fail(f"Windows bundle sealing proof did not execute support export path={path}")
+    if proof_bytes is None or release["inputs"].get(SEALING_ACCEPTANCE_INPUT) != hashlib.sha256(proof_bytes).hexdigest():
+        fail(f"Windows bundle sealing acceptance digest differs path={path}")
     return {
         "path": path,
         "archiveSHA256": archive_digest,
@@ -208,8 +225,10 @@ def validate_runtime_acceptance(value: dict[str, Any], bundle: dict[str, Any], l
     validate_proof(value, None, RUNTIME_STAGES)
     require_release(value, bundle, label)
     release = bundle["release"]
-    if value.get("releaseInputs") != release.get("inputs"):
-        fail(f"{label} releaseInputs differ from the sealed bundle")
+    if value.get("releaseInputs") != release_component_inputs(release, label):
+        fail(f"{label} releaseInputs differ from sealed release component inputs")
+    if value.get("supportExportMode") != "execute":
+        fail(f"{label} did not execute support export")
     require_nonempty(value, "hostBootSessionId", label)
     require_nonempty(value, "supportExportOperationId", label)
     if not is_sha256(value.get("supportArtifactSHA256")) or not isinstance(value.get("supportArtifactSizeBytes"), int) or value["supportArtifactSizeBytes"] <= 0:
@@ -236,6 +255,24 @@ def require_release(value: dict[str, Any], bundle: dict[str, Any], label: str) -
     require_equal(value, "platformVersion", release["platformVersion"], label)
     require_equal(value, "runtimeBundleVersion", release["runtimeBundleVersion"], label)
     require_equal(value, "releaseManifestSHA256", bundle["releaseSHA256"], label)
+
+
+def release_component_inputs(release: dict[str, Any], label: str) -> dict[str, str]:
+    inputs = release.get("inputs")
+    if not isinstance(inputs, dict):
+        fail(f"{label} inputs are missing or invalid")
+    expected = RELEASE_COMPONENT_INPUTS | {SEALING_ACCEPTANCE_INPUT}
+    if set(inputs) != expected:
+        fail(f"{label} input keys differ expected={sorted(expected)} actual={sorted(inputs)}")
+    components: dict[str, str] = {}
+    for name in sorted(RELEASE_COMPONENT_INPUTS):
+        value = inputs.get(name)
+        if not is_sha256(value):
+            fail(f"{label} component input is invalid field={name}")
+        components[name] = value
+    if not is_sha256(inputs.get(SEALING_ACCEPTANCE_INPUT)):
+        fail(f"{label} sealing acceptance digest is invalid")
+    return components
 
 
 def require_equal(value: dict[str, Any], field: str, expected: Any, label: str) -> None:

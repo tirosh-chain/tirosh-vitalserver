@@ -12,6 +12,8 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
             "8",
             "--network",
             "bridged",
+            "--runtime-control-port",
+            "18444",
             "--restart",
         ])
 
@@ -19,6 +21,7 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
             changes: [
                 .cpu(8),
                 .network(.bridged),
+                .runtimeControlPort(18444),
             ],
             restart: true
         )))

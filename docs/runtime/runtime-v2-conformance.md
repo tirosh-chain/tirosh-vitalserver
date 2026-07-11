@@ -77,6 +77,18 @@ The Linux offline artifact builder and checksum/install transaction now exist.
 It requires an explicit portable Runtime Bundle directory and Docker/OCI image
 archive, keeps immutable releases separate from `/var/lib/vitalserver` data,
 and restores the previous release pointer when installed API acceptance fails.
+Linux Native Redis Relay status uses a dedicated root-owned Unix-domain socket
+mounted read-only into the relay container. The Runtime Controller keeps its
+general API on loopback; the socket handler exposes only the Relay status
+`PUT` mutation. VM runtimes keep the Guest Control HTTP transport inside their
+Guest network.
+For an existing Linux installation, the installer adds only missing private
+transport values to `/etc/vitalserver/runtime.env`. It rejects a non-empty
+legacy status-owner URL, duplicate owner values, or a mismatched explicit
+value instead of silently changing transport. The installer backs up that
+owner before migration and restores it if the enclosing transaction fails;
+an operator must make an intentional configuration change to leave a legacy
+URL transport.
 On 2026-07-11 the resulting `linux/amd64` archive was exercised in an
 independent Ubuntu 24.04 x86_64 QEMU machine. Clean offline installation,
 0.2.0 to 0.2.1 update, an interrupted 0.2.2 update with restoration to 0.2.1,
@@ -279,7 +291,7 @@ to Host-owned VM, proxy, and Platform service boundaries.
 The canonical macOS settings route also has no mixed Host-settings read. Its
 OpenAPI operations and request schema are named for Runtime Product Settings,
 and the native Local API port coordinator is not injected into the Runtime API
-handler. The macOS Swift package currently passes all 2,041 tests, including
+handler. The macOS Swift package currently passes all 2,051 tests, including
 the architecture proof that prevents the Host Redis Relay writer from
 returning and lifecycle proofs that include the Platform Agent in fresh
 install and uninstall state.
@@ -309,12 +321,16 @@ called complete.
 
 The Windows image compile contract is now explicit: a passed `linux/amd64`
 rootfs proof, a system disk with an EFI System Partition, a persistent Runtime
-data disk, and a NoCloud seed ISO. The system image carries the deploy payload;
-the Runtime data disk survives system-image replacement. The seed configures a
-fixed internal Hyper-V address and native bind mounts, so Windows does not need
-to emulate the macOS VirtioFS share. Image conversion proof is not Windows boot
-proof; release packaging must still require a real Hyper-V boot/conformance
-manifest from a supported Windows runner.
+data disk, and a NoCloud seed ISO. The staging proof records SHA-256 and byte
+identity for all three raw inputs after the deploy payload is staged; the image
+compiler snapshots and compares those exact bytes before conversion. It also
+requires the Runtime data raw disk to be an ext4 filesystem labeled
+`vital-runtime`. The system image carries the deploy payload; the Runtime data
+disk survives system-image replacement. The seed configures a fixed internal
+Hyper-V address and native bind mounts, so Windows does not need to emulate the
+macOS VirtioFS share. Image conversion proof is not Windows boot proof; release
+packaging must still require a real Hyper-V boot/conformance manifest from a
+supported Windows runner.
 
 Windows artifact assembly enforces that distinction: the deterministic ZIP
 The Windows builder has two explicit modes. `--acceptance-candidate` creates a
@@ -424,8 +440,11 @@ $install = Get-Content "$env:ProgramData\VitalServer\install.json" -Raw | Conver
 The uninstall implementation publishes its external completed proof only after
 Program Files, ProgramData, both VHDX files, seed, Services, VM, NAT, and switch
 postconditions pass. The acceptance runner then checks that proof and the
-resources independently. A proof written before destructive postconditions is
-not accepted.
+resources independently. If cleanup fails after deleting the internal workflow
+document, the uninstaller instead publishes an external failed proof with its
+reason without recreating managed ProgramData, and the acceptance runner stops
+immediately. A proof written before
+destructive postconditions is not accepted.
 
 After copying the terminal proof back to the build host, the complete evidence
 set is accepted only through the identity-chain verifier:

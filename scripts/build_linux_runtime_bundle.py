@@ -76,6 +76,7 @@ def main() -> int:
             "runtime-controller.toml",
             "runtime-settings.json",
             "redis-relay.toml",
+            "migrate-runtime-env.py",
             "vitalserver-platform-agent.service",
             "vitalserver-runtime-controller.service",
             "vitalserver-runtime-provider.service",

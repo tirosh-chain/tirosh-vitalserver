@@ -95,13 +95,16 @@ type RuntimeControlRequestQuery = Record<string, string | number>;
 export type RuntimeControlApiClientOptions = {
   baseURL?: string;
   token?: string;
+  useBrowserSession?: boolean;
   fetchImpl?: typeof fetch;
 };
 
 export class RuntimeControlApiClient implements RuntimeControlGateway {
   private readonly baseURL: string;
   private readonly token: string;
+  private readonly useBrowserSession: boolean;
   private readonly fetchImpl: typeof fetch;
+  private browserSessionBootstrap: Promise<void> | undefined;
 
   constructor(options: RuntimeControlApiClientOptions = {}) {
     this.baseURL = trimTrailingSlash(
@@ -109,6 +112,8 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     );
     this.token =
       options.token ?? DEFAULT_APP_SETTINGS.runtimeControl.token;
+    this.useBrowserSession =
+      options.useBrowserSession ?? (this.token === "" && this.baseURL === "");
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
@@ -666,10 +671,13 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
   }
 
   private headers(): HeadersInit {
-    return {
-      Accept: "application/json",
-      "X-Runtime-Control-Token": this.token
+    const headers: Record<string, string> = {
+      Accept: "application/json"
     };
+    if (this.token) {
+      headers["X-Runtime-Control-Token"] = this.token;
+    }
+    return headers;
   }
 
   private jsonRequest(method: string, body: unknown | undefined): RequestInit {
@@ -695,7 +703,50 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     init: RequestInit,
     query: RuntimeControlRequestQuery = {}
   ): Promise<Response> {
+    await this.ensureBrowserSession();
     const url = this.url(path, query);
+    return this.fetch(url, {
+      ...init,
+      credentials: "same-origin"
+    });
+  }
+
+  private async ensureBrowserSession(): Promise<void> {
+    if (!this.useBrowserSession) {
+      return;
+    }
+    if (!this.browserSessionBootstrap) {
+      const bootstrap = this.bootstrapBrowserSession();
+      this.browserSessionBootstrap = bootstrap;
+      try {
+        await bootstrap;
+      } catch (error) {
+        this.browserSessionBootstrap = undefined;
+        throw error;
+      }
+      return;
+    }
+    await this.browserSessionBootstrap;
+  }
+
+  private async bootstrapBrowserSession(): Promise<void> {
+    const path = "/platform/browser-session";
+    const url = this.url(path, {});
+    const response = await this.fetch(url, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      throw new RuntimeControlAPIError(
+        `Runtime Control browser session bootstrap failed: ${response.status}`,
+        response.status,
+        await response.text()
+      );
+    }
+  }
+
+  private async fetch(url: string, init: RequestInit): Promise<Response> {
     try {
       return await this.fetchImpl(url, init);
     } catch (cause) {

@@ -1,5 +1,5 @@
 import Foundation
-import MacPlatformAgent
+@testable import MacPlatformAgent
 import OutboundAdapters
 import RuntimeControl
 import XCTest
@@ -11,10 +11,11 @@ final class MacPlatformAgentServiceTests: XCTestCase {
             .appendingPathComponent("platform-agent-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: productRoot) }
 
-        let service = MacPlatformAgentService.live(
+        let service = try MacPlatformAgentService.live(
             installedPaths: InstalledRuntimePaths(productRoot: productRoot),
             servesDevConsole: false,
-            port: 0
+            port: 0,
+            automationToken: "test-token"
         )
         try service.start()
         defer { service.stop() }
@@ -24,7 +25,7 @@ final class MacPlatformAgentServiceTests: XCTestCase {
             url: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/platform/runtime-provider"))
         )
         request.setValue(
-            RuntimeControlLocalAPIConstants.token,
+            "test-token",
             forHTTPHeaderField: "X-Runtime-Control-Token"
         )
 
@@ -36,6 +37,43 @@ final class MacPlatformAgentServiceTests: XCTestCase {
         XCTAssertEqual(runtimeProvider.state, .missing)
         XCTAssertNil(runtimeProvider.document)
         XCTAssertTrue(runtimeProvider.readError?.contains("vm-lifecycle.json") == true)
+    }
+
+    @MainActor
+    func testLocalAPISettingsReaderReadsConfiguredPortFromRootOwnedDocument() throws {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("platform-agent-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
+        let paths = InstalledRuntimePaths(productRoot: productRoot)
+        let configuredPort = 18444
+        try JSONEncoder().encode(RuntimeControlSettingsDocument(
+            runtimeControlPort: configuredPort
+        )).write(to: paths.runtimeControlSettings)
+
+        let reader = RuntimeControlLocalAPISettingsReader(documentURL: paths.runtimeControlSettings)
+        XCTAssertEqual(try reader.loadPort(), configuredPort)
+    }
+
+    @MainActor
+    func testLocalAPISettingsReaderRejectsInvalidConfiguredPort() throws {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("platform-agent-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
+        let paths = InstalledRuntimePaths(productRoot: productRoot)
+        try JSONEncoder().encode(RuntimeControlSettingsDocument(
+            runtimeControlPort: 65_536
+        )).write(to: paths.runtimeControlSettings)
+
+        let reader = RuntimeControlLocalAPISettingsReader(documentURL: paths.runtimeControlSettings)
+        XCTAssertThrowsError(try reader.loadPort()) { error in
+            guard case let .invalidPort(path, port) = error as? RuntimeControlLocalAPISettingsError else {
+                return XCTFail("expected invalid Runtime Control API port error, got \(error)")
+            }
+            XCTAssertEqual(path, paths.runtimeControlSettings.path)
+            XCTAssertEqual(port, 65_536)
+        }
     }
 
     @MainActor

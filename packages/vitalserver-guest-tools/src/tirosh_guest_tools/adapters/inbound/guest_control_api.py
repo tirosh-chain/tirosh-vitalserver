@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from socketserver import ThreadingMixIn, UnixStreamServer
+from threading import Thread
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -22,12 +27,14 @@ from tirosh_guest_tools.adapters.outbound.product_lab import ProductLabServiceAd
 from tirosh_guest_tools.adapters.outbound.recorder_ingress import (
     RecorderIngressStatusServiceAdapter,
 )
-from tirosh_guest_tools.adapters.outbound.runtime_settings import (
-    FileRuntimeSettingsRepository,
-)
-from tirosh_guest_tools.adapters.outbound.runtime_admin import FileRuntimeAdminRepository
 from tirosh_guest_tools.adapters.outbound.redis_relay_settings import (
     FileRedisRelaySettingsRepository,
+)
+from tirosh_guest_tools.adapters.outbound.runtime_admin import (
+    FileRuntimeAdminRepository,
+)
+from tirosh_guest_tools.adapters.outbound.runtime_settings import (
+    FileRuntimeSettingsRepository,
 )
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
@@ -40,22 +47,23 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ServiceNotFoundError,
     VitalDBReadModelDependencyError,
 )
-from tirosh_guest_tools.domain.runtime_settings import (
-    RuntimeSettingsContractError,
-    validated_runtime_settings,
+from tirosh_guest_tools.domain.redis_relay_settings import (
+    RedisRelaySettingsContractError,
+    validated_redis_relay_settings,
 )
 from tirosh_guest_tools.domain.runtime_admin import (
     RuntimeAdminPasswordContractError,
     validated_admin_password,
 )
-from tirosh_guest_tools.domain.redis_relay_settings import (
-    RedisRelaySettingsContractError,
-    validated_redis_relay_settings,
+from tirosh_guest_tools.domain.runtime_settings import (
+    RuntimeSettingsContractError,
+    validated_runtime_settings,
 )
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 18330
+REDIS_RELAY_STATUS_OWNER_PATH = "/runtime/redis-relay/status"
 
 
 class GuestControlAPIError(Exception):
@@ -97,7 +105,11 @@ def build_default_usecases() -> GuestControlUseCases:
     )
 
 
-def make_handler(usecases: GuestControlUseCases) -> type[BaseHTTPRequestHandler]:
+def make_handler(
+    usecases: GuestControlUseCases,
+    *,
+    allowed_routes: frozenset[tuple[str, str]] | None = None,
+) -> type[BaseHTTPRequestHandler]:
     class GuestControlAPIHandler(BaseHTTPRequestHandler):
         server_version = "TiroshGuestControlAPI/0.1"
 
@@ -117,6 +129,15 @@ def make_handler(usecases: GuestControlUseCases) -> type[BaseHTTPRequestHandler]
         def _handle_request(self, method: str) -> None:
             try:
                 parsed = urlparse(self.path)
+                if (
+                    allowed_routes is not None
+                    and (method, parsed.path) not in allowed_routes
+                ):
+                    raise GuestControlAPIError(
+                        HTTPStatus.NOT_FOUND,
+                        detail="The status owner transport does not serve this route.",
+                        code="statusOwnerRouteNotFound",
+                    )
                 status, document = route_request(
                     method=method,
                     path=parsed.path,
@@ -446,7 +467,10 @@ def route_request(
                 detail=str(error),
                 code="redisRelaySettingsInvalid",
             ) from error
-        return HTTPStatus.ACCEPTED, usecases.apply_redis_relay_settings(request).as_json()
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.apply_redis_relay_settings(request).as_json(),
+        )
 
     if method == "PUT" and parts == ["runtime", "redis-relay", "status"]:
         try:
@@ -647,7 +671,77 @@ def serve_guest_control_api(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     usecases: GuestControlUseCases | None = None,
+    redis_relay_status_owner_socket: Path | None = None,
 ) -> None:
-    handler = make_handler(usecases or build_default_usecases())
+    resolved_usecases = usecases or build_default_usecases()
+    handler = make_handler(resolved_usecases)
     server = ThreadingHTTPServer((host, port), handler)
-    server.serve_forever()
+    status_owner_server: ThreadingUnixHTTPServer | None = None
+    status_owner_thread: Thread | None = None
+    try:
+        if redis_relay_status_owner_socket is not None:
+            status_owner_server = create_redis_relay_status_owner_server(
+                socket_path=redis_relay_status_owner_socket,
+                usecases=resolved_usecases,
+            )
+            status_owner_thread = Thread(
+                target=status_owner_server.serve_forever,
+                daemon=True,
+            )
+            status_owner_thread.start()
+        server.serve_forever()
+    finally:
+        server.server_close()
+        if status_owner_server is not None:
+            status_owner_server.shutdown()
+            status_owner_server.server_close()
+            _remove_status_owner_socket(redis_relay_status_owner_socket)
+        if status_owner_thread is not None:
+            status_owner_thread.join(timeout=1)
+
+
+class ThreadingUnixHTTPServer(ThreadingMixIn, UnixStreamServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+def create_redis_relay_status_owner_server(
+    *,
+    socket_path: Path,
+    usecases: GuestControlUseCases,
+) -> ThreadingUnixHTTPServer:
+    _prepare_status_owner_socket(socket_path)
+    server = ThreadingUnixHTTPServer(
+        os.fspath(socket_path),
+        make_handler(
+            usecases,
+            allowed_routes=frozenset({("PUT", REDIS_RELAY_STATUS_OWNER_PATH)}),
+        ),
+    )
+    os.chmod(socket_path, 0o600)
+    return server
+
+
+def _prepare_status_owner_socket(socket_path: Path) -> None:
+    socket_path.parent.mkdir(parents=True, exist_ok=True)
+    _remove_status_owner_socket(socket_path, require_socket=True)
+
+
+def _remove_status_owner_socket(
+    socket_path: Path | None,
+    *,
+    require_socket: bool = False,
+) -> None:
+    if socket_path is None:
+        return
+    try:
+        mode = socket_path.lstat().st_mode
+    except FileNotFoundError:
+        return
+    if not stat.S_ISSOCK(mode):
+        if require_socket:
+            raise RuntimeError(
+                f"Redis Relay status owner socket path is not a socket: {socket_path}"
+            )
+        return
+    socket_path.unlink()

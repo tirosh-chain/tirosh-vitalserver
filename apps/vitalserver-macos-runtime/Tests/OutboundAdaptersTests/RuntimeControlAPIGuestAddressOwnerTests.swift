@@ -44,6 +44,7 @@ final class RuntimeControlAPIGuestAddressOwnerTests: XCTestCase {
 
     func testHTTPFailureDoesNotBecomeMissingResource() throws {
         let owner = try RuntimeControlAPIGuestAddressOwner(
+            token: "token",
             httpClient: GuestAddressCapturingRuntimeControlClientHTTPClient(response: RuntimeControlClientHTTPResponse(
                 statusCode: 503,
                 data: Data("service unavailable".utf8)
@@ -59,6 +60,7 @@ final class RuntimeControlAPIGuestAddressOwnerTests: XCTestCase {
 
     func testLoadedWithoutReadResultIsInvalidResourceState() throws {
         let owner = try RuntimeControlAPIGuestAddressOwner(
+            token: "token",
             httpClient: GuestAddressCapturingRuntimeControlClientHTTPClient(response: jsonResponse(
                 RuntimeGuestAddressResourceState(state: .loaded, read: nil)
             ))

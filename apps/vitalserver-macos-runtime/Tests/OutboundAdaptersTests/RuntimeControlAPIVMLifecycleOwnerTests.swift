@@ -44,6 +44,7 @@ final class RuntimeControlAPIVMLifecycleOwnerTests: XCTestCase {
 
     func testMissingResourceStaysMissing() throws {
         let owner = try RuntimeControlAPIVMLifecycleOwner(
+            token: "token",
             httpClient: VMLifecycleCapturingRuntimeControlClientHTTPClient(response: jsonResponse(
                 RuntimeVMLifecycleResourceState.missing(readError: "VM lifecycle document missing")
             ))
@@ -57,6 +58,7 @@ final class RuntimeControlAPIVMLifecycleOwnerTests: XCTestCase {
 
     func testHTTPFailureDoesNotBecomeMissingResource() throws {
         let owner = try RuntimeControlAPIVMLifecycleOwner(
+            token: "token",
             httpClient: VMLifecycleCapturingRuntimeControlClientHTTPClient(response: RuntimeControlClientHTTPResponse(
                 statusCode: 503,
                 data: Data("service unavailable".utf8)
@@ -72,6 +74,7 @@ final class RuntimeControlAPIVMLifecycleOwnerTests: XCTestCase {
 
     func testLoadedWithoutDocumentIsInvalidResourceState() throws {
         let owner = try RuntimeControlAPIVMLifecycleOwner(
+            token: "token",
             httpClient: VMLifecycleCapturingRuntimeControlClientHTTPClient(response: jsonResponse(
                 RuntimeVMLifecycleResourceState(state: .loaded, document: nil)
             ))

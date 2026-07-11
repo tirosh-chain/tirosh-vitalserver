@@ -31,14 +31,6 @@ public extension RuntimeViewModelSnapshotReading {
 }
 
 @MainActor
-public protocol RuntimeControlLocalAPISettingsApplying: AnyObject {
-    var runtimeControlPort: Int { get }
-    func settingsWithLocalAPIPort(_ settings: RuntimeSettings) -> RuntimeSettings
-    func apply(settings: RuntimeSettings)
-    func apply(port: Int)
-}
-
-@MainActor
 public protocol RuntimeNativeShell {
     func chooseDirectory(prompt: String) -> URL?
     func chooseUpdateBundle(prompt: String) -> URL?

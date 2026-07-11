@@ -177,18 +177,22 @@ struct GuestRuntimeSettings: Decodable {
 public struct RuntimeControlSettingsDocument: Codable, Equatable {
     public let logArchiveRetentionDays: Int
     public let logArchiveMaximumGiB: Int
+    public let runtimeControlPort: Int
 
     enum CodingKeys: String, CodingKey {
         case logArchiveRetentionDays
         case logArchiveMaximumGiB
+        case runtimeControlPort
     }
 
     public init(
         logArchiveRetentionDays: Int = RuntimeSettingsInitialValues.logArchiveRetentionDays,
-        logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB
+        logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB,
+        runtimeControlPort: Int = RuntimeSettingsInitialValues.runtimeControlPort
     ) {
         self.logArchiveRetentionDays = logArchiveRetentionDays
         self.logArchiveMaximumGiB = logArchiveMaximumGiB
+        self.runtimeControlPort = runtimeControlPort
     }
 
     public init(from decoder: Decoder) throws {
@@ -201,11 +205,15 @@ public struct RuntimeControlSettingsDocument: Codable, Equatable {
             logArchiveMaximumGiB: try container.decodeIfPresent(
                 Int.self,
                 forKey: .logArchiveMaximumGiB
-            ) ?? RuntimeSettingsInitialValues.logArchiveMaximumGiB
+            ) ?? RuntimeSettingsInitialValues.logArchiveMaximumGiB,
+            runtimeControlPort: try container.decodeIfPresent(
+                Int.self,
+                forKey: .runtimeControlPort
+            ) ?? RuntimeSettingsInitialValues.runtimeControlPort
         )
     }
 
-    static func loadResult(
+    public static func loadResult(
         path: String,
         fileStore: RuntimeFileReading
     ) -> RuntimeSettingsReadResult<RuntimeLogArchiveSettingsReadInput> {
@@ -229,7 +237,8 @@ public struct RuntimeControlSettingsDocument: Codable, Equatable {
     var runtimeSettingsReadInput: RuntimeLogArchiveSettingsReadInput {
         RuntimeLogArchiveSettingsReadInput(
             retentionDays: logArchiveRetentionDays,
-            maximumGiB: logArchiveMaximumGiB
+            maximumGiB: logArchiveMaximumGiB,
+            runtimeControlPort: runtimeControlPort
         )
     }
 }

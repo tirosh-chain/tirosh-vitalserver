@@ -28,6 +28,13 @@ const knownVMStateSchema = z.enum([
     "unreachable",
     "failed"
   ]);
+const platformServiceRoleValues = [
+  "runtime-provider",
+  "public-proxy",
+  "log-sync",
+  "sleep-prevention",
+  "watchdog"
+] as const;
 const runtimeStateSchema = z.union([knownRuntimeStateSchema, z.string()]);
 const vmStateSchema = z.union([knownVMStateSchema, z.string()]).nullable();
 const runtimeEventTypeSchema = z.enum(runtimeEventTypeValues);
@@ -287,7 +294,15 @@ export const runtimeGuestControlServiceOperationSchema = z
   .object({
     operationId: z.string(),
     service: z.string(),
-    command: z.enum(["start", "stop", "restart", "reconcile", "apply-settings"]),
+    command: z.enum([
+      "start",
+      "stop",
+      "restart",
+      "reconcile",
+      "apply-settings",
+      "apply-admin-password",
+      "apply-redis-relay-settings"
+    ]),
     state: z.enum(["accepted", "running", "completed", "failed", "cancelled"]),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -795,13 +810,7 @@ export const platformStateSchema = z
     services: z.array(
       z
         .object({
-          role: z.enum([
-            "runtime-provider",
-            "public-proxy",
-            "log-sync",
-            "sleep-prevention",
-            "watchdog"
-          ]),
+          role: z.enum(platformServiceRoleValues),
           state: z.enum([
             "running",
             "stopped",
@@ -852,6 +861,26 @@ export const platformStateSchema = z
   })
   .passthrough()
   .superRefine((status, context) => {
+    const serviceRoles = new Set<string>();
+    for (const [index, service] of status.services.entries()) {
+      if (serviceRoles.has(service.role)) {
+        context.addIssue({
+          code: "custom",
+          path: ["services", index, "role"],
+          message: `Platform service role must be reported exactly once: ${service.role}`
+        });
+      }
+      serviceRoles.add(service.role);
+    }
+    for (const role of platformServiceRoleValues) {
+      if (!serviceRoles.has(role)) {
+        context.addIssue({
+          code: "custom",
+          path: ["services"],
+          message: `Platform service role is required: ${role}`
+        });
+      }
+    }
     for (const field of [
       "redisRelayStatus",
       "guestServicesReadState",

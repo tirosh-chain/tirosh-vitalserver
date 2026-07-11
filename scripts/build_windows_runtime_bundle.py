@@ -251,6 +251,8 @@ def _validate_acceptance(
         raise SystemExit("Windows acceptance manifest does not prove these release component inputs")
     if document.get("releaseManifestSHA256") != expected_release_manifest_sha256:
         raise SystemExit("Windows acceptance manifest does not prove the acceptanceCandidate release manifest")
+    if document.get("supportExportMode") != "execute":
+        raise SystemExit("Windows sealing acceptance manifest must execute support export")
     if (
         not isinstance(document.get("supportExportOperationId"), str)
         or not document.get("supportExportOperationId")

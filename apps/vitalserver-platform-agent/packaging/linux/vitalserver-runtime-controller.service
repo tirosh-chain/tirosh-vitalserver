@@ -9,7 +9,7 @@ Type=simple
 WorkingDirectory=/opt/vitalserver/current/runtime-bundle
 Environment=VITALSERVER_RUNTIME_CONTROLLER_SETTINGS_PATH=/etc/vitalserver/runtime-controller.toml
 EnvironmentFile=/etc/vitalserver/runtime.env
-ExecStart=/usr/bin/env python3 /opt/vitalserver/current/bin/vitalserver-runtime-controller.pyz --host 127.0.0.1 --port 18330
+ExecStart=/usr/bin/env python3 /opt/vitalserver/current/bin/vitalserver-runtime-controller.pyz --host 127.0.0.1 --port 18330 --redis-relay-status-owner-socket /var/lib/vitalserver/run/redis-relay-status-owner.sock
 Restart=on-failure
 RestartSec=5
 User=root

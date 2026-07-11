@@ -44,7 +44,7 @@ enum RuntimeCommandFactory {
         adminPasswordFile: String? = nil,
         recorderIngressSettingsFile: String? = nil
     ) -> [String] {
-        var arguments = [
+        var arguments: [String] = [
             RuntimeControlClientConstants.RuntimeCommand.runtime,
             RuntimeControlClientConstants.RuntimeCommand.configure,
             RuntimeControlClientConstants.RuntimeCommand.optionCPU,
@@ -57,6 +57,8 @@ enum RuntimeCommandFactory {
             settings.networkMode.rawValue,
             RuntimeControlClientConstants.RuntimeCommand.optionProxyPort,
             String(settings.proxyPort),
+            RuntimeControlClientConstants.RuntimeCommand.optionRuntimeControlPort,
+            String(settings.runtimeControlPort),
             RuntimeControlClientConstants.RuntimeCommand.optionVitalFilesDirectory,
             settings.vitalFilesDirectory,
             RuntimeControlClientConstants.RuntimeCommand.optionPublicHost,

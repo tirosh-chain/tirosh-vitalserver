@@ -202,6 +202,8 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     preWriteEffects.append("resize:\(diskGiB)")
                 case .setInstalledProxyPort(let port):
                     preWriteEffects.append("proxy:\(port)")
+                case .setRuntimeControlPort(let port):
+                    postWriteEffects.append("runtime-control-port:\(port)")
                 case .restrictSecretFile(let url):
                     postWriteEffects.append("restrict:\(url.path)")
                 case .setStartOnBoot(let enabled):

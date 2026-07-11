@@ -32,6 +32,8 @@ param(
     [string]$AcceptanceManifestPath,
     [Parameter(Mandatory = $true)]
     [string]$InstallDocumentPath,
+    [ValidateSet("execute", "capability-only")]
+    [string]$SupportExportMode = "execute",
     [string]$BaseURL = "http://127.0.0.1:18321"
 )
 
@@ -160,6 +162,7 @@ Start-Service -Name $agentServiceName
     -RuntimeProviderDocumentPath $RuntimeProviderDocumentPath `
     -HyperVImageManifestPath $HyperVImageManifestPath `
     -OutputManifestPath $AcceptanceManifestPath `
+    -SupportExportMode $SupportExportMode `
     -BaseURL $BaseURL
 
 try {

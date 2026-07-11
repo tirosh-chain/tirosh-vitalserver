@@ -27,40 +27,34 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.status.runtimeInstallationState.isExecutable, true)
     }
 
-    func testViewModelInitialSettingsResolutionReadsControlSettingsOnceBeforeLocalPortOverride() {
+    func testViewModelInitialSettingsResolutionUsesControlSettingsAsPortOwner() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.settings.runtimeControlPort = 44080
-        let localAPISettings = FakeLocalAPISettings(runtimeControlPort: 55080)
 
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            localAPISettings: localAPISettings,
             healthNotifications: NoopHealthNotifications()
         )
 
         XCTAssertEqual(client.loadSettingsCount, 1)
-        XCTAssertEqual(viewModel.settings.runtimeControlPort, 55080)
-        XCTAssertEqual(localAPISettings.settingsWithLocalAPIPortCount, 1)
+        XCTAssertEqual(viewModel.settings.runtimeControlPort, 44080)
     }
 
     func testViewModelInitialSettingsUsesExplicitInputWithoutControlSettingsRead() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         var initialSettings = RuntimeSettings()
         initialSettings.runtimeControlPort = 44080
-        let localAPISettings = FakeLocalAPISettings(runtimeControlPort: 55080)
 
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
             initialSettings: initialSettings,
-            localAPISettings: localAPISettings,
             healthNotifications: NoopHealthNotifications()
         )
 
         XCTAssertEqual(client.loadSettingsCount, 0)
-        XCTAssertEqual(viewModel.settings.runtimeControlPort, 55080)
-        XCTAssertEqual(localAPISettings.settingsWithLocalAPIPortCount, 1)
+        XCTAssertEqual(viewModel.settings.runtimeControlPort, 44080)
     }
 
     func testViewModelInitialSettingsPreserveExplicitEmptyAdvertisedServiceURLs() {
@@ -784,7 +778,9 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper"),
         ])
         XCTAssertEqual(nativeShell.openedWebURLs, [
-            URL(string: RuntimeControlLocalAPIConstants.pwaURL),
+            URL(string: AppConstants.Product.runtimeControlPWAURL(
+                port: RuntimeSettingsInitialValues.runtimeControlPort
+            )),
             URL(string: AppConstants.Product.vitalDBURL),
         ])
         XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])
@@ -2240,33 +2236,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     private func success() -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
-    }
-}
-
-@MainActor
-private final class FakeLocalAPISettings: RuntimeControlLocalAPISettingsApplying {
-    let runtimeControlPort: Int
-    var settingsWithLocalAPIPortCount = 0
-    var applySettings: [RuntimeSettings] = []
-    var appliedPorts: [Int] = []
-
-    init(runtimeControlPort: Int) {
-        self.runtimeControlPort = runtimeControlPort
-    }
-
-    func settingsWithLocalAPIPort(_ settings: RuntimeSettings) -> RuntimeSettings {
-        settingsWithLocalAPIPortCount += 1
-        var next = settings
-        next.runtimeControlPort = runtimeControlPort
-        return next
-    }
-
-    func apply(settings: RuntimeSettings) {
-        applySettings.append(settings)
-    }
-
-    func apply(port: Int) {
-        appliedPorts.append(port)
     }
 }
 

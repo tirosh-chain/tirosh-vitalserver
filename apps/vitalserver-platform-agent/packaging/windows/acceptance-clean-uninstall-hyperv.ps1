@@ -61,12 +61,19 @@ function Wait-CleanProof {
     while ([DateTime]::UtcNow -lt $deadline) {
         try {
             $proof = Read-JSONOwner -Path $Path -Label 'Windows clean uninstall proof'
+            if ($proof.state -eq 'failed') {
+                $message = if ($null -ne $proof.failure -and $proof.failure.message) { [string]$proof.failure.message } else { 'failure reason not reported' }
+                throw "Windows clean uninstall workflow failed operationId=$OperationId reason=$message"
+            }
             if ($proof.schemaVersion -ne 1 -or $proof.operationId -ne $OperationId -or $proof.mode -ne 'clean' -or
                 $proof.state -ne 'completed' -or $proof.runtimeDataPreserved -ne $false -or $proof.postconditionsPassed -ne $true) {
                 throw "Windows clean uninstall proof contract is invalid path=$Path"
             }
             return $proof
-        } catch { $lastRead = $_.Exception.Message }
+        } catch {
+            $lastRead = $_.Exception.Message
+            if ($lastRead -like 'Windows clean uninstall workflow failed*') { throw }
+        }
         Start-Sleep -Seconds 1
     }
     throw "Windows clean uninstall proof did not appear operationId=$OperationId lastRead=$lastRead"

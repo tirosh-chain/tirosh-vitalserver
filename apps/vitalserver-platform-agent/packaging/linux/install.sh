@@ -72,8 +72,10 @@ platform_agent_configuration_created=0
 platform_agent_configuration_backed_up=0
 native_provider_configuration_created=0
 runtime_controller_configuration_created=0
+runtime_environment_backed_up=0
 release_created=0
 platform_agent_configuration_backup="$etc_root/.platform-agent.json.rollback.$$"
+runtime_environment_backup="$etc_root/.runtime.env.rollback.$$"
 
 if [ -L "$current_link" ]; then
   previous_target=$(readlink "$current_link")
@@ -95,6 +97,12 @@ rollback_install() {
   if [ "$platform_agent_configuration_backed_up" -eq 1 ]; then
     if ! install -m 0600 "$platform_agent_configuration_backup" "$etc_root/platform-agent.json"; then
       echo "Linux install rollback Platform Agent configuration restoration failed" >&2
+      rollback_failed=1
+    fi
+  fi
+  if [ "$runtime_environment_backed_up" -eq 1 ]; then
+    if ! install -m 0600 "$runtime_environment_backup" "$etc_root/runtime.env"; then
+      echo "Linux install rollback Runtime environment restoration failed" >&2
       rollback_failed=1
     fi
   fi
@@ -190,6 +198,10 @@ rollback_install() {
     echo "Linux install rollback Platform Agent configuration backup cleanup failed" >&2
     rollback_failed=1
   fi
+  if ! rm -f "$runtime_environment_backup"; then
+    echo "Linux install rollback Runtime environment backup cleanup failed" >&2
+    rollback_failed=1
+  fi
   if [ "$release_created" -eq 1 ]; then
     if ! rm -rf "$release_root"; then
       echo "Linux install rollback created release cleanup failed release=$release_root" >&2
@@ -271,6 +283,16 @@ EOF
   mv -f "$runtime_environment_temporary" "$runtime_environment"
 fi
 
+if [ "$configuration_created" -eq 0 ]; then
+  install -m 0600 "$runtime_environment" "$runtime_environment_backup"
+  runtime_environment_backed_up=1
+  if ! python3 "$bundle_dir/packaging/migrate-runtime-env.py" \
+    --path "$runtime_environment"; then
+    echo "Linux Runtime environment transport migration failed; preserving the existing owner file." >&2
+    exit 1
+  fi
+fi
+
 if [ ! -f "$runtime_settings" ]; then
   runtime_settings_created=1
   install -m 0600 packaging/runtime-settings.json "$runtime_settings"
@@ -332,7 +354,8 @@ if [ ! -f "$etc_root/platform-agent.json" ]; then
     "supportExportTool": "/opt/vitalserver/current/tools/support-export-linux.py",
     "schedulerExecutable": "/usr/bin/systemd-run",
     "schedulerKind": "systemd-transient",
-    "applyPolicy": "verify-only"
+    "applyPolicy": "verify-only",
+    "trustedBundleInbox": "/var/lib/vitalserver/inbox"
   },
   "platformServices": {
     "runtime-provider": "vitalserver-runtime-provider.service",
@@ -380,6 +403,7 @@ required = {
     "uninstallTool": "/opt/vitalserver/current/tools/uninstall-linux.py",
     "supportExportTool": "/opt/vitalserver/current/tools/support-export-linux.py",
     "schedulerKind": "systemd-transient",
+    "trustedBundleInbox": "/var/lib/vitalserver/inbox",
 }
 for name, expected in required.items():
     existing = delivery.get(name)
@@ -531,5 +555,7 @@ mv -f "$install_document" "$var_root/install.json"
 
 rm -f "$platform_agent_configuration_backup"
 platform_agent_configuration_backed_up=0
+rm -f "$runtime_environment_backup"
+runtime_environment_backed_up=0
 trap - EXIT HUP INT TERM
 echo "VitalServer Linux install passed platformVersion=$version runtimeBundleVersion=$runtime_bundle_version"

@@ -28,6 +28,7 @@ type Handler struct {
 	providerMutation sync.Mutex
 	delivery         *deliveryController
 	deliveryMutation sync.Mutex
+	browserSessions  *browserSessionController
 }
 
 func NewHandler(config Config, services ServiceObserver, now time.Time) *Handler {
@@ -38,15 +39,20 @@ func NewHandler(config Config, services ServiceObserver, now time.Time) *Handler
 	if controller, ok := services.(provider.Controller); ok {
 		handler.provider = controller
 	}
+	if config.PWA != "" {
+		handler.browserSessions, _ = newBrowserSessionController(config.ListenAddress, time.Now)
+	}
 	handler.delivery = newDeliveryController(config.Delivery)
 	handler.routes()
 	return handler
 }
 
 func (h *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	if (strings.HasPrefix(request.URL.Path, "/platform") || strings.HasPrefix(request.URL.Path, "/runtime")) && !h.authorized(request) {
+	if (strings.HasPrefix(request.URL.Path, "/platform") || strings.HasPrefix(request.URL.Path, "/runtime")) &&
+		!(request.Method == http.MethodPost && request.URL.Path == browserSessionBootstrapPath) &&
+		!h.authorized(request) {
 		writeJSON(response, http.StatusUnauthorized, contract.ErrorResponse{
-			Code: "unauthorized", Message: "Runtime Control API token is missing or invalid.",
+			Code: "unauthorized", Message: "Runtime Control API credentials are missing or invalid.",
 		})
 		return
 	}
@@ -79,6 +85,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /platform/support-exports", h.schedulePlatformSupportExport)
 	h.mux.HandleFunc("/runtime/", h.proxyRuntime)
 	if h.config.PWA != "" {
+		h.mux.HandleFunc("POST "+browserSessionBootstrapPath, h.createBrowserSession)
 		h.mux.Handle("/", http.FileServer(http.Dir(h.config.PWA)))
 	}
 }
@@ -317,8 +324,36 @@ func (h *Handler) getRuntimeProvider(response http.ResponseWriter, _ *http.Reque
 }
 
 func (h *Handler) authorized(request *http.Request) bool {
-	return request.Header.Get("X-Runtime-Control-Token") == h.config.APIToken ||
-		request.Header.Get("Authorization") == "Bearer "+h.config.APIToken
+	if h.config.APIToken != "" &&
+		(request.Header.Get("X-Runtime-Control-Token") == h.config.APIToken ||
+			request.Header.Get("Authorization") == "Bearer "+h.config.APIToken) {
+		return true
+	}
+	return h.browserSessions != nil && h.browserSessions.allows(request)
+}
+
+func (h *Handler) createBrowserSession(response http.ResponseWriter, request *http.Request) {
+	if h.browserSessions == nil {
+		writeJSON(response, http.StatusServiceUnavailable, contract.ErrorResponse{
+			Code: "browserSessionUnavailable", Message: "Local browser session support is unavailable.",
+		})
+		return
+	}
+	cookie, err := h.browserSessions.issue(request)
+	if err != nil {
+		if errors.Is(err, errBrowserSessionOrigin) {
+			writeJSON(response, http.StatusUnauthorized, contract.ErrorResponse{
+				Code: "browserSessionOriginInvalid", Message: "Local browser session origin is missing or invalid.",
+			})
+			return
+		}
+		writeJSON(response, http.StatusServiceUnavailable, contract.ErrorResponse{
+			Code: "browserSessionUnavailable", Message: err.Error(),
+		})
+		return
+	}
+	http.SetCookie(response, cookie)
+	response.WriteHeader(http.StatusNoContent)
 }
 
 func writeJSON(response http.ResponseWriter, status int, value any) {

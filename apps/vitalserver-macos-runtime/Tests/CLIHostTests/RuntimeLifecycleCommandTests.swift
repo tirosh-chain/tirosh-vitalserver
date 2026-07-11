@@ -126,6 +126,8 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             "8",
             "--network",
             "shared",
+            "--runtime-control-port",
+            "18444",
             "--start-on-boot",
             "false",
             "--log-archive-retention-days",
@@ -147,6 +149,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             changes: [
                 .cpu(8),
                 .network(.shared),
+                .runtimeControlPort(18444),
                 .startOnBoot(false),
                 .logArchiveRetentionDays(10),
                 .logArchiveMaximumGiB(3),

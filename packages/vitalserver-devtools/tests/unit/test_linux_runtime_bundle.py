@@ -4,14 +4,15 @@ import hashlib
 import importlib.util
 import io
 import json
-from pathlib import Path
 import struct
 import subprocess
 import sys
 import tarfile
-from types import SimpleNamespace
 import zipfile
+from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[4]
 BUILDER = ROOT / "scripts/build_linux_runtime_bundle.py"
@@ -19,6 +20,9 @@ UPDATER = ROOT / "apps/vitalserver-platform-agent/packaging/linux/update-linux.p
 SUPPORT_EXPORTER = (
     ROOT
     / "apps/vitalserver-platform-agent/packaging/linux/support-export-linux.py"
+)
+RUNTIME_ENV_MIGRATOR = (
+    ROOT / "apps/vitalserver-platform-agent/packaging/linux/migrate-runtime-env.py"
 )
 
 
@@ -86,6 +90,7 @@ def test_linux_runtime_bundle_is_complete_and_deterministic(tmp_path: Path) -> N
             "VitalServer-Linux/packaging/runtime-controller.toml",
             "VitalServer-Linux/packaging/runtime-settings.json",
             "VitalServer-Linux/packaging/redis-relay.toml",
+            "VitalServer-Linux/packaging/migrate-runtime-env.py",
             "VitalServer-Linux/packaging/vitalserver-platform-agent.service",
             "VitalServer-Linux/packaging/vitalserver-runtime-controller.service",
             "VitalServer-Linux/packaging/vitalserver-runtime-provider.service",
@@ -129,6 +134,49 @@ def test_linux_runtime_bundle_is_complete_and_deterministic(tmp_path: Path) -> N
         capture_output=True,
     )
     assert json.loads(verified.stdout)["state"] == "verified"
+
+
+def test_linux_runtime_environment_migration_adds_private_socket_or_blocks_legacy_url(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "linux_runtime_environment_migrator",
+        RUNTIME_ENV_MIGRATOR,
+    )
+    assert spec is not None and spec.loader is not None
+    migrator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migrator)
+    environment = tmp_path / "runtime.env"
+    legacy = (
+        "VITALSERVER_ADMIN_PASSWORD=private\n"
+        "VITALSERVER_POSTGRES_PASSWORD=private\n"
+    )
+    environment.write_text(legacy, encoding="utf-8")
+    environment.chmod(0o600)
+
+    assert migrator.migrate_runtime_environment(environment) is True
+    assert environment.read_text(encoding="utf-8") == (
+        legacy
+        + "VITALSERVER_RUNTIME_RUN_DIR=/var/lib/vitalserver/run\n"
+        + (
+            "REDIS_RELAY_STATUS_OWNER_SOCKET="
+            "/run/tirosh/status-owner/redis-relay-status-owner.sock\n"
+        )
+        + "REDIS_RELAY_STATUS_OWNER_URL=\n"
+    )
+    assert environment.stat().st_mode & 0o777 == 0o600
+    assert migrator.migrate_runtime_environment(environment) is False
+
+    blocked = tmp_path / "runtime-legacy-url.env"
+    blocked_text = legacy + "REDIS_RELAY_STATUS_OWNER_URL=http://legacy-owner:18330/status\n"
+    blocked.write_text(blocked_text, encoding="utf-8")
+    blocked.chmod(0o600)
+
+    with pytest.raises(migrator.RuntimeEnvironmentMigrationError) as error:
+        migrator.migrate_runtime_environment(blocked)
+
+    assert "refusing to replace" in str(error.value)
+    assert blocked.read_text(encoding="utf-8") == blocked_text
 
 
 def test_linux_update_verifier_rejects_unsafe_archive_member(tmp_path: Path) -> None:
@@ -384,6 +432,38 @@ def test_linux_installer_migrates_and_rolls_back_platform_delivery_config() -> N
     assert "trap - EXIT HUP INT TERM" in installer
 
 
+def test_linux_installer_migrates_existing_runtime_environment_transactionally(
+) -> None:
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "runtime_environment_backed_up=0" in installer
+    assert (
+        'runtime_environment_backup="$etc_root/.runtime.env.rollback.$$"'
+        in installer
+    )
+    assert (
+        'install -m 0600 "$runtime_environment" "$runtime_environment_backup"'
+        in installer
+    )
+    assert 'python3 "$bundle_dir/packaging/migrate-runtime-env.py"' in installer
+    assert '--path "$runtime_environment"' in installer
+    assert "Linux Runtime environment transport migration failed" in installer
+    assert 'if [ "$runtime_environment_backed_up" -eq 1 ]; then' in installer
+    assert (
+        'install -m 0600 "$runtime_environment_backup" "$etc_root/runtime.env"'
+        in installer
+    )
+    assert installer.index(
+        "Linux install rollback Runtime environment restoration failed"
+    ) < installer.index("systemctl restart vitalserver-runtime-controller.service")
+    assert (
+        'rm -f "$runtime_environment_backup"\nruntime_environment_backed_up=0'
+        in installer
+    )
+
+
 def test_linux_update_uses_explicit_non_nested_support_acceptance_mode() -> None:
     installer = (
         ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
@@ -435,6 +515,7 @@ def test_linux_update_trust_requires_out_of_band_digest_and_restores_owners() ->
         "actual != expected",
         'delivery["applyPolicy"] = "sha256-allowlist"',
         'delivery["trustedBundleDigests"] = str(args.catalog)',
+        'configured_inbox = delivery.get("trustedBundleInbox")',
         "stage_trusted_bundle(",
         'default=Path("/var/lib/vitalserver/inbox")',
         'destination = inbox / f"trusted-{expected}.bundle"',
@@ -543,6 +624,7 @@ def test_linux_rollback_switches_release_owner_and_preserves_mutable_data() -> N
     assert 'document.get("previousRelease")' in rollback
     assert 'mv -Tf "$current_link.rollback.$$" "$current_link"' in rollback
     assert "linux-native-rollback-acceptance.json" in rollback
+    assert "--support-export-mode capability-only" in rollback
     assert 'mv -f "$install_document_backup" "$install_document"' in rollback
     assert '"previousRelease": previous_release' in rollback
     assert "rm -rf /var/lib/vitalserver" not in rollback

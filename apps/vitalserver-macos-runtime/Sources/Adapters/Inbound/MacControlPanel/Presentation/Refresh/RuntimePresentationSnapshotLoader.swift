@@ -13,7 +13,6 @@ struct RuntimePresentationSnapshotLoader {
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
     let snapshotReader: (any RuntimeViewModelSnapshotReading)?
-    let localAPISettings: (any RuntimeControlLocalAPISettingsApplying)?
 
     func loadSettings() async -> RuntimeSettings {
         let loadedSettings: RuntimeSettings
@@ -22,7 +21,7 @@ struct RuntimePresentationSnapshotLoader {
         } else {
             loadedSettings = controlClient.loadSettings()
         }
-        return localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
+        return loadedSettings
     }
 
     func loadPlatformState(settings: RuntimeSettings) async -> PlatformState {

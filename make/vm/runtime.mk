@@ -161,7 +161,7 @@ internal/vm/proxy/start:
 			$(VM_BUILD_RUNNER) macos-runtime-guest-address-proxy-upstream \
 				--vm-home "$(VM_HOME)" \
 				--runtime-control-api-base-url "$${VITALSERVER_RUNTIME_CONTROL_API_BASE_URL:-http://127.0.0.1:18321}" \
-				--runtime-control-api-token "$${VITALSERVER_RUNTIME_CONTROL_API_TOKEN:-vitalserver-helper-dev}" \
+				--runtime-control-api-token "$${VITALSERVER_RUNTIME_CONTROL_API_TOKEN:?VITALSERVER_RUNTIME_CONTROL_API_TOKEN is required}" \
 				--runtime-control-api-token-header "$${VITALSERVER_RUNTIME_CONTROL_API_TOKEN_HEADER:-X-Runtime-Control-Token}" \
 				--runtime-control-api-timeout "$${VITALSERVER_RUNTIME_CONTROL_API_TIMEOUT_SECONDS:-2}" \
 		)"; then \

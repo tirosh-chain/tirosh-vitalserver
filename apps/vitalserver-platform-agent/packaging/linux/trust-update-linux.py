@@ -57,6 +57,16 @@ def main() -> int:
     apply_policy = delivery.get("applyPolicy")
     if apply_policy not in ("verify-only", "sha256-allowlist"):
         raise SystemExit(f"Linux Platform Agent apply policy is invalid policy={apply_policy!r}")
+    configured_inbox = delivery.get("trustedBundleInbox")
+    if (
+        not isinstance(configured_inbox, str)
+        or not configured_inbox
+        or Path(configured_inbox).resolve() != args.inbox_directory.resolve()
+    ):
+        raise SystemExit(
+            "Linux Platform Agent trusted bundle inbox owner differs from trust provisioning "
+            f"config={configured_inbox!r} requested={args.inbox_directory}"
+        )
 
     original_config = args.config.read_bytes()
     catalog_existed = args.catalog.exists()

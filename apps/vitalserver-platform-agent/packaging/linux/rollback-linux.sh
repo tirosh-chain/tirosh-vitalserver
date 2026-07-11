@@ -95,7 +95,8 @@ python3 "$opt_root/$previous_target/tools/acceptance-linux.py" \
   --runtime-provider-document "$var_root/run/runtime-provider.json" \
   --output-manifest "$var_root/proof/linux-native-rollback-acceptance.json" \
   --base-url http://127.0.0.1:18321 \
-  --timeout-seconds 180
+  --timeout-seconds 180 \
+  --support-export-mode capability-only
 
 python3 - "$opt_root/$previous_target/release.json" "$install_document" "$current_target" <<'PY'
 import json, os, sys, tempfile

@@ -19,6 +19,7 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case network(RuntimeNetworkMode)
     case bridgedInterface(String)
     case proxyPort(Int)
+    case runtimeControlPort(Int)
     case vitalFilesDirectory(URL)
     case vitalServerURL(String)
     case remoteConsoleURL(String)

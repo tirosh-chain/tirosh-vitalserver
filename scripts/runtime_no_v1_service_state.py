@@ -252,6 +252,36 @@ def check_platform_state_is_canonical_independent_resource() -> CheckResult:
             "OpenAPI:PlatformState canonical fields "
             f"actual={sorted(platform_properties)}"
         )
+    platform_services = platform_properties.get("services", {})
+    expected_platform_service_roles = {
+        "runtime-provider",
+        "public-proxy",
+        "log-sync",
+        "sleep-prevention",
+        "watchdog",
+    }
+    service_role_constraints = platform_services.get("allOf", [])
+    constrained_roles = {
+        clause.get("contains", {})
+        .get("properties", {})
+        .get("role", {})
+        .get("const")
+        for clause in service_role_constraints
+        if isinstance(clause, dict)
+    }
+    if (
+        platform_services.get("minItems") != len(expected_platform_service_roles)
+        or platform_services.get("maxItems") != len(expected_platform_service_roles)
+        or constrained_roles != expected_platform_service_roles
+        or any(
+            clause.get("minContains") != 1 or clause.get("maxContains") != 1
+            for clause in service_role_constraints
+            if isinstance(clause, dict)
+        )
+    ):
+        missing.append(
+            "OpenAPI:PlatformState services require each fixed role exactly once"
+        )
     for token in [
         "case platformHealth",
         "case runtimeProviderState",
@@ -269,6 +299,9 @@ def check_platform_state_is_canonical_independent_resource() -> CheckResult:
         "platformAPIHTTP: nullableString",
         "publicProxyPort: z.number().optional()",
         "healthIssues: z.array(z.string()).optional()",
+        "platformServiceRoleValues",
+        "Platform service role must be reported exactly once",
+        "Platform service role is required",
     ]:
         if token not in pwa_schemas:
             missing.append(f"PWA:{token}")
@@ -7305,6 +7338,14 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
     redis_relay_status_tests_path = ROOT / "apps/vitalserver-redis-relay/tests/test_status.py"
     redis_relay_loop_tests_path = ROOT / "apps/vitalserver-redis-relay/tests/test_relay_loop.py"
     compose_path = MACOS_RUNTIME / "Support/Guest/compose.yaml"
+    linux_runtime_controller_service_path = (
+        ROOT
+        / "apps/vitalserver-platform-agent/packaging/linux"
+        / "vitalserver-runtime-controller.service"
+    )
+    linux_runtime_environment_path = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/runtime.env"
+    )
     texts = {
         relative(observability_path): read(observability_path),
         relative(guest_control_api_path): read(guest_control_api_path),
@@ -7318,6 +7359,12 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         relative(redis_relay_status_tests_path): read(redis_relay_status_tests_path),
         relative(redis_relay_loop_tests_path): read(redis_relay_loop_tests_path),
         relative(compose_path): read(compose_path),
+        relative(linux_runtime_controller_service_path): read(
+            linux_runtime_controller_service_path
+        ),
+        relative(linux_runtime_environment_path): read(
+            linux_runtime_environment_path
+        ),
     }
     forbidden = [
         "Helper status, operator diagnostics",
@@ -7352,9 +7399,14 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         (relative(redis_relay_status_path), "def write_status_artifact("),
         (relative(redis_relay_status_path), '"scope": None'),
         (relative(redis_relay_owner_path), "class StatusOwnerConfigurationError"),
-        (relative(redis_relay_owner_path), '"Redis relay status owner URL is required."'),
+        (relative(redis_relay_owner_path), "Exactly one Redis relay status owner URL or socket path is required."),
+        (relative(redis_relay_owner_path), "class _UnixSocketHTTPConnection"),
+        (relative(redis_relay_owner_path), "REDIS_RELAY_STATUS_OWNER_PATH"),
         (relative(redis_relay_owner_path), 'method="PUT"'),
-        (relative(redis_relay_main_path), "parser.error(\"--status-owner-url or REDIS_RELAY_STATUS_OWNER_URL is required\")"),
+        (relative(redis_relay_main_path), "--status-owner-socket"),
+        (relative(redis_relay_main_path), "exactly one status owner transport is required"),
+        (relative(guest_control_api_path), "create_redis_relay_status_owner_server"),
+        (relative(guest_control_api_path), "REDIS_RELAY_STATUS_OWNER_PATH"),
         (relative(redis_relay_status_tests_path), "build_status_document("),
         (relative(redis_relay_status_tests_path), "write_status_artifact("),
         (relative(redis_relay_status_tests_path), 'assert document["scope"] is None'),
@@ -7365,8 +7417,19 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         (relative(redis_relay_readme_path), "`PUT /runtime/redis-relay/status` owner mutation"),
         (relative(redis_relay_readme_path), "they do not read the diagnostics status file as product liveness"),
         (relative(compose_path), "REDIS_RELAY_STATUS_OWNER_URL"),
+        (relative(compose_path), "REDIS_RELAY_STATUS_OWNER_SOCKET"),
         (relative(compose_path), "host.docker.internal:host-gateway"),
-        (relative(compose_path), "sys.exit(0 if os.environ.get('REDIS_RELAY_STATUS_OWNER_URL') else 1)"),
+        (relative(compose_path), "VITALSERVER_RUNTIME_RUN_DIR"),
+        (relative(compose_path), "os.path.exists(socket)"),
+        (
+            relative(linux_runtime_controller_service_path),
+            "--redis-relay-status-owner-socket /var/lib/vitalserver/run/redis-relay-status-owner.sock",
+        ),
+        (
+            relative(linux_runtime_environment_path),
+            "REDIS_RELAY_STATUS_OWNER_SOCKET=/run/tirosh/status-owner/redis-relay-status-owner.sock",
+        ),
+        (relative(linux_runtime_environment_path), "REDIS_RELAY_STATUS_OWNER_URL="),
     ]
     matches = [
         f"{path}:{token}"

@@ -194,6 +194,9 @@ extension RuntimeLifecycle {
                 setInstalledProxyPort: { port in
                     try setInstalledProxyPort(port)
                 },
+                restartPlatformAgent: {
+                    try restartOrStartLaunchdService(.platformAgent)
+                },
                 readSecretFile: { url in
                     try readSecretFile(url)
                 },

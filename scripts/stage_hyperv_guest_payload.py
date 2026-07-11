@@ -5,15 +5,12 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import tempfile
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-HYPERV_GUEST = (
-    ROOT / "apps/vitalserver-platform-agent/packaging/windows/hyperv-guest"
-)
+HYPERV_GUEST = ROOT / "apps/vitalserver-platform-agent/packaging/windows/hyperv-guest"
 FORBIDDEN_DEPLOY_NAMES = {
     "tirosh-vitalserver-command-poller",
     "tirosh-vitalserver-command-poller.service",
@@ -23,9 +20,15 @@ FORBIDDEN_DEPLOY_NAMES = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Stage the portable Runtime deploy payload into a mounted amd64 system disk."
+        description=(
+            "Stage the portable Runtime deploy payload "
+            "into a mounted amd64 system disk."
+        )
     )
     parser.add_argument("--system-root", type=Path, required=True)
+    parser.add_argument("--system-raw", type=Path, required=True)
+    parser.add_argument("--runtime-data-raw", type=Path, required=True)
+    parser.add_argument("--seed-iso", type=Path, required=True)
     parser.add_argument("--deploy-directory", type=Path, required=True)
     parser.add_argument("--rootfs-proof", type=Path, required=True)
     parser.add_argument("--output-proof", type=Path, required=True)
@@ -40,6 +43,9 @@ def main() -> int:
     proof = _load_json(args.rootfs_proof, "rootfs proof")
     _require_amd64_proof(proof, args.rootfs_proof)
     _validate_deploy(args.deploy_directory)
+    _require_file(args.system_raw, "Hyper-V system raw disk")
+    _require_file(args.runtime_data_raw, "Hyper-V Runtime data raw disk")
+    _require_file(args.seed_iso, "Hyper-V NoCloud seed ISO")
 
     target = system_root / "opt/vitalserver"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -57,6 +63,8 @@ def main() -> int:
             )
         os.replace(staged, target)
 
+    os.sync()
+
     combined = dict(proof)
     combined["portableDeploy"] = {
         "status": "passed",
@@ -64,6 +72,11 @@ def main() -> int:
         "treeSHA256": _tree_sha256(args.deploy_directory),
         "hyperVGuestTreeSHA256": _tree_sha256(HYPERV_GUEST),
         "mountMode": "native",
+        "hyperVInputs": {
+            "systemRaw": _file_identity(args.system_raw),
+            "runtimeDataRaw": _file_identity(args.runtime_data_raw),
+            "seedISO": _file_identity(args.seed_iso),
+        },
     }
     args.output_proof.parent.mkdir(parents=True, exist_ok=True)
     args.output_proof.write_text(
@@ -102,26 +115,47 @@ def _require_amd64_proof(proof: dict[str, object], path: Path) -> None:
 
 def _validate_deploy(path: Path) -> None:
     if not path.is_dir() or not (path / "compose.yaml").is_file():
-        raise SystemExit(f"portable deploy directory or compose.yaml is missing: {path}")
+        raise SystemExit(
+            f"portable deploy directory or compose.yaml is missing: {path}"
+        )
     for item in path.rglob("*"):
         if item.is_symlink():
             raise SystemExit(f"portable deploy contains unsupported symlink: {item}")
         if item.name in FORBIDDEN_DEPLOY_NAMES:
             raise SystemExit(f"portable deploy contains retired v1 artifact: {item}")
-    for required_config in ("runtime-config.json", "runtime-settings.json", "runtime.env"):
+    for required_config in (
+        "runtime-config.json",
+        "runtime-settings.json",
+        "runtime.env",
+    ):
         config_path = path / required_config
         if not config_path.is_file() or config_path.stat().st_size == 0:
             raise SystemExit(
-                f"portable deploy initial Runtime configuration is missing: {config_path}"
+                "portable deploy initial Runtime configuration is missing: "
+                f"{config_path}"
             )
     relay_config = path / "redis-relay-config/redis-relay.toml"
     if not relay_config.is_file() or relay_config.stat().st_size == 0:
         raise SystemExit(
-            f"portable deploy initial Redis Relay configuration is missing: {relay_config}"
+            "portable deploy initial Redis Relay configuration is missing: "
+            f"{relay_config}"
         )
     compose = (path / "compose.yaml").read_text(encoding="utf-8")
     if "/v1/" in compose or "/runtime/stack/status" in compose:
         raise SystemExit("portable deploy Compose contains a legacy Runtime API route")
+
+
+def _require_file(path: Path, label: str) -> None:
+    if not path.is_file() or path.is_symlink():
+        raise SystemExit(f"{label} is missing or not a regular file: {path}")
+
+
+def _file_identity(path: Path) -> dict[str, object]:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
+    return {"sha256": digest.hexdigest(), "bytes": path.stat().st_size}
 
 
 def _tree_sha256(root: Path) -> str:

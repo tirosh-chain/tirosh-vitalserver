@@ -221,7 +221,8 @@ try {
         -RuntimeProviderDocumentPath (Join-Path $ProgramDataRoot 'run\runtime-provider.json') `
         -HyperVImageManifestPath (Join-Path $newReleasePath 'hyperv-image\hyperv-image.json') `
         -AcceptanceManifestPath (Join-Path $ProgramDataRoot 'proof\windows-hyperv-update-acceptance.json') `
-        -InstallDocumentPath $installPath
+        -InstallDocumentPath $installPath `
+        -SupportExportMode 'capability-only'
     return
 } catch {
     $applyReason = $_.Exception.Message
@@ -262,7 +263,8 @@ try {
             -APITokenPath $tokenPath `
             -RuntimeProviderDocumentPath (Join-Path $ProgramDataRoot 'run\runtime-provider.json') `
             -HyperVImageManifestPath (Join-Path $oldReleasePath 'hyperv-image\hyperv-image.json') `
-            -OutputManifestPath (Join-Path $ProgramDataRoot 'proof\windows-hyperv-update-recovery-acceptance.json')
+            -OutputManifestPath (Join-Path $ProgramDataRoot 'proof\windows-hyperv-update-recovery-acceptance.json') `
+            -SupportExportMode 'capability-only'
     } catch { $restoreErrors.Add("Service restore failed: $($_.Exception.Message)") }
     if ($restoreErrors.Count -gt 0) {
         throw "Windows update failed reason=$applyReason rollbackState=failed rollbackErrors=$($restoreErrors -join '; ')"

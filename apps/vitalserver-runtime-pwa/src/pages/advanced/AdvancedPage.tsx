@@ -69,13 +69,19 @@ export function AdvancedPage() {
   const platformState = usePlatformState();
   const operationState = usePlatformOperationState();
   const capabilities = useControlCapabilities();
+  const canManageBackups = capabilities.data?.canRollback === true;
+  const unavailableBackupMessage = capabilities.isPending
+    ? "Loading backup capability..."
+    : capabilities.isError
+      ? "Backup capability could not be read."
+      : "Backup and rollback operations are not supported by this Runtime Control API.";
   const runtimeStack = useRuntimeStack();
   const runtimeServiceResources = useRuntimeServiceResources(
     runtimeStack.data?.services.map((service) => service.service) ?? []
   );
-  const hostBackups = useHostBackups();
-  const redisBackups = useRedisBackups();
-  const runtimeDataBackups = useRuntimeDataBackups();
+  const hostBackups = useHostBackups(canManageBackups);
+  const redisBackups = useRedisBackups(canManageBackups);
+  const runtimeDataBackups = useRuntimeDataBackups(canManageBackups);
   const runtimeSettingsRead = useRuntimeProductSettings();
   const runtimeSettings =
     runtimeSettingsRead.data?.state === "loaded"
@@ -114,7 +120,7 @@ export function AdvancedPage() {
     setRemoteConsoleURL(runtimeSettings.remoteConsoleURL);
   }, [runtimeSettings]);
 
-  const canRollback = capabilities.data?.canRollback === true;
+  const canRollback = canManageBackups;
   const canRepair = canControlRecovery(capabilities.data);
   const canApplySettings = canApplyRuntimeProductSettings(capabilities.data);
   const canEditNetworkExposure =
@@ -239,14 +245,30 @@ export function AdvancedPage() {
           Use these actions when the runtime is installed but unhealthy after
           update, rollback, or unexpected shutdown.
         </p>
+        {capabilities.isError ? (
+          <ErrorState
+            title="Failed to read backup capability"
+            error={capabilities.error}
+          />
+        ) : null}
+        {!capabilities.isPending && !capabilities.isError && !canManageBackups ? (
+          <p className="muted">
+            Backup and rollback operations are not supported by this Runtime
+            Control API.
+          </p>
+        ) : null}
 
         <div className="subsection">
           <h3>Update recovery</h3>
           <BackupTable
-            rows={hostBackups.data ?? []}
+            rows={canManageBackups ? hostBackups.data ?? [] : []}
             selected={selectedHostBackup}
             onSelect={setSelectedHostBackup}
-            emptyText="No rollback backups are available."
+            emptyText={
+              canManageBackups
+                ? "No rollback backups are available."
+                : unavailableBackupMessage
+            }
           />
           <div className="action-row">
             <ConfirmButton
@@ -276,15 +298,23 @@ export function AdvancedPage() {
             runtime state, observability history, and Redis data.
           </p>
           <BackupTable
-            rows={runtimeDataBackups.data ?? []}
+            rows={canManageBackups ? runtimeDataBackups.data ?? [] : []}
             selected={selectedRuntimeDataBackup}
             onSelect={setSelectedRuntimeDataBackup}
-            emptyText="No VitalServer backups are available."
+            emptyText={
+              canManageBackups
+                ? "No VitalServer backups are available."
+                : unavailableBackupMessage
+            }
           />
           <div className="action-row">
             <ConfirmButton
               confirmMessage="Create a VitalServer backup now?"
-              disabled={createRuntimeDataBackup.isPending || !canRepair}
+              disabled={
+                createRuntimeDataBackup.isPending ||
+                !canRepair ||
+                !canManageBackups
+              }
               onClick={() => createRuntimeDataBackup.mutate("")}
             >
               Create Backup
@@ -294,7 +324,8 @@ export function AdvancedPage() {
               disabled={
                 !selectedRuntimeDataBackup?.path ||
                 restoreRuntimeDataBackup.isPending ||
-                !canRepair
+                !canRepair ||
+                !canManageBackups
               }
               onClick={() =>
                 selectedRuntimeDataBackup?.path
@@ -378,15 +409,21 @@ export function AdvancedPage() {
               backup for normal backup and restore.
             </p>
             <BackupTable
-              rows={redisBackups.data ?? []}
+              rows={canManageBackups ? redisBackups.data ?? [] : []}
               selected={selectedRedisBackup}
               onSelect={setSelectedRedisBackup}
-              emptyText="No Redis backups are available."
+              emptyText={
+                canManageBackups
+                  ? "No Redis backups are available."
+                  : unavailableBackupMessage
+              }
             />
             <div className="action-row">
               <ConfirmButton
                 confirmMessage="Create a recoverable Redis backup now?"
-                disabled={createRedisBackup.isPending || !canRepair}
+                disabled={
+                  createRedisBackup.isPending || !canRepair || !canManageBackups
+                }
                 onClick={() => createRedisBackup.mutate("")}
               >
                 Create Redis-only Backup

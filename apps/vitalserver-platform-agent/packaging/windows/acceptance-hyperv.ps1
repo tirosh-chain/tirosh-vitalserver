@@ -13,12 +13,15 @@ param(
     [string]$HyperVImageManifestPath,
     [Parameter(Mandatory = $true)]
     [string]$OutputManifestPath,
+    [ValidateSet("execute", "capability-only")]
+    [string]$SupportExportMode = "execute",
     [string]$BaseURL = "http://127.0.0.1:18321",
     [int]$TimeoutSeconds = 360
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+$SupportExportMode = $SupportExportMode.ToLowerInvariant()
 $runID = [Guid]::NewGuid().ToString()
 $startedAt = [DateTime]::UtcNow
 $stages = [System.Collections.Generic.List[object]]::new()
@@ -63,6 +66,7 @@ function Write-AcceptanceManifest {
         hostBootSessionId = $hostBootSessionId
         releaseInputs = $releaseInputs
         releaseManifestSHA256 = $releaseManifestSHA256
+        supportExportMode = $SupportExportMode
         supportExportOperationId = $supportExportOperationId
         supportArtifactSHA256 = $supportArtifactSHA256
         supportArtifactSizeBytes = $supportArtifactSizeBytes
@@ -257,45 +261,49 @@ try {
     if ($platformCapabilities.canExportLogs -ne $true) {
         throw "Platform support export capability is not available."
     }
-    $support = Invoke-RestMethod -Method Post -Uri "$BaseURL/platform/support-exports" -Headers $headers -TimeoutSec 30
-    if ($support.kind -ne 'support-export' -or $support.state -ne 'accepted' -or -not $support.operationId) {
-        throw "Support export was not accepted response=$($support | ConvertTo-Json -Compress)"
-    }
-    $supportDeadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    $supportOperation = $null
-    while ([DateTime]::UtcNow -lt $supportDeadline) {
-        $resource = Invoke-RestMethod -Method Get -Uri "$BaseURL/platform/workflows/current" -Headers $headers -TimeoutSec 10
-        if ($resource.state -ne 'loaded' -or $null -eq $resource.operation) {
-            throw "Support export workflow owner is not loaded."
+    if ($SupportExportMode -eq "capability-only") {
+        Add-Stage -Name $currentStage -Status "passed" -Message "Platform support export capability is explicitly available; artifact execution is deferred while the enclosing Platform workflow owns the durable operation resource."
+    } else {
+        $support = Invoke-RestMethod -Method Post -Uri "$BaseURL/platform/support-exports" -Headers $headers -TimeoutSec 30
+        if ($support.kind -ne 'support-export' -or $support.state -ne 'accepted' -or -not $support.operationId) {
+            throw "Support export was not accepted response=$($support | ConvertTo-Json -Compress)"
         }
-        $supportOperation = $resource.operation
-        if ($supportOperation.operationId -ne $support.operationId) {
-            throw "Support export workflow identity changed expected=$($support.operationId) actual=$($supportOperation.operationId)"
+        $supportDeadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+        $supportOperation = $null
+        while ([DateTime]::UtcNow -lt $supportDeadline) {
+            $resource = Invoke-RestMethod -Method Get -Uri "$BaseURL/platform/workflows/current" -Headers $headers -TimeoutSec 10
+            if ($resource.state -ne 'loaded' -or $null -eq $resource.operation) {
+                throw "Support export workflow owner is not loaded."
+            }
+            $supportOperation = $resource.operation
+            if ($supportOperation.operationId -ne $support.operationId) {
+                throw "Support export workflow identity changed expected=$($support.operationId) actual=$($supportOperation.operationId)"
+            }
+            if ($supportOperation.state -eq 'completed') { break }
+            if ($supportOperation.state -eq 'failed') {
+                throw "Support export failed evidence=$($supportOperation.failure.message)"
+            }
+            Start-Sleep -Seconds 1
         }
-        if ($supportOperation.state -eq 'completed') { break }
-        if ($supportOperation.state -eq 'failed') {
-            throw "Support export failed evidence=$($supportOperation.failure.message)"
+        if ($null -eq $supportOperation -or $supportOperation.state -ne 'completed' -or $null -eq $supportOperation.artifact) {
+            throw "Support export did not complete with artifact evidence operationId=$($support.operationId)"
         }
-        Start-Sleep -Seconds 1
+        $artifactPath = [IO.Path]::GetFullPath([string]$supportOperation.artifact.path)
+        $supportRoot = [IO.Path]::GetFullPath((Join-Path $env:ProgramData 'VitalServer\support')).TrimEnd([IO.Path]::DirectorySeparatorChar)
+        if (-not $artifactPath.StartsWith($supportRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+            throw "Support artifact is outside managed root or missing path=$artifactPath"
+        }
+        $artifactFile = Get-Item -LiteralPath $artifactPath
+        $artifactDigest = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($supportOperation.artifact.sha256 -ne $artifactDigest -or [Int64]$supportOperation.artifact.sizeBytes -ne [Int64]$artifactFile.Length) {
+            throw "Support artifact digest or byte size differs from workflow evidence."
+        }
+        $supportExportOperationId = [string]$support.operationId
+        $supportArtifactSHA256 = $artifactDigest
+        $supportArtifactSizeBytes = [Int64]$artifactFile.Length
+        Add-Stage -Name $currentStage -Status "passed" -Message "Managed support artifact completed operationId=$($support.operationId) sha256=$artifactDigest."
     }
-    if ($null -eq $supportOperation -or $supportOperation.state -ne 'completed' -or $null -eq $supportOperation.artifact) {
-        throw "Support export did not complete with artifact evidence operationId=$($support.operationId)"
-    }
-    $artifactPath = [IO.Path]::GetFullPath([string]$supportOperation.artifact.path)
-    $supportRoot = [IO.Path]::GetFullPath((Join-Path $env:ProgramData 'VitalServer\support')).TrimEnd([IO.Path]::DirectorySeparatorChar)
-    if (-not $artifactPath.StartsWith($supportRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
-        -not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
-        throw "Support artifact is outside managed root or missing path=$artifactPath"
-    }
-    $artifactFile = Get-Item -LiteralPath $artifactPath
-    $artifactDigest = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($supportOperation.artifact.sha256 -ne $artifactDigest -or [Int64]$supportOperation.artifact.sizeBytes -ne [Int64]$artifactFile.Length) {
-        throw "Support artifact digest or byte size differs from workflow evidence."
-    }
-    $supportExportOperationId = [string]$support.operationId
-    $supportArtifactSHA256 = $artifactDigest
-    $supportArtifactSizeBytes = [Int64]$artifactFile.Length
-    Add-Stage -Name $currentStage -Status "passed" -Message "Managed support artifact completed operationId=$($support.operationId) sha256=$artifactDigest."
 
     $currentStage = "runtime-provider-stop"
     $stop = Invoke-RestMethod -Method Post -Uri "$BaseURL/platform/runtime-provider/stop" -Headers $headers -TimeoutSec $TimeoutSeconds

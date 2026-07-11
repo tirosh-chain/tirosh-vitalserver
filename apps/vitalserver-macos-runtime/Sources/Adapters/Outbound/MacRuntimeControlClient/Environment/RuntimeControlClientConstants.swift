@@ -66,6 +66,7 @@ enum RuntimeControlClientConstants {
         static let optionDiskGiB = "--disk-gib"
         static let optionNetwork = "--network"
         static let optionProxyPort = "--proxy-port"
+        static let optionRuntimeControlPort = "--runtime-control-port"
         static let optionVitalFilesDirectory = "--vital-files-dir"
         static let optionVitalServerURL = "--vitalserver-url"
         static let optionRemoteConsoleURL = "--remote-console-url"

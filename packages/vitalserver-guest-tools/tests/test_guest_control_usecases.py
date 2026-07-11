@@ -149,6 +149,12 @@ class FakeOperations:
         return {"events": [], "nextCursor": None, "matchingCount": None}
 
 
+class MissingOperationRead(FakeOperations):
+    def get(self, operation_id: str) -> ServiceOperation | None:
+        del operation_id
+        return None
+
+
 class FakeServiceControl:
     def __init__(
         self,
@@ -1596,6 +1602,33 @@ def test_prepare_update_shutdown_returns_running_background_operation() -> None:
         usecases.get_operation("op_update-shutdown_prepare-update-shutdown_1")
         == operation
     )
+
+
+def test_prepare_update_shutdown_rejects_missing_persisted_operation_state() -> None:
+    operations = MissingOperationRead()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        update_shutdown=FakeUpdateShutdown(),
+    )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        usecases.prepare_update_shutdown(
+            request_id="update-shutdown-request-1",
+            version="0.2.0",
+    )
+
+    assert error.value.kind == "operationStateMissing"
+    assert (
+        "operationId=op_update-shutdown_prepare-update-shutdown_1"
+        in error.value.message
+    )
+    assert [saved.state for saved in operations.saved] == [
+        OperationState.ACCEPTED,
+        OperationState.RUNNING,
+    ]
 
 
 def test_prepare_update_shutdown_ready_callback_persists_completed_result() -> None:

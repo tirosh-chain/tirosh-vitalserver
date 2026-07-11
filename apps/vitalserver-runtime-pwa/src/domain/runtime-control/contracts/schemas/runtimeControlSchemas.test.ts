@@ -5,6 +5,7 @@ import {
   platformCapabilitiesSchema,
   runtimeCapabilitiesSchema,
   runtimeEventHistorySchema,
+  runtimeGuestControlServiceOperationSchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
   platformOperationStateSchema,
@@ -146,13 +147,13 @@ describe("runtime control contract schemas", () => {
   });
 
   it("accepts unknown platform health values in PlatformState responses", () => {
-    expect(platformStateSchema.parse({ services: [], runtimeInstallationState: "missing", platformHealth: "surprising-from-helper" }).platformHealth)
+    expect(platformStateSchema.parse({ services: platformServices(), runtimeInstallationState: "missing", platformHealth: "surprising-from-helper" }).platformHealth)
       .toBe("surprising-from-helper");
   });
 
   it("accepts Remote Console fields in PlatformState responses", () => {
     expect(
-      platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+      platformStateSchema.parse({ services: platformServices(), runtimeInstallationState: "missing",
         platformAPIHTTP: "200",
         platformAPIStartedAt: "2026-05-26T04:30:00Z"
       })
@@ -164,7 +165,7 @@ describe("runtime control contract schemas", () => {
 
   it("accepts PlatformState responses without container observation", () => {
     expect(
-      platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+      platformStateSchema.parse({ services: platformServices(), runtimeInstallationState: "missing",
         platformHealth: "healthy",
         installedVersion: "loaded"
       })
@@ -192,7 +193,7 @@ describe("runtime control contract schemas", () => {
       "systemDisk"
     ]) {
       expect(() =>
-        platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+        platformStateSchema.parse({ services: platformServices(), runtimeInstallationState: "missing",
           platformHealth: "healthy",
           [field]: null
         })
@@ -203,7 +204,7 @@ describe("runtime control contract schemas", () => {
   it("requires explicit PlatformState installation state instead of legacy installed bool", () => {
     expect(
       platformStateSchema.parse({
-        services: [],
+        services: platformServices(),
         runtimeInstallationState: "present"
       })
     ).toMatchObject({
@@ -211,7 +212,7 @@ describe("runtime control contract schemas", () => {
     });
     expect(() =>
       platformStateSchema.parse({
-        services: [],
+        services: platformServices(),
         runtimeInstalled: true,
         runtimeInstallationState: "present"
       })
@@ -307,7 +308,7 @@ describe("runtime control contract schemas", () => {
     ).toThrow(/published/);
 
     expect(() =>
-      platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+      platformStateSchema.parse({ services: platformServices(), runtimeInstallationState: "missing",
         platformHealth: "healthy",
         redisRelayStatus
       })
@@ -316,7 +317,7 @@ describe("runtime control contract schemas", () => {
 
   it("rejects legacy Guest address evidence from PlatformState", () => {
     expect(() =>
-      platformStateSchema.parse({ services: [], runtimeInstallationState: "missing",
+      platformStateSchema.parse({ services: platformServices(), runtimeInstallationState: "missing",
         platformHealth: "healthy",
         guestAddressRead: {
           state: "loaded",
@@ -329,36 +330,94 @@ describe("runtime control contract schemas", () => {
   });
 
   it("accepts unknown runtime provider states in PlatformState responses", () => {
-    expect(platformStateSchema.parse({ services: [], runtimeInstallationState: "missing", runtimeProviderState: "hibernating" }).runtimeProviderState)
+    expect(platformStateSchema.parse({ services: platformServices(), runtimeInstallationState: "missing", runtimeProviderState: "hibernating" }).runtimeProviderState)
       .toBe("hibernating");
   });
 
   it("requires canonical Platform service state and explicit read error", () => {
     expect(
       platformStateSchema.parse({
-        services: [{ role: "runtime-provider", state: "running", readError: null }],
+        services: platformServices(),
         runtimeInstallationState: "executable"
       }).services[0]
     ).toEqual({ role: "runtime-provider", state: "running", readError: null });
 
     expect(() =>
       platformStateSchema.parse({
-        services: [{ role: "runtime-provider", state: "loaded", readError: null }],
+        services: [
+          { role: "runtime-provider", state: "loaded", readError: null },
+          ...platformServices().slice(1)
+        ],
         runtimeInstallationState: "executable"
       })
     ).toThrow();
     expect(() =>
       platformStateSchema.parse({
-        services: [{ role: "runtime-provider", state: "running" }],
+        services: [
+          { role: "runtime-provider", state: "running" },
+          ...platformServices().slice(1)
+        ],
         runtimeInstallationState: "executable"
       })
     ).toThrow();
     expect(() =>
       platformStateSchema.parse({
-        services: [{ role: "runtime-provider", state: "read-failed", readError: "" }],
+        services: [
+          { role: "runtime-provider", state: "read-failed", readError: "" },
+          ...platformServices().slice(1)
+        ],
         runtimeInstallationState: "executable"
       })
     ).toThrow();
+  });
+
+  it("requires each fixed Platform service role exactly once", () => {
+    const base = {
+      runtimeInstallationState: "missing",
+      services: platformServices()
+    };
+
+    expect(platformStateSchema.parse(base).services).toHaveLength(5);
+    expect(() =>
+      platformStateSchema.parse({ ...base, services: [] })
+    ).toThrow(/Platform service role is required/);
+    expect(() =>
+      platformStateSchema.parse({
+        ...base,
+        services: base.services.filter(
+          (service) => service.role !== "log-sync"
+        )
+      })
+    ).toThrow(/Platform service role is required: log-sync/);
+    expect(() =>
+      platformStateSchema.parse({
+        ...base,
+        services: [
+          ...base.services,
+          { role: "watchdog", state: "unavailable", readError: "duplicate" }
+        ]
+      })
+    ).toThrow(/Platform service role must be reported exactly once: watchdog/);
+  });
+
+  it("accepts all Runtime Controller settings apply operation commands", () => {
+    for (const command of [
+      "apply-settings",
+      "apply-admin-password",
+      "apply-redis-relay-settings"
+    ]) {
+      expect(
+        runtimeGuestControlServiceOperationSchema.parse({
+          operationId: `operation-${command}`,
+          service: "runtime-settings",
+          command,
+          state: "completed",
+          createdAt: "2026-07-01T00:00:00Z",
+          updatedAt: "2026-07-01T00:00:01Z",
+          failure: null
+        }).command
+      ).toBe(command);
+    }
   });
 
   it("requires complete VitalDB recorder activity observations", () => {
@@ -1009,6 +1068,16 @@ describe("runtime control contract schemas", () => {
     });
   });
 });
+
+function platformServices() {
+  return [
+    { role: "runtime-provider" as const, state: "running" as const, readError: null },
+    { role: "public-proxy" as const, state: "running" as const, readError: null },
+    { role: "log-sync" as const, state: "running" as const, readError: null },
+    { role: "sleep-prevention" as const, state: "running" as const, readError: null },
+    { role: "watchdog" as const, state: "running" as const, readError: null }
+  ];
+}
 
 function fullCapabilities() {
   return {

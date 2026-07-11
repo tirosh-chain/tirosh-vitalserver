@@ -68,6 +68,7 @@ def test_windows_service_install_requires_matching_provision_owner() -> None:
     assert "$platformConfig.runtimeProviderDocument" in script
     assert "$platformConfig.apiToken -ne $apiToken" in script
     assert "-ReleaseManifestPath $ReleaseManifestPath" in script
+    assert "-SupportExportMode $SupportExportMode" in script
 
 
 def test_windows_offline_install_is_owner_driven_and_checksum_gated() -> None:
@@ -92,6 +93,8 @@ def test_windows_offline_install_is_owner_driven_and_checksum_gated() -> None:
         "-InstallDocumentPath $installDocument",
         'schedulerKind = "windows-scheduled-task"',
         'applyPolicy = "verify-only"',
+        "trustedBundleInbox = $inboxRoot",
+        "Protect-OwnerDirectory -Path $inboxRoot",
     ):
         assert required in script
     assert "Remove-VM" not in script
@@ -206,6 +209,7 @@ def test_windows_update_and_rollback_preserve_runtime_data_disk_and_restore_all_
         "PreviousReleasePath",
         "PreviousSystemVHDXPath",
         "windows-hyperv-update-recovery-acceptance.json",
+        "-SupportExportMode 'capability-only'",
         "rollbackState=restored",
     ):
         assert required in apply
@@ -290,6 +294,7 @@ def test_windows_update_trust_requires_out_of_band_digest_and_hardens_owner() ->
         "trustedBundleDigests",
         "icacls.exe",
         "Restart-Service -Name 'VitalServerPlatformAgent'",
+        "trustedBundleInbox",
     ):
         assert required in script
     assert "ExpectedSHA256 = $actual" not in script
@@ -322,6 +327,23 @@ def test_windows_uninstall_validates_owned_resources_and_preserves_data_by_mode(
     ):
         assert required in script
     assert "Remove-Item -LiteralPath ([string]$provision.runtimeDataVHDXPath)" not in script
+    assert script.rindex("Write-Workflow -State 'completed'") > script.index(
+        "Windows uninstall postcondition failed"
+    )
+    assert script.rindex("Write-Workflow -State 'completed'") > script.index(
+        "Write-UninstallProof -Path $proofPath -Document $proof"
+    )
+    assert "Clean uninstall removes its internal workflow owner" in script
+    assert "external failure proof is authoritative" in script
+
+
+def test_windows_clean_uninstall_acceptance_reports_external_failure_immediately() -> None:
+    script = (WINDOWS_PACKAGING / "acceptance-clean-uninstall-hyperv.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "if ($proof.state -eq 'failed')" in script
+    assert "Windows clean uninstall workflow failed" in script
 
 
 def test_windows_support_export_is_owner_driven_and_reports_partial_sources() -> None:
@@ -364,5 +386,6 @@ def test_windows_installed_acceptance_proves_support_export_artifact() -> None:
         "Join-Path $env:ProgramData 'VitalServer\\support'",
         "Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256",
         "$supportOperation.artifact.sizeBytes",
+        '$SupportExportMode -eq "capability-only"',
     ):
         assert required in script

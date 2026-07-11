@@ -34,6 +34,7 @@ final class RuntimeControlAPIOperationLeaseOwnerTests: XCTestCase {
             lease: .unavailable()
         )
         let owner = try RuntimeControlAPIOperationLeaseOwner(
+            token: "token",
             httpClient: CapturingRuntimeControlClientHTTPClient(response: jsonResponse(state))
         )
 
@@ -47,6 +48,7 @@ final class RuntimeControlAPIOperationLeaseOwnerTests: XCTestCase {
             lease: .failed(readError: "postgres read failed")
         )
         let owner = try RuntimeControlAPIOperationLeaseOwner(
+            token: "token",
             httpClient: CapturingRuntimeControlClientHTTPClient(response: jsonResponse(state))
         )
 
@@ -87,6 +89,7 @@ final class RuntimeControlAPIOperationLeaseOwnerTests: XCTestCase {
 
     func testHTTPFailureDoesNotBecomeMissingLease() throws {
         let owner = try RuntimeControlAPIOperationLeaseOwner(
+            token: "token",
             httpClient: CapturingRuntimeControlClientHTTPClient(response: RuntimeControlClientHTTPResponse(
                 statusCode: 503,
                 data: Data("service unavailable".utf8)

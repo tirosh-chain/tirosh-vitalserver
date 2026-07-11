@@ -40,6 +40,14 @@ $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
 if ($config.schemaVersion -ne 1 -or $null -eq $config.delivery -or $config.delivery.schedulerKind -ne 'windows-scheduled-task') {
     throw "Windows Platform Agent delivery owner is invalid path=$configPath"
 }
+$inboxPath = [string]$config.delivery.trustedBundleInbox
+if (-not $inboxPath -or -not (Test-Path -LiteralPath $inboxPath -PathType Container)) {
+    throw "Windows Platform Agent trusted bundle inbox owner is unavailable path=$inboxPath"
+}
+$inbox = Get-Item -LiteralPath $inboxPath -Force
+if (($inbox.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw "Windows Platform Agent trusted bundle inbox owner must not be a reparse point path=$inboxPath"
+}
 $catalog = [ordered]@{ schemaVersion = 1; sha256 = @($ExpectedSHA256) }
 Write-JSONNoBOM -Path $catalogPath -Document $catalog
 $config.delivery.applyPolicy = 'sha256-allowlist'

@@ -95,6 +95,7 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case network(NetworkMode)
     case bridgedInterface(String)
     case proxyPort(Int)
+    case runtimeControlPort(Int)
     case vitalFilesDirectory(URL)
     case vitalServerURL(String)
     case remoteConsoleURL(String)
@@ -157,6 +158,7 @@ public enum ConfigureRuntimeEffect: Equatable, Sendable {
     case createDirectory(URL, withIntermediateDirectories: Bool)
     case resizeVMDiskIfNeeded(Int)
     case setInstalledProxyPort(Int)
+    case setRuntimeControlPort(Int)
     case restrictSecretFile(URL)
     case setStartOnBoot(Bool)
     case setSystemSleepPrevention(Bool)
@@ -236,6 +238,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setAutomaticBackupSchedule,
                      .setLogArchiveRetentionDays,
                      .setLogArchiveMaximumGiB,
+                     .setRuntimeControlPort,
                      .reconcileGuestStackServices,
                      .restartRuntimeServices:
                     return false
@@ -247,6 +250,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setAutomaticBackupSchedule,
                      .setLogArchiveRetentionDays,
                      .setLogArchiveMaximumGiB,
+                     .setRuntimeControlPort,
                      .reconcileGuestStackServices,
                      .restartRuntimeServices:
                     return true
@@ -432,6 +436,11 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 throw invalid("--proxy-port must be between 1 and 65535")
             }
             effects.append(.setInstalledProxyPort(port))
+        case .runtimeControlPort(let port):
+            guard (1...65_535).contains(port) else {
+                throw invalid("--runtime-control-port must be between 1 and 65535")
+            }
+            effects.append(.setRuntimeControlPort(port))
         case .vitalFilesDirectory(let url):
             effects.append(.createDirectory(url, withIntermediateDirectories: true))
             vmConfig.setConfigureVitalFilesDirectory(RuntimeSharedDirectoryConfiguration(

@@ -3988,13 +3988,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         XCTAssertTrue(
             text.contains("let loadedSettings = initialSettings ?? controlClient.loadSettings()")
-                && text.contains("localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings")
+                && text.contains("let displaySettings = Self.settingsWithAdvertisedServiceURLPresets(")
                 && text.contains("initialStatus ?? controlClient.loadPlatformState(settings: displayRuntimeSettings)"),
             "RuntimeViewModel init must use explicit initialStatus or load status from the control client"
         )
         XCTAssertFalse(
-            text.contains(") ?? (initialSettings ?? controlClient.loadSettings())"),
-            "RuntimeViewModel init must resolve settings source once before applying local API overrides"
+            text.contains("localAPISettings"),
+            "RuntimeViewModel must not override root-owned Platform Agent settings with per-user local state"
         )
     }
 

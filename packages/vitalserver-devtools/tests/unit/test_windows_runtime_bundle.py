@@ -113,6 +113,7 @@ def test_windows_bundle_requires_image_bound_acceptance_and_is_deterministic(
                     "packagingTreeSHA256": packaging_tree_sha256,
                 },
                 "releaseManifestSHA256": hashlib.sha256(candidate_release_bytes).hexdigest(),
+                "supportExportMode": "execute",
                 "supportExportOperationId": "support-operation-1",
                 "supportArtifactSHA256": "a" * 64,
                 "supportArtifactSizeBytes": 42,

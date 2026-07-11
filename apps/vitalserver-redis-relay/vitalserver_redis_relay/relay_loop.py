@@ -25,9 +25,13 @@ def run_forever(
     *,
     config_path: Path,
     status_path: Path,
-    status_owner_url: str,
+    status_owner_url: str | None = None,
+    status_owner_socket: Path | None = None,
 ) -> None:
-    status_owner = GuestControlStatusOwnerPublisher(owner_url=status_owner_url)
+    status_owner = GuestControlStatusOwnerPublisher(
+        owner_url=status_owner_url,
+        owner_socket_path=status_owner_socket,
+    )
     batches = 0
     totals = RelayBatchResult()
     last_success_at: str | None = None

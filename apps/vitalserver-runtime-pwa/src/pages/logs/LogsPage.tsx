@@ -32,11 +32,23 @@ export function LogsPage() {
   const outputRef = useRef<HTMLPreElement>(null);
 
   const capabilities = useControlCapabilities();
-  const logs = useHostLogs({ source, lineLimit, live });
+  const capabilityData = capabilities.data ?? null;
+  const canStreamLogs =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    capabilityData?.canStreamLogs === true;
+  const logCapabilityMissing =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    (capabilityData === null || capabilityData.canStreamLogs === undefined);
+  const logStreamingUnsupported =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    capabilityData?.canStreamLogs === false;
+  const logs = useHostLogs({ source, lineLimit, live, enabled: canStreamLogs });
   const exportLogs = useCreatePlatformSupportExport();
   const workflow = usePlatformWorkflow();
   const logText = logs.data?.text ?? null;
-  const capabilityData = capabilities.data ?? null;
   const canExportLogs =
     !capabilities.isPending &&
     !capabilities.isError &&
@@ -72,7 +84,7 @@ export function LogsPage() {
           <button
             type="button"
             onClick={() => logs.refetch()}
-            disabled={logs.isFetching}
+            disabled={logs.isFetching || !canStreamLogs}
           >
             Refresh
           </button>
@@ -120,7 +132,27 @@ export function LogsPage() {
           </span>
         </div>
 
-        {logs.isPending ? (
+        {capabilities.isPending ? (
+          <p className="empty-state">Loading log streaming capability...</p>
+        ) : capabilities.isError ? (
+          <ErrorState
+            title="Failed to read log streaming capability"
+            error={capabilities.error}
+          />
+        ) : logCapabilityMissing ? (
+          <ErrorState
+            title="Log streaming capability response is incomplete"
+            error={
+              new Error(
+                "Runtime Control API did not return log streaming capability."
+              )
+            }
+          />
+        ) : logStreamingUnsupported ? (
+          <p className="muted">
+            Log streaming is not supported by this Runtime Control API.
+          </p>
+        ) : logs.isPending ? (
           <p className="empty-state">Loading logs...</p>
         ) : logs.isError ? (
           <ErrorState title="Failed to read logs" error={logs.error} />

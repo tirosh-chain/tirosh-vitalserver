@@ -7,6 +7,10 @@ describe("app settings", () => {
     expect(loadAppSettings({})).toEqual(DEFAULT_APP_SETTINGS);
   });
 
+  it("does not ship a Platform Agent API token in browser defaults", () => {
+    expect(DEFAULT_APP_SETTINGS.runtimeControl.token).toBe("");
+  });
+
   it("loads browser-safe Vite env values", () => {
     const settings = loadAppSettings({
       VITE_RUNTIME_CONTROL_API_BASE_URL: "http://127.0.0.1:18444/",

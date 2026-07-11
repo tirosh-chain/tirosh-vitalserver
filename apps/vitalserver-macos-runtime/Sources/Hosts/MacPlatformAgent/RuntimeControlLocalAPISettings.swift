@@ -1,96 +1,54 @@
+import Application
 import Foundation
+import OutboundAdapters
 import RuntimeControl
-import InboundAdapters
-import Errors
 
-@MainActor
-protocol RuntimeControlLocalAPISettingsStoring: AnyObject {
-    var runtimeControlPort: Int { get set }
+enum RuntimeControlLocalAPISettingsError: LocalizedError {
+    case readFailed(path: String, reason: String)
+    case invalidPort(path: String, port: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .readFailed(let path, let reason):
+            "Runtime Control API settings read failed path=\(path) reason=\(reason)"
+        case .invalidPort(let path, let port):
+            "Runtime Control API settings port is invalid path=\(path) port=\(port)"
+        }
+    }
 }
 
-@MainActor
-final class UserDefaultsRuntimeControlLocalAPISettingsStore: RuntimeControlLocalAPISettingsStoring {
-    static let shared = UserDefaultsRuntimeControlLocalAPISettingsStore()
+struct RuntimeControlLocalAPISettingsReader {
+    let documentURL: URL
+    let fileStore: RuntimeFileReading
 
-    private let defaults: UserDefaults
-    private let key = "runtimeControlPort"
-
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    init(
+        documentURL: URL = InstalledRuntimePaths.defaultInstalled.runtimeControlSettings,
+        fileStore: RuntimeFileReading = SystemRuntimeFileStore()
+    ) {
+        self.documentURL = documentURL
+        self.fileStore = fileStore
     }
 
-    var runtimeControlPort: Int {
-        get {
-            let stored = defaults.integer(forKey: key)
-            guard Self.validPort(stored) else {
-                return Int(RuntimeControlLocalAPIConstants.defaultPort)
+    func loadPort() throws -> Int {
+        switch RuntimeControlSettingsDocument.loadResult(
+            path: documentURL.path,
+            fileStore: fileStore
+        ) {
+        case .missing:
+            return RuntimeSettingsInitialValues.runtimeControlPort
+        case .loaded(let settings):
+            guard RuntimeSettingsReadPolicy.validRuntimeControlPort(settings.runtimeControlPort) else {
+                throw RuntimeControlLocalAPISettingsError.invalidPort(
+                    path: documentURL.path,
+                    port: settings.runtimeControlPort
+                )
             }
-            return stored
+            return settings.runtimeControlPort
+        case .failed(let reason):
+            throw RuntimeControlLocalAPISettingsError.readFailed(
+                path: documentURL.path,
+                reason: reason
+            )
         }
-        set {
-            guard Self.validPort(newValue) else {
-                return
-            }
-            defaults.set(newValue, forKey: key)
-        }
-    }
-
-    private static func validPort(_ port: Int) -> Bool {
-        (1...65_535).contains(port)
-    }
-}
-
-@MainActor
-public final class RuntimeControlLocalAPISettingsCoordinator {
-    private let store: any RuntimeControlLocalAPISettingsStoring
-    public var onPortChanged: ((Int) -> Void)?
-
-    init(store: any RuntimeControlLocalAPISettingsStoring) {
-        self.store = store
-    }
-
-    public var runtimeControlPort: Int {
-        store.runtimeControlPort
-    }
-
-    public func settingsWithLocalAPIPort(_ settings: RuntimeSettings) -> RuntimeSettings {
-        var next = settings
-        next.runtimeControlPort = runtimeControlPort
-        return next
-    }
-
-    public func apply(settings: RuntimeSettings) {
-        apply(port: settings.runtimeControlPort)
-    }
-
-    public func apply(port: Int) {
-        guard (1...65_535).contains(port) else {
-            return
-        }
-        let previousPort = store.runtimeControlPort
-        store.runtimeControlPort = port
-        guard previousPort != port else {
-            return
-        }
-        onPortChanged?(port)
-    }
-}
-
-public extension RuntimeControlLocalAPISettingsCoordinator {
-    static func live() -> RuntimeControlLocalAPISettingsCoordinator {
-        RuntimeControlLocalAPISettingsCoordinator(
-            store: UserDefaultsRuntimeControlLocalAPISettingsStore.shared
-        )
-    }
-}
-
-extension RuntimeControlLocalAPISettingsCoordinator: RuntimeControlLocalAPISettingsApplying {}
-
-@MainActor
-final class InMemoryRuntimeControlLocalAPISettingsStore: RuntimeControlLocalAPISettingsStoring {
-    var runtimeControlPort: Int
-
-    init(runtimeControlPort: Int = Int(RuntimeControlLocalAPIConstants.defaultPort)) {
-        self.runtimeControlPort = runtimeControlPort
     }
 }
