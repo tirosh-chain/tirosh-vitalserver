@@ -6,6 +6,10 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
+    GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
+    guest_deploy_material_sha256,
+)
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
     running_vm_processes_for_home,
 )
@@ -16,7 +20,8 @@ from tirosh_vitalserver.devtools.adapters.toolchain.gzip_compression import (
 )
 from tirosh_vitalserver.devtools.application.inputs import RootfsBaseInput
 
-ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION = 1
+ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION = 3
+ROOTFS_GUEST_DEPLOY_RELATIVE_PATH = "data/deploy"
 REQUIRED_ROOTFS_STAGES = (
     "runtime-data-mount",
     "runtime-data-configure",
@@ -303,6 +308,7 @@ def write_rootfs_artifact_manifest(
     compression_threads: int,
 ) -> None:
     run_id = require_same_proof_run_id(runtime_manifest, ready_marker)
+    guest_deploy_material = guest_deploy_material_sha256(guest_deploy_path(source))
     document = {
         "schemaVersion": ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION,
         "createdAt": utc_now(),
@@ -320,6 +326,11 @@ def write_rootfs_artifact_manifest(
             "runId": run_id,
             "runtimeManifest": str(runtime_manifest_path(source)),
             "readyMarker": str(ready_marker_path(source)),
+        },
+        "guestDeploy": {
+            "path": ROOTFS_GUEST_DEPLOY_RELATIVE_PATH,
+            "materialDigestVersion": GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
+            "materialSha256": guest_deploy_material,
         },
         "proof": {
             "runtimeManifestSchemaVersion": runtime_manifest.get("schemaVersion"),
@@ -377,6 +388,19 @@ def require_rootfs_artifact_manifest(
         raise SystemExit(f"error: rootfs artifact source proof is missing: {manifest}")
     if not isinstance(proof_document, dict):
         raise SystemExit(f"error: rootfs artifact runtime proof is missing: {manifest}")
+    expected_guest_deploy_material = guest_deploy_material_sha256(
+        guest_deploy_path(source)
+    )
+    actual_guest_deploy_material = require_rootfs_artifact_guest_deploy_material_sha256(
+        document,
+        manifest,
+    )
+    if actual_guest_deploy_material != expected_guest_deploy_material:
+        raise SystemExit(
+            "error: rootfs artifact manifest Guest deploy material does not match "
+            f"current proof; expected={expected_guest_deploy_material} "
+            f"actual={actual_guest_deploy_material} manifest={manifest}"
+        )
 
     require_same_proof_run_id(runtime_manifest, ready_marker)
     expected_run_id = runtime_manifest.get("runId")
@@ -421,6 +445,137 @@ def require_rootfs_artifact_manifest(
     return document
 
 
+def require_rootfs_artifact_guest_deploy_material_sha256(
+    document: dict[str, object],
+    manifest: Path,
+) -> str:
+    guest_deploy = document.get("guestDeploy")
+    if not isinstance(guest_deploy, dict):
+        raise SystemExit(
+            "error: rootfs artifact Guest deploy proof is missing: "
+            f"{manifest}"
+        )
+    if guest_deploy.get("path") != ROOTFS_GUEST_DEPLOY_RELATIVE_PATH:
+        raise SystemExit(
+            "error: rootfs artifact Guest deploy proof path is invalid; "
+            f"expected={ROOTFS_GUEST_DEPLOY_RELATIVE_PATH} "
+            f"actual={guest_deploy.get('path')} manifest={manifest}"
+        )
+    if (
+        guest_deploy.get("materialDigestVersion")
+        != GUEST_DEPLOY_MATERIAL_DIGEST_VERSION
+    ):
+        raise SystemExit(
+            "error: rootfs artifact Guest deploy material digest version is invalid; "
+            f"expected={GUEST_DEPLOY_MATERIAL_DIGEST_VERSION} "
+            f"actual={guest_deploy.get('materialDigestVersion')} manifest={manifest}"
+        )
+    material_sha256 = guest_deploy.get("materialSha256")
+    if not isinstance(material_sha256, str) or not is_sha256(material_sha256):
+        raise SystemExit(
+            "error: rootfs artifact Guest deploy material digest is invalid: "
+            f"{manifest}"
+        )
+    return material_sha256
+
+
+def require_rootfs_artifact_guest_deploy_match(
+    artifact: Path,
+    deploy_dir: Path,
+) -> str:
+    """Require a staged Guest deploy to match a proven rootfs artifact receipt."""
+
+    document = require_rootfs_artifact_receipt(artifact)
+    manifest = rootfs_artifact_manifest_path(artifact)
+    expected = require_rootfs_artifact_guest_deploy_material_sha256(
+        document,
+        manifest,
+    )
+    actual = guest_deploy_material_sha256(deploy_dir)
+    if actual != expected:
+        raise SystemExit(
+            "error: staged Guest deploy does not match rootfs artifact receipt; "
+            f"expected={expected} actual={actual} artifact={artifact} "
+            f"deploy={deploy_dir}"
+        )
+    return actual
+
+
+def require_rootfs_artifact_receipt(artifact: Path) -> dict[str, object]:
+    """Read a portable rootfs receipt and verify its self-contained proof."""
+
+    if artifact.is_symlink() or not artifact.is_file():
+        raise SystemExit(f"error: rootfs artifact is missing or unsafe: {artifact}")
+    manifest = rootfs_artifact_manifest_path(artifact)
+    if manifest.is_symlink() or not manifest.is_file():
+        raise SystemExit(
+            "error: rootfs artifact manifest is missing or unsafe; refusing to "
+            f"use unproven artifact: {manifest}"
+        )
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            f"error: rootfs artifact manifest is unreadable: {manifest}: {error}"
+        ) from error
+    if not isinstance(document, dict):
+        raise SystemExit(
+            f"error: rootfs artifact manifest is invalid: expected object: {manifest}"
+        )
+    schema_version = document.get("schemaVersion")
+    if schema_version != ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION:
+        raise SystemExit(
+            "error: rootfs artifact manifest schema is unsupported; "
+            f"expected={ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION} "
+            f"actual={schema_version} manifest={manifest}"
+        )
+    artifact_document = document.get("artifact")
+    if not isinstance(artifact_document, dict):
+        raise SystemExit(f"error: rootfs artifact proof is missing: {manifest}")
+    expected_artifact_sha256 = artifact_document.get("sha256")
+    if not is_sha256(expected_artifact_sha256):
+        raise SystemExit(
+            "error: rootfs artifact manifest has invalid artifact digest: "
+            f"{manifest}"
+        )
+    try:
+        actual_artifact_sha256 = sha256_file(artifact)
+    except OSError as error:
+        raise SystemExit(
+            f"error: rootfs artifact is unreadable: {artifact}: {error}"
+        ) from error
+    if actual_artifact_sha256 != expected_artifact_sha256:
+        raise SystemExit(
+            "error: rootfs artifact digest does not match manifest; "
+            f"expected={expected_artifact_sha256} actual={actual_artifact_sha256} "
+            f"artifact={artifact}"
+        )
+    source = document.get("source")
+    proof = document.get("proof")
+    if not isinstance(source, dict) or not non_empty_string(source.get("runId")):
+        raise SystemExit(
+            "error: rootfs artifact compile run proof is missing: "
+            f"{manifest}"
+        )
+    if not isinstance(proof, dict):
+        raise SystemExit(
+            "error: rootfs artifact runtime proof is missing: "
+            f"{manifest}"
+        )
+    if proof.get("cleanupStatus") != "passed":
+        raise SystemExit(
+            "error: rootfs artifact cleanup proof did not pass: "
+            f"manifest={manifest} actual={proof.get('cleanupStatus')}"
+        )
+    if proof.get("requiredStages") != list(REQUIRED_ROOTFS_STAGES):
+        raise SystemExit(
+            "error: rootfs artifact required stages do not match contract: "
+            f"manifest={manifest}"
+        )
+    require_rootfs_artifact_guest_deploy_material_sha256(document, manifest)
+    return document
+
+
 def require_same_proof_run_id(
     runtime_manifest: dict[str, object],
     ready_marker: dict[str, object],
@@ -443,6 +598,10 @@ def runtime_manifest_path(source: Path) -> Path:
 
 def ready_marker_path(source: Path) -> Path:
     return source.parent.parent / "data" / "run" / "rootfs-ready"
+
+
+def guest_deploy_path(source: Path) -> Path:
+    return source.parent.parent / ROOTFS_GUEST_DEPLOY_RELATIVE_PATH
 
 
 def read_cleanup_status(runtime_manifest: dict[str, object]) -> object:
@@ -615,3 +774,11 @@ def require_apt_plan(
 
 def non_empty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )

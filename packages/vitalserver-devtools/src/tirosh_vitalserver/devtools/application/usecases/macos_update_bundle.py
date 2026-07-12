@@ -3,13 +3,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from dataclasses import replace
 from pathlib import Path
 
-from tirosh_vitalserver.devtools.adapters.build_config import load_config
-from tirosh_vitalserver.devtools.adapters.guest_services.docker_images import (
-    build_docker_image_bundle as run_docker_image_bundle,
-)
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     build_app_bundle,
     build_swift,
@@ -24,19 +19,18 @@ from tirosh_vitalserver.devtools.adapters.update_bundle.bundle_service import (
     build_bundle,
     verify_bundle,
 )
-from tirosh_vitalserver.devtools.application.guest_service_plans import (
-    docker_image_bundle_build_plan,
-)
 from tirosh_vitalserver.devtools.application.inputs import (
     ApplySmokeReleaseUpdateBundleInput,
     NginxBundleInput,
     ReleaseUpdateBundleInput,
     VerifyReleaseUpdateBundleInput,
 )
+from tirosh_vitalserver.devtools.application.usecases.guest_services import (
+    build_configured_docker_image_bundles,
+)
 from tirosh_vitalserver.devtools.application.usecases.host_proxy import (
     build_nginx as build_nginx_bundle,
 )
-from tirosh_vitalserver.devtools.config.docker_images import load_docker_images_config
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
@@ -102,9 +96,10 @@ def build_update_bundle(input: ReleaseUpdateBundleInput) -> int:
             ),
         )
     )
-    optional_docker_bundle = build_docker_image_bundles_from_config(
+    optional_docker_bundle = build_configured_docker_image_bundles(
         root=root,
         config=input.config,
+        runtime_dir=runtime_dir,
         bundle_path=settings.docker_bundle,
         platform=input.docker_platform,
         compression_threads=input.compression_threads,
@@ -247,49 +242,3 @@ def release_update_bundle_path(
         else settings.dist_dir / "update-bundles"
     )
     return output_dir / f"{bundle_name}.tar.gz"
-
-
-def build_docker_image_bundles_from_config(
-    *,
-    root: Path,
-    config: Path,
-    bundle_path: Path,
-    platform: str | None,
-    compression_threads: int | None,
-    include_optional: bool,
-) -> Path | None:
-    build_config = load_config(config)
-    docker_config = load_docker_images_config(build_config, root)
-    plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=docker_config,
-        bundle_path=bundle_path,
-        platform=platform,
-        compression_threads=compression_threads,
-    )
-    run_docker_image_bundle(
-        plan=plan.image_plan,
-        bundle_path=plan.bundle_path,
-        compression_threads_value=plan.compression_threads,
-    )
-    if (
-        not include_optional
-        or not docker_config.optional_images
-        or docker_config.optional_bundle_path is None
-    ):
-        return None
-
-    optional_config = replace(docker_config, images=docker_config.optional_images)
-    optional_plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=optional_config,
-        bundle_path=docker_config.optional_bundle_path,
-        platform=platform,
-        compression_threads=compression_threads,
-    )
-    run_docker_image_bundle(
-        plan=optional_plan.image_plan,
-        bundle_path=optional_plan.bundle_path,
-        compression_threads_value=optional_plan.compression_threads,
-    )
-    return optional_plan.bundle_path

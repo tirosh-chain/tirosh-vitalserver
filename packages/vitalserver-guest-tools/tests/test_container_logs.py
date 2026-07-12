@@ -12,7 +12,7 @@ def test_docker_compose_logs_command_targets_vitalserver_project() -> None:
         "docker",
         "compose",
         "--env-file",
-        "/mnt/tirosh/deploy/.env",
+        "/mnt/runtime/compose.env",
         "--project-name",
         "vitalserver",
         "-f",

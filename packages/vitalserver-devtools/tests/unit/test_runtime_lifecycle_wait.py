@@ -469,6 +469,39 @@ def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
     assert "Check VM launcher log" in message
 
 
+def test_wait_for_runtime_boot_smoke_rejects_failed_bootstrap_result(tmp_path):
+    bootstrap_result = tmp_path / "data/run/bootstrap-result.json"
+    bootstrap_result.parent.mkdir(parents=True)
+    bootstrap_result.write_text(
+        json.dumps(
+            {
+                "status": "failed",
+                "message": "Guest bootstrap failed before completion.",
+                "reasonCodes": ["guest-bootstrap-failed"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit) as error:
+        wait_for_runtime_boot_smoke(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="runtime-run-test",
+            )
+        )
+
+    message = str(error.value)
+    assert "runtime boot smoke bootstrap failed" in message
+    assert "runId=runtime-run-test" in message
+    assert "stage=bootstrap-result" in message
+    assert "guest-bootstrap-failed" in message
+    assert str(bootstrap_result) in message
+    assert "Check VM launcher log" in message
+
+
 def test_wait_for_runtime_boot_smoke_rejects_failed_guest_control_stage(tmp_path):
     write_runtime_boot_smoke_manifest(
         tmp_path,
@@ -534,6 +567,11 @@ def test_begin_runtime_boot_smoke_run_invalidates_stale_proof(monkeypatch, tmp_p
         lambda: tmp_path,
     )
     write_runtime_boot_smoke_manifest(tmp_path / "vm", run_id="stale-run")
+    bootstrap_result = tmp_path / "vm/data/run/bootstrap-result.json"
+    bootstrap_result.write_text(
+        json.dumps({"status": "failed"}),
+        encoding="utf-8",
+    )
     lifecycle = tmp_path / "vm/run/vm-lifecycle.json"
     lifecycle.parent.mkdir(parents=True, exist_ok=True)
     lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
@@ -548,6 +586,7 @@ def test_begin_runtime_boot_smoke_run_invalidates_stale_proof(monkeypatch, tmp_p
 
     assert result == 0
     assert not (tmp_path / "vm/data/run/runtime-boot-smoke-manifest.json").exists()
+    assert not bootstrap_result.exists()
     assert not lifecycle.exists()
     context = json.loads(
         (tmp_path / "vm/run/runtime-boot-smoke-run.json").read_text(
@@ -557,6 +596,7 @@ def test_begin_runtime_boot_smoke_run_invalidates_stale_proof(monkeypatch, tmp_p
     assert context["runId"] == "runtime-run-test"
     assert context["removedStaleProof"] == [
         str(tmp_path / "vm/data/run/runtime-boot-smoke-manifest.json"),
+        str(bootstrap_result),
         str(tmp_path / "vm/run/vm-lifecycle.json"),
     ]
 

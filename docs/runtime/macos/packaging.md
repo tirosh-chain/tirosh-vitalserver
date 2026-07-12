@@ -1,6 +1,6 @@
 # VitalServer VM Packaging and Update
 
-빌드 산출물, 설치 흐름, install/update 계약을 정리합니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/dmg/dev`/`make dist/dmg/release`, update bundle, 설치 설정 JSON을 볼 때 사용합니다.
+빌드 산출물, 설치 흐름, install/update 계약을 정리합니다. 현장 전달 표준 `make dist/dmg/dev`, 반복 개발용 `make dist/dmg/dev/cached`, `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/dmg/release`, update bundle, 설치 설정 JSON을 볼 때 사용합니다.
 
 ## 이 문서에서 바로 알아야 할 것
 
@@ -19,11 +19,11 @@
 
 | 시나리오 | 산출물 | 생성 명령 | 현장 적용 |
 |---|---|---|---|
-| 신규 설치 dev 빠른 패키징 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/dev` | release-dev.json 기반 개발 산출물 생성 |
-| 신규 설치 dev 전체 gate | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/dev/all` | review, clean compile, artifact verify, runtime smoke |
+| 신규 설치 dev 현장 전달 표준 gate | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/dev` | review, environment preflight, clean compile, artifact verify, runtime smoke |
+| 반복 개발용 dev cache-preferred 패키징 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/dev/cached` | 현재 source 계약과 rootfs receipt가 일치하는 golden cache만 재사용. 현장 전달 proof는 만들지 않음 |
 | 신규 설치 release 검증 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/release` | release.json 기반 release 검증 |
-| `.pkg` 직접 배포 dev 검증 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/dev` | `sudo installer -pkg ... -target /` |
-| `.pkg` 직접 배포 release 검증 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/release` | `sudo installer -pkg ... -target /` |
+| 개발용 `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/dev` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/dev`가 소유 |
+| release `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/release` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/release`가 소유 |
 | air-gapped Product Update | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | `make dist/update/release` | Helper app Update 탭 또는 `vitalserver-vm runtime apply-bundle` |
 | VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make dist/image-update/release` | rootfs-base 교체가 필요한 경우에만 사용 |
 | Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | 전달 전 manifest/checksum 검증 |
@@ -45,6 +45,10 @@ apps/vitalserver-macos-runtime/release-dev.json
 
 Release manifest는 build input이고, Product Lab/API 구현의 세부 contract는 소유하지 않습니다. Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-of-truth-map)에 정리합니다. Packaging 관점에서는 release manifest가 artifact identity와 service catalog를 소유하고, `vm-build.toml`이 build/deploy 경로와 Docker image bundle 구성을 소유합니다.
 
+`make devtools/release-contract`는 Docker export, rootfs fingerprint/cache 판단보다 먼저 release manifest의 Guest service image를 `Support/Guest/compose.yaml`과 `config/vm-build.toml`의 Docker plan에 대조합니다. 이 단계는 Compose, VM config, Guest Python source를 고치지 않습니다. 불일치는 source path, service/field, expected/actual image를 포함한 compile failure로 끝납니다. 이 단계가 쓰는 것은 지정된 Swift `Generated*.swift` 파생 소스뿐입니다.
+
+따라서 image tag를 바꾸는 release는 manifest만 바꿔 빌드 중에 다른 입력을 덮어쓰지 않습니다. manifest, Compose, VM Docker plan을 같은 변경에서 명시적으로 맞춰야 합니다. 나중에 profile별 image가 달라지면 shared source를 rewrite하는 대신 profile별 immutable compile input 또는 `.tmp` 아래 profile-scoped rendered deploy material과 receipt를 사용합니다.
+
 | Field | Owner | 의미 |
 |---|---|---|
 | `channel` | release manifest | updater channel compatibility와 artifact routing. 설치된 updater channel과 bundle channel이 다르면 apply preflight에서 거부 |
@@ -56,7 +60,7 @@ Release manifest는 build input이고, Product Lab/API 구현의 세부 contract
 | `services.*` | release manifest | bundled service image, version, display name |
 | `bundle.optionalContainerServices` | release manifest | 이번 package/update bundle에 포함할 선택 container service 목록 |
 
-`bundle.optionalContainerServices`는 dev-only 선택 container service를 포함할지 여부만 표현합니다. Runtime v2 product stack의 Product Lab과 Postgres는 선택 TestKit service가 아니라 `services.lab`, `services.postgres`, Guest compose, packaging preflight가 함께 검증하는 product dependency입니다. Lab route, API shape, 화면 정책은 release manifest가 아니라 Runtime Control `/runtime/lab/*`, Guest Control `/runtime/lab/*`, `apps/vitalserver-lab` 구현이 소유합니다.
+`bundle.optionalContainerServices`는 dev-only 선택 container service를 포함할지 여부만 표현합니다. Runtime v2 product stack의 Product Lab과 Postgres는 선택 TestKit service가 아니라 `services.lab`, `services.postgres`, Guest compose, Guest compile contract가 함께 검증하는 product dependency입니다. Lab route, API shape, 화면 정책은 release manifest가 아니라 Runtime Control `/runtime/lab/*`, Guest Control `/runtime/lab/*`, `apps/vitalserver-lab` 구현이 소유합니다.
 
 Runtime Control PWA와 headless `vitalserver-platform-agent`는 Helper app bundle에
 함께 포함됩니다. Agent executable은 app 전체 서명 전에 nested code로 먼저
@@ -67,21 +71,39 @@ Runtime Control PWA와 headless `vitalserver-platform-agent`는 Helper app bundl
 
 ## Build and Runtime Validation Contracts
 
-Packaging workflow 이름은 각 단계가 보장하는 상태를 뜻합니다. `compile`은 artifact 생성 계약이고, installed runtime 상태를 추정하지 않습니다. Guest bootstrap 완료와 runtime contract는 별도 runtime smoke가 소유합니다. DMG dev workflow에서 cache 재사용 여부는 target 이름으로 구분합니다. `make dist/dmg/dev`는 빠른 패키징 target으로 기존 golden rootfs cache를 재사용할 수 있고, `make dist/dmg/dev/compile`은 clean golden rootfs를 새로 요구하는 제품 compile target입니다. 같은 `compile` target을 변수로 cached/clean mode 사이에서 바꾸지 않습니다.
+Packaging workflow 이름은 각 단계가 보장하는 상태를 뜻합니다. `compile`은 artifact 생성 계약이고, installed runtime 상태를 추정하지 않습니다. Guest bootstrap 완료와 runtime contract는 별도 runtime smoke가 소유합니다. `make dist/dmg/dev`와 `make dist/dmg/release`는 각각 dev/release 현장 전달 표준 gate이며, review → release-contract → package environment preflight → PWA build → clean golden-rootfs compile → DMG artifact verify → golden runtime smoke 순서로 실행합니다. cache 재사용 여부는 `make dist/dmg/dev/cached`라는 별도 target이 소유합니다. 같은 `compile` target을 변수로 cached/clean mode 사이에서 바꾸지 않습니다.
 
 | Target | Contract |
 |---|---|
-| `make dist/dmg/dev` | 기존 golden rootfs cache를 재사용할 수 있는 빠른 dev DMG packaging target입니다. |
+| `make dist/dmg/dev` | 현장 전달 표준 dev DMG gate입니다. review, clean golden-rootfs compile, artifact verify, golden runtime smoke를 순서대로 통과해야 합니다. |
+| `make dist/dmg/dev/cached` | 현재 Guest deploy source 계약 fingerprint와 rootfs receipt가 모두 일치하는 golden cache만 재사용하는 반복 개발용 DMG packaging target입니다. review, artifact verify, runtime smoke를 실행하지 않으므로 현장 전달 proof가 아닙니다. |
 | `make dist/dmg/dev/compile` | dev DMG를 clean golden rootfs에서 생성합니다. Rootfs 준비 proof와 package input은 검증하지만 installed runtime success를 뜻하지 않습니다. |
-| `make dist/dmg/dev/verify` | 이미 생성된 dev DMG artifact와 현재 golden rootfs runtime smoke를 검증합니다. Compile은 실행하지 않습니다. |
-| `make dist/dmg/dev/all` | review checks, clean-rootfs DMG compile, artifact verify, runtime smoke를 실행하는 설치 전 표준 gate입니다. |
+| `make dist/dmg/dev/verify` | 이미 생성된 dev DMG artifact readback과 현재 golden rootfs runtime smoke를 보는 진단 target입니다. Compile은 실행하지 않으며, verified golden cache가 없거나 stale이면 fail-fast합니다. DMG 자체를 boot한 proof도 아닙니다. |
 | `make dist/pkg/dev/compile` | dev PKG를 clean golden rootfs에서 생성합니다. |
 | `make dist/pkg/dev/runtime-smoke` | dev PKG와 같은 golden runtime contract를 검증합니다. |
-| `make dist/pkg/dev/verify` / `make dist/pkg/verify/dev` | package plan/template review, PWA Runtime Control contract/check/test, log archive/retention tests, dev PKG compile, runtime smoke를 실행하는 설치 전 표준 gate입니다. |
-| `make dist/dmg/release/verify` | release DMG 생성 후 runtime smoke를 실행합니다. Release branch gate는 release build target이 소유합니다. |
+| `make dist/pkg/dev/verify` | package plan/template review, PWA Runtime Control contract/check/test, log archive/retention tests, dev PKG compile, runtime smoke를 실행하는 package-level gate입니다. 현장 전달 proof는 DMG gate가 소유합니다. |
+| `make dist/dmg/release` | release branch guard와 review를 거친 뒤, clean golden-rootfs compile, DMG artifact verify, golden runtime smoke를 모두 실행하는 release 현장 전달 gate입니다. |
 | `make dist/pkg/release/verify` | release PKG 생성 후 runtime smoke를 실행합니다. |
 
-`compile passed`는 `installed runtime passed`와 다릅니다. DMG compile은 clean rootfs 기반 산출물 생성을 의미하고, 산출물 readback과 golden runtime smoke는 `verify`가 소유합니다. 설치 전 검증, 수동 QA 전달, release candidate 확인에는 `verify` target을 사용합니다. Runtime smoke failure는 fallback으로 보정하지 않고 failing stage, runId, manifest, bootstrap log, launcher log를 통해 실패 상태를 드러내야 합니다. `make dist/dmg/dev`는 빠른 packaging target이므로 installed runtime bootstrap, compose start, install-provision side effect를 실행하지 않습니다. 설치 후 동작 가능성을 확인해야 할 때는 `make dist/dmg/dev/verify`, `make dist/dmg/dev/all`, 또는 설치 후 `make dist/installed/health`를 사용합니다. DMG dev의 review, artifact verify, runtime smoke는 `internal/vm/dmg/dev/*` 조합 단계로 유지하지만 public target으로 노출하지 않습니다. 사용자는 cache packaging, clean compile, verify, full gate 중 하나를 선택합니다.
+`dev`와 `release`는 단순 default가 아니라 artifact identity입니다. public profile target은 각각의 release manifest를 직접 소유하므로 command-line `VM_RELEASE_FILE`로 다른 profile을 끼워 넣을 수 없습니다.
+
+`compile passed`는 `installed runtime passed`와 다릅니다. DMG compile은 clean rootfs 기반 산출물 생성을 의미하고, artifact readback과 golden runtime smoke는 각각 별도 proof입니다. 현장 전달 전에는 이 proof를 모두 묶는 `make dist/dmg/dev` 또는 `make dist/dmg/release`만 사용합니다. `make dist/dmg/dev/compile`과 `make dist/dmg/dev/verify`는 failing phase를 분리해 진단할 때 쓰는 단계 target이며, 둘 중 하나만으로 현장 전달을 선언하지 않습니다. `verify`의 runtime smoke는 verified golden cache를 요구할 뿐 cache miss/stale 상태에서 compile을 시작하지 않습니다. Runtime smoke failure는 fallback으로 보정하지 않고 failing stage, runId, manifest, bootstrap log, launcher log를 통해 실패 상태를 드러내야 합니다. `make dist/dmg/dev/cached`는 빠른 local packaging을 위한 target이므로 review, artifact readback, golden runtime smoke를 실행하지 않습니다. 어느 DMG build target도 실제 target Mac의 install-provision side effect를 실행하지 않으므로, 설치 후 동작 가능성은 `make dist/install/dev/verified` 또는 설치 후 `make dist/installed/health`로 별도 확인합니다. DMG의 review, artifact verify, runtime smoke는 내부 단계로 유지하되, 현장 전달 public workflow는 profile별 `dist/dmg/{dev|release}` 하나로 고정합니다.
+
+Package environment preflight는 rootfs compile 전에 Host-owned `swift`, `codesign`, `pkgbuild`, DMG의 `hdiutil`, output path와 기존 DMG attachment를 확인합니다. rootfs receipt, compiled Guest deploy material, golden kernel/initrd 검증은 compile 뒤 package preflight가 맡습니다. 따라서 아직 만들어지지 않은 rootfs를 앞 단계가 추정하지 않으면서도, VM/Docker compile과 무관한 Mac packaging blocker는 먼저 드러납니다.
+
+### Compile material receipt
+
+`compile`은 rootfs만 만들지 않습니다. Golden VM에서 실제로 실행한 Guest deploy material의 digest도 rootfs sidecar(`rootfs-base.raw.gz.manifest.json`, schema v3)에 기록합니다. digest에는 compose, Guest tools, Docker image bundle, product source와 함께 rootfs compile 의미를 가진 `ubuntu`, `runtimeData`, `dockerImages` metadata가 포함됩니다. 반대로 Host가 run마다 쓰는 `guestClockUtc`, rootfs `runId`, runtime-smoke 설정, `host-time.json`은 material identity에 넣지 않습니다.
+
+Guest Docker compile은 Docker side effect 전에 `Support/Guest/compose.yaml`의 product service, image, build Dockerfile, deploy include를 같은 명시 input으로 대조합니다. image 또는 Dockerfile이 config와 다르거나 Guest deploy에 포함되지 않으면 compile은 Docker pull/build 전에 실패합니다. export는 반드시 `docker image save --platform <guest platform>`으로 platform을 고정하고, 생성된 archive의 expected tag, legacy Config/Layer reference, OCI descriptor closure와 SHA-256을 compile 안에서 검증합니다. 실제 registry, Docker daemon, pull/build/export 실패는 이 검사를 대신하는 package preflight가 아니라 compile failure evidence로 남습니다.
+
+Host compile이 product image를 build/pull/export하는 유일한 경계입니다. Guest bootstrap은 검증된 bundle을 `docker load`로 소비하고 Compose를 `up --pull never --no-build`로만 시작합니다. image가 빠졌을 때 Guest가 pull하거나 다시 build해서 상태를 보정하지 않습니다. 따라서 tag 누락은 Guest fallback이 아니라 명시적인 bootstrap/Compose failure로 남습니다. Guest가 Compose에 전달하는 환경 파일은 개발 Mac의 `.env`를 복사하지 않고, explicit `runtime-config.json`과 `runtime-settings.json`에서 `/mnt/runtime/compose.env`로 materialize합니다. compiled deploy share는 immutable input이고, runtime별 환경 상태는 runtime disk에 둡니다.
+
+Package 단계는 Docker image를 다시 만들거나 Guest source를 다시 stage하지 않습니다. `--guest-deploy-source`로 compile이 사용한 material만 받아 Host-owned run metadata를 새로 쓴 뒤 receipt와 다시 대조합니다. runtime smoke도 같은 순서로 restage한 material을 cached rootfs receipt와 대조한 뒤에만 VM을 부팅합니다. 따라서 compile 이후 apt snapshot, Docker platform, runtime-data contract, Guest source가 달라지면 package 또는 smoke는 성공으로 진행하지 않습니다.
+
+`dist/dmg/dev/cached`의 fingerprint는 Guest support/tools만이 아니라 실제 deploy source, Docker build source, deploy serializer, rootfs receipt schema, effective build config와 rootfs size를 포함합니다. receipt와 fingerprint가 모두 일치할 때만 cache를 재사용합니다. 하나라도 다르거나 cache가 없으면 이전 golden `vm-disk.img`를 계속 쓰지 않고 새 Ubuntu base disk에서 compile합니다.
+
+Guest-tools wheel은 temporary build output에서 만든 뒤 compiled deploy material에만 복사합니다. source tree의 `packages/vitalserver-guest-tools/dist`는 compile input도, compile output도 아닙니다. 따라서 같은 delivery run의 wheel staging이 이후 runtime-smoke의 rootfs fingerprint를 바꾸지 않습니다.
 
 Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. Devtools가 VM을 직접 시작하는 runtime-smoke 경로에서도 `data/deploy/host-time.json`을 써야 하며, Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-observation, observability, compose service를 시작합니다. `host-time.json`이 missing/invalid이면 NTP나 현재 Guest clock으로 보정하지 않고 smoke failure로 처리합니다.
 
@@ -101,11 +123,13 @@ Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. 
 
 성공 로그는 `Golden disk runtime boot smoke passed`처럼 명시적인 최종 pass line을 남겨야 합니다. 중간에 `No VM launcher process is running` 같은 cleanup line이 있어도 최종 pass line이 없으면 성공으로 해석하지 않습니다.
 
-Release package와 DMG build는 expensive compile 전에 preflight를 통과해야 합니다. Preflight는 tool, package input, golden runtime `Image`/`initrd.img`, `rootfs-base`, output path, DMG attachment, Dockerfile, Docker image manifest/platform을 확인합니다. Docker registry rate limit처럼 external unavailable이 확인되면 Swift build, Docker pull/build, `pkgbuild`, `hdiutil create` 이후의 late failure가 아니라 preflight failure입니다. 이미 local Docker image가 있는 경우에도 manifest/platform proof 없이 성공으로 추정하지 않습니다.
+runtime boot smoke는 manifest가 생길 때까지 timeout만 기다리지 않습니다. 현재 run의 `bootstrap-result.json.status=failed`를 발견하면 즉시 `runId`, `stage=bootstrap-result`, `reasonCodes`, bootstrap result 경로와 launcher log 경로를 출력하고 실패합니다. 이전 run의 bootstrap result는 smoke 시작 시 무효화하므로 stale failure를 현재 run failure로 해석하지 않습니다.
+
+Release package와 DMG build는 expensive host packaging 전에 preflight를 통과해야 합니다. Preflight는 tool, package input, golden runtime `Image`/`initrd.img`, rootfs receipt, compiled Guest deploy material, output path, DMG attachment을 확인합니다. Docker pull/build와 Guest source staging은 package가 아니라 clean golden compile이 소유합니다. Package가 현재 Docker registry나 worktree를 다시 읽어 compile material을 바꾸지 않습니다.
 
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-`make devtools/build`는 이 값을 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.
+`make devtools/build`는 manifest metadata를 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. Artifact identity, 표시명, update compatibility, optional container service 정책은 manifest가 소유합니다. Guest image 변경은 manifest와 immutable Compose/VM Docker plan을 함께 변경하고 release-contract로 대조합니다.
 
 Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatform`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatform`과 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
 
@@ -270,11 +294,14 @@ launchd
 
 ```text
 make dist/dmg/release
+  -> release branch guard + distribution review
   -> make pwa/build               # Runtime Control PWA static assets
-  -> make devtools/golden-rootfs         # clean VM disk -> rootfs-base.raw.gz
+  -> clean golden-rootfs compile  # fresh VM disk -> rootfs-base.raw.gz
   -> vitalserver-devtools release-dmg
      -> release-pkg staging/pkgbuild
      -> hdiutil create
+  -> DMG payload readback
+  -> golden runtime boot smoke
 ```
 
 빌드 단계의 원칙은 아래입니다.
@@ -420,8 +447,8 @@ make dist/troubleshooting/release
 | build orchestration | `make/vm.mk` | `vitalserver-devtools` | `vm-build.toml`, source tree, optional Make overrides | `.tmp/vitalserver-vm-pkg/*`, `dist/*` |
 | Ubuntu/rootfs build | `make devtools/golden-rootfs` | Python `ubuntu`, `cloud-init`, Swift launcher | Ubuntu cloud image URL, apt snapshot, deploy bundle, Docker image bundle, bootstrap script | clean `vm-disk.img`, compressed `rootfs-base.raw.gz` |
 | nginx bundle | `make devtools/nginx/bundle` | Python `nginx-bundle` | pinned macOS nginx binary, expected version | self-contained `nginx/sbin`, `nginx/lib` bundle |
-| Docker image bundle | `make devtools/docker/images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
-| PKG/DMG staging | `vitalserver-devtools release-pkg` / `release-dmg` | Python build CLI, Swift, macOS packaging tools | release manifest, app source, rootfs base, nginx binary, Docker image list, templates | package root under `.tmp/vitalserver-vm-pkg/root`, `dist/*` |
+| Docker image bundle | `make devtools/docker/images` | Python `docker-images` | Compose product contract, Dockerfile, image list, deploy includes, build platform | `vitalserver-images.tar.gz` |
+| PKG/DMG staging | `vitalserver-devtools release-pkg` / `release-dmg` | Python build CLI, Swift, macOS packaging tools | release manifest, app source, rootfs receipt, compiled Guest deploy material, nginx binary, templates | package root under `.tmp/vitalserver-vm-pkg/root`, `dist/*` |
 | install provisioning | PKG `postinstall` | `vitalserver-vm runtime install-provision` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services, degraded runtime status until health is observed |
 | runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | diagnostics/status projection |
 | runtime progress | RuntimeLifecycle | `runtime-progress.json` | install/update/rollback/restore workflow step result | diagnostics/export progress artifact; not Runtime Control current read model or health/recovery owner |
@@ -658,7 +685,7 @@ Kernel panic, ext4 read-only remount, `docker-image-load` timeout은 resource를
 
 Fresh install bootstrap도 Docker image bundle을 로드한 직후 `redis:3.2.12-alpine` smoke container를 `--network none`으로 실행합니다. 이 단계가 실패하면 `bootstrap-result.json`은 `guest-bootstrap-docker-runtime-failed` reason code를 기록하고 compose up으로 진행하지 않습니다. Docker version 출력이나 compose binary 존재만으로는 rootfs가 준비됐다고 보지 않습니다.
 
-반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make dist/pkg/dev`가 자동으로 한 번 생성합니다. VM build를 제품 compile로 보고 clean golden rootfs부터 다시 만들려면 profile target을 사용합니다. 캐시 재사용은 빠른 packaging target의 의미이고, `compile` target의 의미가 아닙니다.
+반복 개발 중에는 receipt와 fingerprint가 모두 같은 golden rootfs cache만 재사용합니다. cache가 없거나 contract input, effective build config, rootfs size, receipt가 달라지면 `make dist/pkg/dev`도 이전 golden disk를 이어 쓰지 않고 새 Ubuntu base에서 다시 만듭니다. VM build를 제품 compile로 보고 clean golden rootfs부터 다시 만들려면 profile target을 사용합니다. 캐시 재사용은 빠른 packaging target의 의미이고, `compile` target의 의미가 아닙니다.
 
 ```sh
 make dist/pkg/dev/compile
@@ -672,7 +699,7 @@ make dist/pkg/release
 make dist/dmg/release
 ```
 
-VM compile 여부는 profile target이 소유합니다. 동일 의미의 긴 `VAR=value` 호환 명령은 유지하지 않습니다. 특히 `dist/dmg/dev/compile`의 clean 의미를 변수로 끄지 않습니다. 캐시를 재사용하는 개발 산출물이 필요하면 `make dist/dmg/dev`를 사용합니다.
+VM compile 여부는 profile target이 소유합니다. 동일 의미의 긴 `VAR=value` 호환 명령은 유지하지 않습니다. 특히 `dist/dmg/dev/compile`의 clean 의미를 변수로 끄지 않습니다. 현장 전달에는 `make dist/dmg/dev`를 사용하고, cache-preferred 개발 산출물만 필요하면 `make dist/dmg/dev/cached`를 사용합니다.
 
 ## Update Bundle
 

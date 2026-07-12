@@ -315,16 +315,17 @@ Still separate from this phase:
 - Update activation/shutdown/rollback scenario remains separate workflow smoke.
 - Observability event append/read and export logs archive completeness remain separate workflow smoke.
 
-2026-06-13 follow-up added explicit package validation workflows:
+현재 public package validation workflow는 다음과 같습니다.
 
 - `make dist/pkg/dev/runtime-smoke`
-- `make dist/dmg/dev/all`
+- `make dist/dmg/dev`
+- `make dist/dmg/dev/cached`
 - `make dist/dmg/dev/verify`
 - `make dist/pkg/dev/verify`
-- `make dist/dmg/release/verify`
+- `make dist/dmg/release`
 - `make dist/pkg/release/verify`
 
-`compile` remains the artifact creation contract. `runtime-smoke` owns golden runtime boot proof. `dist/dmg/dev/all` is the combined dev DMG gate; `dist/dmg/dev/verify` checks an existing DMG artifact and golden runtime smoke without compiling. Package and release verify targets may still be combined handoff gates when their target contract states that explicitly.
+`compile` remains the artifact creation contract. `runtime-smoke` owns golden runtime boot proof. `dist/dmg/dev` and `dist/dmg/release` are the combined DMG field-delivery gates; `dist/dmg/dev/cached` is the separate cache-preferred local packaging target, and `dist/dmg/dev/verify` checks an existing DMG artifact and golden runtime smoke without compiling. Package verify targets may still be combined handoff gates when their target contract states that explicitly.
 
 ## Operational Notes
 

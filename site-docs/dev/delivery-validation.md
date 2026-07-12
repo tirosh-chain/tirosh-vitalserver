@@ -58,7 +58,7 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 
 | 목적 | command |
 |---|---|
-| release DMG 생성 | `make dist/dmg/release` |
+| release DMG 현장 전달 gate | `make dist/dmg/release` (review → release-contract → environment preflight → PWA build → clean compile → artifact verify → runtime smoke) |
 | release Troubleshooting Tools 생성 | `make dist/troubleshooting/release` |
 | release Product Update bundle 생성 | `make dist/update/release` |
 | release Product Update bundle 검증 | `make dist/update/verify/release` |
@@ -73,18 +73,25 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 | 목적 | command |
 |---|---|
 | 설치된 runtime health 확인 | `make dist/installed/health` |
-| dev DMG 빠른 패키징 | `make dist/dmg/dev` |
-| dev DMG를 VM compile 포함해 생성 | `make dist/dmg/dev/compile` |
+| dev DMG 현장 전달 표준 gate | `make dist/dmg/dev` |
+| dev DMG cache-preferred 로컬 패키징 | `make dist/dmg/dev/cached` |
+| dev DMG clean compile 단계만 실행 | `make dist/dmg/dev/compile` |
 | 생성된 dev DMG와 golden runtime 검증 | `make dist/dmg/dev/verify` |
-| dev DMG 설치 전 전체 gate | `make dist/dmg/dev/all` |
 | dev PKG를 VM compile 포함해 생성 | `make dist/pkg/dev/compile` |
 | dev PKG golden runtime boot 계약 검증 | `make dist/pkg/dev/runtime-smoke` |
-| dev PKG 설치 전 표준 검증 | `make dist/pkg/dev/verify` 또는 `make dist/pkg/verify/dev` |
+| dev PKG 설치 전 표준 검증 | `make dist/pkg/dev/verify` |
+| release manifest/Compose/VM Docker plan 사전 대조 | `make devtools/release-contract` |
 | golden rootfs만 compile | `make devtools/golden-rootfs/compile` |
 | testkit release wheel 설치 | `make testkit/install-release TESTKIT_VERSION=<version>` |
 
 build 세부 구현은 `packages/vitalserver-devtools`와
 `docs/runtime/macos/packaging.md`를 기준으로 봅니다.
+
+`release-contract`는 release manifest의 Guest image catalog와 immutable
+`Support/Guest/compose.yaml`, `config/vm-build.toml` Docker plan을 Docker export와
+rootfs cache 판단 전에 대조합니다. 이 단계는 source를 자동 수정하지 않으며, mismatch는
+path, service/field, expected/actual image를 남기고 compile failure로 끝납니다. Swift
+`Generated*.swift`만 release metadata에서 파생합니다.
 
 Golden rootfs compile은 VM을 띄우는 단순 준비 단계가 아니라 제품 compile 단계입니다.
 `guest.ubuntu.base_url`과 `guest.ubuntu.apt_snapshot`은 함께 rootfs compile input입니다.
@@ -101,21 +108,44 @@ Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
 모두 passed인지 확인합니다. Devtools direct start 경로도 `data/deploy/host-time.json`을 써야 하며,
 Guest가 이 Host-owned time contract를 적용하지 못하면 smoke failure입니다.
 
-DMG dev target은 역할을 분리합니다. `dist/dmg/dev`는 기존 golden rootfs cache를 재사용할 수 있는
-빠른 패키징 target입니다. `dist/dmg/dev/compile`은 clean rootfs로 산출물을 만드는 compile target이고,
-`dist/dmg/dev/verify`는 이미 생성된 DMG artifact와 golden runtime boot contract를 검증합니다.
-`dist/dmg/dev/all`은 review, clean compile, artifact verify, runtime smoke를 한 번에 실행하는 설치 전
-표준 gate입니다. review, artifact verify, runtime smoke는 `internal/vm/dmg/dev/*` 단계로 존재하지만
-public workflow는 위 네 target만 노출합니다. 그래도 `all`이 통과했다는 사실만으로 fresh install,
-installed runtime, update/rollback 동작이 검증된 것으로 보지 않습니다.
-`dist/dmg/dev`는 설치 provisioning side effect를 실행하지 않으므로, fresh install에서 만들어야 하는
-Host-owned config directory 누락은 잡지 못합니다. Guest compose bind source, runtime smoke, installed
-health까지 확인해야 하는 변경은 `dist/dmg/dev/verify`, `dist/dmg/dev/all`, 또는 설치 후
-`dist/installed/health`로 확인합니다.
+DMG dev target은 역할을 분리합니다. `dist/dmg/dev`는 review, release-contract, package environment preflight,
+PWA build, clean rootfs compile, artifact verify, golden runtime smoke를 한 번에 실행하는 현장 전달 표준 gate입니다. `dist/dmg/dev/cached`는 현재 Guest
+source contract fingerprint와 rootfs receipt가 일치할 때만 golden cache를 재사용하는 빠른 로컬 패키징
+target입니다. `dist/dmg/dev/compile`은 clean
+rootfs로 산출물을 만드는 compile 단계이고, `dist/dmg/dev/verify`는 이미 생성된 DMG artifact와 golden
+runtime boot contract를 검증하는 diagnostic 단계입니다. `verify`는 verified golden cache가 없거나 stale이면
+compile을 대신 시작하지 않고 fail-fast합니다. `cached`, `compile`, `verify` 중 어느 하나도
+현장 전달 proof를 뜻하지 않습니다. review, artifact verify, runtime smoke는 `internal/vm/dmg/dev/*` 단계로
+유지하되 public 현장 전달 workflow는 `dist/dmg/dev` 하나로 고정합니다. 그래도 `dist/dmg/dev`가
+통과했다는 사실만으로 fresh install, installed runtime, update/rollback 동작이 검증된 것으로 보지
+않습니다. 이 target은 실제 target Mac의 install provisioning side effect를 실행하지 않으므로 fresh
+install에서 만들어야 하는 Host-owned config directory 누락은 잡지 못합니다. Guest compose bind source,
+runtime smoke, installed health까지 확인해야 하는 변경은 `make dist/dmg/dev` 후 설치된 환경에서
+`make dist/installed/health`로 확인합니다.
 `compile`의 clean 의미는 변수로 끄지 않습니다. 같은 target 이름이 cached compile과 clean compile을
-오가면 검증 결과를 해석할 때 외부 실행 변수를 다시 추적해야 합니다. 캐시를 재사용하는 개발 산출물이
-필요하면 `make dist/dmg/dev`를 사용하고, clean compile proof가 필요하면 `make dist/dmg/dev/compile`
-또는 `make dist/dmg/dev/all`을 사용합니다.
+오가면 검증 결과를 해석할 때 외부 실행 변수를 다시 추적해야 합니다. 캐시를 재사용하는 개발 산출물만
+필요하면 `make dist/dmg/dev/cached`를 사용하고, 현장 전달 proof가 필요하면 `make dist/dmg/dev`를
+사용합니다.
+
+Compile은 rootfs와 함께 실제 Guest deploy material digest를 receipt에 기록합니다. package와 runtime
+smoke는 source를 다시 조립하지 않고 compile material을 restage한 뒤, `guestClockUtc`, runId,
+runtime-smoke 설정, `host-time.json`만 제외한 동일 digest를 receipt와 대조합니다. apt snapshot,
+Docker platform, runtime-data contract, Guest source가 달라지면 VM boot나 package 생성 전에 실패합니다.
+
+Guest-tools wheel은 temporary build output에서 만든 뒤 compiled deploy material에만 복사합니다. source
+tree의 `packages/vitalserver-guest-tools/dist`는 rootfs fingerprint input이나 compile output이 아니므로,
+wheel staging이 같은 delivery run의 뒤 단계 fingerprint를 바꾸지 않습니다.
+
+Package environment preflight는 rootfs compile 전에 Host-owned `swift`, `codesign`, `pkgbuild`, DMG의
+`hdiutil`, output path와 existing DMG attachment를 확인합니다. rootfs receipt와 compiled Guest deploy
+material은 아직 존재할 수 없으므로, 그 검증은 clean compile 뒤 package preflight가 맡습니다.
+
+Host compile만 product image를 build/pull/export합니다. Guest는 검증된 image bundle을 load하고
+Compose를 `up --pull never --no-build`로 실행합니다. image 누락을 Guest pull/build로 보정하지 않으므로,
+누락은 bootstrap/Compose failure로 남습니다. Compose 환경 파일도 개발 Mac `.env`가 아니라 explicit
+`runtime-config.json`과 `runtime-settings.json`에서 `/mnt/runtime/compose.env`로 생성합니다.
+runtime boot smoke가 `bootstrap-result.json.status=failed`를 보면 timeout까지 기다리지 않고 runId,
+`stage=bootstrap-result`, reasonCodes, bootstrap result와 launcher log 경로를 즉시 출력합니다.
 
 ## 3. 무엇을 검증할까
 
@@ -232,18 +262,22 @@ rollback, restart, snapshot 기반 VM disk 재사용 뒤 Guest clock이 rootfs/g
 `host-time.json`을 읽고 clock을 맞춘 뒤 Docker, runtime-observation, observability, compose 서비스를
 시작해야 합니다. UI나 observer는 timestamp를 현재 시간으로 보정하지 않습니다.
 
-Release package와 DMG build도 expensive compile 단계에 들어가기 전에 Host-owned preflight를 통과해야
-합니다. `release-pkg`와 `release-dmg`는 Swift build, Docker pull/build, `pkgbuild`, `hdiutil create`
-전에 필수 tool, golden runtime `Image`/`initrd.img`, `rootfs-base`, Dockerfile 경로, Docker pull image
-manifest와 platform, DMG output attachment 상태를 확인합니다. 이 값들은 build input이므로 누락,
-무효, unavailable, mounted/attached blocked 상태를 빈 값이나 late build failure로 바꾸면 안 됩니다.
-Guest compose service 계약도 같은 compile input입니다. `Support/Guest/compose.yaml`에 선언된 image는
+Release package와 DMG build도 expensive host packaging 전에 Host-owned preflight를 통과해야 합니다.
+`release-pkg`와 `release-dmg`는 Swift build, `pkgbuild`, `hdiutil create` 전에 필수 tool, golden runtime
+`Image`/`initrd.img`, `rootfs-base` receipt, compiled Guest deploy material, DMG output attachment 상태를
+확인합니다. 이 값들은 package input이므로 누락, 무효, unavailable, mounted/attached blocked 상태를 빈
+값이나 late package failure로 바꾸면 안 됩니다. Docker registry와 현재 Guest source는 package preflight가
+다시 읽지 않습니다.
+
+Guest compose service 계약은 Docker image bundle을 만드는 compile input입니다. `Support/Guest/compose.yaml`에 선언된 image는
 `guest.docker_images.images` 또는 `optional_images`에 있어야 하고, build `dockerfile`은
 `guest.docker_images.*_dockerfile`과 일치해야 하며, 해당 path는 `guest.deploy.include`로 설치 payload에
 포함되어야 합니다. Redis Relay처럼 UI 설정에서 disabled가 가능한 service도 compose에 항상 존재한다면
 package bundle 관점에서는 필수 image/source 계약입니다. 이 검사는 `make dist/dmg/dev/compile`에서
-Docker build 전에 실패해야 하고, `make dist/dmg/dev/all`은 compile을 포함하므로 같은 누락을 설치 전
-gate에서 막아야 합니다.
+Docker build 전에 실패해야 합니다. export는 `docker image save --platform <guest platform>`으로 고정하고,
+compiler가 expected tag, legacy Config/Layer reference, OCI descriptor closure와 SHA-256을 검증한 뒤에만
+Guest deploy material로 넘깁니다. 현장 전달 표준 `make dist/dmg/dev`은 clean compile을 포함하므로 같은
+누락을 전달 전 gate에서 막아야 합니다.
 Installed package deploy도 golden rootfs deploy와 같은 bootstrap contracts를 포함해야 합니다.
 `deploy/build-metadata/rootfs-input.json`은 Guest runtime data disk 준비가 읽는 Host-owned contract이며,
 package staging이 Ubuntu source, apt snapshot, runtime data disk, Docker platform 값을 명시적으로 써야
@@ -329,13 +363,15 @@ VM build는 제품 compile로 취급합니다. `make dist/dmg/dev/compile`, `mak
 `make devtools/golden-rootfs/compile`은 golden rootfs proof를 새로 요구하며, kernel panic,
 guest boot failure, rootfs proof failure를 우회하지 않습니다. 다만 compile passed는 installed
 runtime passed를 뜻하지 않습니다. Guest bootstrap 완료, Guest Control readiness/service status,
-systemd/docker/http 계약은 DMG dev에서는 `make dist/dmg/dev/verify` 또는 `make dist/dmg/dev/all`의
-runtime smoke phase가 소유하고, PKG dev에서는 `make dist/pkg/dev/runtime-smoke`가 소유합니다.
-DMG dev fast packaging은 `make dist/dmg/dev`가 소유하고, clean compile은 `make dist/dmg/dev/compile`이
-소유합니다. `compile` target의 cache policy는 실행 변수로 바꾸지 않습니다.
-설치/배포 전 표준 게이트는 `make dist/dmg/dev/all` 또는 `make dist/pkg/dev/verify`처럼 compile과
-runtime smoke를 묶은 명시 workflow입니다. PKG dev verify는 compile 전에 package plan/template unit
-review, PWA Runtime Control contract/check/test, log export archive/rotation/retention test를 실행합니다.
+systemd/docker/http 계약은 DMG dev에서는 `make dist/dmg/dev`의 runtime smoke phase가 소유하고, 기존
+artifact를 진단할 때는 `make dist/dmg/dev/verify`를 사용합니다. PKG dev에서는
+`make dist/pkg/dev/runtime-smoke`가 소유합니다. DMG dev cache-preferred local packaging은
+`make dist/dmg/dev/cached`가 소유하고, clean compile 단계는 `make dist/dmg/dev/compile`이 소유합니다.
+`compile` target의 cache policy는 실행 변수로 바꾸지 않습니다.
+현장 전달 표준 게이트는 `make dist/dmg/dev`입니다. `make dist/pkg/dev/verify`는 compile과 runtime
+smoke를 묶은 package-level 검증 workflow이며, DMG artifact readback을 포함한 현장 전달 proof를 대체하지
+않습니다. PKG dev verify는 compile 전에 package plan/template unit review, PWA Runtime Control
+contract/check/test, log export archive/rotation/retention test를 실행합니다.
 실패는 runId, failing stage, failure reason 또는 matched pattern, artifact/log path와 함께 드러나야 합니다.
 Guest userspace가 `Illegal instruction`이나 `Segmentation fault`로 죽어 manifest가 `running`에 멈춘
 경우도 timeout이 아니라 compile failure 증거로 분류해야 합니다.
@@ -355,6 +391,9 @@ Manifest에는 Docker image bundle의 `bundleSha256`, target platform, guest arc
 mount proof, filesystem free bytes/inodes proof가 있어야 합니다. `rootfs-ready` marker에는 identity
 cleanup proof가 있어야 하며, 최종 `rootfs-base.raw.gz`는 `rootfs-base.raw.gz.manifest.json` sidecar와
 checksum이 일치할 때만 cache artifact로 재사용할 수 있습니다.
+receipt와 fingerprint가 모두 일치하지 않으면 cache miss는 이전 golden `vm-disk.img`를 이어 쓰는 재시도가
+아니라 새 Ubuntu base disk에서의 clean compile이어야 합니다. fingerprint에는 effective build config와
+rootfs size도 포함해야 합니다.
 Golden rootfs input metadata에는 `guestClockUtc`도 포함되어야 합니다. Guest bootstrap은 NTP를
 fallback으로 삼지 않고, apt snapshot source를 읽기 전에 Host가 제공한 UTC 시각을 적용해야 합니다.
 `Release file ... is not valid yet`는 apt mirror 문제가 아니라 compile VM clock 계약이 깨진 신호로

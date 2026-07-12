@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import subprocess
+import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ def configure_compose_paths(monkeypatch: Any, root: Path) -> None:
         "COMPOSE_RUNTIME_LIMITS_FILE",
         root / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value,
     )
+    monkeypatch.setattr(compose, "COMPOSE_ENVIRONMENT_FILE", root / "compose.env")
 
 
 def test_container_bind_source_directories_cover_compose_runtime_binds() -> None:
@@ -266,6 +268,48 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
         == str(12 * 1024 * 1024)
     )
     assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
+
+
+def test_load_runtime_env_materializes_explicit_compose_environment(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": 'secret#"value',
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+    configure_compose_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+    monkeypatch.setenv("VITALSERVER_HTTP_PORT", "9999")
+
+    compose.load_runtime_env()
+
+    values = {
+        name: json.loads(value)
+        for name, value in (
+            line.split("=", 1)
+            for line in (tmp_path / "compose.env").read_text(
+                encoding="utf-8"
+            ).splitlines()
+        )
+    }
+    assert values["VITALSERVER_ADMIN_PASSWORD"] == 'secret#"value'
+    assert values["VITALSERVER_PUBLIC_HOST"] == "vital.example.test"
+    assert values["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
+    assert "VITALSERVER_HTTP_PORT" not in values
 
 
 def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(
@@ -514,7 +558,11 @@ def test_compose_command_uses_runtime_limits_override_when_present(
         "services: {}\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(common, "COMPOSE_FILE", tmp_path / RuntimeFileName.COMPOSE.value)
+    monkeypatch.setattr(
+        common,
+        "COMPOSE_FILE",
+        tmp_path / RuntimeFileName.COMPOSE.value,
+    )
     monkeypatch.setattr(
         common,
         "COMPOSE_RUNTIME_LIMITS_FILE",
@@ -800,13 +848,14 @@ def test_start_ordered_starts_postgres_before_product_services(
     compose.start_ordered()
 
     assert events[:4] == [
-        "checked-compose:up -d postgres:stage=postgres startup",
+        "checked-compose:up --pull never --no-build -d postgres:stage=postgres startup",
         "wait-for-postgres",
-        "checked-compose:up -d redis:stage=redis startup",
+        "checked-compose:up --pull never --no-build -d redis:stage=redis startup",
         "wait-for-redis",
     ]
     assert (
-        "checked-compose:up -d app recorder-recovery recorder-ingress "
+        "checked-compose:up --pull never --no-build -d app recorder-recovery "
+        "recorder-ingress "
         "vitaldb-observer redis-relay lab redis-ui swagger-ui"
         ":stage=application service startup"
     ) in events

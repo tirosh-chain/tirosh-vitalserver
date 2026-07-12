@@ -104,6 +104,12 @@ class RootfsBaseInput:
 
 
 @dataclass(frozen=True)
+class RootfsArtifactDeployVerifyInput:
+    rootfs_base: Path
+    deploy_dir: Path
+
+
+@dataclass(frozen=True)
 class DockerImageBundleInput:
     config: Path
     bundle_path: Path | None
@@ -119,6 +125,9 @@ class GuestDeploymentInput:
     deploy_dir: Path | None
     docker_bundle: Path | None
     rootfs_run_id: str | None
+    source_deploy_dir: Path | None = None
+    rootfs_artifact: Path | None = None
+    runtime_boot_smoke_run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -291,6 +300,14 @@ class ApplySmokeReleaseUpdateBundleInput:
 
 
 @dataclass(frozen=True)
+class ReleasePackageEnvironmentPreflightInput:
+    config: Path
+    release_file: Path
+    output: Path | None
+    output_kind: str
+
+
+@dataclass(frozen=True)
 class ReleasePackageInput:
     config: Path
     release_file: Path
@@ -306,6 +323,7 @@ class ReleasePackageInput:
     nginx_binary: str | None
     nginx_expected_version: str | None
     docker_platform: str | None
+    guest_deploy_source: Path
 
 
 @dataclass(frozen=True)
@@ -370,6 +388,7 @@ __all__ = [
     "OpenProductUrlInput",
     "PythonWorkspaceToolInput",
     "ReleaseDmgArtifactVerifyInput",
+    "ReleasePackageEnvironmentPreflightInput",
     "ReleasePackageInput",
     "ReleaseTroubleshootingToolsInput",
     "ReleaseTroubleshootingToolsVerifyInput",
@@ -377,6 +396,7 @@ __all__ = [
     "RenderTemplateInput",
     "RequireBridgedIdentityInput",
     "RequireGitBranchInput",
+    "RootfsArtifactDeployVerifyInput",
     "RootfsBaseInput",
     "RuntimeBuildInput",
     "RuntimeControlInput",

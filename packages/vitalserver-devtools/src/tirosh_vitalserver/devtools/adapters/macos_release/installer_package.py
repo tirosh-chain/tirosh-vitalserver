@@ -7,8 +7,12 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    require_rootfs_artifact_guest_deploy_match,
+    rootfs_artifact_manifest_path,
+)
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
-    stage_guest_deploy,
+    stage_materialized_guest_deploy,
     stage_rootfs_input_metadata,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
@@ -174,6 +178,29 @@ def hdiutil_verify_image(dmg_output: Path) -> None:
         if line
     )
     raise RuntimeError(detail or f"hdiutil verify exited {result.returncode}")
+
+
+def expand_pkg_payload(package: Path, destination: Path) -> Path:
+    result = subprocess.run(
+        ["pkgutil", "--expand-full", str(package), str(destination)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = "\n".join(
+            line
+            for line in [result.stdout.strip(), result.stderr.strip()]
+            if line
+        )
+        raise RuntimeError(detail or f"pkgutil expand exited {result.returncode}")
+    payload = destination / "Payload"
+    if not payload.is_dir():
+        raise RuntimeError(
+            "pkgutil expanded package without a materialized Payload directory: "
+            f"{package}"
+        )
+    return payload
 
 
 def attach_dmg_readonly(dmg_output: Path) -> DmgAttachment:
@@ -353,9 +380,21 @@ def stage_troubleshooting_tools(
 def stage_pkg_root(context: PackageContext) -> None:
     image = context.golden_runtime_dir / "Image"
     initrd = context.golden_runtime_dir / "initrd.img"
-    for required in [image, initrd, context.rootfs_base, context.docker_bundle]:
-        if not required.is_file():
-            raise SystemExit(f"error: missing package input: {required}")
+    rootfs_manifest = rootfs_artifact_manifest_path(context.rootfs_base)
+    required = [
+        image,
+        initrd,
+        context.rootfs_base,
+        rootfs_manifest,
+    ]
+    for required_input in required:
+        if not required_input.is_file():
+            raise SystemExit(f"error: missing package input: {required_input}")
+    if not context.guest_deploy_source.is_dir():
+        raise SystemExit(
+            "error: missing compiled Guest deploy package input: "
+            f"{context.guest_deploy_source}"
+        )
 
     if context.pkg_root.exists():
         shutil.rmtree(context.pkg_root)
@@ -426,14 +465,29 @@ def stage_pkg_root(context: PackageContext) -> None:
         package_path(context, f"{install_home(context)}/runtime/{ROOTFS_BASE_NAME}"),
     )
     install_file(
+        rootfs_manifest,
+        package_path(
+            context,
+            f"{install_home(context)}/runtime/{rootfs_manifest.name}",
+        ),
+    )
+    install_file(
         context.root / "infra/macos-nginx/vitalserver.conf.template",
         package_path(
             context,
             f"{install_home(context)}/Support/Proxy/vitalserver.conf.template",
         ),
     )
-    stage_guest_deploy(context.guest_deploy_plan)
+    package_deploy_dir = package_path(context, f"{install_home(context)}/data/deploy")
+    stage_materialized_guest_deploy(
+        context.guest_deploy_source,
+        package_deploy_dir,
+    )
     stage_rootfs_input_metadata(context.rootfs_input_metadata_plan)
+    require_rootfs_artifact_guest_deploy_match(
+        context.rootfs_base,
+        package_deploy_dir,
+    )
     render_launchd_templates(context)
     copy_executable(packaging_dir / "preinstall", context.pkg_scripts / "preinstall")
     copy_executable(

@@ -92,7 +92,7 @@ def build_app_bundle(
     if not (pwa_dist_source / "index.html").is_file():
         raise SystemExit(
             "error: missing Runtime Control PWA build output: "
-            f"{pwa_dist_source}. Run: make pwa-build"
+            f"{pwa_dist_source}. Run: make pwa/build"
         )
 
     if app_bundle.exists():

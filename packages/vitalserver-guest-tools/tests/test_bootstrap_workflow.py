@@ -39,6 +39,7 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
         "start-compose",
         "start-container-logs",
     )
+    assert "build-missing-images" not in events
     result = json.loads(context.bootstrap_result.read_text(encoding="utf-8"))
     assert result["status"] == "completed"
 
@@ -148,7 +149,6 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         load_bundled_docker_images=lambda _: events.append("load-docker-images"),
         run_docker_runtime_smoke=lambda _: DockerSmokeResult(passed=True),
         cleanup_docker_cache=lambda: events.append("cleanup-docker-cache"),
-        build_missing_images=lambda: events.append("build-missing-images"),
         start_compose=lambda: events.append("start-compose"),
         start_container_logs=lambda: events.append("start-container-logs"),
         probe_edge_readiness=lambda _url, _timeout: EdgeReadinessProbeResult(

@@ -894,7 +894,7 @@ def compose_build(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
 def compose_up(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
     run_checked(
         run,
-        compose_command(run, ["up", "-d", "redis"]),
+        compose_command(run, ["up", "--pull", "never", "--no-build", "-d", "redis"]),
         timeout_seconds=COMPOSE_UP_TIMEOUT_SECONDS,
     )
     run_checked(
@@ -903,6 +903,9 @@ def compose_up(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
             run,
             [
                 "up",
+                "--pull",
+                "never",
+                "--no-build",
                 "-d",
                 "app",
                 "recorder-recovery",
@@ -916,7 +919,7 @@ def compose_up(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
     )
     run_checked(
         run,
-        compose_command(run, ["up", "-d", "edge"]),
+        compose_command(run, ["up", "--pull", "never", "--no-build", "-d", "edge"]),
         timeout_seconds=COMPOSE_UP_TIMEOUT_SECONDS,
     )
     return "compose stack started", {}

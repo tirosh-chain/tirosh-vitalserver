@@ -4,32 +4,43 @@ import json
 import os
 import subprocess
 from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
-from tirosh_vitalserver.devtools.adapters.build_config import load_config
+from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    REQUIRED_ROOTFS_STAGES,
+    ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION,
+    rootfs_artifact_manifest_path,
+)
+from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
+    GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
+    guest_deploy_material_sha256,
+)
 from tirosh_vitalserver.devtools.adapters.macos_release import installer_package
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
-from tirosh_vitalserver.devtools.application.guest_service_plans import (
-    docker_image_bundle_build_plan,
-)
 from tirosh_vitalserver.devtools.application.inputs import (
     MacOSPackageInstallInput,
     ReleaseDmgArtifactVerifyInput,
+    ReleasePackageEnvironmentPreflightInput,
     ReleasePackageInput,
     ReleaseTroubleshootingToolsVerifyInput,
 )
 from tirosh_vitalserver.devtools.application.usecases import macos_package
-from tirosh_vitalserver.devtools.config.docker_images import load_docker_images_config
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
-from tirosh_vitalserver.devtools.core.guest_image import RuntimeDataDiskConfig
+from tirosh_vitalserver.devtools.core.guest_image import (
+    RuntimeDataDiskConfig,
+    ubuntu_download_cache_key,
+)
 from tirosh_vitalserver.devtools.core.guest_services import (
-    GuestDeployPlan,
     RootfsInputMetadataPlan,
+)
+from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
+    settings_install_home,
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
@@ -40,31 +51,6 @@ from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
 )
 from tirosh_vitalserver.devtools.core.preflight import PreflightStatus
 from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
-
-
-def runtime_product_minimal_compose(
-    *,
-    include_lab: bool = True,
-    include_testkit: bool = False,
-) -> str:
-    services = {
-        "postgres": "postgres:16-alpine",
-        "redis": "redis:3.2.12-alpine",
-        "app": "vitalserver:2.3.4",
-        "recorder-recovery": "vitalserver-recorder-recovery:0.2.0",
-        "recorder-ingress": "vitalserver-recorder-ingress:0.2.0",
-        "vitaldb-observer": "vitaldb-observer:0.2.0",
-        "redis-relay": "vitalserver-redis-relay:0.2.0",
-        "edge": "nginx:1.24-alpine",
-    }
-    if include_lab:
-        services["lab"] = "vitalserver-lab:0.2.0"
-    if include_testkit:
-        services["testkit"] = "vitalserver-testkit:0.2.0"
-    lines = ["services:"]
-    for service, image in services.items():
-        lines.extend([f"  {service}:", f"    image: {image}"])
-    return "\n".join(lines) + "\n"
 
 
 def test_package_clean_plan_allows_managed_build_paths() -> None:
@@ -102,169 +88,6 @@ def test_package_clean_plan_rejects_workspace_root() -> None:
 
     with pytest.raises(DomainError, match="unsafe path"):
         package_clean_plan(root=root, settings=settings, release=release)
-
-
-def test_guest_compose_contract_accepts_release_declared_services() -> None:
-    root = repo_root()
-    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
-    build_config = load_config(root / "config/vm-build.toml")
-    docker_config = load_docker_images_config(build_config, root)
-    plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=docker_config,
-        bundle_path=settings.docker_bundle,
-        platform=None,
-        compression_threads=None,
-    )
-
-    checks = macos_package.guest_compose_contract_preflight_checks(
-        root=root,
-        compose_path=settings.runtime_dir / "Support/Guest/compose.yaml",
-        plan=plan.image_plan,
-        known_images=set(docker_config.images) | set(docker_config.optional_images),
-        deploy_include_sources=[
-            include.source for include in settings.guest_deploy.includes
-        ],
-        optional_images=set(docker_config.optional_images),
-        include_optional=False,
-    )
-
-    assert not [check for check in checks if check.blocks]
-    assert any(
-        check.name == "guest-compose-image:recorder-recovery" for check in checks
-    )
-    assert any(
-        check.name == "guest-compose-dockerfile:recorder-recovery"
-        for check in checks
-    )
-    assert any(
-        check.name == "guest-compose-deploy:recorder-recovery" for check in checks
-    )
-    assert any(
-        check.name == "guest-compose-product-services"
-        and check.status == PreflightStatus.PASSED
-        for check in checks
-    )
-    assert any(check.name == "guest-compose-image:postgres" for check in checks)
-    assert any(check.name == "guest-compose-image:lab" for check in checks)
-    assert any(check.name == "guest-compose-image:redis-relay" for check in checks)
-    assert any(check.name == "guest-compose-deploy:redis-relay" for check in checks)
-    assert not any(check.name.endswith(":testkit") for check in checks)
-
-
-def test_guest_compose_contract_rejects_missing_runtime_product_service(
-    tmp_path: Path,
-) -> None:
-    root = repo_root()
-    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
-    build_config = load_config(root / "config/vm-build.toml")
-    docker_config = load_docker_images_config(build_config, root)
-    plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=docker_config,
-        bundle_path=settings.docker_bundle,
-        platform=None,
-        compression_threads=None,
-    )
-    compose_path = tmp_path / "compose.yaml"
-    compose_path.write_text(
-        runtime_product_minimal_compose(include_lab=False),
-        encoding="utf-8",
-    )
-
-    checks = macos_package.guest_compose_contract_preflight_checks(
-        root=root,
-        compose_path=compose_path,
-        plan=plan.image_plan,
-        known_images=set(docker_config.images) | set(docker_config.optional_images),
-        deploy_include_sources=[
-            include.source for include in settings.guest_deploy.includes
-        ],
-        optional_images=set(docker_config.optional_images),
-        include_optional=False,
-    )
-
-    runtime_product = next(
-        check
-        for check in checks
-        if check.name == "guest-compose-product-services"
-    )
-    assert runtime_product.status == PreflightStatus.INVALID
-    assert "lab" in runtime_product.detail
-
-
-def test_guest_compose_contract_rejects_testkit_runtime_service(
-    tmp_path: Path,
-) -> None:
-    root = repo_root()
-    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
-    build_config = load_config(root / "config/vm-build.toml")
-    docker_config = load_docker_images_config(build_config, root)
-    plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=docker_config,
-        bundle_path=settings.docker_bundle,
-        platform=None,
-        compression_threads=None,
-    )
-    compose_path = tmp_path / "compose.yaml"
-    compose_path.write_text(
-        runtime_product_minimal_compose(include_testkit=True),
-        encoding="utf-8",
-    )
-
-    checks = macos_package.guest_compose_contract_preflight_checks(
-        root=root,
-        compose_path=compose_path,
-        plan=plan.image_plan,
-        known_images=set(docker_config.images) | set(docker_config.optional_images),
-        deploy_include_sources=[
-            include.source for include in settings.guest_deploy.includes
-        ],
-        optional_images=set(docker_config.optional_images),
-        include_optional=False,
-    )
-
-    runtime_product = next(
-        check
-        for check in checks
-        if check.name == "guest-compose-product-services"
-    )
-    assert runtime_product.status == PreflightStatus.INVALID
-    assert "testkit" in runtime_product.detail
-
-
-def test_guest_compose_contract_rejects_missing_redis_relay_deploy_include() -> None:
-    root = repo_root()
-    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
-    build_config = load_config(root / "config/vm-build.toml")
-    docker_config = load_docker_images_config(build_config, root)
-    plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=docker_config,
-        bundle_path=settings.docker_bundle,
-        platform=None,
-        compression_threads=None,
-    )
-
-    checks = macos_package.guest_compose_contract_preflight_checks(
-        root=root,
-        compose_path=settings.runtime_dir / "Support/Guest/compose.yaml",
-        plan=plan.image_plan,
-        known_images=set(docker_config.images) | set(docker_config.optional_images),
-        deploy_include_sources=[
-            include.source
-            for include in settings.guest_deploy.includes
-            if include.source != Path("apps/vitalserver-redis-relay")
-        ],
-        optional_images=set(docker_config.optional_images),
-        include_optional=False,
-    )
-
-    redis_relay_deploy = next(
-        check for check in checks if check.name == "guest-compose-deploy:redis-relay"
-    )
-    assert redis_relay_deploy.status == PreflightStatus.INVALID
 
 
 def test_default_troubleshooting_tools_output_uses_release_label() -> None:
@@ -389,20 +212,9 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
         app_bundle=tmp_path / "app/VitalServer Helper.app",
         runtime_cli=tmp_path / "bin/vitalserver-vm",
         nginx_bundle=tmp_path / "nginx",
-        docker_bundle=tmp_path / "docker-images.tar.gz",
         rootfs_base=tmp_path / "rootfs-base.raw.gz",
         golden_runtime_dir=tmp_path / "golden",
-        guest_deploy_plan=GuestDeployPlan(
-            support_guest_source=tmp_path / "support-guest",
-            deploy_dir=tmp_path / "deploy",
-            includes=[],
-            python_wheel_projects=[],
-            docker_bundle_source=None,
-            docker_bundle_destination=None,
-            optional_docker_bundle_source=None,
-            optional_docker_bundle_destination=None,
-            vm_data_dirs=[],
-        ),
+        guest_deploy_source=tmp_path / "compiled-deploy",
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=tmp_path / "deploy",
             base_url="https://example.invalid/noble",
@@ -640,7 +452,7 @@ def stage_troubleshooting_tools_for_test(tmp_path: Path) -> Path:
     return tools_dir
 
 
-def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
+def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -667,9 +479,6 @@ def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
         "proxy",
         encoding="utf-8",
     )
-    support_guest = runtime_dir / "Support/Guest"
-    support_guest.mkdir(parents=True)
-    (support_guest / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
     app_bundle = tmp_path / "VitalServer Helper.app"
     app_bundle.mkdir()
     (app_bundle / "Contents").mkdir()
@@ -681,8 +490,24 @@ def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
     runtime_cli.chmod(0o755)
     rootfs_base = tmp_path / "rootfs-base.raw.gz"
     rootfs_base.write_text("rootfs", encoding="utf-8")
+    rootfs_manifest = rootfs_artifact_manifest_path(rootfs_base)
     docker_bundle = tmp_path / "docker-images.tar.gz"
     docker_bundle.write_text("docker", encoding="utf-8")
+    compiled_deploy = tmp_path / "compiled-deploy"
+    (compiled_deploy / "build-metadata").mkdir(parents=True)
+    (compiled_deploy / "build-metadata/rootfs-input.json").write_text(
+        json.dumps(rootfs_input_metadata(run_id="golden-run")) + "\n",
+        encoding="utf-8",
+    )
+    (compiled_deploy / "bootstrap.sh").write_text(
+        "#!/bin/sh\ncompiled deploy\n",
+        encoding="utf-8",
+    )
+    (compiled_deploy / "host-time.json").write_text(
+        '{"epochSeconds":1}\n',
+        encoding="utf-8",
+    )
+    write_rootfs_artifact_receipt(rootfs_base, compiled_deploy)
     golden = tmp_path / "golden"
     golden.mkdir()
     (golden / "Image").write_text("kernel", encoding="utf-8")
@@ -700,9 +525,7 @@ def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
         pkg_scripts=tmp_path / "pkg-scripts",
         pkg_component_plist=tmp_path / "components.plist",
     )
-    package_vm_home = (
-        settings.pkg_root / settings.install.product_root.strip("/")
-    )
+    package_vm_home = settings.pkg_root / settings_install_home(settings).strip("/")
     context = PackageContext(
         root=root,
         runtime_dir=runtime_dir,
@@ -721,22 +544,9 @@ def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
         app_bundle=app_bundle,
         runtime_cli=runtime_cli,
         nginx_bundle=nginx_bundle,
-        docker_bundle=docker_bundle,
         rootfs_base=rootfs_base,
         golden_runtime_dir=golden,
-        guest_deploy_plan=GuestDeployPlan(
-            support_guest_source=support_guest,
-            deploy_dir=package_vm_home / "data/deploy",
-            includes=[],
-            python_wheel_projects=[],
-            docker_bundle_source=docker_bundle,
-            docker_bundle_destination=(
-                package_vm_home / "data/deploy/docker-images/vitalserver-images.tar.gz"
-            ),
-            optional_docker_bundle_source=None,
-            optional_docker_bundle_destination=None,
-            vm_data_dirs=[],
-        ),
+        guest_deploy_source=compiled_deploy,
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=package_vm_home / "data/deploy",
             base_url="https://example.invalid/noble",
@@ -792,7 +602,27 @@ def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
     assert document["runtimeData"]["mountPath"] == "/mnt/runtime"
     assert document["dockerImages"]["platform"] == "linux/arm64"
     assert document["ubuntu"]["aptSnapshot"] == "20250515T000000Z"
+    assert "runId" not in document
+    assert (
+        package_vm_home / "data/deploy/bootstrap.sh"
+    ).read_text(encoding="utf-8") == "#!/bin/sh\ncompiled deploy\n"
+    assert not (package_vm_home / "data/deploy/host-time.json").exists()
+    assert (
+        package_vm_home / "runtime" / rootfs_manifest.name
+    ).read_text(encoding="utf-8") == rootfs_manifest.read_text(encoding="utf-8")
     assert any(command[0] == "pkgbuild" for command in commands)
+
+    commands.clear()
+    mismatched_context = replace(
+        context,
+        rootfs_input_metadata_plan=replace(
+            context.rootfs_input_metadata_plan,
+            apt_snapshot="20260611T000000Z",
+        ),
+    )
+    with pytest.raises(SystemExit, match="does not match rootfs artifact receipt"):
+        installer_package.build_pkg(mismatched_context)
+    assert not any(command[0] == "pkgbuild" for command in commands)
 
 
 def test_build_dmg_fails_when_output_dmg_is_attached(
@@ -929,6 +759,77 @@ def test_detach_dmg_attachment_reports_force_failure(
         )
 
 
+def rootfs_input_metadata(*, run_id: str | None = None) -> dict[str, object]:
+    document: dict[str, object] = {
+        "schemaVersion": 1,
+        "guestClockUtc": "2026-06-11T00:00:00Z",
+        "runtimeBootSmoke": {"enabled": False},
+        "dockerImages": {"platform": "linux/arm64"},
+        "runtimeData": {
+            "diskImageName": "runtime-data.img",
+            "diskSize": "16G",
+            "filesystemLabel": "vital-runtime",
+            "mountPath": "/mnt/runtime",
+            "dockerDataRoot": "/mnt/runtime/docker",
+            "containerdRoot": "/mnt/runtime/containerd",
+        },
+        "ubuntu": {
+            "aptSnapshot": "20250515T000000Z",
+            "baseUrl": "https://example.invalid/noble",
+            "cacheKey": ubuntu_download_cache_key("https://example.invalid/noble"),
+        },
+    }
+    if run_id is not None:
+        document["runId"] = run_id
+    return document
+
+
+def write_rootfs_artifact_receipt(rootfs: Path, deploy: Path) -> None:
+    rootfs_artifact_manifest_path(rootfs).write_text(
+        json.dumps(
+            {
+                "schemaVersion": ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION,
+                "artifact": {"sha256": sha256(rootfs.read_bytes()).hexdigest()},
+                "guestDeploy": {
+                    "path": "data/deploy",
+                    "materialDigestVersion": GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
+                    "materialSha256": guest_deploy_material_sha256(deploy),
+                },
+                "source": {"runId": "rootfs-run"},
+                "proof": {
+                    "cleanupStatus": "passed",
+                    "requiredStages": list(REQUIRED_ROOTFS_STAGES),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_expanded_dmg_pkg_payload(destination: Path) -> Path:
+    assert not destination.exists()
+    payload = destination / "Payload"
+    installed_home = (
+        payload / "Library/Application Support/VitalServerHelper/vm"
+    )
+    rootfs = installed_home / "runtime" / "rootfs-base.raw.gz"
+    rootfs.parent.mkdir(parents=True)
+    rootfs.write_bytes(b"rootfs")
+    deploy = installed_home / "data" / "deploy"
+    (deploy / "build-metadata").mkdir(parents=True)
+    (deploy / "build-metadata/rootfs-input.json").write_text(
+        json.dumps(rootfs_input_metadata()) + "\n",
+        encoding="utf-8",
+    )
+    (deploy / "host-time.json").write_text(
+        '{"updatedAt":"2026-06-11T00:00:01Z"}\n',
+        encoding="utf-8",
+    )
+    (deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    write_rootfs_artifact_receipt(rootfs, deploy)
+    return payload
+
+
 def test_release_dmg_artifact_verify_accepts_expected_layout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -970,6 +871,11 @@ def test_release_dmg_artifact_verify_accepts_expected_layout(
     monkeypatch.setattr(macos_package, "hdiutil_verify_image", lambda path: None)
     monkeypatch.setattr(
         macos_package,
+        "expand_pkg_payload",
+        lambda _package, destination: write_expanded_dmg_pkg_payload(destination),
+    )
+    monkeypatch.setattr(
+        macos_package,
         "attach_dmg_readonly",
         lambda path: installer_package.DmgAttachment(
             mount_point=mount,
@@ -990,6 +896,56 @@ def test_release_dmg_artifact_verify_accepts_expected_layout(
     assert detached == [
         installer_package.DmgAttachment(mount_point=mount, device_entry="/dev/disk9")
     ]
+
+
+def test_verify_dmg_pkg_rootfs_material_rejects_guest_deploy_digest_mismatch(
+    tmp_path: Path,
+) -> None:
+    payload = write_expanded_dmg_pkg_payload(tmp_path / "expanded")
+    deploy = (
+        payload
+        / "Library/Application Support/VitalServerHelper/vm/data/deploy"
+    )
+    (deploy / "bootstrap.sh").write_text("tampered\n", encoding="utf-8")
+
+    checks = macos_package.verify_dmg_pkg_rootfs_material(
+        payload=payload,
+        install_home_path="/Library/Application Support/VitalServerHelper/vm",
+    )
+
+    material = next(
+        check
+        for check in checks
+        if check.name == "dmg-payload-guest-deploy-material-sha256"
+    )
+    assert material.status == PreflightStatus.FAILED
+
+
+def test_verify_dmg_pkg_rootfs_material_rejects_missing_compile_proof(
+    tmp_path: Path,
+) -> None:
+    payload = write_expanded_dmg_pkg_payload(tmp_path / "expanded")
+    rootfs = (
+        payload
+        / "Library/Application Support/VitalServerHelper/vm/runtime/rootfs-base.raw.gz"
+    )
+    manifest = rootfs_artifact_manifest_path(rootfs)
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    del document["proof"]
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+
+    checks = macos_package.verify_dmg_pkg_rootfs_material(
+        payload=payload,
+        install_home_path="/Library/Application Support/VitalServerHelper/vm",
+    )
+
+    proof = next(
+        check
+        for check in checks
+        if check.name == "dmg-payload-rootfs-receipt"
+        and check.status == PreflightStatus.INVALID
+    )
+    assert proof.message == "packaged rootfs receipt is invalid"
 
 
 def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
@@ -1029,6 +985,11 @@ def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
         ),
     )
     monkeypatch.setattr(macos_package, "hdiutil_verify_image", lambda path: None)
+    monkeypatch.setattr(
+        macos_package,
+        "expand_pkg_payload",
+        lambda _package, destination: write_expanded_dmg_pkg_payload(destination),
+    )
     monkeypatch.setattr(
         macos_package,
         "attach_dmg_readonly",
@@ -1094,6 +1055,11 @@ def test_release_dmg_artifact_verify_reports_detach_failure(
         ),
     )
     monkeypatch.setattr(macos_package, "hdiutil_verify_image", lambda path: None)
+    monkeypatch.setattr(
+        macos_package,
+        "expand_pkg_payload",
+        lambda _package, destination: write_expanded_dmg_pkg_payload(destination),
+    )
     monkeypatch.setattr(
         macos_package,
         "attach_dmg_readonly",
@@ -1206,6 +1172,62 @@ def test_release_package_preflight_reports_missing_rootfs_before_build(
     assert report.blockers == (rootfs_check,)
 
 
+def test_release_package_environment_preflight_does_not_require_rootfs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(macos_package, "attached_disk_images", lambda: [])
+
+    report = macos_package.release_package_environment_preflight_report(
+        ReleasePackageEnvironmentPreflightInput(
+            config=repo_root() / "config/vm-build.toml",
+            release_file=repo_root()
+            / "apps/vitalserver-macos-runtime/release-dev.json",
+            output=tmp_path / "dist/VitalServerHelper.dmg",
+            output_kind="dmg",
+        )
+    )
+
+    assert report.passed
+    assert all("rootfs" not in check.name for check in report.checks)
+
+
+def test_release_package_preflight_reuses_compiled_guest_material_without_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rootfs = tmp_path / "rootfs-base.raw.gz"
+    rootfs.write_bytes(b"rootfs")
+    compiled_deploy = tmp_path / "compiled-deploy"
+    (compiled_deploy / "build-metadata").mkdir(parents=True)
+    (compiled_deploy / "build-metadata/rootfs-input.json").write_text(
+        json.dumps(rootfs_input_metadata()) + "\n",
+        encoding="utf-8",
+    )
+    (compiled_deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    write_rootfs_artifact_receipt(rootfs, compiled_deploy)
+    monkeypatch.setattr(
+        macos_package.shutil,
+        "which",
+        lambda name: None if name == "docker" else f"/usr/bin/{name}",
+    )
+    report = macos_package.release_package_preflight_report(
+        release_package_input(
+            tmp_path,
+            rootfs_base=rootfs,
+            guest_deploy_source=compiled_deploy,
+        ),
+        output_kind="pkg",
+    )
+
+    assert report.passed
+    compiled = next(
+        check for check in report.checks if check.name == "compiled-guest-deploy"
+    )
+    assert compiled.status == PreflightStatus.PASSED
+
+
 def test_release_dmg_preflight_blocks_mounted_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1263,107 +1285,6 @@ def test_release_dmg_preflight_blocks_mounted_output(
     assert attachment in report.blockers
 
 
-def test_release_package_preflight_reports_unavailable_docker_manifest(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(macos_package, "attached_disk_images", lambda: [])
-    monkeypatch.setattr(
-        macos_package.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args=args[0],
-            returncode=1,
-            stdout="",
-            stderr="manifest unknown",
-        ),
-    )
-
-    report = macos_package.release_package_preflight_report(
-        release_package_input(tmp_path),
-        output_kind="pkg",
-    )
-
-    manifest_checks = [
-        check for check in report.checks if check.name.startswith("docker-manifest:")
-    ]
-    assert manifest_checks
-    assert manifest_checks[0].status == PreflightStatus.UNAVAILABLE
-    assert manifest_checks[0] in report.blockers
-
-
-def test_release_package_preflight_accepts_matching_local_docker_image(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    commands: list[list[str]] = []
-
-    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(macos_package, "attached_disk_images", lambda: [])
-
-    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        commands.append(command)
-        if command[:3] == ["docker", "image", "inspect"]:
-            return subprocess.CompletedProcess(
-                args=command,
-                returncode=0,
-                stdout='[{"Os":"linux","Architecture":"arm64"}]',
-                stderr="",
-            )
-        return subprocess.CompletedProcess(
-            args=command,
-            returncode=1,
-            stdout="",
-            stderr="toomanyrequests",
-        )
-
-    monkeypatch.setattr(macos_package.subprocess, "run", run)
-
-    report = macos_package.release_package_preflight_report(
-        release_package_input(tmp_path),
-        output_kind="pkg",
-    )
-
-    manifest_checks = [
-        check for check in report.checks if check.name.startswith("docker-manifest:")
-    ]
-    assert manifest_checks
-    assert all(check.status == PreflightStatus.PASSED for check in manifest_checks)
-    assert not any(
-        command[:3] == ["docker", "manifest", "inspect"] for command in commands
-    )
-
-
-def test_release_package_preflight_reports_docker_platform_mismatch(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(
-        macos_package.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args=args[0],
-            returncode=0,
-            stdout='{"manifests":[{"platform":{"os":"linux","architecture":"amd64"}}]}',
-            stderr="",
-        ),
-    )
-
-    report = macos_package.release_package_preflight_report(
-        release_package_input(tmp_path),
-        output_kind="pkg",
-    )
-
-    manifest_checks = [
-        check for check in report.checks if check.name.startswith("docker-manifest:")
-    ]
-    assert manifest_checks
-    assert manifest_checks[0].status == PreflightStatus.INVALID
-    assert manifest_checks[0] in report.blockers
-
-
 def test_release_package_preflight_rejects_directory_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1397,13 +1318,28 @@ def release_package_input(
     *,
     rootfs_base: Path | None = None,
     output: Path | None = None,
+    guest_deploy_source: Path | None = None,
 ) -> ReleasePackageInput:
     root = repo_root()
     rootfs = rootfs_base or tmp_path / "rootfs-base.raw.gz"
+    compiled_deploy = guest_deploy_source or tmp_path / "compiled-deploy"
     golden = tmp_path / "golden"
     golden.mkdir(exist_ok=True)
     if rootfs_base is None:
         rootfs.write_text("rootfs", encoding="utf-8")
+    if not compiled_deploy.exists():
+        (compiled_deploy / "build-metadata").mkdir(parents=True)
+        (compiled_deploy / "build-metadata/rootfs-input.json").write_text(
+            json.dumps(rootfs_input_metadata()) + "\n",
+            encoding="utf-8",
+        )
+        (compiled_deploy / "bootstrap.sh").write_text(
+            "#!/bin/sh\n",
+            encoding="utf-8",
+        )
+    manifest = rootfs_artifact_manifest_path(rootfs)
+    if rootfs.is_file() and not manifest.exists():
+        write_rootfs_artifact_receipt(rootfs, compiled_deploy)
     (golden / "Image").write_text("kernel", encoding="utf-8")
     (golden / "initrd.img").write_text("initrd", encoding="utf-8")
     return ReleasePackageInput(
@@ -1421,6 +1357,7 @@ def release_package_input(
         nginx_binary=None,
         nginx_expected_version=None,
         docker_platform=None,
+        guest_deploy_source=compiled_deploy,
     )
 
 

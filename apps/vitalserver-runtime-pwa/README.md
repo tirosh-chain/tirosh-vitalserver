@@ -140,7 +140,7 @@ PWA는 Node/Vite runtime으로 배포하지 않습니다. release build에서 st
 
 ```sh
 make pwa-install
-make pwa-build
+make pwa/build
 ```
 
 빌드 결과물:
@@ -182,7 +182,7 @@ npm --prefix apps/vitalserver-runtime-pwa run build
 make pwa-check
 make pwa-test
 make pwa-coverage
-make pwa-build
+make pwa/build
 ```
 
 Coverage report:

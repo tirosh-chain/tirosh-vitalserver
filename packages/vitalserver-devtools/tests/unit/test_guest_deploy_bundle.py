@@ -7,20 +7,179 @@ from zipfile import ZipFile
 
 import pytest
 
+from tirosh_vitalserver.devtools.adapters.build_config import load_config
 from tirosh_vitalserver.devtools.adapters.guest_services import deploy_bundle
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     stage_guest_deploy,
 )
+from tirosh_vitalserver.devtools.application.guest_service_plans import (
+    docker_image_bundle_build_plan,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    guest_services as guest_services_usecases,
+)
+from tirosh_vitalserver.devtools.config.docker_images import load_docker_images_config
+from tirosh_vitalserver.devtools.config.guest_deploy import load_guest_deploy_config
 from tirosh_vitalserver.devtools.core.guest_deploy import (
     GuestDeployConfig,
     GuestDeployInclude,
 )
-from tirosh_vitalserver.devtools.core.guest_services import guest_deploy_plan
+from tirosh_vitalserver.devtools.core.guest_services import (
+    guest_compose_contract_errors,
+    guest_deploy_plan,
+)
 
 ROOT = Path(__file__).resolve().parents[4]
 GUEST_TOOLS_RUNTIME_INSTALLER = (
     ROOT / "apps/vitalserver-macos-runtime/Support/Guest/install-guest-tools-runtime.py"
 )
+
+
+def runtime_product_minimal_compose(
+    *,
+    include_lab: bool = True,
+    include_testkit: bool = False,
+) -> str:
+    services = {
+        "postgres": "postgres:16-alpine",
+        "redis": "redis:3.2.12-alpine",
+        "app": "vitalserver:2.3.4",
+        "recorder-recovery": "vitalserver-recorder-recovery:0.2.0",
+        "recorder-ingress": "vitalserver-recorder-ingress:0.2.0",
+        "vitaldb-observer": "vitaldb-observer:0.2.0",
+        "redis-relay": "vitalserver-redis-relay:0.2.0",
+        "edge": "nginx:1.24-alpine",
+    }
+    if include_lab:
+        services["lab"] = "vitalserver-lab:0.2.0"
+    if include_testkit:
+        services["testkit"] = "testkit:0.2.0"
+    lines = ["services:"]
+    for service, image in services.items():
+        lines.extend([f"  {service}:", f"    image: {image}"])
+    return "\n".join(lines) + "\n"
+
+
+def release_guest_compose_contract_errors(
+    *,
+    compose_text: str,
+    deploy_include_sources: list[Path] | None = None,
+) -> tuple[str, ...]:
+    config = load_config(ROOT / "config/vm-build.toml")
+    docker_config = load_docker_images_config(config, ROOT)
+    deploy_config = load_guest_deploy_config(config)
+    plan = docker_image_bundle_build_plan(
+        root=ROOT,
+        docker_config=docker_config,
+        bundle_path=None,
+        platform=None,
+        compression_threads=None,
+    )
+    return guest_compose_contract_errors(
+        root=ROOT,
+        compose_text=compose_text,
+        image_plan=plan.image_plan,
+        known_images=set(docker_config.images) | set(docker_config.optional_images),
+        deploy_include_sources=(
+            deploy_include_sources
+            if deploy_include_sources is not None
+            else [entry.source for entry in deploy_config.includes]
+        ),
+        optional_images=set(docker_config.optional_images),
+        include_optional=False,
+    )
+
+
+def test_guest_compose_contract_accepts_release_declared_services() -> None:
+    compose_text = (
+        ROOT / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert release_guest_compose_contract_errors(compose_text=compose_text) == ()
+
+
+def test_guest_compose_contract_rejects_missing_runtime_product_service() -> None:
+    errors = release_guest_compose_contract_errors(
+        compose_text=runtime_product_minimal_compose(include_lab=False),
+    )
+
+    assert any("missing=['lab']" in error for error in errors)
+
+
+def test_guest_compose_contract_rejects_testkit_runtime_service() -> None:
+    errors = release_guest_compose_contract_errors(
+        compose_text=runtime_product_minimal_compose(include_testkit=True),
+    )
+
+    assert any("forbidden=['testkit']" in error for error in errors)
+
+
+def test_guest_compose_contract_rejects_stale_product_image_tag() -> None:
+    errors = release_guest_compose_contract_errors(
+        compose_text=runtime_product_minimal_compose().replace(
+            "vitalserver-recorder-recovery:0.2.0",
+            "vitalserver-recorder-recovery:0.1.0",
+        ),
+    )
+
+    assert any(
+        "Guest compose image is not declared in VM Docker image config: "
+        "service=recorder-recovery image=vitalserver-recorder-recovery:0.1.0"
+        in error
+        for error in errors
+    )
+
+
+def test_guest_compose_contract_rejects_missing_redis_relay_deploy_include() -> None:
+    config = load_config(ROOT / "config/vm-build.toml")
+    deploy_config = load_guest_deploy_config(config)
+    compose_text = (
+        ROOT / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    ).read_text(encoding="utf-8")
+
+    errors = release_guest_compose_contract_errors(
+        compose_text=compose_text,
+        deploy_include_sources=[
+            entry.source
+            for entry in deploy_config.includes
+            if entry.source != Path("apps/vitalserver-redis-relay")
+        ],
+    )
+
+    assert any(
+        "Guest compose Dockerfile is not covered by Guest deploy includes: "
+        "service=redis-relay" in error
+        for error in errors
+    )
+
+
+def test_docker_compile_rejects_invalid_compose_before_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    compose_path = runtime_dir / "Support/Guest/compose.yaml"
+    compose_path.parent.mkdir(parents=True)
+    compose_path.write_text(
+        runtime_product_minimal_compose(include_lab=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        guest_services_usecases,
+        "run_docker_image_bundle",
+        lambda **_: pytest.fail("invalid Guest compose must stop before Docker"),
+    )
+
+    with pytest.raises(SystemExit, match="Guest compose compile contract failed"):
+        guest_services_usecases.build_configured_docker_image_bundles(
+            root=ROOT,
+            config=ROOT / "config/vm-build.toml",
+            runtime_dir=runtime_dir,
+            bundle_path=tmp_path / "images.tar.gz",
+            platform=None,
+            compression_threads=None,
+            include_optional=False,
+        )
 
 
 def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
@@ -102,6 +261,7 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     ).read_text() == '{"recorderIngressSendDataMode":"spool_and_replay"}\n'
     assert (deploy_dir / "apps/service/app.py").read_text() == "service\n"
     assert (deploy_dir / "docs/openapi.yaml").read_text() == "openapi\n"
+    assert not (wheel_project / "dist").exists()
     wheel = deploy_dir / "python-wheels/guest_tools-0.1.0-py3-none-any.whl"
     assert wheel.is_file()
     with ZipFile(wheel) as archive:
@@ -180,6 +340,7 @@ def test_stage_guest_deploy_stages_verified_runtime_wheelhouse(
     stage_guest_deploy(plan)
 
     wheelhouse = deploy_dir / "python-wheels"
+    assert not (project / "dist").exists()
     manifest = json.loads((wheelhouse / "manifest.json").read_text())
     assert manifest["guestPython"] == {"major": 3, "minor": 12}
     assert set(manifest["targets"]) == {"linux-aarch64", "linux-amd64"}
@@ -202,6 +363,211 @@ def test_guest_tools_runtime_installer_does_not_initialize_control_state() -> No
     assert "SQLiteControlRepository" not in installer
     assert ".migrate_schema(" not in installer
     assert '"controlStore"' not in installer
+
+
+def test_guest_tools_runtime_installer_resolves_local_requirements_from_wheelhouse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "guest_tools_runtime_installer",
+        GUEST_TOOLS_RUNTIME_INSTALLER,
+    )
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    requirements = tmp_path / "python-wheels/linux-aarch64/requirements.txt"
+    requirements.parent.mkdir(parents=True)
+    requirements.write_text(
+        "../guest-tools/guest-tools-0.2.0-py3-none-any.whl "
+        "--hash=sha256:" + "a" * 64 + "\n",
+        encoding="utf-8",
+    )
+    guest_wheel = (
+        tmp_path
+        / "python-wheels/guest-tools/guest-tools-0.2.0-py3-none-any.whl"
+    )
+    guest_wheel.parent.mkdir(parents=True)
+    guest_wheel.write_bytes(b"guest-tools-wheel")
+    commands: list[tuple[list[str], object | None]] = []
+
+    monkeypatch.setattr(installer, "read_manifest", lambda _: {})
+    monkeypatch.setattr(installer, "guest_runtime_target", lambda: "linux-aarch64")
+    monkeypatch.setattr(
+        installer,
+        "validate_wheelhouse",
+        lambda *_args, **_kwargs: (requirements, guest_wheel),
+    )
+    monkeypatch.setattr(installer, "rewrite_entrypoint_shebangs", lambda **_: None)
+    monkeypatch.setattr(
+        installer,
+        "installed_dependency_versions",
+        lambda _: {"alembic": "1.16.5", "sqlalchemy": "2.0.51"},
+    )
+    monkeypatch.setattr(installer, "publish_venv", lambda **_: None)
+
+    def record_run(command: list[str], **kwargs: object) -> None:
+        commands.append((command, kwargs.get("cwd")))
+
+    monkeypatch.setattr(installer.subprocess, "run", record_run)
+
+    installer.install_guest_tools_runtime(
+        wheel_dir=tmp_path / "python-wheels",
+        guest_tools_home=tmp_path / "guest-tools-home",
+    )
+
+    pip_install = next(command for command in commands if "-r" in command[0])
+    assert pip_install[1] == requirements.parent
+
+
+def test_guest_tools_runtime_installer_rewrites_entrypoints_before_publish(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "guest_tools_runtime_installer",
+        GUEST_TOOLS_RUNTIME_INSTALLER,
+    )
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    next_venv = tmp_path / "guest-tools/venv.next"
+    current_venv = tmp_path / "guest-tools/venv"
+    entrypoint = next_venv / "bin/tirosh-vitalserver-rootfs-smoke"
+    entrypoint.parent.mkdir(parents=True)
+    entrypoint.write_text(
+        f"#!{next_venv / 'bin/python3.12'}\nprint('rootfs smoke')\n",
+        encoding="utf-8",
+    )
+
+    installer.rewrite_entrypoint_shebangs(
+        next_venv=next_venv,
+        current_venv=current_venv,
+    )
+
+    assert entrypoint.read_text(encoding="utf-8").startswith(
+        f"#!{current_venv / 'bin/python3.12'}\n"
+    )
+
+
+def test_guest_deploy_material_digest_excludes_only_run_scoped_contracts(
+    tmp_path: Path,
+) -> None:
+    deploy = write_materialized_guest_deploy_source(tmp_path / "deploy")
+
+    initial = deploy_bundle.guest_deploy_material_sha256(deploy)
+    (deploy / "host-time.json").write_text(
+        '{"updatedAt":"2026-06-11T00:00:01Z"}\n',
+        encoding="utf-8",
+    )
+    metadata_path = deploy / "build-metadata/rootfs-input.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["guestClockUtc"] = "2026-06-11T00:00:02Z"
+    metadata["runId"] = "new-run"
+    metadata["runtimeBootSmoke"] = {"enabled": True, "runId": "smoke-run"}
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    assert deploy_bundle.guest_deploy_material_sha256(deploy) == initial
+
+    (deploy / "bootstrap.sh").write_text("changed\n", encoding="utf-8")
+
+    assert deploy_bundle.guest_deploy_material_sha256(deploy) != initial
+
+
+def test_guest_deploy_material_digest_binds_rootfs_static_metadata(
+    tmp_path: Path,
+) -> None:
+    deploy = write_materialized_guest_deploy_source(tmp_path / "deploy")
+    initial = deploy_bundle.guest_deploy_material_sha256(deploy)
+    metadata_path = deploy / "build-metadata/rootfs-input.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["ubuntu"]["aptSnapshot"] = "20260611T000000Z"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    assert deploy_bundle.guest_deploy_material_sha256(deploy) != initial
+
+
+def test_guest_deploy_material_digest_rejects_symlink(
+    tmp_path: Path,
+) -> None:
+    deploy = write_materialized_guest_deploy_source(tmp_path / "deploy")
+    (deploy / "unsafe-link").symlink_to(deploy / "bootstrap.sh")
+
+    with pytest.raises(SystemExit, match="must not contain symlinks"):
+        deploy_bundle.guest_deploy_material_sha256(deploy)
+
+
+def test_guest_deploy_material_digest_rejects_missing_rootfs_input_metadata(
+    tmp_path: Path,
+) -> None:
+    deploy = tmp_path / "deploy"
+    deploy.mkdir()
+
+    with pytest.raises(SystemExit, match="missing rootfs input metadata"):
+        deploy_bundle.guest_deploy_material_sha256(deploy)
+
+
+def test_stage_materialized_guest_deploy_removes_volatile_contracts(
+    tmp_path: Path,
+) -> None:
+    source = write_materialized_guest_deploy_source(tmp_path / "compiled-deploy")
+    destination = tmp_path / "package/deploy"
+
+    deploy_bundle.stage_materialized_guest_deploy(source, destination)
+
+    assert (destination / "bootstrap.sh").read_text(encoding="utf-8") == "#!/bin/sh\n"
+    assert not (destination / "host-time.json").exists()
+    assert not (destination / "build-metadata/rootfs-input.json").exists()
+
+
+def test_stage_materialized_guest_deploy_rejects_same_path(tmp_path: Path) -> None:
+    source = write_materialized_guest_deploy_source(tmp_path / "compiled-deploy")
+
+    with pytest.raises(SystemExit, match="source and destination must not overlap"):
+        deploy_bundle.stage_materialized_guest_deploy(source, source)
+
+
+def test_stage_materialized_guest_deploy_rejects_nested_destination(
+    tmp_path: Path,
+) -> None:
+    source = write_materialized_guest_deploy_source(tmp_path / "compiled-deploy")
+
+    with pytest.raises(SystemExit, match="source and destination must not overlap"):
+        deploy_bundle.stage_materialized_guest_deploy(source, source / "nested")
+
+
+def write_materialized_guest_deploy_source(deploy: Path) -> Path:
+    (deploy / "build-metadata").mkdir(parents=True)
+    (deploy / "build-metadata/rootfs-input.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "guestClockUtc": "2026-06-11T00:00:00Z",
+                "runtimeBootSmoke": {"enabled": False},
+                "dockerImages": {"platform": "linux/arm64"},
+                "runtimeData": {
+                    "diskImageName": "runtime-data.img",
+                    "diskSize": "16G",
+                    "filesystemLabel": "vital-runtime",
+                    "mountPath": "/mnt/runtime",
+                    "dockerDataRoot": "/mnt/runtime/docker",
+                    "containerdRoot": "/mnt/runtime/containerd",
+                },
+                "ubuntu": {
+                    "aptSnapshot": "20250515T000000Z",
+                    "baseUrl": "https://example.invalid/noble",
+                    "cacheKey": "noble-example",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (deploy / "host-time.json").write_text(
+        '{"updatedAt":"2026-06-11T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+    (deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    return deploy
 
 
 def test_guest_tools_runtime_installer_requires_hash_pinned_manifest_wheel_closure(

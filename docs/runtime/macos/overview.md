@@ -111,7 +111,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 
 | 문서 | 먼저 볼 때 |
 |---|---|
-| [Packaging and Update](packaging.md) | `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/dmg/dev`/`make dist/dmg/release`, update bundle, install settings, release artifact 흐름을 볼 때 |
+| [Packaging and Update](packaging.md) | 현장 전달 표준 `make dist/dmg/dev`, 반복 개발용 `make dist/dmg/dev/cached`, PKG/update bundle, install settings, release artifact 흐름을 볼 때 |
 | [Update](update.md) | bundle 적용 과정, 보존/변경되는 항목, guest-side activation, rollback 실패 조건을 볼 때 |
 | [ADR 0003](../../adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model을 볼 때 |
 | [ADR 0004](../../adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약을 볼 때 |
@@ -130,12 +130,21 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 make dist/dmg/dev
 ```
 
-Clean golden rootfs부터 다시 만들어 release 검증에 가깝게 빌드하려면:
+`dist/dmg/dev`는 review, clean golden rootfs compile, artifact verify, golden runtime smoke를 모두 수행하는 현장 전달 표준 gate입니다.
+
+반복 개발에서 cache-preferred DMG packaging만 필요할 때는 다음 target을 사용합니다. 이 target은 현장 전달 proof를 만들지 않습니다.
+
+```sh
+make dist/dmg/dev/cached
+```
+
+clean compile 단계만 원인을 분리해 확인하려면:
 
 ```sh
 make dist/dmg/dev/compile
-make dist/dmg/release
 ```
+
+release artifact는 별도의 release branch guard와 release manifest를 사용하는 `make dist/dmg/release`로 만듭니다. 이 target도 review, clean compile, artifact verify, golden runtime smoke를 모두 실행하는 release 현장 전달 gate입니다.
 
 ### 6-2. `.pkg`만 만들기
 

@@ -28,7 +28,7 @@ requiresMount = true
 
 [compose]
 projectName = "vitalserver"
-environmentFile = "/mnt/tirosh/deploy/.env"
+environmentFile = "/mnt/runtime/compose.env"
 stopTimeoutSeconds = 120
 
 [intervals]

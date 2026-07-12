@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import shutil
+import stat
 import subprocess
 import sys
 import tomllib
@@ -18,8 +19,260 @@ from tirosh_vitalserver.devtools.core.guest_services import (
     GuestDeployPlan,
     GuestPythonWheelProject,
     RootfsInputMetadataPlan,
+    rootfs_input_material_document,
     rootfs_input_metadata_document,
 )
+
+GUEST_DEPLOY_MATERIAL_DIGEST_VERSION = 2
+ROOTFS_INPUT_METADATA_RELATIVE_PATH = "build-metadata/rootfs-input.json"
+GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS = frozenset(
+    {
+        "host-time.json",
+    }
+)
+GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS = (
+    GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS | {ROOTFS_INPUT_METADATA_RELATIVE_PATH}
+)
+
+
+def stage_materialized_guest_deploy(source: Path, destination: Path) -> None:
+    """Stage the exact deploy material compiled into a golden rootfs.
+
+    Host time and rootfs input metadata are intentionally not carried forward.
+    The caller owns fresh contracts for its own run.
+    """
+
+    guest_deploy_material_sha256(source)
+    resolved_source = source.resolve()
+    resolved_destination = destination.resolve(strict=False)
+    if (
+        resolved_source == resolved_destination
+        or resolved_source.is_relative_to(resolved_destination)
+        or resolved_destination.is_relative_to(resolved_source)
+    ):
+        raise SystemExit(
+            "error: compiled Guest deploy source and destination must not overlap: "
+            f"source={source} destination={destination}"
+        )
+    if destination.is_symlink():
+        raise SystemExit(
+            "error: compiled Guest deploy destination must not be a symlink: "
+            f"{destination}"
+        )
+    if destination.exists() and not destination.is_dir():
+        raise SystemExit(
+            "error: compiled Guest deploy destination is not a directory: "
+            f"{destination}"
+        )
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(source, destination)
+    for relative_path in GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS:
+        volatile_contract = destination / relative_path
+        if volatile_contract.exists():
+            if (
+                not volatile_contract.is_file()
+                or volatile_contract.is_symlink()
+            ):
+                raise SystemExit(
+                    "error: staged volatile Guest deploy contract is unsafe: "
+                    f"{volatile_contract}"
+                )
+            volatile_contract.unlink()
+    metadata_dir = destination / "build-metadata"
+    if metadata_dir.exists() and not any(metadata_dir.iterdir()):
+        metadata_dir.rmdir()
+
+
+def guest_deploy_material_sha256(deploy_dir: Path) -> str:
+    """Return a stable digest for Guest deploy material, excluding volatile contracts.
+
+    The deploy directory is a release input, not an arbitrary archive. Symlinks,
+    special files, and a missing rootfs input contract are rejected instead of
+    being ignored or followed.
+    """
+
+    require_guest_deploy_directory(deploy_dir)
+    rootfs_input_material = require_rootfs_input_metadata(deploy_dir)
+    try:
+        entries = sorted(
+            deploy_dir.rglob("*"),
+            key=lambda path: path.relative_to(deploy_dir).as_posix(),
+        )
+    except OSError as error:
+        raise SystemExit(
+            f"error: Guest deploy material is unreadable: {deploy_dir}: {error}"
+        ) from error
+
+    digest = hashlib.sha256()
+    digest.update(
+        f"vitalserver-guest-deploy-material-v{GUEST_DEPLOY_MATERIAL_DIGEST_VERSION}\n".encode()
+    )
+    for path in entries:
+        relative_path = path.relative_to(deploy_dir).as_posix()
+        require_safe_guest_deploy_relative_path(relative_path, deploy_dir)
+        try:
+            file_status = path.lstat()
+        except OSError as error:
+            raise SystemExit(
+                "error: Guest deploy material entry is unreadable: "
+                f"{path}: {error}"
+            ) from error
+        if stat.S_ISLNK(file_status.st_mode):
+            raise SystemExit(
+                "error: Guest deploy material must not contain symlinks: "
+                f"{path}"
+            )
+        if relative_path == ROOTFS_INPUT_METADATA_RELATIVE_PATH:
+            if not stat.S_ISREG(file_status.st_mode):
+                raise SystemExit(
+                    "error: Guest deploy rootfs input metadata is not a regular file: "
+                    f"{path}"
+                )
+            digest_guest_deploy_entry(
+                digest,
+                {
+                    "contract": rootfs_input_material,
+                    "path": relative_path,
+                    "type": "rootfs-input-metadata",
+                },
+            )
+            continue
+        if relative_path in GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS:
+            if not stat.S_ISREG(file_status.st_mode):
+                raise SystemExit(
+                    "error: volatile Guest deploy contract is not a regular file: "
+                    f"{path}"
+                )
+            continue
+        if stat.S_ISDIR(file_status.st_mode):
+            digest_guest_deploy_entry(
+                digest,
+                {
+                    "mode": stat.S_IMODE(file_status.st_mode),
+                    "path": relative_path,
+                    "type": "directory",
+                },
+            )
+            continue
+        if stat.S_ISREG(file_status.st_mode):
+            digest_guest_deploy_entry(
+                digest,
+                {
+                    "bytes": file_status.st_size,
+                    "mode": stat.S_IMODE(file_status.st_mode),
+                    "path": relative_path,
+                    "sha256": sha256_file(path),
+                    "type": "file",
+                },
+            )
+            continue
+        raise SystemExit(
+            "error: Guest deploy material must contain only regular files and "
+            f"directories: {path}"
+        )
+    return digest.hexdigest()
+
+
+def require_guest_deploy_directory(deploy_dir: Path) -> None:
+    try:
+        status = deploy_dir.lstat()
+    except FileNotFoundError as error:
+        raise SystemExit(
+            f"error: Guest deploy material is missing: {deploy_dir}"
+        ) from error
+    except OSError as error:
+        raise SystemExit(
+            f"error: Guest deploy material is unreadable: {deploy_dir}: {error}"
+        ) from error
+    if stat.S_ISLNK(status.st_mode):
+        raise SystemExit(
+            f"error: Guest deploy material must not be a symlink: {deploy_dir}"
+        )
+    if not stat.S_ISDIR(status.st_mode):
+        raise SystemExit(
+            f"error: Guest deploy material is not a directory: {deploy_dir}"
+        )
+
+
+def require_rootfs_input_metadata(deploy_dir: Path) -> dict[str, object]:
+    metadata = deploy_dir / ROOTFS_INPUT_METADATA_RELATIVE_PATH
+    try:
+        status = metadata.lstat()
+    except FileNotFoundError as error:
+        raise SystemExit(
+            "error: Guest deploy material is missing rootfs input metadata: "
+            f"{metadata}"
+        ) from error
+    except OSError as error:
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata is unreadable: "
+            f"{metadata}: {error}"
+        ) from error
+    if stat.S_ISLNK(status.st_mode) or not stat.S_ISREG(status.st_mode):
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata is not a regular file: "
+            f"{metadata}"
+        )
+    try:
+        document = json.loads(metadata.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata is unreadable: "
+            f"{metadata}: {error}"
+        ) from error
+    except json.JSONDecodeError as error:
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata is invalid JSON: "
+            f"{metadata}: {error}"
+        ) from error
+    if not isinstance(document, dict):
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata must be an object: "
+            f"{metadata}"
+        )
+    try:
+        return rootfs_input_material_document(document)
+    except ValueError as error:
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata has invalid material "
+            f"contract: {metadata}: {error}"
+        ) from error
+
+
+def require_safe_guest_deploy_relative_path(
+    relative_path: str,
+    deploy_dir: Path,
+) -> None:
+    parts = relative_path.split("/")
+    if not relative_path or any(part in {"", ".", ".."} for part in parts):
+        raise SystemExit(
+            "error: Guest deploy material contains an unsafe relative path: "
+            f"{deploy_dir / relative_path}"
+        )
+
+
+def digest_guest_deploy_entry(
+    digest: hashlib._Hash,
+    entry: dict[str, object],
+) -> None:
+    digest.update(
+        json.dumps(entry, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        + b"\n"
+    )
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        raise SystemExit(
+            f"error: Guest deploy material file is unreadable: {path}: {error}"
+        ) from error
+    return digest.hexdigest()
 
 
 def stage_guest_deploy(plan: GuestDeployPlan) -> None:
@@ -82,16 +335,17 @@ def copy_file(source: Path, destination: Path) -> None:
 
 
 def stage_python_wheel(project: GuestPythonWheelProject) -> None:
-    wheel = build_pure_python_wheel(project.source)
-    if project_runtime_dependencies(project.source):
-        stage_guest_python_wheelhouse(
-            project.source,
-            project.destination_directory,
-            wheel=wheel,
-        )
-        return
-    project.destination_directory.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(wheel, project.destination_directory / wheel.name)
+    with TemporaryDirectory(prefix="tirosh-guest-wheel-") as temporary:
+        wheel = build_pure_python_wheel(project.source, Path(temporary))
+        if project_runtime_dependencies(project.source):
+            stage_guest_python_wheelhouse(
+                project.source,
+                project.destination_directory,
+                wheel=wheel,
+            )
+            return
+        project.destination_directory.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(wheel, project.destination_directory / wheel.name)
 
 
 GUEST_RUNTIME_TARGETS = {
@@ -125,7 +379,17 @@ def stage_guest_python_wheelhouse(
     if not targets:
         raise SystemExit("error: Guest Python runtime wheelhouse requires a target")
 
-    built_wheel = wheel or build_pure_python_wheel(project)
+    if wheel is None:
+        with TemporaryDirectory(prefix="tirosh-guest-wheel-") as temporary:
+            built_wheel = build_pure_python_wheel(project, Path(temporary))
+            stage_guest_python_wheelhouse(
+                project,
+                destination,
+                targets=targets,
+                wheel=built_wheel,
+            )
+        return
+    built_wheel = wheel
     guest_tools_directory = destination / "guest-tools"
     reset_generated_wheel_directory(guest_tools_directory)
     staged_guest_wheel = guest_tools_directory / built_wheel.name
@@ -264,7 +528,7 @@ def project_runtime_dependencies(project: Path) -> list[str]:
     return dependencies
 
 
-def build_pure_python_wheel(project: Path) -> Path:
+def build_pure_python_wheel(project: Path, output_directory: Path) -> Path:
     pyproject = project / "pyproject.toml"
     package_root = project / "src"
     if not pyproject.is_file():
@@ -322,7 +586,7 @@ def build_pure_python_wheel(project: Path) -> Path:
                 )
             record_path = f"{dist_info}/RECORD"
             archive.writestr(record_path, record_contents(records, record_path))
-        output = project / "dist" / wheel_name
+        output = output_directory / wheel_name
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(wheel, output)
         return output

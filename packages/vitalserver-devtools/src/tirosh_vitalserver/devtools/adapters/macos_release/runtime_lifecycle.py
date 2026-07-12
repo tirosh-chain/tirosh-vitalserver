@@ -375,8 +375,8 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
     print(f"Golden rootfs run started: runId={input.run_id}")
     if removed:
         print("Invalidated stale rootfs proof:")
-        for path in removed:
-            print(f"  {path}")
+        for removed_path in removed:
+            print(f"  {removed_path}")
     return 0
 
 
@@ -803,6 +803,7 @@ def begin_runtime_boot_smoke_run(input: RuntimeBootSmokeRunInput) -> int:
 
     stale_paths = [
         data_run_dir / "runtime-boot-smoke-manifest.json",
+        data_run_dir / "bootstrap-result.json",
         run_dir / "vm-lifecycle.json",
     ]
     removed: list[str] = []
@@ -828,8 +829,8 @@ def begin_runtime_boot_smoke_run(input: RuntimeBootSmokeRunInput) -> int:
     print(f"Runtime boot smoke run started: runId={input.run_id}")
     if removed:
         print("Invalidated stale runtime boot smoke proof:")
-        for path in removed:
-            print(f"  {path}")
+        for removed_path in removed:
+            print(f"  {removed_path}")
     return 0
 
 
@@ -1106,7 +1107,9 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
 
 
 def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
-    manifest = vm_home_path(input.vm_home) / "data/run/runtime-boot-smoke-manifest.json"
+    data_run_dir = vm_home_path(input.vm_home) / "data/run"
+    manifest = data_run_dir / "runtime-boot-smoke-manifest.json"
+    bootstrap_result = data_run_dir / "bootstrap-result.json"
     expected_run_id = input.expected_run_id
     print(f"Waiting for runtime boot smoke manifest: {manifest}")
     if expected_run_id:
@@ -1114,6 +1117,17 @@ def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
     deadline = time.monotonic() + input.timeout
     last_state = "not-started"
     while time.monotonic() < deadline:
+        bootstrap_state = inspect_runtime_bootstrap_result(
+            bootstrap_result,
+            expected_run_id=expected_run_id,
+        )
+        if bootstrap_state["terminal"]:
+            raise SystemExit(
+                f"{bootstrap_state['message']}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
+            )
+        if bootstrap_state["message"]:
+            last_state = str(bootstrap_state["message"])
         result = inspect_runtime_boot_smoke_manifest(
             manifest,
             expected_run_id=expected_run_id,
@@ -1804,6 +1818,101 @@ def inspect_runtime_boot_smoke_manifest(
         "ready": False,
         "terminal": False,
         "message": f"waiting for runtime boot smoke status: {status}",
+    }
+
+
+def inspect_runtime_bootstrap_result(
+    bootstrap_result: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    if not bootstrap_result.is_file():
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": "",
+        }
+    try:
+        document = json.loads(bootstrap_result.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap result is unreadable: "
+                f"{bootstrap_result}: {error}"
+            ),
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap result is not an object: "
+                f"{bootstrap_result}"
+            ),
+        }
+    status = document.get("status")
+    if not isinstance(status, str) or not status.strip():
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap result is missing status: "
+                f"{bootstrap_result}"
+            ),
+        }
+    if status == "failed":
+        reason_codes = document.get("reasonCodes")
+        if (
+            not isinstance(reason_codes, list)
+            or not all(isinstance(code, str) and code for code in reason_codes)
+        ):
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    "error: runtime boot smoke bootstrap result has invalid "
+                    f"reasonCodes: runId={expected_run_id or 'unknown'} "
+                    f"bootstrapResult={bootstrap_result}"
+                ),
+            }
+        message = document.get("message")
+        if not isinstance(message, str) or not message.strip():
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    "error: runtime boot smoke bootstrap result has missing "
+                    f"failure message: runId={expected_run_id or 'unknown'} "
+                    f"bootstrapResult={bootstrap_result}"
+                ),
+            }
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap failed: "
+                f"runId={expected_run_id or 'unknown'} "
+                "stage=bootstrap-result "
+                f"reasonCodes={reason_codes} message={message} "
+                f"bootstrapResult={bootstrap_result}"
+            ),
+        }
+    if status not in {"running", "completed"}:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap result has unsupported "
+                f"status: runId={expected_run_id or 'unknown'} status={status} "
+                f"bootstrapResult={bootstrap_result}"
+            ),
+        }
+    return {
+        "ready": False,
+        "terminal": False,
+        "message": f"runtime boot smoke bootstrap is {status}",
     }
 
 

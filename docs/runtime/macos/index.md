@@ -13,7 +13,7 @@
 | [macOS Runtime Overview](overview.md) | VM runtime 문서군 전체 지도와 사용자 시나리오 |
 | [Architecture](architecture.md) | 제품 구조, shared/NAT + host nginx 선택 이유, 단일 노드 가용성 범위, 책임 경계 확인 |
 | [State Machine Traceability](state-machine-traceability.md) | install/update/recovery/recorder/log 흐름의 상태 전이, invariant, 검증 증거 기준 확인 |
-| [Packaging and Update](packaging.md) | `make dist/pkg/dev`, `make dist/dmg/dev`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
+| [Packaging and Update](packaging.md) | 현장 전달 표준 `make dist/dmg/dev`, 반복 개발용 `make dist/dmg/dev/cached`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
 | [Update](update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 확인 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책 확인 |
 | [VitalServer Backup](runtime-data-backup.md) | VitalServer backup 대상, artifact schema owner, restore compatibility 계약 확인 |
@@ -57,6 +57,8 @@ Bridged mode는 Apple `com.apple.vm.networking` restricted entitlement 승인이
 ```sh
 make dist/dmg/dev
 ```
+
+이 명령은 review, clean golden-rootfs compile, DMG artifact verify, golden runtime smoke를 순서대로 실행하는 현장 전달 표준 gate입니다. 반복 개발에서 cache-preferred DMG만 필요할 때는 `make dist/dmg/dev/cached`를 사용하며, 이 target은 현장 전달 proof를 대신하지 않습니다.
 
 ### 3-2. Product Update bundle 만들기
 

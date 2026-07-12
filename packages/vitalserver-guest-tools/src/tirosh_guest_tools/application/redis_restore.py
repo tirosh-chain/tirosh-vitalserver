@@ -86,7 +86,7 @@ def restore_archive(archive: Path) -> None:
     with tarfile.open(archive, "r:gz") as tar:
         tar.extractall(target)
     logger.info("redis archive extracted", extra={"fields": {"archive": str(archive)}})
-    run(compose_command(["up", "-d"]))
+    run(compose_command(["up", "--pull", "never", "--no-build", "-d"]))
 
 
 def validate_archive_members(archive: Path) -> None:

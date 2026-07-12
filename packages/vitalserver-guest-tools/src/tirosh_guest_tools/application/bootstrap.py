@@ -32,7 +32,6 @@ class GuestBootstrapStep(StrEnum):
     LOAD_DOCKER_IMAGES = "load-docker-images"
     RUN_DOCKER_SMOKE = "run-docker-smoke"
     CLEANUP_DOCKER_CACHE = "cleanup-docker-cache"
-    BUILD_MISSING_IMAGES = "build-missing-images"
     START_COMPOSE = "start-compose"
     START_CONTAINER_LOGS = "start-container-logs"
     WAIT_EDGE_READY = "wait-edge-ready"
@@ -124,7 +123,6 @@ class GuestBootstrapOperations:
     load_bundled_docker_images: Callable[[GuestBootstrapContext], None]
     run_docker_runtime_smoke: Callable[[str], DockerSmokeResult]
     cleanup_docker_cache: Callable[[], None]
-    build_missing_images: Callable[[], None]
     start_compose: Callable[[], None]
     start_container_logs: Callable[[], None]
     probe_edge_readiness: Callable[[str, float], EdgeReadinessProbeResult]
@@ -227,10 +225,6 @@ class GuestBootstrapWorkflow:
             (
                 GuestBootstrapStep.CLEANUP_DOCKER_CACHE,
                 self.operations.cleanup_docker_cache,
-            ),
-            (
-                GuestBootstrapStep.BUILD_MISSING_IMAGES,
-                self.operations.build_missing_images,
             ),
             (GuestBootstrapStep.START_COMPOSE, self.start_compose),
             (GuestBootstrapStep.START_CONTAINER_LOGS, self.start_container_logs),

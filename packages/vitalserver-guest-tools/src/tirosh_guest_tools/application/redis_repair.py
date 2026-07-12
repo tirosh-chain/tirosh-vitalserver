@@ -59,25 +59,29 @@ def repair_appendonly_file() -> None:
         )
         return
     run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            f"{REDIS_VOLUME}:/data",
-            "redis:3.2.12-alpine",
-            "sh",
-            "-c",
-            (
-                "set -eu; "
-                "if [ ! -f /data/appendonly.aof ]; then "
-                "echo 'appendonly.aof does not exist; nothing to repair'; exit 0; fi; "
-                "if redis-check-aof /data/appendonly.aof; then "
-                "echo 'appendonly.aof is valid'; exit 0; fi; "
-                "backup=\"/data/appendonly.aof.bak.$(date +%Y%m%d%H%M%S)\"; "
-                "cp /data/appendonly.aof \"$backup\"; "
-                "printf 'created backup: %s\\n' \"$backup\"; "
-                "printf 'y\\n' | redis-check-aof --fix /data/appendonly.aof"
-            ),
-        ]
+        compose_command(
+            [
+                "run",
+                "--rm",
+                "--no-deps",
+                "--pull",
+                "never",
+                "--entrypoint",
+                "sh",
+                ComposeService.REDIS.value,
+                "-c",
+                (
+                    "set -eu; "
+                    "if [ ! -f /data/appendonly.aof ]; then "
+                    "echo 'appendonly.aof does not exist; nothing to repair'; "
+                    "exit 0; fi; "
+                    "if redis-check-aof /data/appendonly.aof; then "
+                    "echo 'appendonly.aof is valid'; exit 0; fi; "
+                    "backup=\"/data/appendonly.aof.bak.$(date +%Y%m%d%H%M%S)\"; "
+                    "cp /data/appendonly.aof \"$backup\"; "
+                    "printf 'created backup: %s\\n' \"$backup\"; "
+                    "printf 'y\\n' | redis-check-aof --fix /data/appendonly.aof"
+                ),
+            ]
+        )
     )

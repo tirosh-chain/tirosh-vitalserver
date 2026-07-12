@@ -1,14 +1,32 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pytest import MonkeyPatch
 
-from tirosh_vitalserver.devtools.application.inputs import UbuntuBootAssetsInput
+from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    REQUIRED_ROOTFS_STAGES,
+    ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION,
+    rootfs_artifact_manifest_path,
+)
+from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
+    GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
+    guest_deploy_material_sha256,
+)
+from tirosh_vitalserver.devtools.application.inputs import (
+    GuestDeploymentInput,
+    UbuntuBootAssetsInput,
+)
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_image as guest_image_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    guest_services as guest_services_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases.guest_services import (
     stage_rootfs_input_metadata,
@@ -26,6 +44,11 @@ from tirosh_vitalserver.devtools.core.guest_image import (
     runtime_data_disk_plan,
     ubuntu_boot_asset_plan,
     ubuntu_download_cache_key,
+)
+from tirosh_vitalserver.devtools.core.guest_services import (
+    GuestDeployPlan,
+    RootfsInputMetadataPlan,
+    rootfs_input_metadata_document,
 )
 
 
@@ -281,6 +304,120 @@ def test_stage_rootfs_input_metadata_preserves_run_identity(
 
     metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
     assert metadata["runId"] == "run-test"
+
+
+@pytest.mark.parametrize(
+    ("staged_snapshot", "matches_receipt"),
+    [
+        ("20250313T000000Z", True),
+        ("20260611T000000Z", False),
+    ],
+)
+def test_stage_guest_deployment_verifies_restaged_material_against_rootfs_receipt(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    staged_snapshot: str,
+    matches_receipt: bool,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    source_deploy = tmp_path / "compiled-deploy"
+    source_plan = RootfsInputMetadataPlan(
+        deploy_dir=source_deploy,
+        base_url="https://example.invalid/noble",
+        apt_snapshot="20250313T000000Z",
+        runtime_data=runtime_data_disk_config(),
+        docker_platform="linux/arm64",
+    )
+    (source_deploy / "build-metadata").mkdir(parents=True)
+    (source_deploy / "build-metadata/rootfs-input.json").write_text(
+        json.dumps(rootfs_input_metadata_document(source_plan)),
+        encoding="utf-8",
+    )
+    (source_deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    rootfs = tmp_path / "rootfs-base.raw.gz"
+    rootfs.write_bytes(b"rootfs")
+    rootfs_artifact_manifest_path(rootfs).write_text(
+        json.dumps(
+            {
+                "schemaVersion": ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION,
+                "artifact": {"sha256": hashlib.sha256(b"rootfs").hexdigest()},
+                "guestDeploy": {
+                    "path": "data/deploy",
+                    "materialDigestVersion": GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
+                    "materialSha256": guest_deploy_material_sha256(source_deploy),
+                },
+                "source": {"runId": "rootfs-run"},
+                "proof": {
+                    "cleanupStatus": "passed",
+                    "requiredStages": list(REQUIRED_ROOTFS_STAGES),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    vm_home = tmp_path / "runtime-smoke"
+    staged_deploy = vm_home / "data/deploy"
+    plan = GuestDeployPlan(
+        support_guest_source=root / "Support/Guest",
+        deploy_dir=staged_deploy,
+        includes=[],
+        python_wheel_projects=[],
+        docker_bundle_source=None,
+        docker_bundle_destination=None,
+        optional_docker_bundle_source=None,
+        optional_docker_bundle_destination=None,
+        vm_data_dirs=[],
+    )
+    monkeypatch.setattr(guest_services_usecases, "repo_root", lambda: root)
+    monkeypatch.setattr(guest_services_usecases, "load_config", lambda _: {})
+    monkeypatch.setattr(
+        guest_services_usecases,
+        "load_guest_deploy_config",
+        lambda _: object(),
+    )
+    monkeypatch.setattr(
+        guest_services_usecases,
+        "load_docker_images_config",
+        lambda *_: SimpleNamespace(optional_bundle_path=None, platform="linux/arm64"),
+    )
+    monkeypatch.setattr(
+        guest_services_usecases,
+        "load_ubuntu_image_config",
+        lambda _: SimpleNamespace(
+            base_url="https://example.invalid/noble",
+            apt_snapshot=staged_snapshot,
+        ),
+    )
+    monkeypatch.setattr(
+        guest_services_usecases,
+        "load_guest_runtime_config",
+        lambda _: SimpleNamespace(runtime_data_disk=runtime_data_disk_config()),
+    )
+    monkeypatch.setattr(guest_services_usecases, "guest_deploy_plan", lambda **_: plan)
+
+    input = GuestDeploymentInput(
+        config=root / "config.toml",
+        vm_home=vm_home,
+        runtime_dir=root / "runtime",
+        deploy_dir=None,
+        docker_bundle=None,
+        rootfs_run_id=None,
+        source_deploy_dir=source_deploy,
+        rootfs_artifact=rootfs,
+        runtime_boot_smoke_run_id="runtime-smoke-run",
+    )
+    if not matches_receipt:
+        with pytest.raises(SystemExit, match="does not match rootfs artifact receipt"):
+            guest_services_usecases.stage_guest_deployment(input)
+        return
+
+    assert guest_services_usecases.stage_guest_deployment(input) == 0
+    metadata = load_json(staged_deploy / "build-metadata/rootfs-input.json")
+    assert metadata["runtimeBootSmoke"] == {
+        "enabled": True,
+        "runId": "runtime-smoke-run",
+    }
 
 
 def load_json(path: Path) -> dict[str, object]:

@@ -338,7 +338,7 @@ Recorder `online` and `stale` are explicit observer states. Consumers must not i
 
 | 영역 | SoT | 생산자 | 소비자 | 비고 |
 |---|---|---|---|---|
-| Release metadata | `release.json` / `release-dev.json` | 개발자, release sync script | Swift generated release, vm-build, compose image sync | stable/dev release를 명시적으로 분리 |
+| Release metadata | `release.json` / `release-dev.json` | 개발자, release-contract generator | Swift generated release, packaging/UI service catalog | stable/dev release를 명시적으로 분리. Compose와 VM Docker plan은 rewrite 대상이 아니라 사전 대조되는 immutable compile input |
 | Runtime service catalog | `release*.json` | release config | UI, Runtime Control API, packaging | 화면에 표시되는 service name/version/image 기준 |
 | VM/package build config | `vm-build.toml` | build config | `packages/vitalserver-devtools` | Docker image, guest deploy path, bundle 구성 기준 |
 | Runtime health snapshot | runtime evaluator 결과 | watchdog/runtime | Runtime Control API, UI | 현재 runtime 상태 판단 기준 |

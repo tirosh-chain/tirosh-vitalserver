@@ -756,7 +756,7 @@ Guest proof 초안:
   - stale ephemeral runtime data disk가 있으면 새 run에서 invalidate되는지 검증
   - current runId와 다른 runtime data proof가 있으면 실패하는지 검증
 - full verification
-  - `make dist/dmg/dev/compile VM_RECREATE_GOLDEN_ROOTFS=true`
+  - `make dist/dmg/dev/compile`
 
 완료 조건:
 

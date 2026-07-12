@@ -59,7 +59,8 @@ make dev/bootstrap        # submodule, .env, local proxy config 준비
 make dev/doctor           # local 개발 환경 점검
 
 make dist/pkg/dev         # development pkg build
-make dist/dmg/dev         # development installer dmg build
+make dist/dmg/dev         # standard field-delivery DMG gate
+make dist/dmg/dev/cached  # source-contract/receipt-matched local DMG packaging only
 make dist/update/dev      # development product update bundle build
 
 make runtime/up           # local macOS VM runtime과 host proxy 실행

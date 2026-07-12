@@ -10,10 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
-from tirosh_guest_tools.contracts import (
-    ComposeService,
-    RuntimeFileName,
-)
+from tirosh_guest_tools.contracts import ComposeService
 from tirosh_guest_tools.domain.errors import (
     GuestContractError,
     GuestDependencyError,
@@ -22,6 +19,7 @@ from tirosh_guest_tools.domain.errors import (
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.domain.runtime_config import RuntimeConfig
 from tirosh_guest_tools.infrastructure.common import (
+    COMPOSE_ENVIRONMENT_FILE,
     COMPOSE_RUNTIME_LIMITS_FILE,
     DEPLOY_DIR,
     RUNTIME_CONFIG_FILE,
@@ -85,6 +83,38 @@ DEFAULT_RECORDER_INGRESS_CONTAINER_MEMORY_LIMIT_MIB = 410
 DEFAULT_REDIS_CONTAINER_MEMORY_LIMIT_MIB = 3277
 MIB_BYTES = 1024 * 1024
 MAX_DIAGNOSTIC_OUTPUT_CHARS = 12000
+COMPOSE_ENVIRONMENT_VARIABLES = (
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_ENABLED",
+    "RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES",
+    "RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES",
+    "RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES",
+    "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES",
+    "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS",
+    "RECORDER_INGRESS_SEND_DATA_MODE",
+    "RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS",
+    "RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS",
+    "VITALSERVER_ADMIN_PASSWORD",
+    "VITALSERVER_PUBLIC_HOST",
+    "VITALSERVER_PUBLIC_PORT",
+    "VITALSERVER_REDIS_HOST",
+    "VITALSERVER_REDIS_PORT",
+    "VITALSERVER_TRUST_PROXY",
+    "VITALSERVER_VITAL_FILES_DIR",
+)
 
 
 @dataclass(frozen=True)
@@ -196,7 +226,35 @@ def load_runtime_env() -> RuntimeConfig:
     settings_document = read_json(settings_path)
     load_recorder_ingress_send_data_env(settings_document, settings_path)
     write_compose_runtime_limits(settings_document, settings_path)
+    write_compose_environment_file()
     return config
+
+
+def write_compose_environment_file() -> None:
+    environment: dict[str, str] = {}
+    for name in COMPOSE_ENVIRONMENT_VARIABLES:
+        value = os.environ.get(name)
+        if value is None:
+            raise GuestContractError(
+                f"compose environment value is missing: {name}",
+                code="compose-environment-value-missing",
+            )
+        environment[name] = value
+    content = "".join(
+        f"{name}={json.dumps(value, ensure_ascii=False)}\n"
+        for name, value in environment.items()
+    )
+    output_path = COMPOSE_ENVIRONMENT_FILE
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = output_path.with_name(output_path.name + ".next")
+    try:
+        temporary_path.write_text(content, encoding="utf-8")
+        os.replace(temporary_path, output_path)
+    except OSError as error:
+        raise GuestDependencyError(
+            f"could not write compose environment file: {output_path}: {error}",
+            code="compose-environment-write-failed",
+        ) from error
 
 
 def load_recorder_ingress_send_data_env(
@@ -869,18 +927,21 @@ def wait_for_app() -> None:
 
 def start_ordered() -> None:
     checked_compose(
-        ["up", "-d", ComposeService.POSTGRES.value],
+        ["up", "--pull", "never", "--no-build", "-d", ComposeService.POSTGRES.value],
         stage="postgres startup",
     )
     wait_for_postgres()
     checked_compose(
-        ["up", "-d", ComposeService.REDIS.value],
+        ["up", "--pull", "never", "--no-build", "-d", ComposeService.REDIS.value],
         stage="redis startup",
     )
     wait_for_redis()
     checked_compose(
         [
             "up",
+            "--pull",
+            "never",
+            "--no-build",
             "-d",
             ComposeService.APP.value,
             ComposeService.RECORDER_RECOVERY.value,
@@ -895,6 +956,6 @@ def start_ordered() -> None:
     )
     wait_for_app()
     checked_compose(
-        ["up", "-d", ComposeService.EDGE.value],
+        ["up", "--pull", "never", "--no-build", "-d", ComposeService.EDGE.value],
         stage="edge startup",
     )

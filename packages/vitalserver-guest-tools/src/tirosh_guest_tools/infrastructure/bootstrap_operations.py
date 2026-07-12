@@ -70,7 +70,6 @@ def default_bootstrap_operations() -> GuestBootstrapOperations:
         load_bundled_docker_images=load_bundled_docker_images,
         run_docker_runtime_smoke=run_docker_runtime_smoke,
         cleanup_docker_cache=cleanup_docker_cache,
-        build_missing_images=build_missing_images,
         start_compose=start_compose,
         start_container_logs=start_container_logs,
         probe_edge_readiness=probe_edge_readiness,
@@ -324,17 +323,6 @@ def run_docker_runtime_smoke(docker_smoke_image: str) -> DockerSmokeResult:
 
 def cleanup_docker_cache() -> None:
     run(["docker", "image", "prune", "-f"], check=False)
-
-
-def build_missing_images() -> None:
-    for image, service in (
-        ("vitalserver:2.3.4", "app"),
-        ("vitalserver-recorder-recovery:0.1.0", "recorder-recovery"),
-        ("vitalserver-recorder-ingress:0.2.0", "recorder-ingress"),
-    ):
-        completed = run(["docker", "image", "inspect", image], check=False)
-        if completed.returncode != 0:
-            run(compose_command(["build", service]))
 
 
 def start_compose() -> None:

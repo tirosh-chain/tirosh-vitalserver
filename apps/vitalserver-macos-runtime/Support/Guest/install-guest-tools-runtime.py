@@ -55,6 +55,7 @@ def install_guest_tools_runtime(
         manifest,
         target=target,
     )
+    guest_tools_home = guest_tools_home.resolve()
     next_venv = guest_tools_home / "venv.next"
     current_venv = guest_tools_home / "venv"
     previous_venv = guest_tools_home / "venv.previous"
@@ -82,15 +83,27 @@ def install_guest_tools_runtime(
                 str(requirements),
             ],
             check=True,
+            cwd=requirements.parent,
         )
         subprocess.run([str(python), "-m", "pip", "check"], check=True)
         versions = installed_dependency_versions(python)
-    except subprocess.CalledProcessError as error:
+        rewrite_entrypoint_shebangs(
+            next_venv=next_venv,
+            current_venv=current_venv,
+        )
+    except (subprocess.CalledProcessError, GuestToolsInstallError) as error:
         remove_directory(next_venv, label="failed Guest Tools venv")
-        raise GuestToolsInstallError(
-            "Guest Tools offline dependency installation failed: "
-            f"exitCode={error.returncode}"
-        ) from error
+        if isinstance(error, subprocess.CalledProcessError):
+            message = (
+                "Guest Tools offline dependency installation failed: "
+                f"exitCode={error.returncode}"
+            )
+        else:
+            message = (
+                "Guest Tools offline dependency installation failed: "
+                f"reason={error}"
+            )
+        raise GuestToolsInstallError(message) from error
 
     publish_venv(
         next_venv=next_venv,
@@ -107,6 +120,44 @@ def install_guest_tools_runtime(
     }
     write_json_atomic(guest_tools_home / "install-proof.json", proof)
     return proof
+
+
+def rewrite_entrypoint_shebangs(
+    *,
+    next_venv: Path,
+    current_venv: Path,
+) -> None:
+    """Make generated console scripts valid after the venv directory rename."""
+
+    source_shebang_prefix = f"#!{next_venv}/bin/".encode()
+    target_shebang_prefix = f"#!{current_venv}/bin/".encode()
+    bin_dir = next_venv / "bin"
+    if not bin_dir.is_dir() or bin_dir.is_symlink():
+        raise GuestToolsInstallError(
+            f"Guest Tools next venv bin directory is invalid: {bin_dir}"
+        )
+    try:
+        rewritten = 0
+        for entrypoint in bin_dir.iterdir():
+            if entrypoint.is_symlink() or not entrypoint.is_file():
+                continue
+            content = entrypoint.read_bytes()
+            if not content.startswith(source_shebang_prefix):
+                continue
+            entrypoint.write_bytes(
+                target_shebang_prefix + content[len(source_shebang_prefix) :]
+            )
+            rewritten += 1
+    except OSError as error:
+        raise GuestToolsInstallError(
+            "Guest Tools entrypoint relocation failed: "
+            f"next={next_venv} current={current_venv} error={error}"
+        ) from error
+    if rewritten == 0:
+        raise GuestToolsInstallError(
+            "Guest Tools next venv has no relocatable entrypoints: "
+            f"{bin_dir}"
+        )
 
 
 def read_manifest(wheel_dir: Path) -> dict[str, Any]:

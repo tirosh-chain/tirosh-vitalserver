@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-set -eEuo pipefail
+set -Euo pipefail
 
 MOUNT_TAG="tirosh"
 MOUNT_POINT="/mnt/tirosh"
+DEPLOY_DIR="${MOUNT_POINT}/deploy"
 VITAL_FILES_MOUNT_TAG="tirosh-vital-files"
 VITAL_FILES_MOUNT_POINT="/mnt/tirosh-vital-files"
 RUNTIME_DIR="${MOUNT_POINT}/run"
@@ -20,8 +21,9 @@ POLICY_RC_D_BACKUP="/usr/sbin/policy-rc.d.vitalserver-backup"
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
 GUEST_TOOLS_INSTALL_PROOF_FILE="${GUEST_TOOLS_HOME}/install-proof.json"
-PYTHON_WHEEL_DIR="${MOUNT_POINT}/deploy/python-wheels"
+PYTHON_WHEEL_DIR="${DEPLOY_DIR}/python-wheels"
 ROOTFS_STAGE="startup"
+ROOTFS_FAILURE_RECORDED=0
 
 RUNTIME_APT_PACKAGES=(
   avahi-daemon
@@ -74,13 +76,15 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-record_failure() {
+record_failure_once() {
   local exit_code="$1"
   local stage="$2"
 
-  if [ "${exit_code}" -eq 0 ]; then
+  if [ "${ROOTFS_FAILURE_RECORDED}" -eq 1 ]; then
     return
   fi
+  ROOTFS_FAILURE_RECORDED=1
+
   if [ ! -d "${RUNTIME_DIR}" ]; then
     return
   fi
@@ -125,7 +129,31 @@ failure_path.write_text(
 PY
 }
 
-trap 'record_failure "$?" "${ROOTFS_STAGE}"' ERR
+# ERR is the explicit fail-fast boundary. Bash does not invoke it for every
+# expansion failure, so EXIT writes the same failure proof for those paths and
+# returns Bash's original status (for example, 127 for nounset).
+handle_rootfs_error() {
+  local exit_code="$1"
+
+  trap - ERR
+  set +e
+  record_failure_once "${exit_code}" "${ROOTFS_STAGE}"
+  exit "${exit_code}"
+}
+
+handle_rootfs_exit() {
+  local exit_code="$1"
+
+  trap - ERR EXIT
+  set +e
+  if [ "${exit_code}" -ne 0 ]; then
+    record_failure_once "${exit_code}" "${ROOTFS_STAGE}"
+  fi
+  exit "${exit_code}"
+}
+
+trap 'handle_rootfs_error "$?"' ERR
+trap 'handle_rootfs_exit "$?"' EXIT
 
 mount_share() {
   local tag="$1"

@@ -125,6 +125,10 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-114 | `/tmp`의 Linux update bundle을 Agent가 찾지 못함 | Packaging / Update | resolved | [Linux update bundle is invisible to the Platform Agent](114_linux_update_bundle_invisible_private_tmp.md) |
 | TS-115 | config가 가리키는 Linux support export tool이 release에 없음 | Packaging / Update | resolved | [Linux Platform Agent restarts because support export tool is missing](115_linux_platform_agent_support_export_tool_missing.md) |
 | TS-116 | Linux update acceptance가 support export를 중첩 실행해 409로 rollback | Packaging / Update | resolved | [Linux update rolls back when installed acceptance starts support export](116_linux_update_acceptance_nested_support_workflow.md) |
+| TS-117 | Docker multi-platform export가 Guest platform blob을 누락함 | Packaging / Guest bootstrap / Docker image bundle | resolved | [Docker multi-platform export omitted Guest blobs](117_docker_multiplatform_export_missing_guest_blobs.md) |
+| TS-118 | Guest bootstrap이 product image를 다시 build하려고 함 | Packaging / Guest bootstrap / Guest containers | resolved | [Guest bootstrap product image rebuild fallback](118_guest_bootstrap_product_image_rebuild_fallback.md) |
+| TS-119 | Release sync가 Docker export 뒤 compile input을 rewrite함 | Packaging / Release contract / Rootfs compile | resolved | [Release sync mutated compile inputs after Docker export](119_release_sync_mutated_compile_inputs.md) |
+| TS-120 | Guest wheel 생성물이 같은 delivery run의 rootfs fingerprint를 바꿈 | Packaging / Rootfs compile / Local development | resolved | [Generated Guest wheel changed rootfs fingerprint during the same delivery run](120_generated_guest_wheel_changes_rootfs_fingerprint.md) |
 
 ## Follow-up 규칙
 

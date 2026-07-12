@@ -48,9 +48,9 @@ include make/vm.mk
 .PHONY: \
 	dist/dmg/release dist/pkg/release dist/update/release \
 	dist/update/verify/release dist/update/release/smoke dist/update/release/apply-smoke dist/image-update/release \
-	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/all dist/dmg/dev/compile dist/dmg/dev/verify \
-	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/review dist/pkg/dev/runtime-smoke dist/pkg/dev/verify dist/pkg/verify/dev \
-	dist/dmg/release/review dist/dmg/release/verify dist/pkg/release/review dist/pkg/release/verify \
+	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/cached dist/dmg/dev/compile dist/dmg/dev/verify \
+	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/review dist/pkg/dev/runtime-smoke dist/pkg/dev/verify \
+	dist/dmg/release/review dist/pkg/release/review dist/pkg/release/verify \
 	dist/update/dev dist/update/verify/dev dist/update/dev/smoke dist/update/dev/apply-smoke \
 	dist/image-update/dev dist/image-update/verify/dev dist/image-update/dev/smoke dist/image-update/dev/apply-smoke \
 	dist/troubleshooting/dev dist/troubleshooting/dev/verify dist/troubleshooting/release dist/troubleshooting/release/verify \
@@ -60,7 +60,7 @@ include make/vm.mk
 	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke runtime/conformance runtime/proof/conformance runtime/proof/smoke runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/review runtime/proof/acceptance \
 	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop \
 	docs/build docs/serve \
-	devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
+	devtools/release-contract devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
 	devtools/docker/images devtools/sign devtools/sign/bridged devtools/bridged/preflight \
 	devtools/init devtools/download devtools/cloud-init devtools/stage \
 	devtools/airgap-rootfs devtools/golden-rootfs devtools/golden-rootfs/compile devtools/golden-rootfs/runtime-smoke devtools/start devtools/start/detached \
@@ -78,7 +78,7 @@ dist/image-update/verify/release: internal/vm/image-update/verify/release
 dist/image-update/release/smoke: internal/vm/image-update/smoke/release
 dist/image-update/release/apply-smoke: internal/vm/image-update/apply-smoke/release
 dist/dmg/dev: internal/vm/dmg/dev
-dist/dmg/dev/all: internal/vm/dmg/dev/all
+dist/dmg/dev/cached: internal/vm/dmg/dev/cached
 dist/dmg/dev/compile: internal/vm/dmg/dev/compile
 dist/dmg/dev/verify: internal/vm/dmg/dev/verify
 dist/pkg/dev: internal/vm/pkg/dev
@@ -86,9 +86,7 @@ dist/pkg/dev/compile: internal/vm/pkg/dev/compile
 dist/pkg/dev/review: internal/vm/pkg/dev/review
 dist/pkg/dev/runtime-smoke: internal/vm/pkg/dev/runtime-smoke
 dist/pkg/dev/verify: internal/vm/pkg/dev/verify
-dist/pkg/verify/dev: internal/vm/pkg/dev/verify
 dist/dmg/release/review: internal/vm/dmg/release/review
-dist/dmg/release/verify: internal/vm/dmg/release/verify
 dist/pkg/release/review: internal/vm/pkg/release/review
 dist/pkg/release/verify: internal/vm/pkg/release/verify
 dist/update/dev: internal/vm/update/dev
@@ -195,6 +193,7 @@ e2e/local/loop:
 		sleep "$(E2E_LOOP_INTERVAL)"; \
 	done
 
+devtools/release-contract: internal/vm/release-contract
 devtools/version-source: internal/vm/version-source
 devtools/build: internal/vm/build
 devtools/app: internal/vm/app
@@ -237,8 +236,8 @@ help:
 	@printf "  runtime/up      Start local macOS VM runtime and host proxy\n"
 	@printf "  runtime/health  Check runtime IP, guest HTTP, and host proxy reachability\n"
 	@printf "  pwa/check       Typecheck Runtime Control PWA\n"
-	@printf "  dist/pkg/dev/verify\n"
-	@printf "                  Run review, dev pkg build, and runtime smoke\n"
+	@printf "  dist/dmg/dev\n"
+	@printf "                  Run the standard field-delivery DMG gate\n"
 	@printf "  docs/serve      Serve MkDocs site with automatic port fallback\n"
 	@printf "\n"
 	@printf "HELP TOPICS\n"
@@ -302,12 +301,15 @@ help/dist:
 	@printf "  tirosh-vitalserver-dist - distribution package, install, and update targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
-	@printf "  make dist/{pkg|dmg}/dev/verify\n"
+	@printf "  make dist/pkg/dev/verify\n"
+	@printf "  make dist/dmg/dev\n"
+	@printf "  make dist/dmg/dev/cached\n"
 	@printf "  make dist/install/dev/verified\n"
-	@printf "  make dist/{pkg|dmg}/release/verify\n"
+	@printf "  make dist/dmg/release\n"
+	@printf "  make dist/pkg/release/verify\n"
 	@printf "  make dist/{update|image-update}/verify/{dev|release}\n"
-	@printf "  make dist/{pkg|dmg}/dev/compile\n"
-	@printf "  make dist/dmg/dev/all\n"
+	@printf "  make dist/dmg/{dev|release}  # standard field-delivery gates\n"
+	@printf "  make dist/dmg/dev/{cached|compile|verify}  # local/diagnostic phases only\n"
 	@printf "  make dist/{pkg|dmg|update|image-update}/{dev|release} [VM_RELEASE_BRANCH=main]\n"
 	@printf "  make dist/{update|image-update}/{dev|release}/smoke\n"
 	@printf "  make dist/troubleshooting/{dev|release}/verify\n"
@@ -316,11 +318,10 @@ help/dist:
 	@printf "\n"
 	@printf "VERIFY TARGETS\n"
 	@printf "  dist/pkg/dev/verify           Run package/PWA review, build dev pkg from clean rootfs, and run runtime smoke\n"
-	@printf "  dist/pkg/verify/dev           Alias for dist/pkg/dev/verify\n"
-	@printf "  dist/dmg/dev/verify           Verify existing dev DMG artifact and run golden runtime smoke\n"
-	@printf "  dist/dmg/dev/all              Run dev DMG review, clean compile, artifact verify, and runtime smoke\n"
+	@printf "  dist/dmg/dev                  Standard field-delivery DMG gate: review, environment preflight, clean compile, artifact verify, runtime smoke\n"
+	@printf "  dist/dmg/dev/verify           Existing-artifact diagnostic: readback plus verified cached golden runtime smoke\n"
 	@printf "  dist/pkg/release/verify       Run review, build release pkg, and run runtime smoke\n"
-	@printf "  dist/dmg/release/verify       Run review, build release dmg, and run runtime smoke\n"
+	@printf "  dist/dmg/release              Standard release DMG gate: review, environment preflight, clean compile, artifact verify, runtime smoke\n"
 	@printf "  dist/update/verify/dev        Verify development product update bundle\n"
 	@printf "  dist/update/verify/release    Verify release product update bundle\n"
 	@printf "  dist/image-update/verify/dev  Verify development VM image/rootfs update bundle\n"
@@ -342,12 +343,12 @@ help/dist:
 	@printf "  dist/pkg/dev                  Build development pkg\n"
 	@printf "  dist/pkg/dev/compile          Build development pkg and recompile the VM golden rootfs\n"
 	@printf "  dist/pkg/dev/review           Run the shared development review gate\n"
-	@printf "  dist/pkg/dev/runtime-smoke    Validate golden runtime boot contract for dev pkg\n"
+	@printf "  dist/pkg/dev/runtime-smoke    Validate an existing verified golden runtime boot contract for dev pkg\n"
 	@printf "  dist/pkg/release              Build release pkg from clean golden rootfs\n"
 	@printf "  dist/pkg/release/review       Run the shared release review gate\n"
-	@printf "  dist/dmg/dev                  Build development installer dmg with reusable rootfs cache\n"
+	@printf "  dist/dmg/dev/cached           Reuse only a source-contract/receipt-matched local golden cache; not a field-delivery gate\n"
 	@printf "  dist/dmg/dev/compile          Build development dmg from clean rootfs\n"
-	@printf "  dist/dmg/release              Build release installer dmg from clean golden rootfs\n"
+	@printf "  dist/dmg/release              Build and verify release installer DMG through the full field gate\n"
 	@printf "  dist/dmg/release/review       Run the shared release review gate\n"
 	@printf "  dist/update/dev               Build development product update bundle\n"
 	@printf "  dist/update/release           Build release product update bundle\n"
@@ -379,7 +380,7 @@ help/dist:
 	@printf "                                Required before guarded update apply smoke can run\n"
 	@printf "\n"
 	@printf "PROFILE TARGETS\n"
-	@printf "  Use dist/{pkg|dmg}/dev/compile for VM compile builds.\n"
+	@printf "  Use dist/dmg/{dev|release} for field delivery. cached and phase targets are not delivery proof.\n"
 
 help/runtime:
 	@printf "NAME\n"
@@ -429,7 +430,7 @@ help/devtools:
 	@printf "SYNOPSIS\n"
 	@printf "  make devtools/{golden-rootfs/compile|golden-rootfs/runtime-smoke|golden-rootfs|golden-rootfs/negative}\n"
 	@printf "  make devtools/{start|start/detached|wait/ip|wait/http|init|download|cloud-init|stage|airgap-rootfs}\n"
-	@printf "  make devtools/{version-source|build|app}\n"
+	@printf "  make devtools/{release-contract|version-source|build|app}\n"
 	@printf "  make devtools/nginx/{artifact|bundle}\n"
 	@printf "  make devtools/docker/images\n"
 	@printf "  make devtools/{sign|sign/bridged|bridged/preflight|package/clean}\n"
@@ -438,13 +439,14 @@ help/devtools:
 	@printf "  devtools/golden-rootfs/compile\n"
 	@printf "                                Recompile package golden rootfs cache from scratch\n"
 	@printf "  devtools/golden-rootfs/runtime-smoke\n"
-	@printf "                                Validate golden runtime boot contract\n"
+	@printf "                                Validate an existing verified golden runtime boot contract\n"
 	@printf "  devtools/golden-rootfs        Build package golden rootfs cache\n"
 	@printf "  devtools/golden-rootfs/negative\n"
 	@printf "                                Run golden rootfs negative proof scenarios\n"
 	@printf "\n"
 	@printf "BUILD TARGETS\n"
-	@printf "  devtools/version-source       Write release version source\n"
+	@printf "  devtools/release-contract     Validate immutable release inputs and generate Swift sources\n"
+	@printf "  devtools/version-source       Alias for release-contract\n"
 	@printf "  devtools/build                Build Apple Virtualization runtime launcher\n"
 	@printf "  devtools/app                  Build macOS Helper app\n"
 	@printf "  devtools/nginx/bundle         Build self-contained nginx bundle for dist pkg\n"

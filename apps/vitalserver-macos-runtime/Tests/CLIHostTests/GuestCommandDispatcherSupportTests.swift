@@ -97,6 +97,40 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(prepareAirgapRootfs.contains("python3 -m venv \"${test_venv}\""))
     }
 
+    func testPrepareAirgapRootfsOwnsGuestPathsAndFailureProofBoundary() throws {
+        let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+
+        XCTAssertTrue(prepareAirgapRootfs.contains("set -Euo pipefail"))
+        XCTAssertFalse(prepareAirgapRootfs.contains("set -eEuo pipefail"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("DEPLOY_DIR=\"${MOUNT_POINT}/deploy\""))
+        XCTAssertTrue(
+            prepareAirgapRootfs.contains("PYTHON_WHEEL_DIR=\"${DEPLOY_DIR}/python-wheels\"")
+        )
+        XCTAssertTrue(prepareAirgapRootfs.contains("ROOTFS_FAILURE_RECORDED=0"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("record_failure_once()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("handle_rootfs_error()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("handle_rootfs_exit()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("trap 'handle_rootfs_error \"$?\"' ERR"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("trap 'handle_rootfs_exit \"$?\"' EXIT"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("trap - ERR EXIT"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("exit \"${exit_code}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("127 for nounset"))
+        XCTAssertTrue(
+            prepareAirgapRootfs.contains(
+                "if [ \"${exit_code}\" -ne 0 ]; then\n"
+                    + "    record_failure_once \"${exit_code}\" \"${ROOTFS_STAGE}\"\n"
+                    + "  fi\n"
+                    + "  exit \"${exit_code}\""
+            )
+        )
+        XCTAssertFalse(prepareAirgapRootfs.contains("exit_code=1"))
+        assertOrder(
+            in: prepareAirgapRootfs,
+            first: "DEPLOY_DIR=\"${MOUNT_POINT}/deploy\"",
+            second: "PYTHON_WHEEL_DIR=\"${DEPLOY_DIR}/python-wheels\""
+        )
+    }
+
     func testBootstrapFailureOverwritesRunningResult() throws {
         let workflow = try readGuestToolsFile("application/bootstrap.py")
 
@@ -219,14 +253,17 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(prepareAirgapRootfs.contains("ready_path.write_text"))
     }
 
-    func testReleaseSyncTargetsGuestToolsInfrastructureAndUseCases() throws {
+    func testReleaseSyncValidatesImmutableGuestInputsAndOnlyGeneratesSwift() throws {
         let syncRelease = try readRuntimeSupportFile("Build/sync-release.py")
 
-        XCTAssertTrue(syncRelease.contains("\"packages/vitalserver-guest-tools/src/tirosh_guest_tools/infrastructure\""))
-        XCTAssertTrue(syncRelease.contains("\"bootstrap_operations.py\""))
-        XCTAssertTrue(syncRelease.contains("\"packages/vitalserver-guest-tools/src/tirosh_guest_tools/application\""))
-        XCTAssertTrue(syncRelease.contains("\"redis_repair.py\""))
-        XCTAssertFalse(syncRelease.contains("tirosh_guest_tools/redis/repair.py"))
+        XCTAssertTrue(syncRelease.contains("def validate_release_input_contract"))
+        XCTAssertTrue(syncRelease.contains("def sync_swift"))
+        XCTAssertTrue(syncRelease.contains("def sync_release"))
+        XCTAssertFalse(syncRelease.contains("def sync_compose"))
+        XCTAssertFalse(syncRelease.contains("def sync_build_config"))
+        XCTAssertFalse(syncRelease.contains("def sync_guest_scripts"))
+        XCTAssertFalse(syncRelease.contains("bootstrap_operations.py"))
+        XCTAssertFalse(syncRelease.contains("redis_repair.py"))
     }
 
     func testVMShutdownTimeoutMigrationReloadsLoadedLaunchdJob() throws {

@@ -5,12 +5,63 @@ import re
 import sys
 from pathlib import Path
 
+RELEASE_SERVICE_KEYS = (
+    "vitalServer",
+    "recorderIngress",
+    "recorderRecovery",
+    "vitalDBObserver",
+    "redisRelay",
+    "lab",
+    "redis",
+    "postgres",
+    "redisUI",
+    "swaggerUI",
+    "guestEdge",
+    "hostProxy",
+)
+GUEST_COMPOSE_SERVICE_RELEASE_KEYS = (
+    ("postgres", "postgres"),
+    ("redis", "redis"),
+    ("app", "vitalServer"),
+    ("recorder-recovery", "recorderRecovery"),
+    ("recorder-ingress", "recorderIngress"),
+    ("vitaldb-observer", "vitalDBObserver"),
+    ("redis-relay", "redisRelay"),
+    ("lab", "lab"),
+    ("redis-ui", "redisUI"),
+    ("swagger-ui", "swaggerUI"),
+    ("edge", "guestEdge"),
+)
+GUEST_DOCKER_BUNDLE_RELEASE_KEYS = (
+    "vitalServer",
+    "recorderIngress",
+    "recorderRecovery",
+    "vitalDBObserver",
+    "redisRelay",
+    "lab",
+    "postgres",
+    "redis",
+    "redisUI",
+    "swaggerUI",
+    "guestEdge",
+)
+GUEST_DOCKER_IMAGE_FIELD_RELEASE_KEYS = (
+    ("recorder_ingress_image", "recorderIngress"),
+    ("recorder_recovery_image", "recorderRecovery"),
+    ("vitaldb_observer_image", "vitalDBObserver"),
+    ("redis_relay_image", "redisRelay"),
+    ("lab_image", "lab"),
+)
+
 
 def require_service(release, key):
     try:
-        return release["services"][key]
+        service = release["services"][key]
     except KeyError as error:
         raise SystemExit(f"missing release service field: {key}.{error}") from error
+    if not isinstance(service, dict):
+        raise SystemExit(f"release service must be an object: services.{key}")
+    return service
 
 
 def require_field(mapping, path):
@@ -28,32 +79,6 @@ def write_if_changed(path, content):
     if path.exists() and path.read_text(encoding="utf-8") == content:
         return
     path.write_text(content, encoding="utf-8")
-
-
-def replace(pattern, replacement, content):
-    next_content, count = re.subn(
-        pattern,
-        replacement,
-        content,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    if count != 1:
-        raise SystemExit(f"release sync pattern did not match: {pattern}")
-    return next_content
-
-
-def replace_optional(pattern, replacement, content):
-    next_content, count = re.subn(
-        pattern,
-        replacement,
-        content,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    if count > 1:
-        raise SystemExit(f"release sync pattern matched too many times: {pattern}")
-    return next_content
 
 
 def swift_string(value):
@@ -91,13 +116,212 @@ def validate_release_policy(release):
             "release field services must not include testkit; Lab is the "
             "product service"
         )
+    for service in RELEASE_SERVICE_KEYS:
+        require_service_string(release, service, "displayName")
+        require_service_string(release, service, "image")
+        require_service_string(release, service, "version")
     for service in optional_services:
-        require_field(release, f"services.{service}.displayName")
-        require_field(release, f"services.{service}.image")
-        require_field(release, f"services.{service}.version")
-    require_field(release, "services.lab.displayName")
-    require_field(release, "services.lab.image")
-    require_field(release, "services.lab.version")
+        require_service_string(release, service, "displayName")
+        require_service_string(release, service, "image")
+        require_service_string(release, service, "version")
+
+
+def require_service_string(release, service, key):
+    value = require_service(release, service).get(key)
+    if not isinstance(value, str) or not value:
+        raise SystemExit(
+            f"release service field must be a non-empty string: services.{service}.{key}"
+        )
+    return value
+
+
+def release_service_images(release):
+    return {
+        service: require_service_string(release, service, "image")
+        for service in RELEASE_SERVICE_KEYS
+    }
+
+
+def validate_release_input_contract(root, release):
+    """Validate immutable Guest compile inputs before any Docker/cache work.
+
+    The release manifest is release metadata.  It may generate the designated
+    Swift sources below, but it must never rewrite the Compose, VM build, or
+    Guest source contracts that determine the air-gapped VM material.
+    """
+
+    images = release_service_images(release)
+    validate_guest_compose_images(root / "Support/Guest/compose.yaml", images)
+    validate_guest_docker_images_config(
+        root.parent.parent / "config/vm-build.toml",
+        images,
+    )
+
+
+def validate_guest_compose_images(compose_path, images):
+    try:
+        compose_text = compose_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise SystemExit(
+            f"error: release contract cannot read Guest compose: {compose_path}: {error}"
+        ) from error
+    compose_images = parse_guest_compose_images(compose_text, compose_path)
+    for compose_service, release_service in GUEST_COMPOSE_SERVICE_RELEASE_KEYS:
+        expected = images[release_service]
+        actual = compose_images.get(compose_service)
+        if actual is None:
+            raise SystemExit(
+                "error: release contract Guest compose image is missing: "
+                f"path={compose_path} service={compose_service} "
+                f"releaseService={release_service}"
+            )
+        if actual != expected:
+            raise SystemExit(
+                "error: release contract Guest compose image mismatch: "
+                f"path={compose_path} service={compose_service} "
+                f"releaseService={release_service} expected={expected} actual={actual}"
+            )
+
+
+def parse_guest_compose_images(content, path):
+    in_services = False
+    current_service = None
+    images = {}
+    for line_number, line in enumerate(content.splitlines(), start=1):
+        if line == "services:":
+            if in_services:
+                raise SystemExit(
+                    f"error: release contract Guest compose has duplicate services section: {path}"
+                )
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        if line and not line.startswith((" ", "\t", "#")):
+            break
+        service_match = re.fullmatch(
+            r"  ([A-Za-z0-9][A-Za-z0-9_-]*):\s*(?:#.*)?",
+            line,
+        )
+        if service_match:
+            current_service = service_match.group(1)
+            continue
+        image_match = re.fullmatch(r"    image:\s*(.*?)\s*(?:#.*)?", line)
+        if not image_match:
+            continue
+        if current_service is None:
+            raise SystemExit(
+                "error: release contract Guest compose image has no service: "
+                f"path={path} line={line_number}"
+            )
+        if current_service in images:
+            raise SystemExit(
+                "error: release contract Guest compose service has multiple images: "
+                f"path={path} service={current_service}"
+            )
+        images[current_service] = compose_image_value(
+            image_match.group(1),
+            path,
+            line_number,
+        )
+    if not in_services:
+        raise SystemExit(f"error: release contract Guest compose has no services: {path}")
+    return images
+
+
+def compose_image_value(value, path, line_number):
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1]
+    if not value or any(character.isspace() for character in value):
+        raise SystemExit(
+            "error: release contract Guest compose image is invalid: "
+            f"path={path} line={line_number}"
+        )
+    return value
+
+
+def validate_guest_docker_images_config(config_path, images):
+    try:
+        config_text = config_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise SystemExit(
+            "error: release contract cannot read VM Docker image config: "
+            f"{config_path}: {error}"
+        ) from error
+    section = toml_table(config_text, "guest.docker_images", config_path)
+    actual_bundle_images = toml_string_list(section, "images", config_path)
+    expected_bundle_images = [images[key] for key in GUEST_DOCKER_BUNDLE_RELEASE_KEYS]
+    if actual_bundle_images != expected_bundle_images:
+        raise SystemExit(
+            "error: release contract VM Docker image list mismatch: "
+            f"path={config_path} expected={expected_bundle_images} "
+            f"actual={actual_bundle_images}"
+        )
+    for field, release_service in GUEST_DOCKER_IMAGE_FIELD_RELEASE_KEYS:
+        expected = images[release_service]
+        actual = toml_string(section, field, config_path)
+        if actual != expected:
+            raise SystemExit(
+                "error: release contract VM Docker image field mismatch: "
+                f"path={config_path} field=guest.docker_images.{field} "
+                f"releaseService={release_service} expected={expected} actual={actual}"
+            )
+
+
+def toml_table(content, table, path):
+    table_pattern = re.compile(rf"^\[{re.escape(table)}\]\s*$", re.MULTILINE)
+    match = table_pattern.search(content)
+    if match is None:
+        raise SystemExit(f"error: release contract VM config table is missing: {path} [{table}]")
+    next_table = re.search(r"^\[.+\]\s*$", content[match.end() :], re.MULTILINE)
+    if next_table is None:
+        return content[match.end() :]
+    return content[match.end() : match.end() + next_table.start()]
+
+
+def toml_string(section, key, path):
+    match = re.search(
+        rf'^\s*{re.escape(key)}\s*=\s*"([^"]+)"\s*(?:#.*)?$',
+        section,
+        re.MULTILINE,
+    )
+    if match is None:
+        raise SystemExit(
+            "error: release contract VM config string is missing or invalid: "
+            f"path={path} key=guest.docker_images.{key}"
+        )
+    return match.group(1)
+
+
+def toml_string_list(section, key, path):
+    lines = section.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if re.fullmatch(rf"\s*{re.escape(key)}\s*=\s*\[\s*", line):
+            start = index + 1
+            break
+    if start is None:
+        raise SystemExit(
+            "error: release contract VM config image list is missing: "
+            f"path={path} key=guest.docker_images.{key}"
+        )
+    values = []
+    for line in lines[start:]:
+        stripped = line.strip()
+        if stripped == "]":
+            return values
+        match = re.fullmatch(r'"([^"]+)"\s*,?\s*(?:#.*)?', stripped)
+        if match is None:
+            raise SystemExit(
+                "error: release contract VM config image list is invalid: "
+                f"path={path} key=guest.docker_images.{key} line={stripped}"
+            )
+        values.append(match.group(1))
+    raise SystemExit(
+        "error: release contract VM config image list is unterminated: "
+        f"path={path} key=guest.docker_images.{key}"
+    )
 
 
 def sync_swift(root, release, release_file):
@@ -140,7 +364,7 @@ def sync_swift(root, release, release_file):
 
     write_if_changed(
         root / "Sources/Bootstrap/Composition/GeneratedVersion.swift",
-        f"""// Generated from {release_file.name} by make vm-version-source.
+        f"""// Generated from {release_file.name} by make devtools/release-contract.
 // Do not edit this file directly.
 
 import Contracts
@@ -157,7 +381,7 @@ public extension Constants {{
         root
         / "Sources/Adapters/Inbound/MacControlPanel/Generated"
         / "GeneratedRelease.swift",
-        f"""// Generated from {release_file.name} by make vm-version-source.
+        f"""// Generated from {release_file.name} by make devtools/release-contract.
 // Do not edit this file directly.
 
 public enum GeneratedRelease {{
@@ -209,7 +433,7 @@ public enum GeneratedRelease {{
         root
         / "Sources/Adapters/Inbound/MacControlPanel/Generated"
         / "RuntimeReleaseInfo+Generated.swift",
-        f"""// Generated from {release_file.name} by make vm-version-source.
+        f"""// Generated from {release_file.name} by make devtools/release-contract.
 // Do not edit this file directly.
 
 import Foundation
@@ -292,136 +516,10 @@ public extension RuntimeReleaseInfo {{
     )
 
 
-def sync_compose(root, release):
-    compose = root / "Support/Guest/compose.yaml"
-    content = compose.read_text(encoding="utf-8")
-    vitalserver = require_service(release, "vitalServer")
-    recorder_ingress = require_service(release, "recorderIngress")
-    recorder_recovery = require_service(release, "recorderRecovery")
-    vitaldb_observer = require_service(release, "vitalDBObserver")
-    redis_relay = require_service(release, "redisRelay")
-    lab = require_service(release, "lab")
-    redis = require_service(release, "redis")
-    postgres = require_service(release, "postgres")
-    redis_ui = require_service(release, "redisUI")
-    swagger_ui = require_service(release, "swaggerUI")
-    guest_edge = require_service(release, "guestEdge")
-    replacements = {
-        r"image: redis:[^\n]+": f"image: {redis['image']}",
-        r"image: postgres:[^\n]+": f"image: {postgres['image']}",
-        r"image: vitalserver:[^\n]+": f"image: {vitalserver['image']}",
-        r"image: vitalserver-recorder-ingress:[^\n]+": (
-            f"image: {recorder_ingress['image']}"
-        ),
-        r"image: vitalserver-recorder-recovery:[^\n]+": (
-            f"image: {recorder_recovery['image']}"
-        ),
-        r"image: vitaldb-observer:[^\n]+": f"image: {vitaldb_observer['image']}",
-        r"image: vitalserver-redis-relay:[^\n]+": (
-            f"image: {redis_relay['image']}"
-        ),
-        r"image: vitalserver-lab:[^\n]+": f"image: {lab['image']}",
-        r"image: ghcr\.io/joeferner/redis-commander:[^\n]+": (
-            f"image: {redis_ui['image']}"
-        ),
-        r"image: swaggerapi/swagger-ui:[^\n]+": (
-            f"image: {swagger_ui['image']}"
-        ),
-        r"image: nginx:[^\n]+": f"image: {guest_edge['image']}",
-    }
-    for pattern, replacement in replacements.items():
-        content = replace(pattern, replacement, content)
-    write_if_changed(compose, content)
-
-
-def sync_build_config(root, release):
-    config = root.parent.parent / "config/vm-build.toml"
-    content = config.read_text(encoding="utf-8")
-    vitalserver = require_service(release, "vitalServer")
-    recorder_ingress = require_service(release, "recorderIngress")
-    recorder_recovery = require_service(release, "recorderRecovery")
-    vitaldb_observer = require_service(release, "vitalDBObserver")
-    redis_relay = require_service(release, "redisRelay")
-    lab = require_service(release, "lab")
-    redis = require_service(release, "redis")
-    postgres = require_service(release, "postgres")
-    redis_ui = require_service(release, "redisUI")
-    swagger_ui = require_service(release, "swaggerUI")
-    guest_edge = require_service(release, "guestEdge")
-    replacements = {
-        r'"vitalserver:[^"]+"': f'"{vitalserver["image"]}"',
-        r'\n  "vitalserver-recorder-ingress:[^"]+"': f'\n  "{recorder_ingress["image"]}"',
-        r'\n  "vitalserver-recorder-recovery:[^"]+"': f'\n  "{recorder_recovery["image"]}"',
-        r'\n  "vitaldb-observer:[^"]+"': f'\n  "{vitaldb_observer["image"]}"',
-        r'\n  "vitalserver-redis-relay:[^"]+"': f'\n  "{redis_relay["image"]}"',
-        r'\n  "vitalserver-lab:[^"]+"': f'\n  "{lab["image"]}"',
-        r'recorder_ingress_image = "vitalserver-recorder-ingress:[^"]+"': (
-            f'recorder_ingress_image = "{recorder_ingress["image"]}"'
-        ),
-        r'recorder_recovery_image = "vitalserver-recorder-recovery:[^"]+"': (
-            f'recorder_recovery_image = "{recorder_recovery["image"]}"'
-        ),
-        r'vitaldb_observer_image = "vitaldb-observer:[^"]+"': (
-            f'vitaldb_observer_image = "{vitaldb_observer["image"]}"'
-        ),
-        r'redis_relay_image = "vitalserver-redis-relay:[^"]+"': (
-            f'redis_relay_image = "{redis_relay["image"]}"'
-        ),
-        r'lab_image = "vitalserver-lab:[^"]+"': (
-            f'lab_image = "{lab["image"]}"'
-        ),
-        r'"redis:[^"]+"': f'"{redis["image"]}"',
-        r'"postgres:[^"]+"': f'"{postgres["image"]}"',
-        r'"ghcr\.io/joeferner/redis-commander:[^"]+"': (
-            f'"{redis_ui["image"]}"'
-        ),
-        r'"swaggerapi/swagger-ui:[^"]+"': f'"{swagger_ui["image"]}"',
-        r'"nginx:[^"]+"': f'"{guest_edge["image"]}"',
-    }
-    for pattern, replacement in replacements.items():
-        content = replace(pattern, replacement, content)
-    content = replace_optional(
-        r'\nexpected_version = "nginx/[^"]+"',
-        "",
-        content,
-    )
-    write_if_changed(config, content)
-
-
-def sync_guest_scripts(root, release):
-    bootstrap_operations = (
-        root.parent.parent
-        / "packages/vitalserver-guest-tools/src/tirosh_guest_tools/infrastructure"
-        / "bootstrap_operations.py"
-    )
-    content = bootstrap_operations.read_text(encoding="utf-8")
-    content = replace(
-        r'\("vitalserver:[^"]+", "app"\)',
-        f'("{require_service(release, "vitalServer")["image"]}", "app")',
-        content,
-    )
-    content = replace(
-        r'\("vitalserver-recorder-ingress:[^"]+", "recorder-ingress"\)',
-        (
-            f'("{require_service(release, "recorderIngress")["image"]}", '
-            '"recorder-ingress")'
-        ),
-        content,
-    )
-    write_if_changed(bootstrap_operations, content)
-
-    repair_datastore = (
-        root.parent.parent
-        / "packages/vitalserver-guest-tools/src/tirosh_guest_tools/application"
-        / "redis_repair.py"
-    )
-    content = repair_datastore.read_text(encoding="utf-8")
-    content = replace(
-        r'"redis:[^"]+",',
-        f'"{require_service(release, "redis")["image"]}",',
-        content,
-    )
-    write_if_changed(repair_datastore, content)
+def sync_release(root, release, release_file):
+    validate_release_policy(release)
+    validate_release_input_contract(root, release)
+    sync_swift(root, release, release_file)
 
 
 def main():
@@ -432,11 +530,7 @@ def main():
     if not release_file.is_absolute():
         release_file = root / release_file
     release = json.loads(release_file.read_text(encoding="utf-8"))
-    validate_release_policy(release)
-    sync_swift(root, release, release_file)
-    sync_compose(root, release)
-    sync_build_config(root, release)
-    sync_guest_scripts(root, release)
+    sync_release(root, release, release_file)
 
 
 if __name__ == "__main__":

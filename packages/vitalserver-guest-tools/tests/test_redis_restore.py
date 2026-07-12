@@ -54,7 +54,7 @@ def test_restore_redis_archive_replaces_volume_without_request_result_files(
     assert not (volume / "old.rdb").exists()
     assert outcome.restored_archive == archive
     assert commands[0][-1] == "stop"
-    assert commands[1][-2:] == ["up", "-d"]
+    assert commands[1][-5:] == ["up", "--pull", "never", "--no-build", "-d"]
 
 
 def test_redis_restore_rejects_unsafe_archive_member(tmp_path: Path) -> None:

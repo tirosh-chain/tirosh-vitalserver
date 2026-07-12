@@ -13,14 +13,17 @@ from tirosh_vitalserver.devtools.adapters.guest_image.cloud_init import (
     print_result as print_cloud_init_result,
 )
 from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    require_rootfs_artifact_guest_deploy_match,
     run_rootfs_base,
 )
 from tirosh_vitalserver.devtools.adapters.guest_image.ubuntu import (
     host_machine,
     run_ubuntu,
 )
+from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
     CloudInitInput,
+    RootfsArtifactDeployVerifyInput,
     RootfsBaseInput,
     UbuntuBootAssetsInput,
 )
@@ -29,6 +32,7 @@ from tirosh_vitalserver.devtools.config.guest_image import (
     load_guest_runtime_config,
     load_ubuntu_image_config,
 )
+from tirosh_vitalserver.devtools.config.paths import resolve_path
 from tirosh_vitalserver.devtools.core.guest_image import (
     CloudInitSeedSpec,
     ubuntu_boot_asset_plan,
@@ -124,3 +128,15 @@ def create_cloud_init_seed(input: CloudInitInput) -> int:
 
 def compress_rootfs_base(input: RootfsBaseInput) -> int:
     return run_rootfs_base(input)
+
+
+def verify_rootfs_artifact_deploy(input: RootfsArtifactDeployVerifyInput) -> int:
+    root = repo_root()
+    rootfs_base = resolve_path(root, input.rootfs_base)
+    deploy_dir = resolve_path(root, input.deploy_dir)
+    material = require_rootfs_artifact_guest_deploy_match(rootfs_base, deploy_dir)
+    print(
+        "rootfs artifact Guest deploy receipt verified: "
+        f"sha256={material} artifact={rootfs_base} deploy={deploy_dir}"
+    )
+    return 0

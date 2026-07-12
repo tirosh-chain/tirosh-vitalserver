@@ -38,7 +38,8 @@ Browser / VRecorder
 
 | 상황 | 실행/확인 |
 |---|---|
-| 개발용 제품 설치 파일을 만들고 싶다 | `make dist/dmg/dev` |
+| 현장 전달용 개발 설치 파일을 만들고 싶다 | `make dist/dmg/dev` |
+| 반복 개발용 cache DMG만 빠르게 만들고 싶다 | `make dist/dmg/dev/cached` |
 | release 제품 설치 파일을 만들고 싶다 | `make dist/dmg/release` |
 | 개발용 `.pkg`만 만들고 싶다 | `make dist/pkg/dev` |
 | air-gapped 현장 업데이트 bundle을 만들고 싶다 | `make dist/update/release` |
@@ -95,9 +96,11 @@ Install VitalServer Helper.pkg
 
 이 package는 Helper app, Swift runtime CLI, host proxy, Linux VM runtime asset, golden rootfs, Docker image bundle, LaunchDaemon을 설치합니다. target Mac은 설치 시점에 인터넷이 없어도 됩니다.
 
+Product image는 build Mac의 Host compile에서만 만들고 Guest는 검증된 bundle을 load해 Compose를 `--pull never --no-build`로 시작합니다. Guest가 image를 다시 pull/build하지 않으며, Compose 환경은 개발 Mac `.env`가 아니라 Guest runtime contract에서 `/mnt/runtime/compose.env`로 생성합니다.
+
 package에 들어가는 golden rootfs base는 설치 파일 효율과 air-gapped package 준비 여유를 함께 고려해 기본 8 GiB로 만듭니다. 실제 설치된 VM disk는 wizard 기본값 32 GiB로 확장되며, 설치 후에는 증가만 허용합니다.
 
-반복 개발 중에는 cache를 재사용합니다. release 검증처럼 clean golden rootfs부터 다시 만들려면:
+반복 개발 중에는 receipt와 fingerprint가 모두 맞는 cache만 재사용합니다. cache miss는 이전 golden disk를 이어 쓰지 않고 새 base disk에서 다시 compile합니다. release 현장 전달 gate처럼 clean golden rootfs부터 다시 만들려면:
 
 ```sh
 make dist/dmg/release
@@ -214,7 +217,7 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 
 `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
 
-`make devtools/build`, `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`는 이 값을 읽어 app bundle version, package version, update bundle version, target platform, update compatibility, bundled service image/version/name 표시에 반영합니다. 버전, target platform, Helper UI의 service 표시명, 배포 profile, optional container service 포함 정책을 바꿀 때는 이 파일을 수정합니다.
+`make devtools/release-contract`, `make devtools/build`, `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`는 이 값을 읽어 app bundle version, package version, update bundle version, target platform, update compatibility, bundled service image/version/name 표시에 반영합니다. `release-contract`는 Docker export와 rootfs cache 판단 전에 manifest image를 Guest Compose와 VM Docker plan에 대조하며, 불일치를 고치지 않고 실패로 보고합니다. 따라서 service image를 바꿀 때는 release manifest, `Support/Guest/compose.yaml`, `config/vm-build.toml`을 같은 변경에서 명시적으로 맞춥니다. Swift `Generated*.swift`만 파생 source로 생성됩니다.
 
 ## 주요 명령
 
@@ -222,9 +225,10 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 |---|---|
 | `make devtools/app` | Helper app bundle 생성 |
 | `make dist/pkg/dev` | release-dev.json 기반 개발 검증용 `.pkg` 생성 |
-| `make dist/dmg/dev` | release-dev.json 기반 개발 검증용 `.dmg` 생성 |
+| `make dist/dmg/dev` | 현장 전달 표준 gate: review, clean compile, artifact verify, golden runtime smoke를 거친 release-dev.json 기반 `.dmg` 생성 |
+| `make dist/dmg/dev/cached` | compatible golden rootfs cache를 우선 재사용하는 반복 개발용 `.dmg` 생성. 현장 전달 검증은 수행하지 않음 |
 | `make dist/pkg/release` | release.json 기반 release `.pkg` 생성 |
-| `make dist/dmg/release` | release.json 기반 release `.dmg` 생성 |
+| `make dist/dmg/release` | release.json 기반 release 현장 전달 gate: review, clean compile, artifact verify, golden runtime smoke를 거친 `.dmg` 생성 |
 | `make dist/update/dev` | release-dev.json 기반 Product Update bundle 생성 |
 | `make dist/update/release` | release.json 기반 Product Update bundle 생성 |
 | `make dist/image-update/dev` | release-dev.json 기반 VM Image Update bundle 생성 |
