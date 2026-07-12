@@ -140,7 +140,7 @@ class VirtualRecorderSession:
         return self._session_id
 
     def start(self) -> None:
-        """Start the background streaming thread."""
+        """Publish the running transition before starting external streaming."""
 
         emit_testkit_event(
             "session.starting",
@@ -151,7 +151,30 @@ class VirtualRecorderSession:
             scenario=self._request.scenario.value,
             vrcode=self._request.vrcode,
         )
+        with self._lock:
+            if self._state != VirtualRecorderSessionState.STARTING:
+                raise ValueError("session must be starting before it can run")
+            self._state = VirtualRecorderSessionState.RUNNING
+            self._started_at = time.time()
+            self._record_playback_event(
+                SessionPlaybackEventType.STARTED,
+                self._started_at,
+            )
+            snapshot = self.snapshot()
+
+        # The manager's snapshot handler persists this transition. If it
+        # fails, the thread has not started and no external stream can exist.
+        self._publish_snapshot(snapshot)
         self._thread.start()
+        emit_testkit_event(
+            "session.running",
+            session_id=self._session_id,
+            target_url=self._request.target_url,
+            recorders=self._request.recorders,
+            beds=len(self._request.bed_room_names),
+            scenario=self._request.scenario.value,
+            vrcode=self._request.vrcode,
+        )
 
     def stop(self) -> None:
         """Request graceful session shutdown."""
@@ -301,25 +324,6 @@ class VirtualRecorderSession:
         self._snapshot_handler(snapshot or self.snapshot())
 
     def _run(self) -> None:
-        with self._lock:
-            self._state = VirtualRecorderSessionState.RUNNING
-            self._started_at = time.time()
-            self._record_playback_event(
-                SessionPlaybackEventType.STARTED,
-                self._started_at,
-            )
-            snapshot = self.snapshot()
-        emit_testkit_event(
-            "session.running",
-            session_id=self._session_id,
-            target_url=self._request.target_url,
-            recorders=self._request.recorders,
-            beds=len(self._request.bed_room_names),
-            scenario=self._request.scenario.value,
-            vrcode=self._request.vrcode,
-        )
-        self._publish_snapshot(snapshot)
-
         try:
             results = self._stream_recorders()
             error = first_result_error(results)
@@ -513,7 +517,7 @@ class VirtualRecorderSession:
                 target_url=self._request.target_url,
                 artifact_path=artifact.path,
                 vrcode=self._request.vrcode,
-            endpoint=self._request.vital_upload_endpoint,
+                endpoint=self._request.vital_upload_endpoint,
             )
         except Exception as exc:
             return self._mark_vital_upload_failed(str(exc))

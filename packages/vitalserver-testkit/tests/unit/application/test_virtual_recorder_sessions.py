@@ -454,9 +454,7 @@ def test_virtual_recorder_bed_cleanup_reports_missing_provider() -> None:
 
     errors = manager.delete_vitalserver_beds("http://example.test", beds)
 
-    assert errors == (
-        f"OR-A({beds[0].bed_id}): recorder management is not configured",
-    )
+    assert errors == (f"OR-A({beds[0].bed_id}): recorder management is not configured",)
 
 
 def test_virtual_recorder_session_save_failure_is_not_event_only() -> None:
@@ -474,6 +472,89 @@ def test_virtual_recorder_session_save_failure_is_not_event_only() -> None:
                 shift_time=False,
             )
         )
+
+    assert manager.has_active_sessions() is False
+    assert manager.list_sessions() == ()
+
+
+def test_virtual_recorder_session_running_save_failure_does_not_stream() -> None:
+    connector_calls: list[str] = []
+
+    def tracking_connector(
+        base_url: str,
+        *,
+        timeout: float = 30.0,
+    ) -> FakeSocketIoClient:
+        del timeout
+        connector_calls.append(base_url)
+        return FakeSocketIoClient()
+
+    store = FailingSessionStore(fail_after_successful_saves=1)
+    manager = VirtualRecorderSessionManager(
+        connector=tracking_connector,
+        session_store=store,
+    )
+
+    with pytest.raises(RuntimeError, match="save denied after first save"):
+        manager.start_session(
+            VirtualRecorderSessionRequest(
+                target_url="http://example.test",
+                bedroom_name="OR-A",
+                interval_seconds=1,
+                shift_time=False,
+            )
+        )
+
+    session_id = store.save_attempts[0].session_id
+    assert [snapshot.state for snapshot in store.save_attempts] == [
+        VirtualRecorderSessionState.STARTING,
+        VirtualRecorderSessionState.RUNNING,
+    ]
+    assert connector_calls == []
+    assert store.sessions == {}
+    assert manager.wait_session(session_id, timeout=0) is False
+    assert manager.has_active_sessions() is False
+    assert manager.list_sessions() == ()
+
+
+def test_virtual_recorder_session_failed_start_surfaces_cleanup_failure() -> None:
+    connector_calls: list[str] = []
+
+    def tracking_connector(
+        base_url: str,
+        *,
+        timeout: float = 30.0,
+    ) -> FakeSocketIoClient:
+        del timeout
+        connector_calls.append(base_url)
+        return FakeSocketIoClient()
+
+    store = FailingSessionStore(
+        fail_after_successful_saves=1,
+        delete_error=RuntimeError("delete denied"),
+    )
+    manager = VirtualRecorderSessionManager(
+        connector=tracking_connector,
+        session_store=store,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="cleanup of that persisted snapshot also failed: delete denied",
+    ):
+        manager.start_session(
+            VirtualRecorderSessionRequest(
+                target_url="http://example.test",
+                bedroom_name="OR-A",
+                interval_seconds=1,
+                shift_time=False,
+            )
+        )
+
+    session_id = store.save_attempts[0].session_id
+    assert connector_calls == []
+    assert store.sessions[session_id].state == VirtualRecorderSessionState.STARTING
+    assert manager.wait_session(session_id, timeout=0) is False
 
 
 def test_virtual_recorder_session_delete_failure_is_not_event_only() -> None:
@@ -803,14 +884,23 @@ class FailingSessionStore(InMemorySessionStore):
         *,
         save_error: Exception | None = None,
         delete_error: Exception | None = None,
+        fail_after_successful_saves: int | None = None,
     ) -> None:
         super().__init__()
         self.save_error = save_error
         self.delete_error = delete_error
+        self.fail_after_successful_saves = fail_after_successful_saves
+        self.save_attempts: list[VirtualRecorderSessionSnapshot] = []
 
     def save_session(self, snapshot: VirtualRecorderSessionSnapshot) -> None:
+        self.save_attempts.append(snapshot)
         if self.save_error is not None:
             raise self.save_error
+        if (
+            self.fail_after_successful_saves is not None
+            and len(self.save_attempts) > self.fail_after_successful_saves
+        ):
+            raise RuntimeError("save denied after first save")
         super().save_session(snapshot)
 
     def delete_session(self, session_id: str) -> None:

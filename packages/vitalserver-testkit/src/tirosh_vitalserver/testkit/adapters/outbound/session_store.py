@@ -32,18 +32,13 @@ class JsonFileVirtualRecorderSessionStore:
         with self._lock:
             payload = self._read_payload()
 
-        schema_version = session_store_schema_version(payload)
         sessions = []
+        session_ids: set[str] = set()
         for record in payload["sessions"]:
             if not isinstance(record, dict):
                 raise ValueError("session record must be an object")
             try:
-                sessions.append(
-                    session_snapshot_from_record(
-                        record,
-                        schema_version=schema_version,
-                    )
-                )
+                snapshot = session_snapshot_from_record(record)
             except Exception as exc:
                 emit_testkit_event(
                     "session_store.load_record.failed",
@@ -52,6 +47,10 @@ class JsonFileVirtualRecorderSessionStore:
                     error=str(exc),
                 )
                 raise
+            if snapshot.session_id in session_ids:
+                raise ValueError("session store contains duplicate session_id")
+            session_ids.add(snapshot.session_id)
+            sessions.append(snapshot)
 
         return tuple(sessions)
 
@@ -67,10 +66,12 @@ class JsonFileVirtualRecorderSessionStore:
                 if record.get("session_id") != snapshot.session_id
             ]
             sessions.append(session_snapshot_to_record(snapshot))
-            self._write_payload({
-                "schema_version": SESSION_STORE_SCHEMA_VERSION,
-                "sessions": sessions,
-            })
+            self._write_payload(
+                {
+                    "schema_version": SESSION_STORE_SCHEMA_VERSION,
+                    "sessions": sessions,
+                }
+            )
 
     def delete_session(self, session_id: str) -> None:
         """Remove one persisted session snapshot."""
@@ -82,22 +83,35 @@ class JsonFileVirtualRecorderSessionStore:
                 for record in session_records(payload)
                 if record.get("session_id") != session_id
             ]
-            self._write_payload({
-                "schema_version": SESSION_STORE_SCHEMA_VERSION,
-                "sessions": sessions,
-            })
+            self._write_payload(
+                {
+                    "schema_version": SESSION_STORE_SCHEMA_VERSION,
+                    "sessions": sessions,
+                }
+            )
 
     def delete_all_sessions(self) -> None:
         """Remove every persisted session snapshot."""
 
         with self._lock:
-            self._write_payload({
-                "schema_version": SESSION_STORE_SCHEMA_VERSION,
-                "sessions": [],
-            })
+            # Deletion is still a write through this persistence boundary.  Do
+            # not let a reset erase a malformed or unsupported document that
+            # should remain explicit recovery evidence.
+            session_records(self._read_payload())
+            self._write_payload(
+                {
+                    "schema_version": SESSION_STORE_SCHEMA_VERSION,
+                    "sessions": [],
+                }
+            )
 
     def _read_payload(self) -> dict[str, Any]:
-        if not self._path.exists():
+        try:
+            self._path.lstat()
+        except FileNotFoundError:
+            # A missing document is the explicit first-run empty registry.
+            # lstat intentionally distinguishes a truly absent path from a
+            # dangling symlink, which is an existing but unreadable contract.
             return {
                 "schema_version": SESSION_STORE_SCHEMA_VERSION,
                 "sessions": [],
@@ -106,7 +120,7 @@ class JsonFileVirtualRecorderSessionStore:
         try:
             with self._path.open("r", encoding="utf-8") as file:
                 payload = json.load(file)
-        except json.JSONDecodeError as exc:
+        except (OSError, json.JSONDecodeError) as exc:
             emit_testkit_event(
                 "session_store.read.failed",
                 level=logging.WARNING,
@@ -118,7 +132,9 @@ class JsonFileVirtualRecorderSessionStore:
         if not isinstance(payload, dict):
             raise ValueError("session store payload must be an object")
         session_store_schema_version(payload)
-        if not isinstance(payload.get("sessions"), list):
+        if "sessions" not in payload:
+            raise KeyError("sessions")
+        if not isinstance(payload["sessions"], list):
             raise ValueError("session store sessions must be an array")
         return payload
 
@@ -135,15 +151,22 @@ def session_records(payload: dict[str, Any]) -> list[dict[str, Any]]:
     records = payload["sessions"]
     if not all(isinstance(record, dict) for record in records):
         raise ValueError("session record must be an object")
-    return cast(list[dict[str, Any]], records)
+    typed_records = cast(list[dict[str, Any]], records)
+    session_ids: set[str] = set()
+    for record in typed_records:
+        snapshot = session_snapshot_from_record(record)
+        if snapshot.session_id in session_ids:
+            raise ValueError("session store contains duplicate session_id")
+        session_ids.add(snapshot.session_id)
+    return typed_records
 
 
 def session_store_schema_version(payload: dict[str, Any]) -> int:
     """Return the explicit session store schema version."""
 
-    value = payload.get("schema_version")
-    if value is None:
+    if "schema_version" not in payload:
         raise ValueError("session store schema_version is required")
+    value = payload["schema_version"]
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError("session store schema_version must be an integer")
     if value < SESSION_STORE_SCHEMA_VERSION:

@@ -31,7 +31,14 @@ def bed_to_record(bed: Bed) -> dict[str, str]:
 def bed_from_record(data: dict[str, Any]) -> Bed:
     """Convert a persistent JSON record into a Bed."""
 
+    room_name = data["room_name"]
+    if not isinstance(room_name, str):
+        raise ValueError("bed registry record room_name must be a string")
+    bed_id = data["bed_id"]
+    if not isinstance(bed_id, str):
+        raise ValueError("bed registry record bed_id must be a string")
+
     return Bed(
-        room_name=str(data["room_name"]),
-        bed_id=str(data["bed_id"]),
+        room_name=room_name,
+        bed_id=bed_id,
     )

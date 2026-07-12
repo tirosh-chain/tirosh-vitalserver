@@ -167,20 +167,20 @@ room name을 다시 선택하거나 session의 target URL과 vrcode를 기준으
 남은 VitalServer recorder 등록을 정리하는 registry로 사용합니다.
 
 Persisted state files are versioned contracts. `sessions.json` writes
-`schema_version: 2`; `bed-registry.json` writes `schema_version: 1`. Missing
-`schema_version` is treated as a legacy v1 document only at the store boundary.
-After a legacy session is loaded and saved again, the store writes the current
-schema and materializes `.vital` state explicitly. Newer schema versions,
-invalid schema values, corrupt JSON, and missing fields in the current schema
-must fail visibly rather than becoming an empty registry or default success.
+`schema_version: 4`; `bed-registry.json` writes `schema_version: 1`. A missing
+state *file* is the explicit first-run empty registry and a read does not create
+that file. Every existing state document must carry `schema_version`; a missing
+or invalid version, corrupt JSON, wrong scalar type, or missing required field
+fails visibly. Legacy documents are not inferred or silently migrated by the
+store, and unreadable state never becomes an empty registry or default success.
 
 Troubleshooting: update 직후 `testkit` container가 반복 재시작하고 로그에
 `session_store.load_record.failed`와 `KeyError: 'vital_state'`가 보이면, 이전 버전의
-`sessions.json`이 `.vital` export 상태 필드가 추가되기 전 schema로 남아 있는 것입니다.
-수정 방향은 저장소 로더에서 `vital_state`가 없는 legacy session document만 명시적으로 migrate해
-`not-requested` 상태를 채우는 것입니다. `vital_state: null`이나 다른 필수 session/recorder 필드
-누락은 invalid contract로 실패해야 합니다. 예방 원칙은 optional migration을 필드 단위로 한정하고,
-missing, invalid, failed state를 같은 empty/default success로 합치지 않는 것입니다.
+`sessions.json`이 현재 `.vital` export 상태 계약보다 오래된 것입니다. 수정 방향은 문제 파일을
+보존한 뒤 별도 migration 또는 reset을 명시적으로 수행하는 것입니다. 로더가 `vital_state`를
+`not-requested`로 채우거나 `vital_state: null`과 다른 필수 session/recorder 필드 누락을
+정상 상태로 바꾸면 안 됩니다. 예방 원칙은 missing, invalid, failed state를 같은 empty/default
+success로 합치지 않는 것입니다.
 
 Troubleshooting: 여러 virtual VRecorder session을 오래 실행할 때 TestKit API의 session은
 `running`이지만 `vitaldb-observer`가 일부 recorder를 `stale-recorder`로 보고하면, 먼저
