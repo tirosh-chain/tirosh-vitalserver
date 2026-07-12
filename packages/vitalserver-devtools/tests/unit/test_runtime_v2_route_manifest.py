@@ -10,16 +10,35 @@ from tirosh_vitalserver.devtools.runtime_v2_route_manifest import (
     RuntimeV2Route,
     RuntimeV2RouteManifestError,
     load_runtime_v2_route_manifest,
+    validate_runtime_v2_route_manifest_openapi,
 )
 
 
 def test_checked_in_manifest_declares_the_owner_neutral_read_core() -> None:
     routes = load_runtime_v2_route_manifest()
 
-    assert [(route.id, route.owner, route.delivery, route.method, route.path) for route in routes] == [
-        ("platform-state", "platform-agent", "handled", "GET", "/platform"),
+    assert [
+        (
+            route.id,
+            route.operation_id,
+            route.owner,
+            route.delivery,
+            route.method,
+            route.path,
+        )
+        for route in routes
+    ] == [
+        (
+            "platform-state",
+            "getPlatformState",
+            "platform-agent",
+            "handled",
+            "GET",
+            "/platform",
+        ),
         (
             "platform-capabilities",
+            "getPlatformCapabilities",
             "platform-agent",
             "handled",
             "GET",
@@ -27,6 +46,7 @@ def test_checked_in_manifest_declares_the_owner_neutral_read_core() -> None:
         ),
         (
             "platform-operations",
+            "getPlatformOperationState",
             "platform-agent",
             "handled",
             "GET",
@@ -34,6 +54,7 @@ def test_checked_in_manifest_declares_the_owner_neutral_read_core() -> None:
         ),
         (
             "platform-runtime-endpoint",
+            "getHostRuntimeGuestAddress",
             "platform-agent",
             "handled",
             "GET",
@@ -41,6 +62,7 @@ def test_checked_in_manifest_declares_the_owner_neutral_read_core() -> None:
         ),
         (
             "platform-runtime-provider",
+            "getHostRuntimeVMLifecycle",
             "platform-agent",
             "handled",
             "GET",
@@ -48,6 +70,7 @@ def test_checked_in_manifest_declares_the_owner_neutral_read_core() -> None:
         ),
         (
             "runtime-capabilities",
+            "getRuntimeCapabilities",
             "runtime-controller",
             "forwarded",
             "GET",
@@ -55,6 +78,7 @@ def test_checked_in_manifest_declares_the_owner_neutral_read_core() -> None:
         ),
         (
             "runtime-services",
+            "listRuntimeGuestServices",
             "runtime-controller",
             "forwarded",
             "GET",
@@ -62,12 +86,34 @@ def test_checked_in_manifest_declares_the_owner_neutral_read_core() -> None:
         ),
         (
             "runtime-stack",
+            "getRuntimeGuestStackStatus",
             "runtime-controller",
             "forwarded",
             "GET",
             "/runtime/stack",
         ),
     ]
+
+
+def test_manifest_read_core_matches_the_neutral_openapi() -> None:
+    assert validate_runtime_v2_route_manifest_openapi() == ()
+
+
+def test_manifest_reports_openapi_operation_id_drift() -> None:
+    route = RuntimeV2Route(
+        id="platform-state",
+        operation_id="unexpectedOperation",
+        owner="platform-agent",
+        delivery="handled",
+        method="GET",
+        path="/platform",
+        conformance="required-read",
+    )
+
+    assert validate_runtime_v2_route_manifest_openapi((route,)) == (
+        "OpenAPI operationId mismatch for GET /platform: expected "
+        "'unexpectedOperation', got 'getPlatformState'",
+    )
 
 
 def test_manifest_does_not_fallback_when_a_required_field_is_missing(
@@ -81,6 +127,7 @@ def test_manifest_does_not_fallback_when_a_required_field_is_missing(
                 "routes": [
                     {
                         "id": "runtime-capabilities",
+                        "operationId": "getRuntimeCapabilities",
                         "owner": "runtime-controller",
                         "delivery": "forwarded",
                         "method": "GET",
@@ -100,6 +147,7 @@ def test_manifest_rejects_duplicate_route_keys(tmp_path: Path) -> None:
     path = tmp_path / "routes.json"
     route = {
         "id": "runtime-capabilities",
+        "operationId": "getRuntimeCapabilities",
         "owner": "runtime-controller",
         "delivery": "forwarded",
         "method": "GET",
@@ -118,6 +166,7 @@ def test_manifest_rejects_duplicate_route_keys(tmp_path: Path) -> None:
 def test_suite_rejects_required_route_without_a_validator() -> None:
     route = RuntimeV2Route(
         id="unmapped",
+        operation_id="getUnmapped",
         owner="runtime-controller",
         delivery="forwarded",
         method="GET",

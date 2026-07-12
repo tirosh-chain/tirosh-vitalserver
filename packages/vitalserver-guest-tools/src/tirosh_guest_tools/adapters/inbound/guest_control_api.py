@@ -64,6 +64,14 @@ from tirosh_guest_tools.infrastructure.settings import SETTINGS
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 18330
 REDIS_RELAY_STATUS_OWNER_PATH = "/runtime/redis-relay/status"
+# This declaration is a build-time parity boundary. The normal Guest HTTP
+# transport continues to dispatch explicit extension routes below; it must not
+# become a core-only allowlist.
+RUNTIME_V2_READ_CORE_ROUTES = (
+    ("GET", "/runtime/capabilities"),
+    ("GET", "/runtime/services"),
+    ("GET", "/runtime/stack"),
+)
 
 
 class GuestControlAPIError(Exception):

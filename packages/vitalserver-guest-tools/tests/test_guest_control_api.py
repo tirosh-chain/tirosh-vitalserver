@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pytest
 
+from tirosh_vitalserver.devtools.runtime_v2_conformance import RuntimeV2ConformanceSuite
 from tirosh_guest_tools.adapters.inbound import guest_control_api
 from tirosh_guest_tools.adapters.inbound.guest_control_api import route_request
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
@@ -785,6 +786,47 @@ def test_health_route_does_not_query_services(usecases: GuestControlUseCases) ->
 
     assert status == HTTPStatus.OK
     assert document == {"status": "ok"}
+
+
+def test_runtime_read_core_manifest_routes_dispatch_from_guest_controller(
+    usecases: GuestControlUseCases,
+) -> None:
+    repository_root = Path(__file__).resolve().parents[3]
+    manifest = json.loads(
+        (
+            repository_root / "docs/runtime/runtime-v2-route-manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    routes = manifest["routes"]
+    assert isinstance(routes, list)
+
+    manifest_routes: list[tuple[str, str]] = []
+    documents: dict[str, dict[str, object]] = {}
+    for route in routes:
+        assert isinstance(route, dict)
+        if (
+            route["owner"] != "runtime-controller"
+            or route["delivery"] != "forwarded"
+            or route["conformance"] != "required-read"
+        ):
+            continue
+        method = str(route["method"])
+        path = str(route["path"])
+        manifest_routes.append((method, path))
+        status, document = route_request(
+            method=method,
+            path=path,
+            usecases=usecases,
+        )
+        assert status == HTTPStatus.OK
+        documents[path] = document
+
+    assert tuple(manifest_routes) == guest_control_api.RUNTIME_V2_READ_CORE_ROUTES
+    report = RuntimeV2ConformanceSuite(lambda path: documents[path]).run(
+        platform=False,
+        runtime=True,
+    )
+    assert report.passed, report.issues
 
 
 def test_redis_relay_status_owner_handler_exposes_only_its_mutation(

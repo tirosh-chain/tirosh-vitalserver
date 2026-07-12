@@ -6,7 +6,7 @@ Runtime v2 conformance checks the contract shared by macOS, Windows, and Linux. 
 
 The default suite checks the smallest owner-neutral, read-only API surface needed before adding platform-specific behavior. Its single checked-in route source is [`runtime-v2-route-manifest.json`](runtime-v2-route-manifest.json).
 
-The manifest is a build-time contract, not a runtime configuration file. It records whether a route is handled by the Platform Agent or forwarded to the Runtime Controller; it never grants wildcard forwarding or turns a missing route into a success.
+The manifest is a build-time contract, not a runtime configuration file. It records whether a route is handled by the Platform Agent or forwarded to the Runtime Controller; it never grants wildcard forwarding or turns a missing route into a success. Each read-core entry also names its neutral OpenAPI `operationId`, and the proof rejects any method, path, or operation-id drift.
 
 | Owner | Resource | Required meaning |
 | --- | --- | --- |
