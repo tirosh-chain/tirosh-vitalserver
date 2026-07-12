@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,24 +23,32 @@ def test_guest_tools_console_scripts_are_owned_by_inbound_cli() -> None:
         assert target.startswith("tirosh_guest_tools.adapters.inbound.cli:")
 
 
-def test_control_store_migration_cli_passes_the_explicit_data_root(
+def test_control_store_migration_cli_uses_the_configured_data_root(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    requested_paths: list[Path] = []
-    control_state_dir = Path("/mnt/runtime/control")
+    requested_locations: list[tuple[Path, object]] = []
+    control_state_dir = Path("/guest-owned/control")
+    control_store = SimpleNamespace(
+        root=Path("/guest-owned"),
+        requires_mount=False,
+    )
     monkeypatch.setattr(
         sys,
         "argv",
-        [
-            "tirosh-guest-tools-migrate-control-store",
-            "--control-state-dir",
-            str(control_state_dir),
-        ],
+        ["tirosh-guest-tools-migrate-control-store"],
+    )
+    monkeypatch.setattr(
+        cli,
+        "SETTINGS",
+        SimpleNamespace(
+            paths=SimpleNamespace(control_state_dir=control_state_dir),
+            control_store=control_store,
+        ),
     )
 
-    def migrate(path: Path) -> dict[str, object]:
-        requested_paths.append(path)
+    def migrate(path: Path, *, control_store: object) -> dict[str, object]:
+        requested_locations.append((path, control_store))
         return {
             "databasePath": str(path / "control.sqlite"),
             "schemaVersion": 1,
@@ -54,9 +63,9 @@ def test_control_store_migration_cli_passes_the_explicit_data_root(
 
     assert cli.guest_tools_migrate_control_store() == 0
 
-    assert requested_paths == [control_state_dir]
+    assert requested_locations == [(control_state_dir, control_store)]
     assert capsys.readouterr().out == (
-        '{"databasePath": "/mnt/runtime/control/control.sqlite", '
+        '{"databasePath": "/guest-owned/control/control.sqlite", '
         '"schemaVersion": 1, "status": "passed"}\n'
     )
 
@@ -68,14 +77,10 @@ def test_control_store_migration_cli_reports_dependency_failure(
     monkeypatch.setattr(
         sys,
         "argv",
-        [
-            "tirosh-guest-tools-migrate-control-store",
-            "--control-state-dir",
-            "/mnt/runtime/control",
-        ],
+        ["tirosh-guest-tools-migrate-control-store"],
     )
 
-    def fail(_: Path) -> dict[str, object]:
+    def fail(_: Path, *, control_store: object) -> dict[str, object]:
         raise GuestControlDependencyError(
             "the control database cannot be opened",
             kind="controlStoreUnavailable",
@@ -89,4 +94,27 @@ def test_control_store_migration_cli_reports_dependency_failure(
     assert exit_error.value.code == 1
     assert capsys.readouterr().err == (
         "error: controlStoreUnavailable: the control database cannot be opened\n"
+    )
+
+
+def test_control_store_migration_cli_rejects_alternate_data_root(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tirosh-guest-tools-migrate-control-store",
+            "--control-state-dir",
+            "/another/control",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exit_error:
+        cli.guest_tools_migrate_control_store()
+
+    assert exit_error.value.code == 2
+    assert "unrecognized arguments: --control-state-dir /another/control" in (
+        capsys.readouterr().err
     )

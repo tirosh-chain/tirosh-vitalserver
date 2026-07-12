@@ -20,6 +20,10 @@ runtimeSettingsFile = "/mnt/runtime/config/runtime-settings.json"
 redisRelayConfigFile = "/mnt/runtime/config/redis-relay/redis-relay.toml"
 redisRelayPasswordFile = "/mnt/runtime/config/redis-relay-secrets/redis-relay-target-password"
 
+[controlStore]
+root = "/mnt/runtime"
+requiresMount = true
+
 [compose]
 projectName = "vitalserver"
 environmentFile = "/mnt/runtime/config/runtime.env"

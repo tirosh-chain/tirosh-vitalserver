@@ -22,6 +22,10 @@ guestToolsHome = "/opt/vitalserver/current/runtime-controller"
 pythonWheelDir = "/opt/vitalserver/current/runtime-controller/python-wheels"
 commandBinDir = "/opt/vitalserver/current/bin"
 
+[controlStore]
+root = "/var/lib/vitalserver"
+requiresMount = false
+
 [compose]
 projectName = "vitalserver"
 environmentFile = "/etc/vitalserver/runtime.env"

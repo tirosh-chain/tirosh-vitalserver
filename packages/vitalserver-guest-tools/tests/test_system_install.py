@@ -30,14 +30,12 @@ def test_migrate_guest_control_store_uses_installed_runtime_command(
         lambda command, *, check: commands.append((command, check)),
     )
 
-    system_install.migrate_guest_control_store(Path("/mnt/runtime/control"))
+    system_install.migrate_guest_control_store()
 
     assert commands == [
         (
             [
                 "/guest-tools/venv/bin/tirosh-guest-tools-migrate-control-store",
-                "--control-state-dir",
-                "/mnt/runtime/control",
             ],
             True,
         )

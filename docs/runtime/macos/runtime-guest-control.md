@@ -42,11 +42,29 @@ Docker Compose commands are isolated behind the Guest Control Compose adapter. D
 Guest Control's operational state is stored in Guest-owned SQLite, not in the
 Host shared mount and not in the product Postgres database.
 
-| Platform | Control-state directory | Database |
-|---|---|---|
-| macOS Guest VM | `/mnt/runtime/control` | `control.sqlite` |
-| Windows Hyper-V Guest VM | `/mnt/runtime/control` | `control.sqlite` |
-| Linux Native | `/var/lib/vitalserver/control` | `control.sqlite` |
+| Platform | Platform-owned root | Must already be mounted | Control-state directory | Database |
+|---|---|---:|---|---|
+| macOS Guest VM | `/mnt/runtime` | yes | `/mnt/runtime/control` | `control.sqlite` |
+| Windows Hyper-V Guest VM | `/mnt/runtime` | yes | `/mnt/runtime/control` | `control.sqlite` |
+| Linux Native | `/var/lib/vitalserver` | no | `/var/lib/vitalserver/control` | `control.sqlite` |
+
+These are platform settings defaults, not service-unit arguments.
+`[controlStore]` explicitly declares `root` and `requiresMount`, and
+`paths.controlStateDir` must be inside that root. Guest Control API startup and
+`tirosh-guest-tools-migrate-control-store` both resolve this one settings
+contract, while systemd units only run the lifecycle command. The migration
+command deliberately has no data-root override, so it cannot migrate a
+different ledger from the API's configured database. Before it creates the
+Guest-owned `control` directory or `control.sqlite`, migration verifies that
+the platform root already exists as a real directory; VM configurations also
+require the operating system to report that root as mounted. It never creates a
+missing root on the root filesystem. Native Linux explicitly declares its
+Host-owned `/var/lib/vitalserver` root with `requiresMount = false`; this is not
+an inferred mount exception. A custom root remains unavailable until its
+platform has explicitly provisioned it and, when configured, mounted it. When
+`VITALSERVER_RUNTIME_CONTROLLER_SETTINGS_PATH` selects a settings file, that
+file must be present and readable; missing, unreadable, and invalid settings
+are explicit configuration failures rather than a fallback to packaged values.
 
 The SQLAlchemy adapter is an infrastructure implementation detail. Domain
 operations remain dataclasses and cross the port as explicit documents; ORM
@@ -57,15 +75,23 @@ declared by that target manifest, proves the pinned SQLAlchemy/Alembic imports,
 and only then publishes the venv.
 It does not create the control database: macOS bootstrap may run before the
 durable runtime-data mount is available. The Guest Control systemd service has
-an explicit `ExecStartPre` migration command. `RequiresMountsFor` ensures the
-control-state root is mounted before that command applies and verifies the
-reviewed schema; the command runs after an existing controller process has
-stopped and before a new one starts. Native Linux uses the same service-lifecycle
-gate. Guest Control API startup only verifies the schema; it never creates or
-migrates it as an implicit side effect. Rootfs compilation records the
-dependency proof, while migration is proved at service activation. A missing
-wheel, failed migration, or unavailable control store is an explicit startup
-failure rather than a later API fallback.
+an explicit `ExecStartPre` migration command. `RequiresMountsFor` matches the
+reviewed default root and orders that command after its mount unit; migration
+independently rejects an unmounted configured VM root. That mounted-at-path
+gate is deliberately not proof of the expected persistent disk identity. The
+units are not generated from a custom settings override: an override must still
+be provisioned by its platform, and migration fails explicitly until it is
+ready. The VM runtime-data contract proves an ext filesystem label and mount
+path during VM preparation, while native Linux owns
+`/var/lib/vitalserver` without that same source/label contract. A future
+identity proof must remain an explicit platform-owned contract, not a
+directory-exists fallback. The command runs after an existing controller
+process has stopped and before a new one starts. Native Linux uses the same
+service-lifecycle gate. Guest Control API startup only verifies the schema; it
+never creates or migrates it as an implicit side effect. Rootfs compilation
+records the dependency proof, while migration is proved at service activation.
+A missing wheel, failed migration, or unavailable control store is an explicit
+startup failure rather than a later API fallback.
 
 One Guest Control process is the control-ledger writer. Command acceptance
 commits the operation document, immutable event, and `guest-control` lease in

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,7 +9,6 @@ from tirosh_guest_tools.application import update_activation
 from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction, ObservationPhase
-from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 
 def test_run_activate_update_runs_activation_without_request_result_contract(
@@ -42,10 +40,8 @@ def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
     monkeypatch: Any,
 ) -> None:
     events: list[str] = []
-    migrated_control_state_dirs: list[Path] = []
 
-    def migrate_control_store(control_state_dir: Path) -> None:
-        migrated_control_state_dirs.append(control_state_dir)
+    def migrate_control_store() -> None:
         events.append("migrate-control-store")
 
     monkeypatch.setattr(
@@ -113,7 +109,6 @@ def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
         "write-state",
         "run:sync",
     ]
-    assert migrated_control_state_dirs == [SETTINGS.paths.control_state_dir]
 
 
 def test_quiesce_compose_units_stops_compose(

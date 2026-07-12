@@ -342,15 +342,21 @@ def guest_tools_install_config() -> int:
 
 
 def guest_tools_migrate_control_store() -> int:
-    """Apply and verify the Guest Control SQLite schema explicitly."""
+    """Apply and verify the configured Guest Control SQLite schema explicitly."""
 
     parser = argparse.ArgumentParser(
         description="Apply and verify the Guest Control SQLite schema."
     )
-    parser.add_argument("--control-state-dir", type=Path, required=True)
-    args = parser.parse_args()
+    parser.parse_args()
     try:
-        proof = migrate_control_store(args.control_state_dir)
+        # The Guest Control API resolves this exact setting too.  This lifecycle
+        # command deliberately has no alternate data-root option: creating or
+        # migrating another ledger would leave the API's configured ledger
+        # unprepared.
+        proof = migrate_control_store(
+            SETTINGS.paths.control_state_dir,
+            control_store=SETTINGS.control_store,
+        )
     except GuestControlDependencyError as error:
         parser.exit(1, f"error: {error.kind}: {error.message}\n")
     print(json.dumps(proof, sort_keys=True))

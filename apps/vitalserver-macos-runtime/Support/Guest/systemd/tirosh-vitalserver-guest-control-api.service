@@ -6,7 +6,7 @@ RequiresMountsFor=/mnt/runtime
 
 [Service]
 Type=simple
-ExecStartPre=/opt/tirosh/guest-tools/venv/bin/tirosh-guest-tools-migrate-control-store --control-state-dir /mnt/runtime/control
+ExecStartPre=/opt/tirosh/guest-tools/venv/bin/tirosh-guest-tools-migrate-control-store
 ExecStart=/usr/local/bin/tirosh-vitalserver-guest-control-api --host 0.0.0.0 --port 18330
 Restart=always
 RestartSec=2

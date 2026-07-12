@@ -38,6 +38,10 @@ guestToolsHome = "/opt/custom-tools"
 pythonWheelDir = "/runtime/wheels"
 commandBinDir = "/opt/bin"
 
+[controlStore]
+root = "/runtime"
+requiresMount = false
+
 [compose]
 projectName = "custom-project"
 environmentFile = "/etc/vitalserver/runtime.env"
@@ -77,6 +81,8 @@ fileEnabled = true
     assert settings.shares.vital_files_mount_mode == "virtiofs"
     assert settings.paths.python_wheel_dir == Path("/runtime/wheels")
     assert settings.paths.control_state_dir == Path("/runtime/control")
+    assert settings.control_store.root == Path("/runtime")
+    assert settings.control_store.requires_mount is False
     assert settings.paths.runtime_config_file == Path(
         "/etc/vitalserver/runtime-config.json"
     )
@@ -100,11 +106,39 @@ def test_load_settings_uses_packaged_defaults_when_file_is_missing(
     assert settings.shares.runtime_mount_mode == "virtiofs"
     assert settings.paths.deploy_dir == Path("/mnt/tirosh/deploy")
     assert settings.paths.control_state_dir == Path("/mnt/runtime/control")
+    assert settings.control_store.root == Path("/mnt/runtime")
+    assert settings.control_store.requires_mount is True
     assert settings.compose.project_name == "vitalserver"
     assert settings.compose.stop_timeout_seconds == 120
     assert settings.intervals.command_poll_seconds == 3
     assert settings.logging.format == "json"
     assert settings.logging.file_enabled is True
+
+
+def test_load_settings_rejects_missing_required_config_file(tmp_path: Path) -> None:
+    settings_file = tmp_path / "missing.toml"
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file, require_config_file=True)
+
+    assert error.value.code == "guest-tools-settings-missing"
+
+
+def test_load_settings_reports_invalid_toml_as_config_failure(tmp_path: Path) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text("[paths\n", encoding="utf-8")
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file)
+
+    assert error.value.code == "guest-tools-settings-invalid"
+
+
+def test_load_settings_reports_unreadable_config_file(tmp_path: Path) -> None:
+    with pytest.raises(GuestContractError) as error:
+        load_settings(tmp_path, require_config_file=True)
+
+    assert error.value.code == "guest-tools-settings-unreadable"
 
 
 def test_load_settings_merges_explicit_override_with_packaged_defaults(
@@ -201,6 +235,87 @@ def test_load_settings_rejects_control_state_under_virtiofs_runtime_mount(
         """
 [paths]
 controlStateDir = "/mnt/tirosh/control"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file)
+
+    assert error.value.code == "guest-tools-control-state-path-invalid"
+
+
+def test_load_settings_rejects_control_state_outside_declared_root(
+    tmp_path: Path,
+) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text(
+        """
+[paths]
+controlStateDir = "/guest-owned/control"
+
+[controlStore]
+root = "/platform-owned"
+requiresMount = false
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file)
+
+    assert error.value.code == "guest-tools-control-state-path-invalid"
+
+
+def test_load_settings_rejects_relative_control_store_root(tmp_path: Path) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text(
+        """
+[controlStore]
+root = "control-root"
+requiresMount = false
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file)
+
+    assert error.value.code == "guest-tools-control-state-path-invalid"
+
+
+def test_load_settings_rejects_filesystem_root_as_control_store_root(
+    tmp_path: Path,
+) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text(
+        """
+[controlStore]
+root = "/"
+requiresMount = false
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file)
+
+    assert error.value.code == "guest-tools-control-state-path-invalid"
+
+
+def test_load_settings_rejects_control_store_root_parent_traversal(
+    tmp_path: Path,
+) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text(
+        """
+[controlStore]
+root = "/mnt/runtime/../other"
+requiresMount = false
 """.strip()
         + "\n",
         encoding="utf-8",

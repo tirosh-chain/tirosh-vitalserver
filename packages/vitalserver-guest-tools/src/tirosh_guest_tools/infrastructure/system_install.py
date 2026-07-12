@@ -64,14 +64,12 @@ def install_guest_tools_runtime() -> None:
         link_command(compatibility_name.value, target_name.value)
 
 
-def migrate_guest_control_store(control_state_dir: Path) -> None:
-    """Run the installed version's explicit control-store migration command."""
+def migrate_guest_control_store() -> None:
+    """Run the configured control store's explicit migration command."""
 
     subprocess.run(
         [
             str(GUEST_TOOLS_VENV / "bin" / "tirosh-guest-tools-migrate-control-store"),
-            "--control-state-dir",
-            str(control_state_dir),
         ],
         check=True,
     )

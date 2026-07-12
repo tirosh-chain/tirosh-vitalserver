@@ -22,6 +22,10 @@ guestToolsHome = "/opt/tirosh/guest-tools"
 pythonWheelDir = "/mnt/tirosh/deploy/python-wheels"
 commandBinDir = "/usr/local/bin"
 
+[controlStore]
+root = "/mnt/runtime"
+requiresMount = true
+
 [compose]
 projectName = "vitalserver"
 environmentFile = "/mnt/tirosh/deploy/.env"

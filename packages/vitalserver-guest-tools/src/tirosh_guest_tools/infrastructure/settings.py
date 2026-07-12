@@ -66,6 +66,14 @@ class PathSettings:
 
 
 @dataclass(frozen=True)
+class ControlStoreSettings:
+    """Platform-owned location contract for the Guest Control ledger."""
+
+    root: Path
+    requires_mount: bool
+
+
+@dataclass(frozen=True)
 class ComposeSettings:
     project_name: str
     environment_file: Path
@@ -117,6 +125,7 @@ class LoggingSettings:
 class GuestToolsSettings:
     shares: ShareSettings
     paths: PathSettings
+    control_store: ControlStoreSettings
     compose: ComposeSettings
     intervals: IntervalSettings
     container_logs: ContainerLogSettings
@@ -125,16 +134,33 @@ class GuestToolsSettings:
     guest_hostname: str
 
 
-def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
+def load_settings(
+    path: Path = DEFAULT_SETTINGS_PATH,
+    *,
+    require_config_file: bool = False,
+) -> GuestToolsSettings:
+    """Load packaged defaults and, when present, one explicit settings file.
+
+    A caller that selected a settings file through the environment must set
+    ``require_config_file``.  Falling back to the packaged document in that
+    case would make the controller and its lifecycle gates run with an
+    unrequested control-store location.
+    """
+
     document = default_settings_document()
-    if path.is_file():
-        document = merge_toml_documents(document, read_settings_file(path))
+    override = read_optional_settings_file(
+        path,
+        require_config_file=require_config_file,
+    )
+    if override is not None:
+        document = merge_toml_documents(document, override)
 
     shares = toml_table(document, "shares")
     runtime_mount = toml_path_value(shares, "runtimeMount")
     vital_files_mount = toml_path_value(shares, "vitalFilesMount")
 
     paths = toml_table(document, "paths")
+    control_store = toml_table(document, "controlStore")
     deploy_dir = toml_path_value(paths, "deployDir")
     runtime_dir = toml_path_value(paths, "runtimeDir")
     guest_tools_home = toml_path_value(paths, "guestToolsHome")
@@ -174,11 +200,20 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
             choices="virtiofs, native",
         ),
     )
-    validate_control_state_directory(share_settings, path_settings)
+    control_store_settings = ControlStoreSettings(
+        root=toml_path_value(control_store, "root"),
+        requires_mount=toml_bool_value(control_store, "requiresMount"),
+    )
+    validate_control_state_directory(
+        share_settings,
+        path_settings,
+        control_store_settings,
+    )
 
     return GuestToolsSettings(
         shares=share_settings,
         paths=path_settings,
+        control_store=control_store_settings,
         compose=ComposeSettings(
             project_name=toml_str_value(
                 toml_table(document, "compose"),
@@ -272,6 +307,7 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
 def validate_control_state_directory(
     shares: ShareSettings,
     paths: PathSettings,
+    control_store: ControlStoreSettings,
 ) -> None:
     if not paths.control_state_dir.is_absolute():
         raise GuestContractError(
@@ -293,15 +329,90 @@ def validate_control_state_directory(
             f"{paths.control_state_dir}",
             code="guest-tools-control-state-path-invalid",
         )
+    validate_control_store_location(control_store, paths.control_state_dir)
+
+
+def validate_control_store_location(
+    control_store: ControlStoreSettings,
+    control_state_dir: Path,
+) -> None:
+    """Check the declared location shape without reading filesystem state."""
+
+    if not control_store.root.is_absolute():
+        raise GuestContractError(
+            "controlStore.root must be an absolute Guest-local path: "
+            f"{control_store.root}",
+            code="guest-tools-control-state-path-invalid",
+        )
+    if control_store.root == Path("/"):
+        raise GuestContractError(
+            "controlStore.root must name a platform-owned directory, not '/': "
+            f"{control_store.root}",
+            code="guest-tools-control-state-path-invalid",
+        )
+    if ".." in control_store.root.parts:
+        raise GuestContractError(
+            "controlStore.root must not contain parent traversal: "
+            f"{control_store.root}",
+            code="guest-tools-control-state-path-invalid",
+        )
+    if ".." in control_state_dir.parts:
+        raise GuestContractError(
+            "controlStateDir must not contain parent traversal: "
+            f"{control_state_dir}",
+            code="guest-tools-control-state-path-invalid",
+        )
+    if not path_contains(control_store.root, control_state_dir):
+        raise GuestContractError(
+            "controlStateDir must be inside controlStore.root: "
+            f"controlStateDir={control_state_dir} root={control_store.root}",
+            code="guest-tools-control-state-path-invalid",
+        )
+    try:
+        relative = control_state_dir.relative_to(control_store.root)
+    except ValueError as error:
+        raise GuestContractError(
+            "controlStateDir must be inside controlStore.root: "
+            f"controlStateDir={control_state_dir} root={control_store.root}",
+            code="guest-tools-control-state-path-invalid",
+        ) from error
+    if ".." in relative.parts:
+        raise GuestContractError(
+            "controlStateDir must not traverse outside controlStore.root: "
+            f"controlStateDir={control_state_dir} root={control_store.root}",
+            code="guest-tools-control-state-path-invalid",
+        )
 
 
 def path_contains(parent: Path, child: Path) -> bool:
     return child == parent or parent in child.parents
 
 
-def read_settings_file(path: Path) -> dict[str, Any]:
-    with path.open("rb") as handle:
-        parsed = tomllib.load(handle)
+def read_optional_settings_file(
+    path: Path,
+    *,
+    require_config_file: bool,
+) -> dict[str, Any] | None:
+    try:
+        with path.open("rb") as handle:
+            parsed = tomllib.load(handle)
+    except FileNotFoundError as error:
+        if not require_config_file:
+            return None
+        raise GuestContractError(
+            f"guest tools configured settings file is missing: {path}",
+            code="guest-tools-settings-missing",
+        ) from error
+    except OSError as error:
+        raise GuestContractError(
+            f"guest tools settings file is unreadable: {path}: {error}",
+            code="guest-tools-settings-unreadable",
+        ) from error
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as error:
+        raise GuestContractError(
+            f"guest tools settings file is invalid TOML: {path}: {error}",
+            code="guest-tools-settings-invalid",
+        ) from error
     if not isinstance(parsed, dict):
         raise GuestContractError(
             f"guest tools settings must be a TOML table: {path}",
@@ -355,4 +466,6 @@ def install_default_settings(
     os.replace(temporary, path)
 
 
-SETTINGS = load_settings()
+SETTINGS = load_settings(
+    require_config_file=_configured_settings_path is not None,
+)

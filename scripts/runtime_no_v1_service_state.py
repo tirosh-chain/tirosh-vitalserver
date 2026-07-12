@@ -4793,6 +4793,19 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
         / "apps/vitalserver-platform-agent/packaging/linux"
         / "vitalserver-runtime-controller.service"
     )
+    default_control_store_settings_path = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/resources/guest-tools.toml"
+    )
+    linux_control_store_settings_path = (
+        ROOT
+        / "apps/vitalserver-platform-agent/packaging/linux"
+        / "runtime-controller.toml"
+    )
+    hyperv_control_store_settings_path = (
+        ROOT
+        / "apps/vitalserver-platform-agent/packaging/windows/hyperv-guest"
+        / "guest-tools.toml"
+    )
     api_tests_path = GUEST_TOOLS / "tests/test_guest_control_api.py"
     usecase_tests_path = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
     sqlite_tests_path = GUEST_TOOLS / "tests/test_guest_control_sqlite_repository.py"
@@ -4815,6 +4828,9 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
     control_store_cli_text = read(control_store_cli_path)
     macos_control_service_text = read(macos_control_service_path)
     linux_control_service_text = read(linux_control_service_path)
+    default_control_store_settings_text = read(default_control_store_settings_path)
+    linux_control_store_settings_text = read(linux_control_store_settings_path)
+    hyperv_control_store_settings_text = read(hyperv_control_store_settings_path)
     sqlite_tests_text = read(sqlite_tests_path)
     lab_settings_text = read(lab_settings_path)
     lab_server_text = read(lab_server_path)
@@ -4869,26 +4885,43 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
             '"active_operation_leases"',
         ],
         relative(control_store_migration_path): [
-            "def migrate_control_store(control_state_dir: Path)",
+            "def migrate_control_store(",
+            "control_store: ControlStoreSettings",
+            "validate_control_store_location(control_store, control_state_dir)",
+            "require_real_control_store_root(control_store)",
+            'kind="controlStoreRootNotMounted"',
+            "control_state_root_is_mounted",
             "repository.migrate_schema()",
             "repository.check_ready()",
         ],
         relative(control_store_cli_path): [
             "def guest_tools_migrate_control_store() -> int:",
-            '"--control-state-dir"',
-            "proof = migrate_control_store(args.control_state_dir)",
+            "control_store=SETTINGS.control_store",
         ],
         relative(macos_control_service_path): [
             "RequiresMountsFor=/mnt/runtime",
             "ExecStartPre=/opt/tirosh/guest-tools/venv/bin/"
-            "tirosh-guest-tools-migrate-control-store --control-state-dir "
-            "/mnt/runtime/control",
+            "tirosh-guest-tools-migrate-control-store",
         ],
         relative(linux_control_service_path): [
             "RequiresMountsFor=/var/lib/vitalserver",
             "ExecStartPre=/opt/vitalserver/current/runtime-controller/venv/bin/"
-            "tirosh-guest-tools-migrate-control-store --control-state-dir "
-            "/var/lib/vitalserver/control",
+            "tirosh-guest-tools-migrate-control-store",
+        ],
+        relative(default_control_store_settings_path): [
+            "[controlStore]",
+            'root = "/mnt/runtime"',
+            "requiresMount = true",
+        ],
+        relative(linux_control_store_settings_path): [
+            "[controlStore]",
+            'root = "/var/lib/vitalserver"',
+            "requiresMount = false",
+        ],
+        relative(hyperv_control_store_settings_path): [
+            "[controlStore]",
+            'root = "/mnt/runtime"',
+            "requiresMount = true",
         ],
         relative(api_tests_path): [
             "test_default_usecases_require_migrated_sqlite_without_postgres_startup",
@@ -4973,6 +5006,9 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
         relative(control_store_cli_path): control_store_cli_text,
         relative(macos_control_service_path): macos_control_service_text,
         relative(linux_control_service_path): linux_control_service_text,
+        relative(default_control_store_settings_path): default_control_store_settings_text,
+        relative(linux_control_store_settings_path): linux_control_store_settings_text,
+        relative(hyperv_control_store_settings_path): hyperv_control_store_settings_text,
         relative(api_tests_path): api_tests_text,
         relative(usecase_tests_path): usecase_tests_text,
         relative(sqlite_tests_path): sqlite_tests_text,
@@ -5011,6 +5047,13 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
         present.append(
             f"{relative(compose_path)}:VITALSERVER_LAB_ALLOW_MEMORY_STORE"
         )
+    for path, value in (
+        (control_store_cli_path, control_store_cli_text),
+        (macos_control_service_path, macos_control_service_text),
+        (linux_control_service_path, linux_control_service_text),
+    ):
+        if "--control-state-dir" in value:
+            present.append(f"{relative(path)}:--control-state-dir")
     if missing or present:
         return CheckResult(
             "guest-control-default-state-sqlite-control-store",

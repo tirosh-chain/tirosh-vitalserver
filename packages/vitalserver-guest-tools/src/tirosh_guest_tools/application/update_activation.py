@@ -29,7 +29,6 @@ from tirosh_guest_tools.infrastructure.common import (
     run,
     systemctl,
 )
-from tirosh_guest_tools.infrastructure.settings import SETTINGS
 from tirosh_guest_tools.infrastructure.system_install import (
     install_guest_tools_runtime,
     migrate_guest_control_store,
@@ -56,7 +55,7 @@ def run_activate_update() -> None:
 
 def activate_runtime() -> None:
     install_guest_tools_runtime()
-    migrate_guest_control_store(SETTINGS.paths.control_state_dir)
+    migrate_guest_control_store()
     collect_guest_observability(ObservationPhase.ACTIVATION_PRE)
     quiesce_compose_units()
     load_bundled_docker_images()
