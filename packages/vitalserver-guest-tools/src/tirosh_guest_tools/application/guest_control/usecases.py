@@ -218,31 +218,24 @@ class GuestControlUseCases:
         }
 
     def readiness(self) -> dict[str, object]:
-        dependencies = [
-            _readiness_dependency(
+        required_dependencies = [
+            _required_readiness_dependency(
                 "operationRepository",
-                "required",
                 self._operations.check_ready,
             )
         ]
 
-        if self._vitaldb_read_model is not None:
-            dependencies.append(
-                _readiness_dependency(
-                    "vitaldbReadModel",
-                    "configured",
-                    self._vitaldb_read_model.check_ready,
-                )
-            )
-
         status = (
             "ready"
-            if all(dependency["state"] == "ready" for dependency in dependencies)
+            if all(
+                dependency["state"] == "ready"
+                for dependency in required_dependencies
+            )
             else "unavailable"
         )
         return {
             "status": status,
-            "dependencies": dependencies,
+            "dependencies": required_dependencies,
         }
 
     def list_services(self) -> list[str]:
@@ -1562,24 +1555,23 @@ class GuestControlUseCases:
         self._operations.record_transition(operation)
 
 
-def _readiness_dependency(
+def _required_readiness_dependency(
     name: str,
-    role: str,
     check: Callable[[], None],
 ) -> dict[str, object]:
     try:
         check()
-    except (GuestControlDependencyError, VitalDBReadModelDependencyError) as error:
+    except GuestControlDependencyError as error:
         return {
             "name": name,
-            "role": role,
+            "role": "required",
             "state": "failed",
             "kind": error.kind,
             "message": error.message,
         }
     return {
         "name": name,
-        "role": role,
+        "role": "required",
         "state": "ready",
         "kind": None,
         "message": None,

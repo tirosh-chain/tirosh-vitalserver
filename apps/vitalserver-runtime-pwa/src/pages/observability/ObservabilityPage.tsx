@@ -6,12 +6,14 @@ import {
   useRuntimeEvents,
   useVitalDBRecorders
 } from "@/console/hooks";
+import type { RuntimeEventQuery } from "@/console/runtimeControlGateway";
 import type {
   RuntimeEventDocument,
   RuntimeVitalDBObservationSnapshot,
   VitalDBAnomalyObservation,
   VitalDBObservationDocument
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import type { RuntimeEventTypeValue } from "@/domain/runtime-control/contracts/runtimeEventTypes";
 import {
   formatVitalRecorderObservationMetric,
   vitalRecorderSummaryFromHistory,
@@ -31,7 +33,7 @@ import {
 
 export function ObservabilityPage() {
   const [period, setPeriod] = useState<RuntimeEventPeriod>("24h");
-  const [eventType, setEventType] = useState("");
+  const [eventType, setEventType] = useState<RuntimeEventTypeValue | "">("");
   const [limit, setLimit] = useState(50);
   const dailyEventRequest = useMemo(
     () => ({
@@ -42,11 +44,7 @@ export function ObservabilityPage() {
   );
   const eventRequest = useMemo(
     () => {
-      const request: {
-        limit: number;
-        since: string;
-        type?: string;
-      } = {
+      const request: RuntimeEventQuery = {
         limit,
         since: sinceForPeriod(period)
       };
@@ -186,7 +184,9 @@ export function ObservabilityPage() {
             Filter
             <select
               value={eventType}
-              onChange={(event) => setEventType(event.target.value)}
+              onChange={(event) =>
+                setEventType(event.target.value as RuntimeEventTypeValue | "")
+              }
             >
               <option value="">All events</option>
               {runtimeEventTypes.map((type) => (

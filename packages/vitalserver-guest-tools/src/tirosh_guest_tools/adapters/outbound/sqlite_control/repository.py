@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import stat
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -69,6 +69,7 @@ class SQLiteControlRepository:
                 f"{self._database_path.parent}: {error}",
                 kind="controlStoreUnavailable",
             ) from error
+        self._enable_wal_mode()
         self._write_connection(
             "control SQLite schema migration",
             migrate_control_schema,
@@ -97,6 +98,7 @@ class SQLiteControlRepository:
         try:
             with self._engine.connect() as connection:
                 validate_control_schema(connection)
+                _require_wal_mode(connection)
         except GuestControlDependencyError:
             raise
         except SQLAlchemyError as error:
@@ -242,6 +244,13 @@ class SQLiteControlRepository:
         cursor: str | None,
     ) -> dict[str, Any]:
         cursor_id = runtime_event_cursor_id(cursor)
+        if since is not None:
+            if since.tzinfo is None or since.utcoffset() is None:
+                raise GuestControlDependencyError(
+                    "runtime event history since timestamp must include a timezone",
+                    kind="runtimeEventQueryInvalid",
+                )
+            since = since.astimezone(UTC)
         statement: Select[tuple[OperationEventRecord, ServiceOperationRecord]] = (
             select(OperationEventRecord, ServiceOperationRecord)
             .join(
@@ -432,6 +441,26 @@ class SQLiteControlRepository:
         except SQLAlchemyError as error:
             raise control_store_error(error, stage=stage) from error
 
+    def _enable_wal_mode(self) -> None:
+        try:
+            with self._engine.connect() as connection:
+                journal_mode = connection.exec_driver_sql(
+                    "PRAGMA journal_mode = WAL"
+                ).scalar_one()
+                if str(journal_mode).lower() != "wal":
+                    raise GuestControlDependencyError(
+                        "control SQLite WAL mode was not enabled: "
+                        f"actual={journal_mode!r}",
+                        kind="controlStoreJournalModeInvalid",
+                    )
+        except GuestControlDependencyError:
+            raise
+        except SQLAlchemyError as error:
+            raise control_store_error(
+                error,
+                stage="control SQLite WAL mode migration",
+            ) from error
+
 
 def build_sqlite_engine(database_path: Path) -> Engine:
     engine = create_engine(
@@ -452,13 +481,6 @@ def build_sqlite_engine(database_path: Path) -> Engine:
         try:
             cursor.execute("PRAGMA foreign_keys = ON")
             cursor.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MILLISECONDS}")
-            cursor.execute("PRAGMA journal_mode = WAL")
-            journal_mode = cursor.fetchone()
-            if journal_mode != ("wal",):
-                raise sqlite3.OperationalError(
-                    "control SQLite WAL mode was not enabled: "
-                    f"actual={journal_mode!r}"
-                )
         finally:
             cursor.close()
 
@@ -476,6 +498,16 @@ def _write_session(  # noqa: UP047 -- Guest runtime supports Python 3.11.
         return result
     finally:
         session.close()
+
+
+def _require_wal_mode(connection: Connection) -> None:
+    journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar_one()
+    if str(journal_mode).lower() != "wal":
+        raise GuestControlDependencyError(
+            "control SQLite journal mode is not WAL: "
+            f"actual={journal_mode!r}",
+            kind="controlStoreJournalModeInvalid",
+        )
 
 
 def event_record_from_operation(operation: ServiceOperation) -> OperationEventRecord:

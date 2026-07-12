@@ -288,6 +288,138 @@ def test_linux_runtime_controller_bundle_requires_a_verified_wheelhouse(
         builder._require_control_wheelhouse(wheelhouse)
 
 
+def test_linux_runtime_controller_bundle_rejects_a_tampered_wheelhouse_manifest(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location("linux_bundle_builder", BUILDER)
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    wheelhouse = _write_runtime_controller_wheelhouse(tmp_path)
+    manifest_path = wheelhouse / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["guestTools"]["sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="Guest Tools wheel SHA-256 mismatch"):
+        builder._require_control_wheelhouse(wheelhouse)
+
+
+@pytest.mark.parametrize(
+    "dependency_wheel_name",
+    (
+        "alembic-1.16.0-py3-none-any.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_x86_64.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-"
+        "manylinux_2_28_x86_64.manylinux2014_x86_64.whl",
+    ),
+)
+def test_linux_runtime_controller_bundle_accepts_cpython312_compatible_wheels(
+    tmp_path: Path,
+    dependency_wheel_name: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location("linux_bundle_builder", BUILDER)
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    builder._require_control_wheelhouse(
+        _write_runtime_controller_wheelhouse(
+            tmp_path,
+            dependency_wheel_name=dependency_wheel_name,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "dependency_wheel_name",
+    (
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_aarch64.whl",
+        "sqlalchemy-2.0.51-cp312-cp311-manylinux_2_17_x86_64.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_28_x86_64.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-linux_x86_64.whl",
+    ),
+)
+def test_linux_runtime_controller_bundle_rejects_incompatible_wheel_tags(
+    tmp_path: Path,
+    dependency_wheel_name: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location("linux_bundle_builder", BUILDER)
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    with pytest.raises(
+        SystemExit,
+        match=r"not compatible with CPython 3\.12 linux/amd64",
+    ):
+        builder._require_control_wheelhouse(
+            _write_runtime_controller_wheelhouse(
+                tmp_path,
+                dependency_wheel_name=dependency_wheel_name,
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "guest_wheel_name",
+    (
+        "guest_tools-0.1.0-cp312-cp312-manylinux_2_17_aarch64.whl",
+        "guest_tools-0.1.0-cp312-cp311-manylinux_2_17_x86_64.whl",
+        "guest_tools-0.1.0-cp312-cp312-linux_x86_64.whl",
+    ),
+)
+def test_linux_runtime_controller_bundle_rejects_incompatible_guest_tools_wheel(
+    tmp_path: Path,
+    guest_wheel_name: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location("linux_bundle_builder", BUILDER)
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    with pytest.raises(
+        SystemExit,
+        match=r"not compatible with CPython 3\.12 linux/amd64",
+    ):
+        builder._require_control_wheelhouse(
+            _write_runtime_controller_wheelhouse(
+                tmp_path,
+                guest_wheel_name=guest_wheel_name,
+            )
+        )
+
+
+def test_linux_runtime_controller_bundle_requires_requirements_to_pin_manifest_wheels(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location("linux_bundle_builder", BUILDER)
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    wheelhouse = _write_runtime_controller_wheelhouse(tmp_path)
+    manifest_path = wheelhouse / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    requirements = wheelhouse / "linux-amd64/requirements.txt"
+    guest_tools = manifest["guestTools"]
+    requirements.write_text(
+        "../guest-tools/guest-tools-0.1.0-py3-none-any.whl --hash=sha256:"
+        + guest_tools["sha256"]
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest["targets"]["linux-amd64"]["requirementsSHA256"] = _sha256(
+        requirements
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(
+        SystemExit,
+        match="requirements do not pin every manifest wheel",
+    ):
+        builder._require_control_wheelhouse(wheelhouse)
+
+
 def test_linux_package_stages_an_amd64_guest_wheelhouse_before_bundling() -> None:
     makefile = (ROOT / "make/platform-agent.mk").read_text(encoding="utf-8")
 
@@ -447,14 +579,27 @@ def test_linux_same_version_reapply_preserves_rollback_lineage() -> None:
 
 
 def test_linux_installer_migrates_and_rolls_back_platform_delivery_config() -> None:
-    installer = (
-        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
-    ).read_text(encoding="utf-8")
+    packaging = ROOT / "apps/vitalserver-platform-agent/packaging/linux"
+    installer = (packaging / "install.sh").read_text(encoding="utf-8")
+    rollback = (packaging / "rollback-linux.sh").read_text(encoding="utf-8")
 
+    assert 'rollback_tool_path="$release_root/tools/rollback-linux.py"' in installer
+    assert '"rollbackTool": "$rollback_tool_path"' in installer
+    assert '"$etc_root/platform-agent.json" "$api_token" "$rollback_tool_path"' in (
+        installer
+    )
     assert (
-        '"rollbackTool": "/opt/vitalserver/current/tools/rollback-linux.py"'
+        'legacy_rollback_tool = "/opt/vitalserver/current/tools/rollback-linux.py"'
         in installer
     )
+    assert "Platform Agent configuration migration rollbackTool is invalid" in installer
+    assert (
+        "Platform Agent configuration migration rollbackTool is unavailable"
+        in installer
+    )
+    assert 'delivery["rollbackTool"] = rollback_tool_path' in installer
+    assert "Release-owned Linux rollback tool is missing or not executable" in installer
+    assert "platform-agent.json" not in rollback
     assert (
         '"uninstallTool": "/opt/vitalserver/current/tools/uninstall-linux.py"'
         in installer
@@ -530,7 +675,8 @@ def test_linux_installer_migrates_existing_runtime_environment_transactionally()
     assert installer.index(
         "Linux install rollback systemd unit restoration failed"
     ) < installer.index("Linux install rollback systemd reload failed")
-    assert installer.rindex('rm -f \\\n  "$platform_agent_unit_backup"') < installer.rindex(
+    platform_agent_unit_cleanup = 'rm -f \\\n  "$platform_agent_unit_backup"'
+    assert installer.rindex(platform_agent_unit_cleanup) < installer.rindex(
         "units_backed_up=0"
     )
 
@@ -553,6 +699,113 @@ def test_linux_update_uses_explicit_non_nested_support_acceptance_mode() -> None
     assert '"capability-only",' in updater
     assert 'choices=("execute", "capability-only")' in acceptance
     assert 'args.support_export_mode == "capability-only"' in acceptance
+
+
+def test_linux_rollback_restores_the_target_release_systemd_units() -> None:
+    packaging = ROOT / "apps/vitalserver-platform-agent/packaging/linux"
+    installer = (packaging / "install.sh").read_text(encoding="utf-8")
+    rollback = (packaging / "rollback-linux.sh").read_text(encoding="utf-8")
+
+    assert 'install -d -m 0755 "$staging_root/tools/systemd"' in installer
+    assert (
+        '"$staging_root/tools/systemd/vitalserver-runtime-controller.service"'
+        in installer
+    )
+    assert "snapshot_release_systemd_units()" in installer
+    assert 'snapshot_release_systemd_units "$previous_target"' in installer
+    assert (
+        'release_systemd_snapshot_root="$etc_root/release-systemd-units"'
+        in installer
+    )
+    assert 'release_systemd_snapshot_root=$etc_root/release-systemd-units' in rollback
+    assert "$var_root/release-systemd-units" not in installer
+    assert "$var_root/release-systemd-units" not in rollback
+    controller_unit = (
+        packaging / "vitalserver-runtime-controller.service"
+    ).read_text(encoding="utf-8")
+    assert "ReadOnlyPaths=/etc/vitalserver" in controller_unit
+    assert "/etc/vitalserver/release-systemd-units" not in controller_unit
+    assert (
+        'temporary_snapshot="$release_systemd_snapshot_root/releases/'
+        '.${release_version}.systemd.snapshot.$$"'
+    ) in installer
+    assert 'snapshot_root="$release_systemd_snapshot_root/$release"' in installer
+    assert 'cmp -s "$unit_root/$unit" "$snapshot_root/$unit"' in installer
+    assert 'temporary_snapshot="$opt_root/$release/tools/' not in installer
+    assert 'release_systemd_snapshot_created=0' in installer
+    assert 'release_systemd_snapshot_temporary=""' in installer
+    assert "created systemd snapshot cleanup failed" in installer
+    assert installer.index('snapshot_release_systemd_units "$previous_target"') < (
+        installer.index(
+            'install -m 0644 "$unit_root/vitalserver-platform-agent.service"'
+        )
+    )
+    assert "require_previous_release_artifacts()" in installer
+    assert 'require_previous_release_artifacts "$previous_target"' in installer
+    assert "Existing Linux release rollback acceptance tool is missing" in installer
+    assert installer.index('require_previous_release_artifacts "$previous_target"') < (
+        installer.index('snapshot_release_systemd_units "$previous_target"')
+    )
+    assert "resolve_release_unit_directory()" in rollback
+    assert "restore_release_units()" in rollback
+    assert (
+        'current_unit_source=$(resolve_release_unit_directory "$current_target")'
+        in rollback
+    )
+    assert (
+        'previous_unit_source=$(resolve_release_unit_directory "$previous_target")'
+        in rollback
+    )
+    assert 'migration_snapshot="$release_systemd_snapshot_root/$release"' in rollback
+    assert (
+        'restore_release_units "$previous_target" "$previous_unit_source"'
+        in rollback
+    )
+    target_unit_restore = (
+        'restore_release_units "$previous_target" "$previous_unit_source"'
+    )
+    restart_services = (
+        "systemctl daemon-reload\n"
+        "systemctl restart vitalserver-runtime-provider.service"
+    )
+    assert rollback.index(target_unit_restore) < rollback.index(restart_services)
+    current_unit_restore = (
+        'if ! restore_release_units "$current_target" "$current_unit_source"; then'
+    )
+    assert rollback.index(current_unit_restore) < rollback.index(
+        'if [ "$release_restored" -eq 1 ] && [ "$document_restored" -eq 1 ]'
+    )
+    assert "|| true" not in rollback
+    assert "rollback systemd unit restoration failed" in rollback
+    assert (
+        "original service restart skipped because restoration is incomplete"
+        in rollback
+    )
+    assert "restoreState=$restore_state" in rollback
+    assert "trap 'restore_current 129' HUP" in rollback
+
+
+def test_linux_update_rollback_does_not_restart_a_partially_restored_release() -> None:
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+
+    assert 'release_restored=1' in installer
+    assert 'owner_configuration_restored=1' in installer
+    assert 'units_restored=1' in installer
+    assert (
+        "rollback service restart skipped because owner restoration is incomplete"
+        in installer
+    )
+    restoration_guard = (
+        'if [ "$release_restored" -eq 1 ] && \\\n'
+        '      [ "$owner_configuration_restored" -eq 1 ] && \\\n'
+        '      [ "$units_restored" -eq 1 ]; then'
+    )
+    assert restoration_guard in installer
+    assert installer.index(restoration_guard) < installer.index(
+        "systemctl daemon-reload"
+    )
 
 
 def test_linux_uninstall_preserves_runtime_data_only_in_standard_mode() -> None:
@@ -743,20 +996,60 @@ def _write_docker_archive(path: Path, *, architecture: str = "amd64") -> None:
             archive.addfile(info, io.BytesIO(data))
 
 
-def _write_runtime_controller_wheelhouse(tmp_path: Path) -> Path:
+def _write_runtime_controller_wheelhouse(
+    tmp_path: Path,
+    *,
+    guest_wheel_name: str = "guest-tools-0.1.0-py3-none-any.whl",
+    dependency_wheel_name: str = (
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_x86_64.whl"
+    ),
+) -> Path:
     wheelhouse = tmp_path / "wheelhouse"
     guest_tools = wheelhouse / "guest-tools"
     amd64 = wheelhouse / "linux-amd64"
     guest_tools.mkdir(parents=True)
     amd64.mkdir()
-    (guest_tools / "guest-tools-0.1.0-py3-none-any.whl").write_bytes(b"guest")
-    (amd64 / "sqlalchemy-2.0.51-cp312.whl").write_bytes(b"sqlalchemy")
-    (amd64 / "requirements.txt").write_text(
-        "../guest-tools/guest-tools-0.1.0-py3-none-any.whl --hash=sha256:abc\n",
+    guest_wheel = guest_tools / guest_wheel_name
+    dependency_wheel = amd64 / dependency_wheel_name
+    guest_wheel.write_bytes(b"guest")
+    dependency_wheel.write_bytes(b"sqlalchemy")
+    requirements = amd64 / "requirements.txt"
+    requirements.write_text(
+        "../guest-tools/"
+        + guest_wheel.name
+        + " --hash=sha256:"
+        + _sha256(guest_wheel)
+        + "\n"
+        + "sqlalchemy==2.0.51 --hash=sha256:"
+        + _sha256(dependency_wheel)
+        + "\n",
         encoding="utf-8",
     )
     (wheelhouse / "manifest.json").write_text(
-        json.dumps({"schemaVersion": 1}),
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "guestPython": {"major": 3, "minor": 12},
+                "guestTools": {
+                    "path": guest_wheel.relative_to(wheelhouse).as_posix(),
+                    "sha256": _sha256(guest_wheel),
+                },
+                "targets": {
+                    "linux-amd64": {
+                        "requirementsPath": requirements.relative_to(
+                            wheelhouse
+                        ).as_posix(),
+                        "requirementsSHA256": _sha256(requirements),
+                        "wheels": [
+                            {
+                                "path": dependency_wheel.name,
+                                "sha256": _sha256(dependency_wheel),
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
         encoding="utf-8",
     )
     return wheelhouse

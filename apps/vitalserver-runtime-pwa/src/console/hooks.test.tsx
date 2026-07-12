@@ -110,13 +110,18 @@ describe("console hooks", () => {
     expect(gateway.getGuestServiceResource).toHaveBeenCalledWith("app");
 
     const events = renderHook(
-      () => useRuntimeEvents({ limit: 5, type: "update", since: "2026-05-31T00:00:00Z" }),
+      () =>
+        useRuntimeEvents({
+          limit: 5,
+          type: "operation-completed",
+          since: "2026-05-31T00:00:00Z"
+        }),
       { wrapper }
     );
     await waitFor(() => expect(events.result.current.data).toEqual({ events: [] }));
     expect(gateway.getRuntimeEvents).toHaveBeenCalledWith({
       limit: 5,
-      type: "update",
+      type: "operation-completed",
       since: "2026-05-31T00:00:00Z"
     });
 

@@ -1,7 +1,10 @@
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[4]
 STAGER = ROOT / "scripts/stage_hyperv_guest_payload.py"
@@ -160,6 +163,198 @@ def test_hyperv_guest_payload_rejects_retired_request_poller(tmp_path: Path) -> 
     assert "retired v1 artifact" in result.stderr
 
 
+@pytest.mark.parametrize(
+    ("relative", "expected_error"),
+    (
+        (
+            "python-wheels/guest-tools/guest_tools-0.1.0-py3-none-any.whl",
+            "Guest Tools wheel SHA-256 mismatch",
+        ),
+        (
+            "python-wheels/linux-amd64/requirements.txt",
+            "Guest Tools linux/amd64 requirements SHA-256 mismatch",
+        ),
+        (
+            "python-wheels/linux-amd64/"
+            "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_x86_64.whl",
+            "Guest Tools linux/amd64 dependency wheel SHA-256 mismatch",
+        ),
+    ),
+)
+def test_hyperv_guest_payload_rejects_tampered_guest_tools_wheelhouse_file(
+    tmp_path: Path,
+    relative: str,
+    expected_error: str,
+) -> None:
+    system_root = tmp_path / "system-root"
+    system_root.mkdir()
+    deploy = _write_valid_deploy(tmp_path)
+    (deploy / relative).write_bytes(b"tampered")
+    proof = _write_amd64_rootfs_proof(tmp_path)
+    system_raw, data_raw, seed_iso = _hyperv_inputs(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(STAGER),
+            "--system-root",
+            str(system_root),
+            "--system-raw",
+            str(system_raw),
+            "--runtime-data-raw",
+            str(data_raw),
+            "--seed-iso",
+            str(seed_iso),
+            "--deploy-directory",
+            str(deploy),
+            "--rootfs-proof",
+            str(proof),
+            "--output-proof",
+            str(tmp_path / "proof.json"),
+        ],
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert expected_error in result.stderr
+
+
+@pytest.mark.parametrize(
+    "dependency_wheel_name",
+    (
+        "alembic-1.16.0-py3-none-any.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_x86_64.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-"
+        "manylinux_2_28_x86_64.manylinux2014_x86_64.whl",
+    ),
+)
+def test_hyperv_guest_payload_accepts_cpython312_compatible_wheels(
+    tmp_path: Path,
+    dependency_wheel_name: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location("hyperv_payload_stager", STAGER)
+    assert spec is not None and spec.loader is not None
+    stager = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stager)
+
+    stager._require_guest_tools_runtime_payload(
+        _write_valid_deploy(
+            tmp_path,
+            dependency_wheel_name=dependency_wheel_name,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "dependency_wheel_name",
+    (
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_aarch64.whl",
+        "sqlalchemy-2.0.51-cp312-cp311-manylinux_2_17_x86_64.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_28_x86_64.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-linux_x86_64.whl",
+    ),
+)
+def test_hyperv_guest_payload_rejects_incompatible_wheel_tags(
+    tmp_path: Path,
+    dependency_wheel_name: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location("hyperv_payload_stager", STAGER)
+    assert spec is not None and spec.loader is not None
+    stager = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stager)
+
+    with pytest.raises(
+        SystemExit,
+        match=r"not compatible with CPython 3\.12 linux/amd64",
+    ):
+        stager._require_guest_tools_runtime_payload(
+            _write_valid_deploy(
+                tmp_path,
+                dependency_wheel_name=dependency_wheel_name,
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "guest_wheel_name",
+    (
+        "guest_tools-0.1.0-cp312-cp312-manylinux_2_17_aarch64.whl",
+        "guest_tools-0.1.0-cp312-cp311-manylinux_2_17_x86_64.whl",
+        "guest_tools-0.1.0-cp312-cp312-linux_x86_64.whl",
+    ),
+)
+def test_hyperv_guest_payload_rejects_incompatible_guest_tools_wheel(
+    tmp_path: Path,
+    guest_wheel_name: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location("hyperv_payload_stager", STAGER)
+    assert spec is not None and spec.loader is not None
+    stager = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stager)
+
+    with pytest.raises(
+        SystemExit,
+        match=r"not compatible with CPython 3\.12 linux/amd64",
+    ):
+        stager._require_guest_tools_runtime_payload(
+            _write_valid_deploy(
+                tmp_path,
+                guest_wheel_name=guest_wheel_name,
+            )
+        )
+
+
+def test_hyperv_guest_payload_requires_requirements_to_pin_manifest_wheels(
+    tmp_path: Path,
+) -> None:
+    system_root = tmp_path / "system-root"
+    system_root.mkdir()
+    deploy = _write_valid_deploy(tmp_path)
+    wheelhouse = deploy / "python-wheels"
+    manifest_path = wheelhouse / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    requirements = wheelhouse / "linux-amd64/requirements.txt"
+    requirements.write_text(
+        "../" + manifest["guestTools"]["path"] + " --hash=sha256:"
+        + manifest["guestTools"]["sha256"]
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest["targets"]["linux-amd64"]["requirementsSHA256"] = _sha256(
+        requirements
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    proof = _write_amd64_rootfs_proof(tmp_path)
+    system_raw, data_raw, seed_iso = _hyperv_inputs(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(STAGER),
+            "--system-root",
+            str(system_root),
+            "--system-raw",
+            str(system_raw),
+            "--runtime-data-raw",
+            str(data_raw),
+            "--seed-iso",
+            str(seed_iso),
+            "--deploy-directory",
+            str(deploy),
+            "--rootfs-proof",
+            str(proof),
+            "--output-proof",
+            str(tmp_path / "proof.json"),
+        ],
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "requirements do not pin every manifest wheel" in result.stderr
+
+
 def _hyperv_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     system_raw = tmp_path / "system.raw"
     runtime_data_raw = tmp_path / "runtime-data.raw"
@@ -170,7 +365,59 @@ def _hyperv_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     return system_raw, runtime_data_raw, seed_iso
 
 
-def _write_guest_tools_runtime_payload(deploy: Path) -> None:
+def _write_valid_deploy(
+    tmp_path: Path,
+    *,
+    guest_wheel_name: str = "guest_tools-0.1.0-py3-none-any.whl",
+    dependency_wheel_name: str = (
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_x86_64.whl"
+    ),
+) -> Path:
+    deploy = tmp_path / "deploy"
+    deploy.mkdir()
+    (deploy / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
+    for config_name in ("runtime-config.json", "runtime-settings.json", "runtime.env"):
+        (deploy / config_name).write_text("configured\n", encoding="utf-8")
+    (deploy / "redis-relay-config").mkdir()
+    (deploy / "redis-relay-config/redis-relay.toml").write_text(
+        "[redis_relay]\nenabled = false\n", encoding="utf-8"
+    )
+    _write_guest_control_service(deploy)
+    _write_guest_tools_runtime_payload(
+        deploy,
+        guest_wheel_name=guest_wheel_name,
+        dependency_wheel_name=dependency_wheel_name,
+    )
+    return deploy
+
+
+def _write_amd64_rootfs_proof(tmp_path: Path) -> Path:
+    proof = tmp_path / "rootfs-proof.json"
+    proof.write_text(
+        json.dumps(
+            {
+                "runId": "run-1",
+                "dockerImages": {
+                    "platform": "linux/amd64",
+                    "guestArchitecture": "x86_64",
+                    "status": "passed",
+                },
+                "cleanup": {"status": "passed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return proof
+
+
+def _write_guest_tools_runtime_payload(
+    deploy: Path,
+    *,
+    guest_wheel_name: str = "guest_tools-0.1.0-py3-none-any.whl",
+    dependency_wheel_name: str = (
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_x86_64.whl"
+    ),
+) -> None:
     wheelhouse = deploy / "python-wheels"
     (wheelhouse / "guest-tools").mkdir(parents=True)
     (wheelhouse / "linux-amd64").mkdir()
@@ -178,26 +425,53 @@ def _write_guest_tools_runtime_payload(deploy: Path) -> None:
         "#!/usr/bin/env python3\n",
         encoding="utf-8",
     )
-    (wheelhouse / "guest-tools/guest-tools.whl").write_bytes(b"wheel")
-    (wheelhouse / "linux-amd64/sqlalchemy.whl").write_bytes(b"wheel")
-    (wheelhouse / "linux-amd64/requirements.txt").write_text(
-        "guest-tools\n",
+    guest_wheel = wheelhouse / "guest-tools" / guest_wheel_name
+    dependency_wheel = wheelhouse / "linux-amd64" / dependency_wheel_name
+    requirements = wheelhouse / "linux-amd64/requirements.txt"
+    guest_wheel.write_bytes(b"wheel")
+    dependency_wheel.write_bytes(b"dependency-wheel")
+    requirements.write_text(
+        "../guest-tools/"
+        + guest_wheel.name
+        + " --hash=sha256:"
+        + _sha256(guest_wheel)
+        + "\n"
+        + "sqlalchemy==2.0.51 --hash=sha256:"
+        + _sha256(dependency_wheel)
+        + "\n",
         encoding="utf-8",
     )
     (wheelhouse / "manifest.json").write_text(
         json.dumps(
             {
                 "schemaVersion": 1,
-                "guestTools": {"path": "guest-tools/guest-tools.whl"},
+                "guestPython": {"major": 3, "minor": 12},
+                "guestTools": {
+                    "path": guest_wheel.relative_to(wheelhouse).as_posix(),
+                    "sha256": _sha256(guest_wheel),
+                },
                 "targets": {
                     "linux-amd64": {
-                        "requirementsPath": "linux-amd64/requirements.txt"
+                        "requirementsPath": "linux-amd64/requirements.txt",
+                        "requirementsSHA256": _sha256(requirements),
+                        "wheels": [
+                            {
+                                "path": dependency_wheel.name,
+                                "sha256": _sha256(dependency_wheel),
+                            }
+                        ],
                     }
                 },
             }
         ),
         encoding="utf-8",
     )
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _write_guest_control_service(deploy: Path) -> None:

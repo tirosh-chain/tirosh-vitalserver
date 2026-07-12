@@ -1,6 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useRuntimeControlGateway } from "@/console/runtimeControlGatewayContext";
+import type { RuntimeEventQuery } from "@/console/runtimeControlGateway";
 import { consoleQueryKeys } from "@/console/queryKeys";
 import {
   backupRequest,
@@ -153,11 +154,7 @@ export function useControlCapabilities() {
   });
 }
 
-export function useRuntimeEvents(query: {
-  limit?: number;
-  type?: string;
-  since?: string;
-}) {
+export function useRuntimeEvents(query: RuntimeEventQuery) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.events(query),

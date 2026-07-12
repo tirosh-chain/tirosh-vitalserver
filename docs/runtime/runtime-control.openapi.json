@@ -769,7 +769,7 @@
     "/runtime/events": {
       "get": {
         "operationId": "getRuntimeEvents",
-        "summary": "Read platform state and progress event history",
+        "summary": "Read Guest Runtime Controller operation event history",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
@@ -814,7 +814,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Recent runtime event history",
+            "description": "Guest Runtime Controller operation event history",
             "content": {
               "application/json": {
                 "schema": {

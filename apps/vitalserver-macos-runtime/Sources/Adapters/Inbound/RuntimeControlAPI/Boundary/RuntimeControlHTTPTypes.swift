@@ -93,7 +93,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadPlatformState() async throws -> PlatformState
     func loadOperationState() async throws -> PlatformOperationState
     func loadPlatformWorkflow() async throws -> PlatformWorkflowResource
-    func loadRuntimeOperationEvents(query: RuntimeEventQuery) async throws -> RuntimeOperationEventHistory
+    func loadRuntimeOperationEvents(query: RuntimeOperationEventQuery) async throws -> RuntimeOperationEventHistory
     func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory
     func loadVitalDBBeds() async throws -> RuntimeVitalBedHistory
@@ -232,7 +232,7 @@ public extension RuntimeControlAPIReadHandler {
         )
     }
     func loadRuntimeOperationEvents(
-        query _: RuntimeEventQuery
+        query _: RuntimeOperationEventQuery
     ) async throws -> RuntimeOperationEventHistory {
         throw RuntimeControlClientUnsupportedError.unavailable("events:get")
     }

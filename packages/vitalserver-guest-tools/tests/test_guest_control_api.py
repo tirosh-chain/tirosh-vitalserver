@@ -95,6 +95,7 @@ class FakeOperations:
         self.status_snapshots: list[ServiceStatus] = []
         self.service_resources: dict[str, GuestServiceResource] = {}
         self.redis_relay_status: dict[str, object] | None = None
+        self.event_queries: list[dict[str, object]] = []
 
     def check_ready(self) -> None:
         if self.ready_failure is not None:
@@ -164,7 +165,8 @@ class FakeOperations:
             None,
         )
 
-    def query_events(self, **_: object) -> dict[str, object]:
+    def query_events(self, **query: object) -> dict[str, object]:
+        self.event_queries.append(query)
         return {
             "events": [
                 {
@@ -803,12 +805,8 @@ def test_default_usecases_require_migrated_sqlite_without_postgres_startup(
             raise AssertionError("Guest Control API must not migrate control state")
 
     class FakePostgresVitalDB(FakeVitalDBReadModel):
-        def ensure_schema(self) -> None:
-            checks.append("vitaldb")
-
         def check_ready(self) -> None:
-            self.ensure_schema()
-            super().check_ready()
+            raise AssertionError("Guest Control /ready must not probe Product Postgres")
 
     monkeypatch.setattr(
         guest_control_api,
@@ -830,7 +828,7 @@ def test_default_usecases_require_migrated_sqlite_without_postgres_startup(
 
     assert checks == ["sqlite"]
     assert usecases.readiness()["status"] == "ready"
-    assert checks == ["sqlite", "sqlite", "vitaldb"]
+    assert checks == ["sqlite", "sqlite"]
     operation = usecases.restart_service("app")
     assert operation.operation_id.startswith("op_app_restart_")
 
@@ -973,13 +971,6 @@ def test_ready_route_reports_dependency_readiness(
             "kind": None,
             "message": None,
         },
-        {
-            "name": "vitaldbReadModel",
-            "role": "configured",
-            "state": "ready",
-            "kind": None,
-            "message": None,
-        },
     ]
 
 
@@ -1012,6 +1003,40 @@ def test_ready_route_reports_control_store_dependency_failure() -> None:
                 "state": "failed",
                 "kind": "controlStoreSchemaMismatch",
                 "message": "control SQLite schema is not at the required revision",
+            }
+        ],
+    }
+
+
+def test_ready_route_does_not_probe_configured_vitaldb() -> None:
+    class UnprobedVitalDBReadModel(FakeVitalDBReadModel):
+        def check_ready(self) -> None:
+            raise AssertionError("/ready must not probe the Product VitalDB read model")
+
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        vitaldb_read_model=UnprobedVitalDBReadModel(),
+    )
+
+    status, document = route_request(
+        method="GET",
+        path="/ready",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document == {
+        "status": "ready",
+        "dependencies": [
+            {
+                "name": "operationRepository",
+                "role": "required",
+                "state": "ready",
+                "kind": None,
+                "message": None,
             }
         ],
     }
@@ -1854,6 +1879,32 @@ def test_runtime_events_route_reads_runtime_owned_operation_history(
     assert document["events"][0]["operationState"] == "completed"
 
 
+def test_runtime_events_route_uses_public_default_limit() -> None:
+    operations = FakeOperations()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    status, _ = route_request(
+        method="GET",
+        path="/runtime/events",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert operations.event_queries == [
+        {
+            "limit": 100,
+            "event_type": None,
+            "since": None,
+            "cursor": None,
+        }
+    ]
+
+
 def test_runtime_events_route_rejects_invalid_query(
     usecases: GuestControlUseCases,
 ) -> None:
@@ -1867,6 +1918,116 @@ def test_runtime_events_route_rejects_invalid_query(
 
     assert error.value.status == HTTPStatus.BAD_REQUEST
     assert error.value.code == "queryParameterInvalid"
+
+
+def test_runtime_events_route_rejects_timezone_less_since_timestamp(
+    usecases: GuestControlUseCases,
+) -> None:
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="GET",
+            path="/runtime/events",
+            query={"since": ["2026-07-01T00:00:00"]},
+            usecases=usecases,
+        )
+
+    assert error.value.status == HTTPStatus.BAD_REQUEST
+    assert error.value.code == "queryParameterInvalid"
+
+
+def test_runtime_events_handler_preserves_guest_ledger_cursor_rejection() -> None:
+    class CursorRejectingOperations(FakeOperations):
+        def query_events(self, **query: object) -> dict[str, object]:
+            assert query["cursor"] == "guest-ledger-token"
+            raise GuestControlDependencyError(
+                "runtime event history cursor is invalid",
+                kind="runtimeEventCursorInvalid",
+            )
+
+    operations = CursorRejectingOperations()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    status, document = handle_with_test_handler(
+        method="GET",
+        path="/runtime/events?cursor=guest-ledger-token",
+        body=b"",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.BAD_REQUEST
+    assert document == {
+        "code": "queryParameterInvalid",
+        "detail": "runtime event history cursor is invalid",
+    }
+
+
+def test_runtime_events_handler_decodes_percent_encoded_offset_and_cursor() -> None:
+    operations = FakeOperations()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    status, _ = handle_with_test_handler(
+        method="GET",
+        path=(
+            "/runtime/events?since=2026-07-01T09%3A00%3A00%2B09%3A00"
+            "&cursor=guest%2Bledger%2Ftoken%3Dv2"
+        ),
+        body=b"",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert operations.event_queries == [
+        {
+            "limit": 100,
+            "event_type": None,
+            "since": datetime(2026, 7, 1, tzinfo=UTC),
+            "cursor": "guest+ledger/token=v2",
+        }
+    ]
+
+
+@pytest.mark.parametrize("event_type", ["accepted", "operation-unknown"])
+def test_runtime_events_route_rejects_unknown_public_event_type(
+    usecases: GuestControlUseCases,
+    event_type: str,
+) -> None:
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="GET",
+            path="/runtime/events",
+            query={"type": [event_type]},
+            usecases=usecases,
+        )
+
+    assert error.value.status == HTTPStatus.BAD_REQUEST
+    assert error.value.code == "queryParameterInvalid"
+
+
+def test_runtime_events_route_normalizes_offset_since_timestamp(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, _ = route_request(
+        method="GET",
+        path="/runtime/events",
+        query={"since": ["2026-07-01T09:00:00+09:00"]},
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert guest_control_api._optional_query_datetime(
+        {"since": ["2026-07-01T09:00:00+09:00"]},
+        "since",
+    ) == datetime(2026, 7, 1, tzinfo=UTC)
 
 
 def test_runtime_settings_routes_read_apply_and_reconcile(

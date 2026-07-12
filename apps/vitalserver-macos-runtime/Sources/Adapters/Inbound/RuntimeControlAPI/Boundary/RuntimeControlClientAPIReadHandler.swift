@@ -38,7 +38,7 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     public func loadRuntimeOperationEvents(
-        query: RuntimeEventQuery
+        query: RuntimeOperationEventQuery
     ) async throws -> RuntimeOperationEventHistory {
         try await client.loadRuntimeOperationEvents(query: query)
     }

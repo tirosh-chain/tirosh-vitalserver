@@ -865,13 +865,17 @@ def test_capabilities_omit_unconfigured_adapter_features() -> None:
     }
 
 
-def test_readiness_reports_ready_dependency_state() -> None:
+def test_readiness_only_probes_required_control_dependencies() -> None:
+    class UnprobedVitalDBReadModel(FakeVitalDBReadModel):
+        def check_ready(self) -> None:
+            raise AssertionError("/ready must not probe the Product VitalDB read model")
+
     usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
         clock=FakeClock(),
-        vitaldb_read_model=FakeVitalDBReadModel(),
+        vitaldb_read_model=UnprobedVitalDBReadModel(),
     )
 
     document = usecases.readiness()
@@ -882,13 +886,6 @@ def test_readiness_reports_ready_dependency_state() -> None:
             {
                 "name": "operationRepository",
                 "role": "required",
-                "state": "ready",
-                "kind": None,
-                "message": None,
-            },
-            {
-                "name": "vitaldbReadModel",
-                "role": "configured",
                 "state": "ready",
                 "kind": None,
                 "message": None,

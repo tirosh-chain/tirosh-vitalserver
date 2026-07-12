@@ -207,27 +207,31 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         )
     }
 
-    public func runtimeEvents(query: RuntimeEventQuery) throws -> RuntimeOperationEventHistory {
-        var components = URLComponents()
-        components.path = "/runtime/events"
-        var items = [URLQueryItem(name: "limit", value: String(query.limit))]
+    public func runtimeEvents(query: RuntimeOperationEventQuery) throws -> RuntimeOperationEventHistory {
+        var items = [(name: "limit", value: String(query.limit))]
         if let eventType = query.eventType {
-            items.append(URLQueryItem(name: "type", value: eventType.rawValue))
+            items.append((name: "type", value: eventType.rawValue))
         }
         if let since = query.since {
-            items.append(URLQueryItem(name: "since", value: since))
+            items.append((name: "since", value: since))
         }
         if let cursor = query.cursor {
-            items.append(URLQueryItem(name: "cursor", value: cursor))
+            items.append((name: "cursor", value: cursor))
         }
-        components.queryItems = items
-        guard let path = components.string else {
-            throw RuntimeGuestControlHTTPGatewayError.invalidRequestURL(
-                baseURL: baseURL.absoluteString,
-                path: "/runtime/events"
-            )
+        let path = try runtimeEventQueryPath(items)
+        do {
+            return try decode(RuntimeOperationEventHistory.self, method: "GET", path: path)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            if case .requestFailed(
+                statusCode: 400,
+                code: "queryParameterInvalid",
+                detail: let detail,
+                availableServices: _
+            ) = error {
+                throw RuntimeGuestOperationEventQueryRejectedError(detail: detail)
+            }
+            throw error
         }
-        return try decode(RuntimeOperationEventHistory.self, method: "GET", path: path)
     }
 
     public func listServices() throws -> RuntimeGuestControlServiceList {
@@ -610,6 +614,29 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         allowed.remove(charactersIn: "/?#")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
+
+    private func runtimeEventQueryPath(
+        _ items: [(name: String, value: String)]
+    ) throws -> String {
+        let encodedItems = try items.map { item -> String in
+            guard let encodedValue = item.value.addingPercentEncoding(
+                withAllowedCharacters: Self.runtimeEventQueryValueAllowedCharacters
+            ) else {
+                throw RuntimeGuestControlHTTPGatewayError.invalidRequestURL(
+                    baseURL: baseURL.absoluteString,
+                    path: "/runtime/events"
+                )
+            }
+            return "\(item.name)=\(encodedValue)"
+        }
+        return "/runtime/events?\(encodedItems.joined(separator: "&"))"
+    }
+
+    private static let runtimeEventQueryValueAllowedCharacters: CharacterSet = {
+        var characters = CharacterSet.alphanumerics
+        characters.insert(charactersIn: "-._~")
+        return characters
+    }()
 
     private func requestFailed(_ response: RuntimeGuestControlHTTPResponse) -> Error {
         if let document = try? decoder.decode(RuntimeGuestControlErrorDocument.self, from: response.data) {

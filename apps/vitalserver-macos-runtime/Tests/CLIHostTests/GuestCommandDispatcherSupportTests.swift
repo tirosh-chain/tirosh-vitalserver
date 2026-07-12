@@ -68,12 +68,28 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: removedInstaller.path))
     }
 
-    func testBootstrapChecksActualPythonVenvCreation() throws {
+    func testBootstrapUsesVerifiedOfflineGuestToolsInstaller() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let operations = try readGuestToolsFile("infrastructure/bootstrap_operations.py")
         let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+        let installer = try readGuestSupportFile("install-guest-tools-runtime.py")
 
-        XCTAssertTrue(bootstrap.contains("python3 -m venv --clear \"${GUEST_TOOLS_VENV}\""))
+        XCTAssertTrue(bootstrap.contains("python3 \"${DEPLOY_DIR}/install-guest-tools-runtime.py\""))
+        XCTAssertTrue(bootstrap.contains("--wheel-dir \"${PYTHON_WHEEL_DIR}\""))
+        XCTAssertTrue(bootstrap.contains("--guest-tools-home \"${GUEST_TOOLS_HOME}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("install_guest_tools_for_rootfs_smoke"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("python3 \"${DEPLOY_DIR}/install-guest-tools-runtime.py\""))
+        XCTAssertTrue(installer.contains("[sys.executable, \"-m\", \"venv\", \"--clear\", str(next_venv)]"))
+        XCTAssertTrue(installer.contains("\"--no-index\""))
+        XCTAssertTrue(installer.contains("\"--only-binary=:all:\""))
+        XCTAssertTrue(installer.contains("\"--require-hashes\""))
+        XCTAssertTrue(installer.contains("\"--find-links\""))
+        XCTAssertTrue(installer.contains("validate_wheelhouse"))
+        XCTAssertTrue(installer.contains("require_hash"))
+        XCTAssertTrue(installer.contains("require_requirements_hash_closure"))
+        XCTAssertTrue(installer.contains("install-proof.json"))
+        XCTAssertTrue(installer.contains("installed_dependency_versions"))
+        XCTAssertFalse(installer.contains("\"--no-deps\""))
         XCTAssertTrue(operations.contains("TemporaryDirectory(prefix=\"tirosh-venv-check-\")"))
         XCTAssertTrue(operations.contains("[\"python3\", \"-m\", \"venv\", str(test_venv)]"))
         XCTAssertFalse(operations.contains("[\"python3\", \"-m\", \"venv\", \"--help\"]"))
@@ -280,12 +296,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         let guestSupport = try guestSupportDirectory()
         let systemInstall = try readGuestToolsFile("infrastructure/system_install.py")
 
-        XCTAssertTrue(bootstrap.contains("python3 -m venv --clear \"${GUEST_TOOLS_VENV}\""))
-        XCTAssertTrue(
-            bootstrap.contains(
-                "\"${GUEST_TOOLS_VENV}/bin/pip\" install --no-index --no-deps \"${wheel}\""
-            )
-        )
+        XCTAssertTrue(bootstrap.contains("install_guest_tools_runtime"))
         XCTAssertTrue(bootstrap.contains("tirosh-vitalserver-bootstrap"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.GUEST_OBSERVED"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.RUNTIME_OBSERVATION"))

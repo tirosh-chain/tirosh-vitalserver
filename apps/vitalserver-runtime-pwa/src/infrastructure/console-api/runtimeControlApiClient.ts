@@ -3,6 +3,10 @@ import type {
   RuntimeEventQuery
 } from "@/console/runtimeControlGateway";
 import {
+  runtimeEventTypeValues,
+  type RuntimeEventTypeValue
+} from "@/domain/runtime-control/contracts/runtimeEventTypes";
+import {
   RuntimeControlAPIError,
   RuntimeControlContractError,
   RuntimeControlNetworkError,
@@ -794,6 +798,16 @@ function runtimeEventQueryParameters(
       throw new RuntimeControlValidationError(
         "Runtime event query contains an undefined value.",
         [`${field} must be omitted or set to a value.`]
+      );
+    }
+    if (
+      field === "type" &&
+      (typeof value !== "string" ||
+        !runtimeEventTypeValues.includes(value as RuntimeEventTypeValue))
+    ) {
+      throw new RuntimeControlValidationError(
+        "Runtime event query type is not a Guest operation event type.",
+        ["type must be one of the documented operation-* values."]
       );
     }
     params[field] = value;

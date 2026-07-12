@@ -280,7 +280,7 @@ Provider `start|stop|restart` command는 Platform effect와 Provider state를 �
 | `POST` | `/runtime/services/{service}/start` | Guest product service start through Guest Control API |
 | `POST` | `/runtime/services/{service}/stop` | Guest product service stop through Guest Control API |
 | `POST` | `/runtime/services/{service}/restart` | Guest product service restart through Guest Control API |
-| `GET` | `/runtime/events` | runtime status/progress event history |
+| `GET` | `/runtime/events` | Guest Runtime Controller operation event history |
 | `GET` | `/runtime/vitaldb/observations/latest` | latest VitalDB recorder/bed/anomaly observation snapshot |
 | `GET` | `/runtime/vitaldb/observations/stream` | SSE VitalDB observation snapshot subscription |
 | `GET` | `/runtime/vitaldb/recorders` | VRecorder history aggregated by vrcode |

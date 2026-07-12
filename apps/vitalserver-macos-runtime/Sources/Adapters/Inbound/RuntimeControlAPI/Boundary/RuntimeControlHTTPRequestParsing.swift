@@ -50,38 +50,29 @@ public extension RuntimeControlHTTPRequest {
         return String(path[afterQuestionMark..<fragmentStart])
     }
 
-    func runtimeEventQuery() throws -> RuntimeEventQuery {
+    /// Parses the public Guest Control operation-ledger query. It must not use
+    /// `RuntimeEventQuery`: that model also admits Host diagnostics event types
+    /// which the Guest ledger does not own.
+    func runtimeOperationEventQuery() throws -> RuntimeOperationEventQuery {
         let limit: Int
         if let rawLimit = try queryValue(named: "limit") {
-            guard let parsedLimit = Int(rawLimit), parsedLimit > 0 else {
+            guard let parsedLimit = Int(rawLimit),
+                  parsedLimit > 0,
+                  parsedLimit <= RuntimeOperationEventQuery.maximumLimit else {
                 throw RuntimeControlHTTPQueryError.invalidLimit(rawLimit)
             }
             limit = parsedLimit
         } else {
-            limit = RuntimeEventQuery.defaultLimit
+            limit = RuntimeOperationEventQuery.defaultLimit
         }
 
-        let before: RuntimeEventCursor?
-        let cursor: String?
-        if let rawCursor = try queryValue(named: "cursor") {
-            let parts = rawCursor.split(separator: ":", omittingEmptySubsequences: false)
-            guard parts.count == 2,
-                  parts[0] == "event",
-                  let eventID = Int(parts[1]),
-                  eventID > 0 else {
-                throw RuntimeControlHTTPQueryError.invalidCursor(rawCursor)
-            }
-            cursor = rawCursor
-            before = nil
-        } else {
-            cursor = nil
-            before = nil
-        }
+        // The Guest ledger owns the cursor format. The Host proxy keeps it
+        // opaque and forwards the exact token returned by the prior response.
+        let cursor = try queryValue(named: "cursor")
 
-        let eventType: RuntimeEventType?
+        let eventType: RuntimeOperationEventType?
         if let rawEventType = try queryValue(named: "type") {
-            let parsed = RuntimeEventType(rawValue: rawEventType)
-            guard RuntimeEventType.knownTypes.contains(parsed) else {
+            guard let parsed = RuntimeOperationEventType(rawValue: rawEventType) else {
                 throw RuntimeControlHTTPQueryError.invalidEventType(rawEventType)
             }
             eventType = parsed
@@ -89,11 +80,10 @@ public extension RuntimeControlHTTPRequest {
             eventType = nil
         }
 
-        return RuntimeEventQuery(
+        return RuntimeOperationEventQuery(
             limit: limit,
             eventType: eventType,
             since: try queryValue(named: "since"),
-            before: before,
             cursor: cursor
         )
     }

@@ -11,6 +11,7 @@ platform-agent/test:
 
 platform-agent/package-test:
 	sh -n "$(PLATFORM_AGENT_DIR)/packaging/linux/install.sh"
+	sh -n "$(PLATFORM_AGENT_DIR)/packaging/linux/rollback-linux.sh"
 	bash -n "$(PLATFORM_AGENT_DIR)/packaging/windows/hyperv-guest/bootstrap.sh"
 	uv run pytest \
 		packages/vitalserver-devtools/tests/unit/test_linux_runtime_bundle.py \

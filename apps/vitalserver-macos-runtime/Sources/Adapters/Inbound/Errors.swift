@@ -21,7 +21,6 @@ public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
 
 public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
     case invalidLimit(String)
-    case invalidCursor(String)
     case invalidEventType(String)
     case invalidLogSource(String)
     case invalidQueryParameter(String, String)
@@ -36,8 +35,6 @@ public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
         switch self {
         case .invalidLimit(let value):
             return "Invalid runtime event limit: \(value)"
-        case .invalidCursor(let value):
-            return "Invalid runtime event cursor: \(value)"
         case .invalidEventType(let value):
             return "Invalid runtime event type: \(value)"
         case .invalidLogSource(let value):

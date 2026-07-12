@@ -460,7 +460,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read platform state and progress event history */
+        /** Read Guest Runtime Controller operation event history */
         get: operations["getRuntimeEvents"];
         put?: never;
         post?: never;
@@ -3380,7 +3380,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Recent runtime event history */
+            /** @description Guest Runtime Controller operation event history */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -175,11 +176,16 @@ def validate_wheelhouse(
         required_string(guest_tools, "sha256", label="guestTools"),
         label="Guest Tools wheel",
     )
+    if guest_wheel.suffix != ".whl":
+        raise GuestToolsInstallError(
+            f"Guest Tools artifact is not a wheel: {guest_wheel}"
+        )
     wheel_entries = target_document.get("wheels")
     if not isinstance(wheel_entries, list) or not wheel_entries:
         raise GuestToolsInstallError(
             f"Guest Tools target wheel manifest is invalid: target={target}"
         )
+    wheel_hashes = {file_sha256(guest_wheel)}
     for entry in wheel_entries:
         if not isinstance(entry, dict):
             raise GuestToolsInstallError(
@@ -199,6 +205,8 @@ def validate_wheelhouse(
             required_string(entry, "sha256", label="wheel"),
             label="Guest Tools dependency wheel",
         )
+        wheel_hashes.add(file_sha256(wheel))
+    require_requirements_hash_closure(requirements, wheel_hashes)
     return requirements, guest_wheel
 
 
@@ -240,6 +248,72 @@ def require_hash(path: Path, expected: str, *, label: str) -> None:
         raise GuestToolsInstallError(
             f"{label} SHA-256 mismatch: path={path} expected={expected} actual={actual}"
         )
+
+
+def require_requirements_hash_closure(
+    requirements: Path,
+    expected_hashes: set[str],
+) -> None:
+    referenced_hashes: set[str] = set()
+    for line in requirements_logical_lines(requirements):
+        hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", line)
+        invalid_hashes = [
+            token
+            for token in re.findall(r"--hash=([^\s]+)", line)
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is None
+        ]
+        if invalid_hashes:
+            raise GuestToolsInstallError(
+                "Guest Tools requirements has an invalid hash: "
+                f"path={requirements} values={invalid_hashes}"
+            )
+        if not hashes:
+            raise GuestToolsInstallError(
+                "Guest Tools requirements entry is not hash-pinned: "
+                f"path={requirements} entry={line!r}"
+            )
+        referenced_hashes.update(hashes)
+    if referenced_hashes != expected_hashes:
+        missing = sorted(expected_hashes - referenced_hashes)
+        unexpected = sorted(referenced_hashes - expected_hashes)
+        raise GuestToolsInstallError(
+            "Guest Tools requirements do not pin every manifest wheel: "
+            f"path={requirements} missing={missing} unexpected={unexpected}"
+        )
+
+
+def requirements_logical_lines(requirements: Path) -> list[str]:
+    try:
+        physical_lines = requirements.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as error:
+        raise GuestToolsInstallError(
+            "Guest Tools requirements cannot be read: "
+            f"path={requirements} error={error}"
+        ) from error
+    logical_lines: list[str] = []
+    pending = ""
+    for physical_line in physical_lines:
+        line = physical_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if pending:
+            line = pending + line
+            pending = ""
+        if line.endswith("\\"):
+            pending = line[:-1].rstrip() + " "
+            continue
+        logical_lines.append(line)
+    if pending:
+        raise GuestToolsInstallError(
+            "Guest Tools requirements has an unterminated line continuation: "
+            f"path={requirements}"
+        )
+    if not logical_lines:
+        raise GuestToolsInstallError(
+            "Guest Tools requirements has no dependency entries: "
+            f"path={requirements}"
+        )
+    return logical_lines
 
 
 def installed_dependency_versions(python: Path) -> dict[str, str]:

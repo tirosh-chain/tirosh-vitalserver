@@ -1,4 +1,5 @@
 import Contracts
+import Foundation
 
 public protocol RuntimeGuestControlGateway {
     func ready() throws -> RuntimeGuestControlReadiness
@@ -8,7 +9,7 @@ public protocol RuntimeGuestControlGateway {
     func applyAdminPassword(_ password: String) throws -> RuntimeGuestControlServiceOperation
     func redisRelaySettings() throws -> RuntimeRedisRelaySettingsRead
     func applyRedisRelaySettings(_ settings: RuntimeRedisRelaySettingsApplyRequest) throws -> RuntimeGuestControlServiceOperation
-    func runtimeEvents(query: RuntimeEventQuery) throws -> RuntimeOperationEventHistory
+    func runtimeEvents(query: RuntimeOperationEventQuery) throws -> RuntimeOperationEventHistory
     func listServices() throws -> RuntimeGuestControlServiceList
     func stackStatus() throws -> RuntimeGuestControlStackStatus
     func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus
@@ -50,6 +51,23 @@ public enum RuntimeGuestControlGatewayCapabilityError: Error, CustomStringConver
     }
 }
 
+/// The Guest Controller rejected an explicitly forwarded operation-ledger query.
+///
+/// This remains an application-boundary error so inbound HTTP adapters can
+/// preserve the caller's bad-request meaning without depending on an outbound
+/// transport error type.
+public struct RuntimeGuestOperationEventQueryRejectedError: LocalizedError, Equatable, Sendable {
+    public let detail: String
+
+    public init(detail: String) {
+        self.detail = detail
+    }
+
+    public var errorDescription: String? {
+        detail
+    }
+}
+
 public extension RuntimeGuestControlGateway {
     func ready() throws -> RuntimeGuestControlReadiness {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("ready")
@@ -79,7 +97,7 @@ public extension RuntimeGuestControlGateway {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("redis-relay:settings:apply")
     }
 
-    func runtimeEvents(query _: RuntimeEventQuery) throws -> RuntimeOperationEventHistory {
+    func runtimeEvents(query _: RuntimeOperationEventQuery) throws -> RuntimeOperationEventHistory {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("events:get")
     }
 

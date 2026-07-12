@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -179,7 +180,11 @@ def _require_guest_tools_runtime_payload(deploy: Path) -> None:
         )
     guest_tools = document.get("guestTools")
     targets = document.get("targets")
-    if not isinstance(guest_tools, dict) or not isinstance(targets, dict):
+    if (
+        document.get("guestPython") != {"major": 3, "minor": 12}
+        or not isinstance(guest_tools, dict)
+        or not isinstance(targets, dict)
+    ):
         raise SystemExit(
             "portable deploy Guest Tools wheelhouse manifest contract is invalid: "
             f"{manifest}"
@@ -190,16 +195,68 @@ def _require_guest_tools_runtime_payload(deploy: Path) -> None:
             "portable deploy Guest Tools wheelhouse has no linux/amd64 target: "
             f"{manifest}"
         )
-    _require_manifested_wheelhouse_file(
+    guest_tools_sha256 = guest_tools.get("sha256")
+    guest_wheel = _require_manifested_wheelhouse_file(
         wheelhouse,
         guest_tools.get("path"),
+        guest_tools_sha256,
         label="Guest Tools wheel",
     )
-    _require_manifested_wheelhouse_file(
+    if guest_wheel.suffix != ".whl":
+        raise SystemExit(
+            "portable deploy Guest Tools artifact is not a wheel: "
+            f"{guest_wheel}"
+        )
+    _require_cpython312_linux_amd64_wheel(
+        guest_wheel,
+        "portable deploy Guest Tools wheel",
+    )
+    requirements_path = _require_manifested_wheelhouse_file(
         wheelhouse,
         amd64.get("requirementsPath"),
+        amd64.get("requirementsSHA256"),
         label="Guest Tools linux/amd64 requirements",
     )
+    wheels = amd64.get("wheels")
+    if not isinstance(wheels, list) or not wheels:
+        raise SystemExit(
+            "portable deploy Guest Tools linux/amd64 wheel manifest is invalid: "
+            f"{manifest}"
+        )
+    if not isinstance(guest_tools_sha256, str):
+        raise SystemExit(
+            "portable deploy Guest Tools wheel manifest SHA-256 is invalid"
+        )
+    wheel_hashes = {guest_tools_sha256}
+    for wheel in wheels:
+        if not isinstance(wheel, dict):
+            raise SystemExit(
+                "portable deploy Guest Tools linux/amd64 wheel manifest is invalid: "
+                f"{manifest}"
+            )
+        wheel_sha256 = wheel.get("sha256")
+        dependency = _require_manifested_wheelhouse_file(
+            requirements_path.parent,
+            wheel.get("path"),
+            wheel_sha256,
+            label="Guest Tools linux/amd64 dependency wheel",
+        )
+        if dependency.suffix != ".whl":
+            raise SystemExit(
+                "portable deploy Guest Tools dependency is not a wheel: "
+                f"{dependency}"
+            )
+        _require_cpython312_linux_amd64_wheel(
+            dependency,
+            "portable deploy Guest Tools linux/amd64 dependency wheel",
+        )
+        if not isinstance(wheel_sha256, str):
+            raise SystemExit(
+                "portable deploy Guest Tools linux/amd64 wheel manifest "
+                "SHA-256 is invalid"
+            )
+        wheel_hashes.add(wheel_sha256)
+    _require_requirements_hash_closure(requirements_path, wheel_hashes)
     control_service_text = control_service.read_text(encoding="utf-8")
     required_lifecycle = (
         "RequiresMountsFor=/mnt/runtime",
@@ -217,11 +274,18 @@ def _require_guest_tools_runtime_payload(deploy: Path) -> None:
 def _require_manifested_wheelhouse_file(
     wheelhouse: Path,
     relative: object,
+    expected_sha256: object,
     *,
     label: str,
-) -> None:
+) -> Path:
     if not isinstance(relative, str) or not relative:
         raise SystemExit(f"portable deploy {label} manifest path is invalid")
+    if (
+        not isinstance(expected_sha256, str)
+        or len(expected_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in expected_sha256)
+    ):
+        raise SystemExit(f"portable deploy {label} manifest SHA-256 is invalid")
     path = wheelhouse / relative
     try:
         path.resolve().relative_to(wheelhouse.resolve())
@@ -231,6 +295,141 @@ def _require_manifested_wheelhouse_file(
         ) from error
     if not path.is_file() or path.stat().st_size == 0:
         raise SystemExit(f"portable deploy {label} manifest file is missing: {path}")
+    actual_sha256 = _file_identity(path)["sha256"]
+    if actual_sha256 != expected_sha256:
+        raise SystemExit(
+            f"portable deploy {label} SHA-256 mismatch: path={path} "
+            f"expected={expected_sha256} actual={actual_sha256}"
+        )
+    return path
+
+
+def _require_cpython312_linux_amd64_wheel(path: Path, label: str) -> None:
+    try:
+        prefix, python_tags, abi_tags, platform_tags = path.stem.rsplit("-", 3)
+    except ValueError as error:
+        raise SystemExit(f"{label} filename is invalid: {path}") from error
+    tag_groups = (python_tags, abi_tags, platform_tags)
+    if not prefix or any(not tag or ".." in tag for tag in tag_groups):
+        raise SystemExit(f"{label} filename is invalid: {path}")
+
+    compatible = any(
+        _is_cpython312_linux_amd64_wheel_tag(python_tag, abi_tag, platform_tag)
+        for python_tag in python_tags.split(".")
+        for abi_tag in abi_tags.split(".")
+        for platform_tag in platform_tags.split(".")
+    )
+    if not compatible:
+        raise SystemExit(
+            f"{label} is not compatible with CPython 3.12 linux/amd64: {path}"
+        )
+
+
+def _is_cpython312_linux_amd64_wheel_tag(
+    python_tag: str,
+    abi_tag: str,
+    platform_tag: str,
+) -> bool:
+    if platform_tag == "any":
+        return abi_tag == "none" and _is_generic_python312_tag(python_tag)
+    if not _is_linux_amd64_platform_tag(platform_tag):
+        return False
+    if abi_tag == "cp312":
+        return python_tag == "cp312"
+    if abi_tag == "abi3":
+        return _is_cpython_abi3_tag(python_tag)
+    if abi_tag == "none":
+        return python_tag == "cp312" or _is_generic_python312_tag(python_tag)
+    return False
+
+
+def _is_generic_python312_tag(tag: str) -> bool:
+    return tag in {"py3", "py312"}
+
+
+def _is_cpython_abi3_tag(tag: str) -> bool:
+    if not tag.startswith("cp3"):
+        return False
+    minor = tag.removeprefix("cp3")
+    return minor.isdigit() and 2 <= int(minor) <= 12
+
+
+def _is_linux_amd64_platform_tag(tag: str) -> bool:
+    return tag in {
+        "manylinux1_x86_64",
+        "manylinux2010_x86_64",
+        "manylinux2014_x86_64",
+        "manylinux_2_5_x86_64",
+        "manylinux_2_12_x86_64",
+        "manylinux_2_17_x86_64",
+    }
+
+
+def _require_requirements_hash_closure(
+    requirements: Path,
+    expected_hashes: set[str],
+) -> None:
+    logical_lines = _requirements_logical_lines(requirements)
+    referenced_hashes: set[str] = set()
+    for line in logical_lines:
+        hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", line)
+        invalid_hashes = [
+            token
+            for token in re.findall(r"--hash=([^\s]+)", line)
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is None
+        ]
+        if invalid_hashes:
+            raise SystemExit(
+                "portable deploy Guest Tools requirements has an invalid hash: "
+                f"path={requirements} values={invalid_hashes}"
+            )
+        if not hashes:
+            raise SystemExit(
+                "portable deploy Guest Tools requirements entry is not hash-pinned: "
+                f"path={requirements} entry={line!r}"
+            )
+        referenced_hashes.update(hashes)
+    if referenced_hashes != expected_hashes:
+        missing = sorted(expected_hashes - referenced_hashes)
+        unexpected = sorted(referenced_hashes - expected_hashes)
+        raise SystemExit(
+            "portable deploy Guest Tools requirements do not pin every manifest "
+            f"wheel: path={requirements} missing={missing} unexpected={unexpected}"
+        )
+
+
+def _requirements_logical_lines(requirements: Path) -> list[str]:
+    try:
+        physical_lines = requirements.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as error:
+        raise SystemExit(
+            "portable deploy Guest Tools requirements cannot be read: "
+            f"path={requirements} error={error}"
+        ) from error
+    logical_lines: list[str] = []
+    pending = ""
+    for physical_line in physical_lines:
+        line = physical_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if pending:
+            line = pending + line
+            pending = ""
+        if line.endswith("\\"):
+            pending = line[:-1].rstrip() + " "
+            continue
+        logical_lines.append(line)
+    if pending:
+        raise SystemExit(
+            "portable deploy Guest Tools requirements has an unterminated line "
+            f"continuation: path={requirements}"
+        )
+    if not logical_lines:
+        raise SystemExit(
+            "portable deploy Guest Tools requirements has no dependency entries: "
+            f"path={requirements}"
+        )
+    return logical_lines
 
 
 def _require_file(path: Path, label: str) -> None:

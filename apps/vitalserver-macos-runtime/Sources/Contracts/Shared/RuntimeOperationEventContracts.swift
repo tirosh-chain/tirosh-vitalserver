@@ -7,6 +7,34 @@ public enum RuntimeOperationEventType: String, Codable, CaseIterable, Equatable,
     case interrupted = "operation-interrupted"
 }
 
+/// Query contract for the Guest-owned Runtime Control operation ledger.
+///
+/// This is deliberately separate from `RuntimeEventQuery`, which remains the
+/// Host diagnostics event-store query contract. A Guest control ledger only
+/// contains operation lifecycle events, so accepting a Host diagnostics event
+/// type here would create an invalid request rather than a broader query.
+public struct RuntimeOperationEventQuery: Equatable, Sendable {
+    public static let defaultLimit = 100
+    public static let maximumLimit = 500
+
+    public let limit: Int
+    public let eventType: RuntimeOperationEventType?
+    public let since: String?
+    public let cursor: String?
+
+    public init(
+        limit: Int = defaultLimit,
+        eventType: RuntimeOperationEventType? = nil,
+        since: String? = nil,
+        cursor: String? = nil
+    ) {
+        self.limit = limit
+        self.eventType = eventType
+        self.since = since
+        self.cursor = cursor
+    }
+}
+
 public struct RuntimeOperationEventDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let id: String

@@ -309,7 +309,7 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func loadRuntimeOperationEvents(
-        query: RuntimeEventQuery
+        query: RuntimeOperationEventQuery
     ) async throws -> RuntimeOperationEventHistory {
         try await runGuestControlCommand { gateway in
             try gateway.runtimeEvents(query: query)

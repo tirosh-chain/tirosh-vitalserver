@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import stat
-from datetime import datetime
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -43,6 +43,7 @@ from tirosh_guest_tools.application.guest_control.runtime import (
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
+    OperationState,
     RedisRelayStatusContractError,
     ServiceNotFoundError,
     VitalDBReadModelDependencyError,
@@ -71,6 +72,12 @@ RUNTIME_V2_READ_CORE_ROUTES = (
     ("GET", "/runtime/capabilities"),
     ("GET", "/runtime/services"),
     ("GET", "/runtime/stack"),
+)
+RUNTIME_OPERATION_EVENT_TYPES = frozenset(
+    f"operation-{state.value}" for state in OperationState
+)
+RUNTIME_EVENT_QUERY_ERROR_KINDS = frozenset(
+    {"runtimeEventCursorInvalid", "runtimeEventQueryInvalid"}
 )
 
 
@@ -272,12 +279,22 @@ def route_request(
         return HTTPStatus.OK, usecases.capabilities()
 
     if method == "GET" and parts == ["runtime", "events"]:
-        return HTTPStatus.OK, usecases.get_runtime_events(
-            limit=_query_int(query, "limit", default=50, minimum=1, maximum=500),
-            event_type=_optional_query_string(query, "type"),
-            since=_optional_query_datetime(query, "since"),
-            cursor=_optional_query_string(query, "cursor"),
-        )
+        try:
+            events = usecases.get_runtime_events(
+                limit=_query_int(query, "limit", default=100, minimum=1, maximum=500),
+                event_type=_optional_runtime_operation_event_type(query),
+                since=_optional_query_datetime(query, "since"),
+                cursor=_optional_query_string(query, "cursor"),
+            )
+        except GuestControlDependencyError as error:
+            if error.kind not in RUNTIME_EVENT_QUERY_ERROR_KINDS:
+                raise
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=error.message,
+                code="queryParameterInvalid",
+            ) from error
+        return HTTPStatus.OK, events
 
     if method == "GET" and parts == ["runtime", "settings"]:
         return HTTPStatus.OK, usecases.get_runtime_settings()
@@ -687,7 +704,22 @@ def _optional_query_datetime(
             detail=f"query timestamp must include a timezone: {field}",
             code="queryParameterInvalid",
         )
-    return parsed
+    return parsed.astimezone(UTC)
+
+
+def _optional_runtime_operation_event_type(
+    query: dict[str, list[str]],
+) -> str | None:
+    value = _optional_query_string(query, "type")
+    if value is None:
+        return None
+    if value not in RUNTIME_OPERATION_EVENT_TYPES:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail=f"query parameter is not a RuntimeEventType: type={value}",
+            code="queryParameterInvalid",
+        )
+    return value
 
 
 def serve_guest_control_api(

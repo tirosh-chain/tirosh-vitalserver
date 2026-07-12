@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 from zipfile import ZipFile
@@ -201,3 +202,32 @@ def test_guest_tools_runtime_installer_does_not_initialize_control_state() -> No
     assert "SQLiteControlRepository" not in installer
     assert ".migrate_schema(" not in installer
     assert '"controlStore"' not in installer
+
+
+def test_guest_tools_runtime_installer_requires_hash_pinned_manifest_wheel_closure(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "guest_tools_runtime_installer",
+        GUEST_TOOLS_RUNTIME_INSTALLER,
+    )
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    requirements = tmp_path / "requirements.txt"
+    guest_hash = "a" * 64
+    dependency_hash = "b" * 64
+    requirements.write_text(
+        "guest-tools==0.1.0 \\\n"
+        f"  --hash=sha256:{guest_hash}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        installer.GuestToolsInstallError,
+        match="requirements do not pin every manifest wheel",
+    ):
+        installer.require_requirements_hash_closure(
+            requirements,
+            {guest_hash, dependency_hash},
+        )

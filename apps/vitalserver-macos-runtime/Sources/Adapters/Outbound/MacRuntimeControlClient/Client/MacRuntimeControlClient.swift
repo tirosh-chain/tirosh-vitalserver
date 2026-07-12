@@ -282,7 +282,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     public func loadRuntimeOperationEvents(
-        query: RuntimeEventQuery
+        query: RuntimeOperationEventQuery
     ) async throws -> RuntimeOperationEventHistory {
         try await commandWorker.loadRuntimeOperationEvents(query: query)
     }

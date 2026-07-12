@@ -74,7 +74,7 @@ public protocol RuntimeControlClient {
     func applyRuntimeAdminPassword(_ password: String) async throws -> RuntimeGuestControlServiceOperation
     func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead
     func applyRuntimeRedisRelaySettings(_ settings: RuntimeRedisRelaySettingsApplyRequest) async throws -> RuntimeGuestControlServiceOperation
-    func loadRuntimeOperationEvents(query: RuntimeEventQuery) async throws -> RuntimeOperationEventHistory
+    func loadRuntimeOperationEvents(query: RuntimeOperationEventQuery) async throws -> RuntimeOperationEventHistory
     func listGuestServices() async throws -> RuntimeGuestControlServiceList
     func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus
     func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource
@@ -114,7 +114,7 @@ public extension RuntimeControlClient {
     }
 
     func loadRuntimeOperationEvents(
-        query _: RuntimeEventQuery
+        query _: RuntimeOperationEventQuery
     ) async throws -> RuntimeOperationEventHistory {
         throw RuntimeControlClientUnsupportedError.unavailable("events:get")
     }

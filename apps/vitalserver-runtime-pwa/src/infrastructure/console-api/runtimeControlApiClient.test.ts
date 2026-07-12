@@ -36,14 +36,16 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/events": { events: [], nextCursor: null, matchingCount: 0 }
     });
 
-    await expect(client.getRuntimeEvents({ limit: 5, type: "update" })).resolves.toEqual({
+    await expect(
+      client.getRuntimeEvents({ limit: 5, type: "operation-completed" })
+    ).resolves.toEqual({
       events: [],
       nextCursor: null,
       matchingCount: 0
     });
 
     expect(requests[0]?.url).toBe(
-      "http://helper.local/runtime/events?limit=5&type=update"
+      "http://helper.local/runtime/events?limit=5&type=operation-completed"
     );
     expect(requests[0]?.init.method).toBe("GET");
     expect(requests[0]?.init.headers).toMatchObject({
@@ -253,6 +255,17 @@ describe("RuntimeControlApiClient", () => {
 
     await expect(
       client.getRuntimeEvents({ limit: 5, type: undefined })
+    ).rejects.toBeInstanceOf(RuntimeControlValidationError);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("rejects non-operation event types before requesting the Guest ledger", async () => {
+    const { client, requests } = clientWithResponses({
+      "/runtime/events": { events: [], nextCursor: null, matchingCount: 0 }
+    });
+
+    await expect(
+      client.getRuntimeEvents({ limit: 5, type: "status-changed" as never })
     ).rejects.toBeInstanceOf(RuntimeControlValidationError);
     expect(requests).toHaveLength(0);
   });

@@ -31,7 +31,7 @@ struct RuntimeControlHTTPReadRoutes {
         case .vmLifecycle:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadVMLifecycleResource())
         case .events:
-            let query = try request.runtimeEventQuery()
+            let query = try request.runtimeOperationEventQuery()
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeOperationEvents(query: query))
         case .vitalDBObservation:
             return try await RuntimeControlHTTPResponseFactory.json(loadVitalDBObservation())

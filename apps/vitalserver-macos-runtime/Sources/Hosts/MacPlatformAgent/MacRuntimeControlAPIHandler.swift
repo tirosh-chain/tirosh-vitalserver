@@ -244,7 +244,7 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     public func loadRuntimeOperationEvents(
-        query: RuntimeEventQuery
+        query: RuntimeOperationEventQuery
     ) async throws -> RuntimeOperationEventHistory {
         try await commandClient.loadRuntimeOperationEvents(query: query)
     }

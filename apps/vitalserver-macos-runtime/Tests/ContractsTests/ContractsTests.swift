@@ -745,6 +745,21 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(query.before, cursor)
     }
 
+    func testRuntimeOperationEventQueryKeepsGuestLedgerEventTypesSeparate() {
+        XCTAssertEqual(RuntimeOperationEventQuery().limit, 100)
+        let query = RuntimeOperationEventQuery(
+            limit: 25,
+            eventType: .interrupted,
+            since: "2026-05-24T00:00:00Z",
+            cursor: "event:12"
+        )
+
+        XCTAssertEqual(query.limit, 25)
+        XCTAssertEqual(query.eventType, .interrupted)
+        XCTAssertEqual(query.since, "2026-05-24T00:00:00Z")
+        XCTAssertEqual(query.cursor, "event:12")
+    }
+
     func testRuntimeEventDocumentAllowsEventsWithoutRuntimeStatusContext() throws {
         let json = """
         {

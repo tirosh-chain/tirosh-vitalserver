@@ -1,3 +1,4 @@
+import Application
 import Foundation
 import RuntimeControl
 
@@ -18,6 +19,13 @@ enum RuntimeControlHTTPErrorResponseMapper {
                 status: .badRequest,
                 code: .badRequest,
                 message: queryError.localizedDescription
+            )
+        }
+        if let guestQueryError = error as? RuntimeGuestOperationEventQueryRejectedError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .badRequest,
+                code: .badRequest,
+                message: guestQueryError.localizedDescription
             )
         }
         if let operationConflict = error as? RuntimeControlOperationInProgressError {

@@ -240,6 +240,32 @@ wrapper publishes accepted, running, completed, or failed workflow state. The
 capability is distinct from backup rollback so clients do not reuse one
 operation's meaning for the other.
 
+Each release stores the three systemd unit files that belong to that release.
+When an update encounters an older release that predates those snapshots, the
+installer performs one explicit migration before activation: it validates the
+currently installed units and writes all three into the Host-owned migration owner
+`/etc/vitalserver/release-systemd-units/releases/<version>` through a
+temporary directory and atomic publish. The immutable old release is not
+modified. A pre-existing migration snapshot must be complete and byte-identical
+to the current units. Missing, partial, or mismatched snapshots are a hard
+update/rollback failure, never a reason to guess from the new release. Rollback
+restores the target release's bundled units or its explicit migration snapshot
+before daemon reload and service restart. This owner is deliberately outside the
+Guest Runtime Controller write scope; Guest-controlled runtime data cannot alter
+the Host rollback unit source.
+
+`delivery.rollbackTool` is deliberately different from the other Linux delivery
+tools: installation records the new release's immutable absolute path
+`/opt/vitalserver/releases/<version>/tools/rollback-linux.py`, rather than the
+moving `current` symlink. The durable Platform Agent configuration is preserved
+when a rollback switches `current` back to an older release, so a second
+rollback still invokes the implementation that knows both the bundled-unit and
+migration-snapshot contracts. `updateTool`, uninstall, and support-export stay
+current-symlink tools. Configuration migration accepts only the old explicit
+current-symlink form or an existing release-owned rollback tool; an unavailable
+or invalid owner is a hard migration failure and the update rollback restores
+the previous configuration.
+
 Each Linux bundle also installs
 `tools/acceptance-update-rollback-linux.py`. On a trust-configured supported
 host it creates an explicitly selected mutable-data sentinel, schedules the

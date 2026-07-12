@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -73,6 +73,29 @@ def test_sqlite_control_store_requires_explicit_schema_migration(
     repository.migrate_schema()
     repository.check_ready()
     assert journal_mode(control_dir / "control.sqlite") == "wal"
+
+
+def test_sqlite_control_store_readiness_does_not_enable_wal_mode(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.sqlite"
+    repository = SQLiteControlRepository(database)
+    repository.migrate_schema()
+    repository._engine.dispose()
+    with sqlite3.connect(database) as connection:
+        connection.execute("PRAGMA journal_mode = DELETE")
+
+    assert journal_mode(database) == "delete"
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.check_ready()
+
+    assert error.value.kind == "controlStoreJournalModeInvalid"
+    assert journal_mode(database) == "delete"
+
+    repository.migrate_schema()
+
+    repository.check_ready()
+    assert journal_mode(database) == "wal"
 
 
 def test_sqlite_control_store_rejects_unexpected_schema_history(
@@ -339,6 +362,41 @@ def test_sqlite_control_store_does_not_hide_unknown_operation_state(
         repository.list_unfinished_operations()
 
     assert error.value.kind == "controlOperationDocumentInvalid"
+
+
+def test_sqlite_control_store_normalizes_offset_since_timestamp(tmp_path: Path) -> None:
+    repository = SQLiteControlRepository(tmp_path / "control.sqlite")
+    repository.migrate_schema()
+    accepted = operation()
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+
+    history = repository.query_events(
+        limit=10,
+        event_type=None,
+        since=datetime(2026, 7, 1, 9, tzinfo=timezone(timedelta(hours=9))),
+        cursor=None,
+    )
+
+    assert [event["operationId"] for event in history["events"]] == [
+        accepted.operation_id
+    ]
+
+
+def test_sqlite_control_store_rejects_invalid_runtime_event_cursor(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteControlRepository(tmp_path / "control.sqlite")
+    repository.migrate_schema()
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.query_events(
+            limit=10,
+            event_type=None,
+            since=None,
+            cursor="guest-ledger-token",
+        )
+
+    assert error.value.kind == "runtimeEventCursorInvalid"
 
 
 def test_controller_restart_interrupts_unfinished_operation_and_releases_lease(

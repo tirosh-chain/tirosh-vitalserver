@@ -105,9 +105,6 @@ class ProductLabPort(Protocol):
 
 
 class VitalDBReadModelPort(Protocol):
-    def check_ready(self) -> None:
-        raise NotImplementedError
-
     def latest_observation(self) -> dict[str, Any]:
         raise NotImplementedError
 

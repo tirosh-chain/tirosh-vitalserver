@@ -48,10 +48,11 @@ import type {
   VitalDBRecorders,
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import type { RuntimeEventTypeValue } from "@/domain/runtime-control/contracts/runtimeEventTypes";
 
 export type RuntimeEventQuery = {
   limit?: number;
-  type?: string;
+  type?: RuntimeEventTypeValue;
   since?: string;
   cursor?: string;
 };

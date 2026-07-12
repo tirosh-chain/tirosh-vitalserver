@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Foundation
 import OutboundAdapters
@@ -304,17 +305,18 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
             httpClient: client
         )
 
-        let history = try gateway.runtimeEvents(query: RuntimeEventQuery(
+        let history = try gateway.runtimeEvents(query: RuntimeOperationEventQuery(
             limit: 20,
-            eventType: RuntimeEventType(rawValue: "operation-completed"),
-            cursor: "event:12"
+            eventType: .completed,
+            since: "2026-07-01T09:00:00+09:00",
+            cursor: "guest+ledger/token=v2"
         ))
 
         XCTAssertEqual(history.events.first?.operationCommand, "apply-settings")
         XCTAssertEqual(history.nextCursor, "event:9")
         XCTAssertEqual(
             client.requests.first?.url?.absoluteString,
-            "http://127.0.0.1:18330/runtime/events?limit=20&type=operation-completed&cursor=event:12"
+            "http://127.0.0.1:18330/runtime/events?limit=20&type=operation-completed&since=2026-07-01T09%3A00%3A00%2B09%3A00&cursor=guest%2Bledger%2Ftoken%3Dv2"
         )
     }
 
@@ -737,6 +739,35 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
                     code: "serviceNotFound",
                     detail: "compose service is not available: missing",
                     availableServices: ["app", "redis"]
+                )
+            )
+        }
+    }
+
+    func testRuntimeEventsMapsGuestQueryRejectionToApplicationBoundaryError() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 400,
+            body: """
+            {
+              "detail": "runtime event history cursor is invalid",
+              "code": "queryParameterInvalid"
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        XCTAssertThrowsError(
+            try gateway.runtimeEvents(
+                query: RuntimeOperationEventQuery(cursor: "guest-ledger-token")
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestOperationEventQueryRejectedError,
+                RuntimeGuestOperationEventQueryRejectedError(
+                    detail: "runtime event history cursor is invalid"
                 )
             )
         }

@@ -63,6 +63,10 @@ release_root="$opt_root/releases/$version"
 staging_root="$opt_root/releases/.${version}.installing.$$"
 current_link="$opt_root/current"
 previous_target=""
+release_systemd_snapshot_root="$etc_root/release-systemd-units"
+release_systemd_snapshot_created=0
+release_systemd_snapshot_path=""
+release_systemd_snapshot_temporary=""
 units_installed=0
 services_enabled=0
 configuration_created=0
@@ -85,10 +89,158 @@ if [ -L "$current_link" ]; then
   previous_target=$(readlink "$current_link")
 fi
 
+validate_release_target() {
+  release=$1
+  case "$release" in
+    releases/*)
+      release_version=${release#releases/}
+      ;;
+    *)
+      echo "Linux release target is invalid: $release" >&2
+      return 1
+      ;;
+  esac
+  case "$release_version" in
+    ""|*/*|*[!A-Za-z0-9._+-]*)
+      echo "Linux release target is invalid: $release" >&2
+      return 1
+      ;;
+  esac
+}
+
+require_systemd_unit_directory() {
+  directory=$1
+  label=$2
+  if [ ! -d "$directory" ] || [ -L "$directory" ]; then
+    echo "$label is not a directory: $directory" >&2
+    return 1
+  fi
+  for unit in \
+    vitalserver-platform-agent.service \
+    vitalserver-runtime-controller.service \
+    vitalserver-runtime-provider.service; do
+    if [ ! -f "$directory/$unit" ] || [ -L "$directory/$unit" ]; then
+      echo "$label is incomplete: $directory/$unit" >&2
+      return 1
+    fi
+  done
+}
+
+ensure_release_systemd_snapshot_root() {
+  for directory in \
+    "$release_systemd_snapshot_root" \
+    "$release_systemd_snapshot_root/releases"; do
+    if [ -e "$directory" ]; then
+      if [ ! -d "$directory" ] || [ -L "$directory" ]; then
+        echo "Linux release systemd snapshot root is invalid: $directory" >&2
+        return 1
+      fi
+      continue
+    fi
+    if ! install -d -m 0750 "$directory"; then
+      echo "Linux release systemd snapshot root creation failed: $directory" >&2
+      return 1
+    fi
+  done
+}
+
+snapshot_release_systemd_units() {
+  release=$1
+  if ! validate_release_target "$release"; then
+    return 1
+  fi
+  bundled_units="$opt_root/$release/tools/systemd"
+  if [ -e "$bundled_units" ] || [ -L "$bundled_units" ]; then
+    if ! require_systemd_unit_directory \
+      "$bundled_units" "Existing release systemd units"; then
+      return 1
+    fi
+    return 0
+  fi
+
+  snapshot_root="$release_systemd_snapshot_root/$release"
+  if [ -e "$snapshot_root" ] || [ -L "$snapshot_root" ]; then
+    if ! require_systemd_unit_directory \
+      "$snapshot_root" "Existing release systemd migration snapshot"; then
+      return 1
+    fi
+    for unit in \
+      vitalserver-platform-agent.service \
+      vitalserver-runtime-controller.service \
+      vitalserver-runtime-provider.service; do
+      if ! cmp -s "$unit_root/$unit" "$snapshot_root/$unit"; then
+        echo "Linux release systemd migration snapshot does not match the current unit: unit=$unit" >&2
+        return 1
+      fi
+    done
+    return 0
+  fi
+
+  if ! ensure_release_systemd_snapshot_root; then
+    return 1
+  fi
+  temporary_snapshot="$release_systemd_snapshot_root/releases/.${release_version}.systemd.snapshot.$$"
+  release_systemd_snapshot_temporary=$temporary_snapshot
+  if ! install -d -m 0750 "$temporary_snapshot"; then
+    echo "Linux release systemd snapshot migration directory creation failed: $temporary_snapshot" >&2
+    return 1
+  fi
+  for unit in \
+    vitalserver-platform-agent.service \
+    vitalserver-runtime-controller.service \
+    vitalserver-runtime-provider.service; do
+    if [ ! -f "$unit_root/$unit" ] || [ -L "$unit_root/$unit" ]; then
+      echo "Existing Linux systemd unit is missing: $unit_root/$unit" >&2
+      return 1
+    fi
+    if ! install -m 0644 "$unit_root/$unit" "$temporary_snapshot/$unit"; then
+      echo "Linux release systemd snapshot migration copy failed: unit=$unit" >&2
+      return 1
+    fi
+  done
+  if ! mv "$temporary_snapshot" "$snapshot_root"; then
+    echo "Linux release systemd snapshot migration publish failed: $snapshot_root" >&2
+    return 1
+  fi
+  release_systemd_snapshot_temporary=""
+  release_systemd_snapshot_created=1
+  release_systemd_snapshot_path=$snapshot_root
+}
+
+if [ -n "$previous_target" ] && ! validate_release_target "$previous_target"; then
+  exit 1
+fi
+
+require_previous_release_artifacts() {
+  release=$1
+  previous_release_directory="$opt_root/$release"
+  if [ ! -d "$previous_release_directory" ] || [ -L "$previous_release_directory" ]; then
+    echo "Existing Linux release is missing or invalid: $previous_release_directory" >&2
+    return 1
+  fi
+  if [ ! -f "$previous_release_directory/release.json" ] || \
+    [ -L "$previous_release_directory/release.json" ]; then
+    echo "Existing Linux release identity is missing: $previous_release_directory/release.json" >&2
+    return 1
+  fi
+  if [ ! -x "$previous_release_directory/tools/acceptance-linux.py" ] || \
+    [ -L "$previous_release_directory/tools/acceptance-linux.py" ]; then
+    echo "Existing Linux release rollback acceptance tool is missing: $previous_release_directory/tools/acceptance-linux.py" >&2
+    return 1
+  fi
+}
+
+if [ -n "$previous_target" ] && ! require_previous_release_artifacts "$previous_target"; then
+  exit 1
+fi
+
 rollback_install() {
   status=${1:-$?}
   trap - EXIT HUP INT TERM
   rollback_failed=0
+  release_restored=1
+  owner_configuration_restored=1
+  units_restored=1
   if ! rm -rf \
     "$staging_root" \
     "$current_link.next.$$" \
@@ -98,15 +250,22 @@ rollback_install() {
     echo "Linux install rollback cleanup failed staging=$staging_root" >&2
     rollback_failed=1
   fi
+  if [ -n "$release_systemd_snapshot_temporary" ] && \
+    ! rm -rf "$release_systemd_snapshot_temporary"; then
+    echo "Linux install rollback systemd snapshot staging cleanup failed path=$release_systemd_snapshot_temporary" >&2
+    rollback_failed=1
+  fi
   if [ "$platform_agent_configuration_backed_up" -eq 1 ]; then
     if ! install -m 0600 "$platform_agent_configuration_backup" "$etc_root/platform-agent.json"; then
       echo "Linux install rollback Platform Agent configuration restoration failed" >&2
+      owner_configuration_restored=0
       rollback_failed=1
     fi
   fi
   if [ "$runtime_environment_backed_up" -eq 1 ]; then
     if ! install -m 0600 "$runtime_environment_backup" "$etc_root/runtime.env"; then
       echo "Linux install rollback Runtime environment restoration failed" >&2
+      owner_configuration_restored=0
       rollback_failed=1
     fi
   fi
@@ -118,6 +277,7 @@ rollback_install() {
       ! install -m 0644 "$runtime_provider_unit_backup" \
       "$unit_root/vitalserver-runtime-provider.service"; then
       echo "Linux install rollback systemd unit restoration failed" >&2
+      units_restored=0
       rollback_failed=1
     fi
   fi
@@ -125,23 +285,27 @@ rollback_install() {
     if ! ln -s "$previous_target" "$current_link.rollback.$$" || \
       ! mv -Tf "$current_link.rollback.$$" "$current_link"; then
       echo "Linux install rollback release restoration failed previousRelease=$previous_target" >&2
+      release_restored=0
       rollback_failed=1
     fi
-    if ! systemctl daemon-reload; then
-      echo "Linux install rollback systemd reload failed" >&2
-      rollback_failed=1
-    fi
-    if ! systemctl restart vitalserver-runtime-provider.service; then
-      echo "Linux install rollback Runtime Provider restart failed" >&2
-      rollback_failed=1
-    fi
-    if ! systemctl restart vitalserver-runtime-controller.service; then
-      echo "Linux install rollback Runtime Controller restart failed" >&2
-      rollback_failed=1
-    fi
-    if ! systemctl restart vitalserver-platform-agent.service; then
-      echo "Linux install rollback Platform Agent restart failed" >&2
-      rollback_failed=1
+    if [ "$release_restored" -eq 1 ] && \
+      [ "$owner_configuration_restored" -eq 1 ] && \
+      [ "$units_restored" -eq 1 ]; then
+      if ! systemctl daemon-reload; then
+        echo "Linux install rollback systemd reload failed" >&2
+        rollback_failed=1
+      elif ! systemctl restart vitalserver-runtime-provider.service; then
+        echo "Linux install rollback Runtime Provider restart failed" >&2
+        rollback_failed=1
+      elif ! systemctl restart vitalserver-runtime-controller.service; then
+        echo "Linux install rollback Runtime Controller restart failed" >&2
+        rollback_failed=1
+      elif ! systemctl restart vitalserver-platform-agent.service; then
+        echo "Linux install rollback Platform Agent restart failed" >&2
+        rollback_failed=1
+      fi
+    else
+      echo "Linux install rollback service restart skipped because owner restoration is incomplete" >&2
     fi
   else
     if [ "$units_installed" -eq 1 ]; then
@@ -222,6 +386,11 @@ rollback_install() {
     "$runtime_controller_unit_backup" \
     "$runtime_provider_unit_backup"; then
     echo "Linux install rollback systemd unit backup cleanup failed" >&2
+    rollback_failed=1
+  fi
+  if [ "$release_systemd_snapshot_created" -eq 1 ] && \
+    ! rm -rf "$release_systemd_snapshot_path"; then
+    echo "Linux install rollback created systemd snapshot cleanup failed path=$release_systemd_snapshot_path" >&2
     rollback_failed=1
   fi
   if [ "$release_created" -eq 1 ]; then
@@ -329,6 +498,9 @@ if [ ! -f "$etc_root/runtime-controller.toml" ]; then
 fi
 
 if [ -n "$previous_target" ]; then
+  if ! snapshot_release_systemd_units "$previous_target"; then
+    exit 1
+  fi
   for unit in \
     vitalserver-platform-agent.service \
     vitalserver-runtime-controller.service \
@@ -351,6 +523,7 @@ rm -rf "$staging_root"
 install -d -m 0755 "$staging_root"
 cp -a bin pwa runtime-bundle runtime-controller "$staging_root/"
 install -d -m 0755 "$staging_root/tools"
+install -d -m 0755 "$staging_root/tools/systemd"
 install -m 0755 packaging/acceptance-linux.py "$staging_root/tools/acceptance-linux.py"
 install -m 0755 packaging/acceptance-reboot-linux.py "$staging_root/tools/acceptance-reboot-linux.py"
 install -m 0755 packaging/acceptance-update-rollback-linux.py "$staging_root/tools/acceptance-update-rollback-linux.py"
@@ -361,6 +534,12 @@ install -m 0755 packaging/update-linux.py "$staging_root/tools/update-linux.py"
 install -m 0755 packaging/uninstall-linux.py "$staging_root/tools/uninstall-linux.py"
 install -m 0755 packaging/support-export-linux.py "$staging_root/tools/support-export-linux.py"
 install -m 0755 packaging/trust-update-linux.py "$staging_root/tools/trust-update-linux.py"
+install -m 0644 packaging/vitalserver-platform-agent.service \
+  "$staging_root/tools/systemd/vitalserver-platform-agent.service"
+install -m 0644 packaging/vitalserver-runtime-controller.service \
+  "$staging_root/tools/systemd/vitalserver-runtime-controller.service"
+install -m 0644 packaging/vitalserver-runtime-provider.service \
+  "$staging_root/tools/systemd/vitalserver-runtime-provider.service"
 install -m 0644 release.json "$staging_root/release.json"
 
 if [ -e "$release_root" ]; then
@@ -380,6 +559,11 @@ else
     python3 "$release_root/runtime-controller/install-guest-tools-runtime.py" \
       --wheel-dir "$release_root/runtime-controller/python-wheels" \
       --guest-tools-home "$release_root/runtime-controller"
+fi
+rollback_tool_path="$release_root/tools/rollback-linux.py"
+if [ ! -x "$rollback_tool_path" ]; then
+  echo "Release-owned Linux rollback tool is missing or not executable: $rollback_tool_path" >&2
+  exit 1
 fi
 
 docker load --input images/runtime-images.tar
@@ -402,7 +586,7 @@ if [ ! -f "$etc_root/platform-agent.json" ]; then
   "delivery": {
     "workflowDocument": "/var/lib/vitalserver/run/platform-workflow.json",
     "updateTool": "/opt/vitalserver/current/tools/update-linux.py",
-    "rollbackTool": "/opt/vitalserver/current/tools/rollback-linux.py",
+    "rollbackTool": "$rollback_tool_path",
     "uninstallTool": "/opt/vitalserver/current/tools/uninstall-linux.py",
     "supportExportTool": "/opt/vitalserver/current/tools/support-export-linux.py",
     "schedulerExecutable": "/usr/bin/systemd-run",
@@ -430,13 +614,14 @@ else
   api_token=$(tr -d '\r\n' < "$etc_root/secrets/platform-api-token")
   install -m 0600 "$etc_root/platform-agent.json" "$platform_agent_configuration_backup"
   platform_agent_configuration_backed_up=1
-  python3 - "$etc_root/platform-agent.json" "$api_token" <<'PY'
+  python3 - "$etc_root/platform-agent.json" "$api_token" "$rollback_tool_path" <<'PY'
 import json
 import os
+import re
 import sys
 import tempfile
 
-path, api_token = sys.argv[1:]
+path, api_token, rollback_tool_path = sys.argv[1:]
 try:
     with open(path, encoding="utf-8") as stream:
         document = json.load(stream)
@@ -451,8 +636,37 @@ delivery = document.get("delivery")
 if not isinstance(delivery, dict):
     raise SystemExit("Platform Agent configuration migration requires delivery owner")
 
+legacy_rollback_tool = "/opt/vitalserver/current/tools/rollback-linux.py"
+existing_rollback_tool = delivery.get("rollbackTool")
+if existing_rollback_tool is not None:
+    if not isinstance(existing_rollback_tool, str) or not (
+        existing_rollback_tool == legacy_rollback_tool
+        or re.fullmatch(
+            r"/opt/vitalserver/releases/[A-Za-z0-9._+-]+/tools/rollback-linux\.py",
+            existing_rollback_tool,
+        )
+    ):
+        raise SystemExit(
+            "Platform Agent configuration migration rollbackTool is invalid: "
+            f"{existing_rollback_tool!r}"
+        )
+    if not os.path.isfile(existing_rollback_tool) or not os.access(
+        existing_rollback_tool, os.X_OK
+    ):
+        raise SystemExit(
+            "Platform Agent configuration migration rollbackTool is unavailable: "
+            f"{existing_rollback_tool}"
+        )
+if not re.fullmatch(
+    r"/opt/vitalserver/releases/[A-Za-z0-9._+-]+/tools/rollback-linux\.py",
+    rollback_tool_path,
+):
+    raise SystemExit(
+        "Platform Agent configuration migration target rollbackTool is invalid: "
+        f"{rollback_tool_path}"
+    )
+
 required = {
-    "rollbackTool": "/opt/vitalserver/current/tools/rollback-linux.py",
     "uninstallTool": "/opt/vitalserver/current/tools/uninstall-linux.py",
     "supportExportTool": "/opt/vitalserver/current/tools/support-export-linux.py",
     "schedulerKind": "systemd-transient",
@@ -465,6 +679,7 @@ for name, expected in required.items():
             f"Platform Agent configuration migration field mismatch: {name}={existing!r}"
         )
     delivery[name] = expected
+delivery["rollbackTool"] = rollback_tool_path
 
 directory = os.path.dirname(path)
 descriptor, temporary = tempfile.mkstemp(

@@ -51,8 +51,10 @@ Host shared mount and not in the product Postgres database.
 The SQLAlchemy adapter is an infrastructure implementation detail. Domain
 operations remain dataclasses and cross the port as explicit documents; ORM
 records and record-to-domain mapping remain inside the SQLite adapter. The
-installer creates a new isolated venv from a hash-verified offline wheelhouse,
-proves the pinned SQLAlchemy/Alembic imports, and only then publishes the venv.
+installer creates a new isolated venv from a hash-verified offline wheelhouse.
+Before installation it verifies that the requirements file hash-pins every wheel
+declared by that target manifest, proves the pinned SQLAlchemy/Alembic imports,
+and only then publishes the venv.
 It does not create the control database: macOS bootstrap may run before the
 durable runtime-data mount is available. The Guest Control systemd service has
 an explicit `ExecStartPre` migration command. `RequiresMountsFor` ensures the
@@ -79,6 +81,13 @@ the Lab service's own session/read-model store. It is not a startup dependency
 for the Guest Control control ledger. Moving those remaining product stores and
 removing Postgres are a separate migration, not an implicit consequence of
 this control-state change.
+
+`GET /ready` probes and returns only required Guest Control dependencies:
+currently the Guest-owned `operationRepository` control store. It never probes
+the configured VitalDB read model, so a Product Postgres delay or failure cannot
+delay or make the Host's Guest Control readiness unavailable. VitalDB read routes
+remain responsible for reporting their own product read-model failure to their
+consumers.
 
 ### 2-4. Host exposes Guest service control through the v2 API path
 

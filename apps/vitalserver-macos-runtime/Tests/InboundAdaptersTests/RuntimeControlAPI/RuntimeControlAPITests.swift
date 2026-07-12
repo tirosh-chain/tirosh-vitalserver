@@ -1467,7 +1467,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let platformCapabilities = try await handler.loadPlatformCapabilities()
         let runtimeCapabilities = try await handler.loadRuntimeCapabilities()
         let status = try await handler.loadPlatformState()
-        let events = try await handler.loadRuntimeOperationEvents(query: RuntimeEventQuery())
+        let events = try await handler.loadRuntimeOperationEvents(query: RuntimeOperationEventQuery())
         let health = try await handler.loadHealthStatus()
         let release = try await handler.loadReleaseInfo()
         let installInfo = try await handler.loadInstallInfo()
@@ -1749,30 +1749,57 @@ final class RuntimeControlAPITests: XCTestCase {
 
         let response = await router.route(.init(
             method: .get,
-            path: "/runtime/events?limit=1&type=operation-completed&since=2026-05-24T00:01:00Z"
+            path: "/runtime/events?limit=1&type=operation-completed&since=2026-05-24T09%3A01%3A00%2B09%3A00"
         ))
         let history = try decode(RuntimeOperationEventHistory.self, from: response)
 
         XCTAssertEqual(history.events.map(\.id), ["runtime-operation-event-1"])
-        XCTAssertEqual(client.eventQueries, [
-            RuntimeEventQuery(limit: 1, eventType: .operationCompleted, since: "2026-05-24T00:01:00Z"),
+        XCTAssertEqual(client.runtimeOperationEventQueries, [
+            RuntimeOperationEventQuery(
+                limit: 1,
+                eventType: .completed,
+                since: "2026-05-24T09:01:00+09:00"
+            ),
         ])
     }
 
     @MainActor
-    func testRuntimeEventsEndpointAcceptsCursor() async throws {
+    func testRuntimeEventsEndpointForwardsOpaqueCursor() async throws {
         let client = FakeRuntimeControlClient()
         let router = RuntimeControlAPIRouter(handler: RuntimeControlClientAPIReadHandler(client: client))
-        let wireCursor = "event:12"
+        let wireCursor = "guest+ledger/token=v2"
 
-        let response = await router.route(.init(method: .get, path: "/runtime/events?limit=2&cursor=\(wireCursor)"))
+        let response = await router.route(.init(
+            method: .get,
+            path: "/runtime/events?limit=2&cursor=guest%2Bledger%2Ftoken%3Dv2"
+        ))
         let history = try decode(RuntimeOperationEventHistory.self, from: response)
 
         XCTAssertEqual(response.status, .ok)
         XCTAssertEqual(history.nextCursor, wireCursor)
-        XCTAssertEqual(client.eventQueries, [
-            RuntimeEventQuery(limit: 2, cursor: wireCursor),
+        XCTAssertEqual(client.runtimeOperationEventQueries, [
+            RuntimeOperationEventQuery(limit: 2, cursor: wireCursor),
         ])
+    }
+
+    @MainActor
+    func testRuntimeEventsEndpointPreservesGuestQueryRejectionAsBadRequest() async throws {
+        let client = FakeRuntimeControlClient()
+        client.runtimeOperationEventError = RuntimeGuestOperationEventQueryRejectedError(
+            detail: "runtime event history cursor is invalid"
+        )
+        let router = RuntimeControlAPIRouter(
+            handler: RuntimeControlClientAPIReadHandler(client: client)
+        )
+
+        let response = await router.route(
+            .init(method: .get, path: "/runtime/events?cursor=guest-ledger-token")
+        )
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+        XCTAssertEqual(error.message, "runtime event history cursor is invalid")
     }
 
     @MainActor
@@ -1780,6 +1807,17 @@ final class RuntimeControlAPITests: XCTestCase {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
         let response = await router.route(.init(method: .get, path: "/runtime/events?limit=zero"))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+    }
+
+    @MainActor
+    func testRuntimeEventsEndpointRejectsLimitAboveGuestContractMaximum() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events?limit=501"))
         let error = try decodeError(from: response)
 
         XCTAssertEqual(response.status, .badRequest)
@@ -1811,26 +1849,15 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
-    func testRuntimeEventsEndpointRejectsInvalidCursor() async throws {
+    func testRuntimeEventsEndpointRejectsHostDiagnosticsEventType() async throws {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
-        let response = await router.route(.init(method: .get, path: "/runtime/events?cursor=not-a-cursor"))
+        let response = await router.route(.init(method: .get, path: "/runtime/events?type=watchdog-skipped"))
         let error = try decodeError(from: response)
 
         XCTAssertEqual(response.status, .badRequest)
         XCTAssertEqual(error.code, .badRequest)
-    }
-
-    @MainActor
-    func testRuntimeEventsEndpointRejectsUnknownEventType() async throws {
-        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
-
-        let response = await router.route(.init(method: .get, path: "/runtime/events?type=unknown"))
-        let error = try decodeError(from: response)
-
-        XCTAssertEqual(response.status, .badRequest)
-        XCTAssertEqual(error.code, .badRequest)
-        XCTAssertEqual(error.message, "Invalid runtime event type: unknown")
+        XCTAssertEqual(error.message, "Invalid runtime event type: watchdog-skipped")
     }
 
     @MainActor
@@ -3200,7 +3227,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadRuntimeOperationEvents(
-        query: RuntimeEventQuery
+        query: RuntimeOperationEventQuery
     ) async throws -> RuntimeOperationEventHistory {
         RuntimeOperationEventHistory(
             events: [testRuntimeOperationEvent()],
@@ -3563,6 +3590,8 @@ private final class FakeRuntimeControlClient:
     var statusSettings: [RuntimeSettings] = []
     var healthSettings: [RuntimeSettings] = []
     var eventQueries: [RuntimeEventQuery] = []
+    var runtimeOperationEventQueries: [RuntimeOperationEventQuery] = []
+    var runtimeOperationEventError: Error?
     var guestStackStatusCount = 0
     var listGuestServicesCount = 0
     var guestServiceStatusRequests: [String] = []
@@ -3594,9 +3623,12 @@ private final class FakeRuntimeControlClient:
     }
 
     func loadRuntimeOperationEvents(
-        query: RuntimeEventQuery
+        query: RuntimeOperationEventQuery
     ) async throws -> RuntimeOperationEventHistory {
-        eventQueries.append(query)
+        runtimeOperationEventQueries.append(query)
+        if let runtimeOperationEventError {
+            throw runtimeOperationEventError
+        }
         return RuntimeOperationEventHistory(
             events: [testRuntimeOperationEvent()],
             nextCursor: query.cursor,

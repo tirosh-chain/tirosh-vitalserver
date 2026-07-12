@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import tarfile
@@ -288,26 +289,270 @@ def _write_checksums(stage: Path) -> None:
 
 
 def _require_control_wheelhouse(path: Path) -> None:
-    _require_file(path / "manifest.json", "Runtime Controller wheelhouse manifest")
-    _require_file(
-        path / "linux-amd64/requirements.txt",
+    manifest_path = path / "manifest.json"
+    _require_file(manifest_path, "Runtime Controller wheelhouse manifest")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            "Runtime Controller wheelhouse manifest is invalid: "
+            f"{manifest_path}: {error}"
+        ) from error
+    if not isinstance(manifest, dict) or manifest.get("schemaVersion") != 1:
+        raise SystemExit(
+            "Runtime Controller wheelhouse manifest contract is invalid: "
+            f"{manifest_path}"
+        )
+    guest_python = manifest.get("guestPython")
+    if not isinstance(guest_python, dict) or guest_python.get("major") != 3 or (
+        guest_python.get("minor") != 12
+    ):
+        raise SystemExit(
+            "Runtime Controller wheelhouse Guest Python contract is invalid: "
+            f"{manifest_path}"
+        )
+
+    guest_tools = _require_manifest_object(manifest, "guestTools", manifest_path)
+    guest_tools_sha256 = _require_manifest_string(
+        guest_tools, "sha256", "guestTools", manifest_path
+    )
+    guest_wheel = _require_manifested_file(
+        path,
+        _require_manifest_string(guest_tools, "path", "guestTools", manifest_path),
+        guest_tools_sha256,
+        "Runtime Controller Guest Tools wheel",
+    )
+    if guest_wheel.suffix != ".whl":
+        raise SystemExit(
+            "Runtime Controller Guest Tools artifact is not a wheel: "
+            f"{guest_wheel}"
+        )
+    _require_cpython312_linux_amd64_wheel(
+        guest_wheel,
+        "Runtime Controller Guest Tools wheel",
+    )
+
+    targets = _require_manifest_object(manifest, "targets", manifest_path)
+    target = _require_manifest_object(targets, "linux-amd64", manifest_path)
+    requirements = _require_manifested_file(
+        path,
+        _require_manifest_string(
+            target, "requirementsPath", "linux-amd64", manifest_path
+        ),
+        _require_manifest_string(
+            target, "requirementsSHA256", "linux-amd64", manifest_path
+        ),
         "Runtime Controller linux-amd64 requirements",
     )
-    _require_nonempty_wheel_directory(
-        path / "guest-tools",
-        "Runtime Controller Guest Tools wheel directory",
-    )
-    _require_nonempty_wheel_directory(
-        path / "linux-amd64",
-        "Runtime Controller linux-amd64 wheel directory",
-    )
+    wheels = target.get("wheels")
+    if not isinstance(wheels, list) or not wheels:
+        raise SystemExit(
+            "Runtime Controller wheelhouse linux-amd64 wheel manifest is invalid: "
+            f"{manifest_path}"
+        )
+    wheel_hashes = {guest_tools_sha256}
+    for wheel in wheels:
+        if not isinstance(wheel, dict):
+            raise SystemExit(
+                "Runtime Controller wheelhouse linux-amd64 wheel manifest is invalid: "
+                f"{manifest_path}"
+            )
+        wheel_sha256 = _require_manifest_string(
+            wheel, "sha256", "wheel", manifest_path
+        )
+        wheel_path = _require_manifested_file(
+            requirements.parent,
+            _require_manifest_string(wheel, "path", "wheel", manifest_path),
+            wheel_sha256,
+            "Runtime Controller linux-amd64 dependency wheel",
+        )
+        if wheel_path.suffix != ".whl":
+            raise SystemExit(
+                "Runtime Controller wheelhouse dependency is not a wheel: "
+                f"{wheel_path}"
+            )
+        _require_cpython312_linux_amd64_wheel(
+            wheel_path,
+            "Runtime Controller linux-amd64 dependency wheel",
+        )
+        wheel_hashes.add(wheel_sha256)
+    _require_requirements_hash_closure(requirements, wheel_hashes)
 
 
-def _require_nonempty_wheel_directory(path: Path, label: str) -> None:
-    if not path.is_dir():
-        raise SystemExit(f"{label} is missing: {path}")
-    if not list(path.glob("*.whl")):
-        raise SystemExit(f"{label} has no wheels: {path}")
+def _require_manifest_object(
+    document: dict[str, object], key: str, manifest_path: Path
+) -> dict[str, object]:
+    value = document.get(key)
+    if not isinstance(value, dict):
+        raise SystemExit(
+            f"Runtime Controller wheelhouse manifest field is invalid: "
+            f"path={manifest_path} field={key}"
+        )
+    return value
+
+
+def _require_manifest_string(
+    document: dict[str, object], key: str, label: str, manifest_path: Path
+) -> str:
+    value = document.get(key)
+    if not isinstance(value, str) or not value:
+        raise SystemExit(
+            f"Runtime Controller wheelhouse manifest {label} field is invalid: "
+            f"path={manifest_path} field={key}"
+        )
+    return value
+
+
+def _require_manifested_file(
+    root: Path,
+    relative: str,
+    expected_sha256: str,
+    label: str,
+) -> Path:
+    candidate = root / relative
+    try:
+        candidate.resolve().relative_to(root.resolve())
+    except ValueError as error:
+        raise SystemExit(
+            f"{label} manifest path escapes wheelhouse root: {relative}"
+        ) from error
+    _require_file(candidate, label)
+    actual_sha256 = _sha256(candidate)
+    if actual_sha256 != expected_sha256:
+        raise SystemExit(
+            f"{label} SHA-256 mismatch: path={candidate} "
+            f"expected={expected_sha256} actual={actual_sha256}"
+        )
+    return candidate
+
+
+def _require_cpython312_linux_amd64_wheel(path: Path, label: str) -> None:
+    try:
+        prefix, python_tags, abi_tags, platform_tags = path.stem.rsplit("-", 3)
+    except ValueError as error:
+        raise SystemExit(f"{label} filename is invalid: {path}") from error
+    tag_groups = (python_tags, abi_tags, platform_tags)
+    if not prefix or any(not tag or ".." in tag for tag in tag_groups):
+        raise SystemExit(f"{label} filename is invalid: {path}")
+
+    compatible = any(
+        _is_cpython312_linux_amd64_wheel_tag(python_tag, abi_tag, platform_tag)
+        for python_tag in python_tags.split(".")
+        for abi_tag in abi_tags.split(".")
+        for platform_tag in platform_tags.split(".")
+    )
+    if not compatible:
+        raise SystemExit(
+            f"{label} is not compatible with CPython 3.12 linux/amd64: {path}"
+        )
+
+
+def _is_cpython312_linux_amd64_wheel_tag(
+    python_tag: str,
+    abi_tag: str,
+    platform_tag: str,
+) -> bool:
+    if platform_tag == "any":
+        return abi_tag == "none" and _is_generic_python312_tag(python_tag)
+    if not _is_linux_amd64_platform_tag(platform_tag):
+        return False
+    if abi_tag == "cp312":
+        return python_tag == "cp312"
+    if abi_tag == "abi3":
+        return _is_cpython_abi3_tag(python_tag)
+    if abi_tag == "none":
+        return python_tag == "cp312" or _is_generic_python312_tag(python_tag)
+    return False
+
+
+def _is_generic_python312_tag(tag: str) -> bool:
+    return tag in {"py3", "py312"}
+
+
+def _is_cpython_abi3_tag(tag: str) -> bool:
+    if not tag.startswith("cp3"):
+        return False
+    minor = tag.removeprefix("cp3")
+    return minor.isdigit() and 2 <= int(minor) <= 12
+
+
+def _is_linux_amd64_platform_tag(tag: str) -> bool:
+    return tag in {
+        "manylinux1_x86_64",
+        "manylinux2010_x86_64",
+        "manylinux2014_x86_64",
+        "manylinux_2_5_x86_64",
+        "manylinux_2_12_x86_64",
+        "manylinux_2_17_x86_64",
+    }
+
+
+def _require_requirements_hash_closure(
+    requirements: Path,
+    expected_hashes: set[str],
+) -> None:
+    logical_lines = _requirements_logical_lines(requirements)
+    referenced_hashes: set[str] = set()
+    for line in logical_lines:
+        hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", line)
+        invalid_hashes = [
+            token
+            for token in re.findall(r"--hash=([^\s]+)", line)
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is None
+        ]
+        if invalid_hashes:
+            raise SystemExit(
+                "Runtime Controller wheelhouse requirements has an invalid hash: "
+                f"path={requirements} values={invalid_hashes}"
+            )
+        if not hashes:
+            raise SystemExit(
+                "Runtime Controller wheelhouse requirements entry is not hash-pinned: "
+                f"path={requirements} entry={line!r}"
+            )
+        referenced_hashes.update(hashes)
+    if referenced_hashes != expected_hashes:
+        missing = sorted(expected_hashes - referenced_hashes)
+        unexpected = sorted(referenced_hashes - expected_hashes)
+        raise SystemExit(
+            "Runtime Controller wheelhouse requirements do not pin every "
+            "manifest wheel: "
+            f"path={requirements} missing={missing} unexpected={unexpected}"
+        )
+
+
+def _requirements_logical_lines(requirements: Path) -> list[str]:
+    try:
+        physical_lines = requirements.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as error:
+        raise SystemExit(
+            "Runtime Controller wheelhouse requirements cannot be read: "
+            f"path={requirements} error={error}"
+        ) from error
+    logical_lines: list[str] = []
+    pending = ""
+    for physical_line in physical_lines:
+        line = physical_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if pending:
+            line = pending + line
+            pending = ""
+        if line.endswith("\\"):
+            pending = line[:-1].rstrip() + " "
+            continue
+        logical_lines.append(line)
+    if pending:
+        raise SystemExit(
+            "Runtime Controller wheelhouse requirements has an unterminated "
+            f"line continuation: path={requirements}"
+        )
+    if not logical_lines:
+        raise SystemExit(
+            "Runtime Controller wheelhouse requirements has no dependency entries: "
+            f"path={requirements}"
+        )
+    return logical_lines
 
 
 def _write_deterministic_tar_gz(stage: Path, output: Path) -> None:

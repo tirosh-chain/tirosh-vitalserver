@@ -4793,11 +4793,6 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
         / "apps/vitalserver-platform-agent/packaging/linux"
         / "vitalserver-runtime-controller.service"
     )
-    vitaldb_repository_path = (
-        GUEST_TOOLS
-        / "src/tirosh_guest_tools/adapters/outbound/postgres"
-        / "vitaldb_read_model_repository.py"
-    )
     api_tests_path = GUEST_TOOLS / "tests/test_guest_control_api.py"
     usecase_tests_path = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
     sqlite_tests_path = GUEST_TOOLS / "tests/test_guest_control_sqlite_repository.py"
@@ -4813,7 +4808,6 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
     runtime_text = read(runtime_path)
     usecase_text = read(usecase_path)
     operation_artifact_sink_text = read(operation_repository_path)
-    vitaldb_artifact_sink_text = read(vitaldb_repository_path)
     api_tests_text = read(api_tests_path)
     usecase_tests_text = read(usecase_tests_path)
     control_migrations_text = read(control_migrations_path)
@@ -4846,9 +4840,8 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
             "def readiness(self) -> dict[str, object]:",
             "def recover_interrupted_operations(self) -> None:",
             "self._operations.check_ready",
-            "self._vitaldb_read_model.check_ready",
+            "def _required_readiness_dependency(",
             '"operationRepository"',
-            '"vitaldbReadModel"',
             "self._operations.record_accepted(",
             "self._operations.record_transition(operation)",
         ],
@@ -4897,19 +4890,16 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
             "tirosh-guest-tools-migrate-control-store --control-state-dir "
             "/var/lib/vitalserver/control",
         ],
-        relative(vitaldb_repository_path): [
-            "def check_ready(self) -> None:",
-            '"SELECT 1;"',
-            '"vitaldb read model readiness"',
-        ],
         relative(api_tests_path): [
             "test_default_usecases_require_migrated_sqlite_without_postgres_startup",
             "test_ready_route_reports_control_store_dependency_failure",
+            "test_ready_route_does_not_probe_configured_vitaldb",
             "test_active_control_lease_conflict_returns_explicit_conflict",
             'checks == ["sqlite"]',
         ],
         relative(usecase_tests_path): [
             "test_controller_recovery_marks_unfinished_operation_as_interrupted",
+            "test_readiness_only_probes_required_control_dependencies",
             "test_readiness_preserves_control_store_failure",
             "test_service_command_lease_conflict_does_not_write_desired_state",
             "controllerRestarted",
@@ -4983,7 +4973,6 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
         relative(control_store_cli_path): control_store_cli_text,
         relative(macos_control_service_path): macos_control_service_text,
         relative(linux_control_service_path): linux_control_service_text,
-        relative(vitaldb_repository_path): vitaldb_artifact_sink_text,
         relative(api_tests_path): api_tests_text,
         relative(usecase_tests_path): usecase_tests_text,
         relative(sqlite_tests_path): sqlite_tests_text,
@@ -5014,6 +5003,10 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
     ):
         if token in api_text:
             present.append(f"{relative(api_path)}:{token}")
+    if "self._vitaldb_read_model.check_ready" in usecase_text:
+        present.append(
+            f"{relative(usecase_path)}:self._vitaldb_read_model.check_ready"
+        )
     if "VITALSERVER_LAB_ALLOW_MEMORY_STORE" in compose_text:
         present.append(
             f"{relative(compose_path)}:VITALSERVER_LAB_ALLOW_MEMORY_STORE"
@@ -7008,6 +7001,38 @@ def check_runtime_update_docs_do_not_promote_status_files_as_current_owners(
 def check_runtime_event_history_docs_do_not_promote_files_as_state_owners(
 ) -> CheckResult:
     observability_path = ROOT / "docs/runtime/macos/observability.md"
+    operation_contract_path = (
+        MACOS_RUNTIME
+        / "Sources/Contracts/Shared/RuntimeOperationEventContracts.swift"
+    )
+    request_parser_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlHTTPRequestParsing.swift"
+    )
+    read_routes_path = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
+        / "RuntimeControlHTTPReadRoutes.swift"
+    )
+    guest_gateway_path = (
+        MACOS_RUNTIME / "Sources/Application/Ports/RuntimeGuestControlGateway.swift"
+    )
+    pwa_gateway_path = PWA / "src/console/runtimeControlGateway.ts"
+    pwa_client_path = (
+        PWA / "src/infrastructure/console-api/runtimeControlApiClient.ts"
+    )
+    pwa_client_tests_path = (
+        PWA / "src/infrastructure/console-api/runtimeControlApiClient.test.ts"
+    )
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
+    api_tests_path = (
+        MACOS_RUNTIME
+        / "Tests/InboundAdaptersTests/RuntimeControlAPI/RuntimeControlAPITests.swift"
+    )
+    operation_contract_tests_path = (
+        MACOS_RUNTIME / "Tests/ContractsTests/ContractsTests.swift"
+    )
     swift_read_models = (
         MACOS_RUNTIME
         / "Sources/Contracts/RuntimeControl/RuntimeControlReadModels.swift"
@@ -7020,14 +7045,16 @@ def check_runtime_event_history_docs_do_not_promote_files_as_state_owners(
     swift_read_models_text = read(swift_read_models)
     swift_contract_tests_text = read(swift_contract_tests)
     required = [
-        "Product consumers use the Runtime Control `/runtime/events` API contract",
-        "typed `RuntimeEventHistory` read model",
-        "they do not treat the file path as the owner contract",
-        "JSONL diagnostics read path",
-        "not treat the file path as the owner contract or successful fallback owner",
-        "RuntimeEventHistory.readError",
-        "JSONL/SQLite는 backing diagnostics artifact/index이며 current health/recovery owner가 아님",
-        "Runtime Control `/runtime/events` API + `RuntimeEventHistory` read model contract",
+        "Guest SQLite control ledger + Runtime Control `/runtime/events` "
+        "`RuntimeOperationEventHistory`",
+        "Host `runtime-events.jsonl`과 `runtime-observability.sqlite`는 이 API의 "
+        "source나 successful fallback이 아닙니다.",
+        "Guest Control `/runtime/events`는 이 index를 읽지 않고 Guest-owned "
+        "`control.sqlite` operation ledger를 읽습니다.",
+        "`RuntimeOperationEventQuery`/`RuntimeOperationEventType` public contract",
+        "Host proxy와 PWA는 cursor 형식을 해석하거나 재작성하지 않고 "
+        "Guest token을 그대로 전달하며, 형식 검증은 Guest ledger의 책임이다.",
+        "Host diagnostics `RuntimeEventHistory.readError`",
         "operational event diagnostics artifact",
         "current `failureReasons`는 explicit owner reads에서 조립",
         "JSONL append를 durable diagnostics artifact",
@@ -7037,6 +7064,8 @@ def check_runtime_event_history_docs_do_not_promote_files_as_state_owners(
         "SQLite read model은 조회용 index이므로 JSONL rotation이 있더라도 event SoT 역할을 대신하지 않습니다.",
         "Runtime event log | `runtime-observability.sqlite`, fallback `runtime-events.jsonl`",
         "/runtime/events via SQLite first, JSONL fallback",
+        "`/runtime/events` read path는 SQLite index를 우선 사용하고 "
+        "실패 시 JSONL",
         "JSONL fallback",
         "fallback으로 응답",
         "read model fallback",
@@ -7050,6 +7079,108 @@ def check_runtime_event_history_docs_do_not_promote_files_as_state_owners(
     ]
     missing = [token for token in required if token not in text]
     present = [token for token in forbidden if token in text]
+    operation_texts = {
+        relative(operation_contract_path): read(operation_contract_path),
+        relative(request_parser_path): read(request_parser_path),
+        relative(read_routes_path): read(read_routes_path),
+        relative(guest_gateway_path): read(guest_gateway_path),
+        relative(pwa_gateway_path): read(pwa_gateway_path),
+        relative(pwa_client_path): read(pwa_client_path),
+        relative(pwa_client_tests_path): read(pwa_client_tests_path),
+        relative(openapi_path): read(openapi_path),
+        relative(api_tests_path): read(api_tests_path),
+        relative(operation_contract_tests_path): read(operation_contract_tests_path),
+    }
+    operation_required = {
+        relative(operation_contract_path): [
+            "public struct RuntimeOperationEventQuery",
+            "public enum RuntimeOperationEventType",
+            "public struct RuntimeOperationEventHistory",
+            "public let eventType: RuntimeOperationEventType?",
+            "events = try container.decode([RuntimeOperationEventDocument].self, "
+            "forKey: .events)",
+            "guard container.contains(.nextCursor)",
+            "guard container.contains(.matchingCount)",
+            "try container.encodeNil(forKey: .nextCursor)",
+            "try container.encodeNil(forKey: .matchingCount)",
+        ],
+        relative(request_parser_path): [
+            "func runtimeOperationEventQuery() throws -> RuntimeOperationEventQuery",
+            "RuntimeOperationEventQuery.maximumLimit",
+            "RuntimeOperationEventType(rawValue: rawEventType)",
+            "let cursor = try queryValue(named: \"cursor\")",
+        ],
+        relative(read_routes_path): [
+            "let query = try request.runtimeOperationEventQuery()",
+            "handler.loadRuntimeOperationEvents(query: query)",
+        ],
+        relative(guest_gateway_path): [
+            "func runtimeEvents(query: RuntimeOperationEventQuery)",
+        ],
+        relative(pwa_gateway_path): [
+            "type?: RuntimeEventTypeValue;",
+        ],
+        relative(pwa_client_path): [
+            "runtimeEventTypeValues.includes(value as RuntimeEventTypeValue)",
+        ],
+        relative(pwa_client_tests_path): [
+            "rejects non-operation event types before requesting the Guest ledger",
+        ],
+        relative(openapi_path): [
+            "Read Guest Runtime Controller operation event history",
+            '"operation-interrupted"',
+        ],
+        relative(api_tests_path): [
+            "testRuntimeEventsEndpointRejectsLimitAboveGuestContractMaximum",
+            "testRuntimeEventsEndpointForwardsOpaqueCursor",
+            "testRuntimeEventsEndpointRejectsHostDiagnosticsEventType",
+            "testRuntimeEventsEndpointPreservesGuestQueryRejectionAsBadRequest",
+            "RuntimeOperationEventQuery(",
+        ],
+        relative(operation_contract_tests_path): [
+            "testRuntimeOperationEventQueryKeepsGuestLedgerEventTypesSeparate",
+            "testRuntimeOperationEventHistoryRequiresAndWrites"
+            "ExplicitNullablePagination",
+        ],
+    }
+    for path, tokens in operation_required.items():
+        missing.extend(
+            f"{path}:{token}"
+            for token in tokens
+            if token not in operation_texts[path]
+        )
+    operation_forbidden = {
+        relative(request_parser_path): [
+            "func runtimeOperationEventQuery() throws -> RuntimeEventQuery",
+            'parts[0] == "event"',
+        ],
+        relative(guest_gateway_path): [
+            "func runtimeEvents(query: RuntimeEventQuery)",
+        ],
+    }
+    present.extend(
+        f"{path}:{token}"
+        for path, tokens in operation_forbidden.items()
+        for token in tokens
+        if token in operation_texts[path]
+    )
+    try:
+        openapi = json.loads(operation_texts[relative(openapi_path)])
+        operation_event_types = (
+            openapi["components"]["schemas"]["RuntimeEventType"]["enum"]
+        )
+    except (KeyError, TypeError, json.JSONDecodeError):
+        missing.append("OpenAPI.RuntimeEventType.operation-event-enum")
+    else:
+        if operation_event_types != [
+            "operation-accepted",
+            "operation-running",
+            "operation-completed",
+            "operation-failed",
+            "operation-cancelled",
+            "operation-interrupted",
+        ]:
+            missing.append("OpenAPI.RuntimeEventType.operation-event-enum")
     for label, token in [
         (
             "RuntimeEventHistory.required-events-array",
