@@ -23,10 +23,12 @@ from tirosh_vitalserver.core.domain.vital_file.session_recording import (
     collect_frame_tracks,
     metadata_track,
 )
+from tirosh_vitalserver.core.errors import RawArchiveDecodeError
 
 __all__ = [
     "VITAL_FILENAME_RE",
     "PayloadFile",
+    "RawArchiveDecodeError",
     "RawArchivePayload",
     "VitalSessionMetadata",
     "VitalTrack",

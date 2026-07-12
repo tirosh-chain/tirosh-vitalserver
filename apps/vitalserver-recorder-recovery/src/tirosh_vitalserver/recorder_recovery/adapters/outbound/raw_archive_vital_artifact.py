@@ -68,7 +68,7 @@ class RawArchiveVitalFileExporter:
                 bed_room_names=(vrcode,),
                 started_at=started_at,
                 stopped_at=stopped_at,
-                default_scenario="raw-archive",
+                scenario="raw-archive",
                 channels=tuple(track.dtname for track in tracks),
                 playback_events=(("raw-archive-exported", exported_at),),
             )

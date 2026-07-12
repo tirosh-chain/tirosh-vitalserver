@@ -17,7 +17,12 @@ class InvalidVitalFilenameError(VitalServerCoreError, ValueError):
         )
 
 
+class RawArchiveDecodeError(VitalServerCoreError, ValueError):
+    """Raised when a recorder-ingress raw archive record is invalid."""
+
+
 __all__ = [
     "InvalidVitalFilenameError",
+    "RawArchiveDecodeError",
     "VitalServerCoreError",
 ]

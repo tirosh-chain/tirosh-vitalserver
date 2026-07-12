@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
-import re
 import zlib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -14,10 +14,8 @@ from tirosh_vitalserver.core.domain.vital_file.session_recording import (
     VitalTrack,
     collect_frame_tracks,
 )
+from tirosh_vitalserver.core.errors import RawArchiveDecodeError
 from tirosh_vitalserver.core.types.json import JsonObject, JsonValue
-
-CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
-NAN_TOKEN_RE = re.compile(r"\bnan\b")
 
 
 @dataclass(frozen=True)
@@ -41,12 +39,10 @@ def raw_archive_payloads_from_jsonl_lines(
         text = line.strip()
         if not text:
             continue
-        try:
-            record = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"raw archive line {line_number} is not JSON") from exc
-        if not isinstance(record, dict):
-            raise ValueError(f"raw archive line {line_number} is not an object")
+        record = json_object_from_text(
+            text,
+            context=f"raw archive line {line_number}",
+        )
         payloads.append(raw_archive_payload_from_record(record))
     return tuple(payloads)
 
@@ -56,30 +52,25 @@ def raw_archive_payload_from_record(
 ) -> RawArchivePayload:
     """Decode one raw archive record into an explicit payload document."""
 
-    if record.get("schemaVersion") != 1:
-        raise ValueError("raw archive record schemaVersion must be 1")
+    if type(record.get("schemaVersion")) is not int or record["schemaVersion"] != 1:
+        raise RawArchiveDecodeError("raw archive record schemaVersion must be 1")
     if record.get("kind") != "send_data_raw_payload":
-        raise ValueError("raw archive record kind must be send_data_raw_payload")
+        raise RawArchiveDecodeError(
+            "raw archive record kind must be send_data_raw_payload"
+        )
 
-    payload_base64 = required_string(record, "payloadBase64")
-    payload_bytes = base64.b64decode(payload_base64, validate=True)
-    decoded_text = zlib.decompress(payload_bytes).decode("utf-8", errors="replace")
-    cleaned_text = NAN_TOKEN_RE.sub('""', CONTROL_CHARS_RE.sub("", decoded_text))
-    payload = json.loads(cleaned_text)
-    if not isinstance(payload, dict):
-        raise ValueError("decoded raw archive payload is not an object")
-
-    record_vrcode = optional_string(record.get("vrcode"))
-    payload_vrcode = optional_string(payload.get("vrcode"))
-    vrcode = record_vrcode or payload_vrcode
-    if not vrcode:
-        raise ValueError("raw archive record has no explicit vrcode")
+    archive_id = required_string(record, "itemId")
+    vrcode = required_string(record, "vrcode")
+    received_at = optional_iso8601_epoch(record, "receivedAt")
+    archived_at = optional_iso8601_epoch(record, "archivedAt")
+    payload = raw_archive_payload_object(required_string(record, "payloadBase64"))
+    assert_payload_vrcode_matches_archive(payload, vrcode)
 
     return RawArchivePayload(
-        archive_id=required_string(record, "itemId"),
+        archive_id=archive_id,
         vrcode=vrcode,
-        received_at=parse_iso8601_epoch(optional_string(record.get("receivedAt"))),
-        archived_at=parse_iso8601_epoch(optional_string(record.get("archivedAt"))),
+        received_at=received_at,
+        archived_at=archived_at,
         payload=payload,
     )
 
@@ -122,18 +113,104 @@ def vital_tracks_by_vrcode_from_raw_archive(
 def required_string(record: Mapping[str, JsonValue], key: str) -> str:
     value = record.get(key)
     if not isinstance(value, str) or not value:
-        raise ValueError(f"raw archive record requires string {key}")
+        raise RawArchiveDecodeError(f"raw archive record requires string {key}")
     return value
 
 
-def optional_string(value: JsonValue) -> str | None:
-    if isinstance(value, str) and value:
-        return value
-    return None
+def raw_archive_payload_object(payload_base64: str) -> JsonObject:
+    """Decode one base64/zlib payload without repairing malformed input."""
+
+    try:
+        payload_bytes = base64.b64decode(payload_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise RawArchiveDecodeError(
+            "raw archive record payloadBase64 is not valid base64"
+        ) from exc
+
+    try:
+        decompressor = zlib.decompressobj()
+        compressed_payload = decompressor.decompress(payload_bytes)
+        compressed_payload += decompressor.flush()
+    except zlib.error as exc:
+        raise RawArchiveDecodeError(
+            "raw archive record payloadBase64 is not a zlib payload"
+        ) from exc
+    if not decompressor.eof or decompressor.unused_data:
+        raise RawArchiveDecodeError(
+            "raw archive record payloadBase64 must contain one complete zlib payload"
+        )
+
+    try:
+        decoded_text = compressed_payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RawArchiveDecodeError(
+            "decoded raw archive payload is not valid UTF-8"
+        ) from exc
+
+    return json_object_from_text(decoded_text, context="decoded raw archive payload")
 
 
-def parse_iso8601_epoch(value: str | None) -> float | None:
+def json_object_from_text(text: str, *, context: str) -> JsonObject:
+    """Decode a finite JSON object and preserve malformed input as an error."""
+
+    try:
+        decoded = json.loads(text, parse_constant=reject_non_finite_json_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise RawArchiveDecodeError(f"{context} is not valid JSON") from exc
+    if not isinstance(decoded, dict):
+        raise RawArchiveDecodeError(f"{context} is not an object")
+    return decoded
+
+
+def reject_non_finite_json_constant(value: str) -> None:
+    """Reject JavaScript-style non-finite values not allowed by JSON."""
+
+    raise ValueError(f"non-finite JSON value {value}")
+
+
+def assert_payload_vrcode_matches_archive(
+    payload: JsonObject,
+    archive_vrcode: str,
+) -> None:
+    """Ensure a payload identity, when present, agrees with its archive record."""
+
+    payload_vrcode = payload.get("vrcode")
+    if payload_vrcode is None:
+        return
+    if not isinstance(payload_vrcode, str) or not payload_vrcode:
+        raise RawArchiveDecodeError(
+            "decoded raw archive payload vrcode must be a non-empty string when present"
+        )
+    if payload_vrcode != archive_vrcode:
+        raise RawArchiveDecodeError(
+            "decoded raw archive payload vrcode does not match "
+            "raw archive record vrcode"
+        )
+
+
+def optional_iso8601_epoch(
+    record: Mapping[str, JsonValue],
+    key: str,
+) -> float | None:
+    """Read an optional, timezone-aware archive timestamp."""
+
+    value = record.get(key)
     if value is None:
         return None
-    normalized = value.replace("Z", "+00:00")
-    return datetime.fromisoformat(normalized).timestamp()
+    if not isinstance(value, str) or not value:
+        raise RawArchiveDecodeError(
+            f"raw archive record {key} must be an ISO-8601 timestamp or null"
+        )
+
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise RawArchiveDecodeError(
+            f"raw archive record {key} must be an ISO-8601 timestamp"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise RawArchiveDecodeError(
+            f"raw archive record {key} must include a UTC offset"
+        )
+    return parsed.timestamp()
