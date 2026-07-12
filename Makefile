@@ -145,7 +145,9 @@ runtime/proof/python-focused:
 		packages/vitalserver-devtools/tests/unit/test_rootfs_base.py \
 		packages/vitalserver-devtools/tests/unit/test_runtime_lifecycle_wait.py
 runtime/proof/conformance:
-	$(PYTEST_RUNNER) packages/vitalserver-devtools/tests/unit/test_runtime_v2_conformance.py
+	$(PYTEST_RUNNER) \
+		packages/vitalserver-devtools/tests/unit/test_runtime_v2_conformance.py \
+		packages/vitalserver-devtools/tests/unit/test_runtime_v2_route_manifest.py
 runtime/conformance:
 	$(PYTHON) scripts/runtime_v2_conformance.py --base-url "$(RUNTIME_V2_CONFORMANCE_BASE_URL)" $(RUNTIME_V2_CONFORMANCE_ARGS)
 runtime/proof/swift-focused:

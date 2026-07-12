@@ -2,9 +2,11 @@
 
 Runtime v2 conformance checks the contract shared by macOS, Windows, and Linux. It does not treat a successful macOS build as evidence that Windows or Linux is implemented.
 
-## Scope
+## Read-core scope
 
-The suite checks the smallest owner-neutral API surface needed before adding platform-specific behavior.
+The default suite checks the smallest owner-neutral, read-only API surface needed before adding platform-specific behavior. Its single checked-in route source is [`runtime-v2-route-manifest.json`](runtime-v2-route-manifest.json).
+
+The manifest is a build-time contract, not a runtime configuration file. It records whether a route is handled by the Platform Agent or forwarded to the Runtime Controller; it never grants wildcard forwarding or turns a missing route into a success.
 
 | Owner | Resource | Required meaning |
 | --- | --- | --- |
@@ -16,6 +18,12 @@ The suite checks the smallest owner-neutral API surface needed before adding pla
 | Runtime Controller | `GET /runtime/capabilities` | owner version and unique capability identifiers |
 | Runtime Controller | `GET /runtime/services` | unique product service identifiers |
 | Runtime Controller | `GET /runtime/stack` | explicit stack state, observation time, services, and probe failures |
+
+## Extension and command scope
+
+The following published Runtime v2 routes are outside the default read-only run because they are optional capabilities or commands. They remain subject to feature conformance and installed-platform acceptance; adding one to the default run requires an explicit manifest and validator change.
+
+| Owner | Resource | Required meaning |
 | Runtime Controller | `GET`/`PUT /runtime/settings` | product settings read state and explicit apply operation |
 | Runtime Controller | `POST /runtime/admin-password` | secret-bearing command with no password read-back |
 | Runtime Controller | `GET`/`PUT /runtime/redis-relay/settings` | Relay config read without secret material and explicit secret preserve/replace/clear apply |

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "description": "Owner-neutral, read-only Runtime v2 core routes. This manifest is a build-time contract and never enables runtime forwarding by itself.",
+  "routes": [
+    {
+      "id": "platform-state",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform",
+      "conformance": "required-read"
+    },
+    {
+      "id": "platform-capabilities",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform/capabilities",
+      "conformance": "required-read"
+    },
+    {
+      "id": "platform-operations",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform/operations",
+      "conformance": "required-read"
+    },
+    {
+      "id": "platform-runtime-endpoint",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform/runtime-endpoint",
+      "conformance": "required-read"
+    },
+    {
+      "id": "platform-runtime-provider",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform/runtime-provider",
+      "conformance": "required-read"
+    },
+    {
+      "id": "runtime-capabilities",
+      "owner": "runtime-controller",
+      "delivery": "forwarded",
+      "method": "GET",
+      "path": "/runtime/capabilities",
+      "conformance": "required-read"
+    },
+    {
+      "id": "runtime-services",
+      "owner": "runtime-controller",
+      "delivery": "forwarded",
+      "method": "GET",
+      "path": "/runtime/services",
+      "conformance": "required-read"
+    },
+    {
+      "id": "runtime-stack",
+      "owner": "runtime-controller",
+      "delivery": "forwarded",
+      "method": "GET",
+      "path": "/runtime/stack",
+      "conformance": "required-read"
+    }
+  ]
+}

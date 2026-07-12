@@ -6,6 +6,11 @@ from typing import Any, Callable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from tirosh_vitalserver.devtools.runtime_v2_route_manifest import (
+    RuntimeV2Route,
+    load_runtime_v2_route_manifest,
+)
+
 
 PLATFORM_SERVICE_ROLES = frozenset(
     {
@@ -92,29 +97,17 @@ JSONGetter = Callable[[str], Mapping[str, Any]]
 
 
 class RuntimeV2ConformanceSuite:
-    def __init__(self, get_json: JSONGetter) -> None:
+    def __init__(
+        self,
+        get_json: JSONGetter,
+        *,
+        routes: tuple[RuntimeV2Route, ...] | None = None,
+    ) -> None:
         self._get_json = get_json
+        self._routes = routes if routes is not None else load_runtime_v2_route_manifest()
 
     def run(self, *, platform: bool = True, runtime: bool = True) -> ConformanceReport:
-        resources: list[tuple[str, Callable[[Mapping[str, Any]], list[str]]]] = []
-        if platform:
-            resources.extend(
-                [
-                    ("/platform", validate_platform_state),
-                    ("/platform/capabilities", validate_platform_capabilities),
-                    ("/platform/operations", validate_platform_operations),
-                    ("/platform/runtime-endpoint", validate_explicit_resource),
-                    ("/platform/runtime-provider", validate_explicit_resource),
-                ]
-            )
-        if runtime:
-            resources.extend(
-                [
-                    ("/runtime/capabilities", validate_runtime_capabilities),
-                    ("/runtime/services", validate_runtime_services),
-                    ("/runtime/stack", validate_runtime_stack),
-                ]
-            )
+        resources = self._resources(platform=platform, runtime=runtime)
 
         checked: list[str] = []
         issues: list[ConformanceIssue] = []
@@ -136,6 +129,38 @@ class RuntimeV2ConformanceSuite:
             for message in validator(document):
                 issues.append(ConformanceIssue(resource, message))
         return ConformanceReport(tuple(checked), tuple(issues))
+
+    def _resources(
+        self, *, platform: bool, runtime: bool
+    ) -> list[tuple[str, Callable[[Mapping[str, Any]], list[str]]]]:
+        validators: Mapping[str, Callable[[Mapping[str, Any]], list[str]]] = {
+            "platform-state": validate_platform_state,
+            "platform-capabilities": validate_platform_capabilities,
+            "platform-operations": validate_platform_operations,
+            "platform-runtime-endpoint": validate_explicit_resource,
+            "platform-runtime-provider": validate_explicit_resource,
+            "runtime-capabilities": validate_runtime_capabilities,
+            "runtime-services": validate_runtime_services,
+            "runtime-stack": validate_runtime_stack,
+        }
+        enabled_owners: set[str] = set()
+        if platform:
+            enabled_owners.add("platform-agent")
+        if runtime:
+            enabled_owners.add("runtime-controller")
+
+        resources: list[tuple[str, Callable[[Mapping[str, Any]], list[str]]]] = []
+        for route in self._routes:
+            if route.conformance != "required-read" or route.owner not in enabled_owners:
+                continue
+            validator = validators.get(route.id)
+            if validator is None:
+                raise RuntimeError(
+                    "Runtime v2 route manifest has no conformance validator for "
+                    f"required route id: {route.id}."
+                )
+            resources.append((route.path, validator))
+        return resources
 
 
 def http_json_getter(
