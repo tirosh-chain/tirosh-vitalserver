@@ -217,6 +217,13 @@ rollback_install() {
     echo "Linux install rollback Runtime environment backup cleanup failed" >&2
     rollback_failed=1
   fi
+  if ! rm -f \
+    "$platform_agent_unit_backup" \
+    "$runtime_controller_unit_backup" \
+    "$runtime_provider_unit_backup"; then
+    echo "Linux install rollback systemd unit backup cleanup failed" >&2
+    rollback_failed=1
+  fi
   if [ "$release_created" -eq 1 ]; then
     if ! rm -rf "$release_root"; then
       echo "Linux install rollback created release cleanup failed release=$release_root" >&2
@@ -319,6 +326,25 @@ fi
 if [ ! -f "$etc_root/runtime-controller.toml" ]; then
   runtime_controller_configuration_created=1
   install -m 0644 packaging/runtime-controller.toml "$etc_root/runtime-controller.toml"
+fi
+
+if [ -n "$previous_target" ]; then
+  for unit in \
+    vitalserver-platform-agent.service \
+    vitalserver-runtime-controller.service \
+    vitalserver-runtime-provider.service; do
+    if [ ! -f "$unit_root/$unit" ]; then
+      echo "Existing Linux systemd unit is missing: $unit_root/$unit" >&2
+      exit 1
+    fi
+  done
+  install -m 0644 "$unit_root/vitalserver-platform-agent.service" \
+    "$platform_agent_unit_backup"
+  install -m 0644 "$unit_root/vitalserver-runtime-controller.service" \
+    "$runtime_controller_unit_backup"
+  install -m 0644 "$unit_root/vitalserver-runtime-provider.service" \
+    "$runtime_provider_unit_backup"
+  units_backed_up=1
 fi
 
 rm -rf "$staging_root"
@@ -579,5 +605,10 @@ rm -f "$platform_agent_configuration_backup"
 platform_agent_configuration_backed_up=0
 rm -f "$runtime_environment_backup"
 runtime_environment_backed_up=0
+rm -f \
+  "$platform_agent_unit_backup" \
+  "$runtime_controller_unit_backup" \
+  "$runtime_provider_unit_backup"
+units_backed_up=0
 trap - EXIT HUP INT TERM
 echo "VitalServer Linux install passed platformVersion=$version runtimeBundleVersion=$runtime_bundle_version"

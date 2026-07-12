@@ -512,6 +512,27 @@ def test_linux_installer_migrates_existing_runtime_environment_transactionally()
         'rm -f "$runtime_environment_backup"\nruntime_environment_backed_up=0'
         in installer
     )
+    assert "units_backed_up=0" in installer
+    assert (
+        'runtime_controller_unit_backup="$unit_root/.vitalserver-runtime-controller.service.rollback.$$"'
+        in installer
+    )
+    assert 'if [ -n "$previous_target" ]; then' in installer
+    assert (
+        'install -m 0644 "$unit_root/vitalserver-runtime-controller.service" \\\n'
+        '    "$runtime_controller_unit_backup"'
+    ) in installer
+    assert 'if [ "$units_backed_up" -eq 1 ]; then' in installer
+    assert (
+        'install -m 0644 "$runtime_controller_unit_backup" \\\n'
+        '      "$unit_root/vitalserver-runtime-controller.service"'
+    ) in installer
+    assert installer.index(
+        "Linux install rollback systemd unit restoration failed"
+    ) < installer.index("Linux install rollback systemd reload failed")
+    assert installer.rindex('rm -f \\\n  "$platform_agent_unit_backup"') < installer.rindex(
+        "units_backed_up=0"
+    )
 
 
 def test_linux_update_uses_explicit_non_nested_support_acceptance_mode() -> None:
