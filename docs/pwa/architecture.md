@@ -69,7 +69,7 @@ Runtime Control API 계약은 세 곳에서 동시에 관리됩니다.
 
 | 위치 | 역할 |
 |---|---|
-| `docs/runtime/macos/runtime-control.openapi.json` | transport contract source |
+| `docs/runtime/runtime-control.openapi.json` | transport contract source |
 | `src/domain/runtime-control/contracts/generated/runtime-control.ts` | OpenAPI generated TypeScript type |
 | `src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts` | runtime response validation |
 

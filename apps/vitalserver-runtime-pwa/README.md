@@ -70,7 +70,7 @@ VITE_QUERY_STALE_TIME_MS=1000
 Runtime Control API의 source of truth는 OpenAPI 문서입니다.
 
 ```text
-docs/runtime/macos/runtime-control.openapi.json
+docs/runtime/runtime-control.openapi.json
 ```
 
 생성된 TypeScript type은 아래에 위치합니다.

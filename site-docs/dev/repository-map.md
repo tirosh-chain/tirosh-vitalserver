@@ -151,7 +151,7 @@ Adapters/Inbound/RuntimeControlAPI/
 | HTTP 요청/응답 처리 | `Transport/`                                      |
 | 개발용 확인 화면    | `DevConsole/`                                     |
 | Product Lab route   | `Boundary/`와 `Contracts/Shared/RuntimeLabContracts.swift` |
-| OpenAPI 문서        | `docs/runtime/macos/runtime-control.openapi.json` |
+| OpenAPI 문서        | `docs/runtime/runtime-control.openapi.json` |
 
 주의할 점은 API가 상태를 새로 만들면 안 된다는 것입니다. API는 이미 읽은 runtime 상태, event, recorder/bed activity를 response로 전달합니다.
 

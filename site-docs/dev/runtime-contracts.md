@@ -211,7 +211,7 @@ PWA와 Helper app은 observer container나 Guest 내부를 직접 읽지 않습�
 
 | 문서 파일                                         | 역할                                     |
 | ------------------------------------------------- | ---------------------------------------- |
-| `docs/runtime/macos/runtime-control.openapi.json` | PWA/Helper app과 Host runtime 사이의 API |
+| `docs/runtime/runtime-control.openapi.json` | PWA/Helper app과 Host runtime 사이의 API |
 
 ### 7-3. Recorder Observer API
 

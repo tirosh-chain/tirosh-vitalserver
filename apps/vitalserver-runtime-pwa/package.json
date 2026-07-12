@@ -2,7 +2,7 @@
   "name": "@tirosh/vitalserver-runtime-pwa",
   "version": "0.2.0",
   "private": true,
-  "description": "PWA Runtime Control UI backed by the macOS Runtime Control API.",
+  "description": "PWA Runtime Control UI backed by the Runtime v2 API.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -11,7 +11,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
-    "generate:api": "openapi-typescript ../../docs/runtime/macos/runtime-control.openapi.json -o src/domain/runtime-control/contracts/generated/runtime-control.ts",
+    "generate:api": "openapi-typescript ../../docs/runtime/runtime-control.openapi.json -o src/domain/runtime-control/contracts/generated/runtime-control.ts",
     "verify:api": "node scripts/verify-runtime-control-api.mjs"
   },
   "dependencies": {

@@ -2442,7 +2442,6 @@ final class RuntimeControlAPITests: XCTestCase {
         let url = repoRoot
             .appendingPathComponent("docs")
             .appendingPathComponent("runtime")
-            .appendingPathComponent("macos")
             .appendingPathComponent("runtime-control.openapi.json")
         let data = try Data(contentsOf: url)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

@@ -3,7 +3,7 @@
   "info": {
     "title": "Tirosh VitalServer Runtime Control API",
     "version": "0.1.0",
-    "description": "Local Runtime Control API contract for the macOS helper transition path and upcoming PWA client."
+    "description": "Runtime Control API contract for the common PWA and platform adapters. Its owner-neutral read core is defined by docs/runtime/runtime-v2-route-manifest.json."
   },
   "servers": [
     {

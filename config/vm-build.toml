@@ -149,5 +149,5 @@ include = [
   { source = "docs/api/vitalserver.openapi.yaml", destination = "docs/openapi.yaml" },
   { source = "docs/api/recorder-ingress.openapi.yaml", destination = "docs/openapi/recorder-ingress.openapi.yaml" },
   { source = "docs/api/vitaldb-observer.openapi.yaml", destination = "docs/openapi/vitaldb-observer.openapi.yaml" },
-  { source = "docs/runtime/macos/runtime-control.openapi.json", destination = "docs/macos-runtime/runtime-control.openapi.json" },
+  { source = "docs/runtime/runtime-control.openapi.json", destination = "docs/macos-runtime/runtime-control.openapi.json" },
 ]

@@ -62,7 +62,7 @@ use Runtime Control API:
 
 OpenAPI for this container is maintained at
 `docs/openapi/vitaldb-observer.openapi.yaml`. Runtime Control API OpenAPI is
-maintained separately at `docs/macos-runtime/runtime-control.openapi.json`.
+maintained separately at `docs/runtime/runtime-control.openapi.json`.
 
 ## Configuration
 

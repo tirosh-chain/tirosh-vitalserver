@@ -236,7 +236,7 @@ services:
       URLS: >-
         [
           {"name":"VitalServer","url":"/docs/api/vitalserver.openapi.yaml"},
-          {"name":"Runtime Control API","url":"/docs/runtime/macos/runtime-control.openapi.json"},
+          {"name":"Runtime Control API","url":"/docs/runtime/runtime-control.openapi.json"},
           {"name":"Recorder Ingress","url":"/docs/api/recorder-ingress.openapi.yaml"},
           {"name":"VitalDB Observer","url":"/docs/api/vitaldb-observer.openapi.yaml"}
         ]

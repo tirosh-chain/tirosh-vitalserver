@@ -822,7 +822,7 @@ Shell은 installer/launchd wrapper로만 남깁니다. Bundle manifest parsing, 
 
 남은 제품화 항목은 아래입니다.
 
-Swagger UI는 VM guest deploy bundle의 `deploy/docs`를 읽어 multi-spec catalog를 제공합니다. 기본 포함 spec은 `api/vitalserver.openapi.yaml`(VitalServer), `runtime/macos/runtime-control.openapi.json` (Runtime Control API), `api/recorder-ingress.openapi.yaml`(Recorder Ingress API)입니다. 기존 `/swagger/openapi.yaml` 호환 경로는 유지합니다.
+Swagger UI는 VM guest deploy bundle의 `deploy/docs`를 읽어 multi-spec catalog를 제공합니다. 기본 포함 spec은 `api/vitalserver.openapi.yaml`(VitalServer), `runtime/runtime-control.openapi.json` (Runtime Control API), `api/recorder-ingress.openapi.yaml`(Recorder Ingress API)입니다. macOS bundle은 Runtime Control API를 기존 `/swagger/docs/macos-runtime/runtime-control.openapi.json` 경로에도 복사해 호환성을 유지합니다. 기존 `/swagger/openapi.yaml` 호환 경로는 유지합니다.
 
 | 항목 | 필요한 이유 |
 |---|---|

@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pwaRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(pwaRoot, "..", "..");
-const openapiPath = path.join(repoRoot, "docs", "runtime", "macos", "runtime-control.openapi.json");
+const openapiPath = path.join(repoRoot, "docs", "runtime", "runtime-control.openapi.json");
 const generatedPath = path.join(
   pwaRoot,
   "src",

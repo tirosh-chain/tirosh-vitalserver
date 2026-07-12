@@ -181,7 +181,7 @@ def check_platform_state_is_canonical_independent_resource() -> CheckResult:
     pwa_client = read(
         PWA / "src/infrastructure/console-api/runtimeControlApiClient.ts"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     openapi = json.loads(read(openapi_path))
     paths = openapi.get("paths", {})
     schemas = openapi.get("components", {}).get("schemas", {})
@@ -334,7 +334,7 @@ def check_platform_and_runtime_capabilities_have_separate_owners() -> CheckResul
         PWA / "src/infrastructure/console-api/runtimeControlApiClient.ts"
     )
     openapi = json.loads(
-        read(ROOT / "docs/runtime/macos/runtime-control.openapi.json")
+        read(ROOT / "docs/runtime/runtime-control.openapi.json")
     )
     paths = openapi.get("paths", {})
     schemas = openapi.get("components", {}).get("schemas", {})
@@ -398,7 +398,7 @@ def check_platform_and_runtime_namespaces_are_canonical() -> CheckResult:
         / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
         / "RuntimeControlAPIEndpointRouting.swift"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     pwa_client_path = PWA / "src/infrastructure/console-api/runtimeControlApiClient.ts"
     texts = {
         relative(endpoint_path): read(endpoint_path),
@@ -659,7 +659,7 @@ def check_runtime_container_observation_does_not_expose_compose_services(
             PWA
             / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
         ),
-        ROOT / "docs/runtime/macos/runtime-control.openapi.json",
+        ROOT / "docs/runtime/runtime-control.openapi.json",
     ]
     forbidden = [
         "public struct RuntimeContainerObservation",
@@ -840,8 +840,8 @@ def check_runtime_status_surfaces_use_explicit_installation_state() -> CheckResu
         relative(PWA / "src/pages/advanced/AdvancedPage.tsx"): read(
             PWA / "src/pages/advanced/AdvancedPage.tsx"
         ),
-        relative(ROOT / "docs/runtime/macos/runtime-control.openapi.json"): read(
-            ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+        relative(ROOT / "docs/runtime/runtime-control.openapi.json"): read(
+            ROOT / "docs/runtime/runtime-control.openapi.json"
         ),
         relative(ROOT / "docs/runtime/macos/runtime-control-api.md"): read(
             ROOT / "docs/runtime/macos/runtime-control-api.md"
@@ -865,11 +865,11 @@ def check_runtime_status_surfaces_use_explicit_installation_state() -> CheckResu
             "const runtimeInstallationState = status?.runtimeInstallationState",
         ),
         (
-            "docs/runtime/macos/runtime-control.openapi.json",
+            "docs/runtime/runtime-control.openapi.json",
             "\"runtimeInstallationState\"",
         ),
         (
-            "docs/runtime/macos/runtime-control.openapi.json",
+            "docs/runtime/runtime-control.openapi.json",
             "Explicit Platform Agent runtime installation state.",
         ),
         (
@@ -1212,7 +1212,7 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
         MACOS_RUNTIME
         / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     checked = [
         read_worker_path,
         operation_resource_reader_path,
@@ -1609,7 +1609,7 @@ def check_runtime_event_contract_has_no_container_observation() -> CheckResult:
         / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts",
         PWA
         / "src/domain/runtime-control/contracts/generated/runtime-control.ts",
-        ROOT / "docs/runtime/macos/runtime-control.openapi.json",
+        ROOT / "docs/runtime/runtime-control.openapi.json",
     ]
     forbidden = [
         "containerObservation",
@@ -1937,7 +1937,7 @@ def check_runtime_progress_artifact_sink_is_write_only(
         docs_runtime_macos / "state-machine-traceability.md": [
             "support/export workflow progress artifact",
         ],
-        docs_runtime_macos / "runtime-control.openapi.json": [
+        ROOT / "docs/runtime/runtime-control.openapi.json": [
             "lease owner may persist through a transitional local artifact",
         ],
     }
@@ -4487,7 +4487,7 @@ def check_product_surfaces_do_not_expose_dev_testkit() -> CheckResult:
         MACOS_RUNTIME / "Sources/Adapters/Inbound/RuntimeControlAPI",
         PWA / "src",
         PWA / "vite.config.ts",
-        ROOT / "docs/runtime/macos/runtime-control.openapi.json",
+        ROOT / "docs/runtime/runtime-control.openapi.json",
     ]
     matches = find_tokens(scan_roots, ["/dev/testkit", "RuntimeTestKit"])
     if existing or matches:
@@ -4514,7 +4514,7 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary"
         / "RuntimeControlClientAPIReadHandler.swift"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     swift_capabilities_path = (
         MACOS_RUNTIME
         / "Sources/Contracts/RuntimeControl/RuntimeControlModels.swift"
@@ -5073,7 +5073,7 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
         MACOS_RUNTIME
         / "Tests/InboundAdaptersTests/RuntimeControlAPI/RuntimeControlAPITests.swift"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     pwa_types_path = (
         PWA
         / "src/domain/runtime-control/contracts/runtimeControlTypes.ts"
@@ -5718,7 +5718,7 @@ def check_runtime_control_http_does_not_expose_whole_stack_start_stop(
             / "Sources/Adapters/Inbound/MacControlPanel/Presentation/Views"
         ),
         PWA / "src",
-        ROOT / "docs/runtime/macos/runtime-control.openapi.json",
+        ROOT / "docs/runtime/runtime-control.openapi.json",
         ROOT / "docs/pwa/parity.md",
     ]
     forbidden = [
@@ -7648,7 +7648,7 @@ def check_runtime_command_result_preserves_explicit_execution_evidence() -> Chec
         PWA
         / "src/domain/runtime-control/contracts/generated/runtime-control.ts"
     )
-    openapi = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi = ROOT / "docs/runtime/runtime-control.openapi.json"
     texts = {
         relative(swift_read_models): read(swift_read_models),
         relative(swift_contract_tests): read(swift_contract_tests),
@@ -8613,7 +8613,7 @@ def check_runtime_status_contract_has_no_vitaldb_observation() -> CheckResult:
         / "src/domain/runtime-control/contracts/generated"
         / "runtime-control.ts"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
 
     checks = {
         relative(swift_status_path): [
@@ -9380,7 +9380,7 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
     update_shutdown_troubleshooting_path = (
         ROOT / "docs/troubleshooting/061_update-shutdown-service-failed-without-result.md"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     operations_text = read(operations_path)
     runtime_lifecycle_text = read(runtime_lifecycle_path)
     bundle_text = read(bundle_path)
@@ -9982,7 +9982,7 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
         / "Sources/Hosts/CLI/ProcessBoundary"
         / "VirtualMachineTerminationHandler.swift"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     api_docs_path = ROOT / "docs/runtime/macos/runtime-control-api.md"
     guest_control_docs_path = ROOT / "docs/runtime/macos/runtime-guest-control.md"
     texts = {
@@ -10206,7 +10206,7 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
         MACOS_RUNTIME
         / "Tests/OutboundAdaptersTests/RuntimeControlAPIGuestAddressOwnerTests.swift"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     api_docs_path = ROOT / "docs/runtime/macos/runtime-control-api.md"
     guest_control_docs_path = ROOT / "docs/runtime/macos/runtime-guest-control.md"
     vm_ip_troubleshooting_path = ROOT / "docs/troubleshooting/017_vm-ip-waiting-bootstrap.md"
@@ -10420,7 +10420,7 @@ def check_recorder_ingress_status_read_result_preserves_explicit_read_contract()
         PWA
         / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.test.ts"
     )
-    openapi = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi = ROOT / "docs/runtime/runtime-control.openapi.json"
     texts = {
         relative(swift_contract): read(swift_contract),
         relative(swift_contract_tests): read(swift_contract_tests),
@@ -10604,7 +10604,7 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         PWA
         / "src/domain/runtime-control/contracts/generated/runtime-control.ts"
     )
-    openapi = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi = ROOT / "docs/runtime/runtime-control.openapi.json"
     guest_postgres_repository = (
         GUEST_TOOLS
         / "src/tirosh_guest_tools/adapters/outbound/postgres/operation_repository.py"
@@ -10879,7 +10879,7 @@ def check_recorder_ingress_status_is_guest_control_only() -> CheckResult:
         MACOS_RUNTIME / "Sources/Bootstrap",
         MACOS_RUNTIME / "Tests/MacControlPanelHostTests",
         PWA / "src",
-        ROOT / "docs/runtime/macos/runtime-control.openapi.json",
+        ROOT / "docs/runtime/runtime-control.openapi.json",
     ]
     forbidden = [
         "RuntimeRecorderIngressHTTPStatusReadProvider",
@@ -11085,7 +11085,7 @@ def check_vitaldb_beds_use_explicit_bed_read_document() -> CheckResult:
         MACOS_RUNTIME
         / "Tests/RuntimeControlTests/RuntimeControlContractsTests.swift"
     )
-    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    openapi_path = ROOT / "docs/runtime/runtime-control.openapi.json"
     route_text = read(read_routes)
     page_text = read(beds_page)
     types_text = read(runtime_control_types)
