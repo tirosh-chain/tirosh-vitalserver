@@ -592,6 +592,31 @@ describe("runtime console pages", () => {
     expect(hooks.useRuntimeEvents).toHaveBeenCalled();
   });
 
+  it("does not present an unknown paged runtime event total as exact", () => {
+    hooks.useRuntimeEvents.mockReturnValue(query({
+      ...events(),
+      nextCursor: "guest-ledger-page-2",
+      matchingCount: null
+    }));
+
+    renderPage(<ObservabilityPage />);
+
+    expect(screen.getAllByText("2 shown · more available")).toHaveLength(2);
+    expect(screen.queryByText("2 events")).not.toBeInTheDocument();
+  });
+
+  it("does not present an unavailable runtime event total as exact", () => {
+    hooks.useRuntimeEvents.mockReturnValue(query({
+      ...events(),
+      matchingCount: null
+    }));
+
+    renderPage(<ObservabilityPage />);
+
+    expect(screen.getAllByText("2 shown · total unavailable")).toHaveLength(2);
+    expect(screen.queryByText("2 events")).not.toBeInTheDocument();
+  });
+
   it("keeps observability read failures distinct from empty data", () => {
     hooks.useLatestVitalDBObservation.mockReturnValue(query({
       state: "failed",

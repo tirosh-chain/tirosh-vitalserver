@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -17,6 +19,7 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control.mappings import (
     operation_from_document,
     service_status_from_document,
 )
+from tirosh_guest_tools.application.guest_control.ports import ServiceControlPort
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
     GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
@@ -163,6 +166,11 @@ def test_sqlite_control_store_records_operation_event_and_lease_atomically(
         "completed",
         "running",
         "accepted",
+    ]
+    assert [event["eventType"] for event in events["events"]] == [
+        "operation-completed",
+        "operation-running",
+        "operation-accepted",
     ]
     assert table_count(database, "active_operation_leases") == 0
 
@@ -322,6 +330,82 @@ def test_sqlite_control_store_rejects_transition_without_matching_lease(
     assert persisted.state == OperationState.ACCEPTED
 
 
+@pytest.mark.parametrize("field", ["service", "command", "created_at"])
+def test_sqlite_control_store_rejects_transition_that_changes_immutable_operation(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    database = tmp_path / "control.sqlite"
+    repository = SQLiteControlRepository(database)
+    repository.migrate_schema()
+    accepted = operation()
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+    running = start_operation(
+        accepted,
+        now=datetime(2026, 7, 1, 0, 0, 1, tzinfo=UTC),
+    )
+
+    if field == "service":
+        invalid_transition = replace(running, service="redis")
+    elif field == "command":
+        invalid_transition = replace(running, command=ServiceCommand.START)
+    else:
+        invalid_transition = replace(
+            running,
+            created_at=datetime(2026, 7, 2, tzinfo=UTC),
+        )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.record_transition(invalid_transition)
+
+    assert error.value.kind == "operationTransitionInvalid"
+    assert repository.get(accepted.operation_id) == accepted
+    assert table_count(database, "service_operation_events") == 1
+    assert table_count(database, "active_operation_leases") == 1
+
+
+def test_sqlite_control_store_rejects_transition_that_skips_persisted_state(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.sqlite"
+    repository = SQLiteControlRepository(database)
+    repository.migrate_schema()
+    accepted = operation()
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+    completed = replace(
+        accepted,
+        state=OperationState.COMPLETED,
+        updated_at=datetime(2026, 7, 1, 0, 0, 1, tzinfo=UTC),
+    )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.record_transition(completed)
+
+    assert error.value.kind == "operationTransitionInvalid"
+    assert repository.get(accepted.operation_id) == accepted
+    assert table_count(database, "service_operation_events") == 1
+    assert table_count(database, "active_operation_leases") == 1
+
+
+def test_sqlite_control_store_rejects_transition_with_stale_updated_at(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.sqlite"
+    repository = SQLiteControlRepository(database)
+    repository.migrate_schema()
+    accepted = operation()
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+    running = start_operation(accepted, now=accepted.updated_at)
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.record_transition(running)
+
+    assert error.value.kind == "operationTransitionInvalid"
+    assert repository.get(accepted.operation_id) == accepted
+    assert table_count(database, "service_operation_events") == 1
+    assert table_count(database, "active_operation_leases") == 1
+
+
 def test_sqlite_control_store_lists_only_unfinished_operations(tmp_path: Path) -> None:
     repository = SQLiteControlRepository(tmp_path / "control.sqlite")
     repository.migrate_schema()
@@ -382,6 +466,42 @@ def test_sqlite_control_store_normalizes_offset_since_timestamp(tmp_path: Path) 
     ]
 
 
+def test_sqlite_control_store_filters_offset_events_by_utc_since(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteControlRepository(tmp_path / "control.sqlite")
+    repository.migrate_schema()
+    offset = timezone(timedelta(hours=9))
+    accepted = replace(
+        operation(),
+        created_at=datetime(2026, 7, 1, 9, tzinfo=offset),
+        updated_at=datetime(2026, 7, 1, 9, tzinfo=offset),
+    )
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+    running = start_operation(
+        accepted,
+        now=datetime(2026, 7, 1, 9, 1, tzinfo=offset),
+    )
+    repository.record_transition(running)
+
+    included = repository.query_events(
+        limit=10,
+        event_type=None,
+        since=datetime(2026, 7, 1, 0, 1, tzinfo=UTC),
+        cursor=None,
+    )
+    excluded = repository.query_events(
+        limit=10,
+        event_type=None,
+        since=datetime(2026, 7, 1, 0, 1, 1, tzinfo=UTC),
+        cursor=None,
+    )
+
+    assert [event["operationState"] for event in included["events"]] == ["running"]
+    assert included["events"][0]["timestamp"] == "2026-07-01T09:01:00+09:00"
+    assert excluded["events"] == []
+
+
 def test_sqlite_control_store_rejects_invalid_runtime_event_cursor(
     tmp_path: Path,
 ) -> None:
@@ -399,6 +519,23 @@ def test_sqlite_control_store_rejects_invalid_runtime_event_cursor(
     assert error.value.kind == "runtimeEventCursorInvalid"
 
 
+def test_sqlite_control_store_rejects_event_type_outside_public_contract(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteControlRepository(tmp_path / "control.sqlite")
+    repository.migrate_schema()
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.query_events(
+            limit=10,
+            event_type="operation-unknown",
+            since=None,
+            cursor=None,
+        )
+
+    assert error.value.kind == "runtimeEventQueryInvalid"
+
+
 def test_controller_restart_interrupts_unfinished_operation_and_releases_lease(
     tmp_path: Path,
 ) -> None:
@@ -413,7 +550,7 @@ def test_controller_restart_interrupts_unfinished_operation_and_releases_lease(
     )
     repository.record_transition(running)
     usecases = GuestControlUseCases(
-        service_control=UnusedServiceControl(),
+        service_control=cast(ServiceControlPort, UnusedServiceControl()),
         operations=repository,
         service_status_snapshots=repository,
         guest_service_resources=repository,
@@ -503,6 +640,98 @@ def test_sqlite_control_store_rejects_index_and_document_state_mismatch(
     assert error.value.kind == "controlOperationDocumentInvalid"
 
 
+def test_sqlite_control_store_accepts_offset_timestamps(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteControlRepository(tmp_path / "control.sqlite")
+    repository.migrate_schema()
+    offset_timestamp = datetime(
+        2026,
+        7,
+        1,
+        9,
+        tzinfo=timezone(timedelta(hours=9)),
+    )
+    accepted = replace(
+        operation(),
+        created_at=offset_timestamp,
+        updated_at=offset_timestamp,
+    )
+
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+
+    assert repository.get(accepted.operation_id) == accepted
+
+
+@pytest.mark.parametrize("field", ["created_at", "updated_at"])
+def test_sqlite_control_store_rejects_naive_operation_timestamp_on_persist(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    database = tmp_path / "control.sqlite"
+    repository = SQLiteControlRepository(database)
+    repository.migrate_schema()
+    if field == "created_at":
+        accepted = replace(operation(), created_at=datetime(2026, 7, 1))
+    else:
+        accepted = replace(operation(), updated_at=datetime(2026, 7, 1))
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.record_accepted(accepted, lease=lease_for(accepted))
+
+    assert error.value.kind == "controlOperationDocumentInvalid"
+    assert table_count(database, "service_operations") == 0
+
+
+def test_sqlite_control_store_rejects_naive_transition_timestamp_on_persist(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.sqlite"
+    repository = SQLiteControlRepository(database)
+    repository.migrate_schema()
+    accepted = operation()
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+    running = start_operation(
+        accepted,
+        now=datetime(2026, 7, 1, 0, 0, 1),
+    )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.record_transition(running)
+
+    assert error.value.kind == "controlOperationDocumentInvalid"
+    assert repository.get(accepted.operation_id) == accepted
+
+
+@pytest.mark.parametrize("timestamp_column", ["created_at", "updated_at"])
+def test_sqlite_control_store_rejects_timestamp_index_document_mismatch(
+    tmp_path: Path,
+    timestamp_column: str,
+) -> None:
+    database = tmp_path / "control.sqlite"
+    repository = SQLiteControlRepository(database)
+    repository.migrate_schema()
+    accepted = operation()
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            f"UPDATE service_operations SET {timestamp_column} = ? "
+            "WHERE operation_id = ?",
+            ("2026-07-01 00:00:59.000000", accepted.operation_id),
+        )
+    running = start_operation(
+        accepted,
+        now=datetime(2026, 7, 1, 0, 0, 1, tzinfo=UTC),
+    )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.record_transition(running)
+
+    assert error.value.kind == "controlOperationDocumentInvalid"
+    assert table_count(database, "service_operation_events") == 1
+    assert table_count(database, "active_operation_leases") == 1
+
+
 @pytest.mark.parametrize(
     ("event_column", "event_value", "document_update"),
     [
@@ -553,6 +782,51 @@ def test_sqlite_control_store_rejects_invalid_runtime_event_history(
         repository.query_events(limit=10, event_type=None, since=None, cursor=None)
 
     assert error.value.kind == "runtimeEventHistoryInvalid"
+
+
+@pytest.mark.parametrize(
+    "observed_at",
+    ["2026-07-01T00:00:01+00:00", "2026-07-01T00:00:01"],
+)
+def test_sqlite_control_store_rejects_tampered_event_document_timestamp(
+    tmp_path: Path,
+    observed_at: str,
+) -> None:
+    database = tmp_path / "control.sqlite"
+    repository = SQLiteControlRepository(database)
+    repository.migrate_schema()
+    accepted = operation()
+    repository.record_accepted(accepted, lease=lease_for(accepted))
+    with sqlite3.connect(database) as connection:
+        row = connection.execute(
+            "SELECT document FROM service_operation_events WHERE operation_id = ?",
+            (accepted.operation_id,),
+        ).fetchone()
+        assert row is not None
+        document = json.loads(str(row[0]))
+        document["observedAt"] = observed_at
+        connection.execute(
+            "UPDATE service_operation_events SET document = ? WHERE operation_id = ?",
+            (json.dumps(document), accepted.operation_id),
+        )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        repository.query_events(limit=10, event_type=None, since=None, cursor=None)
+
+    assert error.value.kind == "runtimeEventHistoryInvalid"
+
+
+@pytest.mark.parametrize("field", ["createdAt", "updatedAt"])
+def test_sqlite_control_mapping_rejects_naive_operation_document_timestamp(
+    field: str,
+) -> None:
+    document = operation().as_json()
+    document[field] = "2026-07-01T00:00:00"
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        operation_from_document(document)
+
+    assert error.value.kind == "controlOperationDocumentInvalid"
 
 
 def test_sqlite_control_mapping_rejects_invalid_optional_failure_field() -> None:

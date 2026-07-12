@@ -442,6 +442,29 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(openAPIEventTypes, swiftEventTypes)
     }
 
+    func testRuntimeEventsOpenAPIPreservesGuestLedgerFailureContract() throws {
+        let operation = try XCTUnwrap(try openAPIOperations()["GET /runtime/events"])
+        let parameters = try XCTUnwrap(operation["parameters"] as? [[String: Any]])
+        let since = try XCTUnwrap(parameters.first { $0["name"] as? String == "since" })
+        let sinceSchema = try XCTUnwrap(since["schema"] as? [String: Any])
+        let sinceDescription = try XCTUnwrap(sinceSchema["description"] as? String)
+        let responses = try XCTUnwrap(operation["responses"] as? [String: Any])
+        let unavailable = try XCTUnwrap(responses["503"] as? [String: Any])
+        let content = try XCTUnwrap(unavailable["content"] as? [String: Any])
+        let json = try XCTUnwrap(content["application/json"] as? [String: Any])
+        let errorSchema = try XCTUnwrap(json["schema"] as? [String: Any])
+
+        XCTAssertTrue(sinceDescription.contains("explicit UTC designator"))
+        XCTAssertEqual(
+            errorSchema["$ref"] as? String,
+            "#/components/schemas/RuntimeControlErrorResponse"
+        )
+        XCTAssertEqual(
+            try openAPIStringEnum(named: "RuntimeControlAPIErrorCode"),
+            RuntimeControlAPIErrorCode.allCases.map(\.rawValue)
+        )
+    }
+
     func testGuestControlOperationOpenAPIEnumsMatchSwiftContract() throws {
         let openAPICommands = try openAPIStringEnum(
             schemaName: "RuntimeGuestControlServiceOperation",
@@ -1800,6 +1823,24 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(response.status, .badRequest)
         XCTAssertEqual(error.code, .badRequest)
         XCTAssertEqual(error.message, "runtime event history cursor is invalid")
+    }
+
+    @MainActor
+    func testRuntimeEventsEndpointPreservesGuestLedgerFailureAsServiceUnavailable() async throws {
+        let client = FakeRuntimeControlClient()
+        client.runtimeOperationEventError = RuntimeGuestOperationEventHistoryUnavailableError(
+            detail: "Guest operation event ledger is unavailable"
+        )
+        let router = RuntimeControlAPIRouter(
+            handler: RuntimeControlClientAPIReadHandler(client: client)
+        )
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events"))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .serviceUnavailable)
+        XCTAssertEqual(error.code, .guestControlUnavailable)
+        XCTAssertEqual(error.message, "Guest operation event ledger is unavailable")
     }
 
     @MainActor

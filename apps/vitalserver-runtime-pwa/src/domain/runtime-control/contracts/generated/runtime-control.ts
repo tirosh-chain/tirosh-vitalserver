@@ -2122,9 +2122,9 @@ export interface components {
         };
         RuntimeEventHistory: {
             events: components["schemas"]["RuntimeEventDocument"][];
-            /** @description Opaque pagination cursor for the next page. Omitted or null when there is no next page. */
+            /** @description Opaque pagination cursor for the next page. Explicit null when there is no next page. */
             nextCursor: string | null;
-            /** @description Total number of events matching the query before applying limit pagination. */
+            /** @description Total number of events matching the query before applying limit pagination. Explicit null when the Guest ledger cannot compute a total. */
             matchingCount: number | null;
         };
         RuntimeEventDocument: {
@@ -2499,7 +2499,7 @@ export interface components {
             message?: string;
         };
         /** @enum {string} */
-        RuntimeControlAPIErrorCode: "badRequest" | "routeNotFound" | "methodNotAllowed" | "unauthorized" | "endpointNotImplemented" | "operationInProgress" | "handlerFailed";
+        RuntimeControlAPIErrorCode: "badRequest" | "routeNotFound" | "resourceNotFound" | "methodNotAllowed" | "unauthorized" | "endpointNotImplemented" | "platformAffordanceUnavailable" | "operationInProgress" | "guestControlUnavailable" | "handlerFailed";
         RuntimeControlFileReference: {
             /** @enum {string} */
             kind?: "localPath" | "uploadedArtifact" | "remoteURL";
@@ -3391,6 +3391,15 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            /** @description Guest Runtime Controller operation ledger is unavailable. Runtime Control preserves the Guest dependency failure as guestControlUnavailable and does not substitute Host diagnostics. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeControlErrorResponse"];
+                };
+            };
         };
     };
     refreshRuntimeHealth: {

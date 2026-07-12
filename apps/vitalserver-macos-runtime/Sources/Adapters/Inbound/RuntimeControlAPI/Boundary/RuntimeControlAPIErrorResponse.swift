@@ -28,6 +28,13 @@ enum RuntimeControlHTTPErrorResponseMapper {
                 message: guestQueryError.localizedDescription
             )
         }
+        if let guestHistoryError = error as? RuntimeGuestOperationEventHistoryUnavailableError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .serviceUnavailable,
+                code: .guestControlUnavailable,
+                message: guestHistoryError.localizedDescription
+            )
+        }
         if let operationConflict = error as? RuntimeControlOperationInProgressError {
             return RuntimeControlHTTPResponseFactory.error(
                 status: .conflict,

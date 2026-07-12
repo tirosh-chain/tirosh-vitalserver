@@ -42,8 +42,8 @@ from tirosh_guest_tools.application.guest_control.runtime import (
 )
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
+    RUNTIME_OPERATION_EVENT_TYPES,
     GuestControlDependencyError,
-    OperationState,
     RedisRelayStatusContractError,
     ServiceNotFoundError,
     VitalDBReadModelDependencyError,
@@ -72,9 +72,6 @@ RUNTIME_V2_READ_CORE_ROUTES = (
     ("GET", "/runtime/capabilities"),
     ("GET", "/runtime/services"),
     ("GET", "/runtime/stack"),
-)
-RUNTIME_OPERATION_EVENT_TYPES = frozenset(
-    f"operation-{state.value}" for state in OperationState
 )
 RUNTIME_EVENT_QUERY_ERROR_KINDS = frozenset(
     {"runtimeEventCursorInvalid", "runtimeEventQueryInvalid"}
@@ -590,14 +587,14 @@ def route_request(
         return HTTPStatus.OK, usecases.get_vitaldb_relationships()
 
     if method == "GET" and len(parts) == 3 and parts[:2] == ["runtime", "operations"]:
-        operation = usecases.get_operation(parts[2])
-        if operation is None:
+        requested_operation = usecases.get_operation(parts[2])
+        if requested_operation is None:
             raise GuestControlAPIError(
                 HTTPStatus.NOT_FOUND,
                 detail=f"operation is not available: {parts[2]}",
                 code="operationNotFound",
             )
-        return HTTPStatus.OK, operation.as_json()
+        return HTTPStatus.OK, requested_operation.as_json()
 
     raise GuestControlAPIError(
         HTTPStatus.NOT_FOUND,

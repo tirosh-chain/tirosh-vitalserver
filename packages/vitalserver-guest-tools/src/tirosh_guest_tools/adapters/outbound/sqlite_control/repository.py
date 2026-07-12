@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import stat
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -18,8 +18,10 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control.mappings import (
     guest_service_resource_record_document,
     operation_event_from_record,
     operation_from_record,
+    operation_index_timestamps,
     operation_record_from_domain,
     parse_document,
+    sqlite_utc_naive_timestamp,
     update_operation_record,
 )
 from tirosh_guest_tools.adapters.outbound.sqlite_control.migrations import (
@@ -38,6 +40,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
     TERMINAL_OPERATION_STATES,
     GuestControlDependencyError,
+    GuestControlPolicyError,
     GuestServiceResource,
     OperationEvent,
     OperationLease,
@@ -46,7 +49,12 @@ from tirosh_guest_tools.domain.guest_control.models import (
     RedisRelayStatusContractError,
     ServiceOperation,
     ServiceStatus,
+    operation_state_for_runtime_event_type,
+    runtime_operation_event_type_for_state,
     validate_redis_relay_status_document,
+)
+from tirosh_guest_tools.domain.guest_control.operation_policy import (
+    ensure_valid_operation_transition,
 )
 
 SQLITE_BUSY_TIMEOUT_MILLISECONDS = 5_000
@@ -171,6 +179,9 @@ class SQLiteControlRepository:
         operation: ServiceOperation,
     ) -> None:
         def write(session: Session) -> None:
+            # Validate both public timestamps before transition policy compares
+            # them to the persisted, explicitly-aware document values.
+            operation_index_timestamps(operation)
             record = session.get(ServiceOperationRecord, operation.operation_id)
             if record is None:
                 raise GuestControlDependencyError(
@@ -178,6 +189,14 @@ class SQLiteControlRepository:
                     f"operationId={operation.operation_id}",
                     kind="operationStateMissing",
                 )
+            persisted_operation = operation_from_record(record)
+            try:
+                ensure_valid_operation_transition(persisted_operation, operation)
+            except GuestControlPolicyError as error:
+                raise GuestControlDependencyError(
+                    f"control operation transition is invalid: {error}",
+                    kind="operationTransitionInvalid",
+                ) from error
             lease = session.scalar(
                 select(ActiveOperationLeaseRecord).where(
                     ActiveOperationLeaseRecord.operation_id == operation.operation_id
@@ -244,13 +263,13 @@ class SQLiteControlRepository:
         cursor: str | None,
     ) -> dict[str, Any]:
         cursor_id = runtime_event_cursor_id(cursor)
+        operation_state = _runtime_event_operation_state(event_type)
         if since is not None:
-            if since.tzinfo is None or since.utcoffset() is None:
-                raise GuestControlDependencyError(
-                    "runtime event history since timestamp must include a timezone",
-                    kind="runtimeEventQueryInvalid",
-                )
-            since = since.astimezone(UTC)
+            since = sqlite_utc_naive_timestamp(
+                since,
+                kind="runtimeEventQueryInvalid",
+                field="since",
+            )
         statement: Select[tuple[OperationEventRecord, ServiceOperationRecord]] = (
             select(OperationEventRecord, ServiceOperationRecord)
             .join(
@@ -261,9 +280,9 @@ class SQLiteControlRepository:
             .order_by(OperationEventRecord.event_id.desc())
             .limit(limit + 1)
         )
-        if event_type is not None:
+        if operation_state is not None:
             statement = statement.where(
-                OperationEventRecord.state == event_type.removeprefix("operation-")
+                OperationEventRecord.state == operation_state.value
             )
         if since is not None:
             statement = statement.where(OperationEventRecord.observed_at >= since)
@@ -522,7 +541,11 @@ def event_record_from_operation(operation: ServiceOperation) -> OperationEventRe
         operation_id=event.operation_id,
         state=event.state.value,
         document=canonical_json(event.as_json()),
-        observed_at=event.observed_at,
+        observed_at=sqlite_utc_naive_timestamp(
+            event.observed_at,
+            kind="runtimeEventHistoryInvalid",
+            field="observedAt",
+        ),
     )
 
 
@@ -532,11 +555,18 @@ def runtime_event_document(
 ) -> dict[str, Any]:
     event_document = operation_event_from_record(event)
     operation_document = operation_from_record(operation)
+    try:
+        event_type = runtime_operation_event_type_for_state(event_document.state)
+    except GuestControlPolicyError as error:
+        raise GuestControlDependencyError(
+            f"control runtime event state is not public: {error}",
+            kind="runtimeEventHistoryInvalid",
+        ) from error
     return {
         "schemaVersion": 1,
         "id": f"runtime-operation-event-{event.event_id}",
         "source": "runtime-controller",
-        "eventType": f"operation-{event_document.state.value}",
+        "eventType": event_type,
         "timestamp": event_document.observed_at.isoformat(),
         "operationId": event_document.operation_id,
         "operationService": operation_document.service,
@@ -593,6 +623,18 @@ def runtime_event_cursor_id(cursor: str | None) -> int | None:
             kind="runtimeEventCursorInvalid",
         )
     return value
+
+
+def _runtime_event_operation_state(event_type: str | None) -> OperationState | None:
+    if event_type is None:
+        return None
+    try:
+        return operation_state_for_runtime_event_type(event_type)
+    except GuestControlPolicyError as error:
+        raise GuestControlDependencyError(
+            f"runtime event history type is invalid: {error}",
+            kind="runtimeEventQueryInvalid",
+        ) from error
 
 
 def control_store_error(

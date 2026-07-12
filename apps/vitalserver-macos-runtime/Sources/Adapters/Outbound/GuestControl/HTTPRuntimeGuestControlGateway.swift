@@ -222,15 +222,24 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         do {
             return try decode(RuntimeOperationEventHistory.self, method: "GET", path: path)
         } catch let error as RuntimeGuestControlHTTPGatewayError {
-            if case .requestFailed(
+            switch error {
+            case .requestFailed(
                 statusCode: 400,
                 code: "queryParameterInvalid",
                 detail: let detail,
                 availableServices: _
-            ) = error {
+            ):
                 throw RuntimeGuestOperationEventQueryRejectedError(detail: detail)
+            case .requestFailed(
+                statusCode: 503,
+                code: _,
+                detail: let detail,
+                availableServices: _
+            ):
+                throw RuntimeGuestOperationEventHistoryUnavailableError(detail: detail)
+            default:
+                throw error
             }
-            throw error
         }
     }
 

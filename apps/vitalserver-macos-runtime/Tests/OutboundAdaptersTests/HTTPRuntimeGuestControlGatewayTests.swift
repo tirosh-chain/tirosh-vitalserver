@@ -773,6 +773,33 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         }
     }
 
+    func testRuntimeEventsMapsGuestLedgerUnavailableToApplicationBoundaryError() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 503,
+            body: """
+            {
+              "detail": "Guest operation event ledger is unavailable",
+              "code": "controlStoreUnavailable"
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        XCTAssertThrowsError(
+            try gateway.runtimeEvents(query: RuntimeOperationEventQuery())
+        ) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestOperationEventHistoryUnavailableError,
+                RuntimeGuestOperationEventHistoryUnavailableError(
+                    detail: "Guest operation event ledger is unavailable"
+                )
+            )
+        }
+    }
+
     func testHTTPConflictMapsToPublicOperationInProgressMeaning() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 409,

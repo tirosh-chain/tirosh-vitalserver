@@ -712,11 +712,33 @@ describe("runtime control contract schemas", () => {
     });
   });
 
-  it("requires runtime event history events", () => {
+  it("requires explicit runtime event history and pagination state", () => {
     expect(() =>
       runtimeEventHistorySchema.parse({
         nextCursor: null,
         matchingCount: 0
+      })
+    ).toThrow();
+
+    expect(() =>
+      runtimeEventHistorySchema.parse({
+        events: [],
+        matchingCount: null
+      })
+    ).toThrow();
+
+    expect(() =>
+      runtimeEventHistorySchema.parse({
+        events: [],
+        nextCursor: null
+      })
+    ).toThrow();
+
+    expect(() =>
+      runtimeEventHistorySchema.parse({
+        events: [],
+        nextCursor: null,
+        matchingCount: -1
       })
     ).toThrow();
 

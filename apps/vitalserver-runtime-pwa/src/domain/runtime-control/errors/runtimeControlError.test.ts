@@ -48,6 +48,26 @@ describe("runtime control error summaries", () => {
     });
   });
 
+  it("keeps a Guest control dependency failure distinct from a Host handler failure", () => {
+    expect(
+      summarizeRuntimeControlError(
+        new RuntimeControlAPIError(
+          "Guest ledger unavailable",
+          503,
+          JSON.stringify({
+            code: "guestControlUnavailable",
+            message: "Guest operation event ledger is unavailable"
+          })
+        )
+      )
+    ).toMatchObject({
+      kind: "api",
+      detail: "guestControlUnavailable: Guest operation event ledger is unavailable",
+      recovery:
+        "The Guest Runtime Controller cannot read its control ledger. Inspect Guest control storage and retry."
+    });
+  });
+
   it("summarizes contract validation failures", () => {
     expect(
       summarizeRuntimeControlError(

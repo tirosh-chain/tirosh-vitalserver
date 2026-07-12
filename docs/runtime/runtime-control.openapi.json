@@ -799,7 +799,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "description": "Inclusive ISO-8601 timestamp lower bound."
+              "description": "Inclusive ISO-8601 timestamp lower bound with an explicit UTC designator (Z) or numeric UTC offset. Timezone-less timestamps are rejected."
             }
           },
           {
@@ -828,6 +828,16 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "503": {
+            "description": "Guest Runtime Controller operation ledger is unavailable. Runtime Control preserves the Guest dependency failure as guestControlUnavailable and does not substitute Host diagnostics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeControlErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -5912,7 +5922,7 @@
               "string",
               "null"
             ],
-            "description": "Opaque pagination cursor for the next page. Omitted or null when there is no next page."
+            "description": "Opaque pagination cursor for the next page. Explicit null when there is no next page."
           },
           "matchingCount": {
             "type": [
@@ -5920,7 +5930,7 @@
               "null"
             ],
             "minimum": 0,
-            "description": "Total number of events matching the query before applying limit pagination."
+            "description": "Total number of events matching the query before applying limit pagination. Explicit null when the Guest ledger cannot compute a total."
           }
         }
       },
@@ -7580,10 +7590,13 @@
         "enum": [
           "badRequest",
           "routeNotFound",
+          "resourceNotFound",
           "methodNotAllowed",
           "unauthorized",
           "endpointNotImplemented",
+          "platformAffordanceUnavailable",
           "operationInProgress",
+          "guestControlUnavailable",
           "handlerFailed"
         ]
       },

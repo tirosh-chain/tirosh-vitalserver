@@ -1222,8 +1222,8 @@ export const runtimeEventDocumentSchema = z
 export const runtimeEventHistorySchema = z
   .object({
     events: z.array(runtimeEventDocumentSchema),
-    nextCursor: nullableString,
-    matchingCount: nullableNumber
+    nextCursor: requiredNullableString,
+    matchingCount: z.number().int().nonnegative().nullable()
   })
   .passthrough();
 

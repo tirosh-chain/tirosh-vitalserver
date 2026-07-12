@@ -24,7 +24,7 @@ public enum RuntimeControlAPIStreamCapability: String, Codable, Equatable, Senda
     case unsupported
 }
 
-public enum RuntimeControlAPIErrorCode: String, Codable, Equatable, Sendable {
+public enum RuntimeControlAPIErrorCode: String, CaseIterable, Codable, Equatable, Sendable {
     case badRequest
     case routeNotFound
     case resourceNotFound
@@ -33,6 +33,7 @@ public enum RuntimeControlAPIErrorCode: String, Codable, Equatable, Sendable {
     case endpointNotImplemented
     case platformAffordanceUnavailable
     case operationInProgress
+    case guestControlUnavailable
     case handlerFailed
 }
 

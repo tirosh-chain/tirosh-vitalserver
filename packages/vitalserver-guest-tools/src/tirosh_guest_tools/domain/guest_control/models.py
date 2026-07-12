@@ -70,6 +70,19 @@ class OperationState(StrEnum):
     INTERRUPTED = "interrupted"
 
 
+RUNTIME_OPERATION_EVENT_TYPE_BY_STATE = {
+    OperationState.ACCEPTED: "operation-accepted",
+    OperationState.RUNNING: "operation-running",
+    OperationState.COMPLETED: "operation-completed",
+    OperationState.FAILED: "operation-failed",
+    OperationState.CANCELLED: "operation-cancelled",
+    OperationState.INTERRUPTED: "operation-interrupted",
+}
+RUNTIME_OPERATION_EVENT_TYPES = frozenset(
+    RUNTIME_OPERATION_EVENT_TYPE_BY_STATE.values()
+)
+
+
 TERMINAL_OPERATION_STATES = {
     OperationState.COMPLETED,
     OperationState.FAILED,
@@ -323,6 +336,26 @@ class OperationLease:
 
 class GuestControlPolicyError(ValueError):
     pass
+
+
+def runtime_operation_event_type_for_state(
+    state: OperationState,
+) -> str:
+    try:
+        return RUNTIME_OPERATION_EVENT_TYPE_BY_STATE[state]
+    except KeyError as error:
+        raise GuestControlPolicyError(
+            f"operation state has no public runtime event type: {state.value}"
+        ) from error
+
+
+def operation_state_for_runtime_event_type(event_type: str) -> OperationState:
+    for state, candidate_event_type in RUNTIME_OPERATION_EVENT_TYPE_BY_STATE.items():
+        if candidate_event_type == event_type:
+            return state
+    raise GuestControlPolicyError(
+        f"runtime operation event type is invalid: {event_type}"
+    )
 
 
 class GuestControlDependencyError(RuntimeError):

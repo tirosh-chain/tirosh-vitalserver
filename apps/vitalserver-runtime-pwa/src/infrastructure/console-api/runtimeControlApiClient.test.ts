@@ -54,6 +54,27 @@ describe("RuntimeControlApiClient", () => {
     });
   });
 
+  it("preserves a Guest operation-ledger 503 response", async () => {
+    const { client } = clientWithResponses(
+      {
+        "/runtime/events": {
+          code: "guestControlUnavailable",
+          message: "Guest operation event ledger is unavailable"
+        }
+      },
+      503
+    );
+
+    await expect(client.getRuntimeEvents()).rejects.toMatchObject({
+      kind: "api",
+      status: 503,
+      body: JSON.stringify({
+        code: "guestControlUnavailable",
+        message: "Guest operation event ledger is unavailable"
+      })
+    });
+  });
+
   it("uses an opaque same-origin browser session instead of a shipped API token", async () => {
     const requests: RecordedRequest[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

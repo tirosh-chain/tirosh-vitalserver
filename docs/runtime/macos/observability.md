@@ -164,10 +164,10 @@ Runtime Control API는 정규화된 결과를 노출합니다.
 - `GET /runtime/events`: Guest Control `RuntimeOperationEventHistory` control-ledger contract. Host `runtime-events.jsonl`과 `runtime-observability.sqlite`는 이 API의 source나 successful fallback이 아닙니다.
   - `limit`: 1-500, 기본 100
   - `type`: `operation-accepted`, `operation-running`, `operation-completed`, `operation-failed`, `operation-cancelled`, `operation-interrupted` 중 하나
-  - `since`: ISO-8601 timestamp lower bound
+  - `since`: explicit `Z` 또는 numeric UTC offset을 포함한 ISO-8601 timestamp lower bound. timezone 없는 값은 `400`
   - `cursor`: Guest ledger가 반환한 opaque `nextCursor`를 그대로 전달
 
-Host proxy와 PWA는 cursor 형식을 해석하거나 재작성하지 않고 Guest token을 그대로 전달하며, 형식 검증은 Guest ledger의 책임이다.
+Host proxy와 PWA는 cursor 형식을 해석하거나 재작성하지 않고 Guest token을 그대로 전달하며, 형식 검증은 Guest ledger의 책임이다. Guest control ledger를 읽을 수 없으면 `/runtime/events`는 Guest failure message와 `guestControlUnavailable` code를 보존한 `503`을 반환하며, Host diagnostics event store를 fallback으로 사용하지 않습니다. `nextCursor`가 있거나 `matchingCount`가 `null`인 응답에서 PWA는 현재 page 수를 전체 event 수로 표시하지 않습니다.
 
 - `GET /runtime/vitaldb/observations/latest`: 최신 VitalDB observation snapshot
 - `GET /runtime/vitaldb/observations/stream`: long-lived SSE VitalDB observation snapshot stream

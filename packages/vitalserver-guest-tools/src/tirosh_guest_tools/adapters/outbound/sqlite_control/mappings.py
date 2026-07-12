@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from tirosh_guest_tools.adapters.outbound.sqlite_control.records import (
@@ -30,14 +30,15 @@ from tirosh_guest_tools.domain.runtime_observation import RuntimeResourceUsage
 
 
 def operation_record_from_domain(operation: ServiceOperation) -> ServiceOperationRecord:
+    created_at, updated_at = operation_index_timestamps(operation)
     return ServiceOperationRecord(
         operation_id=operation.operation_id,
         service=operation.service,
         command=operation.command.value,
         state=operation.state.value,
         document=canonical_json(operation.as_json()),
-        created_at=operation.created_at,
-        updated_at=operation.updated_at,
+        created_at=created_at,
+        updated_at=updated_at,
     )
 
 
@@ -45,12 +46,10 @@ def update_operation_record(
     record: ServiceOperationRecord,
     operation: ServiceOperation,
 ) -> None:
-    record.service = operation.service
-    record.command = operation.command.value
+    _, updated_at = operation_index_timestamps(operation)
     record.state = operation.state.value
     record.document = canonical_json(operation.as_json())
-    record.created_at = operation.created_at
-    record.updated_at = operation.updated_at
+    record.updated_at = updated_at
 
 
 def operation_from_record(record: ServiceOperationRecord) -> ServiceOperation:
@@ -62,12 +61,44 @@ def operation_from_record(record: ServiceOperationRecord) -> ServiceOperation:
         or operation.service != record.service
         or operation.command.value != record.command
         or operation.state.value != record.state
+        or not _sqlite_timestamp_matches_document(
+            record.created_at,
+            operation.created_at,
+            kind="controlOperationDocumentInvalid",
+            field="createdAt",
+        )
+        or not _sqlite_timestamp_matches_document(
+            record.updated_at,
+            operation.updated_at,
+            kind="controlOperationDocumentInvalid",
+            field="updatedAt",
+        )
     ):
         raise GuestControlDependencyError(
             "control operation document does not match its indexed record",
             kind="controlOperationDocumentInvalid",
         )
     return operation
+
+
+def _sqlite_timestamp_matches_document(
+    indexed_timestamp: datetime,
+    document_timestamp: datetime,
+    *,
+    kind: str,
+    field: str,
+) -> bool:
+    """Compare SQLite's UTC-naive index representation to the public document."""
+    return (
+        isinstance(indexed_timestamp, datetime)
+        and indexed_timestamp.tzinfo is None
+        and indexed_timestamp
+        == sqlite_utc_naive_timestamp(
+            document_timestamp,
+            kind=kind,
+            field=field,
+        )
+    )
 
 
 def operation_event_from_record(record: OperationEventRecord) -> OperationEvent:
@@ -82,7 +113,16 @@ def operation_event_from_record(record: OperationEventRecord) -> OperationEvent:
             "control runtime event document is invalid",
             kind="runtimeEventHistoryInvalid",
         ) from error
-    if event.operation_id != record.operation_id or event.state.value != record.state:
+    if (
+        event.operation_id != record.operation_id
+        or event.state.value != record.state
+        or not _sqlite_timestamp_matches_document(
+            record.observed_at,
+            event.observed_at,
+            kind="runtimeEventHistoryInvalid",
+            field="observedAt",
+        )
+    ):
         raise GuestControlDependencyError(
             "control runtime event document does not match its indexed record",
             kind="runtimeEventHistoryInvalid",
@@ -138,8 +178,16 @@ def operation_from_document(document: dict[str, Any]) -> ServiceOperation:
     try:
         command = ServiceCommand(required_string(document, "command"))
         state = OperationState(required_string(document, "state"))
-        created_at = datetime.fromisoformat(required_string(document, "createdAt"))
-        updated_at = datetime.fromisoformat(required_string(document, "updatedAt"))
+        created_at = required_aware_datetime(
+            document,
+            "createdAt",
+            kind="controlOperationDocumentInvalid",
+        )
+        updated_at = required_aware_datetime(
+            document,
+            "updatedAt",
+            kind="controlOperationDocumentInvalid",
+        )
     except (ValueError, TypeError) as error:
         raise GuestControlDependencyError(
             "control operation document has an invalid enum or timestamp",
@@ -172,7 +220,11 @@ def operation_event_from_document(document: dict[str, Any]) -> OperationEvent:
         )
     try:
         state = OperationState(required_string(document, "state"))
-        observed_at = datetime.fromisoformat(required_string(document, "observedAt"))
+        observed_at = required_aware_datetime(
+            document,
+            "observedAt",
+            kind="runtimeEventHistoryInvalid",
+        )
     except (ValueError, TypeError) as error:
         raise GuestControlDependencyError(
             "control runtime event has an invalid state or timestamp",
@@ -191,6 +243,70 @@ def operation_event_from_document(document: dict[str, Any]) -> OperationEvent:
         failure=failure,
         result=result,
     )
+
+
+def operation_index_timestamps(
+    operation: ServiceOperation,
+) -> tuple[datetime, datetime]:
+    """Map public operation times to SQLite's UTC-naive index representation."""
+    return (
+        sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="controlOperationDocumentInvalid",
+            field="createdAt",
+        ),
+        sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="controlOperationDocumentInvalid",
+            field="updatedAt",
+        ),
+    )
+
+
+def sqlite_utc_naive_timestamp(
+    timestamp: datetime,
+    *,
+    kind: str,
+    field: str,
+) -> datetime:
+    """Return the one timestamp representation permitted in SQLite indexes."""
+    return _require_aware_timestamp(timestamp, kind=kind, field=field).astimezone(
+        UTC
+    ).replace(tzinfo=None)
+
+
+def required_aware_datetime(
+    document: dict[str, Any],
+    field: str,
+    *,
+    kind: str,
+) -> datetime:
+    try:
+        timestamp = datetime.fromisoformat(required_string(document, field))
+    except (TypeError, ValueError) as error:
+        raise GuestControlDependencyError(
+            f"control document timestamp is invalid: {field}",
+            kind=kind,
+        ) from error
+    return _require_aware_timestamp(timestamp, kind=kind, field=field)
+
+
+def _require_aware_timestamp(
+    timestamp: datetime,
+    *,
+    kind: str,
+    field: str,
+) -> datetime:
+    if (
+        not isinstance(timestamp, datetime)
+        or timestamp.tzinfo is None
+        or timestamp.utcoffset() is None
+    ):
+        raise GuestControlDependencyError(
+            f"control timestamp must include a timezone: {field}",
+            kind=kind,
+        )
+    return timestamp
 
 
 def guest_service_resource_from_document(

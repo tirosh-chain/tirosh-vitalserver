@@ -454,11 +454,16 @@ type RuntimeEventsRead =
   | {
       state: "loaded";
       events: RuntimeEventDocument[];
+      nextCursor: string | null;
       matchingCount: number | null;
     };
 
 function runtimeEventsRead(query: {
-  data?: { events?: RuntimeEventDocument[]; matchingCount?: number | null };
+  data?: {
+    events?: RuntimeEventDocument[];
+    nextCursor?: string | null;
+    matchingCount?: number | null;
+  };
   error: unknown;
   isError: boolean;
   isPending: boolean;
@@ -469,24 +474,38 @@ function runtimeEventsRead(query: {
   if (query.isError) {
     return { state: "failed", error: query.error };
   }
-  if (!query.data || !Array.isArray(query.data.events)) {
+  if (
+    !query.data ||
+    !Array.isArray(query.data.events) ||
+    (typeof query.data.nextCursor !== "string" && query.data.nextCursor !== null) ||
+    (typeof query.data.matchingCount !== "number" && query.data.matchingCount !== null)
+  ) {
     return { state: "missing" };
   }
   return {
     state: "loaded",
     events: query.data.events,
-    matchingCount:
-      typeof query.data.matchingCount === "number" ? query.data.matchingCount : null
+    nextCursor: query.data.nextCursor,
+    matchingCount: query.data.matchingCount
   };
 }
 
 function formatRuntimeEventCount(read: RuntimeEventsRead): string {
   switch (read.state) {
     case "loaded":
-      if (read.matchingCount !== null && read.matchingCount !== read.events.length) {
+      if (
+        read.matchingCount !== null &&
+        (read.nextCursor !== null || read.matchingCount !== read.events.length)
+      ) {
         return `${read.events.length} shown · ${read.matchingCount} matching`;
       }
-      return `${read.events.length} events`;
+      if (read.matchingCount !== null) {
+        return `${read.events.length} events`;
+      }
+      if (read.nextCursor !== null) {
+        return `${read.events.length} shown · more available`;
+      }
+      return `${read.events.length} shown · total unavailable`;
     case "loading":
       return "Loading...";
     case "failed":

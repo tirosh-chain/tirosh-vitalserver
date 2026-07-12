@@ -68,6 +68,23 @@ public struct RuntimeGuestOperationEventQueryRejectedError: LocalizedError, Equa
     }
 }
 
+/// The Guest Controller could not read its operation-event ledger.
+///
+/// This application-boundary error retains the Guest dependency failure as a
+/// public service-unavailable result without exposing an outbound HTTP error to
+/// the inbound adapter.
+public struct RuntimeGuestOperationEventHistoryUnavailableError: LocalizedError, Equatable, Sendable {
+    public let detail: String
+
+    public init(detail: String) {
+        self.detail = detail
+    }
+
+    public var errorDescription: String? {
+        detail
+    }
+}
+
 public extension RuntimeGuestControlGateway {
     func ready() throws -> RuntimeGuestControlReadiness {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("ready")

@@ -277,6 +277,10 @@ function recoveryForStatus(status: number, code: string | undefined): string {
     return "This feature is not implemented by the current Helper build.";
   }
 
+  if (status === 503 && code === "guestControlUnavailable") {
+    return "The Guest Runtime Controller cannot read its control ledger. Inspect Guest control storage and retry.";
+  }
+
   if (status >= 500 || code === "handlerFailed") {
     return "Inspect runtime logs and retry after the current runtime operation completes.";
   }
