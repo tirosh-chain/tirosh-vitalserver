@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import Application
 import Contracts
 import RuntimeControl
 import InboundAdapters
@@ -852,11 +853,64 @@ final class RuntimeControlAPITests: XCTestCase {
             path: "/platform/runtime-provider/start"
         ))
         XCTAssertEqual(response.status, .ok)
+        let wireResponse = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(response.body)) as? [String: Any]
+        )
+        let wireProvider = try XCTUnwrap(wireResponse["provider"] as? [String: Any])
+        XCTAssertTrue(wireResponse["failure"] is NSNull)
+        XCTAssertTrue(wireProvider["document"] is NSNull)
+        XCTAssertEqual(
+            wireProvider["readError"] as? String,
+            "Runtime Provider lifecycle document missing"
+        )
         let result = try decode(RuntimeProviderCommandResponse.self, from: response)
         XCTAssertEqual(result.action, .start)
         XCTAssertEqual(result.state, .completed)
         XCTAssertEqual(result.provider, missing)
         XCTAssertNil(result.failure)
+    }
+
+    @MainActor
+    func testRouterEncodesRuntimeProviderLifecycleNullablesExplicitly() async throws {
+        let lifecycle = RuntimeVMLifecycleDocument(
+            state: .running,
+            startedAt: "2026-07-12T00:00:00Z",
+            updatedAt: "2026-07-12T00:00:01Z"
+        )
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler(
+            providerCommandResponse: RuntimeProviderCommandResponse(
+                operationId: "provider-restart-1",
+                action: .restart,
+                state: .completed,
+                provider: .loaded(lifecycle),
+                failure: nil
+            )
+        ))
+
+        let response = await router.route(.init(
+            method: .post,
+            path: "/platform/runtime-provider/restart"
+        ))
+        XCTAssertEqual(response.status, .ok)
+
+        let wireResponse = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(response.body)) as? [String: Any]
+        )
+        let wireProvider = try XCTUnwrap(wireResponse["provider"] as? [String: Any])
+        let wireLifecycle = try XCTUnwrap(wireProvider["document"] as? [String: Any])
+
+        XCTAssertTrue(wireResponse["failure"] is NSNull)
+        XCTAssertTrue(wireProvider["readError"] is NSNull)
+        for key in [
+            "operation",
+            "operationID",
+            "bootID",
+            "deadlineAt",
+            "terminalReason",
+            "message",
+        ] {
+            XCTAssertTrue(wireLifecycle[key] is NSNull, "Expected explicit null for \(key)")
+        }
     }
 
     @MainActor
@@ -1059,7 +1113,14 @@ final class RuntimeControlAPITests: XCTestCase {
             method: .post,
             path: "/platform/proxy/repair"
         )))
-        let repairDatastore = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/maintenance/datastore/repair")))
+        let repairDatastoreResponse = await router.route(.init(
+            method: .post,
+            path: "/runtime/maintenance/datastore/repair"
+        ))
+        let repairDatastore = try JSONDecoder().decode(
+            RuntimeGuestControlServiceOperation.self,
+            from: try XCTUnwrap(repairDatastoreResponse.body)
+        )
         let repairVMDisk = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/platform/runtime-provider/disk/repair")))
 
         XCTAssertEqual(applyResponse.status, .accepted)
@@ -1068,8 +1129,40 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(applyAdminPassword.command, .applyAdminPassword)
         XCTAssertEqual(repairRuntime.result.stdout, "repair runtime")
         XCTAssertEqual(repairProxy.result.stdout, "repair proxy")
-        XCTAssertEqual(repairDatastore.result.stdout, "repair datastore")
+        XCTAssertEqual(repairDatastoreResponse.status, .accepted)
+        XCTAssertEqual(repairDatastore.service, "datastore-repair")
+        XCTAssertEqual(repairDatastore.command, .repairDatastore)
+        XCTAssertEqual(repairDatastore.state, .completed)
         XCTAssertEqual(repairVMDisk.result.stdout, "repair vm disk")
+    }
+
+    @MainActor
+    func testRouterPreservesFailedGuestDatastoreRepairOperation() async throws {
+        let failure = RuntimeGuestControlOperationFailure(
+            kind: "datastore-repair-failed",
+            message: "redis append-only file repair failed"
+        )
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler(
+            datastoreRepairOperation: testDatastoreRepairOperation(
+                state: .failed,
+                failure: failure
+            )
+        ))
+
+        let response = await router.route(.init(
+            method: .post,
+            path: "/runtime/maintenance/datastore/repair"
+        ))
+        let operation = try JSONDecoder().decode(
+            RuntimeGuestControlServiceOperation.self,
+            from: try XCTUnwrap(response.body)
+        )
+
+        XCTAssertEqual(response.status, .accepted)
+        XCTAssertEqual(operation.service, "datastore-repair")
+        XCTAssertEqual(operation.command, .repairDatastore)
+        XCTAssertEqual(operation.state, .failed)
+        XCTAssertEqual(operation.failure, failure)
     }
 
     @MainActor
@@ -1386,7 +1479,11 @@ final class RuntimeControlAPITests: XCTestCase {
     @MainActor
     func testRuntimeControlClientReadHandlerAdaptsClientCommands() async throws {
         let client = FakeRuntimeControlClient()
-        let handler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
+        let handler = RuntimeControlClientAPIReadHandler(
+            client: client,
+            hostClient: client,
+            guestMaintenanceClient: client
+        )
 
         let repairRuntime = try await handler.repairRuntimeServices()
         let repairProxy = try await handler.repairProxy()
@@ -1397,7 +1494,9 @@ final class RuntimeControlAPITests: XCTestCase {
 
         XCTAssertEqual(repairRuntime.result.stdout, "repair runtime")
         XCTAssertEqual(repairProxy.result.stdout, "repair proxy")
-        XCTAssertEqual(repairDatastore.result.stdout, "repair datastore")
+        XCTAssertEqual(repairDatastore.service, "datastore-repair")
+        XCTAssertEqual(repairDatastore.command, .repairDatastore)
+        XCTAssertEqual(repairDatastore.state, .completed)
         XCTAssertEqual(repairVMDisk.result.stdout, "repair vm disk")
         XCTAssertEqual(createRedisBackup.result.stdout, "redis backup created")
         XCTAssertEqual(uninstall.result.stdout, "clean uninstall")
@@ -1463,6 +1562,21 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(client.acquiredOperationLeases, [lease])
         XCTAssertEqual(client.heartbeatOperationLeaseRequests.map(\.operationId), ["operation-1"])
         XCTAssertEqual(client.releasedOperationLeaseIDs, ["operation-1"])
+    }
+
+    @MainActor
+    func testRuntimeControlClientReadHandlerDoesNotTranslateGuestDatastoreRepairThroughHostClient() async throws {
+        let client = FakeRuntimeControlClient()
+        let handler = RuntimeControlClientAPIReadHandler(
+            client: client,
+            hostClient: client
+        )
+
+        try await XCTAssertThrowsPlatformAffordanceUnavailable(
+            "repairDatastore without a Guest maintenance operation client"
+        ) {
+            _ = try await handler.repairDatastore()
+        }
     }
 
     @MainActor
@@ -2898,6 +3012,21 @@ private func testRuntimeSettingsOperation() -> RuntimeGuestControlServiceOperati
     )
 }
 
+private func testDatastoreRepairOperation(
+    state: RuntimeGuestControlOperationState = .completed,
+    failure: RuntimeGuestControlOperationFailure? = nil
+) -> RuntimeGuestControlServiceOperation {
+    RuntimeGuestControlServiceOperation(
+        operationId: "datastore-repair-1",
+        service: "datastore-repair",
+        command: .repairDatastore,
+        state: state,
+        createdAt: "2026-07-01T00:00:00Z",
+        updatedAt: "2026-07-01T00:00:01Z",
+        failure: failure
+    )
+}
+
 private func testRuntimeOperationEvent() -> RuntimeOperationEventDocument {
     RuntimeOperationEventDocument(
         schemaVersion: 1,
@@ -2921,6 +3050,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     var guestAddressResource = RuntimeGuestAddressResourceState.missing()
     var vmLifecycleResource = RuntimeVMLifecycleResourceState.missing()
     var providerCommandResponse: RuntimeProviderCommandResponse?
+    var datastoreRepairOperation: RuntimeGuestControlServiceOperation?
     var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
     var redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
         readState: .notRead,
@@ -3215,8 +3345,8 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair proxy", stderr: ""))
     }
 
-    func repairDatastore() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair datastore", stderr: ""))
+    func repairDatastore() async throws -> RuntimeGuestControlServiceOperation {
+        datastoreRepairOperation ?? testDatastoreRepairOperation()
     }
 
     func repairVMDisk() async throws -> RuntimeControlCommandResponse {
@@ -3323,7 +3453,11 @@ private enum StubRuntimeControlAPIReadHandlerError: Error {
     case statusShouldNotBeLoaded
 }
 
-private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
+private final class FakeRuntimeControlClient:
+    RuntimeControlClient,
+    RuntimeHostClient,
+    RuntimeGuestMaintenanceOperationClient
+{
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
     var loadSettingsCount = 0
     var createRedisBackupCount = 0
@@ -3597,6 +3731,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func repairProxy() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "repair proxy", stderr: "")
+    }
+
+    func requestDatastoreRepair() async throws -> RuntimeGuestControlServiceOperation {
+        testDatastoreRepairOperation()
     }
 
     func repairDatastore() async throws -> RuntimeCommandResult {

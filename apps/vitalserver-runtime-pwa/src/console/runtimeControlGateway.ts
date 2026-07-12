@@ -37,6 +37,7 @@ import type {
   RuntimeRedisRelaySettingsApplyRequest,
   RuntimeVitalDBObservationSnapshot,
   RuntimeProductSettingsRead,
+  RuntimeProviderCommandResponse,
   PlatformState,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest,
@@ -151,8 +152,6 @@ export type RuntimeControlGateway = {
   ): Promise<RuntimeCommandResponse>;
   createRedisBackup(): Promise<RuntimeCommandResponse>;
   createRuntimeDataBackup(): Promise<RuntimeCommandResponse>;
-  repairRuntime(): Promise<RuntimeCommandResponse>;
-  repairProxy(proxyPort: number): Promise<RuntimeCommandResponse>;
-  repairDatastore(): Promise<RuntimeCommandResponse>;
-  repairVMDisk(): Promise<RuntimeCommandResponse>;
+  restartRuntimeProvider(): Promise<RuntimeProviderCommandResponse>;
+  repairDatastore(): Promise<RuntimeGuestControlServiceOperation>;
 };

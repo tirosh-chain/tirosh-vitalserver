@@ -29,14 +29,27 @@ public struct RuntimeGuestMaintenanceControlUseCase {
         )
     }
 
-    public func repairDatastore(
+    /// Requests Guest-owned datastore repair and preserves the Guest operation
+    /// state for API callers.
+    public func requestDatastoreRepair(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation {
         let operation = try gateway.repairDatastore()
-        return try validateOperation(
+        return try validateOperationIdentity(
             operation,
             expectedService: "datastore-repair",
             expectedCommand: .repairDatastore,
+            operationName: "guest datastore repair"
+        )
+    }
+
+    /// Retains fail-fast command semantics for native Host command consumers.
+    public func repairDatastore(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        let operation = try requestDatastoreRepair(gateway: gateway)
+        return try validateOperationResult(
+            operation,
             operationName: "guest datastore repair"
         )
     }
@@ -93,6 +106,24 @@ public struct RuntimeGuestMaintenanceControlUseCase {
         expectedCommand: RuntimeGuestControlServiceCommand,
         operationName: String
     ) throws -> RuntimeGuestControlServiceOperation {
+        let validatedOperation = try validateOperationIdentity(
+            operation,
+            expectedService: expectedService,
+            expectedCommand: expectedCommand,
+            operationName: operationName
+        )
+        return try validateOperationResult(
+            validatedOperation,
+            operationName: operationName
+        )
+    }
+
+    private func validateOperationIdentity(
+        _ operation: RuntimeGuestControlServiceOperation,
+        expectedService: String,
+        expectedCommand: RuntimeGuestControlServiceCommand,
+        operationName: String
+    ) throws -> RuntimeGuestControlServiceOperation {
         guard operation.service == expectedService else {
             throw RuntimeServiceControlError.operationFailed(
                 "\(operationName) returned mismatched service expected=\(expectedService) actual=\(operation.service)"
@@ -103,6 +134,13 @@ public struct RuntimeGuestMaintenanceControlUseCase {
                 "\(operationName) returned mismatched command command=\(operation.command.rawValue)"
             )
         }
+        return operation
+    }
+
+    private func validateOperationResult(
+        _ operation: RuntimeGuestControlServiceOperation,
+        operationName: String
+    ) throws -> RuntimeGuestControlServiceOperation {
         if operation.state == .failed {
             throw RuntimeServiceControlError.operationFailed(
                 failureMessage(operation, operationName: operationName)

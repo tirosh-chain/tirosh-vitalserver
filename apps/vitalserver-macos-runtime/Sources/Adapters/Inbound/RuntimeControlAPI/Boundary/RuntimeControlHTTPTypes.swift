@@ -142,7 +142,7 @@ public protocol RuntimeControlAPIReadHandler {
     func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation
     func repairRuntimeServices() async throws -> RuntimeControlCommandResponse
     func repairProxy() async throws -> RuntimeControlCommandResponse
-    func repairDatastore() async throws -> RuntimeControlCommandResponse
+    func repairDatastore() async throws -> RuntimeGuestControlServiceOperation
     func repairVMDisk() async throws -> RuntimeControlCommandResponse
     func createRedisBackup() async throws -> RuntimeControlCommandResponse
     func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse

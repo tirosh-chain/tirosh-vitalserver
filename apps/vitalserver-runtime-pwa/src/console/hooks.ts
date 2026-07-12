@@ -35,7 +35,6 @@ import {
   runtimeLabVitalFileUploadRequestSchema,
   runtimeLabVitalFileReplayRequestSchema,
   runtimeLogTextRequestSchema,
-  runtimeRepairProxyRequestSchema,
   vitalDBBedVisibilityRequestSchema,
   vitalDBRecorderVisibilityRequestSchema,
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas";
@@ -593,20 +592,10 @@ export function useRestoreRuntimeDataBackup() {
   );
 }
 
-export function useRepairRuntime() {
+export function useRestartRuntimeProvider() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => runtimeControlGateway.repairRuntime()
-  });
-}
-
-export function useRepairProxy() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useMutation({
-    mutationFn: (proxyPort: number) =>
-      runtimeControlGateway.repairProxy(
-        parseConsoleRequest(runtimeRepairProxyRequestSchema, { proxyPort }).proxyPort
-      )
+    mutationFn: () => runtimeControlGateway.restartRuntimeProvider()
   });
 }
 
@@ -614,13 +603,6 @@ export function useRepairDatastore() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
     mutationFn: () => runtimeControlGateway.repairDatastore()
-  });
-}
-
-export function useRepairVMDisk() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useMutation({
-    mutationFn: () => runtimeControlGateway.repairVMDisk()
   });
 }
 

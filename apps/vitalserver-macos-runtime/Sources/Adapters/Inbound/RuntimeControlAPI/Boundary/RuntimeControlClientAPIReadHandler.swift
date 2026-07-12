@@ -2,15 +2,22 @@ import Foundation
 import RuntimeControl
 import Contracts
 import Errors
+import Application
 
 @MainActor
 public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
     private let client: any RuntimeControlClient
     private let hostClient: (any RuntimeHostClient)?
+    private let guestMaintenanceClient: (any RuntimeGuestMaintenanceOperationClient)?
 
-    public init(client: any RuntimeControlClient, hostClient: (any RuntimeHostClient)? = nil) {
+    public init(
+        client: any RuntimeControlClient,
+        hostClient: (any RuntimeHostClient)? = nil,
+        guestMaintenanceClient: (any RuntimeGuestMaintenanceOperationClient)? = nil
+    ) {
         self.client = client
         self.hostClient = hostClient
+        self.guestMaintenanceClient = guestMaintenanceClient
     }
 
     public func loadPlatformCapabilities() async throws -> PlatformCapabilities {
@@ -268,11 +275,11 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         return RuntimeControlCommandResponse(result: try await hostClient.repairProxy())
     }
 
-    public func repairDatastore() async throws -> RuntimeControlCommandResponse {
-        guard let hostClient else {
+    public func repairDatastore() async throws -> RuntimeGuestControlServiceOperation {
+        guard let guestMaintenanceClient else {
             throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }
-        return RuntimeControlCommandResponse(result: try await hostClient.repairDatastore())
+        return try await guestMaintenanceClient.requestDatastoreRepair()
     }
 
     public func repairVMDisk() async throws -> RuntimeControlCommandResponse {

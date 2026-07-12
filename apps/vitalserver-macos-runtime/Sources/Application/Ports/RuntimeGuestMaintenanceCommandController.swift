@@ -10,6 +10,11 @@ public protocol RuntimeGuestMaintenanceCommandControlling: Sendable {
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation
 
+    /// Validates the Guest operation identity while preserving its reported state.
+    func requestDatastoreRepair(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+
     func repairDatastore(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation

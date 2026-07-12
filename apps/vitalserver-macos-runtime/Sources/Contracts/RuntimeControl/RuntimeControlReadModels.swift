@@ -105,6 +105,19 @@ public struct RuntimeVMLifecycleResourceState: Codable, Equatable, Sendable {
     public static func failed(readError: String) -> Self {
         Self(state: .failed, readError: readError)
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case document
+        case readError
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encodeExplicitOptional(document, forKey: .document)
+        try container.encodeExplicitOptional(readError, forKey: .readError)
+    }
 }
 
 public enum RuntimeProviderCommandAction: String, Codable, Equatable, Sendable {
@@ -147,6 +160,23 @@ public struct RuntimeProviderCommandResponse: Codable, Equatable, Sendable {
         self.state = state
         self.provider = provider
         self.failure = failure
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case operationId
+        case action
+        case state
+        case provider
+        case failure
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(operationId, forKey: .operationId)
+        try container.encode(action, forKey: .action)
+        try container.encode(state, forKey: .state)
+        try container.encode(provider, forKey: .provider)
+        try container.encodeExplicitOptional(failure, forKey: .failure)
     }
 }
 

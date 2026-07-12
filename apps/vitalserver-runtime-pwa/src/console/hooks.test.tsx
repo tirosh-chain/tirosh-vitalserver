@@ -34,9 +34,7 @@ import {
   useRedisRelayStatus,
   useLatestVitalDBObservation,
   useRepairDatastore,
-  useRepairProxy,
-  useRepairRuntime,
-  useRepairVMDisk,
+  useRestartRuntimeProvider,
   useRestartGuestService,
   useStartLabSession,
   useRollbackBackup,
@@ -239,15 +237,13 @@ describe("console hooks", () => {
       backup: { kind: "localPath", value: "/tmp/runtime-data" }
     });
 
-    await mutateHook(() => useRepairRuntime(), undefined, wrapper);
-    await mutateHook(() => useRepairProxy(), 18444, wrapper);
+    await mutateHook(() => useRestartRuntimeProvider(), undefined, wrapper);
     await mutateHook(() => useRepairDatastore(), undefined, wrapper);
-    await mutateHook(() => useRepairVMDisk(), undefined, wrapper);
     await mutateHook(() => useStartGuestService(), "app", wrapper);
     await mutateHook(() => useStopGuestService(), "app", wrapper);
     await mutateHook(() => useRestartGuestService(), "app", wrapper);
     await mutateHook(() => useUninstallRuntime(), true, wrapper);
-    expect(gateway.repairProxy).toHaveBeenCalledWith(18444);
+    expect(gateway.restartRuntimeProvider).toHaveBeenCalledWith();
     expect(gateway.startGuestService).toHaveBeenCalledWith({ service: "app" });
     expect(gateway.stopGuestService).toHaveBeenCalledWith({ service: "app" });
     expect(gateway.restartGuestService).toHaveBeenCalledWith({ service: "app" });
@@ -368,7 +364,6 @@ function createWrapper(gateway: GatewayMock) {
 }
 
 function createGateway(): GatewayMock {
-  const command = vi.fn().mockResolvedValue(commandResult);
   return {
     applyRuntimeAdminPassword: vi.fn().mockResolvedValue({
       operationId: "op_admin_1",
@@ -522,10 +517,10 @@ function createGateway(): GatewayMock {
     listRedisBackups: vi.fn().mockResolvedValue([]),
     listRuntimeDataBackups: vi.fn().mockResolvedValue([]),
     readLogs: vi.fn().mockResolvedValue({ text: "logs" }),
-    repairDatastore: command,
-    repairProxy: vi.fn().mockResolvedValue(commandResult),
-    repairRuntime: command,
-    repairVMDisk: command,
+    repairDatastore: vi.fn().mockResolvedValue(
+      guestServiceOperation("repair-datastore", "datastore-repair")
+    ),
+    restartRuntimeProvider: vi.fn().mockResolvedValue(runtimeProviderCommandResponse()),
     restoreRedisBackup: vi.fn().mockResolvedValue(commandResult),
     restoreRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     rollbackBackup: vi.fn().mockResolvedValue(commandResult),
@@ -574,6 +569,7 @@ function fullCapabilities() {
     canStreamLogs: true,
     canControlRuntimeServices: true,
     canControlGuestServices: true,
+    canRepairRuntimeDatastore: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
     canUseLab: true
@@ -581,7 +577,12 @@ function fullCapabilities() {
 }
 
 function platformCapabilities() {
-  const { canControlGuestServices: _, canUseLab: __, ...platform } = fullCapabilities();
+  const {
+    canControlGuestServices: _,
+    canUseLab: __,
+    canRepairRuntimeDatastore: ___,
+    ...platform
+  } = fullCapabilities();
   return platform;
 }
 
@@ -722,14 +723,31 @@ function platformWorkflowOperation(
   };
 }
 
-function guestServiceOperation(command: "start" | "stop" | "restart") {
+function guestServiceOperation(
+  command: "start" | "stop" | "restart" | "repair-datastore",
+  service = "app"
+) {
   return {
-    operationId: `${command}-app`,
-    service: "app",
+    operationId: `${command}-${service}`,
+    service,
     command,
     state: "completed" as const,
     createdAt: "2026-07-01T00:00:00+00:00",
     updatedAt: "2026-07-01T00:00:01+00:00",
+    failure: null
+  };
+}
+
+function runtimeProviderCommandResponse() {
+  return {
+    operationId: "provider-restart-1",
+    action: "restart" as const,
+    state: "completed" as const,
+    provider: {
+      state: "missing" as const,
+      document: null,
+      readError: null
+    },
     failure: null
   };
 }

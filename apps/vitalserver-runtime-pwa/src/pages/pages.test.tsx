@@ -39,9 +39,7 @@ const hooks = vi.hoisted(() => ({
   useResetLabRecorders: vi.fn(),
   useRedisBackups: vi.fn(),
   useRepairDatastore: vi.fn(),
-  useRepairProxy: vi.fn(),
-  useRepairRuntime: vi.fn(),
-  useRepairVMDisk: vi.fn(),
+  useRestartRuntimeProvider: vi.fn(),
   useRestartGuestService: vi.fn(),
   useRollbackBackup: vi.fn(),
   useRollbackRelease: vi.fn(),
@@ -904,10 +902,8 @@ describe("runtime console pages", () => {
     const startGuestService = pendingMutation();
     const stopGuestService = pendingMutation();
     const restartGuestService = pendingMutation();
-    const repairRuntime = pendingMutation();
+    const restartRuntimeProvider = pendingMutation();
     const repairDatastore = pendingMutation();
-    const repairVMDisk = pendingMutation();
-    const repairProxy = pendingMutation();
     hooks.useApplyRuntimeProductSettings.mockReturnValue(applySettings);
     hooks.useRollbackBackup.mockReturnValue(rollback);
     hooks.useCreateRedisBackup.mockReturnValue(createRedisBackup);
@@ -916,10 +912,8 @@ describe("runtime console pages", () => {
     hooks.useStartGuestService.mockReturnValue(startGuestService);
     hooks.useStopGuestService.mockReturnValue(stopGuestService);
     hooks.useRestartGuestService.mockReturnValue(restartGuestService);
-    hooks.useRepairRuntime.mockReturnValue(repairRuntime);
+    hooks.useRestartRuntimeProvider.mockReturnValue(restartRuntimeProvider);
     hooks.useRepairDatastore.mockReturnValue(repairDatastore);
-    hooks.useRepairVMDisk.mockReturnValue(repairVMDisk);
-    hooks.useRepairProxy.mockReturnValue(repairProxy);
 
     renderPage(<AdvancedPage />);
 
@@ -954,13 +948,8 @@ describe("runtime console pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Backup" }));
     fireEvent.click(screen.getByRole("row", { name: /runtime-data-a/ }));
     fireEvent.click(screen.getByRole("button", { name: "Restore Backup" }));
-    fireEvent.click(screen.getByRole("button", { name: "Repair Runtime" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart Runtime Provider" }));
     fireEvent.click(screen.getByRole("button", { name: "Repair Data Store" }));
-    fireEvent.click(screen.getByRole("button", { name: "Repair VM Disk" }));
-    fireEvent.change(screen.getByLabelText("Proxy port"), {
-      target: { value: "18444" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Repair Proxy" }));
     fireEvent.click(screen.getAllByRole("button", { name: "Start" })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "Stop" })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "Restart" })[0]);
@@ -975,13 +964,113 @@ describe("runtime console pages", () => {
     expect(createRedisBackup.mutate).toHaveBeenCalledWith("");
     expect(createRuntimeDataBackup.mutate).toHaveBeenCalledWith("");
     expect(restoreRuntimeDataBackup.mutate).toHaveBeenCalledWith("/tmp/runtime-data-a");
-    expect(repairRuntime.mutate).toHaveBeenCalled();
+    expect(restartRuntimeProvider.mutate).toHaveBeenCalled();
     expect(repairDatastore.mutate).toHaveBeenCalled();
-    expect(repairVMDisk.mutate).toHaveBeenCalled();
-    expect(repairProxy.mutate).toHaveBeenCalledWith(18444);
     expect(startGuestService.mutate).toHaveBeenCalledWith("app");
     expect(stopGuestService.mutate).toHaveBeenCalledWith("app");
     expect(restartGuestService.mutate).toHaveBeenCalledWith("app");
+  });
+
+  it("renders the selected Guest datastore result after a failed Runtime Provider restart", () => {
+    const providerFailure = {
+      operationId: "provider-restart-failed",
+      action: "restart" as const,
+      state: "failed" as const,
+      provider: {
+        state: "loaded" as const,
+        document: {
+          schemaVersion: 1,
+          state: "waiting-for-hypervisor",
+          operation: "restart",
+          operationID: "provider-restart-failed",
+          bootID: "boot-1",
+          startedAt: "2026-07-12T00:00:00Z",
+          updatedAt: "2026-07-12T00:00:01Z",
+          deadlineAt: null,
+          terminalReason: "hyperv-provider-exit",
+          message: "Hyper-V did not report a running VM"
+        },
+        readError: null
+      },
+      failure: {
+        kind: "launch-failed",
+        message: "Runtime Provider restart failed"
+      }
+    };
+    const datastoreRepair = {
+      operationId: "datastore-repair-1",
+      service: "datastore-repair",
+      command: "repair-datastore" as const,
+      state: "accepted" as const,
+      createdAt: "2026-07-12T00:00:00Z",
+      updatedAt: "2026-07-12T00:00:00Z",
+      failure: null
+    };
+    hooks.useRestartRuntimeProvider.mockReturnValue(mutation(providerFailure));
+    hooks.useRepairDatastore.mockReturnValue(mutation(datastoreRepair));
+
+    renderPage(<AdvancedPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart Runtime Provider" }));
+    expect(screen.getByText(/operationId: provider-restart-failed/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/failure: launch-failed Runtime Provider restart failed/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/provider lifecycle: waiting-for-hypervisor/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/provider terminal reason: hyperv-provider-exit/)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Repair Data Store" }));
+    expect(screen.getByText(/operationId: datastore-repair-1/)).toBeInTheDocument();
+    expect(screen.getByText(/service: datastore-repair/)).toBeInTheDocument();
+    expect(screen.queryByText(/operationId: provider-restart-failed/)).not.toBeInTheDocument();
+  });
+
+  it("keeps unsupported maintenance explicit and does not offer platform-specific repair routes", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({
+        ...capabilities(),
+        canControlRuntimeServices: false,
+        canRepairRuntimeDatastore: false
+      })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(
+      screen.getByRole("button", { name: "Restart Runtime Provider" })
+    ).toBeDisabled();
+    expect(
+      screen.getByText("Runtime Provider control is not supported by this Platform Agent.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Data store repair is not supported by this Runtime Controller.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Repair Data Store" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Repair Proxy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Repair VM Disk" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a maintenance capability read failure distinct from unsupported maintenance", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      failedQuery(new Error("runtime capability endpoint unavailable"))
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getByText("Failed to read control capabilities")).toBeInTheDocument();
+    expect(
+      screen.getByText("Runtime Provider control capability could not be read.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Data store repair capability could not be read.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Data store repair is not supported by this Runtime Controller.")
+    ).not.toBeInTheDocument();
   });
 
   it("does not read or enable backup resources without rollback capability", () => {
@@ -1434,9 +1523,7 @@ function setupDefaultHooks() {
     hooks.useHideVitalDBBeds,
     hooks.useHideVitalDBRecorders,
     hooks.useRepairDatastore,
-    hooks.useRepairProxy,
-    hooks.useRepairRuntime,
-    hooks.useRepairVMDisk,
+    hooks.useRestartRuntimeProvider,
     hooks.useRollbackRelease,
     hooks.useRestartGuestService,
     hooks.useRollbackBackup,
@@ -1509,6 +1596,7 @@ function capabilities() {
     canStreamLogs: true,
     canControlRuntimeServices: true,
     canControlGuestServices: true,
+    canRepairRuntimeDatastore: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
     canUseLab: true,
@@ -1517,7 +1605,6 @@ function capabilities() {
     canApplyRuntimeRedisRelaySettings: true,
     canApplySettings: true,
     canApplyRuntimeSettings: true,
-    canControlRecovery: true,
     canEditLocalFiles: true
   };
 }

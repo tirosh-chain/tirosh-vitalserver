@@ -7,6 +7,7 @@ import {
   platformOperationStateSchema,
   platformWorkflowOperationSchema,
   platformWorkflowResourceSchema,
+  runtimeProviderCommandResponseSchema,
   runtimeGuestControlStackStatusSchema,
   runtimeRedisRelayStatusReadResultSchema,
   runtimeRedisRelaySettingsReadSchema,
@@ -31,6 +32,7 @@ export type PlatformCapabilities =
 export type ControlCapabilities = PlatformCapabilities & {
   canControlGuestServices: boolean;
   canUseLab: boolean;
+  canRepairRuntimeDatastore: boolean;
   canApplyRuntimeProductSettings?: boolean;
   canApplyRuntimeAdminPassword?: boolean;
   canApplyRuntimeRedisRelaySettings?: boolean;
@@ -133,6 +135,10 @@ export type RuntimeUninstallRequest =
 
 export type RuntimeCommandResponse =
   components["schemas"]["RuntimeControlCommandResponse"];
+
+/** Explicit result of a Platform-owned Runtime Provider start, stop, or restart effect. */
+export type RuntimeProviderCommandResponse =
+  z.infer<typeof runtimeProviderCommandResponseSchema>;
 
 export type RuntimeUpdateBundleRequest =
   paths["/platform/update-bundles/summary"]["post"]["requestBody"]["content"]["application/json"];

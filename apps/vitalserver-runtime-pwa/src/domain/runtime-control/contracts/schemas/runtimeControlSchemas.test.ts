@@ -10,6 +10,7 @@ import {
   runtimeLogTextResponseSchema,
   platformOperationStateSchema,
   platformWorkflowOperationSchema,
+  runtimeProviderCommandResponseSchema,
   runtimeRedisRelayStatusReadResultSchema,
   platformStateSchema,
   runtimeSettingsSchema,
@@ -81,6 +82,83 @@ describe("runtime control contract schemas", () => {
         }
       })
     ).toThrow();
+  });
+
+  it("preserves explicit Runtime Provider command and resource states", () => {
+    const completed = {
+      operationId: "provider-restart-1",
+      action: "restart" as const,
+      state: "completed" as const,
+      provider: {
+        state: "loaded" as const,
+        document: {
+          schemaVersion: 1,
+          state: "running" as const,
+          operation: "restart",
+          operationID: "provider-restart-1",
+          bootID: "boot-1",
+          startedAt: "2026-07-01T00:00:00Z",
+          updatedAt: "2026-07-01T00:00:01Z",
+          deadlineAt: null,
+          terminalReason: null,
+          message: null
+        },
+        readError: null
+      },
+      failure: null
+    };
+
+    expect(runtimeProviderCommandResponseSchema.parse(completed)).toEqual(completed);
+    expect(
+      runtimeProviderCommandResponseSchema.parse({
+        ...completed,
+        state: "failed",
+        provider: { state: "missing", document: null, readError: "not created" },
+        failure: { kind: "permission-denied", message: "system service access denied" }
+      })
+    ).toMatchObject({ state: "failed", failure: { kind: "permission-denied" } });
+    expect(() =>
+      runtimeProviderCommandResponseSchema.parse({
+        ...completed,
+        state: "failed",
+        failure: null
+      })
+    ).toThrow();
+    expect(() =>
+      runtimeProviderCommandResponseSchema.parse({
+        ...completed,
+        provider: { state: "loaded", document: null, readError: null }
+      })
+    ).toThrow();
+
+    expect(
+      runtimeProviderCommandResponseSchema.parse({
+        ...completed,
+        provider: {
+          state: "loaded",
+          document: {
+            ...completed.provider.document,
+            state: "waiting-for-hypervisor",
+            terminalReason: null
+          },
+          readError: null
+        }
+      }).provider.document
+    ).toMatchObject({ state: "waiting-for-hypervisor" });
+    expect(
+      runtimeProviderCommandResponseSchema.parse({
+        ...completed,
+        provider: {
+          state: "loaded",
+          document: {
+            ...completed.provider.document,
+            state: "failed",
+            terminalReason: "hyperv-provider-exit"
+          },
+          readError: null
+        }
+      }).provider.document
+    ).toMatchObject({ terminalReason: "hyperv-provider-exit" });
   });
 
   it("preserves operation state read meanings", () => {
@@ -404,7 +482,8 @@ describe("runtime control contract schemas", () => {
     for (const command of [
       "apply-settings",
       "apply-admin-password",
-      "apply-redis-relay-settings"
+      "apply-redis-relay-settings",
+      "repair-datastore"
     ]) {
       expect(
         runtimeGuestControlServiceOperationSchema.parse({

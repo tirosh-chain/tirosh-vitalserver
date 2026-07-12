@@ -58,10 +58,6 @@ export const runtimeLogTextRequestSchema = z.object({
   lineLimit: z.number().int().min(1).max(5_000)
 }) satisfies z.ZodType<RuntimeLogTextRequest>;
 
-export const runtimeRepairProxyRequestSchema = z.object({
-  proxyPort: z.number().int().min(1).max(65_535)
-});
-
 export const runtimeLabSessionIdSchema = nonEmptyString;
 
 export const runtimeLabSessionCreateRequestSchema = z.object({

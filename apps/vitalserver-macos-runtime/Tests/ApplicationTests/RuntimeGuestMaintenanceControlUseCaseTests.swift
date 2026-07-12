@@ -142,6 +142,27 @@ final class RuntimeGuestMaintenanceControlUseCaseTests: XCTestCase {
         }
     }
 
+    func testRequestDatastoreRepairPreservesFailedGuestOperation() throws {
+        let failure = RuntimeGuestControlOperationFailure(
+            kind: "datastore-repair-failed",
+            message: "redis append-only file repair failed"
+        )
+        let gateway = GuestMaintenanceGateway(
+            operation: datastoreRepairOperation(
+                state: .failed,
+                failure: failure
+            )
+        )
+
+        let operation = try RuntimeGuestMaintenanceControlUseCase()
+            .requestDatastoreRepair(gateway: gateway)
+
+        XCTAssertEqual(operation.service, "datastore-repair")
+        XCTAssertEqual(operation.command, .repairDatastore)
+        XCTAssertEqual(operation.state, .failed)
+        XCTAssertEqual(operation.failure, failure)
+    }
+
     func testActivateUpdateReturnsCompletedGuestOperation() throws {
         let gateway = GuestMaintenanceGateway(
             operation: updateActivationOperation(

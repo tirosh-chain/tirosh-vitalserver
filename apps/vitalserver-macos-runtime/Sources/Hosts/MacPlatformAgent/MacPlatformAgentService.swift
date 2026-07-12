@@ -75,6 +75,7 @@ public final class MacPlatformAgentService {
         let server = MacRuntimeControlLocalAPI.make(
             client: client,
             readWorker: readWorker,
+            guestMaintenanceClient: commandWorker,
             operationLeaseClient: operationLeaseController,
             guestAddressClient: guestAddressController,
             vmLifecycleClient: vmLifecycleController,

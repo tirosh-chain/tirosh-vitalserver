@@ -117,7 +117,10 @@ struct RuntimeControlHTTPCommandRoutes {
         case .repairProxy:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairProxy())
         case .repairDatastore:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.repairDatastore())
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.repairDatastore(),
+                status: .accepted
+            )
         case .repairVMDisk:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairVMDisk())
         case .createRedisBackup:

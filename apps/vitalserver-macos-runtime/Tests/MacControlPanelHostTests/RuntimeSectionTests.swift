@@ -1,5 +1,6 @@
 @testable import MacControlPanelHost
 @testable import MacPlatformAgent
+import Application
 import Contracts
 import Foundation
 import RuntimeControl
@@ -110,6 +111,101 @@ final class RuntimeSectionTests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeControlAPIHandlerPreservesGuestDatastoreRepairOperation() async throws {
+        let client = HostFakeRuntimeControlClient()
+        let failure = RuntimeGuestControlOperationFailure(
+            kind: "datastore-repair-failed",
+            message: "redis append-only file repair failed"
+        )
+        client.datastoreRepairOperation = RuntimeGuestControlServiceOperation(
+            operationId: "datastore-repair-1",
+            service: "datastore-repair",
+            command: .repairDatastore,
+            state: .failed,
+            createdAt: "2026-07-01T00:00:00Z",
+            updatedAt: "2026-07-01T00:00:01Z",
+            failure: failure
+        )
+        let handler = makeRuntimeControlAPIHandler(client: client)
+
+        let operation = try await handler.repairDatastore()
+
+        XCTAssertEqual(operation.state, .failed)
+        XCTAssertEqual(operation.failure, failure)
+    }
+
+    @MainActor
+    func testRuntimeProviderControlMapsUnavailablePreflightToNotImplemented() async throws {
+        let client = HostFakeRuntimeControlClient()
+        client.runtimeProviderControlError = RuntimeClientError.missingLauncher
+        let router = RuntimeControlAPIRouter(handler: makeRuntimeControlAPIHandler(client: client))
+
+        let response = await router.route(.init(
+            method: .post,
+            path: "/platform/runtime-provider/restart"
+        ))
+
+        XCTAssertEqual(response.status, .notImplemented)
+        let error = try JSONDecoder().decode(
+            RuntimeControlErrorResponse.self,
+            from: try XCTUnwrap(response.body)
+        )
+        XCTAssertEqual(error.code, .platformAffordanceUnavailable)
+        XCTAssertTrue(error.message.contains("launcher is missing"))
+    }
+
+    @MainActor
+    func testRuntimeProviderControlMapsInspectionPreflightFailureToTypedServiceUnavailable() async throws {
+        let client = HostFakeRuntimeControlClient()
+        client.runtimeProviderControlError = RuntimeClientError.launcherInspectionFailed(
+            path: "/Library/Application Support/VitalServerHelper/vitalserver-vm",
+            reason: "permission denied"
+        )
+        let router = RuntimeControlAPIRouter(handler: makeRuntimeControlAPIHandler(client: client))
+
+        let response = await router.route(.init(
+            method: .post,
+            path: "/platform/runtime-provider/restart"
+        ))
+
+        XCTAssertEqual(response.status, .serviceUnavailable)
+        let command = try JSONDecoder().decode(
+            RuntimeProviderCommandResponse.self,
+            from: try XCTUnwrap(response.body)
+        )
+        XCTAssertEqual(command.state, .failed)
+        XCTAssertEqual(command.failure?.kind, "runtime-provider-control-preflight-failed")
+        XCTAssertTrue(command.failure?.message.contains("permission denied") == true)
+    }
+
+    @MainActor
+    func testRuntimeProviderControlMapsEffectFailureToTypedServiceUnavailableWithStderr() async throws {
+        let client = HostFakeRuntimeControlClient()
+        client.runtimeProviderControlResult = RuntimeCommandResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: "launchd access denied"
+        )
+        client.vmLifecycleResource = .missing(readError: "lifecycle document missing")
+        let router = RuntimeControlAPIRouter(handler: makeRuntimeControlAPIHandler(client: client))
+
+        let response = await router.route(.init(
+            method: .post,
+            path: "/platform/runtime-provider/restart"
+        ))
+
+        XCTAssertEqual(response.status, .serviceUnavailable)
+        let command = try JSONDecoder().decode(
+            RuntimeProviderCommandResponse.self,
+            from: try XCTUnwrap(response.body)
+        )
+        XCTAssertEqual(command.state, .failed)
+        XCTAssertEqual(command.provider, client.vmLifecycleResource)
+        XCTAssertEqual(command.failure?.kind, "runtime-provider-control-failed")
+        XCTAssertTrue(command.failure?.message.contains("stderr=launchd access denied") == true)
+    }
+
+    @MainActor
     func testControlPanelDoesNotOwnPlatformAPIServer() {
         XCTAssertFalse(MacRuntimeControlEnvironment.shouldStartRuntimeControlAPIServer())
         XCTAssertFalse(MacRuntimeControlEnvironment.shouldServeRuntimeControlDevConsole(testEnabled: false))
@@ -147,6 +243,7 @@ final class RuntimeSectionTests: XCTestCase {
         MacRuntimeControlAPIHandler(
             commandClient: client,
             hostClient: client,
+            guestMaintenanceClient: client,
             operationLeaseClient: client,
             guestAddressClient: client,
             vmLifecycleClient: client,
@@ -172,6 +269,7 @@ final class RuntimeSectionTests: XCTestCase {
 private final class HostFakeRuntimeControlClient:
     RuntimeControlClient,
     RuntimeHostClient,
+    RuntimeGuestMaintenanceOperationClient,
     RuntimeOperationLeaseMutationClient,
     RuntimeGuestAddressResourceClient,
     RuntimeVMLifecycleResourceClient
@@ -183,7 +281,17 @@ private final class HostFakeRuntimeControlClient:
     var releasedOperationLeaseIDs: [String] = []
     var guestAddressResource: RuntimeGuestAddressResourceState = .missing()
     var vmLifecycleResource: RuntimeVMLifecycleResourceState = .missing()
+    var runtimeProviderControlResult = RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    var runtimeProviderControlError: Error?
     var exportLogData: Data?
+    var datastoreRepairOperation = RuntimeGuestControlServiceOperation(
+        operationId: "datastore-repair-1",
+        service: "datastore-repair",
+        command: .repairDatastore,
+        state: .completed,
+        createdAt: "2026-07-01T00:00:00Z",
+        updatedAt: "2026-07-01T00:00:01Z"
+    )
 
     func loadSettings() -> RuntimeSettings { RuntimeSettings() }
     func loadPlatformState(settings: RuntimeSettings) -> PlatformState { platformState() }
@@ -203,10 +311,21 @@ private final class HostFakeRuntimeControlClient:
     }
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult { applySettingsResult }
     func repairProxy() async throws -> RuntimeCommandResult { RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "") }
+    func requestDatastoreRepair() async throws -> RuntimeGuestControlServiceOperation {
+        datastoreRepairOperation
+    }
     func repairDatastore() async throws -> RuntimeCommandResult { RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "") }
     func repairVMDisk() async throws -> RuntimeCommandResult { RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "") }
     func repairRuntimeServices() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+    func controlRuntimeProvider(
+        _: RuntimeProviderCommandAction
+    ) async throws -> RuntimeCommandResult {
+        if let runtimeProviderControlError {
+            throw runtimeProviderControlError
+        }
+        return runtimeProviderControlResult
     }
     func createRedisBackup() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")

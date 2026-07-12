@@ -147,6 +147,36 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
     }
 
+    func testCommandWorkerPreservesFailedGuestDatastoreRepairOperation() async throws {
+        let failure = RuntimeGuestControlOperationFailure(
+            kind: "datastore-repair-failed",
+            message: "redis append-only file repair failed"
+        )
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter(),
+            guestMaintenanceController: AdapterFakeGuestMaintenanceController(
+                datastoreRepairOperation: RuntimeGuestControlServiceOperation(
+                    operationId: "datastore-repair-1",
+                    service: "datastore-repair",
+                    command: .repairDatastore,
+                    state: .failed,
+                    createdAt: "2026-07-01T00:00:00+00:00",
+                    updatedAt: "2026-07-01T00:00:01+00:00",
+                    failure: failure
+                )
+            ),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            guestControlBaseURLOverride: "http://127.0.0.1:18330"
+        )
+
+        let operation = try await worker.requestDatastoreRepair()
+
+        XCTAssertEqual(operation.state, .failed)
+        XCTAssertEqual(operation.failure, failure)
+    }
+
     func testOperationStateReaderPreservesLeaseReadStates() {
         let now = ISO8601DateFormatter().date(from: "2026-07-08T00:00:10Z")!
         let activeLease = RuntimeOperationLeaseDocument(
@@ -637,6 +667,22 @@ private struct AdapterStubGuestAddressProvider: RuntimeGuestAddressProvider {
 }
 
 private struct AdapterFakeGuestMaintenanceController: RuntimeGuestMaintenanceCommandControlling {
+    private static let completedDatastoreRepairOperation = RuntimeGuestControlServiceOperation(
+        operationId: "datastore-repair-1",
+        service: "datastore-repair",
+        command: .repairDatastore,
+        state: .completed,
+        createdAt: "2026-07-01T00:00:00+00:00",
+        updatedAt: "2026-07-01T00:00:01+00:00"
+    )
+    let datastoreRepairOperation: RuntimeGuestControlServiceOperation
+
+    init(
+        datastoreRepairOperation: RuntimeGuestControlServiceOperation = Self.completedDatastoreRepairOperation
+    ) {
+        self.datastoreRepairOperation = datastoreRepairOperation
+    }
+
     func createRedisBackup(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation {
@@ -670,17 +716,16 @@ private struct AdapterFakeGuestMaintenanceController: RuntimeGuestMaintenanceCom
         )
     }
 
+    func requestDatastoreRepair(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        datastoreRepairOperation
+    }
+
     func repairDatastore(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation {
-        RuntimeGuestControlServiceOperation(
-            operationId: "datastore-repair-1",
-            service: "datastore-repair",
-            command: .repairDatastore,
-            state: .completed,
-            createdAt: "2026-07-01T00:00:00+00:00",
-            updatedAt: "2026-07-01T00:00:01+00:00"
-        )
+        datastoreRepairOperation
     }
 
     func activateUpdate(

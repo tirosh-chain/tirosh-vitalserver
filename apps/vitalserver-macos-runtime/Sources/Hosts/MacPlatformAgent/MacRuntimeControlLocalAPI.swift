@@ -1,4 +1,5 @@
 import Foundation
+import Application
 import InboundAdapters
 import OutboundAdapters
 import RuntimeControl
@@ -24,6 +25,7 @@ public enum MacRuntimeControlLocalAPI {
     public static func make(
         client: MacRuntimeControlClient,
         readWorker: MacRuntimeControlReadWorker,
+        guestMaintenanceClient: any RuntimeGuestMaintenanceOperationClient,
         operationLeaseClient: any RuntimeOperationLeaseMutationClient,
         guestAddressClient: any RuntimeGuestAddressResourceClient,
         vmLifecycleClient: any RuntimeVMLifecycleResourceClient,
@@ -39,6 +41,7 @@ public enum MacRuntimeControlLocalAPI {
         let apiHandler = MacRuntimeControlAPIHandler(
                 commandClient: client,
                 hostClient: client,
+                guestMaintenanceClient: guestMaintenanceClient,
                 operationLeaseClient: operationLeaseClient,
                 guestAddressClient: guestAddressClient,
                 vmLifecycleClient: vmLifecycleClient,

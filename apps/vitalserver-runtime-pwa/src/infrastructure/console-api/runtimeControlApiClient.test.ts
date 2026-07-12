@@ -162,18 +162,16 @@ describe("RuntimeControlApiClient", () => {
     ).resolves.toEqual(relayOperation);
   });
 
-  it("sends JSON bodies for runtime command endpoints", async () => {
+  it("sends JSON bodies only for endpoints with request payloads", async () => {
     const { client, requests } = clientWithResponses({
       "/runtime/settings": runtimeSettingsOperation(),
       "/platform/uninstall": platformWorkflowOperation("uninstall"),
-      "/platform/proxy/repair": commandResponse(),
       "DELETE /platform/backups/update": commandResponse(),
       "DELETE /platform/backups/runtime-data": commandResponse()
     });
 
     await client.applyRuntimeProductSettings({ settings: productSettings() });
     await client.uninstallRuntime({ mode: "clean" });
-    await client.repairProxy(18080);
     await client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/update" } });
     await client.deleteRuntimeDataBackup({
       backup: { kind: "localPath", value: "/tmp/runtime-data" }
@@ -182,15 +180,11 @@ describe("RuntimeControlApiClient", () => {
     expect(requests.map((request) => request.init.method)).toEqual([
       "PUT",
       "POST",
-      "POST",
       "DELETE",
       "DELETE"
     ]);
     expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
       settings: productSettings()
-    });
-    expect(JSON.parse(String(requests[2]?.init.body))).toEqual({
-      proxyPort: 18080
     });
     expect(requests[0]?.init.headers).toMatchObject({
       "Content-Type": "application/json"
@@ -200,22 +194,56 @@ describe("RuntimeControlApiClient", () => {
   it("keeps absent JSON bodies distinct from explicit JSON command payloads", async () => {
     const { client, requests } = clientWithResponses({
       "/platform/backups/redis": commandResponse(),
-      "/platform/proxy/repair": commandResponse()
+      "/platform/runtime-provider/restart": runtimeProviderCommandResponse()
     });
 
     await client.createRedisBackup();
-    await client.repairProxy(18080);
+    await client.restartRuntimeProvider();
 
+    for (const request of requests) {
+      expect(request.init.body).toBeUndefined();
+      expect(request.init.headers).not.toMatchObject({
+        "Content-Type": "application/json"
+      });
+    }
+  });
+
+  it("preserves the typed Runtime Provider failure returned with 503", async () => {
+    const failed = runtimeProviderCommandResponse("failed");
+    const { client } = clientWithResponses(
+      { "/platform/runtime-provider/restart": failed },
+      503
+    );
+
+    await expect(client.restartRuntimeProvider()).resolves.toEqual(failed);
+  });
+
+  it("reports an unavailable Runtime Provider command without treating it as a failed effect", async () => {
+    const { client } = clientWithResponses(
+      {
+        "/platform/runtime-provider/restart": {
+          code: "platformAffordanceUnavailable",
+          message: "Runtime Provider control is unavailable."
+        }
+      },
+      501
+    );
+
+    await expect(client.restartRuntimeProvider()).rejects.toMatchObject({
+      status: 501
+    });
+  });
+
+  it("accepts the Guest datastore repair operation response", async () => {
+    const operation = guestServiceOperation("repair-datastore", "datastore-repair");
+    const { client, requests } = clientWithResponses(
+      { "/runtime/maintenance/datastore/repair": operation },
+      202
+    );
+
+    await expect(client.repairDatastore()).resolves.toEqual(operation);
+    expect(requests[0]?.init.method).toBe("POST");
     expect(requests[0]?.init.body).toBeUndefined();
-    expect(requests[0]?.init.headers).not.toMatchObject({
-      "Content-Type": "application/json"
-    });
-    expect(JSON.parse(String(requests[1]?.init.body))).toEqual({
-      proxyPort: 18080
-    });
-    expect(requests[1]?.init.headers).toMatchObject({
-      "Content-Type": "application/json"
-    });
   });
 
   it("rejects undefined query values instead of dropping them", async () => {
@@ -234,7 +262,13 @@ describe("RuntimeControlApiClient", () => {
       "/platform/capabilities": platformCapabilities(),
       "/runtime/capabilities": {
         schemaVersion: 1,
-        capabilities: ["services:start", "services:stop", "services:restart", "lab:scenarios"]
+        capabilities: [
+          "services:start",
+          "services:stop",
+          "services:restart",
+          "lab:scenarios",
+          "maintenance:datastore-repair:create"
+        ]
       },
       "/runtime/vitaldb/observations/latest": {
         state: "unavailable",
@@ -390,12 +424,17 @@ describe("RuntimeControlApiClient", () => {
       "/platform/backups/runtime-data/restore": commandResponse(),
       "POST /platform/backups/redis": commandResponse(),
       "POST /platform/backups/runtime-data": commandResponse(),
-      "/platform/services/repair": commandResponse(),
-      "/runtime/maintenance/datastore/repair": commandResponse(),
-      "/platform/runtime-provider/disk/repair": commandResponse()
+      "/platform/runtime-provider/restart": runtimeProviderCommandResponse(),
+      "/runtime/maintenance/datastore/repair": guestServiceOperation(
+        "repair-datastore",
+        "datastore-repair"
+      )
     });
 
-    await expect(client.getCapabilities()).resolves.toMatchObject({ canUseLab: true });
+    await expect(client.getCapabilities()).resolves.toMatchObject({
+      canUseLab: true,
+      canRepairRuntimeDatastore: true
+    });
     await expect(client.getLatestVitalDBObservation()).resolves.toEqual({
       state: "unavailable",
       observation: null,
@@ -486,9 +525,12 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.restoreRuntimeDataBackup({ backup: { kind: "localPath", value: "/tmp/runtime-data" } })).resolves.toEqual(commandResponse());
     await expect(client.createRedisBackup()).resolves.toEqual(commandResponse());
     await expect(client.createRuntimeDataBackup()).resolves.toEqual(commandResponse());
-    await expect(client.repairRuntime()).resolves.toEqual(commandResponse());
-    await expect(client.repairDatastore()).resolves.toEqual(commandResponse());
-    await expect(client.repairVMDisk()).resolves.toEqual(commandResponse());
+    await expect(client.restartRuntimeProvider()).resolves.toEqual(
+      runtimeProviderCommandResponse()
+    );
+    await expect(client.repairDatastore()).resolves.toEqual(
+      guestServiceOperation("repair-datastore", "datastore-repair")
+    );
   });
 
   it("throws API, contract, and network errors", async () => {
@@ -776,15 +818,38 @@ function platformWorkflowOperation(kind: "update-verify" | "update-apply" | "rol
   };
 }
 
-function guestServiceOperation(command: "start" | "stop" | "restart") {
+function guestServiceOperation(
+  command: "start" | "stop" | "restart" | "repair-datastore",
+  service = "app"
+) {
   return {
-    operationId: `${command}-app`,
-    service: "app",
+    operationId: `${command}-${service}`,
+    service,
     command,
     state: "completed" as const,
     createdAt: "2026-07-01T00:00:00+00:00",
     updatedAt: "2026-07-01T00:00:01+00:00",
     failure: null
+  };
+}
+
+function runtimeProviderCommandResponse(state: "completed" | "failed" = "completed") {
+  return {
+    operationId: "provider-restart-1",
+    action: "restart" as const,
+    state,
+    provider: {
+      state: "missing" as const,
+      document: null,
+      readError: null
+    },
+    failure:
+      state === "failed"
+        ? {
+            kind: "systemd-restart-failed",
+            message: "systemd could not restart vitalserver"
+          }
+        : null
   };
 }
 

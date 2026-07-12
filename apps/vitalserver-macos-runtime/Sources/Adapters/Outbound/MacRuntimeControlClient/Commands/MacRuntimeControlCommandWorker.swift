@@ -178,6 +178,15 @@ public actor MacRuntimeControlCommandWorker {
         return await runPrivileged(RuntimeCommandFactory.proxyRepairCommand())
     }
 
+    /// Delivers the Guest operation unchanged for the Runtime Control HTTP API.
+    public func requestDatastoreRepair() async throws -> RuntimeGuestControlServiceOperation {
+        let controller = guestMaintenanceController
+        return try await runGuestControlCommand { gateway in
+            try controller.requestDatastoreRepair(gateway: gateway)
+        }
+    }
+
+    /// Retains the Host command result used by native command consumers.
     public func repairDatastore() async throws -> RuntimeCommandResult {
         let controller = guestMaintenanceController
         return try await runGuestControlCommand { gateway in
@@ -645,6 +654,12 @@ private struct UnavailableRuntimeGuestMaintenanceController: RuntimeGuestMainten
         throw unavailable()
     }
 
+    func requestDatastoreRepair(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
     func repairDatastore(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation {
@@ -708,6 +723,8 @@ extension RuntimeLabBedList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabRecorderList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabSessionResponse: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabVitalFileUploadResponse: RuntimeLabResponseUnavailableFactory {}
+
+extension MacRuntimeControlCommandWorker: RuntimeGuestMaintenanceOperationClient {}
 
 private extension RuntimeCommandResult {
     func appendingOutputIssue(_ issue: RuntimeCommandOutputIssue) -> RuntimeCommandResult {

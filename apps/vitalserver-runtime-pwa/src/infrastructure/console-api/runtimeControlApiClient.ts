@@ -47,6 +47,7 @@ import type {
   RuntimeRedisRelaySettingsApplyRequest,
   RuntimeVitalDBObservationSnapshot,
   RuntimeProductSettingsRead,
+  RuntimeProviderCommandResponse,
   PlatformState,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest,
@@ -81,6 +82,7 @@ import {
   runtimeRedisRelaySettingsReadSchema,
   runtimeVitalDBObservationSnapshotSchema,
   runtimeProductSettingsReadSchema,
+  runtimeProviderCommandResponseSchema,
   platformStateSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBBedsSchema,
@@ -141,7 +143,9 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
       canApplyRuntimeProductSettings: available.has("settings:apply"),
       canApplyRuntimeAdminPassword: available.has("admin-password:apply"),
       canApplyRuntimeRedisRelaySettings:
-        available.has("redis-relay:settings:apply")
+        available.has("redis-relay:settings:apply"),
+      canRepairRuntimeDatastore:
+        available.has("maintenance:datastore-repair:create")
     };
   }
 
@@ -547,35 +551,15 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     );
   }
 
-  repairRuntime(): Promise<RuntimeCommandResponse> {
-    return this.post(
-      "/platform/services/repair",
-      undefined,
-      runtimeCommandResponseSchema
-    );
+  restartRuntimeProvider(): Promise<RuntimeProviderCommandResponse> {
+    return this.postRuntimeProviderCommand("/platform/runtime-provider/restart");
   }
 
-  repairProxy(proxyPort: number): Promise<RuntimeCommandResponse> {
-    return this.post(
-      "/platform/proxy/repair",
-      { proxyPort },
-      runtimeCommandResponseSchema
-    );
-  }
-
-  repairDatastore(): Promise<RuntimeCommandResponse> {
+  repairDatastore(): Promise<RuntimeGuestControlServiceOperation> {
     return this.post(
       "/runtime/maintenance/datastore/repair",
       undefined,
-      runtimeCommandResponseSchema
-    );
-  }
-
-  repairVMDisk(): Promise<RuntimeCommandResponse> {
-    return this.post(
-      "/platform/runtime-provider/disk/repair",
-      undefined,
-      runtimeCommandResponseSchema
+      runtimeGuestControlServiceOperationSchema
     );
   }
 
@@ -641,6 +625,21 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     }
 
     return this.parse(path, schema, await response.json());
+  }
+
+  private async postRuntimeProviderCommand(
+    path: "/platform/runtime-provider/restart"
+  ): Promise<RuntimeProviderCommandResponse> {
+    const response = await this.request(path, this.jsonRequest("POST", undefined));
+    if (response.status !== 200 && response.status !== 503) {
+      const responseBody = await response.text();
+      throw new RuntimeControlAPIError(
+        `Runtime Control API request failed: ${response.status}`,
+        response.status,
+        responseBody
+      );
+    }
+    return this.parse(path, runtimeProviderCommandResponseSchema, await response.json());
   }
 
   private async delete<T>(

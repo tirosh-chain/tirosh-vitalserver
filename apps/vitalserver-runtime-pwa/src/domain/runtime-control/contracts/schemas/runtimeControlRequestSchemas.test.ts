@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  runtimeRepairProxyRequestSchema,
   runtimeLogTextRequestSchema,
   runtimeUninstallRequestSchema,
   runtimeUpdateBundleRequestSchema,
@@ -19,18 +18,6 @@ describe("runtime control request schemas", () => {
         }
       })
     ).toThrow();
-  });
-
-  it("rejects invalid proxy ports", () => {
-    expect(() =>
-      runtimeRepairProxyRequestSchema.parse({
-        proxyPort: 70_000
-      })
-    ).toThrow();
-  });
-
-  it("requires proxy ports because the Swift API decoder requires the key", () => {
-    expect(() => runtimeRepairProxyRequestSchema.parse({})).toThrow();
   });
 
   it("requires uninstall clean because the Swift API decoder requires the key", () => {

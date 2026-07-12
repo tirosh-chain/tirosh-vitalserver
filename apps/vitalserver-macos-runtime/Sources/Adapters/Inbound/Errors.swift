@@ -3,12 +3,15 @@ import Foundation
 
 public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
     case platformAffordanceUnavailable
+    case runtimeProviderControlUnavailable(String)
     case unsupportedFileReference(String)
 
     public var errorDescription: String? {
         switch self {
         case .platformAffordanceUnavailable:
             return "Host affordance client is unavailable."
+        case .runtimeProviderControlUnavailable(let reason):
+            return "Runtime Provider control is unavailable. \(reason)"
         case .unsupportedFileReference(let kind):
             return "File reference kind \(kind) is not supported by this local Runtime Control handler."
         }

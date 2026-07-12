@@ -18,6 +18,20 @@ export function canApplyRuntimeProductSettings(
   return capabilities?.canApplyRuntimeProductSettings === true;
 }
 
+/** Platform-owned capability for the portable Runtime Provider lifecycle action. */
+export function canRestartRuntimeProvider(
+  capabilities: ControlCapabilities | undefined
+): boolean {
+  return capabilities?.canControlRuntimeServices === true;
+}
+
+/** Guest-owned capability for the optional datastore-maintenance operation. */
+export function canRepairRuntimeDatastore(
+  capabilities: ControlCapabilities | undefined
+): boolean {
+  return capabilities?.canRepairRuntimeDatastore === true;
+}
+
 export function canApplyRuntimeAdminPassword(
   capabilities: ControlCapabilities | undefined
 ): boolean {
@@ -28,10 +42,4 @@ export function canApplyRuntimeRedisRelaySettings(
   capabilities: ControlCapabilities | undefined
 ): boolean {
   return capabilities?.canApplyRuntimeRedisRelaySettings === true;
-}
-
-export function canControlRecovery(
-  capabilities: ControlCapabilities | undefined
-): boolean {
-  return Boolean(capabilities?.canControlRuntimeServices);
 }

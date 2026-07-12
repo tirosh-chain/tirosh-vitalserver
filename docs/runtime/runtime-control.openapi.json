@@ -1018,13 +1018,21 @@
     "/runtime/maintenance/datastore/repair": {
       "post": {
         "operationId": "repairRuntimeDatastore",
-        "summary": "Repair datastore",
+        "summary": "Request Guest-owned datastore repair",
+        "description": "Requests datastore repair through the Guest Runtime Controller and returns its persisted operation without translating it into Host command output.",
         "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-implementation": "localServerMediated",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
+          "202": {
+            "description": "Guest datastore repair operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceOperation"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -5170,6 +5178,9 @@
               "stop",
               "restart",
               "reconcile",
+              "redis-backup",
+              "redis-restore",
+              "repair-datastore",
               "apply-settings",
               "apply-admin-password",
               "apply-redis-relay-settings"

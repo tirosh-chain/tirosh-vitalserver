@@ -28,6 +28,7 @@ The following published Runtime v2 routes are outside the default read-only run 
 | Runtime Controller | `POST /runtime/admin-password` | secret-bearing command with no password read-back |
 | Runtime Controller | `GET`/`PUT /runtime/redis-relay/settings` | Relay config read without secret material and explicit secret preserve/replace/clear apply |
 | Runtime Controller | `GET /runtime/events` | Runtime-owned operation event page and opaque cursor |
+| Runtime Controller | `POST /runtime/maintenance/datastore/repair` | optional Guest-owned datastore maintenance operation, negotiated through `maintenance:datastore-repair:create` |
 
 The Platform response must not expose `vmIP`, `vmState`, `guestHTTP`, Redis UI probes, Swagger UI probes, or product service state. A platform that does not need one of the fixed service roles still reports that role with an explicit unavailable or not-installed state; it does not omit the role and ask a client to infer why. Platform service state uses the canonical values `running`, `stopped`, `not-installed`, `unavailable`, `read-failed`, `permission-denied`, and `failed`. Every service entry carries explicit nullable `readError`; launchd `loaded/not loaded` wording is not part of the cross-platform wire contract.
 
@@ -41,6 +42,28 @@ keeps the OS service effect (`completed|failed`) separate from the included
 Provider lifecycle resource. These mutations are exercised by platform
 acceptance rather than the default read-only conformance run so a contract
 check never starts or stops an installed Runtime unexpectedly.
+
+### Guest datastore maintenance
+
+Datastore repair is a Runtime Controller extension, not a Host repair command.
+When the Runtime Controller advertises
+`maintenance:datastore-repair:create`,
+`POST /runtime/maintenance/datastore/repair` requests the Guest-owned repair
+and returns `202 Accepted` with the persisted
+`RuntimeGuestControlServiceOperation`. The response preserves the operation
+identity, command `repair-datastore`, state, timestamps, and typed failure;
+it must not be translated into Host shell output or an empty successful
+response. A failed terminal operation remains an explicit operation document
+in that `202` response.
+
+The common PWA repair controls in this boundary are limited to Runtime Provider
+restart when the Platform capability permits it and datastore repair when the
+Guest capability above is present. It does not render or call proxy repair or
+VM-disk repair. Those actions are optional platform-maintenance extensions
+(for example, a macOS native repair workflow), not portable Runtime Controller
+behavior. A platform that does not offer such an extension must report it as
+unavailable through its explicit platform contract; the PWA must not probe
+undocumented routes or turn a `404` into an inferred disabled state.
 
 Test the conformance rules without a live runtime:
 

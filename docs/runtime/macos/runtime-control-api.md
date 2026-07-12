@@ -240,7 +240,7 @@ Runtime endpoint도 Platform affordance API owner로 승격합니다. `GET /plat
 
 Runtime Provider lifecycle도 Platform owner resource로 승격합니다. `GET /platform/runtime-provider`은 `loaded|missing|unavailable|failed`를 구분하는 resource state를 반환하고, `PUT /platform/runtime-provider`은 명시적인 lifecycle document를 mutation boundary에 기록합니다. macOS에서는 VM launcher가 API 서버보다 먼저 시작될 수 있으므로 lifecycle의 durable owner document는 `FileRuntimeVMLifecycleResourceStore`가 atomic write와 cross-process lock으로 소유합니다. Launcher, delegate, watchdog과 stop workflow는 이 repository port에 직접 쓰고, `RuntimeControlVMLifecycleController`와 API는 같은 repository를 읽고 씁니다. 따라서 UI/API process가 실행되지 않은 golden-rootfs와 installed boot에서도 provider가 자신의 state를 게시할 수 있으며 API 재시작 뒤에도 state가 사라지지 않습니다. `runtime-status.json`은 fallback source가 아니고, lifecycle document의 missing, decode failure와 path inspection failure는 각각 explicit resource state로 남습니다.
 
-Provider `start|stop|restart` command는 Platform effect와 Provider state를 합치지 않습니다. macOS는 launchd service command, Windows는 SCM, Linux는 systemd D-Bus를 사용하고 command 응답은 effect의 `completed|failed`와 당시 Provider lifecycle resource를 별도 필드로 반환합니다. service-manager command가 완료돼도 lifecycle을 `running`으로 만들지 않으며 실제 Provider가 기록한 문서만 표시합니다.
+Provider `start|stop|restart` command는 Platform effect와 Provider state를 합치지 않습니다. macOS는 launchd service command, Windows는 SCM, Linux는 systemd D-Bus를 사용하고 command 응답은 effect의 `completed|failed`와 당시 Provider lifecycle resource를 별도 필드로 반환합니다. service-manager command가 완료돼도 lifecycle을 `running`으로 만들지 않으며 실제 Provider가 기록한 문서만 표시합니다. 해당 Platform control 자체가 없거나 launcher가 실행 불가하면 `501`을 반환하고, preflight·effect·lifecycle read 실패는 원인과 resource state를 보존한 typed `failed` 응답으로 `503`을 반환합니다. nullable wire field는 생략하지 않고 JSON `null`로 보냅니다.
 
 `GET /runtime/vitaldb/recorders`는 `vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며, IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. Live v2 path는 Guest/Product API의 `GET /runtime/vitaldb/recorders`와 `GET /runtime/vitaldb/beds`를 우선 소비하며, Guest read가 unavailable/failed이면 Host SQLite observation snapshot을 recorder/bed product state로 읽거나 승격하지 않습니다. Guest endpoint는 `state`, `recorders`, `observedAt`, `ready`, `recorderOnlineThresholdSeconds`, `readError`를 보존하며, default Guest composition은 `PostgresVitalDBReadModelRepository`를 통해 최신 `vitaldb_observation_snapshots` JSONB read model의 `recorders` 배열과 observation metadata를 읽습니다. Empty `recorders`는 loaded empty collection이고, adapter 없음, empty table, dependency failure, malformed collection은 다른 read state로 보존해야 합니다. Host는 `ready`나 recorder stale threshold를 추정하지 않고 Guest가 제공한 값을 사용합니다. Guest VitalDB read model provider가 구성되지 않았거나 읽을 수 없으면 recorder history는 explicit read failure/unavailable state를 보존해야 하며, `/runtime/vitaldb/observations/latest`, guest `runtime-observation.json`, Host `runtime-status.json`, Host SQLite projection을 recorder/bed fallback으로 사용하지 않습니다. Recorder-ingress status는 explicit diagnostics/counter read로 보존할 수 있지만, ingress-only recorder를 product recorder로 생성하거나 Guest/Postgres가 제공한 recorder online/stale/lastSeen/IP state를 덮어쓰면 안 됩니다. `activityTimeline`은 snapshot history에서 vrcode별 `recorders[].activity`를 시간순으로 모은 recorder activity point list입니다. 각 point는 해당 시각의 message count, byte count, room count를 담아 활동 차트를 그리기 위한 값입니다. `activityHistory.source`는 `readModelProjection`, `unavailable`, `notProvided` 중 하나입니다. `readModelProjection`의 empty timeline은 Guest/Postgres read model projection을 읽었지만 해당 recorder activity가 없었다는 뜻이고, `notProvided`는 caller가 activity projection을 제공하지 않은 construction path입니다. `readError`가 있으면 Guest read 또는 activity projection read가 실패해 `recorders`, `beds`, `activityHistory`가 incomplete일 수 있습니다. 이 상태는 관측된 recorder가 없다는 의미와 구분해야 합니다.
 
@@ -314,10 +314,10 @@ Provider `start|stop|restart` command는 Platform effect와 Provider state를 �
 | `POST` | `/runtime/services/{service}/start` | start one Guest-owned service through Guest Control API |
 | `POST` | `/runtime/services/{service}/stop` | stop one Guest-owned service through Guest Control API |
 | `POST` | `/runtime/services/{service}/restart` | restart one Guest-owned service through Guest Control API |
-| `POST` | `/platform/services/repair` | repair VM, guest log sync, host proxy, and watchdog services |
-| `POST` | `/platform/proxy/repair` | repair host proxy |
-| `POST` | `/runtime/maintenance/datastore/repair` | repair datastore |
-| `POST` | `/platform/runtime-provider/disk/repair` | archive and recreate the mutable VM disk from the installed base image |
+| `POST` | `/platform/services/repair` | macOS platform-maintenance extension for VM, guest-log-sync, host-proxy, and watchdog repair; not a common PWA action |
+| `POST` | `/platform/proxy/repair` | macOS platform-maintenance extension for host proxy repair; not a common PWA action |
+| `POST` | `/runtime/maintenance/datastore/repair` | request Guest-owned datastore repair; returns `202 Accepted` with a persisted `RuntimeGuestControlServiceOperation` |
+| `POST` | `/platform/runtime-provider/disk/repair` | macOS platform-maintenance extension that archives and recreates the mutable VM disk; not a common PWA action |
 | `POST` | `/platform/backups/redis` | create advanced Redis-only repair backup |
 | `POST` | `/platform/backups/runtime-data` | create user-facing VitalServer backup containing Host runtime state and Redis data |
 | `POST` | `/platform/uninstall` | uninstall runtime |
@@ -355,6 +355,25 @@ backup directory, permission failure, path inspection failure, or unexpected
 path state is not an empty backup list; it must surface as a typed host
 affordance read failure. An empty list is reserved for a readable managed
 backup directory that contains no matching backup artifacts.
+
+### Common PWA maintenance boundary
+
+The common PWA does not expose the macOS-only proxy-repair or VM-disk-repair
+routes above. They are optional platform-maintenance extensions, not a portable
+Runtime Controller contract; a future Windows or Linux implementation may use
+a different native workflow or omit the extension entirely. `localServerMediated`
+means that a supported platform UI can ask its local server to perform an
+explicit privileged action. It does not make every mediated route a common PWA
+control.
+
+Datastore repair is different: its execution and operation state are owned by
+the Guest Runtime Controller. If `GET /runtime/capabilities` advertises
+`maintenance:datastore-repair:create`, the PWA may call
+`POST /runtime/maintenance/datastore/repair` and must handle the `202`
+persisted Guest operation, including an explicit failed state. If the capability
+is absent, the PWA shows the action as unavailable and makes no speculative
+request. Runtime Provider restart remains the portable Platform lifecycle
+action when the corresponding Platform capability permits it.
 
 ## Client Access Classification
 

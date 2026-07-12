@@ -1,5 +1,6 @@
 import Foundation
 import Contracts
+import Application
 import InboundAdapters
 import OutboundAdapters
 import RuntimeControl
@@ -32,6 +33,7 @@ public protocol RuntimeGuestAddressResourceClient: AnyObject {
 public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let commandClient: any RuntimeControlClient
     private let hostClient: any RuntimeHostClient
+    private let guestMaintenanceClient: any RuntimeGuestMaintenanceOperationClient
     private let operationLeaseClient: any RuntimeOperationLeaseMutationClient
     private let guestAddressClient: any RuntimeGuestAddressResourceClient
     private let vmLifecycleClient: any RuntimeVMLifecycleResourceClient
@@ -45,6 +47,7 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     public init(
         commandClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
+        guestMaintenanceClient: any RuntimeGuestMaintenanceOperationClient,
         operationLeaseClient: any RuntimeOperationLeaseMutationClient,
         guestAddressClient: any RuntimeGuestAddressResourceClient,
         vmLifecycleClient: any RuntimeVMLifecycleResourceClient,
@@ -57,6 +60,7 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     ) {
         self.commandClient = commandClient
         self.hostClient = hostClient
+        self.guestMaintenanceClient = guestMaintenanceClient
         self.operationLeaseClient = operationLeaseClient
         self.guestAddressClient = guestAddressClient
         self.vmLifecycleClient = vmLifecycleClient
@@ -123,19 +127,120 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         _ action: RuntimeProviderCommandAction
     ) async throws -> RuntimeProviderCommandResponse {
         let operationId = "provider-\(UUID().uuidString.lowercased())"
-        let result = try await hostClient.controlRuntimeProvider(action)
-        let provider = try await vmLifecycleClient.loadVMLifecycleResource()
-        let completed = result.exitCode == 0 && result.executionIssue == nil
+        let result: RuntimeCommandResult
+        do {
+            result = try await hostClient.controlRuntimeProvider(action)
+        } catch {
+            if runtimeProviderControlIsUnavailable(error) {
+                throw RuntimeControlAPIReadHandlerError.runtimeProviderControlUnavailable(
+                    error.localizedDescription
+                )
+            }
+            return await failedRuntimeProviderCommand(
+                operationId: operationId,
+                action: action,
+                kind: runtimeProviderControlFailureKind(error),
+                message: "Runtime Provider control failed: \(error.localizedDescription)"
+            )
+        }
+
+        guard result.exitCode == 0, result.executionIssue == nil else {
+            return await failedRuntimeProviderCommand(
+                operationId: operationId,
+                action: action,
+                kind: "runtime-provider-control-failed",
+                message: runtimeProviderEffectFailureMessage(result)
+            )
+        }
+
+        do {
+            return RuntimeProviderCommandResponse(
+                operationId: operationId,
+                action: action,
+                state: .completed,
+                provider: try await vmLifecycleClient.loadVMLifecycleResource(),
+                failure: nil
+            )
+        } catch {
+            return RuntimeProviderCommandResponse(
+                operationId: operationId,
+                action: action,
+                state: .failed,
+                provider: .failed(readError: runtimeProviderLifecycleReadFailureMessage(error)),
+                failure: PlatformCommandFailure(
+                    kind: "runtime-provider-lifecycle-read-failed",
+                    message: runtimeProviderLifecycleReadFailureMessage(error)
+                )
+            )
+        }
+    }
+
+    private func failedRuntimeProviderCommand(
+        operationId: String,
+        action: RuntimeProviderCommandAction,
+        kind: String,
+        message: String
+    ) async -> RuntimeProviderCommandResponse {
+        let provider: RuntimeVMLifecycleResourceState
+        do {
+            provider = try await vmLifecycleClient.loadVMLifecycleResource()
+        } catch {
+            provider = .failed(readError: runtimeProviderLifecycleReadFailureMessage(error))
+        }
         return RuntimeProviderCommandResponse(
             operationId: operationId,
             action: action,
-            state: completed ? .completed : .failed,
+            state: .failed,
             provider: provider,
-            failure: completed ? nil : PlatformCommandFailure(
-                kind: "runtime-provider-control-failed",
-                message: "Runtime Provider effect failed exitCode=\(result.exitCode) executionIssue=\(String(describing: result.executionIssue))"
-            )
+            failure: PlatformCommandFailure(kind: kind, message: message)
         )
+    }
+
+    private func runtimeProviderControlIsUnavailable(_ error: Error) -> Bool {
+        if error is RuntimeControlClientUnsupportedError {
+            return true
+        }
+        guard let clientError = error as? RuntimeClientError else {
+            return false
+        }
+        switch clientError {
+        case .missingLauncher, .launcherNotExecutable:
+            return true
+        case .missingUninstaller,
+             .launcherInspectionFailed,
+             .uninstallerInspectionFailed,
+             .uninstallerNotExecutable,
+             .invalidBackupDeletionTarget,
+             .logExportFailed,
+             .guestControlUnavailable:
+            return false
+        }
+    }
+
+    private func runtimeProviderControlFailureKind(_ error: Error) -> String {
+        if let clientError = error as? RuntimeClientError,
+           case .launcherInspectionFailed = clientError {
+            return "runtime-provider-control-preflight-failed"
+        }
+        return "runtime-provider-control-failed"
+    }
+
+    private func runtimeProviderEffectFailureMessage(_ result: RuntimeCommandResult) -> String {
+        var details = ["exitCode=\(result.exitCode)"]
+        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stderr.isEmpty {
+            details.append("stderr=\(stderr)")
+        }
+        if let executionIssue = result.executionIssue {
+            details.append(
+                "executionIssue=\(executionIssue.kind.rawValue): \(executionIssue.message)"
+            )
+        }
+        return "Runtime Provider effect failed \(details.joined(separator: " "))"
+    }
+
+    private func runtimeProviderLifecycleReadFailureMessage(_ error: Error) -> String {
+        "Runtime Provider lifecycle read failed: \(error.localizedDescription)"
     }
 
     public func loadRuntimeOperationEvents(
@@ -350,8 +455,8 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await hostClient.repairProxy())
     }
 
-    public func repairDatastore() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await hostClient.repairDatastore())
+    public func repairDatastore() async throws -> RuntimeGuestControlServiceOperation {
+        try await guestMaintenanceClient.requestDatastoreRepair()
     }
 
     public func repairVMDisk() async throws -> RuntimeControlCommandResponse {

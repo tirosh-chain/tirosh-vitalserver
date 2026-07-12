@@ -602,7 +602,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Repair datastore */
+        /**
+         * Request Guest-owned datastore repair
+         * @description Requests datastore repair through the Guest Runtime Controller and returns its persisted operation without translating it into Host command output.
+         */
         post: operations["repairRuntimeDatastore"];
         delete?: never;
         options?: never;
@@ -2025,7 +2028,7 @@ export interface components {
             operationId: string;
             service: string;
             /** @enum {string} */
-            command: "start" | "stop" | "restart" | "reconcile" | "apply-settings" | "apply-admin-password" | "apply-redis-relay-settings";
+            command: "start" | "stop" | "restart" | "reconcile" | "redis-backup" | "redis-restore" | "repair-datastore" | "apply-settings" | "apply-admin-password" | "apply-redis-relay-settings";
             /** @enum {string} */
             state: "accepted" | "running" | "completed" | "failed" | "cancelled";
             createdAt: string;
@@ -3543,7 +3546,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["CommandResult"];
+            /** @description Guest datastore repair operation */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestControlServiceOperation"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
         };
     };

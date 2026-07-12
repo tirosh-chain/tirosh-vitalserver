@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   useApplyRuntimeProductSettings,
@@ -9,9 +9,7 @@ import {
   useHostBackups,
   useRedisBackups,
   useRepairDatastore,
-  useRepairProxy,
-  useRepairRuntime,
-  useRepairVMDisk,
+  useRestartRuntimeProvider,
   useRuntimeDataBackups,
   useControlCapabilities,
   usePlatformOperationState,
@@ -25,7 +23,8 @@ import {
 } from "@/console/hooks";
 import {
   canApplyRuntimeProductSettings,
-  canControlRecovery
+  canRepairRuntimeDatastore,
+  canRestartRuntimeProvider
 } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import type {
   PlatformState,
@@ -34,20 +33,10 @@ import type {
   RuntimeGuestControlStackStatus,
   RuntimeGuestControlServiceOperation,
   RuntimeGuestServiceResource,
-  RuntimeBackup
+  RuntimeBackup,
+  RuntimeCommandResponse,
+  RuntimeProviderCommandResponse
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
-
-type RuntimeOverviewPresentation = {
-  status?: PlatformState;
-};
-
-function platformServiceRunning(
-  state: PlatformState | undefined,
-  role: PlatformState["services"][number]["role"]
-): boolean | undefined {
-  const service = state?.services.find((candidate) => candidate.role === role);
-  return service ? service.state === "running" : undefined;
-}
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import { formatHTTPStatus } from "@/domain/runtime-control/formatting/http";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
@@ -55,7 +44,6 @@ import {
   formatRuntimeState,
   runtimeStateTone
 } from "@/domain/runtime-control/formatting/runtimeState";
-import { useAppSettings } from "@/config/AppSettingsContext";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CommandResult } from "@/components/CommandResult";
 import { DataTable } from "@/components/DataTable";
@@ -64,8 +52,69 @@ import { KeyValueRows } from "@/components/KeyValueRows";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 
+type RuntimeOverviewPresentation = {
+  status?: PlatformState;
+};
+
+type OperationResultSource =
+  | "apply-runtime-settings"
+  | "rollback-backup"
+  | "create-runtime-data-backup"
+  | "restore-runtime-data-backup"
+  | "create-redis-backup"
+  | "restart-runtime-provider"
+  | "repair-datastore"
+  | "start-guest-service"
+  | "stop-guest-service"
+  | "restart-guest-service";
+
+type OperationResult =
+  | {
+      kind: "command";
+      result: RuntimeCommandResponse | undefined;
+      error: Error | null;
+    }
+  | {
+      kind: "provider";
+      result: RuntimeProviderCommandResponse | undefined;
+      error: Error | null;
+    }
+  | {
+      kind: "guest";
+      result: RuntimeGuestControlServiceOperation | undefined;
+      error: Error | null;
+    };
+
+function commandOperationResult(
+  result: RuntimeCommandResponse | undefined,
+  error: Error | null
+): OperationResult {
+  return { kind: "command", result, error };
+}
+
+function providerOperationResult(
+  result: RuntimeProviderCommandResponse | undefined,
+  error: Error | null
+): OperationResult {
+  return { kind: "provider", result, error };
+}
+
+function guestOperationResult(
+  result: RuntimeGuestControlServiceOperation | undefined,
+  error: Error | null
+): OperationResult {
+  return { kind: "guest", result, error };
+}
+
+function platformServiceRunning(
+  state: PlatformState | undefined,
+  role: PlatformState["services"][number]["role"]
+): boolean | undefined {
+  const service = state?.services.find((candidate) => candidate.role === role);
+  return service ? service.state === "running" : undefined;
+}
+
 export function AdvancedPage() {
-  const appSettings = useAppSettings();
   const platformState = usePlatformState();
   const operationState = usePlatformOperationState();
   const capabilities = useControlCapabilities();
@@ -75,6 +124,16 @@ export function AdvancedPage() {
     : capabilities.isError
       ? "Backup capability could not be read."
       : "Backup and rollback operations are not supported by this Runtime Control API.";
+  const unavailableRuntimeProviderControlMessage = capabilities.isPending
+    ? "Loading Runtime Provider control capability..."
+    : capabilities.isError
+      ? "Runtime Provider control capability could not be read."
+      : "Runtime Provider control is not supported by this Platform Agent.";
+  const unavailableDatastoreRepairMessage = capabilities.isPending
+    ? "Loading data store repair capability..."
+    : capabilities.isError
+      ? "Data store repair capability could not be read."
+      : "Data store repair is not supported by this Runtime Controller.";
   const runtimeStack = useRuntimeStack();
   const runtimeServiceResources = useRuntimeServiceResources(
     runtimeStack.data?.services.map((service) => service.service) ?? []
@@ -95,10 +154,8 @@ export function AdvancedPage() {
   const startGuestService = useStartGuestService();
   const stopGuestService = useStopGuestService();
   const restartGuestService = useRestartGuestService();
-  const repairRuntime = useRepairRuntime();
-  const repairProxy = useRepairProxy();
+  const restartRuntimeProvider = useRestartRuntimeProvider();
   const repairDatastore = useRepairDatastore();
-  const repairVMDisk = useRepairVMDisk();
 
   const [selectedHostBackup, setSelectedHostBackup] =
     useState<RuntimeBackup | null>(null);
@@ -106,7 +163,8 @@ export function AdvancedPage() {
     useState<RuntimeBackup | null>(null);
   const [selectedRuntimeDataBackup, setSelectedRuntimeDataBackup] =
     useState<RuntimeBackup | null>(null);
-  const [proxyPort, setProxyPort] = useState("");
+  const [operationResultSource, setOperationResultSource] =
+    useState<OperationResultSource | null>(null);
   const [vitalServerURL, setVitalServerURL] = useState("");
   const [remoteConsoleURL, setRemoteConsoleURL] = useState("");
 
@@ -121,57 +179,58 @@ export function AdvancedPage() {
   }, [runtimeSettings]);
 
   const canRollback = canManageBackups;
-  const canRepair = canControlRecovery(capabilities.data);
+  const canRestartProvider = canRestartRuntimeProvider(capabilities.data);
+  const canRepairDatastore = canRepairRuntimeDatastore(capabilities.data);
   const canApplySettings = canApplyRuntimeProductSettings(capabilities.data);
   const canEditNetworkExposure =
     capabilities.data?.canEditNetworkExposure === true;
   const canControlGuestServices =
     capabilities.data?.canControlGuestServices === true;
-
-  const latestCommand = useMemo(
-    () =>
-      repairRuntime.data ??
-      repairProxy.data ??
-      repairDatastore.data ??
-      repairVMDisk.data ??
-      rollbackBackup.data ??
-      createRuntimeDataBackup.data ??
-      restoreRuntimeDataBackup.data ??
-      createRedisBackup.data,
-    [
-      createRuntimeDataBackup.data,
-      createRedisBackup.data,
-      repairDatastore.data,
-      repairVMDisk.data,
-      repairProxy.data,
-      repairRuntime.data,
+  const operationResults: Record<OperationResultSource, OperationResult> = {
+    "apply-runtime-settings": guestOperationResult(
+      applySettings.data,
+      applySettings.error
+    ),
+    "rollback-backup": commandOperationResult(
       rollbackBackup.data,
-      restoreRuntimeDataBackup.data
-    ]
-  );
-
-  const latestError =
-    startGuestService.error ??
-    stopGuestService.error ??
-    restartGuestService.error ??
-    repairRuntime.error ??
-    repairProxy.error ??
-    repairDatastore.error ??
-    repairVMDisk.error ??
-    applySettings.error ??
-    rollbackBackup.error ??
-    createRuntimeDataBackup.error ??
-    restoreRuntimeDataBackup.error ??
-    createRedisBackup.error;
-  const latestGuestServiceOperation =
-    applySettings.data ??
-    startGuestService.data ??
-    stopGuestService.data ??
-    restartGuestService.data;
-  const configuredProxyPort =
-    parseOptionalNumber(proxyPort) ??
-    platformState.data?.publicProxyPort ??
-    appSettings.runtimeControl.defaultProxyPort;
+      rollbackBackup.error
+    ),
+    "create-runtime-data-backup": commandOperationResult(
+      createRuntimeDataBackup.data,
+      createRuntimeDataBackup.error
+    ),
+    "restore-runtime-data-backup": commandOperationResult(
+      restoreRuntimeDataBackup.data,
+      restoreRuntimeDataBackup.error
+    ),
+    "create-redis-backup": commandOperationResult(
+      createRedisBackup.data,
+      createRedisBackup.error
+    ),
+    "restart-runtime-provider": providerOperationResult(
+      restartRuntimeProvider.data,
+      restartRuntimeProvider.error
+    ),
+    "repair-datastore": guestOperationResult(
+      repairDatastore.data,
+      repairDatastore.error
+    ),
+    "start-guest-service": guestOperationResult(
+      startGuestService.data,
+      startGuestService.error
+    ),
+    "stop-guest-service": guestOperationResult(
+      stopGuestService.data,
+      stopGuestService.error
+    ),
+    "restart-guest-service": guestOperationResult(
+      restartGuestService.data,
+      restartGuestService.error
+    )
+  };
+  const operationResult = operationResultSource
+    ? operationResults[operationResultSource]
+    : commandOperationResult(undefined, null);
   const platformOverview =
     platformState.data
       ? { status: platformState.data }
@@ -198,6 +257,7 @@ export function AdvancedPage() {
     if (!settings) {
       return;
     }
+    setOperationResultSource("apply-runtime-settings");
     applySettings.mutate({ settings });
   };
 
@@ -230,9 +290,18 @@ export function AdvancedPage() {
             stopGuestService.isPending ||
             restartGuestService.isPending
           }
-          onStart={(service) => startGuestService.mutate(service)}
-          onStop={(service) => stopGuestService.mutate(service)}
-          onRestart={(service) => restartGuestService.mutate(service)}
+          onStart={(service) => {
+            setOperationResultSource("start-guest-service");
+            startGuestService.mutate(service);
+          }}
+          onStop={(service) => {
+            setOperationResultSource("stop-guest-service");
+            stopGuestService.mutate(service);
+          }}
+          onRestart={(service) => {
+            setOperationResultSource("restart-guest-service");
+            restartGuestService.mutate(service);
+          }}
         />
       </Panel>
 
@@ -247,7 +316,7 @@ export function AdvancedPage() {
         </p>
         {capabilities.isError ? (
           <ErrorState
-            title="Failed to read backup capability"
+            title="Failed to read control capabilities"
             error={capabilities.error}
           />
         ) : null}
@@ -274,11 +343,13 @@ export function AdvancedPage() {
             <ConfirmButton
               confirmMessage="Rollback to the selected managed backup? Runtime services may restart."
               disabled={!selectedHostBackup || rollbackBackup.isPending || !canRollback}
-              onClick={() =>
-                selectedHostBackup?.path
-                  ? rollbackBackup.mutate(selectedHostBackup.path)
-                  : undefined
-              }
+              onClick={() => {
+                if (!selectedHostBackup?.path) {
+                  return;
+                }
+                setOperationResultSource("rollback-backup");
+                rollbackBackup.mutate(selectedHostBackup.path);
+              }}
             >
               Rollback
             </ConfirmButton>
@@ -312,10 +383,12 @@ export function AdvancedPage() {
               confirmMessage="Create a VitalServer backup now?"
               disabled={
                 createRuntimeDataBackup.isPending ||
-                !canRepair ||
                 !canManageBackups
               }
-              onClick={() => createRuntimeDataBackup.mutate("")}
+              onClick={() => {
+                setOperationResultSource("create-runtime-data-backup");
+                createRuntimeDataBackup.mutate("");
+              }}
             >
               Create Backup
             </ConfirmButton>
@@ -324,14 +397,15 @@ export function AdvancedPage() {
               disabled={
                 !selectedRuntimeDataBackup?.path ||
                 restoreRuntimeDataBackup.isPending ||
-                !canRepair ||
                 !canManageBackups
               }
-              onClick={() =>
-                selectedRuntimeDataBackup?.path
-                  ? restoreRuntimeDataBackup.mutate(selectedRuntimeDataBackup.path)
-                  : undefined
-              }
+              onClick={() => {
+                if (!selectedRuntimeDataBackup?.path) {
+                  return;
+                }
+                setOperationResultSource("restore-runtime-data-backup");
+                restoreRuntimeDataBackup.mutate(selectedRuntimeDataBackup.path);
+              }}
             >
               Restore Backup
             </ConfirmButton>
@@ -345,61 +419,61 @@ export function AdvancedPage() {
         </div>
 
         <div className="subsection">
-          <h3>Runtime repair</h3>
+          <h3>Runtime Provider</h3>
           <p className="muted">
-            Use Repair Runtime first when VitalServer is unhealthy and the exact
-            cause is unclear.
+            Restart the Platform-owned Runtime Provider. Guest readiness remains
+            reported by the Runtime Controller.
           </p>
           <div className="action-row">
             <ConfirmButton
-              confirmMessage="Restart and repair runtime services?"
-              disabled={repairRuntime.isPending || !canRepair}
-              onClick={() => repairRuntime.mutate()}
+              confirmMessage="Restart the Runtime Provider?"
+              disabled={
+                restartRuntimeProvider.isPending || !canRestartProvider
+              }
+              onClick={() => {
+                setOperationResultSource("restart-runtime-provider");
+                restartRuntimeProvider.mutate();
+              }}
             >
-              Repair Runtime
+              Restart Runtime Provider
             </ConfirmButton>
+          </div>
+          {!canRestartProvider ? (
+            <p className="muted">{unavailableRuntimeProviderControlMessage}</p>
+          ) : null}
+
+          <div className="subsection">
+            <h3>Guest data store repair</h3>
+            <p className="muted">
+              This operation is owned by the Runtime Controller and can create a
+              persisted Guest operation result.
+            </p>
+            <div className="action-row">
+              {canRepairDatastore ? (
+                <ConfirmButton
+                  confirmMessage="Repair the Redis data store? Redis may create a backup and truncate a corrupted AOF tail."
+                  disabled={repairDatastore.isPending}
+                  onClick={() => {
+                    setOperationResultSource("repair-datastore");
+                    repairDatastore.mutate();
+                  }}
+                >
+                  Repair Data Store
+                </ConfirmButton>
+              ) : (
+                <p className="muted">
+                  {unavailableDatastoreRepairMessage}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="subsection">
-            <h3>Advanced repair tools</h3>
+            <h3>Platform-specific maintenance</h3>
             <p className="muted">
-              Use these tools only when diagnostics or support identifies a
-              specific failure source.
+              Host proxy and VM storage repair require platform-specific
+              maintenance workflows and are not available in the common console.
             </p>
-            <div className="action-row">
-              <ConfirmButton
-                confirmMessage="Repair the host proxy service on the selected port?"
-                disabled={repairProxy.isPending || !canRepair}
-                onClick={() => repairProxy.mutate(configuredProxyPort)}
-              >
-                Repair Proxy
-              </ConfirmButton>
-              <ConfirmButton
-                confirmMessage="Create a Redis backup, then recreate the VM disk from the installed base image? If the current VM cannot create a Redis backup, repair continues because the old VM disk is archived before replacement. Vital files stored on the host are preserved."
-                disabled={repairVMDisk.isPending || !canRepair}
-                onClick={() => repairVMDisk.mutate()}
-              >
-                Repair VM Disk
-              </ConfirmButton>
-              <ConfirmButton
-                confirmMessage="Repair the Redis data store? Redis may create a backup and truncate a corrupted AOF tail."
-                disabled={repairDatastore.isPending || !canRepair}
-                onClick={() => repairDatastore.mutate()}
-              >
-                Repair Data Store
-              </ConfirmButton>
-            </div>
-            <label>
-              Proxy port
-              <input
-                type="number"
-                min="1"
-                max="65535"
-                value={proxyPort}
-                onChange={(event) => setProxyPort(event.target.value)}
-                placeholder="Use configured port"
-              />
-            </label>
           </div>
 
           <div className="subsection">
@@ -422,9 +496,12 @@ export function AdvancedPage() {
               <ConfirmButton
                 confirmMessage="Create a recoverable Redis backup now?"
                 disabled={
-                  createRedisBackup.isPending || !canRepair || !canManageBackups
+                  createRedisBackup.isPending || !canManageBackups
                 }
-                onClick={() => createRedisBackup.mutate("")}
+                onClick={() => {
+                  setOperationResultSource("create-redis-backup");
+                  createRedisBackup.mutate("");
+                }}
               >
                 Create Redis-only Backup
               </ConfirmButton>
@@ -504,13 +581,21 @@ export function AdvancedPage() {
       </Panel>
 
       <Panel title="Operation result">
-        {latestGuestServiceOperation ? (
+        {operationResult.kind === "provider" ? (
+          <RuntimeProviderCommandResult
+            command={operationResult.result}
+            error={operationResult.error}
+          />
+        ) : operationResult.kind === "guest" ? (
           <GuestServiceOperationResult
-            operation={latestGuestServiceOperation}
-            error={latestError}
+            operation={operationResult.result}
+            error={operationResult.error}
           />
         ) : (
-          <CommandResult result={latestCommand} error={latestError} />
+          <CommandResult
+            result={operationResult.result}
+            error={operationResult.error}
+          />
         )}
       </Panel>
     </div>
@@ -912,11 +997,15 @@ function GuestServiceOperationResult({
   operation,
   error
 }: {
-  operation: RuntimeGuestControlServiceOperation;
+  operation: RuntimeGuestControlServiceOperation | undefined;
   error: Error | null;
 }) {
   if (error) {
     return <ErrorState error={error} />;
+  }
+
+  if (!operation) {
+    return <p className="muted">No operation has completed yet.</p>;
   }
 
   return (
@@ -928,6 +1017,50 @@ function GuestServiceOperationResult({
         `state: ${operation.state}`,
         operation.failure
           ? `failure: ${operation.failure.kind} ${operation.failure.message}`
+          : ""
+      ]
+        .filter(Boolean)
+        .join("\n")}
+    </pre>
+  );
+}
+
+function RuntimeProviderCommandResult({
+  command,
+  error
+}: {
+  command: RuntimeProviderCommandResponse | undefined;
+  error: Error | null;
+}) {
+  if (error) {
+    return <ErrorState error={error} />;
+  }
+
+  if (!command) {
+    return <p className="muted">No operation has completed yet.</p>;
+  }
+
+  return (
+    <pre className="command-output">
+      {[
+        `operationId: ${command.operationId}`,
+        `action: ${command.action}`,
+        `state: ${command.state}`,
+        `provider resource: ${command.provider.state}`,
+        command.provider.document
+          ? `provider lifecycle: ${command.provider.document.state}`
+          : "",
+        command.provider.document?.terminalReason
+          ? `provider terminal reason: ${command.provider.document.terminalReason}`
+          : "",
+        command.provider.document?.message
+          ? `provider lifecycle message: ${command.provider.document.message}`
+          : "",
+        command.provider.readError
+          ? `provider readError: ${command.provider.readError}`
+          : "",
+        command.failure
+          ? `failure: ${command.failure.kind} ${command.failure.message}`
           : ""
       ]
         .filter(Boolean)
@@ -1138,13 +1271,4 @@ function backupName(path: string | undefined): string {
   }
   const parts = path.split("/");
   return parts[parts.length - 1] || path;
-}
-
-function parseOptionalNumber(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }

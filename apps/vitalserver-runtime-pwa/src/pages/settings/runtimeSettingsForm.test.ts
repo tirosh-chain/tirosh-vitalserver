@@ -425,6 +425,7 @@ function capabilities(overrides = {}) {
     canStreamLogs: true,
     canControlRuntimeServices: true,
     canControlGuestServices: true,
+    canRepairRuntimeDatastore: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
     canUseLab: true,

@@ -299,6 +299,9 @@ export const runtimeGuestControlServiceOperationSchema = z
       "stop",
       "restart",
       "reconcile",
+      "redis-backup",
+      "redis-restore",
+      "repair-datastore",
       "apply-settings",
       "apply-admin-password",
       "apply-redis-relay-settings"
@@ -317,6 +320,80 @@ export const runtimeGuestControlServiceOperationSchema = z
       .optional()
   })
   .passthrough();
+
+const runtimeProviderLifecycleDocumentSchema = z
+  .object({
+    schemaVersion: z.number().int(),
+    // Provider lifecycle vocabulary is owner-extensible. The PWA displays the
+    // explicit value and must not turn a newer platform value into a contract
+    // failure.
+    state: z.string(),
+    operation: z.string().nullable(),
+    operationID: z.string().nullable(),
+    bootID: z.string().nullable(),
+    startedAt: z.string(),
+    updatedAt: z.string(),
+    deadlineAt: z.string().nullable(),
+    terminalReason: z.string().nullable(),
+    message: z.string().nullable()
+  })
+  .strict();
+
+const runtimeProviderResourceStateSchema = z
+  .object({
+    state: z.enum(["loaded", "missing", "unavailable", "failed"]),
+    document: runtimeProviderLifecycleDocumentSchema.nullable(),
+    readError: z.string().nullable()
+  })
+  .strict()
+  .superRefine((resource, context) => {
+    if (resource.state === "loaded" && resource.document === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["document"],
+        message: "loaded Runtime Provider resources must include their lifecycle document"
+      });
+    }
+    if (resource.state !== "loaded" && resource.document !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["document"],
+        message: "unloaded Runtime Provider resources must not include a lifecycle document"
+      });
+    }
+  });
+
+export const runtimeProviderCommandResponseSchema = z
+  .object({
+    operationId: z.string(),
+    action: z.enum(["start", "stop", "restart"]),
+    state: z.enum(["completed", "failed"]),
+    provider: runtimeProviderResourceStateSchema,
+    failure: z
+      .object({
+        kind: z.string(),
+        message: z.string()
+      })
+      .strict()
+      .nullable()
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.state === "completed" && command.failure !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["failure"],
+        message: "completed Runtime Provider commands must not include failure"
+      });
+    }
+    if (command.state === "failed" && command.failure === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["failure"],
+        message: "failed Runtime Provider commands must include failure"
+      });
+    }
+  });
 
 export const runtimeCommandResponseSchema = z
   .object({

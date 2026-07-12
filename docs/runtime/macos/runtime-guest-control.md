@@ -83,9 +83,11 @@ source. Runtime-state documents do not carry capability state in v2.
 
 Swift and Runtime Control HTTP adapters preserve the same client split.
 `RuntimeControlClient` consumes product reads, Product Lab APIs, and Guest
-service operations. Host maintenance commands such as proxy repair, datastore
-repair, VM disk repair, runtime service repair, and Redis backup are exposed
-through `RuntimeHostClient` so product clients do not look like service owners.
+service operations. Datastore repair uses a separate Guest-maintenance
+operation client that returns the persisted Guest operation directly; it is not
+a Host command response. Host maintenance commands such as proxy repair, VM
+disk repair, runtime service repair, and Redis backup are exposed through
+`RuntimeHostClient` so product clients do not look like service owners.
 
 ### 2-5. Runtime clients read Guest service state from its owner
 
@@ -469,6 +471,16 @@ datastore repair systemd service are removed, so stale repair request files
 cannot trigger compose restart. Failures are recorded as typed Guest operation
 failures.
 
+The Runtime Control HTTP boundary forwards that operation unchanged from
+`POST /runtime/maintenance/datastore/repair` as `202 Accepted`. Its body is a
+`RuntimeGuestControlServiceOperation`, not a `RuntimeControlCommandResponse`:
+the persisted operation id, `repair-datastore` command, current state, and any
+typed failure remain visible to the caller. A terminal failed operation is
+still a `202` operation response, not converted into Host stdout/stderr or an
+empty success. The common PWA may offer this action only after the Guest
+advertises `maintenance:datastore-repair:create`; otherwise it displays the
+Guest maintenance capability as unavailable and does not issue the request.
+
 The update activation API creates a persisted Guest Control operation with
 command `activate-update`. The request body must include explicit `requestId`
 and `version` fields, and the Guest adapter runs the existing activation path
@@ -517,11 +529,13 @@ host-selected archive staging, but Redis operation state comes from
 Guest/Postgres operation documents rather than Redis backup/restore
 request/result files.
 
-Swift Runtime Control `repairDatastore()` now consumes the Guest Control
-maintenance API and returns the Guest operation document through the existing
-command response shape. CLI `repair-datastore` also consumes the same Guest
-operation, then performs the Host-owned proxy/watchdog restart and health
-aftercare without writing or polling datastore repair request/result files.
+Swift Runtime Control's datastore-repair HTTP path consumes the Guest Control
+maintenance API through the dedicated Guest-maintenance operation boundary and
+returns the Guest operation document unchanged with `202 Accepted`. CLI
+`repair-datastore` also consumes the same Guest operation, then performs the
+Host-owned proxy/watchdog restart and health aftercare without writing or
+polling datastore repair request/result files. That CLI aftercare does not
+change the HTTP operation owner or its response shape.
 
 Update shutdown now uses a two-step Guest Control maintenance API. First,
 `POST /runtime/maintenance/update-shutdown` accepts explicit `requestId` and
@@ -585,10 +599,11 @@ or bootstrap-result documents as health inputs. Those files may remain as
 diagnostics/export evidence, but live Host health uses Guest Control readiness, VM
 lifecycle, and Guest service status contracts.
 
-Uninstall, VM disk repair, and remaining non-datastore maintenance flows may
-still use legacy maintenance file workflows until their workflows are moved
-behind explicit Guest APIs. Those paths must not be used as product
-service/read-model state.
+Uninstall, VM disk repair, proxy repair, and remaining non-datastore
+maintenance flows are platform-specific maintenance extensions until their
+workflows are moved behind explicit Guest APIs. They may still use explicit
+platform/native workflows where supported, but they are not common PWA actions
+and must not be used as product service/read-model state.
 
 Guest Control API production composition now treats Postgres as the default
 state owner. The default Guest Control usecases create Postgres-backed service
