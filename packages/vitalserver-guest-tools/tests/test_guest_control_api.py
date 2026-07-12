@@ -11,14 +11,16 @@ from uuid import uuid4
 
 import pytest
 
-from tirosh_vitalserver.devtools.runtime_v2_conformance import RuntimeV2ConformanceSuite
 from tirosh_guest_tools.adapters.inbound import guest_control_api
 from tirosh_guest_tools.adapters.inbound.guest_control_api import route_request
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
+    TERMINAL_OPERATION_STATES,
     GuestControlDependencyError,
     GuestServiceResource,
     OperationEvent,
+    OperationLease,
+    OperationState,
     ProductLabReadModelResult,
     ProductLabSessionResult,
     ProductLabUploadResult,
@@ -31,6 +33,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     UpdateActivationResult,
     UpdateShutdownResult,
 )
+from tirosh_vitalserver.devtools.runtime_v2_conformance import RuntimeV2ConformanceSuite
 from vitalserver_redis_relay.status_owner import GuestControlStatusOwnerPublisher
 
 
@@ -88,6 +91,7 @@ class FakeOperations:
         self.ready_failure = ready_failure
         self.saved: list[ServiceOperation] = []
         self.events: list[OperationEvent] = []
+        self.active_lease: OperationLease | None = None
         self.status_snapshots: list[ServiceStatus] = []
         self.service_resources: dict[str, GuestServiceResource] = {}
         self.redis_relay_status: dict[str, object] | None = None
@@ -96,14 +100,34 @@ class FakeOperations:
         if self.ready_failure is not None:
             raise self.ready_failure
 
-    def create(self, operation: ServiceOperation) -> None:
+    def record_accepted(
+        self,
+        operation: ServiceOperation,
+        *,
+        lease: OperationLease,
+    ) -> None:
         self.saved.append(operation)
+        self.events.append(operation_event(operation))
+        self.active_lease = lease
 
-    def save(self, operation: ServiceOperation) -> None:
+    def record_transition(
+        self,
+        operation: ServiceOperation,
+    ) -> None:
         self.saved.append(operation)
+        self.events.append(operation_event(operation))
+        if operation.state in TERMINAL_OPERATION_STATES:
+            self.active_lease = None
 
-    def append_event(self, event: OperationEvent) -> None:
-        self.events.append(event)
+    def list_unfinished_operations(self) -> list[ServiceOperation]:
+        latest: dict[str, ServiceOperation] = {}
+        for operation in self.saved:
+            latest[operation.operation_id] = operation
+        return [
+            operation
+            for operation in latest.values()
+            if operation.state in {OperationState.ACCEPTED, OperationState.RUNNING}
+        ]
 
     def save_service_status_snapshot(self, status: ServiceStatus) -> None:
         self.status_snapshots.append(status)
@@ -160,6 +184,16 @@ class FakeOperations:
             "nextCursor": None,
             "matchingCount": None,
         }
+
+
+def operation_event(operation: ServiceOperation) -> OperationEvent:
+    return OperationEvent(
+        operation_id=operation.operation_id,
+        state=operation.state,
+        observed_at=operation.updated_at,
+        failure=operation.failure,
+        result=operation.result,
+    )
 
 
 class FakeServiceControl:
@@ -710,9 +744,29 @@ class FakeUpdateShutdown:
         return None
 
 
+def build_usecases(
+    *,
+    service_control: FakeServiceControl,
+    operations: FakeOperations,
+    operation_ids: FakeOperationIds,
+    clock: FakeClock,
+    **adapters: object,
+) -> GuestControlUseCases:
+    """Compose the three required control repositories around one test store."""
+    return GuestControlUseCases(
+        service_control=service_control,
+        operations=operations,
+        service_status_snapshots=operations,
+        guest_service_resources=operations,
+        operation_ids=operation_ids,
+        clock=clock,
+        **adapters,
+    )
+
+
 @pytest.fixture
 def usecases() -> GuestControlUseCases:
-    return GuestControlUseCases(
+    return build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -731,22 +785,26 @@ def usecases() -> GuestControlUseCases:
     )
 
 
-def test_default_usecases_ensure_postgres_schema_during_composition(
+def test_default_usecases_require_migrated_sqlite_without_postgres_startup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    migrations: list[str] = []
+    checks: list[str] = []
 
-    class FakePostgresOperations(FakeOperations):
-        def ensure_schema(self) -> None:
-            migrations.append("operations")
+    class FakeSQLiteOperations(FakeOperations):
+        def __init__(self, database_path: Path) -> None:
+            super().__init__()
+            self.database_path = database_path
 
         def check_ready(self) -> None:
-            self.ensure_schema()
+            checks.append("sqlite")
             super().check_ready()
+
+        def migrate_schema(self) -> None:
+            raise AssertionError("Guest Control API must not migrate control state")
 
     class FakePostgresVitalDB(FakeVitalDBReadModel):
         def ensure_schema(self) -> None:
-            migrations.append("vitaldb")
+            checks.append("vitaldb")
 
         def check_ready(self) -> None:
             self.ensure_schema()
@@ -754,8 +812,8 @@ def test_default_usecases_ensure_postgres_schema_during_composition(
 
     monkeypatch.setattr(
         guest_control_api,
-        "PostgresOperationRepository",
-        FakePostgresOperations,
+        "SQLiteControlRepository",
+        FakeSQLiteOperations,
     )
     monkeypatch.setattr(
         guest_control_api,
@@ -770,9 +828,9 @@ def test_default_usecases_ensure_postgres_schema_during_composition(
 
     usecases = guest_control_api.build_default_usecases()
 
-    assert migrations == ["operations", "vitaldb"]
+    assert checks == ["sqlite"]
     assert usecases.readiness()["status"] == "ready"
-    assert migrations == ["operations", "vitaldb", "operations", "vitaldb"]
+    assert checks == ["sqlite", "sqlite", "vitaldb"]
     operation = usecases.restart_service("app")
     assert operation.operation_id.startswith("op_app_restart_")
 
@@ -925,14 +983,13 @@ def test_ready_route_reports_dependency_readiness(
     ]
 
 
-def test_ready_route_reports_postgres_dependency_failure() -> None:
-    usecases = GuestControlUseCases(
+def test_ready_route_reports_control_store_dependency_failure() -> None:
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(
             ready_failure=GuestControlDependencyError(
-                "postgres command failed during guest control operation "
-                "repository readiness",
-                kind="postgresCommandFailed",
+                "control SQLite schema is not at the required revision",
+                kind="controlStoreSchemaMismatch",
             )
         ),
         operation_ids=FakeOperationIds(),
@@ -953,11 +1010,8 @@ def test_ready_route_reports_postgres_dependency_failure() -> None:
                 "name": "operationRepository",
                 "role": "required",
                 "state": "failed",
-                "kind": "postgresCommandFailed",
-                "message": (
-                    "postgres command failed during guest control operation "
-                    "repository readiness"
-                ),
+                "kind": "controlStoreSchemaMismatch",
+                "message": "control SQLite schema is not at the required revision",
             }
         ],
     }
@@ -1009,7 +1063,7 @@ def test_capabilities_route_advertises_vitaldb_read_model(
 
 
 def test_capabilities_route_omits_unconfigured_adapter_capabilities() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1137,7 +1191,7 @@ def test_guest_service_observe_route_returns_observed_resource(
 
 
 def test_guest_service_spec_invalid_request_returns_bad_request() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1159,7 +1213,7 @@ def test_guest_service_spec_invalid_request_returns_bad_request() -> None:
 
 
 def test_guest_service_unknown_service_returns_not_found() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(services=["app"]),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1181,9 +1235,49 @@ def test_guest_service_unknown_service_returns_not_found() -> None:
     }
 
 
+def test_active_control_lease_conflict_returns_explicit_conflict() -> None:
+    class LeaseConflictOperations(FakeOperations):
+        def record_accepted(
+            self,
+            operation: ServiceOperation,
+            *,
+            lease: OperationLease,
+        ) -> None:
+            del operation
+            del lease
+            raise GuestControlDependencyError(
+                "a Guest Control operation already owns the command lease: "
+                "resource=guest-control operationId=op_existing",
+                kind="operationLeaseConflict",
+            )
+
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=LeaseConflictOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    status, document = handle_with_test_handler(
+        method="POST",
+        path="/runtime/services/app/restart",
+        body=b"",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.CONFLICT
+    assert document == {
+        "code": "operationInProgress",
+        "detail": (
+            "a Guest Control operation already owns the command lease: "
+            "resource=guest-control operationId=op_existing"
+        ),
+    }
+
+
 def test_restart_route_preserves_failed_operation_document() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(fail_command="restart"),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1609,7 +1703,7 @@ def test_redis_relay_status_route_returns_explicit_status_read(
 
 def test_redis_relay_status_route_persists_owner_snapshot() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1639,7 +1733,7 @@ def test_redis_relay_status_route_persists_owner_snapshot() -> None:
 
 def test_redis_relay_status_route_rejects_incomplete_owner_snapshot() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1884,7 +1978,7 @@ def test_redis_relay_settings_routes_read_apply_and_do_not_return_secret(
 
 
 def test_latest_vitaldb_observation_route_reports_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1975,7 +2069,7 @@ def test_vitaldb_recorder_detail_distinguishes_loaded_and_missing(
 
 
 def test_vitaldb_recorders_route_reports_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1993,11 +2087,13 @@ def test_vitaldb_recorders_route_reports_unavailable_without_adapter() -> None:
     assert document["state"] == "readFailed"
     assert document["recorders"] == []
     assert document["updatedAt"] is None
-    assert document["readError"] == "VitalDB recorder read model adapter is unavailable."
+    assert document["readError"] == (
+        "VitalDB recorder read model adapter is unavailable."
+    )
 
 
 def test_vitaldb_recorder_detail_reports_read_model_failure_as_unavailable() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2104,7 +2200,7 @@ def test_vitaldb_bed_detail_distinguishes_loaded_and_missing(
 
 
 def test_vitaldb_beds_route_reports_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2142,7 +2238,7 @@ def test_vitaldb_relationships_route_returns_product_read_model(
 
 
 def test_vitaldb_relationships_route_reports_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),

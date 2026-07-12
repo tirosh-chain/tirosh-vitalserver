@@ -25,6 +25,8 @@ def test_hyperv_guest_payload_stages_native_owner_contract(tmp_path: Path) -> No
     (deploy / "redis-relay-config/redis-relay.toml").write_text(
         "[redis_relay]\nenabled = false\n", encoding="utf-8"
     )
+    _write_guest_control_service(deploy)
+    _write_guest_tools_runtime_payload(deploy)
     proof = tmp_path / "rootfs-proof.json"
     proof.write_text(
         json.dumps(
@@ -67,6 +69,17 @@ def test_hyperv_guest_payload_stages_native_owner_contract(tmp_path: Path) -> No
 
     target = system_root / "opt/vitalserver"
     assert (target / "deploy/compose.yaml").is_file()
+    assert (target / "deploy/install-guest-tools-runtime.py").is_file()
+    assert (target / "deploy/python-wheels/manifest.json").is_file()
+    control_service = (
+        target / "deploy/systemd/tirosh-vitalserver-guest-control-api.service"
+    ).read_text(encoding="utf-8")
+    assert "RequiresMountsFor=/mnt/runtime" in control_service
+    assert (
+        "ExecStartPre=/opt/tirosh/guest-tools/venv/bin/"
+        "tirosh-guest-tools-migrate-control-store --control-state-dir "
+        "/mnt/runtime/control"
+    ) in control_service
     settings = (target / "hyperv-guest/guest-tools.toml").read_text(encoding="utf-8")
     assert 'runtimeMountMode = "native"' in settings
     assert 'vitalFilesMountMode = "native"' in settings
@@ -155,3 +168,47 @@ def _hyperv_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     runtime_data_raw.write_bytes(b"runtime-data")
     seed_iso.write_bytes(b"seed")
     return system_raw, runtime_data_raw, seed_iso
+
+
+def _write_guest_tools_runtime_payload(deploy: Path) -> None:
+    wheelhouse = deploy / "python-wheels"
+    (wheelhouse / "guest-tools").mkdir(parents=True)
+    (wheelhouse / "linux-amd64").mkdir()
+    (deploy / "install-guest-tools-runtime.py").write_text(
+        "#!/usr/bin/env python3\n",
+        encoding="utf-8",
+    )
+    (wheelhouse / "guest-tools/guest-tools.whl").write_bytes(b"wheel")
+    (wheelhouse / "linux-amd64/sqlalchemy.whl").write_bytes(b"wheel")
+    (wheelhouse / "linux-amd64/requirements.txt").write_text(
+        "guest-tools\n",
+        encoding="utf-8",
+    )
+    (wheelhouse / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "guestTools": {"path": "guest-tools/guest-tools.whl"},
+                "targets": {
+                    "linux-amd64": {
+                        "requirementsPath": "linux-amd64/requirements.txt"
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_guest_control_service(deploy: Path) -> None:
+    service = deploy / "systemd/tirosh-vitalserver-guest-control-api.service"
+    service.parent.mkdir()
+    service.write_text(
+        "[Unit]\n"
+        "RequiresMountsFor=/mnt/runtime\n"
+        "[Service]\n"
+        "ExecStartPre=/opt/tirosh/guest-tools/venv/bin/"
+        "tirosh-guest-tools-migrate-control-store --control-state-dir "
+        "/mnt/runtime/control\n",
+        encoding="utf-8",
+    )

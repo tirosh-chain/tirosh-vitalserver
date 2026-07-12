@@ -19,6 +19,7 @@ POLICY_RC_D="/usr/sbin/policy-rc.d"
 POLICY_RC_D_BACKUP="/usr/sbin/policy-rc.d.vitalserver-backup"
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
+GUEST_TOOLS_INSTALL_PROOF_FILE="${GUEST_TOOLS_HOME}/install-proof.json"
 PYTHON_WHEEL_DIR="${MOUNT_POINT}/deploy/python-wheels"
 ROOTFS_STAGE="startup"
 
@@ -484,18 +485,10 @@ PY
 }
 
 install_guest_tools_for_rootfs_smoke() {
-  local wheel
-
   ROOTFS_STAGE="guest-tools-install"
-  wheel="$(find "${PYTHON_WHEEL_DIR}" -maxdepth 1 -name 'tirosh_vitalserver_guest_tools-*.whl' -type f | sort | tail -n 1 || true)"
-  if [ -z "${wheel}" ]; then
-    printf "error: missing guest tools wheel under %s\n" "${PYTHON_WHEEL_DIR}" >&2
-    return 1
-  fi
-
-  mkdir -p "${GUEST_TOOLS_HOME}"
-  python3 -m venv --clear "${GUEST_TOOLS_VENV}"
-  "${GUEST_TOOLS_VENV}/bin/pip" install --no-index --no-deps "${wheel}"
+  python3 "${DEPLOY_DIR}/install-guest-tools-runtime.py" \
+    --wheel-dir "${PYTHON_WHEEL_DIR}" \
+    --guest-tools-home "${GUEST_TOOLS_HOME}"
   ln -sf "${GUEST_TOOLS_VENV}/bin/tirosh-vitalserver-rootfs-smoke" /usr/local/bin/tirosh-vitalserver-rootfs-smoke
 }
 
@@ -516,7 +509,7 @@ systemctl enable avahi-daemon
 cleanup_rootfs_identity_state
 
 ROOTFS_STAGE="ready-marker"
-python3 - "${RUNTIME_MANIFEST_FILE}" "${READY_FILE}" "${IDENTITY_CLEANUP_FILE}" <<'PY'
+python3 - "${RUNTIME_MANIFEST_FILE}" "${READY_FILE}" "${IDENTITY_CLEANUP_FILE}" "${GUEST_TOOLS_INSTALL_PROOF_FILE}" <<'PY'
 import json
 import subprocess
 import sys
@@ -526,8 +519,35 @@ from pathlib import Path
 manifest_path = Path(sys.argv[1])
 ready_path = Path(sys.argv[2])
 identity_cleanup_path = Path(sys.argv[3])
+guest_tools_install_proof_path = Path(sys.argv[4])
 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 identity_cleanup = json.loads(identity_cleanup_path.read_text(encoding="utf-8"))
+try:
+    guest_tools_install_proof = json.loads(
+        guest_tools_install_proof_path.read_text(encoding="utf-8")
+    )
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(
+        "Guest Tools install proof is unavailable or invalid: "
+        f"{guest_tools_install_proof_path}: {error}"
+    ) from error
+if not isinstance(guest_tools_install_proof, dict):
+    raise SystemExit(
+        "Guest Tools install proof must be an object: "
+        f"{guest_tools_install_proof_path}"
+    )
+dependencies = guest_tools_install_proof.get("dependencies")
+if (
+    guest_tools_install_proof.get("status") != "passed"
+    or not isinstance(guest_tools_install_proof.get("target"), str)
+    or not isinstance(dependencies, dict)
+    or not isinstance(dependencies.get("alembic"), str)
+    or not isinstance(dependencies.get("sqlalchemy"), str)
+):
+    raise SystemExit(
+        "Guest Tools install proof is incomplete: "
+        f"{guest_tools_install_proof_path}"
+    )
 
 
 def command_output(command):
@@ -549,6 +569,16 @@ ready_path.write_text(
             },
             "manifest": str(manifest_path),
             "pythonVenv": "ready",
+            "pythonDependencies": {
+                "status": "passed",
+                "proof": str(guest_tools_install_proof_path),
+                "target": guest_tools_install_proof["target"],
+                "dependencies": dependencies,
+                "guestWheelSHA256": guest_tools_install_proof.get("guestWheelSHA256"),
+                "requirementsSHA256": guest_tools_install_proof.get(
+                    "requirementsSHA256"
+                ),
+            },
         },
         indent=2,
         sort_keys=True,

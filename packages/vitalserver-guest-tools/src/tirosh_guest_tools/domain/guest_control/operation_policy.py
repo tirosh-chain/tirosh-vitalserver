@@ -90,6 +90,28 @@ def fail_operation(
     )
 
 
+def interrupt_operation(
+    operation: ServiceOperation,
+    *,
+    failure: OperationFailure,
+    now: datetime,
+) -> ServiceOperation:
+    ensure_not_terminal(operation)
+    if operation.state not in {OperationState.ACCEPTED, OperationState.RUNNING}:
+        raise GuestControlPolicyError(
+            f"operation cannot be interrupted from state: {operation.state.value}"
+        )
+    return ServiceOperation(
+        operation_id=operation.operation_id,
+        service=operation.service,
+        command=operation.command,
+        state=OperationState.INTERRUPTED,
+        created_at=operation.created_at,
+        updated_at=now,
+        failure=failure,
+    )
+
+
 def ensure_not_terminal(operation: ServiceOperation) -> None:
     if operation.state in TERMINAL_OPERATION_STATES:
         raise GuestControlPolicyError(

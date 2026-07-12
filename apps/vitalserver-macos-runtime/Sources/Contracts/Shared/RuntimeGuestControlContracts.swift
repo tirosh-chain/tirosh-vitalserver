@@ -61,11 +61,22 @@ public struct RuntimeGuestControlCapabilities: Codable, Equatable, Sendable {
     }
 }
 
-public enum RuntimeGuestControlServiceCommand: String, Codable, Equatable, Sendable {
+public enum RuntimeGuestControlServiceCommand: String, CaseIterable, Codable, Equatable, Sendable {
     case start
     case stop
     case restart
     case reconcile
+    case labCreateSession = "lab-create-session"
+    case labStartSession = "lab-start-session"
+    case labStopSession = "lab-stop-session"
+    case labReplayVitalFile = "lab-replay-vital-file"
+    case labUploadVitalFile = "lab-upload-vital-file"
+    case labCreateBeds = "lab-create-beds"
+    case labDeleteBeds = "lab-delete-beds"
+    case labResetBeds = "lab-reset-beds"
+    case labCreateRecorders = "lab-create-recorders"
+    case labDeleteRecorders = "lab-delete-recorders"
+    case labResetRecorders = "lab-reset-recorders"
     case redisBackup = "redis-backup"
     case redisRestore = "redis-restore"
     case repairDatastore = "repair-datastore"
@@ -77,12 +88,13 @@ public enum RuntimeGuestControlServiceCommand: String, Codable, Equatable, Senda
     case applyRedisRelaySettings = "apply-redis-relay-settings"
 }
 
-public enum RuntimeGuestControlOperationState: String, Codable, Equatable, Sendable {
+public enum RuntimeGuestControlOperationState: String, CaseIterable, Codable, Equatable, Sendable {
     case accepted
     case running
     case completed
     case failed
     case cancelled
+    case interrupted
 }
 
 public struct RuntimeGuestControlServiceStatus: Codable, Equatable, Sendable {

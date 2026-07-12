@@ -29,6 +29,7 @@ vitalFilesMountMode = "virtiofs"
 [paths]
 deployDir = "/runtime/deploy"
 runtimeDir = "/runtime/run"
+controlStateDir = "/runtime/control"
 composeFile = "/runtime/deploy/compose.yaml"
 runtimeConfigFile = "/etc/vitalserver/runtime-config.json"
 runtimeSettingsFile = "/etc/vitalserver/runtime-settings.json"
@@ -75,6 +76,7 @@ fileEnabled = true
     assert settings.shares.runtime_mount_mode == "native"
     assert settings.shares.vital_files_mount_mode == "virtiofs"
     assert settings.paths.python_wheel_dir == Path("/runtime/wheels")
+    assert settings.paths.control_state_dir == Path("/runtime/control")
     assert settings.paths.runtime_config_file == Path(
         "/etc/vitalserver/runtime-config.json"
     )
@@ -97,6 +99,7 @@ def test_load_settings_uses_packaged_defaults_when_file_is_missing(
     assert settings.shares.runtime_mount == Path("/mnt/tirosh")
     assert settings.shares.runtime_mount_mode == "virtiofs"
     assert settings.paths.deploy_dir == Path("/mnt/tirosh/deploy")
+    assert settings.paths.control_state_dir == Path("/mnt/runtime/control")
     assert settings.compose.project_name == "vitalserver"
     assert settings.compose.stop_timeout_seconds == 120
     assert settings.intervals.command_poll_seconds == 3
@@ -150,3 +153,60 @@ commandPollSeconds = "fast"
     with pytest.raises(GuestContractError, match="commandPollSeconds") as error:
         load_settings(settings_file)
     assert error.value.code == "guest-tools-setting-type-invalid"
+
+
+def test_load_settings_rejects_control_state_under_shared_deploy_directory(
+    tmp_path: Path,
+) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text(
+        """
+[paths]
+controlStateDir = "/mnt/tirosh/deploy/control"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file)
+
+    assert error.value.code == "guest-tools-control-state-path-invalid"
+
+
+def test_load_settings_rejects_relative_control_state_directory(
+    tmp_path: Path,
+) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text(
+        """
+[paths]
+controlStateDir = "control"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file)
+
+    assert error.value.code == "guest-tools-control-state-path-invalid"
+
+
+def test_load_settings_rejects_control_state_under_virtiofs_runtime_mount(
+    tmp_path: Path,
+) -> None:
+    settings_file = tmp_path / "guest-tools.toml"
+    settings_file.write_text(
+        """
+[paths]
+controlStateDir = "/mnt/tirosh/control"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(GuestContractError) as error:
+        load_settings(settings_file)
+
+    assert error.value.code == "guest-tools-control-state-path-invalid"

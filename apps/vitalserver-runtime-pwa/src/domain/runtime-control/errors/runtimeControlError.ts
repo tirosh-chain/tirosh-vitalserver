@@ -257,6 +257,10 @@ function parseAPIErrorBody(
 }
 
 function recoveryForStatus(status: number, code: string | undefined): string {
+  if (status === 409 || code === "operationInProgress") {
+    return "Another Runtime control operation is in progress. Wait for it to finish, then retry this command.";
+  }
+
   if (status === 401 || code === "unauthorized") {
     return "Verify the Runtime Control token configured for the Remote Console.";
   }

@@ -78,9 +78,37 @@ final class RuntimeGuestProductServiceControlUseCaseTests: XCTestCase {
             XCTAssertEqual(
                 error as? RuntimeServiceControlError,
                 .operationFailed(
-                    "guest service operation failed service=app operationId=op-app-restart kind=composeCommandFailed reason=docker compose restart app failed evidencePath=/var/log/tirosh/guest-control.log"
+                    "guest service operation did not complete service=app operationId=op-app-restart state=failed kind=composeCommandFailed reason=docker compose restart app failed evidencePath=/var/log/tirosh/guest-control.log"
                 )
             )
+        }
+    }
+
+    func testRestartServiceRejectsInterruptedGuestOperation() {
+        let operation = RuntimeGuestControlServiceOperation(
+            operationId: "op-app-restart",
+            service: "app",
+            command: .restart,
+            state: .interrupted,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            failure: RuntimeGuestControlOperationFailure(
+                kind: "controllerRestarted",
+                message: "Runtime Controller restarted before the operation outcome was known."
+            )
+        )
+        let gateway = CapturingGuestControlGateway(restartOperation: operation)
+
+        XCTAssertThrowsError(
+            try RuntimeGuestProductServiceControlUseCase().restartService(
+                "app",
+                gateway: gateway
+            )
+        ) { error in
+            guard case .operationFailed(let message) = error as? RuntimeServiceControlError else {
+                return XCTFail("Expected RuntimeServiceControlError")
+            }
+            XCTAssertTrue(message.contains("controllerRestarted"))
         }
     }
 }

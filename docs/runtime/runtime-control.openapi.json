@@ -249,6 +249,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -319,6 +322,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -353,6 +359,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -389,6 +398,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -423,6 +435,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -558,6 +573,9 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -663,6 +681,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -698,6 +719,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -732,6 +756,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -879,6 +906,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -915,6 +945,9 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -1033,6 +1066,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -1255,6 +1291,9 @@
           "200": {
             "$ref": "#/components/responses/CommandResult"
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -1281,6 +1320,9 @@
         "responses": {
           "200": {
             "$ref": "#/components/responses/CommandResult"
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "501": {
             "$ref": "#/components/responses/NotImplemented"
@@ -2557,6 +2599,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -2591,6 +2636,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -2627,6 +2675,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -2651,6 +2702,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -2687,6 +2741,9 @@
               }
             }
           },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -2721,6 +2778,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -2785,6 +2845,16 @@
       },
       "BadRequest": {
         "description": "Invalid request parameter or body",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeControlErrorResponse"
+            }
+          }
+        }
+      },
+      "OperationInProgress": {
+        "description": "A Guest Runtime Controller operation owns the global control lease. The command was not accepted or queued.",
         "content": {
           "application/json": {
             "schema": {
@@ -5178,9 +5248,23 @@
               "stop",
               "restart",
               "reconcile",
+              "lab-create-session",
+              "lab-start-session",
+              "lab-stop-session",
+              "lab-replay-vital-file",
+              "lab-upload-vital-file",
+              "lab-create-beds",
+              "lab-delete-beds",
+              "lab-reset-beds",
+              "lab-create-recorders",
+              "lab-delete-recorders",
+              "lab-reset-recorders",
               "redis-backup",
               "redis-restore",
               "repair-datastore",
+              "activate-update",
+              "prepare-update-shutdown",
+              "request-guest-poweroff",
               "apply-settings",
               "apply-admin-password",
               "apply-redis-relay-settings"
@@ -5193,7 +5277,8 @@
               "running",
               "completed",
               "failed",
-              "cancelled"
+              "cancelled",
+              "interrupted"
             ]
           },
           "createdAt": {
@@ -5206,6 +5291,17 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RuntimeGuestControlOperationFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true
               },
               {
                 "type": "null"
@@ -5858,7 +5954,7 @@
           "operationCommand": { "type": "string" },
           "operationState": {
             "type": "string",
-            "enum": ["accepted", "running", "completed", "failed", "cancelled"]
+            "enum": ["accepted", "running", "completed", "failed", "cancelled", "interrupted"]
           },
           "message": { "type": "string" },
           "failure": {
@@ -5876,7 +5972,8 @@
           "operation-running",
           "operation-completed",
           "operation-failed",
-          "operation-cancelled"
+          "operation-cancelled",
+          "operation-interrupted"
         ]
       },
       "RuntimeDomainError": {
@@ -7486,6 +7583,7 @@
           "methodNotAllowed",
           "unauthorized",
           "endpointNotImplemented",
+          "operationInProgress",
           "handlerFailed"
         ]
       },

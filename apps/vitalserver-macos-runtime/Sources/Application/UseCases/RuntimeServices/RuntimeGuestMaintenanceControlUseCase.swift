@@ -141,7 +141,7 @@ public struct RuntimeGuestMaintenanceControlUseCase {
         _ operation: RuntimeGuestControlServiceOperation,
         operationName: String
     ) throws -> RuntimeGuestControlServiceOperation {
-        if operation.state == .failed {
+        if operation.state == .failed || operation.state == .cancelled || operation.state == .interrupted {
             throw RuntimeServiceControlError.operationFailed(
                 failureMessage(operation, operationName: operationName)
             )
@@ -154,9 +154,10 @@ public struct RuntimeGuestMaintenanceControlUseCase {
         operationName: String
     ) -> String {
         guard let failure = operation.failure else {
-            return "\(operationName) failed operationId=\(operation.operationId)"
+            return "\(operationName) did not complete operationId=\(operation.operationId) state=\(operation.state.rawValue)"
         }
-        var message = "\(operationName) failed operationId=\(operation.operationId)"
+        var message = "\(operationName) did not complete operationId=\(operation.operationId)"
+        message += " state=\(operation.state.rawValue)"
         message += " kind=\(failure.kind)"
         message += " reason=\(failure.message)"
         if let evidencePath = failure.evidencePath, !evidencePath.isEmpty {

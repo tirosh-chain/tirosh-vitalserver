@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
 import fcntl
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import tempfile
-
+from datetime import UTC, datetime
+from pathlib import Path
 
 OPT_ROOT = Path("/opt/vitalserver")
 ETC_ROOT = Path("/etc/vitalserver")
@@ -26,14 +25,23 @@ CURRENT_LINK = OPT_ROOT / "current"
 LOCK_PATH = Path("/var/lock/vitalserver-linux-install.lock")
 VERSION_PATTERN = re.compile(r"[A-Za-z0-9._+-]+")
 UNITS = {
-    "vitalserver-platform-agent.service": "/opt/vitalserver/current/bin/vitalserver-platform-agent",
-    "vitalserver-runtime-controller.service": "/opt/vitalserver/current/bin/vitalserver-runtime-controller.pyz",
-    "vitalserver-runtime-provider.service": "/opt/vitalserver/current/bin/vitalserver-runtime-provider",
+    "vitalserver-platform-agent.service": (
+        "/opt/vitalserver/current/bin/vitalserver-platform-agent"
+    ),
+    "vitalserver-runtime-controller.service": (
+        "/opt/vitalserver/current/runtime-controller/venv/bin/"
+        "tirosh-vitalserver-guest-control-api"
+    ),
+    "vitalserver-runtime-provider.service": (
+        "/opt/vitalserver/current/bin/vitalserver-runtime-provider"
+    ),
 }
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run a durable VitalServer Linux uninstall.")
+    parser = argparse.ArgumentParser(
+        description="Run a durable VitalServer Linux uninstall."
+    )
     parser.add_argument("--mode", choices=("standard", "clean"), required=True)
     parser.add_argument("--operation-id", required=True)
     parser.add_argument("--operation-document", type=Path, required=True)
@@ -53,8 +61,12 @@ def main() -> int:
             try:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
-                raise RuntimeError("another VitalServer Linux install, update, or uninstall is active") from error
-            write_operation(args.operation_document, args.operation_id, "running", started_at, None)
+                raise RuntimeError(
+                    "another VitalServer Linux install, update, or uninstall is active"
+                ) from error
+            write_operation(
+                args.operation_document, args.operation_id, "running", started_at, None
+            )
             ownership = validate_ownership(args.operation_document)
             uninstall(args.mode, ownership)
             proof = {
@@ -69,24 +81,51 @@ def main() -> int:
             }
             if args.mode == "clean":
                 proof_root = EXTERNAL_PROOF_ROOT
-                write_operation(args.operation_document, args.operation_id, "completed", started_at, None)
+                write_operation(
+                    args.operation_document,
+                    args.operation_id,
+                    "completed",
+                    started_at,
+                    None,
+                )
                 remove_tree(ETC_ROOT)
                 remove_tree(VAR_ROOT)
                 remove_tree(LOG_ROOT)
-                write_json(proof_root / f"linux-uninstall-{args.operation_id}.json", proof, 0o600)
+                write_json(
+                    proof_root / f"linux-uninstall-{args.operation_id}.json",
+                    proof,
+                    0o600,
+                )
             else:
                 proof_root = VAR_ROOT / "proof"
-                write_json(proof_root / f"linux-uninstall-{args.operation_id}.json", proof, 0o600)
-                write_operation(args.operation_document, args.operation_id, "completed", started_at, None)
+                write_json(
+                    proof_root / f"linux-uninstall-{args.operation_id}.json",
+                    proof,
+                    0o600,
+                )
+                write_operation(
+                    args.operation_document,
+                    args.operation_id,
+                    "completed",
+                    started_at,
+                    None,
+                )
+        proof_path = proof_root / f"linux-uninstall-{args.operation_id}.json"
         print(
             "VitalServer Linux uninstall completed "
-            f"mode={args.mode} proof={proof_root / f'linux-uninstall-{args.operation_id}.json'}"
+            f"mode={args.mode} proof={proof_path}"
         )
         return 0
     except Exception as error:
         failure = {"kind": "uninstallFailed", "message": str(error)}
         try:
-            write_operation(args.operation_document, args.operation_id, "failed", started_at, failure)
+            write_operation(
+                args.operation_document,
+                args.operation_id,
+                "failed",
+                started_at,
+                failure,
+            )
         except Exception:
             write_json(
                 EXTERNAL_PROOF_ROOT / f"linux-uninstall-{args.operation_id}.json",
@@ -109,13 +148,19 @@ def validate_ownership(operation_document: Path) -> dict[str, str]:
     if install.get("schemaVersion") != 1 or install.get("state") != "installed":
         raise RuntimeError("install owner identity is invalid")
     platform_version = require_version(install, "platformVersion", "install owner")
-    runtime_bundle_version = require_version(install, "runtimeBundleVersion", "install owner")
+    runtime_bundle_version = require_version(
+        install, "runtimeBundleVersion", "install owner"
+    )
     if not CURRENT_LINK.is_symlink():
-        raise RuntimeError(f"current release owner symlink is missing path={CURRENT_LINK}")
+        raise RuntimeError(
+            f"current release owner symlink is missing path={CURRENT_LINK}"
+        )
     target = os.readlink(CURRENT_LINK)
     expected_target = f"releases/{platform_version}"
     if target != expected_target:
-        raise RuntimeError(f"current release owner differs expected={expected_target} actual={target}")
+        raise RuntimeError(
+            f"current release owner differs expected={expected_target} actual={target}"
+        )
     release_root = OPT_ROOT / expected_target
     release = load_object(release_root / "release.json", "release owner")
     if (
@@ -151,8 +196,10 @@ def validate_ownership(operation_document: Path) -> dict[str, str]:
     if (
         platform.get("schemaVersion") != 1
         or not isinstance(delivery, dict)
-        or delivery.get("uninstallTool") != str(CURRENT_LINK / "tools/uninstall-linux.py")
-        or delivery.get("supportExportTool") != str(CURRENT_LINK / "tools/support-export-linux.py")
+        or delivery.get("uninstallTool")
+        != str(CURRENT_LINK / "tools/uninstall-linux.py")
+        or delivery.get("supportExportTool")
+        != str(CURRENT_LINK / "tools/support-export-linux.py")
         or delivery.get("schedulerKind") != "systemd-transient"
     ):
         raise RuntimeError("Platform Agent uninstall owner is invalid")
@@ -162,15 +209,20 @@ def validate_ownership(operation_document: Path) -> dict[str, str]:
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as error:
-            raise RuntimeError(f"systemd unit owner read failed path={path}: {error}") from error
-        exec_start = next((line for line in text.splitlines() if line.startswith("ExecStart=")), None)
+            raise RuntimeError(
+                f"systemd unit owner read failed path={path}: {error}"
+            ) from error
+        exec_start = next(
+            (line for line in text.splitlines() if line.startswith("ExecStart=")), None
+        )
         if exec_start is None or executable not in exec_start:
             raise RuntimeError(f"systemd unit owner differs path={path}")
 
     expected_operation = VAR_ROOT / "run/platform-workflow.json"
     if operation_document != expected_operation:
         raise RuntimeError(
-            f"uninstall operation owner path differs expected={expected_operation} actual={operation_document}"
+            "uninstall operation owner path differs "
+            f"expected={expected_operation} actual={operation_document}"
         )
     return {
         "platformVersion": platform_version,
@@ -181,7 +233,14 @@ def validate_ownership(operation_document: Path) -> dict[str, str]:
 
 
 def uninstall(mode: str, ownership: dict[str, str]) -> None:
-    run(["systemctl", "stop", "vitalserver-runtime-controller.service", "vitalserver-runtime-provider.service"])
+    run(
+        [
+            "systemctl",
+            "stop",
+            "vitalserver-runtime-controller.service",
+            "vitalserver-runtime-provider.service",
+        ]
+    )
     compose = [
         ownership["composeExecutable"],
         "compose",
@@ -209,14 +268,19 @@ def uninstall(mode: str, ownership: dict[str, str]) -> None:
     if run_root.exists():
         for child in run_root.iterdir():
             if child != VAR_ROOT / "run/platform-workflow.json":
-                remove_tree(child) if child.is_dir() and not child.is_symlink() else child.unlink()
+                remove_tree(
+                    child
+                ) if child.is_dir() and not child.is_symlink() else child.unlink()
 
 
 def run(command: list[str]) -> None:
-    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(command, text=True, capture_output=True)
     if result.returncode != 0:
         reason = result.stderr.strip() or result.stdout.strip() or "no command output"
-        raise RuntimeError(f"command failed exitCode={result.returncode} command={command[0]} reason={reason}")
+        raise RuntimeError(
+            "command failed "
+            f"exitCode={result.returncode} command={command[0]} reason={reason}"
+        )
 
 
 def load_object(path: Path, label: str) -> dict[str, object]:
@@ -269,7 +333,9 @@ def write_operation(
 
 def write_json(path: Path, document: dict[str, object], mode: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    descriptor, temporary = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             json.dump(document, stream, indent=2, sort_keys=True)

@@ -53,6 +53,7 @@ class ShareMountMode(StrEnum):
 class PathSettings:
     deploy_dir: Path
     runtime_dir: Path
+    control_state_dir: Path
     compose_file: Path
     runtime_config_file: Path
     runtime_settings_file: Path
@@ -138,41 +139,46 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
     runtime_dir = toml_path_value(paths, "runtimeDir")
     guest_tools_home = toml_path_value(paths, "guestToolsHome")
 
+    path_settings = PathSettings(
+        deploy_dir=deploy_dir,
+        runtime_dir=runtime_dir,
+        control_state_dir=toml_path_value(paths, "controlStateDir"),
+        compose_file=toml_path_value(paths, "composeFile"),
+        runtime_config_file=toml_path_value(paths, "runtimeConfigFile"),
+        runtime_settings_file=toml_path_value(paths, "runtimeSettingsFile"),
+        redis_relay_config_file=toml_path_value(paths, "redisRelayConfigFile"),
+        redis_relay_password_file=toml_path_value(paths, "redisRelayPasswordFile"),
+        compose_runtime_limits_file=toml_path_value(
+            paths,
+            "composeRuntimeLimitsFile",
+        ),
+        guest_tools_home=guest_tools_home,
+        python_wheel_dir=toml_path_value(paths, "pythonWheelDir"),
+        command_bin_dir=toml_path_value(paths, "commandBinDir"),
+    )
+    share_settings = ShareSettings(
+        runtime_tag=toml_str_value(shares, "runtimeTag"),
+        runtime_mount=runtime_mount,
+        runtime_mount_mode=toml_enum_value(
+            shares,
+            "runtimeMountMode",
+            ShareMountMode,
+            choices="virtiofs, native",
+        ),
+        vital_files_tag=toml_str_value(shares, "vitalFilesTag"),
+        vital_files_mount=vital_files_mount,
+        vital_files_mount_mode=toml_enum_value(
+            shares,
+            "vitalFilesMountMode",
+            ShareMountMode,
+            choices="virtiofs, native",
+        ),
+    )
+    validate_control_state_directory(share_settings, path_settings)
+
     return GuestToolsSettings(
-        shares=ShareSettings(
-            runtime_tag=toml_str_value(shares, "runtimeTag"),
-            runtime_mount=runtime_mount,
-            runtime_mount_mode=toml_enum_value(
-                shares,
-                "runtimeMountMode",
-                ShareMountMode,
-                choices="virtiofs, native",
-            ),
-            vital_files_tag=toml_str_value(shares, "vitalFilesTag"),
-            vital_files_mount=vital_files_mount,
-            vital_files_mount_mode=toml_enum_value(
-                shares,
-                "vitalFilesMountMode",
-                ShareMountMode,
-                choices="virtiofs, native",
-            ),
-        ),
-        paths=PathSettings(
-            deploy_dir=deploy_dir,
-            runtime_dir=runtime_dir,
-            compose_file=toml_path_value(paths, "composeFile"),
-            runtime_config_file=toml_path_value(paths, "runtimeConfigFile"),
-            runtime_settings_file=toml_path_value(paths, "runtimeSettingsFile"),
-            redis_relay_config_file=toml_path_value(paths, "redisRelayConfigFile"),
-            redis_relay_password_file=toml_path_value(paths, "redisRelayPasswordFile"),
-            compose_runtime_limits_file=toml_path_value(
-                paths,
-                "composeRuntimeLimitsFile",
-            ),
-            guest_tools_home=guest_tools_home,
-            python_wheel_dir=toml_path_value(paths, "pythonWheelDir"),
-            command_bin_dir=toml_path_value(paths, "commandBinDir"),
-        ),
+        shares=share_settings,
+        paths=path_settings,
         compose=ComposeSettings(
             project_name=toml_str_value(
                 toml_table(document, "compose"),
@@ -263,6 +269,36 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> GuestToolsSettings:
     )
 
 
+def validate_control_state_directory(
+    shares: ShareSettings,
+    paths: PathSettings,
+) -> None:
+    if not paths.control_state_dir.is_absolute():
+        raise GuestContractError(
+            "controlStateDir must be an absolute Guest-local path: "
+            f"{paths.control_state_dir}",
+            code="guest-tools-control-state-path-invalid",
+        )
+    if path_contains(paths.deploy_dir, paths.control_state_dir):
+        raise GuestContractError(
+            "controlStateDir must not be inside the deploy directory: "
+            f"{paths.control_state_dir}",
+            code="guest-tools-control-state-path-invalid",
+        )
+    if shares.runtime_mount_mode == ShareMountMode.VIRTIOFS and path_contains(
+        shares.runtime_mount, paths.control_state_dir
+    ):
+        raise GuestContractError(
+            "controlStateDir must not be inside the Host shared runtime mount: "
+            f"{paths.control_state_dir}",
+            code="guest-tools-control-state-path-invalid",
+        )
+
+
+def path_contains(parent: Path, child: Path) -> bool:
+    return child == parent or parent in child.parents
+
+
 def read_settings_file(path: Path) -> dict[str, Any]:
     with path.open("rb") as handle:
         parsed = tomllib.load(handle)
@@ -275,8 +311,10 @@ def read_settings_file(path: Path) -> dict[str, Any]:
 
 
 def default_settings_text() -> str:
-    return files("tirosh_guest_tools").joinpath(DEFAULT_SETTINGS_RESOURCE).read_text(
-        encoding="utf-8"
+    return (
+        files("tirosh_guest_tools")
+        .joinpath(DEFAULT_SETTINGS_RESOURCE)
+        .read_text(encoding="utf-8")
     )
 
 

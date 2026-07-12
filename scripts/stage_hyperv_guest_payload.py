@@ -140,9 +140,97 @@ def _validate_deploy(path: Path) -> None:
             "portable deploy initial Redis Relay configuration is missing: "
             f"{relay_config}"
         )
+    _require_guest_tools_runtime_payload(path)
     compose = (path / "compose.yaml").read_text(encoding="utf-8")
     if "/v1/" in compose or "/runtime/stack/status" in compose:
         raise SystemExit("portable deploy Compose contains a legacy Runtime API route")
+
+
+def _require_guest_tools_runtime_payload(deploy: Path) -> None:
+    installer = deploy / "install-guest-tools-runtime.py"
+    wheelhouse = deploy / "python-wheels"
+    manifest = wheelhouse / "manifest.json"
+    requirements = wheelhouse / "linux-amd64/requirements.txt"
+    control_service = deploy / "systemd/tirosh-vitalserver-guest-control-api.service"
+    for path, label in (
+        (installer, "Guest Tools runtime installer"),
+        (manifest, "Guest Tools wheelhouse manifest"),
+        (requirements, "Guest Tools linux/amd64 requirements"),
+        (control_service, "Guest Control service lifecycle unit"),
+    ):
+        if not path.is_file() or path.stat().st_size == 0:
+            raise SystemExit(f"portable deploy {label} is missing: {path}")
+    for directory, label in (
+        (wheelhouse / "guest-tools", "Guest Tools wheel directory"),
+        (wheelhouse / "linux-amd64", "Guest Tools linux/amd64 wheel directory"),
+    ):
+        if not directory.is_dir() or not any(directory.glob("*.whl")):
+            raise SystemExit(f"portable deploy {label} is missing: {directory}")
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            f"portable deploy Guest Tools wheelhouse manifest is invalid: {manifest}"
+        ) from error
+    if not isinstance(document, dict) or document.get("schemaVersion") != 1:
+        raise SystemExit(
+            "portable deploy Guest Tools wheelhouse manifest contract is invalid: "
+            f"{manifest}"
+        )
+    guest_tools = document.get("guestTools")
+    targets = document.get("targets")
+    if not isinstance(guest_tools, dict) or not isinstance(targets, dict):
+        raise SystemExit(
+            "portable deploy Guest Tools wheelhouse manifest contract is invalid: "
+            f"{manifest}"
+        )
+    amd64 = targets.get("linux-amd64")
+    if not isinstance(amd64, dict):
+        raise SystemExit(
+            "portable deploy Guest Tools wheelhouse has no linux/amd64 target: "
+            f"{manifest}"
+        )
+    _require_manifested_wheelhouse_file(
+        wheelhouse,
+        guest_tools.get("path"),
+        label="Guest Tools wheel",
+    )
+    _require_manifested_wheelhouse_file(
+        wheelhouse,
+        amd64.get("requirementsPath"),
+        label="Guest Tools linux/amd64 requirements",
+    )
+    control_service_text = control_service.read_text(encoding="utf-8")
+    required_lifecycle = (
+        "RequiresMountsFor=/mnt/runtime",
+        "ExecStartPre=/opt/tirosh/guest-tools/venv/bin/"
+        "tirosh-guest-tools-migrate-control-store --control-state-dir "
+        "/mnt/runtime/control",
+    )
+    if any(token not in control_service_text for token in required_lifecycle):
+        raise SystemExit(
+            "portable deploy Guest Control service lifecycle is invalid: "
+            f"{control_service}"
+        )
+
+
+def _require_manifested_wheelhouse_file(
+    wheelhouse: Path,
+    relative: object,
+    *,
+    label: str,
+) -> None:
+    if not isinstance(relative, str) or not relative:
+        raise SystemExit(f"portable deploy {label} manifest path is invalid")
+    path = wheelhouse / relative
+    try:
+        path.resolve().relative_to(wheelhouse.resolve())
+    except ValueError as error:
+        raise SystemExit(
+            f"portable deploy {label} manifest path escapes wheelhouse: {relative}"
+        ) from error
+    if not path.is_file() or path.stat().st_size == 0:
+        raise SystemExit(f"portable deploy {label} manifest file is missing: {path}")
 
 
 def _require_file(path: Path, label: str) -> None:

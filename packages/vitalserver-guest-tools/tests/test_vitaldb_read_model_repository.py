@@ -1,3 +1,5 @@
+"""PostgreSQL VitalDB read-model adapter tests."""
+
 from __future__ import annotations
 
 import json
@@ -8,26 +10,11 @@ from typing import Any
 import pytest
 
 from tirosh_guest_tools.adapters.outbound.postgres import (
-    PostgresOperationRepository,
     PostgresVitalDBReadModelRepository,
 )
 from tirosh_guest_tools.application import compose as compose_app
 from tirosh_guest_tools.domain.guest_control.models import (
-    GuestControlDependencyError,
-    GuestServiceCondition,
-    GuestServiceDesiredState,
-    GuestServiceObservedState,
-    GuestServiceResource,
-    GuestServiceSpec,
-    GuestServiceStatusRead,
-    OperationEvent,
-    OperationState,
-    RedisRelayDependencyError,
-    ServiceCommand,
-    ServiceOperation,
-    ServiceStatus,
     VitalDBReadModelDependencyError,
-    validate_redis_relay_status_document,
 )
 
 
@@ -37,494 +24,6 @@ def psql_commands(arguments: list[str]) -> list[str]:
         for index, argument in enumerate(arguments)
         if argument == "-c"
     ]
-
-
-def test_postgres_repository_runs_schema_migration(monkeypatch: Any) -> None:
-    calls: list[list[str]] = []
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        calls.append(arguments)
-        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    PostgresOperationRepository().ensure_schema()
-
-    assert calls
-    assert calls[0][:3] == ["exec", "-T", "postgres"]
-    commands = psql_commands(calls[0])
-    assert commands[0] == "SELECT pg_advisory_lock(66060002000);"
-    assert "CREATE TABLE IF NOT EXISTS service_operations" in commands[1]
-    assert "CREATE TABLE IF NOT EXISTS service_operation_events" in commands[1]
-    assert "CREATE TABLE IF NOT EXISTS service_status_snapshots" in commands[1]
-    assert "CREATE TABLE IF NOT EXISTS guest_service_resources" in commands[1]
-    assert "CREATE TABLE IF NOT EXISTS redis_relay_status_snapshots" in commands[1]
-    assert "UPDATE guest_service_resources" in commands[1]
-    assert "UPDATE service_status_snapshots" in commands[1]
-    assert "'\"not_reported\"'::jsonb" in commands[1]
-    assert commands[2] == "SELECT pg_advisory_unlock(66060002000);"
-
-
-def test_postgres_repository_persists_and_reads_operation(
-    monkeypatch: Any,
-) -> None:
-    saved_sql: list[str] = []
-    operation = ServiceOperation(
-        operation_id="op_app_restart_1",
-        service="app",
-        command=ServiceCommand.RESTART,
-        state=OperationState.COMPLETED,
-        created_at=datetime(2026, 7, 1, tzinfo=UTC),
-        updated_at=datetime(2026, 7, 1, 0, 0, 1, tzinfo=UTC),
-        result={"archive": "/mnt/tirosh-runtime/backups/redis/redis.tar.gz"},
-    )
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        saved_sql.append(arguments[-1])
-        if arguments[-1].startswith("SELECT"):
-            return subprocess.CompletedProcess(
-                arguments,
-                0,
-                stdout=json.dumps(operation.as_json(), sort_keys=True),
-                stderr="",
-            )
-        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    repository = PostgresOperationRepository()
-    repository.save(operation)
-    loaded = repository.get(operation.operation_id)
-
-    assert loaded == operation
-    assert loaded is not None
-    assert loaded.result == {
-        "archive": "/mnt/tirosh-runtime/backups/redis/redis.tar.gz"
-    }
-    assert "ON CONFLICT (operation_id) DO UPDATE" in saved_sql[0]
-    assert "SELECT document::text FROM service_operations" in saved_sql[1]
-
-
-def test_postgres_repository_appends_operation_event(monkeypatch: Any) -> None:
-    saved_sql: list[str] = []
-    event = OperationEvent(
-        operation_id="op_app_restart_1",
-        state=OperationState.RUNNING,
-        observed_at=datetime(2026, 7, 1, tzinfo=UTC),
-    )
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        saved_sql.append(arguments[-1])
-        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    PostgresOperationRepository().append_event(event)
-
-    assert "INSERT INTO service_operation_events" in saved_sql[0]
-    assert "'op_app_restart_1'" in saved_sql[0]
-    assert "'running'" in saved_sql[0]
-
-
-def test_postgres_repository_queries_runtime_owned_operation_events(
-    monkeypatch: Any,
-) -> None:
-    sql: list[str] = []
-    rows = [
-        {
-            "_eventId": 12,
-            "schemaVersion": 1,
-            "id": "runtime-operation-event-12",
-            "source": "runtime-controller",
-            "eventType": "operation-completed",
-            "timestamp": "2026-07-01T00:00:02+00:00",
-            "operationId": "op_app_restart_1",
-            "operationService": "app",
-            "operationCommand": "restart",
-            "operationState": "completed",
-            "message": "app restart completed",
-            "failure": None,
-        },
-        {"_eventId": 11},
-    ]
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        sql.append(arguments[-1])
-        return subprocess.CompletedProcess(
-            arguments, 0, stdout=json.dumps(rows), stderr=""
-        )
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    response = PostgresOperationRepository().query_events(
-        limit=1,
-        event_type="operation-completed",
-        since=datetime(2026, 7, 1, tzinfo=UTC),
-        cursor="event:20",
-    )
-
-    assert response["events"][0]["id"] == "runtime-operation-event-12"
-    assert "_eventId" not in response["events"][0]
-    assert response["nextCursor"] == "event:12"
-    assert "e.state = 'completed'" in sql[0]
-    assert "e.event_id < 20" in sql[0]
-    assert "LIMIT 2" in sql[0]
-
-
-def test_postgres_repository_saves_service_status_snapshot(monkeypatch: Any) -> None:
-    saved_sql: list[str] = []
-    status = ServiceStatus(
-        service="app",
-        state="running",
-        health="healthy",
-        observed_at=datetime(2026, 7, 1, tzinfo=UTC),
-        container="vitalserver-app-1",
-        exit_code=0,
-    )
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        saved_sql.append(arguments[-1])
-        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    PostgresOperationRepository().save_service_status_snapshot(status)
-
-    assert "INSERT INTO service_status_snapshots" in saved_sql[0]
-    assert "ON CONFLICT (service) DO UPDATE" in saved_sql[0]
-    assert "'app'" in saved_sql[0]
-
-
-def test_postgres_repository_persists_and_reads_guest_service_resource(
-    monkeypatch: Any,
-) -> None:
-    saved_sql: list[str] = []
-    resource = GuestServiceResource(
-        service="app",
-        spec=GuestServiceSpec.configured(
-            desired_state=GuestServiceDesiredState.RUNNING,
-            updated_at=datetime(2026, 7, 1, tzinfo=UTC),
-        ),
-        status=GuestServiceStatusRead.loaded(
-            ServiceStatus(
-                service="app",
-                state="running",
-                health="healthy",
-                observed_at=datetime(2026, 7, 1, 0, 0, 1, tzinfo=UTC),
-            ),
-            observed_state=GuestServiceObservedState.RUNNING,
-        ),
-        conditions=[
-            GuestServiceCondition(
-                type="Reconciled",
-                status="true",
-                reason="DesiredStateObserved",
-                message="Guest service already matches desired state.",
-                observed_at=datetime(2026, 7, 1, 0, 0, 2, tzinfo=UTC),
-            )
-        ],
-        last_operation_id="op_app_start_1",
-    )
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        saved_sql.append(arguments[-1])
-        if arguments[-1].startswith("SELECT"):
-            return subprocess.CompletedProcess(
-                arguments,
-                0,
-                stdout=json.dumps(resource.as_json(), sort_keys=True),
-                stderr="",
-            )
-        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    repository = PostgresOperationRepository()
-    repository.save_guest_service_resource(resource)
-    loaded = repository.get_guest_service_resource("app")
-
-    assert loaded == resource
-    assert "INSERT INTO guest_service_resources" in saved_sql[0]
-    assert "ON CONFLICT (service) DO UPDATE" in saved_sql[0]
-    assert "SELECT document::text FROM guest_service_resources" in saved_sql[1]
-
-
-def test_postgres_repository_rejects_invalid_guest_service_resource_document(
-    monkeypatch: Any,
-) -> None:
-    document = {
-        "service": "app",
-        "spec": {
-            "state": "configured",
-            "desiredState": "running",
-            "updatedAt": "2026-07-01T00:00:00+00:00",
-        },
-        "status": {
-            "state": "loaded",
-            "observedState": "paused",
-            "serviceStatus": {
-                "service": "app",
-                "state": "running",
-                "health": "healthy",
-                "observedAt": "2026-07-01T00:00:00+00:00",
-            },
-            "readError": None,
-        },
-        "conditions": [],
-        "lastOperationId": None,
-    }
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        if "FROM vitaldb_entity_visibility" in arguments[-1]:
-            return subprocess.CompletedProcess(arguments, 0, stdout="{}", stderr="")
-        return subprocess.CompletedProcess(
-            arguments,
-            0,
-            stdout=json.dumps(document, sort_keys=True),
-            stderr="",
-        )
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    with pytest.raises(GuestControlDependencyError) as error:
-        PostgresOperationRepository().get_guest_service_resource("app")
-
-    assert error.value.kind == "guestServiceResourceDocumentInvalid"
-
-
-def redis_relay_status_document() -> dict[str, Any]:
-    return {
-        "schemaVersion": 1,
-        "observedAt": "2026-07-01T00:00:00Z",
-        "enabled": True,
-        "state": "running",
-        "scope": "vital_reconstruction",
-        "targetUrl": "redis://relay.example:6379/0",
-        "targetUsernameConfigured": True,
-        "targetPasswordConfigured": True,
-        "settingsFingerprint": "relay-settings",
-        "batches": 3,
-        "totals": {
-            "scanned": 10,
-            "copied": 8,
-            "published": 8,
-            "unchanged": 1,
-            "duplicates": 0,
-            "skipped": 1,
-            "denied": 0,
-            "missing": 0,
-            "errors": 0,
-        },
-        "lastBatch": None,
-        "lastSuccessAt": "2026-07-01T00:00:05Z",
-        "lastErrorAt": None,
-        "lastError": None,
-    }
-
-
-def test_postgres_repository_persists_and_reads_redis_relay_status(
-    monkeypatch: Any,
-) -> None:
-    saved_sql: list[str] = []
-    document = redis_relay_status_document()
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        saved_sql.append(arguments[-1])
-        if arguments[-1].startswith("SELECT"):
-            return subprocess.CompletedProcess(
-                arguments,
-                0,
-                stdout=json.dumps(document, sort_keys=True),
-                stderr="",
-            )
-        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    repository = PostgresOperationRepository()
-    repository.save_status(document)
-    loaded = repository.status()
-
-    assert loaded == {
-        "readState": "loaded",
-        "document": document,
-        "readError": None,
-    }
-    assert "INSERT INTO redis_relay_status_snapshots" in saved_sql[0]
-    assert "ON CONFLICT (snapshot_id) DO UPDATE" in saved_sql[0]
-    assert "SELECT document::text FROM redis_relay_status_snapshots" in saved_sql[1]
-
-
-def test_postgres_repository_rejects_incomplete_redis_relay_status_document() -> None:
-    with pytest.raises(RedisRelayDependencyError) as error:
-        PostgresOperationRepository().save_status({"state": "running"})
-
-    assert error.value.kind == "redis-relay-contract-invalid"
-    assert "observedAt" in error.value.message
-
-    missing_nullable = redis_relay_status_document()
-    del missing_nullable["targetUrl"]
-    with pytest.raises(RedisRelayDependencyError) as nullable_error:
-        PostgresOperationRepository().save_status(missing_nullable)
-
-    assert nullable_error.value.kind == "redis-relay-contract-invalid"
-    assert "targetUrl" in nullable_error.value.message
-
-    nullable_scope = redis_relay_status_document()
-    nullable_scope["scope"] = None
-    observed_at = validate_redis_relay_status_document(nullable_scope)
-    assert observed_at == "2026-07-01T00:00:00Z"
-
-    missing_scope = redis_relay_status_document()
-    del missing_scope["scope"]
-    with pytest.raises(RedisRelayDependencyError) as scope_error:
-        PostgresOperationRepository().save_status(missing_scope)
-
-    assert scope_error.value.kind == "redis-relay-contract-invalid"
-    assert "scope" in scope_error.value.message
-
-    missing_counter = redis_relay_status_document()
-    totals = missing_counter["totals"]
-    assert isinstance(totals, dict)
-    del totals["published"]
-    with pytest.raises(RedisRelayDependencyError) as counter_error:
-        PostgresOperationRepository().save_status(missing_counter)
-
-    assert counter_error.value.kind == "redis-relay-contract-invalid"
-    assert "totals.published" in counter_error.value.message
-
-
-def test_postgres_repository_rejects_incomplete_stored_redis_relay_status_document(
-    monkeypatch: Any,
-) -> None:
-    document = redis_relay_status_document()
-    del document["lastBatch"]
-
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        assert capture_output is True
-        if "FROM vitaldb_entity_visibility" in arguments[-1]:
-            return subprocess.CompletedProcess(arguments, 0, stdout="{}", stderr="")
-        return subprocess.CompletedProcess(
-            arguments,
-            0,
-            stdout=json.dumps(document, sort_keys=True),
-            stderr="",
-        )
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    with pytest.raises(RedisRelayDependencyError) as error:
-        PostgresOperationRepository().status()
-
-    assert error.value.kind == "redis-relay-contract-invalid"
-    assert "lastBatch" in error.value.message
-
-
-def test_postgres_repository_reports_psql_failure(monkeypatch: Any) -> None:
-    def fake_compose(
-        arguments: list[str],
-        *,
-        check: bool = True,
-        timeout_seconds: float | None = None,
-        capture_output: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del timeout_seconds
-        del capture_output
-        raise subprocess.CalledProcessError(
-            2,
-            arguments,
-            output="",
-            stderr="relation does not exist",
-        )
-
-    monkeypatch.setattr(compose_app, "compose", fake_compose)
-
-    with pytest.raises(GuestControlDependencyError) as error:
-        PostgresOperationRepository().ensure_schema()
-
-    assert error.value.kind == "postgresCommandFailed"
-    assert "relation does not exist" in error.value.message
 
 
 def test_vitaldb_read_model_repository_runs_schema_migration(
@@ -588,7 +87,10 @@ def test_vitaldb_read_model_repository_persists_and_reads_latest_observation(
             return subprocess.CompletedProcess(
                 arguments,
                 0,
-                stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+                stdout=json.dumps(
+                    [observation] if "jsonb_agg" in arguments[-1] else observation,
+                    sort_keys=True,
+                ),
                 stderr="",
             )
         return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
@@ -647,7 +149,10 @@ def test_vitaldb_read_model_repository_reads_recorders_from_latest_observation(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -699,7 +204,10 @@ def test_vitaldb_read_model_repository_applies_recorder_visibility(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -708,8 +216,7 @@ def test_vitaldb_read_model_repository_applies_recorder_visibility(
     response = PostgresVitalDBReadModelRepository().recorders()
 
     assert [
-        (record["vrcode"], record["visibility"])
-        for record in response["recorders"]
+        (record["vrcode"], record["visibility"]) for record in response["recorders"]
     ] == [("VR-001", "hidden"), ("VR-003", "visible")]
 
 
@@ -846,7 +353,10 @@ def test_vitaldb_read_model_repository_reads_recorder_activity_from_latest_obser
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -900,7 +410,10 @@ def test_vitaldb_read_model_repository_reports_invalid_recorder_activity(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -949,7 +462,10 @@ def test_vitaldb_read_model_repository_reads_beds_from_latest_observation(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -1001,7 +517,10 @@ def test_vitaldb_read_model_repository_applies_bed_visibility(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -1009,10 +528,10 @@ def test_vitaldb_read_model_repository_applies_bed_visibility(
 
     response = PostgresVitalDBReadModelRepository().beds()
 
-    assert [
-        (record["bedID"], record["visibility"])
-        for record in response["beds"]
-    ] == [("bed-a", "hidden"), ("bed-c", "visible")]
+    assert [(record["bedID"], record["visibility"]) for record in response["beds"]] == [
+        ("bed-a", "hidden"),
+        ("bed-c", "visible"),
+    ]
 
 
 def test_vitaldb_read_model_repository_requires_hidden_before_bed_delete(
@@ -1040,9 +559,7 @@ def test_vitaldb_read_model_repository_requires_hidden_before_bed_delete(
     monkeypatch.setattr(compose_app, "compose", fake_compose)
 
     with pytest.raises(VitalDBReadModelDependencyError) as error:
-        PostgresVitalDBReadModelRepository().delete_beds(
-            {"bedIDs": ["bed-a", "bed-b"]}
-        )
+        PostgresVitalDBReadModelRepository().delete_beds({"bedIDs": ["bed-a", "bed-b"]})
 
     assert error.value.kind == "vitaldb-read-model-delete-not-hidden"
     assert "bed-b" in error.value.message
@@ -1192,8 +709,7 @@ def test_vitaldb_read_model_repository_reports_invalid_relationship_state(
 
     assert error.value.kind == "vitaldb-read-model-invalid"
     assert (
-        error.value.message
-        == "VitalDB relationship read model state field is invalid."
+        error.value.message == "VitalDB relationship read model state field is invalid."
     )
 
 
@@ -1224,7 +740,10 @@ def test_vitaldb_read_model_repository_preserves_loaded_empty_collection(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -1266,7 +785,10 @@ def test_vitaldb_read_model_repository_reports_invalid_collection(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -1306,7 +828,10 @@ def test_vitaldb_read_model_repository_reports_invalid_observed_at(
         return subprocess.CompletedProcess(
             arguments,
             0,
-            stdout=json.dumps([observation] if "jsonb_agg" in arguments[-1] else observation, sort_keys=True),
+            stdout=json.dumps(
+                [observation] if "jsonb_agg" in arguments[-1] else observation,
+                sort_keys=True,
+            ),
             stderr="",
         )
 
@@ -1316,9 +841,7 @@ def test_vitaldb_read_model_repository_reports_invalid_observed_at(
         PostgresVitalDBReadModelRepository().beds()
 
     assert error.value.kind == "vitaldb-read-model-invalid"
-    assert (
-        error.value.message == "VitalDB observation observedAt is invalid."
-    )
+    assert error.value.message == "VitalDB observation observedAt is invalid."
 
 
 def test_vitaldb_read_model_repository_preserves_empty_read_model(

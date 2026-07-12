@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 
+from tirosh_guest_tools.adapters.inbound.control_store_migration import (
+    migrate_control_store,
+)
 from tirosh_guest_tools.adapters.inbound.guest_control_api import (
     DEFAULT_HOST as GUEST_CONTROL_API_DEFAULT_HOST,
 )
@@ -68,6 +72,7 @@ from tirosh_guest_tools.application.update_shutdown import (
 from tirosh_guest_tools.application.update_shutdown import (
     run_prepare_update_shutdown_for_request,
 )
+from tirosh_guest_tools.domain.guest_control.models import GuestControlDependencyError
 from tirosh_guest_tools.domain.operations import (
     ComposeAction,
     ContainerLogAction,
@@ -333,4 +338,20 @@ def guest_tools_install_config() -> int:
     parser = argparse.ArgumentParser(description="Install default guest tools config.")
     parser.parse_args()
     install_guest_tools_config()
+    return 0
+
+
+def guest_tools_migrate_control_store() -> int:
+    """Apply and verify the Guest Control SQLite schema explicitly."""
+
+    parser = argparse.ArgumentParser(
+        description="Apply and verify the Guest Control SQLite schema."
+    )
+    parser.add_argument("--control-state-dir", type=Path, required=True)
+    args = parser.parse_args()
+    try:
+        proof = migrate_control_store(args.control_state_dir)
+    except GuestControlDependencyError as error:
+        parser.exit(1, f"error: {error.kind}: {error.message}\n")
+    print(json.dumps(proof, sort_keys=True))
     return 0

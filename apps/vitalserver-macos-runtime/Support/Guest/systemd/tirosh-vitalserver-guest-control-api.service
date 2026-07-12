@@ -1,11 +1,12 @@
 [Unit]
 Description=Tirosh VitalServer Guest Control API
-After=docker.service network-online.target
-Requires=docker.service
+After=network-online.target
 Wants=network-online.target
+RequiresMountsFor=/mnt/runtime
 
 [Service]
 Type=simple
+ExecStartPre=/opt/tirosh/guest-tools/venv/bin/tirosh-guest-tools-migrate-control-store --control-state-dir /mnt/runtime/control
 ExecStart=/usr/local/bin/tirosh-vitalserver-guest-control-api --host 0.0.0.0 --port 18330
 Restart=always
 RestartSec=2

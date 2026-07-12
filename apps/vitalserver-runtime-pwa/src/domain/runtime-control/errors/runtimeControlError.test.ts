@@ -28,6 +28,26 @@ describe("runtime control error summaries", () => {
     });
   });
 
+  it("explains an explicit Runtime control lease conflict", () => {
+    expect(
+      summarizeRuntimeControlError(
+        new RuntimeControlAPIError(
+          "operation in progress",
+          409,
+          JSON.stringify({
+            code: "operationInProgress",
+            message: "guest control lease is held by operation op-123"
+          })
+        )
+      )
+    ).toMatchObject({
+      kind: "api",
+      title: "Runtime Control API returned HTTP 409",
+      detail: "operationInProgress: guest control lease is held by operation op-123",
+      recovery: "Another Runtime control operation is in progress. Wait for it to finish, then retry this command."
+    });
+  });
+
   it("summarizes contract validation failures", () => {
     expect(
       summarizeRuntimeControlError(

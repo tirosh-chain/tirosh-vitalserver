@@ -4,6 +4,7 @@ public enum RuntimeOperationEventType: String, Codable, CaseIterable, Equatable,
     case completed = "operation-completed"
     case failed = "operation-failed"
     case cancelled = "operation-cancelled"
+    case interrupted = "operation-interrupted"
 }
 
 public struct RuntimeOperationEventDocument: Codable, Equatable, Sendable {

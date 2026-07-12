@@ -499,6 +499,26 @@ describe("runtime control contract schemas", () => {
     }
   });
 
+  it("preserves an interrupted control operation and its explicit result", () => {
+    const operation = runtimeGuestControlServiceOperationSchema.parse({
+      operationId: "operation-restarted",
+      service: "app",
+      command: "restart",
+      state: "interrupted",
+      createdAt: "2026-07-01T00:00:00Z",
+      updatedAt: "2026-07-01T00:00:01Z",
+      failure: {
+        kind: "controllerRestarted",
+        message: "Runtime Controller restarted before the operation outcome was known."
+      },
+      result: { attemptedAt: "2026-07-01T00:00:00Z" }
+    });
+
+    expect(operation.state).toBe("interrupted");
+    expect(operation.failure?.kind).toBe("controllerRestarted");
+    expect(operation.result).toEqual({ attemptedAt: "2026-07-01T00:00:00Z" });
+  });
+
   it("requires complete VitalDB recorder activity observations", () => {
     expect(() =>
       vitalDBObservationSchema.parse({

@@ -638,7 +638,7 @@ public final class RuntimeViewModel: ObservableObject {
             case .accepted, .running, .completed:
                 message = "Redis Relay settings operation \(operation.operationId) is \(operation.state.rawValue)."
                 return true
-            case .failed, .cancelled:
+            case .failed, .cancelled, .interrupted:
                 message = operation.failure?.message
                     ?? "Redis Relay settings operation \(operation.operationId) \(operation.state.rawValue)."
                 return false

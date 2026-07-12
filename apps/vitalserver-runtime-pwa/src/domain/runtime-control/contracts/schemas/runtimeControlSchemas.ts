@@ -299,14 +299,35 @@ export const runtimeGuestControlServiceOperationSchema = z
       "stop",
       "restart",
       "reconcile",
+      "lab-create-session",
+      "lab-start-session",
+      "lab-stop-session",
+      "lab-replay-vital-file",
+      "lab-upload-vital-file",
+      "lab-create-beds",
+      "lab-delete-beds",
+      "lab-reset-beds",
+      "lab-create-recorders",
+      "lab-delete-recorders",
+      "lab-reset-recorders",
       "redis-backup",
       "redis-restore",
       "repair-datastore",
+      "activate-update",
+      "prepare-update-shutdown",
+      "request-guest-poweroff",
       "apply-settings",
       "apply-admin-password",
       "apply-redis-relay-settings"
     ]),
-    state: z.enum(["accepted", "running", "completed", "failed", "cancelled"]),
+    state: z.enum([
+      "accepted",
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+      "interrupted"
+    ]),
     createdAt: z.string(),
     updatedAt: z.string(),
     failure: z
@@ -317,7 +338,8 @@ export const runtimeGuestControlServiceOperationSchema = z
       })
       .passthrough()
       .nullable()
-      .optional()
+      .optional(),
+    result: z.record(z.string(), z.unknown()).nullable().optional()
   })
   .passthrough();
 
@@ -1179,7 +1201,14 @@ export const runtimeEventDocumentSchema = z
     operationId: z.string(),
     operationService: z.string(),
     operationCommand: z.string(),
-    operationState: z.enum(["accepted", "running", "completed", "failed", "cancelled"]),
+    operationState: z.enum([
+      "accepted",
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+      "interrupted"
+    ]),
     message: z.string(),
     failure: z
       .object({

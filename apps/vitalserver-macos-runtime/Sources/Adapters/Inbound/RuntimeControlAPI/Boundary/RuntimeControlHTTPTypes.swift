@@ -11,6 +11,7 @@ public enum RuntimeControlHTTPStatus: Int, Codable, Equatable, Sendable {
     case unauthorized = 401
     case notFound = 404
     case methodNotAllowed = 405
+    case conflict = 409
     case serviceUnavailable = 503
     case notImplemented = 501
     case internalServerError = 500

@@ -30,7 +30,11 @@ from tirosh_guest_tools.infrastructure.common import (
     utc_now,
     write_json,
 )
-from tirosh_guest_tools.infrastructure.system_install import install_guest_tools_runtime
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.system_install import (
+    install_guest_tools_runtime,
+    migrate_guest_control_store,
+)
 
 BOOTSTRAP_RESULT = RUNTIME_DIR / "bootstrap-result.json"
 
@@ -58,6 +62,9 @@ def default_bootstrap_operations() -> GuestBootstrapOperations:
         missing_runtime_packages=missing_runtime_packages,
         install_runtime_files=install_runtime_files,
         prepare_runtime_data=prepare_runtime_data,
+        migrate_control_store=lambda: migrate_guest_control_store(
+            SETTINGS.paths.control_state_dir
+        ),
         write_initial_runtime_observation=write_initial_runtime_observation,
         start_docker=start_docker,
         start_avahi=start_avahi,

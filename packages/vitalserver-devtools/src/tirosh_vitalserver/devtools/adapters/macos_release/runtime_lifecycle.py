@@ -1510,12 +1510,41 @@ def inspect_rootfs_ready_marker(
             "terminal": True,
             "message": f"error: rootfs ready marker is missing runId: {marker}",
         }
+    if not rootfs_guest_tools_dependency_proof_is_valid(
+        document.get("pythonDependencies")
+    ):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: rootfs ready marker is missing or has invalid Guest Tools "
+                f"dependency proof: {marker}"
+            ),
+        }
     return {
         "ready": True,
         "terminal": False,
         "runId": run_id,
         "message": "ready marker passed",
     }
+
+
+def rootfs_guest_tools_dependency_proof_is_valid(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    dependencies = value.get("dependencies")
+    return (
+        value.get("status") == "passed"
+        and isinstance(value.get("proof"), str)
+        and bool(value["proof"].strip())
+        and isinstance(value.get("target"), str)
+        and bool(value["target"].strip())
+        and isinstance(dependencies, dict)
+        and isinstance(dependencies.get("alembic"), str)
+        and bool(dependencies["alembic"].strip())
+        and isinstance(dependencies.get("sqlalchemy"), str)
+        and bool(dependencies["sqlalchemy"].strip())
+    )
 
 
 def inspect_rootfs_failure_marker(

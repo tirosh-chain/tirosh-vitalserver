@@ -23,6 +23,7 @@ from tirosh_guest_tools.application.guest_control.ports import (
     VitalDBReadModelPort,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
+    GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
     DatastoreRepairDependencyError,
     GuestControlDependencyError,
     GuestServiceCondition,
@@ -31,8 +32,8 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceResource,
     GuestServiceSpec,
     GuestServiceStatusRead,
-    OperationEvent,
     OperationFailure,
+    OperationLease,
     ProductLabDependencyError,
     ProductLabReadModelResult,
     ProductLabSessionResult,
@@ -56,6 +57,7 @@ from tirosh_guest_tools.domain.guest_control.operation_policy import (
     accept_service_operation,
     fail_operation,
     finish_operation,
+    interrupt_operation,
     start_operation,
 )
 from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
@@ -71,8 +73,8 @@ class GuestControlUseCases:
         *,
         service_control: ServiceControlPort,
         operations: OperationRepository,
-        service_status_snapshots: ServiceStatusSnapshotRepository | None = None,
-        guest_service_resources: GuestServiceResourceRepository | None = None,
+        service_status_snapshots: ServiceStatusSnapshotRepository,
+        guest_service_resources: GuestServiceResourceRepository,
         operation_ids: OperationIdFactory,
         clock: Clock,
         product_lab: ProductLabPort | None = None,
@@ -100,18 +102,25 @@ class GuestControlUseCases:
         self._update_activation = update_activation
         self._update_shutdown = update_shutdown
         self._operations = operations
-        self._service_status_snapshots = (
-            service_status_snapshots
-            if service_status_snapshots is not None
-            else operations
-        )
-        self._guest_service_resources = (
-            guest_service_resources
-            if guest_service_resources is not None
-            else operations
-        )
+        self._service_status_snapshots = service_status_snapshots
+        self._guest_service_resources = guest_service_resources
         self._operation_ids = operation_ids
         self._clock = clock
+
+    def recover_interrupted_operations(self) -> None:
+        for operation in self._operations.list_unfinished_operations():
+            interrupted = interrupt_operation(
+                operation,
+                failure=OperationFailure(
+                    kind="controllerRestarted",
+                    message=(
+                        "Runtime Controller restarted before the operation outcome "
+                        "was known."
+                    ),
+                ),
+                now=self._clock.now(),
+            )
+            self._operations.record_transition(interrupted)
 
     def capabilities(self) -> dict[str, object]:
         capabilities = [
@@ -253,7 +262,9 @@ class GuestControlUseCases:
         resource = self._load_guest_service_resource(service)
         status_read = self._read_guest_service_status(service)
         if status_read.service_status is not None:
-            self._service_status_snapshots.save_service_status_snapshot(status_read.service_status)
+            self._service_status_snapshots.save_service_status_snapshot(
+                status_read.service_status
+            )
         observed = self._guest_service_resource_with_status(resource, status_read)
         self._guest_service_resources.save_guest_service_resource(observed)
         return observed.as_json()
@@ -299,36 +310,27 @@ class GuestControlUseCases:
         return self._operations.get(operation_id)
 
     def start_service(self, service: str) -> ServiceOperation:
-        self._save_guest_service_spec(
-            service,
-            desired_state=GuestServiceDesiredState.RUNNING,
-        )
         return self._run_guest_service_reconcile_operation(
             service=service,
             command=ServiceCommand.START,
             requested_command=ServiceCommand.START,
+            desired_state=GuestServiceDesiredState.RUNNING,
         )
 
     def stop_service(self, service: str) -> ServiceOperation:
-        self._save_guest_service_spec(
-            service,
-            desired_state=GuestServiceDesiredState.STOPPED,
-        )
         return self._run_guest_service_reconcile_operation(
             service=service,
             command=ServiceCommand.STOP,
             requested_command=ServiceCommand.STOP,
+            desired_state=GuestServiceDesiredState.STOPPED,
         )
 
     def restart_service(self, service: str) -> ServiceOperation:
-        self._save_guest_service_spec(
-            service,
-            desired_state=GuestServiceDesiredState.RUNNING,
-        )
         return self._run_guest_service_reconcile_operation(
             service=service,
             command=ServiceCommand.RESTART,
             requested_command=ServiceCommand.RESTART,
+            desired_state=GuestServiceDesiredState.RUNNING,
         )
 
     def reconcile_guest_service(self, service: str) -> ServiceOperation:
@@ -336,6 +338,7 @@ class GuestControlUseCases:
             service=service,
             command=ServiceCommand.RECONCILE,
             requested_command=None,
+            desired_state=None,
         )
 
     def reconcile_services(self) -> ServiceOperation:
@@ -394,7 +397,9 @@ class GuestControlUseCases:
         if command == ServiceCommand.RECONCILE:
             stack_status = self._service_control.get_stack_status()
             for service_status in stack_status.services:
-                self._service_status_snapshots.save_service_status_snapshot(service_status)
+                self._service_status_snapshots.save_service_status_snapshot(
+                    service_status
+                )
                 self._sync_guest_service_resource_status(service_status)
             return
 
@@ -508,6 +513,7 @@ class GuestControlUseCases:
         service: str,
         command: ServiceCommand,
         requested_command: ServiceCommand | None,
+        desired_state: GuestServiceDesiredState | None,
     ) -> ServiceOperation:
         self._ensure_guest_service_exists(service)
         operation = accept_service_operation(
@@ -524,10 +530,24 @@ class GuestControlUseCases:
         running = start_operation(operation, now=self._clock.now())
         self._save_operation_transition(running)
 
+        if desired_state is not None:
+            try:
+                self._save_guest_service_spec(service, desired_state=desired_state)
+            except GuestControlDependencyError as error:
+                failed = fail_operation(
+                    running,
+                    failure=OperationFailure(kind=error.kind, message=error.message),
+                    now=self._clock.now(),
+                )
+                self._save_operation_transition(failed)
+                return failed
+
         resource = self._load_guest_service_resource(service)
         status_read = self._read_guest_service_status(service)
         if status_read.service_status is not None:
-            self._service_status_snapshots.save_service_status_snapshot(status_read.service_status)
+            self._service_status_snapshots.save_service_status_snapshot(
+                status_read.service_status
+            )
 
         decision = reconcile_guest_service(
             spec=resource.spec,
@@ -836,9 +856,7 @@ class GuestControlUseCases:
                 "readError": error.message,
             }
 
-    def apply_runtime_settings(
-        self, settings: dict[str, object]
-    ) -> ServiceOperation:
+    def apply_runtime_settings(self, settings: dict[str, object]) -> ServiceOperation:
         operation = accept_service_operation(
             operation_id=self._operation_ids.new_operation_id(
                 service="runtime-settings",
@@ -967,9 +985,7 @@ class GuestControlUseCases:
             )
 
         try:
-            return self._with_recorder_ingress(
-                self._vitaldb_read_model.recorders()
-            )
+            return self._with_recorder_ingress(self._vitaldb_read_model.recorders())
         except VitalDBReadModelDependencyError as error:
             return _vitaldb_read_model_failed_document(error, collection="recorders")
 
@@ -1004,9 +1020,7 @@ class GuestControlUseCases:
     ) -> dict[str, object]:
         return self._run_vitaldb_read_model_command(
             collection="recorders",
-            action=lambda: self._require_vitaldb_read_model().unhide_recorders(
-                request
-            ),
+            action=lambda: self._require_vitaldb_read_model().unhide_recorders(request),
         )
 
     def delete_vitaldb_recorders(
@@ -1015,9 +1029,7 @@ class GuestControlUseCases:
     ) -> dict[str, object]:
         return self._run_vitaldb_read_model_command(
             collection="recorders",
-            action=lambda: self._require_vitaldb_read_model().delete_recorders(
-                request
-            ),
+            action=lambda: self._require_vitaldb_read_model().delete_recorders(request),
         )
 
     def get_vitaldb_recorder_activity(self, vrcode: str) -> dict[str, object]:
@@ -1530,32 +1542,24 @@ class GuestControlUseCases:
         except VitalDBReadModelDependencyError as error:
             return _vitaldb_read_model_failed_document(error, collection=collection)
 
-    def _with_recorder_ingress(
-        self, history: dict[str, object]
-    ) -> dict[str, object]:
+    def _with_recorder_ingress(self, history: dict[str, object]) -> dict[str, object]:
         return attach_recorder_ingress_status(
             history,
             self.get_recorder_ingress_status(),
         )
 
     def _create_operation(self, operation: ServiceOperation) -> None:
-        self._operations.create(operation)
-        self._append_operation_event(operation)
+        self._operations.record_accepted(
+            operation,
+            lease=OperationLease(
+                resource_key=GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
+                operation_id=operation.operation_id,
+                acquired_at=operation.created_at,
+            ),
+        )
 
     def _save_operation_transition(self, operation: ServiceOperation) -> None:
-        self._operations.save(operation)
-        self._append_operation_event(operation)
-
-    def _append_operation_event(self, operation: ServiceOperation) -> None:
-        self._operations.append_event(
-            OperationEvent(
-                operation_id=operation.operation_id,
-                state=operation.state,
-                observed_at=operation.updated_at,
-                failure=operation.failure,
-                result=operation.result,
-            )
-        )
+        self._operations.record_transition(operation)
 
 
 def _readiness_dependency(
@@ -1726,9 +1730,7 @@ def _vitaldb_observation_failed_document(
     error: VitalDBReadModelDependencyError,
 ) -> dict[str, object]:
     state = (
-        "unavailable"
-        if error.kind == "vitaldb-read-model-unavailable"
-        else "failed"
+        "unavailable" if error.kind == "vitaldb-read-model-unavailable" else "failed"
     )
     return {
         "state": state,
@@ -1764,9 +1766,7 @@ def _vitaldb_read_model_failed_document(
     if collection == "beds":
         return _failed_bed_history(error.message)
     state = (
-        "unavailable"
-        if error.kind == "vitaldb-read-model-unavailable"
-        else "failed"
+        "unavailable" if error.kind == "vitaldb-read-model-unavailable" else "failed"
     )
     return {
         "state": state,
@@ -1835,9 +1835,7 @@ def _vitaldb_relationship_failed_document(
     error: VitalDBReadModelDependencyError,
 ) -> dict[str, object]:
     state = (
-        "unavailable"
-        if error.kind == "vitaldb-read-model-unavailable"
-        else "failed"
+        "unavailable" if error.kind == "vitaldb-read-model-unavailable" else "failed"
     )
     return {
         "state": state,

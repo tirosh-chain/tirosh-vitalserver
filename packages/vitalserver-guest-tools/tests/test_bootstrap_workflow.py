@@ -27,6 +27,8 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
     assert_before(events, "mount-shares", "sync-clock")
     assert_before(events, "sync-clock", "result:running")
     assert_before(events, "prepare-runtime-data", "start-docker")
+    assert_before(events, "prepare-runtime-data", "migrate-control-store")
+    assert_before(events, "migrate-control-store", "start-docker")
     assert_before(
         events,
         "start-docker",
@@ -41,7 +43,7 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
     assert result["status"] == "completed"
 
 
-def test_guest_bootstrap_rejects_docker_start_before_runtime_data(
+def test_guest_bootstrap_rejects_docker_start_before_control_store_migration(
     tmp_path: Path,
 ) -> None:
     workflow = GuestBootstrapWorkflow(
@@ -51,7 +53,7 @@ def test_guest_bootstrap_rejects_docker_start_before_runtime_data(
 
     with pytest.raises(
         RuntimeError,
-        match="start-docker requires prepare-runtime-data",
+        match="start-docker requires migrate-control-store",
     ):
         workflow.start_docker()
 
@@ -131,6 +133,7 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         missing_runtime_packages=lambda: [],
         install_runtime_files=lambda _: events.append("install-runtime-files"),
         prepare_runtime_data=lambda: events.append("prepare-runtime-data"),
+        migrate_control_store=lambda: events.append("migrate-control-store"),
         write_initial_runtime_observation=lambda: events.append(
             "write-runtime-observation"
         ),

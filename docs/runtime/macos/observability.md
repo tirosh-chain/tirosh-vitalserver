@@ -52,7 +52,7 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 
 각 app은 제품 전체 상태를 판단하지 않습니다.
 
-Redis Relay의 Docker health는 relay process와 status writer가 살아 있는지를 나타냅니다. Target Redis 인증, 네트워크, atomic publish 실패는 container liveness로 숨기지 않고 relay status document의 `state`, `lastErrorAt`, `lastError`, `lastSuccessAt`, `batches`, `totals`로 드러냅니다. Relay container는 `/run/tirosh/status/redis-relay-status.json`을 diagnostics artifact로 쓰고 같은 document를 `PUT /runtime/redis-relay/status` owner mutation으로 publish합니다. Guest Control API의 `GET /runtime/redis-relay/status`는 Guest/Postgres owner snapshot에서 relay status read state와 document를 명시적으로 노출합니다. Client는 `/runtime/redis-relay/status` resource로 이 결과를 직접 읽으며 Host `RuntimeStatus`는 Redis Relay 상태를 조립하지 않습니다. `settingsFingerprint`는 password를 포함하지 않는 설정 계약 hash이며, Helper UI가 표시하는 target/scope 설정과 guest relay process가 실제로 읽은 설정이 같은지 확인하는 단서입니다.
+Redis Relay의 Docker health는 relay process와 status writer가 살아 있는지를 나타냅니다. Target Redis 인증, 네트워크, atomic publish 실패는 container liveness로 숨기지 않고 relay status document의 `state`, `lastErrorAt`, `lastError`, `lastSuccessAt`, `batches`, `totals`로 드러냅니다. Relay container는 `/run/tirosh/status/redis-relay-status.json`을 diagnostics artifact로 쓰고 같은 document를 `PUT /runtime/redis-relay/status` owner mutation으로 publish합니다. Guest Control API의 `GET /runtime/redis-relay/status`는 Guest/SQLite owner snapshot에서 relay status read state와 document를 명시적으로 노출합니다. Client는 `/runtime/redis-relay/status` resource로 이 결과를 직접 읽으며 Host `RuntimeStatus`는 Redis Relay 상태를 조립하지 않습니다. `settingsFingerprint`는 password를 포함하지 않는 설정 계약 hash이며, Helper UI가 표시하는 target/scope 설정과 guest relay process가 실제로 읽은 설정이 같은지 확인하는 단서입니다.
 
 | Redis Relay state | 의미 |
 |---|---|
@@ -531,7 +531,7 @@ Relay는 source Redis에서 `SCAN`, `TYPE`, `PTTL`, `DUMP`를 사용합니다. T
 - target password는 settings/read model/TOML에 원문으로 저장하지 않고 secret file로 전달합니다.
 - Runtime Control settings/read model에는 password 원문 대신 `passwordConfigured`만 노출합니다.
 - relay 장애는 VitalServer traffic path 장애로 승격하지 않고 relay degraded/status로 보고합니다.
-- relay container는 `/run/tirosh/status/redis-relay-status.json`을 diagnostic artifact로 publish하고, 같은 document를 `PUT /runtime/redis-relay/status` owner mutation으로 Guest Control API에 보냅니다. `GET /runtime/redis-relay/status`는 Guest/Postgres owner snapshot을 읽어 `loaded`, `invalidResponse`, `readFailed`를 구분해 노출합니다. Runtime surface의 `/runtime/redis-relay/status`는 이 read result를 그대로 전달하며 Host `RuntimeStatus`나 shared status file을 current product state로 사용하지 않습니다.
+- relay container는 `/run/tirosh/status/redis-relay-status.json`을 diagnostic artifact로 publish하고, 같은 document를 `PUT /runtime/redis-relay/status` owner mutation으로 Guest Control API에 보냅니다. `GET /runtime/redis-relay/status`는 Guest/SQLite owner snapshot을 읽어 `loaded`, `invalidResponse`, `readFailed`를 구분해 노출합니다. Runtime surface의 `/runtime/redis-relay/status`는 이 read result를 그대로 전달하며 Host `RuntimeStatus`나 shared status file을 current product state로 사용하지 않습니다.
 - relay container는 publisher입니다. Target Redis consumer group pending recovery, DLQ, decode idempotency, downstream 재처리는 target 쪽 consumer가 소유합니다.
 - target Redis 수신 계약과 consumer 권장 흐름은 site dev 문서의 `Redis Relay`를 기준으로 봅니다.
 - `running_with_errors`는 부분 성공 상태입니다. 현재 batch의 실패 원인은 status JSON의 `lastErrorSamples`에서 key/stage/code/errorType/message로 확인합니다.

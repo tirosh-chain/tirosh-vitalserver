@@ -362,61 +362,61 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func loadLabScenarios() async throws -> RuntimeLabScenarioList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.labScenarios()
         }
     }
 
     public func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.labVitalFiles()
         }
     }
 
     public func loadLabBeds() async throws -> RuntimeLabBedList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.labBeds()
         }
     }
 
     public func loadLabRecorders() async throws -> RuntimeLabRecorderList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.labRecorders()
         }
     }
 
     public func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.createLabBeds(request)
         }
     }
 
     public func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.deleteLabBeds(request)
         }
     }
 
     public func resetLabBeds() async throws -> RuntimeLabBedList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.resetLabBeds()
         }
     }
 
     public func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.createLabRecorders(request)
         }
     }
 
     public func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.deleteLabRecorders(request)
         }
     }
 
     public func resetLabRecorders() async throws -> RuntimeLabRecorderList {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.resetLabRecorders()
         }
     }
@@ -464,37 +464,37 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.createLabSession(request)
         }
     }
 
     public func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.labSession(sessionId)
         }
     }
 
     public func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.startLabSession(sessionId)
         }
     }
 
     public func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.stopLabSession(sessionId)
         }
     }
 
     public func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.replayLabVitalFile(request)
         }
     }
 
     public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
-        return await runGuestProductLabCommand {
+        return try await runGuestProductLabCommand {
             try $0.uploadLabVitalFile(request)
         }
     }
@@ -555,7 +555,7 @@ public actor MacRuntimeControlCommandWorker {
 
     private func runGuestProductLabCommand<T: RuntimeLabResponseUnavailableFactory>(
         _ command: @escaping @Sendable (any RuntimeGuestProductLabGateway) throws -> T
-    ) async -> T {
+    ) async throws -> T {
         let baseURL: String
         do {
             baseURL = try guestControlBaseURL()
@@ -565,6 +565,8 @@ public actor MacRuntimeControlCommandWorker {
         do {
             let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
             return try command(gateway)
+        } catch let error as RuntimeControlOperationInProgressError {
+            throw error
         } catch {
             return T.unavailable(readError: "Runtime Lab gateway failed: \(error)")
         }

@@ -6,6 +6,7 @@ import pytest
 
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
+    TERMINAL_OPERATION_STATES,
     DatastoreRepairDependencyError,
     GuestControlDependencyError,
     GuestServiceDesiredState,
@@ -14,6 +15,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceStatusRead,
     OperationEvent,
     OperationFailure,
+    OperationLease,
     OperationState,
     ProductLabDependencyError,
     ProductLabReadModelResult,
@@ -93,6 +95,7 @@ class FakeOperations:
         self.ready_failure = ready_failure
         self.saved: list[ServiceOperation] = []
         self.events: list[OperationEvent] = []
+        self.active_lease: OperationLease | None = None
         self.status_snapshots: list[ServiceStatus] = []
         self.service_resources: dict[str, GuestServiceResource] = {}
         self.redis_relay_status: dict[str, object] | None = None
@@ -101,14 +104,34 @@ class FakeOperations:
         if self.ready_failure is not None:
             raise self.ready_failure
 
-    def create(self, operation: ServiceOperation) -> None:
+    def record_accepted(
+        self,
+        operation: ServiceOperation,
+        *,
+        lease: OperationLease,
+    ) -> None:
         self.saved.append(operation)
+        self.events.append(operation_event(operation))
+        self.active_lease = lease
 
-    def save(self, operation: ServiceOperation) -> None:
+    def record_transition(
+        self,
+        operation: ServiceOperation,
+    ) -> None:
         self.saved.append(operation)
+        self.events.append(operation_event(operation))
+        if operation.state in TERMINAL_OPERATION_STATES:
+            self.active_lease = None
 
-    def append_event(self, event: OperationEvent) -> None:
-        self.events.append(event)
+    def list_unfinished_operations(self) -> list[ServiceOperation]:
+        latest: dict[str, ServiceOperation] = {}
+        for operation in self.saved:
+            latest[operation.operation_id] = operation
+        return [
+            operation
+            for operation in latest.values()
+            if operation.state in {OperationState.ACCEPTED, OperationState.RUNNING}
+        ]
 
     def save_service_status_snapshot(self, status: ServiceStatus) -> None:
         self.status_snapshots.append(status)
@@ -147,6 +170,16 @@ class FakeOperations:
 
     def query_events(self, **_: object) -> dict[str, object]:
         return {"events": [], "nextCursor": None, "matchingCount": None}
+
+
+def operation_event(operation: ServiceOperation) -> OperationEvent:
+    return OperationEvent(
+        operation_id=operation.operation_id,
+        state=operation.state,
+        observed_at=operation.updated_at,
+        failure=operation.failure,
+        result=operation.result,
+    )
 
 
 class MissingOperationRead(FakeOperations):
@@ -715,8 +748,28 @@ class FakeUpdateShutdown:
             )
 
 
+def build_usecases(
+    *,
+    service_control: FakeServiceControl,
+    operations: FakeOperations,
+    operation_ids: FakeOperationIds,
+    clock: FakeClock,
+    **adapters: object,
+) -> GuestControlUseCases:
+    """Compose the three required control repositories around one test store."""
+    return GuestControlUseCases(
+        service_control=service_control,
+        operations=operations,
+        service_status_snapshots=operations,
+        guest_service_resources=operations,
+        operation_ids=operation_ids,
+        clock=clock,
+        **adapters,
+    )
+
+
 def test_capabilities_include_only_configured_adapter_features() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -785,7 +838,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
 
 
 def test_capabilities_omit_unconfigured_adapter_features() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -813,7 +866,7 @@ def test_capabilities_omit_unconfigured_adapter_features() -> None:
 
 
 def test_readiness_reports_ready_dependency_state() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -844,14 +897,13 @@ def test_readiness_reports_ready_dependency_state() -> None:
     }
 
 
-def test_readiness_preserves_postgres_operation_repository_failure() -> None:
-    usecases = GuestControlUseCases(
+def test_readiness_preserves_control_store_failure() -> None:
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(
             ready_failure=GuestControlDependencyError(
-                "postgres command failed during guest control operation "
-                "repository readiness",
-                kind="postgresCommandFailed",
+                "control SQLite schema is not at the required revision",
+                kind="controlStoreSchemaMismatch",
             )
         ),
         operation_ids=FakeOperationIds(),
@@ -867,11 +919,8 @@ def test_readiness_preserves_postgres_operation_repository_failure() -> None:
                 "name": "operationRepository",
                 "role": "required",
                 "state": "failed",
-                "kind": "postgresCommandFailed",
-                "message": (
-                    "postgres command failed during guest control operation "
-                    "repository readiness"
-                ),
+                "kind": "controlStoreSchemaMismatch",
+                "message": "control SQLite schema is not at the required revision",
             }
         ],
     }
@@ -880,7 +929,7 @@ def test_readiness_preserves_postgres_operation_repository_failure() -> None:
 def test_start_service_persists_operation_transitions() -> None:
     operations = FakeOperations()
     service_control = FakeServiceControl()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=service_control,
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -914,6 +963,72 @@ def test_start_service_persists_operation_transitions() -> None:
     assert resource.last_operation_id == "op_app_start_1"
 
 
+def test_service_command_lease_conflict_does_not_write_desired_state() -> None:
+    class LeaseConflictOperations(FakeOperations):
+        def record_accepted(
+            self,
+            operation: ServiceOperation,
+            *,
+            lease: OperationLease,
+        ) -> None:
+            del operation
+            del lease
+            raise GuestControlDependencyError(
+                "a Guest Control operation already owns the command lease",
+                kind="operationLeaseConflict",
+            )
+
+    operations = LeaseConflictOperations()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        usecases.stop_service("app")
+
+    assert error.value.kind == "operationLeaseConflict"
+    assert operations.saved == []
+    assert operations.service_resources == {}
+
+
+def test_controller_recovery_marks_unfinished_operation_as_interrupted() -> None:
+    operations = FakeOperations()
+    accepted = ServiceOperation(
+        operation_id="op_app_restart_1",
+        service="app",
+        command=ServiceCommand.RESTART,
+        state=OperationState.ACCEPTED,
+        created_at=datetime(2026, 7, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+    operations.record_accepted(
+        accepted,
+        lease=OperationLease(
+            resource_key="guest-control",
+            operation_id=accepted.operation_id,
+            acquired_at=accepted.created_at,
+        ),
+    )
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    usecases.recover_interrupted_operations()
+
+    interrupted = operations.saved[-1]
+    assert interrupted.state == OperationState.INTERRUPTED
+    assert interrupted.failure is not None
+    assert interrupted.failure.kind == "controllerRestarted"
+    assert operations.events[-1].state == OperationState.INTERRUPTED
+    assert operations.active_lease is None
+
+
 def test_guest_service_resource_get_is_side_effect_free() -> None:
     operations = FakeOperations()
     operations.save_guest_service_resource(
@@ -932,7 +1047,7 @@ def test_guest_service_resource_get_is_side_effect_free() -> None:
             conditions=[],
         )
     )
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -948,7 +1063,7 @@ def test_guest_service_resource_get_is_side_effect_free() -> None:
 
 def test_guest_service_resource_get_reports_missing_spec_without_seeding() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -970,7 +1085,7 @@ def test_guest_service_resource_get_reports_missing_spec_without_seeding() -> No
 
 def test_observe_guest_service_reads_and_persists_loaded_status() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1017,7 +1132,7 @@ def test_observe_guest_service_uses_explicit_status_and_resource_repositories() 
 
 def test_guest_service_spec_update_persists_desired_state() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1038,7 +1153,7 @@ def test_guest_service_spec_update_persists_desired_state() -> None:
 
 def test_guest_service_spec_update_rejects_invalid_desired_state() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1057,7 +1172,7 @@ def test_guest_service_spec_update_rejects_invalid_desired_state() -> None:
 
 def test_guest_service_controller_rejects_unknown_service() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(services=["app"]),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1083,7 +1198,7 @@ def test_guest_service_controller_rejects_unknown_service() -> None:
 
 def test_get_service_status_persists_status_snapshot() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1098,7 +1213,7 @@ def test_get_service_status_persists_status_snapshot() -> None:
 
 def test_get_stack_status_persists_each_service_status_snapshot() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1136,7 +1251,7 @@ def test_get_stack_status_preserves_existing_guest_service_desired_state() -> No
             conditions=[],
         )
     )
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1157,7 +1272,7 @@ def test_get_stack_status_preserves_existing_guest_service_desired_state() -> No
 def test_stop_service_persists_operation_transitions() -> None:
     operations = FakeOperations()
     service_control = FakeServiceControl()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=service_control,
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1198,7 +1313,7 @@ def test_stop_service_persists_operation_transitions() -> None:
 def test_restart_service_persists_operation_transitions() -> None:
     operations = FakeOperations()
     service_control = FakeServiceControl()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=service_control,
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1235,7 +1350,7 @@ def test_restart_service_persists_operation_transitions() -> None:
 
 def test_restart_service_failure_is_persisted_as_failed_operation() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(fail_command="restart"),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1265,7 +1380,7 @@ def test_restart_service_status_snapshot_failure_is_persisted_as_failed_operatio
 ) -> None:
     operations = FakeOperations()
     service_control = FakeServiceControl(fail_status=True)
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=service_control,
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1289,7 +1404,7 @@ def test_restart_service_status_snapshot_failure_is_persisted_as_failed_operatio
 def test_reconcile_guest_service_without_spec_is_blocked() -> None:
     operations = FakeOperations()
     service_control = FakeServiceControl()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=service_control,
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1314,7 +1429,7 @@ def test_reconcile_guest_service_without_spec_is_blocked() -> None:
 def test_reconcile_services_persists_operation_transitions() -> None:
     operations = FakeOperations()
     service_control = FakeServiceControl()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=service_control,
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1346,7 +1461,7 @@ def test_reconcile_services_persists_operation_transitions() -> None:
 
 def test_reconcile_services_failure_is_persisted_as_failed_operation() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(fail_command="reconcile"),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1373,7 +1488,7 @@ def test_reconcile_services_failure_is_persisted_as_failed_operation() -> None:
 def test_create_redis_backup_persists_completed_operation_result() -> None:
     operations = FakeOperations()
     redis_backup = FakeRedisBackup()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1396,7 +1511,7 @@ def test_create_redis_backup_persists_completed_operation_result() -> None:
 
 def test_create_redis_backup_failure_is_persisted_as_failed_operation() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1425,7 +1540,7 @@ def test_create_redis_backup_failure_is_persisted_as_failed_operation() -> None:
 def test_restore_redis_backup_persists_completed_operation_result() -> None:
     operations = FakeOperations()
     redis_backup = FakeRedisBackup()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1452,7 +1567,7 @@ def test_restore_redis_backup_persists_completed_operation_result() -> None:
 
 def test_restore_redis_backup_failure_is_persisted_as_failed_operation() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1473,7 +1588,7 @@ def test_restore_redis_backup_failure_is_persisted_as_failed_operation() -> None
 def test_repair_datastore_persists_completed_operation() -> None:
     operations = FakeOperations()
     datastore_repair = FakeDatastoreRepair()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1503,7 +1618,7 @@ def test_repair_datastore_persists_completed_operation() -> None:
 
 def test_repair_datastore_failure_is_persisted_as_failed_operation() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1522,7 +1637,7 @@ def test_repair_datastore_failure_is_persisted_as_failed_operation() -> None:
 def test_activate_update_persists_completed_operation_result() -> None:
     operations = FakeOperations()
     update_activation = FakeUpdateActivation()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1554,7 +1669,7 @@ def test_activate_update_persists_completed_operation_result() -> None:
 
 def test_activate_update_failure_is_persisted_as_failed_operation() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1576,7 +1691,7 @@ def test_activate_update_failure_is_persisted_as_failed_operation() -> None:
 def test_prepare_update_shutdown_returns_running_background_operation() -> None:
     operations = FakeOperations()
     update_shutdown = FakeUpdateShutdown()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1606,7 +1721,7 @@ def test_prepare_update_shutdown_returns_running_background_operation() -> None:
 
 def test_prepare_update_shutdown_rejects_missing_persisted_operation_state() -> None:
     operations = MissingOperationRead()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1634,7 +1749,7 @@ def test_prepare_update_shutdown_rejects_missing_persisted_operation_state() -> 
 def test_prepare_update_shutdown_ready_callback_persists_completed_result() -> None:
     operations = FakeOperations()
     update_shutdown = FakeUpdateShutdown(ready_immediately=True)
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1663,7 +1778,7 @@ def test_prepare_update_shutdown_ready_callback_persists_completed_result() -> N
 
 def test_prepare_update_shutdown_start_failure_is_persisted() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1685,7 +1800,7 @@ def test_prepare_update_shutdown_start_failure_is_persisted() -> None:
 def test_request_guest_poweroff_persists_completed_operation() -> None:
     operations = FakeOperations()
     update_shutdown = FakeUpdateShutdown()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1708,7 +1823,7 @@ def test_request_guest_poweroff_persists_completed_operation() -> None:
 
 def test_request_guest_poweroff_failure_is_persisted() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1726,7 +1841,7 @@ def test_request_guest_poweroff_failure_is_persisted() -> None:
 def test_create_lab_session_persists_operation_transitions() -> None:
     operations = FakeOperations()
     product_lab = FakeProductLab()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1754,7 +1869,7 @@ def test_create_lab_session_persists_operation_transitions() -> None:
 
 
 def test_lab_read_models_are_loaded_from_product_lab_port() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1773,7 +1888,7 @@ def test_lab_read_models_are_loaded_from_product_lab_port() -> None:
 
 def test_create_lab_session_failure_is_persisted_as_failed_operation() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -1800,7 +1915,7 @@ def test_create_lab_session_failure_is_persisted_as_failed_operation() -> None:
 
 
 def test_get_lab_session_returns_loaded_session_response_without_operation() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1818,7 +1933,7 @@ def test_get_lab_session_returns_loaded_session_response_without_operation() -> 
 
 
 def test_latest_vitaldb_observation_reports_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1835,7 +1950,7 @@ def test_latest_vitaldb_observation_reports_unavailable_without_adapter() -> Non
 
 
 def test_latest_vitaldb_observation_returns_read_model_document() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1851,7 +1966,7 @@ def test_latest_vitaldb_observation_returns_read_model_document() -> None:
 
 
 def test_latest_vitaldb_observation_preserves_dependency_failure() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1869,7 +1984,7 @@ def test_latest_vitaldb_observation_preserves_dependency_failure() -> None:
 
 
 def test_vitaldb_recorders_report_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1881,11 +1996,13 @@ def test_vitaldb_recorders_report_unavailable_without_adapter() -> None:
     assert response["state"] == "readFailed"
     assert response["recorders"] == []
     assert response["updatedAt"] is None
-    assert response["readError"] == "VitalDB recorder read model adapter is unavailable."
+    assert response["readError"] == (
+        "VitalDB recorder read model adapter is unavailable."
+    )
 
 
 def test_vitaldb_recorders_return_read_model_document() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1903,7 +2020,7 @@ def test_vitaldb_recorders_return_read_model_document() -> None:
 
 
 def test_vitaldb_recorders_visibility_commands_require_hidden_before_delete() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1925,7 +2042,7 @@ def test_vitaldb_recorders_visibility_commands_require_hidden_before_delete() ->
 
 
 def test_vitaldb_recorders_unhide_restores_visible_state() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1940,7 +2057,7 @@ def test_vitaldb_recorders_unhide_restores_visible_state() -> None:
 
 
 def test_vitaldb_recorders_preserve_dependency_failure() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1956,7 +2073,7 @@ def test_vitaldb_recorders_preserve_dependency_failure() -> None:
 
 
 def test_vitaldb_recorder_activity_reports_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1974,7 +2091,7 @@ def test_vitaldb_recorder_activity_reports_unavailable_without_adapter() -> None
 
 
 def test_vitaldb_recorder_activity_returns_read_model_document() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -1991,7 +2108,7 @@ def test_vitaldb_recorder_activity_returns_read_model_document() -> None:
 
 
 def test_vitaldb_recorder_activity_preserves_dependency_failure() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2010,7 +2127,7 @@ def test_vitaldb_recorder_activity_preserves_dependency_failure() -> None:
 
 
 def test_vitaldb_beds_report_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2026,7 +2143,7 @@ def test_vitaldb_beds_report_unavailable_without_adapter() -> None:
 
 
 def test_vitaldb_beds_return_read_model_document() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2044,7 +2161,7 @@ def test_vitaldb_beds_return_read_model_document() -> None:
 
 
 def test_vitaldb_beds_visibility_commands_require_hidden_before_delete() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2066,7 +2183,7 @@ def test_vitaldb_beds_visibility_commands_require_hidden_before_delete() -> None
 
 
 def test_vitaldb_beds_unhide_restores_visible_state() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2081,7 +2198,7 @@ def test_vitaldb_beds_unhide_restores_visible_state() -> None:
 
 
 def test_vitaldb_beds_preserve_dependency_failure() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2097,7 +2214,7 @@ def test_vitaldb_beds_preserve_dependency_failure() -> None:
 
 
 def test_vitaldb_relationships_report_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2115,7 +2232,7 @@ def test_vitaldb_relationships_report_unavailable_without_adapter() -> None:
 
 
 def test_vitaldb_relationships_return_read_model_document() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2132,7 +2249,7 @@ def test_vitaldb_relationships_return_read_model_document() -> None:
 
 
 def test_vitaldb_relationships_preserve_dependency_failure() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2151,7 +2268,7 @@ def test_vitaldb_relationships_preserve_dependency_failure() -> None:
 
 
 def test_recorder_ingress_status_reports_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2169,7 +2286,7 @@ def test_recorder_ingress_status_reports_unavailable_without_adapter() -> None:
 
 
 def test_recorder_ingress_status_returns_status_read_document() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2185,7 +2302,7 @@ def test_recorder_ingress_status_returns_status_read_document() -> None:
 
 
 def test_recorder_ingress_status_preserves_dependency_failure() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2204,7 +2321,7 @@ def test_recorder_ingress_status_preserves_dependency_failure() -> None:
 
 
 def test_redis_relay_status_reports_unavailable_without_adapter() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2221,7 +2338,7 @@ def test_redis_relay_status_reports_unavailable_without_adapter() -> None:
 
 
 def test_redis_relay_status_returns_status_read_document() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),
@@ -2238,7 +2355,7 @@ def test_redis_relay_status_returns_status_read_document() -> None:
 
 def test_redis_relay_status_owner_mutation_persists_snapshot() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -2255,7 +2372,7 @@ def test_redis_relay_status_owner_mutation_persists_snapshot() -> None:
 
 def test_redis_relay_status_owner_mutation_rejects_incomplete_snapshot() -> None:
     operations = FakeOperations()
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=operations,
         operation_ids=FakeOperationIds(),
@@ -2275,7 +2392,7 @@ def test_redis_relay_status_owner_mutation_rejects_incomplete_snapshot() -> None
 
 
 def test_redis_relay_status_preserves_dependency_failure() -> None:
-    usecases = GuestControlUseCases(
+    usecases = build_usecases(
         service_control=FakeServiceControl(),
         operations=FakeOperations(),
         operation_ids=FakeOperationIds(),

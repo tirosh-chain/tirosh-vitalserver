@@ -74,12 +74,7 @@ fi
 
 install -d -m 0755 /etc/tirosh
 install -m 0644 "${SETTINGS_SOURCE}" /etc/tirosh/guest-tools.toml
-wheel=$(find "${DEPLOY_DIR}/python-wheels" -maxdepth 1 -name 'tirosh_vitalserver_guest_tools-*.whl' -type f | sort | tail -n 1)
-if [ -z "${wheel}" ]; then
-  printf 'Hyper-V guest tools wheel is missing: %s/python-wheels\n' "${DEPLOY_DIR}" >&2
-  exit 1
-fi
-install -d -m 0755 "${GUEST_TOOLS_HOME}"
-python3 -m venv --clear "${GUEST_TOOLS_VENV}"
-"${GUEST_TOOLS_VENV}/bin/pip" install --no-index --no-deps "${wheel}"
+python3 "${DEPLOY_DIR}/install-guest-tools-runtime.py" \
+  --wheel-dir "${DEPLOY_DIR}/python-wheels" \
+  --guest-tools-home "${GUEST_TOOLS_HOME}"
 exec "${GUEST_TOOLS_VENV}/bin/tirosh-vitalserver-bootstrap"

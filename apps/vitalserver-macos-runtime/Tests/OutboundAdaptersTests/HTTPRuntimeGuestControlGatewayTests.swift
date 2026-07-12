@@ -742,6 +742,35 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         }
     }
 
+    func testHTTPConflictMapsToPublicOperationInProgressMeaning() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 409,
+            body: """
+            {
+              "detail": "guest control lease is held by operation op-123",
+              "code": "operationInProgress"
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        XCTAssertThrowsError(try gateway.startService("app")) { error in
+            XCTAssertEqual(
+                error as? RuntimeControlOperationInProgressError,
+                RuntimeControlOperationInProgressError(
+                    message: "guest control lease is held by operation op-123"
+                )
+            )
+            XCTAssertEqual(
+                error.localizedDescription,
+                "guest control lease is held by operation op-123"
+            )
+        }
+    }
+
     func testLatestVitalDBObservationRequestsGuestControlReadModelEndpoint() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,

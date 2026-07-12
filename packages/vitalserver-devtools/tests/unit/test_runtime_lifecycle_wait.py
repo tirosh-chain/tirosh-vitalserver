@@ -247,6 +247,21 @@ def test_wait_for_rootfs_ready_accepts_matching_marker_and_manifest(tmp_path):
     assert result == 0
 
 
+def test_wait_for_rootfs_ready_rejects_missing_guest_tools_dependency_proof(tmp_path):
+    write_rootfs_manifest(tmp_path, run_id="run-test")
+    write_rootfs_marker(tmp_path, run_id="run-test", python_dependencies=None)
+
+    with pytest.raises(SystemExit, match="Guest Tools dependency proof"):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
+            )
+        )
+
+
 def test_wait_for_rootfs_ready_rejects_failed_manifest_even_with_marker(tmp_path):
     write_rootfs_manifest(
         tmp_path,
@@ -948,7 +963,12 @@ def write_rootfs_manifest(
     )
 
 
-def write_rootfs_marker(vm_home, *, run_id: str) -> None:
+def write_rootfs_marker(
+    vm_home,
+    *,
+    run_id: str,
+    python_dependencies: dict[str, object] | None | bool = True,
+) -> None:
     marker = vm_home / "data/run/rootfs-ready"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(
@@ -957,6 +977,23 @@ def write_rootfs_marker(vm_home, *, run_id: str) -> None:
                 "schemaVersion": 1,
                 "runId": run_id,
                 "readyAt": "2026-06-11T00:00:02Z",
+                **(
+                    {
+                        "pythonDependencies": {
+                            "status": "passed",
+                            "proof": "/opt/tirosh/guest-tools/install-proof.json",
+                            "target": "linux-aarch64",
+                            "dependencies": {
+                                "alembic": "1.16.5",
+                                "sqlalchemy": "2.0.51",
+                            },
+                        }
+                    }
+                    if python_dependencies is True
+                    else {"pythonDependencies": python_dependencies}
+                    if isinstance(python_dependencies, dict)
+                    else {}
+                ),
             }
         ),
         encoding="utf-8",

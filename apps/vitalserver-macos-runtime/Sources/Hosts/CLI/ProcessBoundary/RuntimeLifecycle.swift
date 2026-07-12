@@ -431,7 +431,7 @@ struct RuntimeLifecycle {
 
     private func runGuestServiceCommand(
         _ command: RuntimeGuestServiceControlCommand,
-        action: RuntimeGuestControlServiceCommand
+        action: GuestProductServiceAction
     ) throws {
         do {
             let gateway = try HTTPRuntimeGuestControlGateway(
@@ -448,12 +448,6 @@ struct RuntimeLifecycle {
                 operation = try usecase.restartService(command.service, gateway: gateway)
             case .reconcile:
                 operation = try usecase.reconcileServices(gateway: gateway)
-            case .redisBackup, .redisRestore, .repairDatastore, .updateActivation, .updateShutdown,
-                 .requestGuestPoweroff, .applySettings, .applyAdminPassword,
-                 .applyRedisRelaySettings:
-                throw LauncherError.runtimeOperationFailed(
-                    "guest service command does not accept maintenance command action=\(action.rawValue)"
-                )
             }
             try printJSON(operation)
         } catch RuntimeServiceControlError.operationFailed(let message) {
@@ -587,6 +581,14 @@ private extension RuntimeLifecycle {
         let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         return config.sshAuthorizedKeys ?? []
     }
+}
+
+
+private enum GuestProductServiceAction {
+    case start
+    case stop
+    case restart
+    case reconcile
 }
 
 

@@ -78,7 +78,7 @@ def main() -> int:
         check_product_surfaces_do_not_expose_dev_testkit(),
         check_runtime_control_api_exposes_v2_product_surface(),
         check_guest_control_lab_boundary_does_not_name_testkit(),
-        check_guest_control_default_state_is_postgres_backed(),
+        check_guest_control_default_state_uses_sqlite_control_store(),
         check_guest_service_operations_persist_status_snapshots(),
         check_guest_service_control_is_controller_owned_resource(),
         check_runtime_config_does_not_enable_testkit(),
@@ -4756,7 +4756,7 @@ def check_guest_control_lab_boundary_does_not_name_testkit() -> CheckResult:
     )
 
 
-def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
+def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult:
     api_path = (
         GUEST_TOOLS
         / "src/tirosh_guest_tools/adapters/inbound/guest_control_api.py"
@@ -4771,7 +4771,27 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
     )
     operation_repository_path = (
         GUEST_TOOLS
-        / "src/tirosh_guest_tools/adapters/outbound/postgres/operation_repository.py"
+        / "src/tirosh_guest_tools/adapters/outbound/sqlite_control/repository.py"
+    )
+    control_migrations_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/adapters/outbound/sqlite_control/migrations.py"
+    )
+    control_store_migration_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/adapters/inbound/control_store_migration.py"
+    )
+    control_store_cli_path = (
+        GUEST_TOOLS / "src/tirosh_guest_tools/adapters/inbound/cli.py"
+    )
+    macos_control_service_path = (
+        MACOS_RUNTIME
+        / "Support/Guest/systemd/tirosh-vitalserver-guest-control-api.service"
+    )
+    linux_control_service_path = (
+        ROOT
+        / "apps/vitalserver-platform-agent/packaging/linux"
+        / "vitalserver-runtime-controller.service"
     )
     vitaldb_repository_path = (
         GUEST_TOOLS
@@ -4780,6 +4800,7 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
     )
     api_tests_path = GUEST_TOOLS / "tests/test_guest_control_api.py"
     usecase_tests_path = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
+    sqlite_tests_path = GUEST_TOOLS / "tests/test_guest_control_sqlite_repository.py"
     lab_settings_path = ROOT / "apps/vitalserver-lab/vitalserver_lab/settings.py"
     lab_server_path = ROOT / "apps/vitalserver-lab/vitalserver_lab/server.py"
     lab_postgres_store_path = (
@@ -4795,6 +4816,12 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
     vitaldb_artifact_sink_text = read(vitaldb_repository_path)
     api_tests_text = read(api_tests_path)
     usecase_tests_text = read(usecase_tests_path)
+    control_migrations_text = read(control_migrations_path)
+    control_store_migration_text = read(control_store_migration_path)
+    control_store_cli_text = read(control_store_cli_path)
+    macos_control_service_text = read(macos_control_service_path)
+    linux_control_service_text = read(linux_control_service_path)
+    sqlite_tests_text = read(sqlite_tests_path)
     lab_settings_text = read(lab_settings_path)
     lab_server_text = read(lab_server_path)
     lab_postgres_store_text = read(lab_postgres_store_path)
@@ -4803,26 +4830,72 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
     compose_text = read(compose_path)
     required = {
         relative(api_path): [
-            "PostgresOperationRepository",
+            "SQLiteControlRepository",
             "PostgresVitalDBReadModelRepository",
-            "operations.ensure_schema()",
-            "vitaldb_read_model.ensure_schema()",
+            'SETTINGS.paths.control_state_dir / "control.sqlite"',
+            "operations.check_ready()",
             "operations=operations",
             "vitaldb_read_model=vitaldb_read_model",
+            "usecases.recover_interrupted_operations()",
             "usecases.readiness()",
             "HTTPStatus.SERVICE_UNAVAILABLE",
+            "HTTPStatus.CONFLICT",
+            '"operationInProgress"',
         ],
         relative(usecase_path): [
             "def readiness(self) -> dict[str, object]:",
+            "def recover_interrupted_operations(self) -> None:",
             "self._operations.check_ready",
             "self._vitaldb_read_model.check_ready",
             '"operationRepository"',
             '"vitaldbReadModel"',
+            "self._operations.record_accepted(",
+            "self._operations.record_transition(operation)",
         ],
         relative(operation_repository_path): [
+            "class SQLiteControlRepository",
+            "def migrate_schema(self) -> None:",
             "def check_ready(self) -> None:",
-            '"SELECT 1;"',
-            '"guest control operation repository readiness"',
+            "def record_accepted(",
+            "def record_transition(",
+            "ActiveOperationLeaseRecord",
+            'connection.exec_driver_sql("BEGIN IMMEDIATE")',
+            "TERMINAL_OPERATION_STATES",
+            "GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY",
+            'kind="operationLeaseConflict"',
+            'kind="operationLeaseMissing"',
+            "validate_control_schema(connection)",
+        ],
+        relative(control_migrations_path): [
+            "def migrate_control_schema(connection: Connection) -> None:",
+            "def validate_control_schema(connection: Connection) -> None:",
+            "MigrationContext",
+            "Operations",
+            '"service_operations"',
+            '"service_operation_events"',
+            '"active_operation_leases"',
+        ],
+        relative(control_store_migration_path): [
+            "def migrate_control_store(control_state_dir: Path)",
+            "repository.migrate_schema()",
+            "repository.check_ready()",
+        ],
+        relative(control_store_cli_path): [
+            "def guest_tools_migrate_control_store() -> int:",
+            '"--control-state-dir"',
+            "proof = migrate_control_store(args.control_state_dir)",
+        ],
+        relative(macos_control_service_path): [
+            "RequiresMountsFor=/mnt/runtime",
+            "ExecStartPre=/opt/tirosh/guest-tools/venv/bin/"
+            "tirosh-guest-tools-migrate-control-store --control-state-dir "
+            "/mnt/runtime/control",
+        ],
+        relative(linux_control_service_path): [
+            "RequiresMountsFor=/var/lib/vitalserver",
+            "ExecStartPre=/opt/vitalserver/current/runtime-controller/venv/bin/"
+            "tirosh-guest-tools-migrate-control-store --control-state-dir "
+            "/var/lib/vitalserver/control",
         ],
         relative(vitaldb_repository_path): [
             "def check_ready(self) -> None:",
@@ -4830,13 +4903,27 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
             '"vitaldb read model readiness"',
         ],
         relative(api_tests_path): [
-            "test_ready_route_reports_postgres_dependency_failure",
-            "HTTPStatus.SERVICE_UNAVAILABLE",
-            "postgresCommandFailed",
+            "test_default_usecases_require_migrated_sqlite_without_postgres_startup",
+            "test_ready_route_reports_control_store_dependency_failure",
+            "test_active_control_lease_conflict_returns_explicit_conflict",
+            'checks == ["sqlite"]',
         ],
         relative(usecase_tests_path): [
-            "test_readiness_preserves_postgres_operation_repository_failure",
-            "postgresCommandFailed",
+            "test_controller_recovery_marks_unfinished_operation_as_interrupted",
+            "test_readiness_preserves_control_store_failure",
+            "test_service_command_lease_conflict_does_not_write_desired_state",
+            "controllerRestarted",
+        ],
+        relative(sqlite_tests_path): [
+            "test_sqlite_control_store_records_operation_event_and_lease_atomically",
+            "test_sqlite_control_store_rolls_back_operation_event_and_lease_together",
+            "test_sqlite_control_store_rejects_missing_required_table",
+            "test_sqlite_control_store_rejects_concurrent_active_operation_lease",
+            "test_sqlite_control_store_rejects_transition_without_matching_lease",
+            "test_sqlite_control_store_rejects_invalid_runtime_event_history",
+            "test_controller_restart_interrupts_unfinished_operation_and_releases_lease",
+            'assert journal_mode(control_dir / "control.sqlite") == "wal"',
+            'assert not (control_dir / "control.sqlite").exists()',
         ],
         relative(compose_path): [
             "  postgres:",
@@ -4891,9 +4978,15 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
         relative(compose_path): compose_text,
         relative(usecase_path): usecase_text,
         relative(operation_repository_path): operation_artifact_sink_text,
+        relative(control_migrations_path): control_migrations_text,
+        relative(control_store_migration_path): control_store_migration_text,
+        relative(control_store_cli_path): control_store_cli_text,
+        relative(macos_control_service_path): macos_control_service_text,
+        relative(linux_control_service_path): linux_control_service_text,
         relative(vitaldb_repository_path): vitaldb_artifact_sink_text,
         relative(api_tests_path): api_tests_text,
         relative(usecase_tests_path): usecase_tests_text,
+        relative(sqlite_tests_path): sqlite_tests_text,
         relative(lab_settings_path): lab_settings_text,
         relative(lab_server_path): lab_server_text,
         relative(lab_postgres_store_path): lab_postgres_store_text,
@@ -4914,21 +5007,28 @@ def check_guest_control_default_state_is_postgres_backed() -> CheckResult:
         for token in forbidden
         if token in runtime_text
     ]
+    for token in (
+        "PostgresOperationRepository",
+        "operations.ensure_schema()",
+        "operations.migrate_schema()",
+    ):
+        if token in api_text:
+            present.append(f"{relative(api_path)}:{token}")
     if "VITALSERVER_LAB_ALLOW_MEMORY_STORE" in compose_text:
         present.append(
             f"{relative(compose_path)}:VITALSERVER_LAB_ALLOW_MEMORY_STORE"
         )
     if missing or present:
         return CheckResult(
-            "guest-control-default-state-postgres-backed",
+            "guest-control-default-state-sqlite-control-store",
             False,
             f"missing={missing} forbidden_present={present}",
         )
     return CheckResult(
-        "guest-control-default-state-postgres-backed",
+        "guest-control-default-state-sqlite-control-store",
         True,
-        "Guest Control API defaults to Postgres-backed operation/read-model "
-        "state and compose includes postgres-backed Lab",
+        "Guest Control API defaults to a Guest-owned SQLite control store; "
+        "Postgres remains the VitalDB read model and Product Lab dependency",
     )
 
 
@@ -5009,8 +5109,8 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
     )
     repository_path = (
         GUEST_TOOLS
-        / "src/tirosh_guest_tools/adapters/outbound/postgres"
-        / "operation_repository.py"
+        / "src/tirosh_guest_tools/adapters/outbound/sqlite_control"
+        / "repository.py"
     )
     api_path = (
         GUEST_TOOLS
@@ -5192,10 +5292,10 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             "conditions=final_decision.conditions",
         ],
         relative(repository_path): [
-            "CREATE TABLE IF NOT EXISTS guest_service_resources",
+            "GuestServiceResourceRecord",
             "def save_guest_service_resource(",
             "def get_guest_service_resource(",
-            "guest_service_resource_from_json",
+            "guest_service_resource_from_record",
         ],
         relative(api_path): [
             'parts[3] == "resource"',
@@ -5495,7 +5595,7 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
         "guest-service-control-controller-owned-resource",
         True,
         "Guest service control exposes resource/spec/observe/reconcile contracts, "
-        "stores explicit resource state in Postgres, and keeps reconcile policy pure",
+        "stores explicit resource state in Guest-owned SQLite, and keeps reconcile policy pure",
     )
 
 
@@ -7318,9 +7418,9 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
     guest_control_usecases_path = (
         GUEST_TOOLS / "src/tirosh_guest_tools/application/guest_control/usecases.py"
     )
-    postgres_operations_path = (
+    control_store_path = (
         GUEST_TOOLS
-        / "src/tirosh_guest_tools/adapters/outbound/postgres/operation_repository.py"
+        / "src/tirosh_guest_tools/adapters/outbound/sqlite_control/repository.py"
     )
     redis_relay_loop_path = (
         ROOT / "apps/vitalserver-redis-relay/vitalserver_redis_relay/relay_loop.py"
@@ -7350,7 +7450,7 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         relative(observability_path): read(observability_path),
         relative(guest_control_api_path): read(guest_control_api_path),
         relative(guest_control_usecases_path): read(guest_control_usecases_path),
-        relative(postgres_operations_path): read(postgres_operations_path),
+        relative(control_store_path): read(control_store_path),
         relative(redis_relay_loop_path): read(redis_relay_loop_path),
         relative(redis_relay_status_path): read(redis_relay_status_path),
         relative(redis_relay_owner_path): read(redis_relay_owner_path),
@@ -7382,15 +7482,15 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
     ]
     required = [
         (relative(observability_path), "`PUT /runtime/redis-relay/status` owner mutation"),
-        (relative(observability_path), "Guest/Postgres owner snapshot"),
+        (relative(observability_path), "Guest/SQLite owner snapshot"),
         (relative(observability_path), "Host `RuntimeStatus`는 Redis Relay 상태를 조립하지 않습니다."),
         (relative(guest_control_api_path), 'parts == ["runtime", "redis-relay", "status"]'),
         (relative(guest_control_api_path), "usecases.put_redis_relay_status"),
         (relative(guest_control_api_path), "redis_relay=operations"),
         (relative(guest_control_usecases_path), "def put_redis_relay_status"),
-        (relative(postgres_operations_path), "redis_relay_status_snapshots"),
-        (relative(postgres_operations_path), "def save_status"),
-        (relative(postgres_operations_path), "def status"),
+        (relative(control_store_path), "RedisRelayStatusRecord"),
+        (relative(control_store_path), "def save_status"),
+        (relative(control_store_path), "def status"),
         (relative(redis_relay_loop_path), "GuestControlStatusOwnerPublisher"),
         (relative(redis_relay_loop_path), "_record_status("),
         (relative(redis_relay_loop_path), "write_status_artifact(status_path, document)"),
@@ -7464,7 +7564,7 @@ def check_redis_relay_status_docs_use_guest_control_api_flow() -> CheckResult:
         "redis-relay-status-docs-guest-control-api-flow",
         True,
         "Redis Relay status is published through Guest Control owner mutation "
-        "and read from Guest/Postgres snapshot; file remains diagnostics only",
+        "and read from Guest/SQLite snapshot; file remains diagnostics only",
     )
 
 
@@ -10605,9 +10705,9 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         / "src/domain/runtime-control/contracts/generated/runtime-control.ts"
     )
     openapi = ROOT / "docs/runtime/runtime-control.openapi.json"
-    guest_postgres_repository = (
+    guest_control_store = (
         GUEST_TOOLS
-        / "src/tirosh_guest_tools/adapters/outbound/postgres/operation_repository.py"
+        / "src/tirosh_guest_tools/adapters/outbound/sqlite_control/repository.py"
     )
     guest_domain_models = (
         GUEST_TOOLS / "src/tirosh_guest_tools/domain/guest_control/models.py"
@@ -10618,9 +10718,8 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
     guest_usecase = (
         GUEST_TOOLS / "src/tirosh_guest_tools/application/guest_control/usecases.py"
     )
-    guest_postgres_tests = (
-        GUEST_TOOLS
-        / "tests/test_guest_control_postgres_repository.py"
+    guest_control_store_tests = (
+        GUEST_TOOLS / "tests/test_guest_control_sqlite_repository.py"
     )
     guest_api_tests = GUEST_TOOLS / "tests/test_guest_control_api.py"
     guest_usecase_tests = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
@@ -10635,11 +10734,11 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         relative(pwa_schema_tests): read(pwa_schema_tests),
         relative(pwa_generated): read(pwa_generated),
         relative(openapi): read(openapi),
-        relative(guest_postgres_repository): read(guest_postgres_repository),
+        relative(guest_control_store): read(guest_control_store),
         relative(guest_domain_models): read(guest_domain_models),
         relative(guest_api): read(guest_api),
         relative(guest_usecase): read(guest_usecase),
-        relative(guest_postgres_tests): read(guest_postgres_tests),
+        relative(guest_control_store_tests): read(guest_control_store_tests),
         relative(guest_api_tests): read(guest_api_tests),
         relative(guest_usecase_tests): read(guest_usecase_tests),
     }
@@ -10725,7 +10824,7 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
             '"RuntimeRedisRelayStatusReadResult"',
             "\"$ref\": \"#/components/schemas/RuntimeRedisRelayStatus\"",
         ],
-        relative(guest_postgres_repository): [
+        relative(guest_control_store): [
             "validate_redis_relay_status_document(document)",
             "except RedisRelayStatusContractError as error:",
             "kind=\"redis-relay-contract-invalid\"",
@@ -10753,15 +10852,10 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
             "validate_redis_relay_status_document(document)",
             "self._redis_relay.save_status(document)",
         ],
-        relative(guest_postgres_tests): [
-            "redis_relay_status_document()",
-            "test_postgres_repository_rejects_incomplete_redis_relay_status_document",
-            "test_postgres_repository_rejects_incomplete_stored_redis_relay_status_document",
-            "validate_redis_relay_status_document(nullable_scope)",
-            "del missing_scope[\"scope\"]",
-            "targetUrl",
-            "totals.published",
-            "lastBatch",
+        relative(guest_control_store_tests): [
+            "test_sqlite_control_store_records_operation_event_and_lease_atomically",
+            "test_sqlite_control_store_rolls_back_operation_event_and_lease_together",
+            "test_controller_restart_interrupts_unfinished_operation_and_releases_lease",
         ],
         relative(guest_api_tests): [
             "def redis_relay_status_document(",
@@ -10794,7 +10888,7 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
         for path, tokens in required.items()
         if any(token not in texts[path] for token in tokens)
     }
-    repository_path = relative(guest_postgres_repository)
+    repository_path = relative(guest_control_store)
     if texts[repository_path].count("validate_redis_relay_status_document(document)") < 2:
         missing.setdefault(repository_path, []).append(
             "validate_redis_relay_status_document(document) in save_status and status"
@@ -10822,7 +10916,7 @@ def check_redis_relay_status_document_preserves_complete_owner_contract() -> Che
             "try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .totals)",
             "?? RuntimeRedisRelayBatch()",
         ],
-        relative(guest_postgres_repository): [
+        relative(guest_control_store): [
             "observed_at = document.get(\"observedAt\")",
             "Redis relay status document is missing observedAt.",
         ],

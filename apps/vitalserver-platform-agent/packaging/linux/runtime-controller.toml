@@ -11,14 +11,15 @@ vitalFilesMountMode = "native"
 [paths]
 deployDir = "/opt/vitalserver/current/runtime-bundle"
 runtimeDir = "/var/lib/vitalserver/run"
+controlStateDir = "/var/lib/vitalserver/control"
 composeFile = "/opt/vitalserver/current/runtime-bundle/compose.yaml"
 runtimeConfigFile = "/etc/vitalserver/runtime-config.json"
 runtimeSettingsFile = "/etc/vitalserver/runtime-settings.json"
 redisRelayConfigFile = "/etc/vitalserver/redis-relay/redis-relay.toml"
 redisRelayPasswordFile = "/etc/vitalserver/secrets/redis-relay/redis-relay-target-password"
 composeRuntimeLimitsFile = "/var/lib/vitalserver/run/compose.runtime-limits.yaml"
-guestToolsHome = "/opt/vitalserver/current"
-pythonWheelDir = "/opt/vitalserver/current/runtime-controller"
+guestToolsHome = "/opt/vitalserver/current/runtime-controller"
+pythonWheelDir = "/opt/vitalserver/current/runtime-controller/python-wheels"
 commandBinDir = "/opt/vitalserver/current/bin"
 
 [compose]

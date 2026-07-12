@@ -42,6 +42,27 @@ final class RuntimeGuestMaintenanceControlUseCaseTests: XCTestCase {
         }
     }
 
+    func testCreateRedisBackupRejectsInterruptedOperation() throws {
+        let gateway = GuestMaintenanceGateway(
+            operation: redisBackupOperation(
+                state: .interrupted,
+                failure: RuntimeGuestControlOperationFailure(
+                    kind: "controllerRestarted",
+                    message: "Runtime Controller restarted before the operation outcome was known."
+                )
+            )
+        )
+
+        XCTAssertThrowsError(
+            try RuntimeGuestMaintenanceControlUseCase().createRedisBackup(gateway: gateway)
+        ) { error in
+            guard case .operationFailed(let message) = error as? RuntimeServiceControlError else {
+                return XCTFail("Expected RuntimeServiceControlError")
+            }
+            XCTAssertTrue(message.contains("controllerRestarted"))
+        }
+    }
+
     func testCreateRedisBackupRejectsMismatchedCommand() throws {
         let gateway = GuestMaintenanceGateway(
             operation: RuntimeGuestControlServiceOperation(

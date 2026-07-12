@@ -24,7 +24,8 @@ describe("runtime event filters", () => {
       "operation-running",
       "operation-completed",
       "operation-failed",
-      "operation-cancelled"
+      "operation-cancelled",
+      "operation-interrupted"
     ]);
   });
 });

@@ -212,11 +212,11 @@ Runtime Control API는 wire payload에서 `runtimeInstallationState`, `runtimeSt
 | Query | Meaning |
 |---|---|
 | `limit` | 반환할 event 수. 1-500, 기본 100 |
-| `type` | `operation-accepted`, `operation-running`, `operation-completed`, `operation-failed`, `operation-cancelled` 중 하나 |
+| `type` | `operation-accepted`, `operation-running`, `operation-completed`, `operation-failed`, `operation-cancelled`, `operation-interrupted` 중 하나 |
 | `since` | ISO-8601 timestamp lower bound |
 | `cursor` | 이전 응답의 `nextCursor` 값을 그대로 전달하는 opaque pagination cursor |
 
-Runtime Controller는 query를 Postgres operation-event repository에 전달합니다. Cursor는 opaque string으로만 노출하며 client는 해석하지 않습니다. `nextCursor`와 `matchingCount`는 값이 없을 때도 JSON `null`로 명시됩니다. 응답의 `matchingCount`는 provider가 계산하지 못한 경우 `null`이지 `0`이 아닙니다.
+Runtime Controller는 query를 Guest-local SQLite control ledger의 immutable operation-event 기록에 전달합니다. Cursor는 opaque string으로만 노출하며 client는 해석하지 않습니다. `nextCursor`와 `matchingCount`는 값이 없을 때도 JSON `null`로 명시됩니다. 응답의 `matchingCount`는 provider가 계산하지 못한 경우 `null`이지 `0`이 아닙니다. Controller restart로 결과를 알 수 없어진 명령은 `operation-interrupted` event와 `controllerRestarted` failure로 남습니다.
 
 `GET /runtime/status/stream`은 long-lived SSE 연결입니다. 서버는 연결을 유지하고 runtime status가 바뀔 때 `runtime-status` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-status`, `data` 값은 JSON encoded `RuntimeStatus`입니다. 변경이 없으면 heartbeat comment를 보냅니다.
 

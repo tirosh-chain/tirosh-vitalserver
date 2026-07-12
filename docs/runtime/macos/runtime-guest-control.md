@@ -29,15 +29,56 @@ GET  /runtime/operations/{operationId}
 
 ### 2-1. Service operations are explicit domain state
 
-Service operations now have explicit domain states. `accepted`, `running`, `completed`, `failed`, and `cancelled` are different meanings and must not be collapsed into success, empty, or unknown.
+Service operations now have explicit domain states. `accepted`, `running`,
+`completed`, `failed`, `cancelled`, and `interrupted` are different meanings and
+must not be collapsed into success, empty, or unknown.
 
 ### 2-2. Compose access is behind an outbound adapter
 
 Docker Compose commands are isolated behind the Guest Control Compose adapter. Domain and application code must not parse Compose output or execute Compose directly.
 
-### 2-3. Operation state is persisted in Postgres
+### 2-3. Guest Control owns a durable SQLite control ledger
 
-Guest Control API persists service operation state through the `postgres` Compose service. The current adapter uses `docker compose exec -T postgres psql` so the Guest tool package does not need an additional Python database wheel in the airgap bundle.
+Guest Control's operational state is stored in Guest-owned SQLite, not in the
+Host shared mount and not in the product Postgres database.
+
+| Platform | Control-state directory | Database |
+|---|---|---|
+| macOS Guest VM | `/mnt/runtime/control` | `control.sqlite` |
+| Windows Hyper-V Guest VM | `/mnt/runtime/control` | `control.sqlite` |
+| Linux Native | `/var/lib/vitalserver/control` | `control.sqlite` |
+
+The SQLAlchemy adapter is an infrastructure implementation detail. Domain
+operations remain dataclasses and cross the port as explicit documents; ORM
+records and record-to-domain mapping remain inside the SQLite adapter. The
+installer creates a new isolated venv from a hash-verified offline wheelhouse,
+proves the pinned SQLAlchemy/Alembic imports, and only then publishes the venv.
+It does not create the control database: macOS bootstrap may run before the
+durable runtime-data mount is available. The Guest Control systemd service has
+an explicit `ExecStartPre` migration command. `RequiresMountsFor` ensures the
+control-state root is mounted before that command applies and verifies the
+reviewed schema; the command runs after an existing controller process has
+stopped and before a new one starts. Native Linux uses the same service-lifecycle
+gate. Guest Control API startup only verifies the schema; it never creates or
+migrates it as an implicit side effect. Rootfs compilation records the
+dependency proof, while migration is proved at service activation. A missing
+wheel, failed migration, or unavailable control store is an explicit startup
+failure rather than a later API fallback.
+
+One Guest Control process is the control-ledger writer. Command acceptance
+commits the operation document, immutable event, and `guest-control` lease in
+one SQLite transaction. A terminal transition commits its event and lease
+release together. A second command while the lease exists is rejected with
+HTTP `409` and public code `operationInProgress`; it is never silently queued
+or represented as an empty result. When the controller starts, it explicitly
+changes any persisted `accepted` or `running` operation to `interrupted` with
+failure kind `controllerRestarted`, records that event, and releases the lease.
+
+Postgres remains a bridge-release dependency for the VitalDB read model and
+the Lab service's own session/read-model store. It is not a startup dependency
+for the Guest Control control ledger. Moving those remaining product stores and
+removing Postgres are a separate migration, not an implicit consequence of
+this control-state change.
 
 ### 2-4. Host exposes Guest service control through the v2 API path
 
@@ -254,7 +295,10 @@ POST /runtime/lab/vital-files/replay
 POST /runtime/lab/vital-files/upload
 ```
 
-Command-style Lab requests create persisted Guest Control operations using the same Postgres operation repository as service restart. Lab operation failures are saved as failed operations and returned through the Lab response `readError` instead of being converted into an empty scenario list or a successful stopped session.
+Command-style Lab requests create persisted Guest Control operations using the
+same SQLite control ledger as service restart. Lab operation failures are saved
+as failed operations and returned through the Lab response `readError` instead
+of being converted into an empty scenario list or a successful stopped session.
 
 The current Guest adapter maps these Product Lab commands to the `lab` service API:
 
@@ -327,9 +371,9 @@ Runtime files remain valid for bootstrap, host proxy discovery, health evidence,
 | Runtime concern | v2 owner | File role |
 |---|---|---|
 | Product service list/status | Guest Control API | diagnostic evidence only |
-| Product service restart operation | Guest Control API + Postgres operation state | none |
+| Product service restart operation | Guest Control API + SQLite control ledger | none |
 | Product Lab scenarios/sessions | Guest Control API + Lab service | none |
-| Guest stack reconcile operation | Guest Control API + Postgres operation state | none |
+| Guest stack reconcile operation | Guest Control API + SQLite control ledger | none |
 | VM boot discovery | Guest bootstrap address writer | `vm-ip` compatibility file, then typed address provider |
 | Host nginx proxy target | Host proxy consuming Guest address plus direct HTTP probes | explicit discovery input and probe evidence |
 | Health proof evidence | Runtime smoke/status readers | explicit evidence with read state/error |
@@ -443,7 +487,7 @@ GET  /runtime/operations/{operationId}
 
 The Redis backup API creates a persisted Guest Control operation with command
 `redis-backup`. On success, the completed operation stores an explicit
-`result.archive` path in the Postgres-backed operation document. On failure,
+`result.archive` path in the SQLite-backed control operation document. On failure,
 the operation stores a typed failure from the Redis backup adapter. Host clients
 must read this operation contract instead of polling Redis backup result files
 for the v2 maintenance path.
@@ -517,16 +561,16 @@ shared data directory because Guest must receive a path under `/mnt/tirosh`, but
 the restore execution and operation state now come from Guest Control API
 instead of the Redis restore request/result file pair.
 
-This keeps the UI/API command surface stable while moving the state owner to
-Guest/Postgres. `RuntimeGuestControlServiceOperation` now carries an optional
+This keeps the UI/API command surface stable while moving the control-state
+owner to the Guest SQLite ledger. `RuntimeGuestControlServiceOperation` now carries an optional
 `result` contract so Redis backup `result.archive` and Redis restore
 `result.restoredArchive` are preserved when Host reads or returns the operation.
 
 Runtime-data backup and restore now use the same Guest Control maintenance API
 for Redis archive creation and restore execution. Host still owns local backup
 manifest assembly, host file copying, start-on-boot state capture, and
-host-selected archive staging, but Redis operation state comes from
-Guest/Postgres operation documents rather than Redis backup/restore
+host-selected archive staging, but Redis operation state comes from Guest
+SQLite control documents rather than Redis backup/restore
 request/result files.
 
 Swift Runtime Control's datastore-repair HTTP path consumes the Guest Control
@@ -605,21 +649,15 @@ workflows are moved behind explicit Guest APIs. They may still use explicit
 platform/native workflows where supported, but they are not common PWA actions
 and must not be used as product service/read-model state.
 
-Guest Control API production composition now treats Postgres as the default
-state owner. The default Guest Control usecases create Postgres-backed service
-operation and VitalDB read-model repositories, run their schema migrations, and
-inject those repositories into the application layer. The former volatile
-operation repository has been removed from production runtime helpers; Postgres
-unavailability must surface as an explicit Guest dependency failure rather than
-falling back to hidden in-memory state.
-
-Even when one Postgres adapter implements multiple persistence methods, the
-application layer must consume separate owner contracts for service operations,
-service status snapshots, and GuestService controller resources. GuestService
-resource reconciliation reads and writes through the GuestService resource
-repository contract, not through the operation repository contract. This keeps
-desired state, observed status, conditions, and operation history distinct while
-the implementation is still consolidated behind Postgres.
+Guest Control API production composition opens the required SQLite control
+ledger before serving requests. The ledger implements separate application
+ports for service operations, service-status snapshots, GuestService controller
+resources, and Redis relay status, even though those documents share one
+SQLite database file. That separation keeps desired state, observed status,
+conditions, and operation history distinct without making Postgres a hidden
+control-plane dependency. Missing database files, an unknown schema revision,
+permission errors, decode errors, and a busy writer remain typed failures;
+there is no in-memory fallback.
 
 The Guest compose stack includes `postgres` with `postgres-data`, and the
 product `lab` service is configured to use the Postgres session store. Host must

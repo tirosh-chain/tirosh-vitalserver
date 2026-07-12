@@ -2,7 +2,9 @@ PLATFORM_AGENT_DIR ?= apps/vitalserver-platform-agent
 PLATFORM_AGENT_OUT ?= .tmp/platform-agent
 GO ?= go
 
-.PHONY: platform-agent/test platform-agent/package-test platform-agent/build/linux platform-agent/build/linux-provider platform-agent/build/windows platform-agent/build/windows-provider platform-agent/build/hyperv-image platform-agent/package/linux platform-agent/package/windows-acceptance-candidate platform-agent/package/windows platform-agent/proof
+LINUX_GUEST_RUNTIME_WHEELHOUSE := $(PLATFORM_AGENT_OUT)/guest-runtime-wheelhouse-linux-amd64
+
+.PHONY: platform-agent/test platform-agent/package-test platform-agent/build/linux platform-agent/build/linux-provider platform-agent/build/linux-guest-wheelhouse platform-agent/build/windows platform-agent/build/windows-provider platform-agent/build/hyperv-image platform-agent/package/linux platform-agent/package/windows-acceptance-candidate platform-agent/package/windows platform-agent/proof
 
 platform-agent/test:
 	cd "$(PLATFORM_AGENT_DIR)" && $(GO) test -mod=vendor ./...
@@ -31,6 +33,14 @@ platform-agent/build/linux-provider:
 	mkdir -p "$(PLATFORM_AGENT_OUT)"
 	cd "$(PLATFORM_AGENT_DIR)" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -mod=vendor -trimpath -o "$(abspath $(PLATFORM_AGENT_OUT))/vitalserver-runtime-provider-linux-amd64" ./cmd/vitalserver-runtime-provider
 
+platform-agent/build/linux-guest-wheelhouse:
+	mkdir -p "$(PLATFORM_AGENT_OUT)"
+	rm -rf "$(LINUX_GUEST_RUNTIME_WHEELHOUSE)"
+	uv run python scripts/stage_guest_runtime_wheelhouse.py \
+		--project "packages/vitalserver-guest-tools" \
+		--target linux-amd64 \
+		--output "$(LINUX_GUEST_RUNTIME_WHEELHOUSE)"
+
 platform-agent/build/windows:
 	mkdir -p "$(PLATFORM_AGENT_OUT)"
 	cd "$(PLATFORM_AGENT_DIR)" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -mod=vendor -trimpath -o "$(abspath $(PLATFORM_AGENT_OUT))/vitalserver-platform-agent-windows-amd64.exe" ./cmd/vitalserver-platform-agent
@@ -54,7 +64,7 @@ platform-agent/build/hyperv-image:
 		--qemu-img "$(QEMU_IMG)" \
 		--output-directory "$(PLATFORM_AGENT_OUT)/hyperv-image"
 
-platform-agent/package/linux: platform-agent/build/linux platform-agent/build/linux-provider pwa/build
+platform-agent/package/linux: platform-agent/build/linux platform-agent/build/linux-provider platform-agent/build/linux-guest-wheelhouse pwa/build
 	@test -n "$(LINUX_PLATFORM_VERSION)" || (echo "LINUX_PLATFORM_VERSION is required" >&2; exit 2)
 	@test -n "$(LINUX_RUNTIME_BUNDLE_VERSION)" || (echo "LINUX_RUNTIME_BUNDLE_VERSION is required" >&2; exit 2)
 	@test -n "$(LINUX_RUNTIME_BUNDLE_DIR)" || (echo "LINUX_RUNTIME_BUNDLE_DIR is required" >&2; exit 2)
@@ -64,7 +74,7 @@ platform-agent/package/linux: platform-agent/build/linux platform-agent/build/li
 		--runtime-bundle-version "$(LINUX_RUNTIME_BUNDLE_VERSION)" \
 		--agent-binary "$(PLATFORM_AGENT_OUT)/vitalserver-platform-agent-linux-amd64" \
 		--provider-binary "$(PLATFORM_AGENT_OUT)/vitalserver-runtime-provider-linux-amd64" \
-		--runtime-controller-source "packages/vitalserver-guest-tools/src/tirosh_guest_tools" \
+		--runtime-controller-wheelhouse "$(LINUX_GUEST_RUNTIME_WHEELHOUSE)" \
 		--pwa-directory "apps/vitalserver-runtime-pwa/dist" \
 		--runtime-bundle-directory "$(LINUX_RUNTIME_BUNDLE_DIR)" \
 		--images-archive "$(LINUX_RUNTIME_IMAGES_ARCHIVE)" \

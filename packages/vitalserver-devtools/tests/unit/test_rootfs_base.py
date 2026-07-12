@@ -62,6 +62,32 @@ def test_require_ready_marker_rejects_missing_identity_cleanup_proof(tmp_path):
         require_ready_marker(source, expected_run_id="run-test")
 
 
+def test_require_ready_marker_rejects_missing_guest_tools_dependency_proof(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_ready_marker(source, python_dependencies=None)
+
+    with pytest.raises(SystemExit, match="Guest Tools dependency proof"):
+        require_ready_marker(source, expected_run_id="run-test")
+
+
+def test_require_ready_marker_rejects_incomplete_guest_tools_dependency_proof(
+    tmp_path,
+):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_ready_marker(
+        source,
+        python_dependencies={
+            "status": "passed",
+            "proof": "/opt/tirosh/guest-tools/install-proof.json",
+            "target": "linux-aarch64",
+            "dependencies": {"alembic": "1.16.5"},
+        },
+    )
+
+    with pytest.raises(SystemExit, match="invalid Guest Tools dependency proof"):
+        require_ready_marker(source, expected_run_id="run-test")
+
+
 def test_require_runtime_manifest_rejects_stale_run_id(tmp_path):
     source = rootfs_source_with_lifecycle(tmp_path)
     write_runtime_manifest(source, run_id="old-run")
@@ -556,6 +582,7 @@ def write_ready_marker(
     *,
     run_id: str = "run-test",
     identity_cleanup: dict[str, object] | None | bool = True,
+    python_dependencies: dict[str, object] | None | bool = True,
 ) -> None:
     marker = source.parent.parent / "data" / "run" / "rootfs-ready"
     marker.parent.mkdir(parents=True, exist_ok=True)
@@ -573,6 +600,15 @@ def write_ready_marker(
         }
     elif isinstance(identity_cleanup, dict):
         document["identityCleanup"] = identity_cleanup
+    if python_dependencies is True:
+        document["pythonDependencies"] = {
+            "status": "passed",
+            "proof": "/opt/tirosh/guest-tools/install-proof.json",
+            "target": "linux-aarch64",
+            "dependencies": {"alembic": "1.16.5", "sqlalchemy": "2.0.51"},
+        }
+    elif isinstance(python_dependencies, dict):
+        document["pythonDependencies"] = python_dependencies
     marker.write_text(
         json.dumps(document),
         encoding="utf-8",

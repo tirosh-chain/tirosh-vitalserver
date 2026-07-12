@@ -11,6 +11,7 @@ vitalFilesMountMode = "native"
 [paths]
 deployDir = "/mnt/tirosh/deploy"
 runtimeDir = "/mnt/tirosh/run"
+controlStateDir = "/mnt/runtime/control"
 guestToolsHome = "/opt/tirosh/guest-tools"
 pythonWheelDir = "/mnt/tirosh/deploy/python-wheels"
 commandBinDir = "/usr/local/bin"

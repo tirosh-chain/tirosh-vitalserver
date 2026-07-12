@@ -29,6 +29,7 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case operationCompleted
     case operationFailed
     case operationCancelled
+    case operationInterrupted
     case unknown(String)
 
     public static let knownTypes: [RuntimeEventType] = [
@@ -60,6 +61,7 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
         .operationCompleted,
         .operationFailed,
         .operationCancelled,
+        .operationInterrupted,
     ]
 
     public init(rawValue: String) {
@@ -120,6 +122,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .operationFailed
         case "operation-cancelled":
             self = .operationCancelled
+        case "operation-interrupted":
+            self = .operationInterrupted
         default:
             self = .unknown(rawValue)
         }
@@ -183,6 +187,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "operation-failed"
         case .operationCancelled:
             return "operation-cancelled"
+        case .operationInterrupted:
+            return "operation-interrupted"
         case .unknown(let value):
             return value
         }

@@ -1,15 +1,16 @@
 [Unit]
 Description=VitalServer Runtime Controller
-After=docker.service network-online.target vitalserver-runtime-provider.service
-Requires=docker.service
+After=network-online.target vitalserver-runtime-provider.service
 Wants=network-online.target
+RequiresMountsFor=/var/lib/vitalserver
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/vitalserver/current/runtime-bundle
 Environment=VITALSERVER_RUNTIME_CONTROLLER_SETTINGS_PATH=/etc/vitalserver/runtime-controller.toml
 EnvironmentFile=/etc/vitalserver/runtime.env
-ExecStart=/usr/bin/env python3 /opt/vitalserver/current/bin/vitalserver-runtime-controller.pyz --host 127.0.0.1 --port 18330 --redis-relay-status-owner-socket /var/lib/vitalserver/run/redis-relay-status-owner.sock
+ExecStartPre=/opt/vitalserver/current/runtime-controller/venv/bin/tirosh-guest-tools-migrate-control-store --control-state-dir /var/lib/vitalserver/control
+ExecStart=/opt/vitalserver/current/runtime-controller/venv/bin/tirosh-vitalserver-guest-control-api --host 127.0.0.1 --port 18330 --redis-relay-status-owner-socket /var/lib/vitalserver/run/redis-relay-status-owner.sock
 Restart=on-failure
 RestartSec=5
 User=root

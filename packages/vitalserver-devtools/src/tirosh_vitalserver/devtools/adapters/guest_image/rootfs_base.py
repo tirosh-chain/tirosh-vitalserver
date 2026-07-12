@@ -259,7 +259,33 @@ def require_ready_marker(
             "error: rootfs ready marker is missing passed identity cleanup "
             f"proof: {marker}"
         )
+    require_guest_tools_dependency_proof(document, marker)
     return document
+
+
+def require_guest_tools_dependency_proof(
+    document: dict[str, object],
+    marker: Path,
+) -> None:
+    dependencies_proof = document.get("pythonDependencies")
+    if not isinstance(dependencies_proof, dict):
+        raise SystemExit(
+            "error: rootfs ready marker is missing Guest Tools dependency proof: "
+            f"{marker}"
+        )
+    dependencies = dependencies_proof.get("dependencies")
+    if (
+        dependencies_proof.get("status") != "passed"
+        or not non_empty_string(dependencies_proof.get("proof"))
+        or not non_empty_string(dependencies_proof.get("target"))
+        or not isinstance(dependencies, dict)
+        or not non_empty_string(dependencies.get("alembic"))
+        or not non_empty_string(dependencies.get("sqlalchemy"))
+    ):
+        raise SystemExit(
+            "error: rootfs ready marker has invalid Guest Tools dependency proof: "
+            f"{marker}"
+        )
 
 
 def rootfs_artifact_manifest_path(artifact: Path) -> Path:
@@ -302,6 +328,7 @@ def write_rootfs_artifact_manifest(
             "cleanupStatus": read_cleanup_status(runtime_manifest),
             "ubuntu": runtime_manifest.get("ubuntu"),
             "runtimeData": runtime_manifest.get("runtimeData"),
+            "pythonDependencies": ready_marker.get("pythonDependencies"),
         },
     }
     destination.parent.mkdir(parents=True, exist_ok=True)

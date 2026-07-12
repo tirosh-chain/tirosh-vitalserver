@@ -120,9 +120,10 @@ public struct RuntimeGuestShutdownWorkflow {
                     actions.sleep()
                     current = try actions.loadOperation(operation.operationId)
                 }
-            case .cancelled:
+            case .cancelled, .interrupted:
                 throw RuntimeGuestUpdateUseCaseError.operationFailed(
-                    "guest update shutdown operation cancelled operationId=\(current.operationId)"
+                    "guest update shutdown operation \(current.state.rawValue) "
+                        + "operationId=\(current.operationId)"
                 )
             }
         }

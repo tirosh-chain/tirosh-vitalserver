@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from zipfile import ZipFile
 
+import pytest
+
+from tirosh_vitalserver.devtools.adapters.guest_services import deploy_bundle
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     stage_guest_deploy,
 )
@@ -11,6 +15,11 @@ from tirosh_vitalserver.devtools.core.guest_deploy import (
     GuestDeployInclude,
 )
 from tirosh_vitalserver.devtools.core.guest_services import guest_deploy_plan
+
+ROOT = Path(__file__).resolve().parents[4]
+GUEST_TOOLS_RUNTIME_INSTALLER = (
+    ROOT / "apps/vitalserver-macos-runtime/Support/Guest/install-guest-tools-runtime.py"
+)
 
 
 def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
@@ -44,6 +53,7 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
                 "[project]",
                 'name = "guest-tools"',
                 'version = "0.1.0"',
+                'requires-python = ">=3.11"',
                 "[project.scripts]",
                 'guest-observe = "guest_tools.observability.cli:main"',
             ]
@@ -101,3 +111,93 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     assert (
         deploy_dir / "optional-docker-images/optional-images.tar.gz"
     ).read_text() == "optional-images\n"
+
+
+def test_stage_guest_deploy_stages_verified_runtime_wheelhouse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    runtime_dir = root / "apps/runtime"
+    deploy_dir = tmp_path / "deploy"
+    (runtime_dir / "Support/Guest").mkdir(parents=True)
+    (runtime_dir / "Support/Guest/bootstrap.sh").write_text("bootstrap\n")
+    project = root / "packages/guest-tools"
+    (project / "src/guest_tools").mkdir(parents=True)
+    (project / "src/guest_tools/__init__.py").write_text("\n")
+    (project / "pyproject.toml").write_text(
+        "\n".join(
+            [
+                "[project]",
+                'name = "guest-tools"',
+                'version = "0.1.0"',
+                'requires-python = ">=3.11"',
+                'dependencies = ["SQLAlchemy==2.0.51"]',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    requirements = project / "requirements"
+    requirements.mkdir()
+    for target in ("linux-aarch64", "linux-amd64"):
+        (requirements / f"guest-runtime-{target}.txt").write_text(
+            "sqlalchemy==2.0.51 --hash=sha256:deadbeef\n",
+            encoding="utf-8",
+        )
+
+    def fake_download(
+        lock: Path,
+        destination: Path,
+        target: dict[str, str],
+    ) -> None:
+        del lock
+        target_name = target["platform"].replace("manylinux2014_", "")
+        (destination / f"sqlalchemy-{target_name}.whl").write_bytes(b"wheel")
+
+    monkeypatch.setattr(
+        deploy_bundle,
+        "download_guest_runtime_wheels",
+        fake_download,
+    )
+    plan = guest_deploy_plan(
+        root=root,
+        runtime_dir=runtime_dir,
+        deploy_dir=deploy_dir,
+        vm_home=tmp_path / "vm-home",
+        config=GuestDeployConfig(
+            docker_image_bundle_destination=Path("images.tar"),
+            optional_docker_image_bundle_destination=None,
+            python_wheel_destination=Path("python-wheels"),
+            python_wheel_projects=[Path("packages/guest-tools")],
+            includes=[],
+            optional_includes=[],
+        ),
+        docker_bundle=None,
+    )
+
+    stage_guest_deploy(plan)
+
+    wheelhouse = deploy_dir / "python-wheels"
+    manifest = json.loads((wheelhouse / "manifest.json").read_text())
+    assert manifest["guestPython"] == {"major": 3, "minor": 12}
+    assert set(manifest["targets"]) == {"linux-aarch64", "linux-amd64"}
+    requirements_text = (
+        wheelhouse / manifest["targets"]["linux-amd64"]["requirementsPath"]
+    ).read_text()
+    assert requirements_text.startswith(
+        "../guest-tools/guest_tools-0.1.0-py3-none-any.whl"
+    )
+    guest_wheel = wheelhouse / manifest["guestTools"]["path"]
+    with ZipFile(guest_wheel) as archive:
+        metadata = archive.read("guest_tools-0.1.0.dist-info/METADATA").decode()
+    assert "Requires-Python: >=3.11" in metadata
+    assert "Requires-Dist: SQLAlchemy==2.0.51" in metadata
+
+
+def test_guest_tools_runtime_installer_does_not_initialize_control_state() -> None:
+    installer = GUEST_TOOLS_RUNTIME_INSTALLER.read_text(encoding="utf-8")
+
+    assert "SQLiteControlRepository" not in installer
+    assert ".migrate_schema(" not in installer
+    assert '"controlStore"' not in installer

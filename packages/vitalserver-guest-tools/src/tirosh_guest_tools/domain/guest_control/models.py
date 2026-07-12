@@ -67,13 +67,16 @@ class OperationState(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"
 
 
 TERMINAL_OPERATION_STATES = {
     OperationState.COMPLETED,
     OperationState.FAILED,
     OperationState.CANCELLED,
+    OperationState.INTERRUPTED,
 }
+GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY = "guest-control"
 
 
 @dataclass(frozen=True)
@@ -309,6 +312,13 @@ class OperationEvent:
         if self.result is not None:
             document["result"] = self.result
         return document
+
+
+@dataclass(frozen=True)
+class OperationLease:
+    resource_key: str
+    operation_id: str
+    acquired_at: datetime
 
 
 class GuestControlPolicyError(ValueError):

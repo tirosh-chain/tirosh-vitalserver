@@ -611,9 +611,12 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
-    private func requestFailed(_ response: RuntimeGuestControlHTTPResponse) -> RuntimeGuestControlHTTPGatewayError {
+    private func requestFailed(_ response: RuntimeGuestControlHTTPResponse) -> Error {
         if let document = try? decoder.decode(RuntimeGuestControlErrorDocument.self, from: response.data) {
-            return .requestFailed(
+            if response.statusCode == 409, document.code == "operationInProgress" {
+                return RuntimeControlOperationInProgressError(message: document.detail)
+            }
+            return RuntimeGuestControlHTTPGatewayError.requestFailed(
                 statusCode: response.statusCode,
                 code: document.code,
                 detail: document.detail,
@@ -621,7 +624,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
             )
         }
         let detail = String(data: response.data, encoding: .utf8) ?? "response body is not valid UTF-8"
-        return .requestFailed(
+        return RuntimeGuestControlHTTPGatewayError.requestFailed(
             statusCode: response.statusCode,
             code: nil,
             detail: detail,

@@ -11,6 +11,7 @@ vitalFilesMountMode = "virtiofs"
 [paths]
 deployDir = "/mnt/tirosh/deploy"
 runtimeDir = "/mnt/tirosh/run"
+controlStateDir = "/mnt/runtime/control"
 composeFile = "/mnt/tirosh/deploy/compose.yaml"
 runtimeConfigFile = "/mnt/tirosh/deploy/runtime-config.json"
 runtimeSettingsFile = "/mnt/tirosh/deploy/runtime-settings.json"

@@ -73,9 +73,13 @@ platform_agent_configuration_backed_up=0
 native_provider_configuration_created=0
 runtime_controller_configuration_created=0
 runtime_environment_backed_up=0
+units_backed_up=0
 release_created=0
 platform_agent_configuration_backup="$etc_root/.platform-agent.json.rollback.$$"
 runtime_environment_backup="$etc_root/.runtime.env.rollback.$$"
+platform_agent_unit_backup="$unit_root/.vitalserver-platform-agent.service.rollback.$$"
+runtime_controller_unit_backup="$unit_root/.vitalserver-runtime-controller.service.rollback.$$"
+runtime_provider_unit_backup="$unit_root/.vitalserver-runtime-provider.service.rollback.$$"
 
 if [ -L "$current_link" ]; then
   previous_target=$(readlink "$current_link")
@@ -103,6 +107,17 @@ rollback_install() {
   if [ "$runtime_environment_backed_up" -eq 1 ]; then
     if ! install -m 0600 "$runtime_environment_backup" "$etc_root/runtime.env"; then
       echo "Linux install rollback Runtime environment restoration failed" >&2
+      rollback_failed=1
+    fi
+  fi
+  if [ "$units_backed_up" -eq 1 ]; then
+    if ! install -m 0644 "$platform_agent_unit_backup" \
+      "$unit_root/vitalserver-platform-agent.service" || \
+      ! install -m 0644 "$runtime_controller_unit_backup" \
+      "$unit_root/vitalserver-runtime-controller.service" || \
+      ! install -m 0644 "$runtime_provider_unit_backup" \
+      "$unit_root/vitalserver-runtime-provider.service"; then
+      echo "Linux install rollback systemd unit restoration failed" >&2
       rollback_failed=1
     fi
   fi
@@ -301,10 +316,14 @@ if [ ! -f "$etc_root/redis-relay/redis-relay.toml" ]; then
   redis_relay_configuration_created=1
   install -m 0600 packaging/redis-relay.toml "$etc_root/redis-relay/redis-relay.toml"
 fi
+if [ ! -f "$etc_root/runtime-controller.toml" ]; then
+  runtime_controller_configuration_created=1
+  install -m 0644 packaging/runtime-controller.toml "$etc_root/runtime-controller.toml"
+fi
 
 rm -rf "$staging_root"
 install -d -m 0755 "$staging_root"
-cp -a bin pwa runtime-bundle "$staging_root/"
+cp -a bin pwa runtime-bundle runtime-controller "$staging_root/"
 install -d -m 0755 "$staging_root/tools"
 install -m 0755 packaging/acceptance-linux.py "$staging_root/tools/acceptance-linux.py"
 install -m 0755 packaging/acceptance-reboot-linux.py "$staging_root/tools/acceptance-reboot-linux.py"
@@ -327,6 +346,14 @@ if [ -e "$release_root" ]; then
 else
   mv "$staging_root" "$release_root"
   release_created=1
+  # A venv embeds absolute interpreter paths in its console scripts.  Build it
+  # only after the immutable release tree has its final pathname; building it
+  # under staging_root would leave the Runtime Controller with a broken shebang
+  # as soon as this directory is published.
+  VITALSERVER_RUNTIME_CONTROLLER_SETTINGS_PATH="$etc_root/runtime-controller.toml" \
+    python3 "$release_root/runtime-controller/install-guest-tools-runtime.py" \
+      --wheel-dir "$release_root/runtime-controller/python-wheels" \
+      --guest-tools-home "$release_root/runtime-controller"
 fi
 
 docker load --input images/runtime-images.tar
@@ -452,11 +479,6 @@ if [ ! -f "$etc_root/native-runtime-provider.json" ]; then
 }
 EOF
   chmod 0600 "$etc_root/native-runtime-provider.json"
-fi
-
-if [ ! -f "$etc_root/runtime-controller.toml" ]; then
-  runtime_controller_configuration_created=1
-  install -m 0644 packaging/runtime-controller.toml "$etc_root/runtime-controller.toml"
 fi
 
 install -m 0644 packaging/vitalserver-platform-agent.service "$unit_root/vitalserver-platform-agent.service"

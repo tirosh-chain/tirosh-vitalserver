@@ -1,4 +1,5 @@
 import Foundation
+import RuntimeControl
 
 public struct RuntimeControlErrorResponse: Codable, Equatable, Sendable {
     public let code: RuntimeControlAPIErrorCode
@@ -17,6 +18,13 @@ enum RuntimeControlHTTPErrorResponseMapper {
                 status: .badRequest,
                 code: .badRequest,
                 message: queryError.localizedDescription
+            )
+        }
+        if let operationConflict = error as? RuntimeControlOperationInProgressError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .conflict,
+                code: .operationInProgress,
+                message: operationConflict.message
             )
         }
         if let handlerError = error as? RuntimeControlAPIReadHandlerError {

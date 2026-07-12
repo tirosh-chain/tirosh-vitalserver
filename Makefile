@@ -135,7 +135,8 @@ runtime/proof/python-focused:
 		packages/vitalserver-guest-tools/tests/test_guest_control_api.py \
 		packages/vitalserver-guest-tools/tests/test_guest_control_usecases.py \
 		packages/vitalserver-guest-tools/tests/test_guest_control_domain.py \
-		packages/vitalserver-guest-tools/tests/test_guest_control_postgres_repository.py \
+		packages/vitalserver-guest-tools/tests/test_guest_control_sqlite_repository.py \
+		packages/vitalserver-guest-tools/tests/test_vitaldb_read_model_repository.py \
 		packages/vitalserver-guest-tools/tests/test_product_lab_service_adapter.py \
 		packages/vitalserver-guest-tools/tests/test_recorder_ingress_status_adapter.py \
 		packages/vitalserver-guest-tools/tests/test_redis_backup_maintenance_adapter.py \

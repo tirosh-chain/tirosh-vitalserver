@@ -6,7 +6,7 @@ from typing import Any, Protocol
 
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceResource,
-    OperationEvent,
+    OperationLease,
     ProductLabReadModelResult,
     ProductLabSessionResult,
     ProductLabUploadResult,
@@ -175,6 +175,7 @@ class RedisRelaySettingsPort(Protocol):
     def save(self, settings: dict[str, object]) -> None:
         raise NotImplementedError
 
+
 class RedisBackupPort(Protocol):
     def create_backup(self) -> RedisBackupResult:
         raise NotImplementedError
@@ -230,13 +231,21 @@ class OperationRepository(Protocol):
     def check_ready(self) -> None:
         raise NotImplementedError
 
-    def create(self, operation: ServiceOperation) -> None:
+    def record_accepted(
+        self,
+        operation: ServiceOperation,
+        *,
+        lease: OperationLease,
+    ) -> None:
         raise NotImplementedError
 
-    def save(self, operation: ServiceOperation) -> None:
+    def record_transition(
+        self,
+        operation: ServiceOperation,
+    ) -> None:
         raise NotImplementedError
 
-    def append_event(self, event: OperationEvent) -> None:
+    def list_unfinished_operations(self) -> list[ServiceOperation]:
         raise NotImplementedError
 
     def get(self, operation_id: str) -> ServiceOperation | None:

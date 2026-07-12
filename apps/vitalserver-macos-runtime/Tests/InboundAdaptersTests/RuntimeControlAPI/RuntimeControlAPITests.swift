@@ -442,6 +442,63 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(openAPIEventTypes, swiftEventTypes)
     }
 
+    func testGuestControlOperationOpenAPIEnumsMatchSwiftContract() throws {
+        let openAPICommands = try openAPIStringEnum(
+            schemaName: "RuntimeGuestControlServiceOperation",
+            propertyName: "command"
+        )
+        let openAPIStates = try openAPIStringEnum(
+            schemaName: "RuntimeGuestControlServiceOperation",
+            propertyName: "state"
+        )
+
+        XCTAssertEqual(
+            openAPICommands,
+            RuntimeGuestControlServiceCommand.allCases.map(\.rawValue)
+        )
+        XCTAssertEqual(
+            openAPIStates,
+            RuntimeGuestControlOperationState.allCases.map(\.rawValue)
+        )
+    }
+
+    func testGuestControlMutationOpenAPIEndpointsDeclareExplicitLeaseConflict() throws {
+        let operations = try openAPIOperations()
+        let operationKeys = [
+            "PUT /runtime/settings",
+            "POST /runtime/admin-password",
+            "PUT /runtime/redis-relay/settings",
+            "POST /runtime/lab/beds/create",
+            "POST /runtime/lab/beds/delete",
+            "POST /runtime/lab/beds/reset",
+            "POST /runtime/lab/recorders/create",
+            "POST /runtime/lab/recorders/delete",
+            "POST /runtime/lab/recorders/reset",
+            "POST /runtime/lab/sessions",
+            "POST /runtime/lab/sessions/{sessionId}/start",
+            "POST /runtime/lab/sessions/{sessionId}/stop",
+            "POST /runtime/lab/vital-files/replay",
+            "POST /runtime/lab/vital-files/upload",
+            "POST /runtime/services/{service}/start",
+            "POST /runtime/services/{service}/stop",
+            "POST /runtime/services/{service}/restart",
+            "POST /runtime/maintenance/datastore/repair",
+            "POST /platform/backups/redis",
+            "POST /platform/backups/redis/restore",
+        ]
+
+        for key in operationKeys {
+            let operation = try XCTUnwrap(operations[key], key)
+            let responses = try XCTUnwrap(operation["responses"] as? [String: Any], key)
+            let conflict = try XCTUnwrap(responses["409"] as? [String: Any], key)
+            XCTAssertEqual(
+                conflict["$ref"] as? String,
+                "#/components/responses/OperationInProgress",
+                key
+            )
+        }
+    }
+
     func testRecorderIngressMemoryGuardStatusOpenAPIEnumMatchesSwiftContract() throws {
         let openAPIStatuses = try openAPIStringEnum(
             schemaName: "RuntimeRecorderIngressReplayAdaptiveStatus",
@@ -1056,6 +1113,25 @@ final class RuntimeControlAPITests: XCTestCase {
 
         XCTAssertEqual(response.status, .methodNotAllowed)
         XCTAssertEqual(error.code, .methodNotAllowed)
+    }
+
+    @MainActor
+    func testRouterPreservesExplicitGuestControlLeaseConflict() async throws {
+        var handler = StubRuntimeControlAPIReadHandler()
+        handler.startGuestServiceError = RuntimeControlOperationInProgressError(
+            message: "guest control lease is held by operation op-123"
+        )
+        let router = RuntimeControlAPIRouter(handler: handler)
+
+        let response = await router.route(.init(
+            method: .post,
+            path: "/runtime/services/app/start"
+        ))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .conflict)
+        XCTAssertEqual(error.code, .operationInProgress)
+        XCTAssertEqual(error.message, "guest control lease is held by operation op-123")
     }
 
     @MainActor
@@ -2092,6 +2168,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let statuses: [(RuntimeControlHTTPStatus, String)] = [
             (.badRequest, "400 Bad Request"),
             (.methodNotAllowed, "405 Method Not Allowed"),
+            (.conflict, "409 Conflict"),
             (.notImplemented, "501 Not Implemented"),
             (.internalServerError, "500 Internal Server Error"),
         ]
@@ -3051,6 +3128,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     var vmLifecycleResource = RuntimeVMLifecycleResourceState.missing()
     var providerCommandResponse: RuntimeProviderCommandResponse?
     var datastoreRepairOperation: RuntimeGuestControlServiceOperation?
+    var startGuestServiceError: Error?
     var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
     var redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
         readState: .notRead,
@@ -3417,6 +3495,22 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeOperationLeaseMutationResponse(
             operationId: request.operationId,
             state: .released
+        )
+    }
+
+    func startGuestService(
+        _ request: RuntimeGuestServiceControlRequest
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        if let startGuestServiceError {
+            throw startGuestServiceError
+        }
+        return RuntimeGuestControlServiceOperation(
+            operationId: "start-\(request.service)",
+            service: request.service,
+            command: .start,
+            state: .accepted,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:00+00:00"
         )
     }
 

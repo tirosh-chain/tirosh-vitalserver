@@ -2028,12 +2028,15 @@ export interface components {
             operationId: string;
             service: string;
             /** @enum {string} */
-            command: "start" | "stop" | "restart" | "reconcile" | "redis-backup" | "redis-restore" | "repair-datastore" | "apply-settings" | "apply-admin-password" | "apply-redis-relay-settings";
+            command: "start" | "stop" | "restart" | "reconcile" | "lab-create-session" | "lab-start-session" | "lab-stop-session" | "lab-replay-vital-file" | "lab-upload-vital-file" | "lab-create-beds" | "lab-delete-beds" | "lab-reset-beds" | "lab-create-recorders" | "lab-delete-recorders" | "lab-reset-recorders" | "redis-backup" | "redis-restore" | "repair-datastore" | "activate-update" | "prepare-update-shutdown" | "request-guest-poweroff" | "apply-settings" | "apply-admin-password" | "apply-redis-relay-settings";
             /** @enum {string} */
-            state: "accepted" | "running" | "completed" | "failed" | "cancelled";
+            state: "accepted" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
             createdAt: string;
             updatedAt: string;
             failure?: components["schemas"]["RuntimeGuestControlOperationFailure"] | null;
+            result?: {
+                [key: string]: unknown;
+            } | null;
         };
         RuntimeGuestControlOperationFailure: {
             kind: string;
@@ -2136,12 +2139,12 @@ export interface components {
             operationService: string;
             operationCommand: string;
             /** @enum {string} */
-            operationState: "accepted" | "running" | "completed" | "failed" | "cancelled";
+            operationState: "accepted" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
             message: string;
             failure: components["schemas"]["RuntimeGuestControlOperationFailure"] | null;
         };
         /** @enum {string} */
-        RuntimeEventType: "operation-accepted" | "operation-running" | "operation-completed" | "operation-failed" | "operation-cancelled";
+        RuntimeEventType: "operation-accepted" | "operation-running" | "operation-completed" | "operation-failed" | "operation-cancelled" | "operation-interrupted";
         RuntimeDomainError: {
             code?: string;
             /** @enum {string} */
@@ -2496,7 +2499,7 @@ export interface components {
             message?: string;
         };
         /** @enum {string} */
-        RuntimeControlAPIErrorCode: "badRequest" | "routeNotFound" | "methodNotAllowed" | "unauthorized" | "endpointNotImplemented" | "handlerFailed";
+        RuntimeControlAPIErrorCode: "badRequest" | "routeNotFound" | "methodNotAllowed" | "unauthorized" | "endpointNotImplemented" | "operationInProgress" | "handlerFailed";
         RuntimeControlFileReference: {
             /** @enum {string} */
             kind?: "localPath" | "uploadedArtifact" | "remoteURL";
@@ -2790,6 +2793,15 @@ export interface components {
                 "application/json": components["schemas"]["RuntimeControlErrorResponse"];
             };
         };
+        /** @description A Guest Runtime Controller operation owns the global control lease. The command was not accepted or queued. */
+        OperationInProgress: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["RuntimeControlErrorResponse"];
+            };
+        };
         /** @description Endpoint exists in the contract but is not implemented by the current local read-only server */
         NotImplemented: {
             headers: {
@@ -2999,6 +3011,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     getRuntimeLabSession: {
@@ -3045,6 +3058,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     stopRuntimeLabSession: {
@@ -3068,6 +3082,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     replayRuntimeLabVitalFile: {
@@ -3093,6 +3108,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     uploadRuntimeLabVitalFile: {
@@ -3118,6 +3134,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     listRuntimeGuestServices: {
@@ -3228,6 +3245,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     getRuntimeGuestServiceStatus: {
@@ -3297,6 +3315,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     stopRuntimeGuestService: {
@@ -3320,6 +3339,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     restartRuntimeGuestService: {
@@ -3343,6 +3363,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     getRuntimeEvents: {
@@ -3437,6 +3458,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     applyRuntimeAdminPassword: {
@@ -3463,6 +3485,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     getRuntimeRelease: {
@@ -3556,6 +3579,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     repairRuntimeVMDisk: {
@@ -3722,6 +3746,7 @@ export interface operations {
         responses: {
             200: components["responses"]["CommandResult"];
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     restoreRedisBackup: {
@@ -3738,6 +3763,7 @@ export interface operations {
         };
         responses: {
             200: components["responses"]["CommandResult"];
+            409: components["responses"]["OperationInProgress"];
             501: components["responses"]["NotImplemented"];
         };
     };
@@ -4673,6 +4699,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     deleteRuntimeLabBeds: {
@@ -4698,6 +4725,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     resetRuntimeLabBeds: {
@@ -4719,6 +4747,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     createRuntimeLabRecorders: {
@@ -4744,6 +4773,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     deleteRuntimeLabRecorders: {
@@ -4769,6 +4799,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     resetRuntimeLabRecorders: {
@@ -4790,6 +4821,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
         };
     };
     getPlatformOperationState: {

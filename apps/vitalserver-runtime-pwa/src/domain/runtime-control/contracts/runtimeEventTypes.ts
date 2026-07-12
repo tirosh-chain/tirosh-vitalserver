@@ -3,7 +3,8 @@ export const runtimeEventTypeValues = [
   "operation-running",
   "operation-completed",
   "operation-failed",
-  "operation-cancelled"
+  "operation-cancelled",
+  "operation-interrupted"
 ] as const;
 
 export type RuntimeEventTypeValue = (typeof runtimeEventTypeValues)[number];

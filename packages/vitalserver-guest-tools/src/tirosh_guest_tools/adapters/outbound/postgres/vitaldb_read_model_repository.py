@@ -4,14 +4,14 @@ import json
 from datetime import datetime
 from typing import Any
 
-from tirosh_guest_tools.adapters.outbound.postgres.operation_repository import (
+from tirosh_guest_tools.adapters.outbound.postgres.psql import (
+    PostgresCommandError,
     jsonb_literal,
     run_psql,
     run_schema_migration,
     sql_literal,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
-    GuestControlDependencyError,
     VitalDBReadModelDependencyError,
 )
 from tirosh_guest_tools.domain.vitaldb_history import (
@@ -65,7 +65,7 @@ class PostgresVitalDBReadModelRepository:
                 SCHEMA_SQL,
                 stage="vitaldb read model schema migration",
             )
-        except GuestControlDependencyError as error:
+        except PostgresCommandError as error:
             raise VitalDBReadModelDependencyError(
                 error.message,
                 kind=error.kind,
@@ -364,7 +364,8 @@ class PostgresVitalDBReadModelRepository:
 
     def _visibility_by_id(self, entity_kind: str) -> dict[str, str]:
         sql = (
-            "SELECT COALESCE(jsonb_object_agg(entity_id, visibility), '{}'::jsonb)::text "
+            "SELECT COALESCE(jsonb_object_agg(entity_id, visibility), "
+            "'{}'::jsonb)::text "
             "FROM vitaldb_entity_visibility "
             f"WHERE entity_kind = {sql_literal(entity_kind)};"
         )
@@ -491,7 +492,7 @@ class PostgresVitalDBReadModelRepository:
 def _run_vitaldb_psql(sql: str, *, stage: str):
     try:
         return run_psql(sql, stage=stage)
-    except GuestControlDependencyError as error:
+    except PostgresCommandError as error:
         raise VitalDBReadModelDependencyError(
             error.message,
             kind="vitaldb-read-model-unavailable",

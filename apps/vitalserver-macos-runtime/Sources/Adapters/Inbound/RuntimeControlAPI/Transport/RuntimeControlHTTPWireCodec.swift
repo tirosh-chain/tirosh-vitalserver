@@ -155,6 +155,8 @@ public enum RuntimeControlHTTPWireCodec {
             return "Not Found"
         case .methodNotAllowed:
             return "Method Not Allowed"
+        case .conflict:
+            return "Conflict"
         case .serviceUnavailable:
             return "Service Unavailable"
         case .notImplemented:

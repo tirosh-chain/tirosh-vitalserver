@@ -20,7 +20,6 @@ from tirosh_guest_tools.adapters.outbound.maintenance import (
     UpdateShutdownMaintenanceAdapter,
 )
 from tirosh_guest_tools.adapters.outbound.postgres import (
-    PostgresOperationRepository,
     PostgresVitalDBReadModelRepository,
 )
 from tirosh_guest_tools.adapters.outbound.product_lab import ProductLabServiceAdapter
@@ -36,6 +35,7 @@ from tirosh_guest_tools.adapters.outbound.runtime_admin import (
 from tirosh_guest_tools.adapters.outbound.runtime_settings import (
     FileRuntimeSettingsRepository,
 )
+from tirosh_guest_tools.adapters.outbound.sqlite_control import SQLiteControlRepository
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
     UUIDOperationIdFactory,
@@ -83,11 +83,12 @@ class GuestControlAPIError(Exception):
 
 
 def build_default_usecases() -> GuestControlUseCases:
-    operations = PostgresOperationRepository()
+    operations = SQLiteControlRepository(
+        SETTINGS.paths.control_state_dir / "control.sqlite"
+    )
     vitaldb_read_model = PostgresVitalDBReadModelRepository()
-    operations.ensure_schema()
-    vitaldb_read_model.ensure_schema()
-    return GuestControlUseCases(
+    operations.check_ready()
+    usecases = GuestControlUseCases(
         service_control=ComposeGuestControlAdapter(),
         product_lab=ProductLabServiceAdapter(),
         recorder_ingress=RecorderIngressStatusServiceAdapter(),
@@ -111,6 +112,8 @@ def build_default_usecases() -> GuestControlUseCases:
         operation_ids=UUIDOperationIdFactory(),
         clock=SystemClock(),
     )
+    usecases.recover_interrupted_operations()
+    return usecases
 
 
 def make_handler(
@@ -179,6 +182,19 @@ def make_handler(
                         {
                             "detail": error.message,
                             "code": error.kind,
+                        },
+                    )
+                    return
+                if error.kind == "operationLeaseConflict":
+                    self._write_json(
+                        HTTPStatus.CONFLICT,
+                        {
+                            "detail": error.message,
+                            # The SQLite lease is an adapter detail. The HTTP
+                            # contract exposes the domain meaning: one command
+                            # is already in progress, so accepting another one
+                            # would violate the global control lease.
+                            "code": "operationInProgress",
                         },
                     )
                     return

@@ -23,6 +23,7 @@ class GuestBootstrapStep(StrEnum):
     REQUIRE_RUNTIME_PACKAGES = "require-runtime-packages"
     INSTALL_RUNTIME_FILES = "install-runtime-files"
     PREPARE_RUNTIME_DATA = "prepare-runtime-data"
+    MIGRATE_CONTROL_STORE = "migrate-control-store"
     WRITE_INITIAL_RUNTIME_OBSERVATION = "write-initial-runtime-observation"
     START_DOCKER = "start-docker"
     START_AVAHI = "start-avahi"
@@ -114,6 +115,7 @@ class GuestBootstrapOperations:
     missing_runtime_packages: Callable[[], list[str]]
     install_runtime_files: Callable[[GuestBootstrapContext], None]
     prepare_runtime_data: Callable[[], None]
+    migrate_control_store: Callable[[], None]
     write_initial_runtime_observation: Callable[[], None]
     start_docker: Callable[[], None]
     start_avahi: Callable[[], None]
@@ -205,6 +207,7 @@ class GuestBootstrapWorkflow:
             ),
             (GuestBootstrapStep.INSTALL_RUNTIME_FILES, self.install_runtime_files),
             (GuestBootstrapStep.PREPARE_RUNTIME_DATA, self.prepare_runtime_data),
+            (GuestBootstrapStep.MIGRATE_CONTROL_STORE, self.migrate_control_store),
             (
                 GuestBootstrapStep.WRITE_INITIAL_RUNTIME_OBSERVATION,
                 self.operations.write_initial_runtime_observation,
@@ -308,9 +311,16 @@ class GuestBootstrapWorkflow:
     def prepare_runtime_data(self) -> None:
         self.operations.prepare_runtime_data()
 
-    def start_docker(self) -> None:
+    def migrate_control_store(self) -> None:
         self.state.require_completed(
             GuestBootstrapStep.PREPARE_RUNTIME_DATA,
+            GuestBootstrapStep.MIGRATE_CONTROL_STORE,
+        )
+        self.operations.migrate_control_store()
+
+    def start_docker(self) -> None:
+        self.state.require_completed(
+            GuestBootstrapStep.MIGRATE_CONTROL_STORE,
             GuestBootstrapStep.START_DOCKER,
         )
         self.operations.start_docker()

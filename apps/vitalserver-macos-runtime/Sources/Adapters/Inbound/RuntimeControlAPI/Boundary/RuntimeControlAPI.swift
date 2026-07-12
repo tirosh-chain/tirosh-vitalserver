@@ -32,6 +32,7 @@ public enum RuntimeControlAPIErrorCode: String, Codable, Equatable, Sendable {
     case unauthorized
     case endpointNotImplemented
     case platformAffordanceUnavailable
+    case operationInProgress
     case handlerFailed
 }
 
