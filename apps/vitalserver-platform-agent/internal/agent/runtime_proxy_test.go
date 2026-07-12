@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,41 +20,19 @@ import (
 )
 
 func TestRuntimeControllerRouteMapIsMethodScopedAndClosed(t *testing.T) {
-	accepted := []struct {
-		method string
-		path   string
-		target string
-	}{
-		{http.MethodGet, "/runtime/capabilities", "/runtime/capabilities"},
-		{http.MethodGet, "/runtime/services", "/runtime/services"},
-		{http.MethodGet, "/runtime/stack", "/runtime/stack"},
-		{http.MethodGet, "/runtime/events", "/runtime/events"},
-		{http.MethodGet, "/runtime/settings", "/runtime/settings"},
-		{http.MethodPut, "/runtime/settings", "/runtime/settings"},
-		{http.MethodPost, "/runtime/admin-password", "/runtime/admin-password"},
-		{http.MethodGet, "/runtime/recorder-ingress/status", "/runtime/recorder-ingress/status"},
-		{http.MethodGet, "/runtime/services/app/status", "/runtime/services/app/status"},
-		{http.MethodGet, "/runtime/services/app/resource", "/runtime/services/app/resource"},
-		{http.MethodPost, "/runtime/services/app/restart", "/runtime/services/app/restart"},
-		{http.MethodGet, "/runtime/redis-relay/status", "/runtime/redis-relay/status"},
-		{http.MethodGet, "/runtime/redis-relay/settings", "/runtime/redis-relay/settings"},
-		{http.MethodPut, "/runtime/redis-relay/settings", "/runtime/redis-relay/settings"},
-		{http.MethodPost, "/runtime/maintenance/datastore/repair", "/runtime/maintenance/datastore/repair"},
-		{http.MethodGet, "/runtime/lab/scenarios", "/runtime/lab/scenarios"},
-		{http.MethodPost, "/runtime/lab/sessions", "/runtime/lab/sessions"},
-		{http.MethodPost, "/runtime/lab/sessions/session-1/start", "/runtime/lab/sessions/session-1/start"},
-		{http.MethodGet, "/runtime/vitaldb/observations/latest", "/runtime/vitaldb/observations/latest"},
-		{http.MethodPost, "/runtime/vitaldb/recorders/hide", "/runtime/vitaldb/recorders/hide"},
-		{http.MethodGet, "/runtime/vitaldb/recorders/VR-A/activity", "/runtime/vitaldb/recorders/VR-A/activity"},
-		{http.MethodGet, "/runtime/vitaldb/recorders/VR-A", "/runtime/vitaldb/recorders/VR-A"},
-		{http.MethodGet, "/runtime/vitaldb/beds/BED-A", "/runtime/vitaldb/beds/BED-A"},
-		{http.MethodGet, "/runtime/operations/op-1", "/runtime/operations/op-1"},
-	}
-	for _, item := range accepted {
-		t.Run(item.method+" "+item.path, func(t *testing.T) {
-			target, ok := runtimeControllerPath(item.method, item.path)
-			if !ok || target != item.target {
-				t.Fatalf("route=(%q,%v) want=(%q,true)", target, ok, item.target)
+	seen := map[string]struct{}{}
+	for _, route := range runtimeControllerRoutes {
+		route := route
+		t.Run(route.method+" "+route.template, func(t *testing.T) {
+			key := route.method + " " + route.template
+			if _, exists := seen[key]; exists {
+				t.Fatalf("duplicate closed forwarding route: %s", key)
+			}
+			seen[key] = struct{}{}
+			path := runtimeControllerConcreteRoutePath(route.template)
+			target, ok := runtimeControllerPath(route.method, path)
+			if !ok || target != path {
+				t.Fatalf("route=(%q,%v) want=(%q,true)", target, ok, path)
 			}
 		})
 	}
@@ -72,6 +51,53 @@ func TestRuntimeControllerRouteMapIsMethodScopedAndClosed(t *testing.T) {
 			t.Fatalf("unexpected route method=%s path=%s target=%s", item.method, item.path, target)
 		}
 	}
+}
+
+func TestRuntimeControllerRouteMapIncludesForwardedReadCoreManifestRoutes(t *testing.T) {
+	type manifestRoute struct {
+		Owner    string `json:"owner"`
+		Delivery string `json:"delivery"`
+		Method   string `json:"method"`
+		Path     string `json:"path"`
+	}
+	type manifest struct {
+		Routes []manifestRoute `json:"routes"`
+	}
+
+	manifestPath := filepath.Join("..", "..", "..", "..", "docs", "runtime", "runtime-v2-route-manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read Runtime v2 route manifest: %v", err)
+	}
+	var document manifest
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatalf("decode Runtime v2 route manifest: %v", err)
+	}
+
+	allowed := make(map[string]struct{}, len(runtimeControllerRoutes))
+	for _, route := range runtimeControllerRoutes {
+		allowed[route.method+" "+route.template] = struct{}{}
+	}
+	for _, route := range document.Routes {
+		if route.Owner != "runtime-controller" || route.Delivery != "forwarded" {
+			continue
+		}
+		key := route.Method + " " + route.Path
+		if _, ok := allowed[key]; !ok {
+			t.Fatalf("Runtime v2 manifest forwarded route is not in Platform Agent allowlist: %s", key)
+		}
+	}
+}
+
+func runtimeControllerConcreteRoutePath(template string) string {
+	replacements := strings.NewReplacer(
+		"{service}", "app",
+		"{sessionID}", "session-1",
+		"{vrcode}", "VR-A",
+		"{bedID}", "BED-A",
+		"{operationID}", "op-1",
+	)
+	return replacements.Replace(template)
 }
 
 func TestRuntimeProxyUsesExplicitEndpointAndPreservesRuntimeResponse(t *testing.T) {
