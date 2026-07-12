@@ -204,8 +204,7 @@ def _require_guest_tools_runtime_payload(deploy: Path) -> None:
     )
     if guest_wheel.suffix != ".whl":
         raise SystemExit(
-            "portable deploy Guest Tools artifact is not a wheel: "
-            f"{guest_wheel}"
+            f"portable deploy Guest Tools artifact is not a wheel: {guest_wheel}"
         )
     _require_cpython312_linux_amd64_wheel(
         guest_wheel,
@@ -243,8 +242,7 @@ def _require_guest_tools_runtime_payload(deploy: Path) -> None:
         )
         if dependency.suffix != ".whl":
             raise SystemExit(
-                "portable deploy Guest Tools dependency is not a wheel: "
-                f"{dependency}"
+                f"portable deploy Guest Tools dependency is not a wheel: {dependency}"
             )
         _require_cpython312_linux_amd64_wheel(
             dependency,
@@ -261,13 +259,17 @@ def _require_guest_tools_runtime_payload(deploy: Path) -> None:
     required_lifecycle = (
         "RequiresMountsFor=/mnt/runtime",
         "ExecStartPre=/opt/tirosh/guest-tools/venv/bin/"
-        "tirosh-guest-tools-migrate-control-store --control-state-dir "
-        "/mnt/runtime/control",
+        "tirosh-guest-tools-migrate-control-store",
     )
     if any(token not in control_service_text for token in required_lifecycle):
         raise SystemExit(
             "portable deploy Guest Control service lifecycle is invalid: "
             f"{control_service}"
+        )
+    if "--control-state-dir" in control_service_text:
+        raise SystemExit(
+            "portable deploy Guest Control service must resolve its control store "
+            f"from Guest Tools settings: {control_service}"
         )
 
 
@@ -372,10 +374,15 @@ def _require_requirements_hash_closure(
     logical_lines = _requirements_logical_lines(requirements)
     referenced_hashes: set[str] = set()
     for line in logical_lines:
-        hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", line)
+        hash_tokens = re.findall(r"(?:^|\s)--hash=([^\s]+)", line)
+        hashes = [
+            token.removeprefix("sha256:")
+            for token in hash_tokens
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is not None
+        ]
         invalid_hashes = [
             token
-            for token in re.findall(r"--hash=([^\s]+)", line)
+            for token in hash_tokens
             if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is None
         ]
         if invalid_hashes:
@@ -406,24 +413,41 @@ def _requirements_logical_lines(requirements: Path) -> list[str]:
             "portable deploy Guest Tools requirements cannot be read: "
             f"path={requirements} error={error}"
         ) from error
-    logical_lines: list[str] = []
-    pending = ""
+    joined_lines: list[str] = []
+    pending: str | None = None
     for physical_line in physical_lines:
-        line = physical_line.strip()
-        if not line or line.startswith("#"):
+        # Match pip preprocessing order: it joins literal trailing-backslash
+        # continuations before it removes whitespace-introduced comments.
+        comment_line = re.match(r"(^|\s+)#.*$", physical_line) is not None
+        if physical_line.endswith("\\") and not comment_line:
+            if pending is None:
+                pending = ""
+            pending += physical_line.strip("\\")
             continue
-        if pending:
-            line = pending + line
-            pending = ""
-        if line.endswith("\\"):
-            pending = line[:-1].rstrip() + " "
-            continue
-        logical_lines.append(line)
-    if pending:
+        if comment_line:
+            # Keep a comment following a continuation a comment after joining.
+            physical_line = " " + physical_line
+        if pending is None:
+            joined_lines.append(physical_line)
+        else:
+            joined_lines.append(pending + physical_line)
+            pending = None
+    if pending is not None:
         raise SystemExit(
             "portable deploy Guest Tools requirements has an unterminated line "
             f"continuation: path={requirements}"
         )
+    logical_lines: list[str] = []
+    for joined_line in joined_lines:
+        line = re.sub(r"(^|\s+)#.*$", "", joined_line).strip()
+        if not line:
+            continue
+        if line.endswith("\\"):
+            raise SystemExit(
+                "portable deploy Guest Tools requirements has a malformed line "
+                f"continuation: path={requirements} entry={line!r}"
+            )
+        logical_lines.append(line)
     if not logical_lines:
         raise SystemExit(
             "portable deploy Guest Tools requirements has no dependency entries: "

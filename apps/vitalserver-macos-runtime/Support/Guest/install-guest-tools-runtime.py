@@ -122,9 +122,11 @@ def read_manifest(wheel_dir: Path) -> dict[str, Any]:
             f"Guest Tools wheelhouse manifest contract is invalid: {path}"
         )
     python = value.get("guestPython")
-    if not isinstance(python, dict) or python.get("major") != 3 or python.get(
-        "minor"
-    ) != 12:
+    if (
+        not isinstance(python, dict)
+        or python.get("major") != 3
+        or python.get("minor") != 12
+    ):
         raise GuestToolsInstallError(
             f"Guest Tools wheelhouse Python contract is invalid: {path}"
         )
@@ -256,10 +258,15 @@ def require_requirements_hash_closure(
 ) -> None:
     referenced_hashes: set[str] = set()
     for line in requirements_logical_lines(requirements):
-        hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", line)
+        hash_tokens = re.findall(r"(?:^|\s)--hash=([^\s]+)", line)
+        hashes = [
+            token.removeprefix("sha256:")
+            for token in hash_tokens
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is not None
+        ]
         invalid_hashes = [
             token
-            for token in re.findall(r"--hash=([^\s]+)", line)
+            for token in hash_tokens
             if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is None
         ]
         if invalid_hashes:
@@ -290,28 +297,44 @@ def requirements_logical_lines(requirements: Path) -> list[str]:
             "Guest Tools requirements cannot be read: "
             f"path={requirements} error={error}"
         ) from error
-    logical_lines: list[str] = []
-    pending = ""
+    joined_lines: list[str] = []
+    pending: str | None = None
     for physical_line in physical_lines:
-        line = physical_line.strip()
-        if not line or line.startswith("#"):
+        # Match pip preprocessing order: it joins literal trailing-backslash
+        # continuations before it removes whitespace-introduced comments.
+        comment_line = re.match(r"(^|\s+)#.*$", physical_line) is not None
+        if physical_line.endswith("\\") and not comment_line:
+            if pending is None:
+                pending = ""
+            pending += physical_line.strip("\\")
             continue
-        if pending:
-            line = pending + line
-            pending = ""
-        if line.endswith("\\"):
-            pending = line[:-1].rstrip() + " "
-            continue
-        logical_lines.append(line)
-    if pending:
+        if comment_line:
+            # Keep a comment following a continuation a comment after joining.
+            physical_line = " " + physical_line
+        if pending is None:
+            joined_lines.append(physical_line)
+        else:
+            joined_lines.append(pending + physical_line)
+            pending = None
+    if pending is not None:
         raise GuestToolsInstallError(
             "Guest Tools requirements has an unterminated line continuation: "
             f"path={requirements}"
         )
+    logical_lines: list[str] = []
+    for joined_line in joined_lines:
+        line = re.sub(r"(^|\s+)#.*$", "", joined_line).strip()
+        if not line:
+            continue
+        if line.endswith("\\"):
+            raise GuestToolsInstallError(
+                "Guest Tools requirements has a malformed line continuation: "
+                f"path={requirements} entry={line!r}"
+            )
+        logical_lines.append(line)
     if not logical_lines:
         raise GuestToolsInstallError(
-            "Guest Tools requirements has no dependency entries: "
-            f"path={requirements}"
+            f"Guest Tools requirements has no dependency entries: path={requirements}"
         )
     return logical_lines
 
@@ -330,8 +353,7 @@ def installed_dependency_versions(python: Path) -> dict[str, str]:
         )
     except subprocess.CalledProcessError as error:
         raise GuestToolsInstallError(
-            "Guest Tools dependency import proof failed: "
-            f"exitCode={error.returncode}"
+            f"Guest Tools dependency import proof failed: exitCode={error.returncode}"
         ) from error
     values = completed.stdout.splitlines()
     if len(values) != 2 or not all(values):

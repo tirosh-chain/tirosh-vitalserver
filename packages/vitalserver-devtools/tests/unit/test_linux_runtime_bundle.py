@@ -310,8 +310,7 @@ def test_linux_runtime_controller_bundle_rejects_a_tampered_wheelhouse_manifest(
     (
         "alembic-1.16.0-py3-none-any.whl",
         "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_x86_64.whl",
-        "sqlalchemy-2.0.51-cp312-cp312-"
-        "manylinux_2_28_x86_64.manylinux2014_x86_64.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_28_x86_64.manylinux2014_x86_64.whl",
     ),
 )
 def test_linux_runtime_controller_bundle_accepts_cpython312_compatible_wheels(
@@ -408,9 +407,7 @@ def test_linux_runtime_controller_bundle_requires_requirements_to_pin_manifest_w
         + "\n",
         encoding="utf-8",
     )
-    manifest["targets"]["linux-amd64"]["requirementsSHA256"] = _sha256(
-        requirements
-    )
+    manifest["targets"]["linux-amd64"]["requirementsSHA256"] = _sha256(requirements)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(
@@ -420,6 +417,80 @@ def test_linux_runtime_controller_bundle_requires_requirements_to_pin_manifest_w
         builder._require_control_wheelhouse(wheelhouse)
 
 
+def test_linux_runtime_controller_bundle_ignores_hashes_in_inline_comments(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location("linux_bundle_builder", BUILDER)
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    requirements = tmp_path / "requirements.txt"
+    guest_hash = "a" * 64
+    dependency_hash = "b" * 64
+    requirements.write_text(
+        "guest-tools==0.1.0 --hash=sha256:"
+        + guest_hash
+        + " # --hash=sha256:"
+        + dependency_hash
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="requirements do not pin every manifest wheel",
+    ):
+        builder._require_requirements_hash_closure(
+            requirements,
+            {guest_hash, dependency_hash},
+        )
+
+
+@pytest.mark.parametrize(
+    ("requirements_text", "match"),
+    [
+        (
+            "guest-tools==0.1.0 \\\n"
+            "  # this physical line ends the continuation\n"
+            "  --hash=sha256:{hash}\n",
+            "not hash-pinned",
+        ),
+        (
+            "guest-tools==0.1.0 \\ # this is not a continuation\n"
+            "--hash=sha256:{hash}\n",
+            "malformed line continuation",
+        ),
+        (
+            "https://example.invalid/guest-tools.whl#--hash=sha256:{hash}\n",
+            "not hash-pinned",
+        ),
+    ],
+    ids=(
+        "comment-after-continuation",
+        "inline-comment-after-backslash",
+        "url-fragment-is-not-option",
+    ),
+)
+def test_linux_runtime_controller_bundle_matches_pip_requirement_preprocessing(
+    tmp_path: Path,
+    requirements_text: str,
+    match: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location("linux_bundle_builder", BUILDER)
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    requirements = tmp_path / "requirements.txt"
+    guest_hash = "a" * 64
+    requirements.write_text(
+        requirements_text.format(hash=guest_hash),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match=match):
+        builder._require_requirements_hash_closure(requirements, {guest_hash})
+
+
 def test_linux_package_stages_an_amd64_guest_wheelhouse_before_bundling() -> None:
     makefile = (ROOT / "make/platform-agent.mk").read_text(encoding="utf-8")
 
@@ -427,14 +498,14 @@ def test_linux_package_stages_an_amd64_guest_wheelhouse_before_bundling() -> Non
     assert 'rm -rf "$(LINUX_GUEST_RUNTIME_WHEELHOUSE)"' in makefile
     assert "scripts/stage_guest_runtime_wheelhouse.py" in makefile
     assert "--target linux-amd64" in makefile
-    assert "--output \"$(LINUX_GUEST_RUNTIME_WHEELHOUSE)\"" in makefile
+    assert '--output "$(LINUX_GUEST_RUNTIME_WHEELHOUSE)"' in makefile
     assert (
         "platform-agent/package/linux: platform-agent/build/linux "
         "platform-agent/build/linux-provider "
         "platform-agent/build/linux-guest-wheelhouse pwa/build"
     ) in makefile
     assert (
-        "--runtime-controller-wheelhouse \"$(LINUX_GUEST_RUNTIME_WHEELHOUSE)\""
+        '--runtime-controller-wheelhouse "$(LINUX_GUEST_RUNTIME_WHEELHOUSE)"'
         in makefile
     )
     assert "--runtime-controller-source" not in makefile
@@ -460,9 +531,9 @@ def test_linux_installer_creates_every_hardened_runtime_directory() -> None:
     )
     assert (
         "ExecStartPre=/opt/vitalserver/current/runtime-controller/venv/bin/"
-        "tirosh-guest-tools-migrate-control-store --control-state-dir "
-        "/var/lib/vitalserver/control"
+        "tirosh-guest-tools-migrate-control-store"
     ) in controller_unit
+    assert "--control-state-dir" not in controller_unit
     assert (
         'cp -a bin pwa runtime-bundle runtime-controller "$staging_root/"' in installer
     )
@@ -475,8 +546,8 @@ def test_linux_installer_creates_every_hardened_runtime_directory() -> None:
         'python3 "$staging_root/runtime-controller/install-guest-tools-runtime.py"'
         not in installer
     )
-    assert installer.index('mv "$staging_root" "$release_root"') < installer.index(
-        'python3 "$release_root/runtime-controller/install-guest-tools-runtime.py"'
+    assert installer.index('mv "$staging_root" "$release_root"') < installer.rindex(
+        "if ! install_release_guest_tools; then"
     )
     controller_settings = (packaging / "runtime-controller.toml").read_text(
         encoding="utf-8"
@@ -486,6 +557,10 @@ def test_linux_installer_creates_every_hardened_runtime_directory() -> None:
     )
     assert (
         'pythonWheelDir = "/opt/vitalserver/current/runtime-controller/python-wheels"'
+        in controller_settings
+    )
+    assert (
+        '[controlStore]\nroot = "/var/lib/vitalserver"\nrequiresMount = false'
         in controller_settings
     )
     assert '"$var_root/proof/linux-native-acceptance.json"' in installer
@@ -498,13 +573,197 @@ def test_linux_installer_removes_only_the_release_created_by_failed_workflow() -
     ).read_text(encoding="utf-8")
 
     assert "release_created=0" in installer
-    assert 'mv "$staging_root" "$release_root"\n  release_created=1' in installer
+    assert 'if ! mv "$staging_root" "$release_root"; then' in installer
+    assert (
+        'release_created=1\n  if ! sync_directory "$opt_root/releases"; then'
+        in installer
+    )
     assert 'if [ "$release_created" -eq 1 ]; then' in installer
     assert 'rm -rf "$release_root"' in installer
     assert "trap rollback_install EXIT" in installer
     assert "trap 'rollback_install 129' HUP" in installer
     assert "trap 'rollback_install 130' INT" in installer
     assert "trap 'rollback_install 143' TERM" in installer
+
+
+def test_linux_installer_requires_transaction_and_completion_proofs() -> None:
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+
+    assert 'install_transaction_document="$etc_root/install-transaction.json"' in (
+        installer
+    )
+    assert 'release_completion_root="$etc_root/release-complete"' in installer
+    assert 'release_completion_document="$release_completion_root/$version.json"' in (
+        installer
+    )
+    assert "read_install_transaction()" in installer
+    assert "finish_published_install_transaction()" in installer
+    assert "begin_install_transaction()" in installer
+    assert "install_transaction_resuming_first_install" not in installer
+    assert "require_release_completion_proof()" in installer
+    assert "write_release_completion_proof()" in installer
+    assert '"state": "installing"' in installer
+    assert '"state": "complete"' in installer
+    assert "require_root_owned_regular_file()" in installer
+    assert (
+        "Installed release is incomplete without a matching Linux install transaction"
+        in installer
+    )
+    assert "read_installed_owner_previous_release >/dev/null" in installer
+    assert '[ "$current_target" != "$candidate_target" ] ||' in installer
+    assert 'if document.get("platformVersion") != version:' in installer
+    assert 'print("pending")' in installer
+    assert 'print("committed")' in installer
+    assert (
+        "Linux install owner previousRelease does not match the active transaction"
+        in installer
+    )
+    assert "previous_target=$current_target" in installer
+    assert installer.index("finish_published_install_transaction;") < installer.index(
+        "require_previous_release_artifacts()"
+    )
+    assert installer.index('! begin_install_transaction "$current_target"; then') < (
+        installer.rindex('install -d -m 0755 "$etc_root" "$unit_root"')
+    )
+    assert installer.rindex("write_release_completion_proof") < installer.index(
+        'ln -s "releases/$version" "$current_link.next.$$"'
+    )
+    assert installer.index('mv -f "$install_document" "$var_root/install.json"') < (
+        installer.rindex('rm -f "$install_transaction_document"')
+    )
+    candidate_cleanup_guard = (
+        'if [ "$release_created" -eq 1 ]; then\n'
+        "    candidate_cleanup_required=1\n"
+        '  elif [ "$install_transaction_active" -eq 1 ] && \\\n'
+        '    [ "$release_root_exists" -eq 1 ] && \\\n'
+        '    [ "$install_transaction_previous_target" != "releases/$version" ]; then'
+    )
+    assert candidate_cleanup_guard in installer
+    assert installer.index("candidate_cleanup_required=0") < installer.index(
+        'if [ "$install_transaction_active" -eq 1 ]; then',
+        installer.index("candidate_cleanup_required=0"),
+    )
+
+
+def test_linux_installer_preserves_every_resumed_transaction_owner_for_retry() -> None:
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "install_transaction_preserve_for_retry=0" in installer
+    read_transaction = installer[
+        installer.index("read_install_transaction()") : installer.index(
+            "begin_install_transaction()"
+        )
+    ]
+    assert "install_transaction_preserve_for_retry=1" in read_transaction
+
+    reconciler = installer[
+        installer.index("finish_published_install_transaction()") : installer.index(
+            "read_install_transaction()"
+        )
+    ]
+    fresh_transaction = installer[
+        installer.index("begin_install_transaction()") : installer.index(
+            "validate_install_transaction_current_target()"
+        )
+    ]
+    assert "install_transaction_preserve_for_retry=0" in reconciler
+    assert "install_transaction_preserve_for_retry=0" in fresh_transaction
+
+    rollback = installer[
+        installer.index("rollback_install() {") : installer.index(
+            "trap rollback_install EXIT"
+        )
+    ]
+    preserve_guard = 'if [ "$install_transaction_preserve_for_retry" -eq 1 ]; then'
+    assert preserve_guard in rollback
+    assert "rollbackState=preserved-for-retry" in rollback
+    assert rollback.index(preserve_guard) < rollback.index("rollback_failed=0")
+    assert rollback.index(preserve_guard) < rollback.index('rm -f "$current_link"')
+    assert rollback.index(preserve_guard) < rollback.index(
+        'rm -f "$install_transaction_document"'
+    )
+
+
+def test_linux_installer_trusts_ancestors_and_commits_owner_before_cleanup() -> None:
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+
+    assert '"$opt_root" "Linux release root" 0755' in installer
+    assert '"$opt_root/releases" "Linux releases root" 0755' in installer
+    assert '"$var_root" "Linux install owner root" 0755' in installer
+    assert 'current_target=$(readlink "$current_link")' in installer
+    assert installer.index('"$opt_root/releases" "Linux releases root" 0755') < (
+        installer.index("read_install_transaction;")
+    )
+    assert installer.index('"$var_root" "Linux install owner root" 0755') < (
+        installer.rindex('install -d -m 0755 "$var_root/run"')
+    )
+    assert installer.count('if document.get("schemaVersion") != 1:') >= 2
+
+    owner_document_sync = installer.index('sync "$install_document"')
+    owner_publish_boundary = installer.index(
+        "trap - EXIT HUP INT TERM", owner_document_sync
+    )
+    owner_rename = installer.index('mv -f "$install_document" "$var_root/install.json"')
+    owner_directory_sync = installer.index(
+        'if ! sync_directory "$var_root"; then', owner_rename
+    )
+    transaction_cleanup = installer.index(
+        'if ! rm -f "$install_transaction_document"; then', owner_directory_sync
+    )
+    transaction_directory_sync = installer.index(
+        'if ! sync_directory "$etc_root"; then', transaction_cleanup
+    )
+    assert (
+        owner_document_sync
+        < owner_publish_boundary
+        < owner_rename
+        < owner_directory_sync
+        < transaction_cleanup
+        < transaction_directory_sync
+    )
+    assert "phase=install-owner-publish reason=rename" in installer
+    assert "phase=install-owner-publish reason=directory-durability" in installer
+    assert "phase=install-transaction-cleanup reason=remove" in installer
+    assert "transactionState=cleanup-durability-unknown" in installer
+
+
+def test_linux_installer_durably_publishes_release_current_and_snapshot() -> None:
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+
+    snapshot_publish = installer.index('mv "$temporary_snapshot" "$snapshot_root"')
+    snapshot_sync = installer.index(
+        'if ! sync_directory "$release_systemd_snapshot_root/releases"; then',
+        snapshot_publish,
+    )
+    release_publish = installer.index('if ! mv "$staging_root" "$release_root"; then')
+    release_sync = installer.index(
+        'if ! sync_directory "$opt_root/releases"; then', release_publish
+    )
+    current_publish = installer.index(
+        'if ! ln -s "releases/$version" "$current_link.next.$$" ||'
+    )
+    current_sync = installer.index(
+        'if ! sync_directory "$opt_root"; then', current_publish
+    )
+    rollback_current_publish = installer.index(
+        'if ! ln -s "$previous_target" "$current_link.rollback.$$" ||'
+    )
+    rollback_current_sync = installer.index(
+        '! sync_directory "$opt_root"; then', rollback_current_publish
+    )
+
+    assert snapshot_publish < snapshot_sync
+    assert release_publish < release_sync < current_publish
+    assert current_publish < current_sync
+    assert rollback_current_publish < rollback_current_sync
 
 
 def test_linux_acceptance_uses_runtime_provider_lifecycle_timestamp() -> None:
@@ -571,7 +830,10 @@ def test_linux_same_version_reapply_preserves_rollback_lineage() -> None:
         ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
     ).read_text(encoding="utf-8")
 
-    assert 'if [ "$previous_target" = "releases/$version" ]; then' in installer
+    assert (
+        'if [ "$previous_release_for_owner" = "releases/$version" ]; then' in installer
+    )
+    assert "install_transaction_previous_target" in installer
     assert 'document.get("platformVersion") != version' in installer
     assert 'document.get("previousRelease")' in installer
     assert 'previous_release == f"releases/{version}"' in installer
@@ -614,8 +876,7 @@ def test_linux_installer_migrates_and_rolls_back_platform_delivery_config() -> N
     ) in installer
     assert (
         "install -m 0755 packaging/support-export-linux.py "
-        '"$staging_root/tools/support-export-linux.py"'
-        in installer
+        '"$staging_root/tools/support-export-linux.py"' in installer
     )
     assert '"schedulerKind": "systemd-transient"' in installer
     assert 'document.get("apiToken") != api_token' in installer
@@ -714,15 +975,14 @@ def test_linux_rollback_restores_the_target_release_systemd_units() -> None:
     assert "snapshot_release_systemd_units()" in installer
     assert 'snapshot_release_systemd_units "$previous_target"' in installer
     assert (
-        'release_systemd_snapshot_root="$etc_root/release-systemd-units"'
-        in installer
+        'release_systemd_snapshot_root="$etc_root/release-systemd-units"' in installer
     )
-    assert 'release_systemd_snapshot_root=$etc_root/release-systemd-units' in rollback
+    assert "release_systemd_snapshot_root=$etc_root/release-systemd-units" in rollback
     assert "$var_root/release-systemd-units" not in installer
     assert "$var_root/release-systemd-units" not in rollback
-    controller_unit = (
-        packaging / "vitalserver-runtime-controller.service"
-    ).read_text(encoding="utf-8")
+    controller_unit = (packaging / "vitalserver-runtime-controller.service").read_text(
+        encoding="utf-8"
+    )
     assert "ReadOnlyPaths=/etc/vitalserver" in controller_unit
     assert "/etc/vitalserver/release-systemd-units" not in controller_unit
     assert (
@@ -732,7 +992,7 @@ def test_linux_rollback_restores_the_target_release_systemd_units() -> None:
     assert 'snapshot_root="$release_systemd_snapshot_root/$release"' in installer
     assert 'cmp -s "$unit_root/$unit" "$snapshot_root/$unit"' in installer
     assert 'temporary_snapshot="$opt_root/$release/tools/' not in installer
-    assert 'release_systemd_snapshot_created=0' in installer
+    assert "release_systemd_snapshot_created=0" in installer
     assert 'release_systemd_snapshot_temporary=""' in installer
     assert "created systemd snapshot cleanup failed" in installer
     assert installer.index('snapshot_release_systemd_units "$previous_target"') < (
@@ -758,8 +1018,7 @@ def test_linux_rollback_restores_the_target_release_systemd_units() -> None:
     )
     assert 'migration_snapshot="$release_systemd_snapshot_root/$release"' in rollback
     assert (
-        'restore_release_units "$previous_target" "$previous_unit_source"'
-        in rollback
+        'restore_release_units "$previous_target" "$previous_unit_source"' in rollback
     )
     target_unit_restore = (
         'restore_release_units "$previous_target" "$previous_unit_source"'
@@ -778,11 +1037,56 @@ def test_linux_rollback_restores_the_target_release_systemd_units() -> None:
     assert "|| true" not in rollback
     assert "rollback systemd unit restoration failed" in rollback
     assert (
-        "original service restart skipped because restoration is incomplete"
-        in rollback
+        "original service restart skipped because restoration is incomplete" in rollback
     )
     assert "restoreState=$restore_state" in rollback
     assert "trap 'restore_current 129' HUP" in rollback
+
+
+def test_linux_resumed_transaction_uses_snapshot_prestate() -> None:
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+    snapshot = installer[
+        installer.index("snapshot_release_systemd_units() {") : installer.index(
+            "if ! ensure_root_owned_nonwritable_directory"
+        )
+    ]
+    unit_directory = installer[
+        installer.index("require_systemd_unit_directory() {") : installer.index(
+            "ensure_release_systemd_snapshot_root() {"
+        )
+    ]
+    existing_snapshot = snapshot[
+        snapshot.index(
+            'if [ -e "$snapshot_root" ] || [ -L "$snapshot_root" ]; then'
+        ) : snapshot.index("if ! ensure_release_systemd_snapshot_root; then")
+    ]
+    resumed_guard = 'if [ "$install_transaction_preserve_for_retry" -eq 1 ]; then'
+
+    assert (
+        'require_root_owned_nonwritable_directory "$directory" "$label"'
+        in unit_directory
+    )
+    assert (
+        'require_root_owned_regular_file "$directory/$unit" "$label unit"'
+        in unit_directory
+    )
+    assert resumed_guard in existing_snapshot
+    assert existing_snapshot.index(resumed_guard) < existing_snapshot.index(
+        'if ! cmp -s "$unit_root/$unit" "$snapshot_root/$unit"; then'
+    )
+
+    missing_snapshot = snapshot[
+        snapshot.index(
+            resumed_guard,
+            snapshot.index(resumed_guard) + len(resumed_guard),
+        ) : snapshot.index("if ! ensure_release_systemd_snapshot_root; then")
+    ]
+    assert (
+        "migration snapshot is unavailable for resumed transaction" in missing_snapshot
+    )
+    assert "return 1" in missing_snapshot
 
 
 def test_linux_update_rollback_does_not_restart_a_partially_restored_release() -> None:
@@ -790,9 +1094,9 @@ def test_linux_update_rollback_does_not_restart_a_partially_restored_release() -
         ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
     ).read_text(encoding="utf-8")
 
-    assert 'release_restored=1' in installer
-    assert 'owner_configuration_restored=1' in installer
-    assert 'units_restored=1' in installer
+    assert "release_restored=1" in installer
+    assert "owner_configuration_restored=1" in installer
+    assert "units_restored=1" in installer
     assert (
         "rollback service restart skipped because owner restoration is incomplete"
         in installer
@@ -805,6 +1109,44 @@ def test_linux_update_rollback_does_not_restart_a_partially_restored_release() -
     assert restoration_guard in installer
     assert installer.index(restoration_guard) < installer.index(
         "systemctl daemon-reload"
+    )
+
+
+def test_linux_install_rollback_preserves_legacy_unit_snapshot_when_restore_fails() -> (
+    None
+):
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+
+    snapshot_cleanup = 'if [ "$release_systemd_snapshot_created" -eq 1 ]; then'
+    assert snapshot_cleanup in installer
+    assert 'if [ "$rollback_failed" -eq 0 ]; then' in installer
+    assert "preserves systemd migration snapshot because restoration is incomplete" in (
+        installer
+    )
+    assert installer.index(snapshot_cleanup) > installer.index(
+        'if [ "$release_created" -eq 1 ]; then'
+    )
+
+
+def test_linux_resumed_first_install_uses_the_shared_preserve_for_retry_path() -> None:
+    installer = (
+        ROOT / "apps/vitalserver-platform-agent/packaging/linux/install.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "install_transaction_resuming_first_install" not in installer
+    rollback = installer[
+        installer.index("rollback_install() {") : installer.index(
+            "trap rollback_install EXIT"
+        )
+    ]
+    preserve_guard = 'if [ "$install_transaction_preserve_for_retry" -eq 1 ]; then'
+    assert rollback.index(preserve_guard) < rollback.index(
+        "Linux first-install rollback service stop failed"
+    )
+    assert rollback.index(preserve_guard) < rollback.index(
+        "Linux first-install rollback current release removal failed"
     )
 
 

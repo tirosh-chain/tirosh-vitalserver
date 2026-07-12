@@ -304,8 +304,10 @@ def _require_control_wheelhouse(path: Path) -> None:
             f"{manifest_path}"
         )
     guest_python = manifest.get("guestPython")
-    if not isinstance(guest_python, dict) or guest_python.get("major") != 3 or (
-        guest_python.get("minor") != 12
+    if (
+        not isinstance(guest_python, dict)
+        or guest_python.get("major") != 3
+        or (guest_python.get("minor") != 12)
     ):
         raise SystemExit(
             "Runtime Controller wheelhouse Guest Python contract is invalid: "
@@ -324,8 +326,7 @@ def _require_control_wheelhouse(path: Path) -> None:
     )
     if guest_wheel.suffix != ".whl":
         raise SystemExit(
-            "Runtime Controller Guest Tools artifact is not a wheel: "
-            f"{guest_wheel}"
+            f"Runtime Controller Guest Tools artifact is not a wheel: {guest_wheel}"
         )
     _require_cpython312_linux_amd64_wheel(
         guest_wheel,
@@ -357,9 +358,7 @@ def _require_control_wheelhouse(path: Path) -> None:
                 "Runtime Controller wheelhouse linux-amd64 wheel manifest is invalid: "
                 f"{manifest_path}"
             )
-        wheel_sha256 = _require_manifest_string(
-            wheel, "sha256", "wheel", manifest_path
-        )
+        wheel_sha256 = _require_manifest_string(wheel, "sha256", "wheel", manifest_path)
         wheel_path = _require_manifested_file(
             requirements.parent,
             _require_manifest_string(wheel, "path", "wheel", manifest_path),
@@ -368,8 +367,7 @@ def _require_control_wheelhouse(path: Path) -> None:
         )
         if wheel_path.suffix != ".whl":
             raise SystemExit(
-                "Runtime Controller wheelhouse dependency is not a wheel: "
-                f"{wheel_path}"
+                f"Runtime Controller wheelhouse dependency is not a wheel: {wheel_path}"
             )
         _require_cpython312_linux_amd64_wheel(
             wheel_path,
@@ -494,10 +492,15 @@ def _require_requirements_hash_closure(
     logical_lines = _requirements_logical_lines(requirements)
     referenced_hashes: set[str] = set()
     for line in logical_lines:
-        hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", line)
+        hash_tokens = re.findall(r"(?:^|\s)--hash=([^\s]+)", line)
+        hashes = [
+            token.removeprefix("sha256:")
+            for token in hash_tokens
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is not None
+        ]
         invalid_hashes = [
             token
-            for token in re.findall(r"--hash=([^\s]+)", line)
+            for token in hash_tokens
             if re.fullmatch(r"sha256:[0-9a-f]{64}", token) is None
         ]
         if invalid_hashes:
@@ -529,24 +532,41 @@ def _requirements_logical_lines(requirements: Path) -> list[str]:
             "Runtime Controller wheelhouse requirements cannot be read: "
             f"path={requirements} error={error}"
         ) from error
-    logical_lines: list[str] = []
-    pending = ""
+    joined_lines: list[str] = []
+    pending: str | None = None
     for physical_line in physical_lines:
-        line = physical_line.strip()
-        if not line or line.startswith("#"):
+        # Match pip preprocessing order: it joins literal trailing-backslash
+        # continuations before it removes whitespace-introduced comments.
+        comment_line = re.match(r"(^|\s+)#.*$", physical_line) is not None
+        if physical_line.endswith("\\") and not comment_line:
+            if pending is None:
+                pending = ""
+            pending += physical_line.strip("\\")
             continue
-        if pending:
-            line = pending + line
-            pending = ""
-        if line.endswith("\\"):
-            pending = line[:-1].rstrip() + " "
-            continue
-        logical_lines.append(line)
-    if pending:
+        if comment_line:
+            # Keep a comment following a continuation a comment after joining.
+            physical_line = " " + physical_line
+        if pending is None:
+            joined_lines.append(physical_line)
+        else:
+            joined_lines.append(pending + physical_line)
+            pending = None
+    if pending is not None:
         raise SystemExit(
             "Runtime Controller wheelhouse requirements has an unterminated "
             f"line continuation: path={requirements}"
         )
+    logical_lines: list[str] = []
+    for joined_line in joined_lines:
+        line = re.sub(r"(^|\s+)#.*$", "", joined_line).strip()
+        if not line:
+            continue
+        if line.endswith("\\"):
+            raise SystemExit(
+                "Runtime Controller wheelhouse requirements has a malformed "
+                f"line continuation: path={requirements} entry={line!r}"
+            )
+        logical_lines.append(line)
     if not logical_lines:
         raise SystemExit(
             "Runtime Controller wheelhouse requirements has no dependency entries: "

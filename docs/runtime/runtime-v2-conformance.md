@@ -146,6 +146,19 @@ stop/start round trip, waits for explicit `stopped` and `running` lifecycle
 documents, and proves Runtime Controller capabilities are reachable again
 before the installer publishes `install.json`.
 
+Linux keeps the active install intent in the root-only
+`/etc/vitalserver/install-transaction.json` and writes the immutable payload
+completion receipt to `/etc/vitalserver/release-complete/<version>.json` only
+after the release-path Guest Tools venv install succeeds. A same-version retry
+may resume an incomplete release only with that matching transaction; an
+existing `release.json` by itself is never completion evidence. Existing
+installations that predate the receipt are migrated only when their current,
+root-owned install owner and acceptance run match the requested release. The
+transaction remains after interruption and is removed only after the new
+`install.json` is atomically published. A resumed first install with no prior
+release preserves its partial Host owners and the transaction if another run
+fails; it does not infer which partial files are safe to delete.
+
 The Linux Platform Agent now exposes a durable current Platform workflow and
 schedules bundle verification as an independent transient systemd operation.
 Its default delivery policy is `verify-only`. Update apply is reported as a
@@ -246,13 +259,21 @@ installer performs one explicit migration before activation: it validates the
 currently installed units and writes all three into the Host-owned migration owner
 `/etc/vitalserver/release-systemd-units/releases/<version>` through a
 temporary directory and atomic publish. The immutable old release is not
-modified. A pre-existing migration snapshot must be complete and byte-identical
-to the current units. Missing, partial, or mismatched snapshots are a hard
-update/rollback failure, never a reason to guess from the new release. Rollback
-restores the target release's bundled units or its explicit migration snapshot
-before daemon reload and service restart. This owner is deliberately outside the
-Guest Runtime Controller write scope; Guest-controlled runtime data cannot alter
-the Host rollback unit source.
+modified. A pre-existing migration snapshot must be root-owned, complete, and,
+for a fresh or non-resumed reapplication, byte-identical to the current units.
+For a matching resumed transaction, the snapshot is the immutable
+previous-release source while the live units can already belong to the candidate
+release. That path validates the snapshot but deliberately does not compare it
+with live units; it also refuses to create a missing snapshot from candidate
+state and preserves the transaction for the same verified-bundle retry.
+Otherwise missing, partial, or mismatched snapshots are a hard update/rollback
+failure, never a reason to guess from the new release. Rollback restores the
+target release's bundled units or its explicit migration snapshot before daemon
+reload and service restart. This owner is deliberately outside the Guest Runtime
+Controller write scope; Guest-controlled runtime data cannot alter the Host
+rollback unit source. If install rollback cannot restore the previous units, it
+preserves a snapshot created for that migration rather than deleting the only
+explicit source needed for the next recovery attempt.
 
 `delivery.rollbackTool` is deliberately different from the other Linux delivery
 tools: installation records the new release's immutable absolute path

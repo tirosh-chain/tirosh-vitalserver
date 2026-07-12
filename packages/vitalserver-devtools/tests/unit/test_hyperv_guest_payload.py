@@ -80,12 +80,13 @@ def test_hyperv_guest_payload_stages_native_owner_contract(tmp_path: Path) -> No
     assert "RequiresMountsFor=/mnt/runtime" in control_service
     assert (
         "ExecStartPre=/opt/tirosh/guest-tools/venv/bin/"
-        "tirosh-guest-tools-migrate-control-store --control-state-dir "
-        "/mnt/runtime/control"
+        "tirosh-guest-tools-migrate-control-store"
     ) in control_service
+    assert "--control-state-dir" not in control_service
     settings = (target / "hyperv-guest/guest-tools.toml").read_text(encoding="utf-8")
     assert 'runtimeMountMode = "native"' in settings
     assert 'vitalFilesMountMode = "native"' in settings
+    assert '[controlStore]\nroot = "/mnt/runtime"\nrequiresMount = true' in settings
     assert 'runtimeConfigFile = "/mnt/runtime/config/runtime-config.json"' in settings
     assert (
         'runtimeSettingsFile = "/mnt/runtime/config/runtime-settings.json"' in settings
@@ -225,8 +226,7 @@ def test_hyperv_guest_payload_rejects_tampered_guest_tools_wheelhouse_file(
     (
         "alembic-1.16.0-py3-none-any.whl",
         "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_17_x86_64.whl",
-        "sqlalchemy-2.0.51-cp312-cp312-"
-        "manylinux_2_28_x86_64.manylinux2014_x86_64.whl",
+        "sqlalchemy-2.0.51-cp312-cp312-manylinux_2_28_x86_64.manylinux2014_x86_64.whl",
     ),
 )
 def test_hyperv_guest_payload_accepts_cpython312_compatible_wheels(
@@ -316,14 +316,14 @@ def test_hyperv_guest_payload_requires_requirements_to_pin_manifest_wheels(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     requirements = wheelhouse / "linux-amd64/requirements.txt"
     requirements.write_text(
-        "../" + manifest["guestTools"]["path"] + " --hash=sha256:"
+        "../"
+        + manifest["guestTools"]["path"]
+        + " --hash=sha256:"
         + manifest["guestTools"]["sha256"]
         + "\n",
         encoding="utf-8",
     )
-    manifest["targets"]["linux-amd64"]["requirementsSHA256"] = _sha256(
-        requirements
-    )
+    manifest["targets"]["linux-amd64"]["requirementsSHA256"] = _sha256(requirements)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     proof = _write_amd64_rootfs_proof(tmp_path)
     system_raw, data_raw, seed_iso = _hyperv_inputs(tmp_path)
@@ -353,6 +353,80 @@ def test_hyperv_guest_payload_requires_requirements_to_pin_manifest_wheels(
 
     assert result.returncode != 0
     assert "requirements do not pin every manifest wheel" in result.stderr
+
+
+def test_hyperv_guest_payload_ignores_hashes_in_inline_comments(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location("hyperv_payload_stager", STAGER)
+    assert spec is not None and spec.loader is not None
+    stager = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stager)
+    requirements = tmp_path / "requirements.txt"
+    guest_hash = "a" * 64
+    dependency_hash = "b" * 64
+    requirements.write_text(
+        "guest-tools==0.1.0 --hash=sha256:"
+        + guest_hash
+        + " # --hash=sha256:"
+        + dependency_hash
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="requirements do not pin every manifest wheel",
+    ):
+        stager._require_requirements_hash_closure(
+            requirements,
+            {guest_hash, dependency_hash},
+        )
+
+
+@pytest.mark.parametrize(
+    ("requirements_text", "match"),
+    [
+        (
+            "guest-tools==0.1.0 \\\n"
+            "  # this physical line ends the continuation\n"
+            "  --hash=sha256:{hash}\n",
+            "not hash-pinned",
+        ),
+        (
+            "guest-tools==0.1.0 \\ # this is not a continuation\n"
+            "--hash=sha256:{hash}\n",
+            "malformed line continuation",
+        ),
+        (
+            "https://example.invalid/guest-tools.whl#--hash=sha256:{hash}\n",
+            "not hash-pinned",
+        ),
+    ],
+    ids=(
+        "comment-after-continuation",
+        "inline-comment-after-backslash",
+        "url-fragment-is-not-option",
+    ),
+)
+def test_hyperv_guest_payload_matches_pip_requirement_preprocessing(
+    tmp_path: Path,
+    requirements_text: str,
+    match: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location("hyperv_payload_stager", STAGER)
+    assert spec is not None and spec.loader is not None
+    stager = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stager)
+    requirements = tmp_path / "requirements.txt"
+    guest_hash = "a" * 64
+    requirements.write_text(
+        requirements_text.format(hash=guest_hash),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match=match):
+        stager._require_requirements_hash_closure(requirements, {guest_hash})
 
 
 def _hyperv_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -482,7 +556,6 @@ def _write_guest_control_service(deploy: Path) -> None:
         "RequiresMountsFor=/mnt/runtime\n"
         "[Service]\n"
         "ExecStartPre=/opt/tirosh/guest-tools/venv/bin/"
-        "tirosh-guest-tools-migrate-control-store --control-state-dir "
-        "/mnt/runtime/control\n",
+        "tirosh-guest-tools-migrate-control-store\n",
         encoding="utf-8",
     )

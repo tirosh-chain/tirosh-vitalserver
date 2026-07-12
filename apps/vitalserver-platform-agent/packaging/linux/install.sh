@@ -23,7 +23,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-for command in sha256sum docker systemctl systemd-run install cp cmp mv ln od tr curl flock python3 sync cat; do
+for command in sha256sum docker systemctl systemd-run install cp cmp mv ln od tr curl flock python3 sync cat stat readlink; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "VitalServer Linux install dependency is unavailable: $command" >&2
     exit 1
@@ -62,7 +62,18 @@ unit_root="/etc/systemd/system"
 release_root="$opt_root/releases/$version"
 staging_root="$opt_root/releases/.${version}.installing.$$"
 current_link="$opt_root/current"
+release_completion_root="$etc_root/release-complete"
+release_completion_document="$release_completion_root/$version.json"
+install_transaction_document="$etc_root/install-transaction.json"
+release_identity_line=$(sha256sum release.json)
+release_identity_sha256=${release_identity_line%% *}
+current_target=""
 previous_target=""
+install_transaction_active=0
+install_transaction_previous_target=""
+install_transaction_preserve_for_retry=0
+release_root_exists=0
+release_is_complete=0
 release_systemd_snapshot_root="$etc_root/release-systemd-units"
 release_systemd_snapshot_created=0
 release_systemd_snapshot_path=""
@@ -85,10 +96,6 @@ platform_agent_unit_backup="$unit_root/.vitalserver-platform-agent.service.rollb
 runtime_controller_unit_backup="$unit_root/.vitalserver-runtime-controller.service.rollback.$$"
 runtime_provider_unit_backup="$unit_root/.vitalserver-runtime-provider.service.rollback.$$"
 
-if [ -L "$current_link" ]; then
-  previous_target=$(readlink "$current_link")
-fi
-
 validate_release_target() {
   release=$1
   case "$release" in
@@ -108,19 +115,444 @@ validate_release_target() {
   esac
 }
 
+require_root_owned_nonwritable_path() {
+  path=$1
+  label=$2
+  kind=$3
+  case "$kind" in
+    file)
+      if [ ! -f "$path" ] || [ -L "$path" ]; then
+        echo "$label is missing or not a regular file: $path" >&2
+        return 1
+      fi
+      ;;
+    directory)
+      if [ ! -d "$path" ] || [ -L "$path" ]; then
+        echo "$label is missing or not a directory: $path" >&2
+        return 1
+      fi
+      ;;
+    *)
+      echo "Linux install ownership contract kind is invalid: $kind" >&2
+      return 1
+      ;;
+  esac
+  owner=$(stat -c '%u' "$path") || {
+    echo "$label ownership cannot be read: $path" >&2
+    return 1
+  }
+  if [ "$owner" != "0" ]; then
+    echo "$label must be root-owned: path=$path owner=$owner" >&2
+    return 1
+  fi
+  mode=$(stat -c '%a' "$path") || {
+    echo "$label permissions cannot be read: $path" >&2
+    return 1
+  }
+  case "$mode" in
+    ""|*[!0-7]*)
+      echo "$label permissions are invalid: path=$path mode=$mode" >&2
+      return 1
+      ;;
+  esac
+  if [ $((0$mode & 022)) -ne 0 ]; then
+    echo "$label must not be group- or world-writable: path=$path mode=$mode" >&2
+    return 1
+  fi
+}
+
+require_root_owned_regular_file() {
+  require_root_owned_nonwritable_path "$1" "$2" file
+}
+
+require_root_owned_nonwritable_directory() {
+  require_root_owned_nonwritable_path "$1" "$2" directory
+}
+
+ensure_root_owned_nonwritable_directory() {
+  path=$1
+  label=$2
+  mode=$3
+  if [ -e "$path" ] || [ -L "$path" ]; then
+    require_root_owned_nonwritable_directory "$path" "$label"
+    return
+  fi
+  if ! install -d -m "$mode" "$path"; then
+    echo "$label creation failed: $path" >&2
+    return 1
+  fi
+  require_root_owned_nonwritable_directory "$path" "$label"
+}
+
+sync_directory() {
+  directory=$1
+  python3 - "$directory" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+try:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+except OSError as error:
+    raise SystemExit(f"Linux installer directory durability open failed: {path}: {error}")
+try:
+    os.fsync(descriptor)
+except OSError as error:
+    raise SystemExit(f"Linux installer directory durability sync failed: {path}: {error}")
+finally:
+    os.close(descriptor)
+PY
+}
+
+ensure_release_completion_root() {
+  if [ -e "$release_completion_root" ]; then
+    require_root_owned_nonwritable_directory \
+      "$release_completion_root" "Linux release completion root"
+    return
+  fi
+  if ! install -d -m 0700 "$release_completion_root"; then
+    echo "Linux release completion root creation failed: $release_completion_root" >&2
+    return 1
+  fi
+  require_root_owned_nonwritable_directory \
+    "$release_completion_root" "Linux release completion root"
+}
+
+require_release_root_identity() {
+  if ! require_root_owned_nonwritable_directory \
+    "$release_root" "Installed Linux release"; then
+    return 1
+  fi
+  if ! require_root_owned_regular_file \
+    "$release_root/release.json" "Installed Linux release identity"; then
+    return 1
+  fi
+  if ! cmp -s release.json "$release_root/release.json"; then
+    echo "Installed release version already exists with different identity: $release_root" >&2
+    return 1
+  fi
+}
+
+require_release_completion_proof() {
+  if ! require_root_owned_regular_file \
+    "$release_completion_document" "Linux release completion proof"; then
+    return 1
+  fi
+  python3 - "$release_completion_document" "$version" \
+    "$runtime_bundle_version" "$release_identity_sha256" <<'PY'
+import json
+import sys
+
+path, version, runtime_bundle_version, release_sha256 = sys.argv[1:]
+try:
+    with open(path, encoding="utf-8") as stream:
+        document = json.load(stream)
+except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"Linux release completion proof is invalid: {path}: {error}")
+
+expected = {
+    "schemaVersion": 1,
+    "state": "complete",
+    "platformVersion": version,
+    "runtimeBundleVersion": runtime_bundle_version,
+    "releaseSHA256": release_sha256,
+}
+if document != expected:
+    raise SystemExit(
+        f"Linux release completion proof does not match the requested bundle: {path}"
+    )
+PY
+}
+
+write_release_completion_proof() {
+  if ! ensure_release_completion_root; then
+    return 1
+  fi
+  temporary="$release_completion_root/.${version}.complete.$$"
+  cat >"$temporary" <<EOF
+{
+  "schemaVersion": 1,
+  "state": "complete",
+  "platformVersion": "$version",
+  "runtimeBundleVersion": "$runtime_bundle_version",
+  "releaseSHA256": "$release_identity_sha256"
+}
+EOF
+  if ! chmod 0600 "$temporary" || ! sync "$temporary" || \
+    ! mv -f "$temporary" "$release_completion_document"; then
+    rm -f "$temporary"
+    echo "Linux release completion proof publish failed: $release_completion_document" >&2
+    return 1
+  fi
+  if ! sync_directory "$release_completion_root"; then
+    echo "Linux release completion proof directory durability failed: $release_completion_root" >&2
+    return 1
+  fi
+}
+
+read_installed_owner_previous_release() {
+  if ! require_root_owned_nonwritable_directory \
+    "$var_root" "Linux install owner root"; then
+    return 1
+  fi
+  if ! require_root_owned_regular_file \
+    "$var_root/install.json" "Linux install owner"; then
+    return 1
+  fi
+  python3 - "$var_root/install.json" "$version" "$runtime_bundle_version" <<'PY'
+import json
+import re
+import sys
+
+path, version, runtime_bundle_version = sys.argv[1:]
+try:
+    with open(path, encoding="utf-8") as stream:
+        document = json.load(stream)
+except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"Linux install owner is unavailable or invalid: {error}")
+
+if document.get("schemaVersion") != 1:
+    raise SystemExit("Linux install owner schemaVersion is invalid")
+if document.get("state") != "installed" or document.get("platformVersion") != version:
+    raise SystemExit("Linux install owner identity does not match the current release")
+if document.get("runtimeBundleVersion") != runtime_bundle_version:
+    raise SystemExit("Linux install owner runtime bundle does not match the current release")
+if not isinstance(document.get("installedAcceptanceRunId"), str) or not document[
+    "installedAcceptanceRunId"
+]:
+    raise SystemExit("Linux install owner acceptance proof is unavailable")
+
+previous_release = document.get("previousRelease")
+if previous_release is None:
+    print("-")
+elif not isinstance(previous_release, str) or not re.fullmatch(
+    r"releases/[A-Za-z0-9._+-]+", previous_release
+):
+    raise SystemExit("Linux install owner has an invalid previousRelease")
+elif previous_release == f"releases/{version}":
+    raise SystemExit("Linux install owner previousRelease points to itself")
+else:
+    print(previous_release)
+PY
+}
+
+finish_published_install_transaction() {
+  candidate_target="releases/$version"
+  if [ "$install_transaction_active" -eq 0 ] || \
+    [ "$install_transaction_previous_target" = "$candidate_target" ] || \
+    [ "$current_target" != "$candidate_target" ] || \
+    [ "$release_is_complete" -eq 0 ]; then
+    return 0
+  fi
+  if [ ! -e "$var_root/install.json" ] && [ ! -L "$var_root/install.json" ]; then
+    return 0
+  fi
+  if ! require_root_owned_nonwritable_directory \
+    "$var_root" "Linux install owner root" || \
+    ! require_root_owned_regular_file \
+      "$var_root/install.json" "Linux install owner"; then
+    return 1
+  fi
+  expected_previous_release=$install_transaction_previous_target
+  transaction_commit_state=$(python3 - "$var_root/install.json" "$version" \
+    "$runtime_bundle_version" "$expected_previous_release" <<'PY'
+import json
+import re
+import sys
+
+path, version, runtime_bundle_version, expected_previous_release = sys.argv[1:]
+try:
+    with open(path, encoding="utf-8") as stream:
+        document = json.load(stream)
+except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"Linux install owner is unavailable or invalid: {error}")
+
+if document.get("schemaVersion") != 1:
+    raise SystemExit("Linux install owner schemaVersion is invalid")
+if document.get("platformVersion") != version:
+    print("pending")
+    raise SystemExit(0)
+if document.get("state") != "installed":
+    raise SystemExit("Linux install owner state is invalid for the candidate release")
+if document.get("runtimeBundleVersion") != runtime_bundle_version:
+    raise SystemExit("Linux install owner runtime bundle does not match the candidate release")
+if not isinstance(document.get("installedAcceptanceRunId"), str) or not document[
+    "installedAcceptanceRunId"
+]:
+    raise SystemExit("Linux install owner acceptance proof is unavailable")
+
+previous_release = document.get("previousRelease")
+if previous_release is not None and (
+    not isinstance(previous_release, str)
+    or re.fullmatch(r"releases/[A-Za-z0-9._+-]+", previous_release) is None
+):
+    raise SystemExit("Linux install owner previousRelease is invalid")
+expected = expected_previous_release or None
+if previous_release != expected:
+    raise SystemExit(
+        "Linux install owner previousRelease does not match the active transaction"
+    )
+print("committed")
+PY
+  ) || return 1
+  case "$transaction_commit_state" in
+    pending)
+      return 0
+      ;;
+    committed)
+      if ! rm -f "$install_transaction_document"; then
+        echo "Linux published install transaction cleanup failed: $install_transaction_document" >&2
+        return 1
+      fi
+      if ! sync_directory "$etc_root"; then
+        echo "Linux published install transaction directory durability failed: $etc_root" >&2
+        return 1
+      fi
+      install_transaction_active=0
+      install_transaction_preserve_for_retry=0
+      previous_target=$current_target
+      ;;
+    *)
+      echo "Linux install transaction completion state is invalid: $transaction_commit_state" >&2
+      return 1
+      ;;
+  esac
+}
+
+read_install_transaction() {
+  if [ ! -e "$install_transaction_document" ] && \
+    [ ! -L "$install_transaction_document" ]; then
+    return 0
+  fi
+  if ! require_root_owned_regular_file \
+    "$install_transaction_document" "Linux install transaction"; then
+    return 1
+  fi
+  transaction_values=$(python3 - "$install_transaction_document" <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as stream:
+        document = json.load(stream)
+except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"Linux install transaction is unavailable or invalid: {error}")
+
+version = document.get("platformVersion")
+runtime_bundle_version = document.get("runtimeBundleVersion")
+release_sha256 = document.get("releaseSHA256")
+previous_release = document.get("previousRelease")
+if document.get("schemaVersion") != 1 or document.get("state") != "installing":
+    raise SystemExit("Linux install transaction contract is invalid")
+if not isinstance(version, str) or not re.fullmatch(r"[A-Za-z0-9._+-]+", version):
+    raise SystemExit("Linux install transaction platformVersion is invalid")
+if not isinstance(runtime_bundle_version, str) or not re.fullmatch(
+    r"[A-Za-z0-9._+-]+", runtime_bundle_version
+):
+    raise SystemExit("Linux install transaction runtimeBundleVersion is invalid")
+if not isinstance(release_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", release_sha256):
+    raise SystemExit("Linux install transaction releaseSHA256 is invalid")
+if previous_release is None:
+    previous = "-"
+elif isinstance(previous_release, str) and re.fullmatch(
+    r"releases/[A-Za-z0-9._+-]+", previous_release
+):
+    previous = previous_release
+else:
+    raise SystemExit("Linux install transaction previousRelease is invalid")
+print(":".join((version, runtime_bundle_version, release_sha256, previous)))
+PY
+  ) || return 1
+  IFS=: read -r transaction_version transaction_runtime_bundle_version \
+    transaction_release_sha256 transaction_previous_release <<EOF
+$transaction_values
+EOF
+  if [ "$transaction_version" != "$version" ] || \
+    [ "$transaction_runtime_bundle_version" != "$runtime_bundle_version" ] || \
+    [ "$transaction_release_sha256" != "$release_identity_sha256" ]; then
+    echo "Linux install transaction belongs to a different bundle: $install_transaction_document" >&2
+    return 1
+  fi
+  if [ "$transaction_previous_release" = "-" ]; then
+    install_transaction_previous_target=""
+  else
+    install_transaction_previous_target=$transaction_previous_release
+  fi
+  install_transaction_active=1
+  # A transaction found before this process started can already own a mix of
+  # live candidate and previous-release state.  A later failure in this
+  # process must leave that evidence intact for the same verified bundle to
+  # resume; it cannot safely reinterpret it as a fresh B -> C rollback.
+  install_transaction_preserve_for_retry=1
+}
+
+begin_install_transaction() {
+  previous_release=$1
+  if [ -n "$previous_release" ]; then
+    previous_release_document="\"$previous_release\""
+  else
+    previous_release_document="null"
+  fi
+  temporary="$etc_root/.install-transaction.json.$$"
+  cat >"$temporary" <<EOF
+{
+  "schemaVersion": 1,
+  "state": "installing",
+  "platformVersion": "$version",
+  "runtimeBundleVersion": "$runtime_bundle_version",
+  "releaseSHA256": "$release_identity_sha256",
+  "previousRelease": $previous_release_document
+}
+EOF
+  if ! chmod 0600 "$temporary" || ! sync "$temporary" || \
+    ! mv -f "$temporary" "$install_transaction_document"; then
+    rm -f "$temporary"
+    echo "Linux install transaction publish failed: $install_transaction_document" >&2
+    return 1
+  fi
+  if ! sync_directory "$etc_root"; then
+    echo "Linux install transaction directory durability failed: $etc_root" >&2
+    return 1
+  fi
+  install_transaction_active=1
+  install_transaction_previous_target=$previous_release
+  install_transaction_preserve_for_retry=0
+}
+
+validate_install_transaction_current_target() {
+  if [ "$install_transaction_active" -eq 0 ]; then
+    return 0
+  fi
+  candidate_target="releases/$version"
+  if [ "$current_target" = "$candidate_target" ]; then
+    previous_target=$install_transaction_previous_target
+    return 0
+  fi
+  if [ "$current_target" = "$install_transaction_previous_target" ]; then
+    previous_target=$current_target
+    return 0
+  fi
+  if [ -z "$current_target" ] && [ -z "$install_transaction_previous_target" ]; then
+    previous_target=""
+    return 0
+  fi
+  echo "Linux install transaction current release does not match its owner: current=${current_target:-none} previous=${install_transaction_previous_target:-none}" >&2
+  return 1
+}
+
 require_systemd_unit_directory() {
   directory=$1
   label=$2
-  if [ ! -d "$directory" ] || [ -L "$directory" ]; then
-    echo "$label is not a directory: $directory" >&2
+  if ! require_root_owned_nonwritable_directory "$directory" "$label"; then
     return 1
   fi
   for unit in \
     vitalserver-platform-agent.service \
     vitalserver-runtime-controller.service \
     vitalserver-runtime-provider.service; do
-    if [ ! -f "$directory/$unit" ] || [ -L "$directory/$unit" ]; then
-      echo "$label is incomplete: $directory/$unit" >&2
+    if ! require_root_owned_regular_file "$directory/$unit" "$label unit"; then
       return 1
     fi
   done
@@ -164,6 +596,13 @@ snapshot_release_systemd_units() {
       "$snapshot_root" "Existing release systemd migration snapshot"; then
       return 1
     fi
+    # A matching transaction may have already applied the candidate's units.
+    # The root-owned snapshot is the immutable previous-release source, so it
+    # must stay distinct from those live candidate units until the same bundle
+    # finishes or an explicit rollback owns the restoration.
+    if [ "$install_transaction_preserve_for_retry" -eq 1 ]; then
+      return 0
+    fi
     for unit in \
       vitalserver-platform-agent.service \
       vitalserver-runtime-controller.service \
@@ -174,6 +613,11 @@ snapshot_release_systemd_units() {
       fi
     done
     return 0
+  fi
+
+  if [ "$install_transaction_preserve_for_retry" -eq 1 ]; then
+    echo "Linux release systemd migration snapshot is unavailable for resumed transaction: release=$release snapshot=$snapshot_root" >&2
+    return 1
   fi
 
   if ! ensure_release_systemd_snapshot_root; then
@@ -205,9 +649,83 @@ snapshot_release_systemd_units() {
   release_systemd_snapshot_temporary=""
   release_systemd_snapshot_created=1
   release_systemd_snapshot_path=$snapshot_root
+  if ! sync_directory "$release_systemd_snapshot_root/releases"; then
+    echo "Linux release systemd snapshot migration directory durability failed: $release_systemd_snapshot_root/releases" >&2
+    return 1
+  fi
 }
 
+if ! ensure_root_owned_nonwritable_directory \
+  "$opt_root" "Linux release root" 0755 || \
+  ! ensure_root_owned_nonwritable_directory \
+    "$opt_root/releases" "Linux releases root" 0755 || \
+  ! ensure_root_owned_nonwritable_directory \
+    "$var_root" "Linux install owner root" 0755; then
+  exit 1
+fi
+
+if [ -L "$current_link" ]; then
+  current_target=$(readlink "$current_link") || {
+    echo "Linux current release owner cannot be read: $current_link" >&2
+    exit 1
+  }
+elif [ -e "$current_link" ]; then
+  echo "Linux current release owner is not a symbolic link: $current_link" >&2
+  exit 1
+fi
+if [ -n "$current_target" ] && ! validate_release_target "$current_target"; then
+  exit 1
+fi
+previous_target=$current_target
+
+if ! install -d -m 0755 "$etc_root"; then
+  echo "Linux install transaction root creation failed: $etc_root" >&2
+  exit 1
+fi
+if ! require_root_owned_nonwritable_directory \
+  "$etc_root" "Linux install transaction root"; then
+  exit 1
+fi
+if ! read_install_transaction; then
+  exit 1
+fi
+if ! validate_install_transaction_current_target; then
+  exit 1
+fi
 if [ -n "$previous_target" ] && ! validate_release_target "$previous_target"; then
+  exit 1
+fi
+
+if [ -e "$release_root" ] || [ -L "$release_root" ]; then
+  if ! require_release_root_identity; then
+    exit 1
+  fi
+  release_root_exists=1
+  if [ -e "$release_completion_document" ] || \
+    [ -L "$release_completion_document" ]; then
+    if ! require_release_completion_proof; then
+      exit 1
+    fi
+    release_is_complete=1
+  elif [ "$install_transaction_active" -eq 1 ]; then
+    # A matching, durable transaction is the only owner allowed to resume a
+    # release that was published before its guest-tools install completed.
+    release_is_complete=0
+  elif [ "$current_target" = "releases/$version" ]; then
+    # Explicit migration for installations created before completion receipts
+    # existed.  A matching installed owner and acceptance proof, not
+    # release.json alone, authorizes the root-owned receipt.
+    if ! read_installed_owner_previous_release >/dev/null || \
+      ! write_release_completion_proof; then
+      exit 1
+    fi
+    release_is_complete=1
+  else
+    echo "Installed release is incomplete without a matching Linux install transaction: $release_root" >&2
+    exit 1
+  fi
+fi
+if ! finish_published_install_transaction; then
   exit 1
 fi
 
@@ -237,6 +755,14 @@ fi
 rollback_install() {
   status=${1:-$?}
   trap - EXIT HUP INT TERM
+  if [ "$install_transaction_preserve_for_retry" -eq 1 ]; then
+    # This process resumed an explicit, matching transaction.  Its mutable
+    # owners can include state published by the interrupted process, so a
+    # B -> C rollback would be an inference.  Leave every owner untouched for
+    # the same verified bundle to resume from the transaction document.
+    echo "VitalServer Linux install failed version=$version rollbackState=preserved-for-retry previousRelease=${previous_target:-none} transaction=$install_transaction_document" >&2
+    exit "$status"
+  fi
   rollback_failed=0
   release_restored=1
   owner_configuration_restored=1
@@ -245,6 +771,7 @@ rollback_install() {
     "$staging_root" \
     "$current_link.next.$$" \
     "$var_root/.install.json.$$" \
+    "$etc_root/.install-transaction.json.$$" \
     "$etc_root/.runtime-config.json.$$" \
     "$etc_root/.runtime.env.$$"; then
     echo "Linux install rollback cleanup failed staging=$staging_root" >&2
@@ -283,7 +810,8 @@ rollback_install() {
   fi
   if [ -n "$previous_target" ]; then
     if ! ln -s "$previous_target" "$current_link.rollback.$$" || \
-      ! mv -Tf "$current_link.rollback.$$" "$current_link"; then
+      ! mv -Tf "$current_link.rollback.$$" "$current_link" || \
+      ! sync_directory "$opt_root"; then
       echo "Linux install rollback release restoration failed previousRelease=$previous_target" >&2
       release_restored=0
       rollback_failed=1
@@ -388,15 +916,48 @@ rollback_install() {
     echo "Linux install rollback systemd unit backup cleanup failed" >&2
     rollback_failed=1
   fi
-  if [ "$release_systemd_snapshot_created" -eq 1 ] && \
-    ! rm -rf "$release_systemd_snapshot_path"; then
-    echo "Linux install rollback created systemd snapshot cleanup failed path=$release_systemd_snapshot_path" >&2
-    rollback_failed=1
-  fi
+  candidate_cleanup_required=0
   if [ "$release_created" -eq 1 ]; then
-    if ! rm -rf "$release_root"; then
-      echo "Linux install rollback created release cleanup failed release=$release_root" >&2
-      rollback_failed=1
+    candidate_cleanup_required=1
+  elif [ "$install_transaction_active" -eq 1 ] && \
+    [ "$release_root_exists" -eq 1 ] && \
+    [ "$install_transaction_previous_target" != "releases/$version" ]; then
+    candidate_cleanup_required=1
+  fi
+  if [ "$candidate_cleanup_required" -eq 1 ]; then
+    if [ "$rollback_failed" -eq 0 ]; then
+      if ! rm -f "$release_completion_document"; then
+        echo "Linux install rollback created release completion cleanup failed path=$release_completion_document" >&2
+        rollback_failed=1
+      fi
+      if ! rm -rf "$release_root"; then
+        echo "Linux install rollback transaction release cleanup failed release=$release_root" >&2
+        rollback_failed=1
+      fi
+    else
+      echo "Linux install rollback preserves transaction release because restoration is incomplete release=$release_root" >&2
+    fi
+  fi
+  if [ "$release_systemd_snapshot_created" -eq 1 ]; then
+    if [ "$rollback_failed" -eq 0 ]; then
+      if ! rm -rf "$release_systemd_snapshot_path"; then
+        echo "Linux install rollback created systemd snapshot cleanup failed path=$release_systemd_snapshot_path" >&2
+        rollback_failed=1
+      fi
+    else
+      echo "Linux install rollback preserves systemd migration snapshot because restoration is incomplete path=$release_systemd_snapshot_path" >&2
+    fi
+  fi
+  if [ "$install_transaction_active" -eq 1 ]; then
+    if [ "$rollback_failed" -eq 0 ]; then
+      if ! rm -f "$install_transaction_document"; then
+        echo "Linux install rollback transaction cleanup failed path=$install_transaction_document" >&2
+        rollback_failed=1
+      else
+        install_transaction_active=0
+      fi
+    else
+      echo "Linux install rollback preserves transaction because restoration is incomplete path=$install_transaction_document" >&2
     fi
   fi
   if [ "$rollback_failed" -eq 0 ]; then
@@ -412,7 +973,12 @@ trap 'rollback_install 129' HUP
 trap 'rollback_install 130' INT
 trap 'rollback_install 143' TERM
 
-install -d -m 0755 "$opt_root/releases" "$etc_root" "$unit_root"
+if [ "$install_transaction_active" -eq 0 ] && \
+  ! begin_install_transaction "$current_target"; then
+  exit 1
+fi
+
+install -d -m 0755 "$etc_root" "$unit_root"
 install -d -m 0700 "$etc_root/secrets" "$etc_root/secrets/redis-relay"
 install -d -m 0750 "$etc_root/redis-relay"
 install -d -m 0755 "$var_root/run" "$var_root/data/vital-files" "$var_root/proof"
@@ -542,23 +1108,47 @@ install -m 0644 packaging/vitalserver-runtime-provider.service \
   "$staging_root/tools/systemd/vitalserver-runtime-provider.service"
 install -m 0644 release.json "$staging_root/release.json"
 
-if [ -e "$release_root" ]; then
-  if [ ! -f "$release_root/release.json" ] || ! cmp -s release.json "$release_root/release.json"; then
-    echo "Installed release version already exists with different identity: $release_root" >&2
-    exit 1
-  fi
-  rm -rf "$staging_root"
-else
-  mv "$staging_root" "$release_root"
-  release_created=1
-  # A venv embeds absolute interpreter paths in its console scripts.  Build it
-  # only after the immutable release tree has its final pathname; building it
-  # under staging_root would leave the Runtime Controller with a broken shebang
-  # as soon as this directory is published.
+install_release_guest_tools() {
   VITALSERVER_RUNTIME_CONTROLLER_SETTINGS_PATH="$etc_root/runtime-controller.toml" \
     python3 "$release_root/runtime-controller/install-guest-tools-runtime.py" \
       --wheel-dir "$release_root/runtime-controller/python-wheels" \
       --guest-tools-home "$release_root/runtime-controller"
+}
+
+if [ "$release_root_exists" -eq 1 ]; then
+  rm -rf "$staging_root"
+  if [ "$release_is_complete" -eq 0 ]; then
+    if ! install_release_guest_tools; then
+      echo "Linux interrupted release guest-tools installation recovery failed: $release_root" >&2
+      exit 1
+    fi
+    if ! write_release_completion_proof; then
+      exit 1
+    fi
+    release_is_complete=1
+  fi
+else
+  if ! mv "$staging_root" "$release_root"; then
+    echo "Linux release publish failed: $release_root" >&2
+    exit 1
+  fi
+  release_created=1
+  if ! sync_directory "$opt_root/releases"; then
+    echo "Linux release publish directory durability failed: $opt_root/releases" >&2
+    exit 1
+  fi
+  # A venv embeds absolute interpreter paths in its console scripts.  Build it
+  # only after the immutable release tree has its final pathname; building it
+  # under staging_root would leave the Runtime Controller with a broken shebang
+  # as soon as this directory is published.
+  if ! install_release_guest_tools; then
+    echo "Linux release guest-tools installation failed: $release_root" >&2
+    exit 1
+  fi
+  if ! write_release_completion_proof; then
+    exit 1
+  fi
+  release_is_complete=1
 fi
 rollback_tool_path="$release_root/tools/rollback-linux.py"
 if [ ! -x "$rollback_tool_path" ]; then
@@ -727,8 +1317,15 @@ install -m 0644 packaging/vitalserver-runtime-controller.service "$unit_root/vit
 install -m 0644 packaging/vitalserver-runtime-provider.service "$unit_root/vitalserver-runtime-provider.service"
 units_installed=1
 
-ln -s "releases/$version" "$current_link.next.$$"
-mv -Tf "$current_link.next.$$" "$current_link"
+if ! ln -s "releases/$version" "$current_link.next.$$" || \
+  ! mv -Tf "$current_link.next.$$" "$current_link"; then
+  echo "Linux current release publish failed: releases/$version" >&2
+  exit 1
+fi
+if ! sync_directory "$opt_root"; then
+  echo "Linux current release directory durability failed: $opt_root" >&2
+  exit 1
+fi
 
 systemctl daemon-reload
 systemctl enable vitalserver-platform-agent.service vitalserver-runtime-provider.service vitalserver-runtime-controller.service
@@ -766,35 +1363,12 @@ python3 packaging/acceptance-linux.py \
 acceptance_run_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["runId"])' \
   "$var_root/proof/linux-native-acceptance.json")
 
-previous_release_for_owner="$previous_target"
-if [ "$previous_target" = "releases/$version" ]; then
-  previous_release_for_owner=$(python3 - "$var_root/install.json" "$version" <<'PY'
-import json
-import re
-import sys
-
-path, version = sys.argv[1:]
-try:
-    with open(path, encoding="utf-8") as stream:
-        document = json.load(stream)
-except (OSError, UnicodeError, json.JSONDecodeError) as error:
-    raise SystemExit(f"same-version install owner is unavailable or invalid: {error}")
-
-if document.get("state") != "installed" or document.get("platformVersion") != version:
-    raise SystemExit("same-version install owner identity does not match the current release")
-previous_release = document.get("previousRelease")
-if previous_release is None:
-    print("")
-elif not isinstance(previous_release, str) or not re.fullmatch(
-    r"releases/[A-Za-z0-9._+-]+", previous_release
-):
-    raise SystemExit("same-version install owner has an invalid previousRelease")
-elif previous_release == f"releases/{version}":
-    raise SystemExit("same-version install owner previousRelease points to itself")
-else:
-    print(previous_release)
-PY
-  )
+previous_release_for_owner=$install_transaction_previous_target
+if [ "$previous_release_for_owner" = "releases/$version" ]; then
+  previous_release_for_owner=$(read_installed_owner_previous_release)
+  if [ "$previous_release_for_owner" = "-" ]; then
+    previous_release_for_owner=""
+  fi
 fi
 
 installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -814,7 +1388,31 @@ cat >"$install_document" <<EOF
 EOF
 chmod 0600 "$install_document"
 sync "$install_document"
-mv -f "$install_document" "$var_root/install.json"
+# This is the final commit boundary.  From here a rollback could restore B
+# while leaving C's owner published, so preserve the matching transaction for
+# retry instead.  The individual publish failures below report that state.
+trap - EXIT HUP INT TERM
+if ! mv -f "$install_document" "$var_root/install.json"; then
+  echo "VitalServer Linux install failed version=$version rollbackState=preserved-for-retry phase=install-owner-publish reason=rename transaction=$install_transaction_document" >&2
+  exit 1
+fi
+if ! sync_directory "$var_root"; then
+  echo "VitalServer Linux install failed version=$version rollbackState=preserved-for-retry phase=install-owner-publish reason=directory-durability transaction=$install_transaction_document" >&2
+  exit 1
+fi
+
+# The owner is now durable.  Transaction cleanup is only reconciliation, not
+# a reason to undo the committed owner.
+
+if ! rm -f "$install_transaction_document"; then
+  echo "VitalServer Linux install failed version=$version rollbackState=preserved-for-retry phase=install-transaction-cleanup reason=remove transaction=$install_transaction_document" >&2
+  exit 1
+fi
+if ! sync_directory "$etc_root"; then
+  echo "VitalServer Linux install failed version=$version commitState=owner-published transactionState=cleanup-durability-unknown transaction=$install_transaction_document" >&2
+  exit 1
+fi
+install_transaction_active=0
 
 rm -f "$platform_agent_configuration_backup"
 platform_agent_configuration_backed_up=0
@@ -825,5 +1423,4 @@ rm -f \
   "$runtime_controller_unit_backup" \
   "$runtime_provider_unit_backup"
 units_backed_up=0
-trap - EXIT HUP INT TERM
 echo "VitalServer Linux install passed platformVersion=$version runtimeBundleVersion=$runtime_bundle_version"

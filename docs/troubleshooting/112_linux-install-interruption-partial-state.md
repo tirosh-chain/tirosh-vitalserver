@@ -43,11 +43,45 @@ created by the active transaction, and removes first-install units and
 ephemeral run/proof state when that first installation fails. The install owner
 is published only after installed acceptance passes. Same-version reapplication
 preserves the existing owner's earlier `previousRelease`; it rejects an invalid
-or self-referential rollback lineage instead of silently replacing it.
-When a new Agent adds required delivery fields, the installer performs an
-explicit schema-1 migration, verifies the separate API token owner, and keeps a
-transaction backup so failed acceptance restores the previous configuration
-before restarting the previous release's services.
+or self-referential rollback lineage instead of silently replacing it. The
+root-owned `/etc/vitalserver/install-transaction.json` records an unfinished
+intent, while `/etc/vitalserver/release-complete/<version>.json` is published
+only after the release-path Guest Tools install completes. Therefore an
+uninterrupted-looking `release.json` cannot make a partial same-version release
+eligible for activation. A retry needs the matching transaction, or an explicit
+migration from a matching root-owned installed owner and acceptance proof.
+When rollback cannot restore the previous systemd units, it retains the
+legacy-unit migration snapshot so a later recovery still has an explicit source.
+Any invocation that resumes a matching transaction preserves its current link,
+install owner, mutable configuration and units, candidate release, completion
+receipt, and transaction if it later fails. It reports
+`rollbackState=preserved-for-retry` rather than guessing that the live state
+still belongs to the transaction's earlier release. Retry the same verified
+bundle; do not remove those owners as routine cleanup. If that earlier release
+uses a legacy systemd-unit snapshot, the resumed installer validates the
+root-owned complete snapshot as the immutable previous-release source but does
+not compare it with live units that may already belong to the candidate. A
+missing legacy snapshot is an explicit preserved-for-retry failure; it is never
+created by copying those candidate units. Before trusting or
+executing a release, the installer also verifies that `/opt/vitalserver` and
+its `releases` ancestor are root-owned, non-symlink, and not group- or
+world-writable, and validates `/var/lib/vitalserver` before writing install
+owners there. The final install-owner publish is a no-rollback boundary: after
+the temporary owner has been synced, the installer disarms rollback traps before
+its atomic rename. A rename or owner-directory durability failure therefore
+keeps the transaction and reports `rollbackState=preserved-for-retry` for a
+same-bundle retry, instead of restoring the previous release around a possibly
+published new owner. The installer also syncs the parent directory after a new
+release publish, each `current` link swap (including rollback), and a legacy
+systemd-unit snapshot publish before any later durable owner or transaction
+stage. If the post-commit transaction removal itself cannot be durably synced,
+the installer reports the owner as published and the transaction cleanup as
+durability-unknown; it does not falsely claim rollback or infer which side of
+that deletion survives a power loss. When a new Agent adds required delivery
+fields, the installer performs an explicit schema-1 migration, verifies the
+separate API token owner, and keeps a transaction backup so failed acceptance
+restores the previous configuration before restarting the previous release's
+services.
 
 ## Operational Notes
 

@@ -40,14 +40,14 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     (wheel_project / "src/guest_tools/__init__.py").write_text("\n")
     (wheel_project / "src/guest_tools/observability/__init__.py").write_text("\n")
     (wheel_project / "src/guest_tools/resources/guest-tools.toml").write_text(
-        "guestHostname = \"guest\"\n"
+        'guestHostname = "guest"\n'
     )
     (wheel_project / "src/guest_tools/observability/cli.py").write_text(
         "def main():\n    return 0\n"
     )
-    (
-        wheel_project / "src/guest_tools/observability/container_logs.py"
-    ).write_text("def main():\n    return 0\n")
+    (wheel_project / "src/guest_tools/observability/container_logs.py").write_text(
+        "def main():\n    return 0\n"
+    )
     (wheel_project / "pyproject.toml").write_text(
         "\n".join(
             [
@@ -218,8 +218,7 @@ def test_guest_tools_runtime_installer_requires_hash_pinned_manifest_wheel_closu
     guest_hash = "a" * 64
     dependency_hash = "b" * 64
     requirements.write_text(
-        "guest-tools==0.1.0 \\\n"
-        f"  --hash=sha256:{guest_hash}\n",
+        f"guest-tools==0.1.0 \\\n  --hash=sha256:{guest_hash}\n",
         encoding="utf-8",
     )
 
@@ -231,3 +230,83 @@ def test_guest_tools_runtime_installer_requires_hash_pinned_manifest_wheel_closu
             requirements,
             {guest_hash, dependency_hash},
         )
+
+
+def test_guest_tools_runtime_installer_ignores_hashes_in_inline_comments(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "guest_tools_runtime_installer",
+        GUEST_TOOLS_RUNTIME_INSTALLER,
+    )
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    requirements = tmp_path / "requirements.txt"
+    guest_hash = "a" * 64
+    dependency_hash = "b" * 64
+    requirements.write_text(
+        "guest-tools==0.1.0 --hash=sha256:"
+        + guest_hash
+        + " # --hash=sha256:"
+        + dependency_hash
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        installer.GuestToolsInstallError,
+        match="requirements do not pin every manifest wheel",
+    ):
+        installer.require_requirements_hash_closure(
+            requirements,
+            {guest_hash, dependency_hash},
+        )
+
+
+@pytest.mark.parametrize(
+    ("requirements_text", "match"),
+    [
+        (
+            "guest-tools==0.1.0 \\\n"
+            "  # this physical line ends the continuation\n"
+            "  --hash=sha256:{hash}\n",
+            "not hash-pinned",
+        ),
+        (
+            "guest-tools==0.1.0 \\ # this is not a continuation\n"
+            "--hash=sha256:{hash}\n",
+            "malformed line continuation",
+        ),
+        (
+            "https://example.invalid/guest-tools.whl#--hash=sha256:{hash}\n",
+            "not hash-pinned",
+        ),
+    ],
+    ids=(
+        "comment-after-continuation",
+        "inline-comment-after-backslash",
+        "url-fragment-is-not-option",
+    ),
+)
+def test_guest_tools_runtime_installer_matches_pip_requirement_preprocessing(
+    tmp_path: Path,
+    requirements_text: str,
+    match: str,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "guest_tools_runtime_installer",
+        GUEST_TOOLS_RUNTIME_INSTALLER,
+    )
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    requirements = tmp_path / "requirements.txt"
+    guest_hash = "a" * 64
+    requirements.write_text(
+        requirements_text.format(hash=guest_hash),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(installer.GuestToolsInstallError, match=match):
+        installer.require_requirements_hash_closure(requirements, {guest_hash})
