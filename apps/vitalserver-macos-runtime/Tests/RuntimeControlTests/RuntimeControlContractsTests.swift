@@ -2450,6 +2450,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             vrcode: nil,
             linkedRecorderStatus: nil,
             linkedRecorderIP: nil,
+            linkedRecorderVersion: nil,
             linkedRecorderLastSeenAt: nil,
             status: .notObserved,
             patientConnected: nil,
@@ -2485,6 +2486,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             "vrcode",
             "linkedRecorderStatus",
             "linkedRecorderIP",
+            "linkedRecorderVersion",
             "linkedRecorderLastSeenAt",
             "patientConnected",
             "firstSeenAt",
@@ -2498,6 +2500,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         }
         XCTAssertEqual(legacy.bedID, "bed-legacy")
         XCTAssertNil(legacy.linkedRecorderStatus)
+        XCTAssertNil(legacy.linkedRecorderVersion)
     }
 
     func testRecorderRedisIPSyncObservationEncodesNullableFieldsAsExplicitNull() throws {

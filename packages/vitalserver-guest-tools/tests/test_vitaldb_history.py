@@ -57,6 +57,9 @@ def test_projects_cumulative_recorder_and_bed_history_from_explicit_snapshots() 
     assert by_vrcode["VR-OLD"]["visibility"] == "hidden"
     assert by_vrcode["VR-NEW"]["duplicateObservationCount"] == 1
     assert by_vrcode["VR-NEW"]["currentAnomalyCount"] == 1
+    beds_by_id = {record["bedID"]: record for record in history["beds"]}
+    assert beds_by_id["bed-new"]["linkedRecorderVersion"] == "1.0"
+    assert beds_by_id["bed-old"]["linkedRecorderVersion"] == "1.0"
 
 
 def test_projects_activity_and_excludes_explicitly_deleted_entities() -> None:

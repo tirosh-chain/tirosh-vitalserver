@@ -1013,6 +1013,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
     public let vrcode: String?
     public let linkedRecorderStatus: RuntimeVitalRecorderStatus?
     public let linkedRecorderIP: String?
+    public let linkedRecorderVersion: String?
     public let linkedRecorderLastSeenAt: String?
     public let status: RuntimeVitalBedStatus
     public let patientConnected: Bool?
@@ -1033,6 +1034,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         vrcode: String?,
         linkedRecorderStatus: RuntimeVitalRecorderStatus? = nil,
         linkedRecorderIP: String? = nil,
+        linkedRecorderVersion: String? = nil,
         linkedRecorderLastSeenAt: String? = nil,
         status: RuntimeVitalBedStatus,
         patientConnected: Bool?,
@@ -1052,6 +1054,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         self.vrcode = vrcode
         self.linkedRecorderStatus = linkedRecorderStatus
         self.linkedRecorderIP = linkedRecorderIP
+        self.linkedRecorderVersion = linkedRecorderVersion
         self.linkedRecorderLastSeenAt = linkedRecorderLastSeenAt
         self.status = status
         self.patientConnected = patientConnected
@@ -1073,6 +1076,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         case vrcode
         case linkedRecorderStatus
         case linkedRecorderIP
+        case linkedRecorderVersion
         case linkedRecorderLastSeenAt
         case status
         case patientConnected
@@ -1099,6 +1103,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
                 forKey: .linkedRecorderStatus
             ),
             linkedRecorderIP: try container.decodeIfPresent(String.self, forKey: .linkedRecorderIP),
+            linkedRecorderVersion: try container.decodeIfPresent(String.self, forKey: .linkedRecorderVersion),
             linkedRecorderLastSeenAt: try container.decodeIfPresent(String.self, forKey: .linkedRecorderLastSeenAt),
             status: try container.decode(RuntimeVitalBedStatus.self, forKey: .status),
             patientConnected: try container.decodeIfPresent(Bool.self, forKey: .patientConnected),
@@ -1125,6 +1130,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         try container.encodeExplicitOptional(vrcode, forKey: .vrcode)
         try container.encodeExplicitOptional(linkedRecorderStatus, forKey: .linkedRecorderStatus)
         try container.encodeExplicitOptional(linkedRecorderIP, forKey: .linkedRecorderIP)
+        try container.encodeExplicitOptional(linkedRecorderVersion, forKey: .linkedRecorderVersion)
         try container.encodeExplicitOptional(linkedRecorderLastSeenAt, forKey: .linkedRecorderLastSeenAt)
         try container.encode(status, forKey: .status)
         try container.encodeExplicitOptional(patientConnected, forKey: .patientConnected)
@@ -2322,6 +2328,7 @@ private struct BedBuilder {
             vrcode: presentInLatestObservation ? latestBed?.vrcode : vrcode,
             linkedRecorderStatus: linkedRecorder?.status,
             linkedRecorderIP: linkedRecorder?.lastIP,
+            linkedRecorderVersion: linkedRecorder?.version,
             linkedRecorderLastSeenAt: linkedRecorder?.lastSeenAt,
             status: status(latestBed),
             patientConnected: presentInLatestObservation ? latestBed?.patientConnected : patientConnected,

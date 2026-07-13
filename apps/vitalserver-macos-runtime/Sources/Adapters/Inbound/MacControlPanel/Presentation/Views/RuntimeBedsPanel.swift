@@ -7,7 +7,6 @@ struct RuntimeBedsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
     @State private var selectedBedID: String?
-    @State private var selectedProductLabBedID: String?
     @State private var showingHiddenBeds = false
     private let displayPolicy = RuntimeVitalRecorderDisplayPolicy()
 
@@ -16,7 +15,6 @@ struct RuntimeBedsPanel: View {
             header
             bedList
             bedDetails
-            productLabBeds
         }
     }
 
@@ -55,7 +53,6 @@ struct RuntimeBedsPanel: View {
         Button(AppConstants.Actions.refresh) {
             Task {
                 await viewModel.refreshVitalRecorders()
-                await viewModel.refreshProductLabReadModels()
             }
         }
     }
@@ -80,20 +77,12 @@ struct RuntimeBedsPanel: View {
                             bedRow(bed)
                         }
                     }
-                    .frame(minWidth: 1080, alignment: .leading)
+                    .frame(minWidth: 1200, alignment: .leading)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
         }
-    }
-
-    private var selectedProductLabBed: RuntimeLabBed? {
-        if let selectedProductLabBedID,
-           let bed = viewModel.labBeds.beds.first(where: { $0.bedId == selectedProductLabBedID }) {
-            return bed
-        }
-        return viewModel.labBeds.beds.first
     }
 
     private var bedDetails: some View {
@@ -149,6 +138,7 @@ struct RuntimeBedsPanel: View {
                 bed.bedID,
                 bed.name,
                 bed.vrcode,
+                displayPolicy.recorderSourceText(bed.linkedRecorderVersion),
             ]
             .compactMap { $0?.lowercased() }
             .contains { $0.contains(query) }
@@ -168,6 +158,7 @@ struct RuntimeBedsPanel: View {
             tableHeader("Bed ID", minWidth: 160)
             tableHeader("Name", minWidth: 140)
             tableHeader("VRecorder", minWidth: 140)
+            tableHeader("Source", minWidth: 110)
             tableHeader(AppConstants.Labels.recorderStatus, minWidth: 90)
             tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 220)
             tableHeader("Visibility", minWidth: 80)
@@ -186,6 +177,8 @@ struct RuntimeBedsPanel: View {
                     tableValue(bed.bedID, minWidth: 160, weight: .semibold)
                     tableValue(reportedText(bed.name, missing: "Bed name not reported"), minWidth: 140)
                     tableValue(reportedText(bed.vrcode, missing: "VRecorder not reported"), minWidth: 140)
+                    RuntimeRecorderSourceBadge(version: bed.linkedRecorderVersion)
+                        .frame(minWidth: 110, alignment: .leading)
                     Text(statusLabel(bed.status))
                         .font(.caption)
                         .fontWeight(.semibold)
@@ -255,6 +248,7 @@ struct RuntimeBedsPanel: View {
             Text(statusLabel(bed.status))
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(bed.status))
+            RuntimeRecorderSourceBadge(version: bed.linkedRecorderVersion)
             Spacer()
             Text(viewModel.presentationFormatter.systemTimeTextWithAge(bed.lastSeenAt))
                 .foregroundStyle(.secondary)
@@ -272,6 +266,7 @@ struct RuntimeBedsPanel: View {
             detailRow("Bed ID", bed.bedID)
             detailRow("Name", reportedText(bed.name, missing: "Bed name not reported"))
             detailRow("VRecorder", reportedText(bed.vrcode, missing: "VRecorder not reported"))
+            detailRow(AppConstants.Labels.recorderSource, displayPolicy.recorderSourceText(bed.linkedRecorderVersion))
             detailRow("Visibility", visibilityText(bed.visibility))
             detailRow(
                 "VRecorder status",
@@ -395,121 +390,6 @@ struct RuntimeBedsPanel: View {
         }
     }
 
-    private var productLabBeds: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(AppConstants.Labels.productLabBeds)
-                    .font(.headline)
-                Text("\(viewModel.labBeds.beds.count)")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("Read: \(labReadStateText(viewModel.labBeds.state))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if let readError = viewModel.labBeds.readError {
-                Text("Read issue: \(readError)")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
-            if viewModel.labBeds.beds.isEmpty {
-                Text("No Product Lab bed data")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                ScrollView(.horizontal) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        productLabBedHeaderRow
-                        ForEach(viewModel.labBeds.beds, id: \.bedId) { bed in
-                            Divider()
-                            productLabBedRow(bed)
-                        }
-                    }
-                    .frame(minWidth: 860, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            }
-            if let bed = selectedProductLabBed {
-                productLabBedDetails(bed)
-            }
-        }
-    }
-
-    private var productLabBedHeaderRow: some View {
-        HStack(spacing: 12) {
-            tableHeader("Name", minWidth: 160)
-            tableHeader("Bed ID", minWidth: 220)
-            tableHeader("Session", minWidth: 220)
-            tableHeader("State", minWidth: 90)
-            tableHeader("Updated", minWidth: 160)
-        }
-        .padding(10)
-    }
-
-    private func productLabBedRow(_ bed: RuntimeLabBed) -> some View {
-        Button {
-            selectedProductLabBedID = bed.bedId
-        } label: {
-            HStack(spacing: 12) {
-                tableValue(bed.name, minWidth: 160, weight: .semibold)
-                tableValue(bed.bedId, minWidth: 220)
-                tableValue(bed.sessionId, minWidth: 220)
-                Text(labSessionStateText(bed.state))
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(labSessionStateColor(bed.state))
-                    .frame(minWidth: 90, alignment: .leading)
-                tableValue(viewModel.presentationFormatter.systemTimeText(bed.updatedAt), minWidth: 160)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(10)
-        .background(
-            selectedProductLabBed?.bedId == bed.bedId
-                ? Color.accentColor.opacity(0.10)
-                : Color.clear
-        )
-    }
-
-    private func productLabBedDetails(_ bed: RuntimeLabBed) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Product Lab Bed Details")
-                .font(.headline)
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Circle()
-                    .fill(labSessionStateColor(bed.state))
-                    .frame(width: 9, height: 9)
-                Text(bed.name)
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                Text(labSessionStateText(bed.state))
-                    .fontWeight(.semibold)
-                    .foregroundStyle(labSessionStateColor(bed.state))
-                Spacer()
-                Text(viewModel.presentationFormatter.systemTimeText(bed.updatedAt))
-                    .foregroundStyle(.secondary)
-            }
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-                detailRow("Name", bed.name)
-                detailRow("Bed ID", bed.bedId)
-                detailRow("Session", bed.sessionId)
-                detailRow("State", labSessionStateText(bed.state))
-                detailRow("Created", viewModel.presentationFormatter.systemTimeText(bed.createdAt))
-                detailRow("Updated", viewModel.presentationFormatter.systemTimeText(bed.updatedAt))
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
     private func tableHeader(_ text: String, minWidth: CGFloat) -> some View {
         Text(text)
             .font(.caption)
@@ -526,32 +406,6 @@ struct RuntimeBedsPanel: View {
             .truncationMode(.middle)
             .textSelection(.enabled)
             .frame(minWidth: minWidth, alignment: .leading)
-    }
-
-    private func labReadStateText(_ state: RuntimeLabReadState) -> String {
-        switch state {
-        case .loaded:
-            return "loaded"
-        case .unavailable:
-            return "unavailable"
-        case .failed:
-            return "failed"
-        }
-    }
-
-    private func labSessionStateText(_ state: RuntimeLabSessionState) -> String {
-        state.rawValue
-    }
-
-    private func labSessionStateColor(_ state: RuntimeLabSessionState) -> Color {
-        switch state {
-        case .accepted, .running:
-            return .green
-        case .stopped:
-            return .secondary
-        case .stopping, .failed, .unavailable:
-            return .orange
-        }
     }
 
     private func count(_ status: RuntimeVitalBedStatus) -> Int {

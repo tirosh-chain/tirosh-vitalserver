@@ -134,6 +134,7 @@ def project_vitaldb_history(
                 "vrcode": vrcode,
                 "linkedRecorderStatus": _optional_field(linked_recorder, "status"),
                 "linkedRecorderIP": _optional_field(linked_recorder, "lastIP"),
+                "linkedRecorderVersion": _optional_field(linked_recorder, "version"),
                 "linkedRecorderLastSeenAt": _optional_field(linked_recorder, "lastSeenAt"),
                 "status": _bed_status(latest_bed),
                 "patientConnected": _current_or_history(

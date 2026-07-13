@@ -119,6 +119,12 @@ running session and a non-running recorder. Stop requires an explicitly running
 recorder owned by the selected session and remains available when the persisted
 session state is inconsistent, so an active stream can be shut down safely.
 
+The standard Beds and Recorders panels identify a Product Lab source from the
+recorder's explicit reported `version` value, `vitalserver-lab`. They present
+that source as `Product Lab` in the shared list and detail views. Lab execution
+and control remain in the Lab tab, so the shared observation panels do not add
+separate duplicate Product Lab bed or recorder sections.
+
 ## Prevention
 
 Do not treat an outbound Socket.IO emit as product observation success. Keep
@@ -142,3 +148,9 @@ must reopen the SQL store and assert that session, bed, and recorder states were
 committed together. Gateway decode tests must use the exact Guest history
 contract, including required nullable fields, summary, activity history, and
 ingress status.
+
+Do not infer Product Lab origin from a `LAB-` VRecorder name or from a bed name.
+Names are user-visible identity, not source ownership. Preserve missing and
+blank reported versions as `Not reported`; a non-Lab version does not identify
+its source and is shown as `Not identified`. Add any new source identifier to the
+provider-owned observation contract before using it in presentation.

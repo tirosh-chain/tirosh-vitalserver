@@ -46,6 +46,16 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(policy.reportedText("10.0.0.2", missing: "IP not reported"), "10.0.0.2")
     }
 
+    func testRecorderSourceUsesExplicitReportedVersion() {
+        XCTAssertEqual(policy.recorderSourceText("vitalserver-lab"), "Product Lab")
+        XCTAssertEqual(policy.recorderSourceText("1.2.3"), "Not identified")
+        XCTAssertEqual(policy.recorderSourceText(nil), "Not reported")
+        XCTAssertEqual(policy.recorderSourceText("   "), "Not reported")
+        XCTAssertTrue(policy.isProductLabRecorder(version: "vitalserver-lab"))
+        XCTAssertFalse(policy.isProductLabRecorder(version: "LAB-ABC123"))
+        XCTAssertFalse(policy.isProductLabRecorder(version: nil))
+    }
+
     func testRecorderAnomalyTextDistinguishesHistoryFromCurrentZero() {
         XCTAssertEqual(policy.recorderAnomalyText(recorder(currentAnomalyCount: 0)), "-")
         XCTAssertEqual(

@@ -8,7 +8,6 @@ struct RuntimeRecordersPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
     @State private var selectedVrcode: String?
-    @State private var selectedLabRecorderID: String?
     @State private var showingRecorderHistory = false
     @State private var showingHiddenRecorders = false
     @State private var recorderSort = RuntimeVitalRecorderDisplayPolicy.RecorderSortOption.vrcode
@@ -23,7 +22,6 @@ struct RuntimeRecordersPanel: View {
             header
             recorderList
             recorderDetails
-            productLabRecorders
         }
     }
 
@@ -78,7 +76,7 @@ struct RuntimeRecordersPanel: View {
                             recorderRow(recorder)
                         }
                     }
-                    .frame(minWidth: 1080, alignment: .leading)
+                    .frame(minWidth: 1200, alignment: .leading)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -97,11 +95,8 @@ struct RuntimeRecordersPanel: View {
                 recorderActivity(recorder)
                 recorderMetadata(recorder)
                 recorderRelationshipHistory(recorder)
-            } else if let recorder = selectedLabRecorder {
-                selectedLabRecorderSummary(recorder)
-                selectedLabRecorderObservation(recorder)
             } else {
-                Text("Select a VRecorder or Product Lab recorder to view details.")
+                Text("Select a VRecorder to view details.")
                     .foregroundStyle(.secondary)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -138,7 +133,6 @@ struct RuntimeRecordersPanel: View {
         Button(AppConstants.Actions.refresh) {
             Task {
                 await viewModel.refreshVitalRecorders()
-                await viewModel.refreshProductLabReadModels()
             }
         }
     }
@@ -180,6 +174,7 @@ struct RuntimeRecordersPanel: View {
                 recorder.vrcode,
                 recorder.lastIP,
                 recorder.version,
+                displayPolicy.recorderSourceText(recorder.version),
                 recorder.bedID,
                 recorder.bedName,
             ]
@@ -201,7 +196,6 @@ struct RuntimeRecordersPanel: View {
     }
 
     private var selectedRecorder: RuntimeVitalRecorderRecord? {
-        if selectedLabRecorderID != nil { return nil }
         if let selectedVrcode,
            let recorder = visibleRecorders.first(where: { $0.vrcode == selectedVrcode }) {
             return recorder
@@ -209,14 +203,10 @@ struct RuntimeRecordersPanel: View {
         return filteredRecorders.first ?? visibleRecorders.first
     }
 
-    private var selectedLabRecorder: RuntimeLabRecorder? {
-        guard let selectedLabRecorderID else { return nil }
-        return viewModel.labRecorders.recorders.first { $0.recorderId == selectedLabRecorderID }
-    }
-
     private var recorderHeaderRow: some View {
         HStack(spacing: 12) {
             tableHeader("VRecorder", minWidth: 120)
+            tableHeader("Source", minWidth: 110)
             tableHeader(AppConstants.Labels.recorderStatus, minWidth: 80)
             tableHeader("IP", minWidth: 150)
             tableHeader(AppConstants.Labels.bed, minWidth: 120)
@@ -231,11 +221,12 @@ struct RuntimeRecordersPanel: View {
     private func recorderRow(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         HStack(spacing: 12) {
             Button {
-                selectedLabRecorderID = nil
                 selectedVrcode = recorder.vrcode
             } label: {
                 HStack(spacing: 12) {
                     tableValue(recorder.vrcode, minWidth: 120, weight: .semibold)
+                    RuntimeRecorderSourceBadge(version: recorder.version)
+                        .frame(minWidth: 110, alignment: .leading)
                     Text(statusLabel(recorder.status))
                         .font(.caption)
                         .fontWeight(.semibold)
@@ -306,140 +297,6 @@ struct RuntimeRecordersPanel: View {
         }
     }
 
-    private var productLabRecorders: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(AppConstants.Labels.productLabRecorders)
-                    .font(.headline)
-                Text("\(viewModel.labRecorders.recorders.count)")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("Read: \(labReadStateText(viewModel.labRecorders.state))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if let readError = viewModel.labRecorders.readError {
-                Text("Read issue: \(readError)")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
-            if viewModel.labRecorders.recorders.isEmpty {
-                Text("No Product Lab recorder data")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                ScrollView(.horizontal) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        productLabRecorderHeaderRow
-                        ForEach(viewModel.labRecorders.recorders, id: \.recorderId) { recorder in
-                            Divider()
-                            productLabRecorderRow(recorder)
-                        }
-                    }
-                    .frame(minWidth: 1080, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            }
-        }
-    }
-
-    private var productLabRecorderHeaderRow: some View {
-        HStack(spacing: 12) {
-            tableHeader("VRecorder", minWidth: 180)
-            tableHeader("Recorder ID", minWidth: 220)
-            tableHeader("Bed", minWidth: 220)
-            tableHeader("Session", minWidth: 220)
-            tableHeader("State", minWidth: 90)
-            tableHeader("Send", minWidth: 110)
-            tableHeader("Updated", minWidth: 160)
-        }
-        .padding(10)
-    }
-
-    private func productLabRecorderRow(_ recorder: RuntimeLabRecorder) -> some View {
-        Button {
-            selectedVrcode = nil
-            selectedLabRecorderID = recorder.recorderId
-        } label: {
-            HStack(spacing: 12) {
-                tableValue(recorder.vrcode, minWidth: 180, weight: .semibold)
-                tableValue(recorder.recorderId, minWidth: 220)
-                tableValue(recorder.bedId, minWidth: 220)
-                tableValue(recorder.sessionId, minWidth: 220)
-                Text(labSessionStateText(recorder.state))
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(labSessionStateColor(recorder.state))
-                    .frame(minWidth: 90, alignment: .leading)
-                tableValue(labRecorderSendText(recorder), minWidth: 110)
-                tableValue(viewModel.presentationFormatter.systemTimeText(recorder.updatedAt), minWidth: 160)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(10)
-        .background(selectedLabRecorderID == recorder.recorderId ? Color.accentColor.opacity(0.10) : Color.clear)
-    }
-
-    private func selectedLabRecorderSummary(_ recorder: RuntimeLabRecorder) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(recorder.vrcode).font(.headline)
-                Text(labSessionStateText(recorder.state))
-                    .foregroundStyle(labSessionStateColor(recorder.state))
-            }
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
-                detailRow("Recorder ID", recorder.recorderId)
-                detailRow("Bed", recorder.bedId)
-                detailRow("Session", recorder.sessionId)
-                detailRow("Messages", String(recorder.messagesSent))
-                detailRow("Last send", labRecorderSendText(recorder))
-                detailRow("Last send at", viewModel.presentationFormatter.systemTimeText(recorder.lastSendAt))
-                detailRow("Last error", recorder.lastSendError ?? "-")
-                detailRow("Created", viewModel.presentationFormatter.systemTimeText(recorder.createdAt))
-                detailRow("Updated", viewModel.presentationFormatter.systemTimeText(recorder.updatedAt))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func selectedLabRecorderObservation(_ labRecorder: RuntimeLabRecorder) -> some View {
-        if let recorder = vitalDBRecorder(for: labRecorder) {
-            Text("VitalDB observation")
-                .font(.headline)
-            selectedRecorderSummary(recorder)
-            recorderNetworkAccess(recorder)
-            recorderActivity(recorder)
-            recorderMetadata(recorder)
-            recorderRelationshipHistory(recorder)
-        } else if let readError = viewModel.vitalRecorders.readError {
-            Text("VitalDB observation read issue: \(readError)")
-                .foregroundStyle(.red)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        } else {
-            Text("VitalDB has not observed this Product Lab recorder. Packet history is unavailable until the recorder observation is reported.")
-                .foregroundStyle(.secondary)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-    }
-
-    private func vitalDBRecorder(for labRecorder: RuntimeLabRecorder) -> RuntimeVitalRecorderRecord? {
-        viewModel.vitalRecorders.recorders.first { recorder in
-            recorder.vrcode == labRecorder.vrcode
-        }
-    }
-
     private func selectedRecorderSummary(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Circle()
@@ -452,6 +309,7 @@ struct RuntimeRecordersPanel: View {
             Text(statusLabel(recorder.status))
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(recorder.status))
+            RuntimeRecorderSourceBadge(version: recorder.version)
             Spacer()
             Text(viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
                 .foregroundStyle(.secondary)
@@ -727,6 +585,7 @@ struct RuntimeRecordersPanel: View {
 
     private func recorderMetadata(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
+            detailRow(AppConstants.Labels.recorderSource, displayPolicy.recorderSourceText(recorder.version))
             detailRow(AppConstants.Labels.recorderVersion, reportedText(recorder.version, missing: "Version not reported"))
             detailRow(AppConstants.Labels.bed, reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"))
             detailRow("Bed ID", reportedText(linkedBed(for: recorder)?.bedID ?? recorder.bedID, missing: "Bed ID not reported"))
@@ -859,39 +718,6 @@ struct RuntimeRecordersPanel: View {
             .truncationMode(.middle)
             .textSelection(.enabled)
             .frame(minWidth: minWidth, alignment: .leading)
-    }
-
-    private func labReadStateText(_ state: RuntimeLabReadState) -> String {
-        switch state {
-        case .loaded:
-            return "loaded"
-        case .unavailable:
-            return "unavailable"
-        case .failed:
-            return "failed"
-        }
-    }
-
-    private func labSessionStateText(_ state: RuntimeLabSessionState) -> String {
-        state.rawValue
-    }
-
-    private func labSessionStateColor(_ state: RuntimeLabSessionState) -> Color {
-        switch state {
-        case .accepted, .running:
-            return .green
-        case .stopped:
-            return .secondary
-        case .stopping, .failed, .unavailable:
-            return .orange
-        }
-    }
-
-    private func labRecorderSendText(_ recorder: RuntimeLabRecorder) -> String {
-        if recorder.lastSendState == .sent {
-            return "sent \(recorder.messagesSent)"
-        }
-        return recorder.lastSendState.rawValue
     }
 
     private func tableIPValue(_ recorder: RuntimeVitalRecorderRecord, minWidth: CGFloat) -> some View {
