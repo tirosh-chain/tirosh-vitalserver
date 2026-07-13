@@ -32,7 +32,12 @@ extension RuntimeViewModel {
     }
 
     var selectedLabSession: RuntimeLabSession? {
-        labSessions.sessions.first { $0.sessionId == selectedLabSessionID }
+        if let session = labSessionResponse.session,
+           session.sessionId == selectedLabSessionID
+        {
+            return session
+        }
+        return labSessions.sessions.first { $0.sessionId == selectedLabSessionID }
     }
 
     var selectedLabSessionRecorders: [RuntimeLabRecorder] {
@@ -473,12 +478,20 @@ extension RuntimeViewModel {
             recordLabActionMessage(RuntimeLabPanelText.labCapabilityUnavailable, tone: .failure)
             return
         }
-        guard let session = selectedLabSession, session.state == .running else {
+        guard let session = selectedLabSession else {
+            recordLabActionMessage(RuntimeLabPanelText.noLabSession, tone: .failure)
+            return
+        }
+        guard let recorder = selectedLabSessionRecorders.first(where: { $0.recorderId == recorderID }) else {
+            recordLabActionMessage(RuntimeLabPanelText.chooseSessionLabRecorder, tone: .failure)
+            return
+        }
+        if start, session.state != .running {
             recordLabActionMessage(RuntimeLabPanelText.runningLabSessionRequired, tone: .failure)
             return
         }
-        guard selectedLabSessionRecorders.contains(where: { $0.recorderId == recorderID }) else {
-            recordLabActionMessage(RuntimeLabPanelText.chooseSessionLabRecorder, tone: .failure)
+        if !start, recorder.state != .running {
+            recordLabActionMessage(RuntimeLabPanelText.labRecorderCommandFailed, tone: .failure)
             return
         }
 

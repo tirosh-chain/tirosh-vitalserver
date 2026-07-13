@@ -879,25 +879,28 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
     }
 
     func testVitalDBRecordersRequestsGuestControlReadModelEndpoint() throws {
+        let responseDocument = RuntimeVitalRecorderHistory(
+            updatedAt: "2026-07-01T00:00:00+00:00",
+            recorders: [
+                RuntimeVitalRecorderRecord(
+                    vrcode: "VR-001",
+                    status: .online,
+                    lastIP: "10.0.0.10",
+                    version: nil,
+                    bedID: nil,
+                    bedName: nil,
+                    patientConnected: nil,
+                    firstSeenAt: "2026-07-01T00:00:00+00:00",
+                    lastSeenAt: "2026-07-01T00:00:00+00:00",
+                    observationCount: 1,
+                    currentAnomalyCount: 0,
+                    latestAnomalySeverity: nil
+                ),
+            ]
+        )
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,
-            body: """
-            {
-              "state": "loaded",
-              "observedAt": "2026-07-01T00:00:00+00:00",
-              "ready": true,
-              "recorderOnlineThresholdSeconds": 60,
-              "recorders": [
-                {
-                  "vrcode": "VR-001",
-                  "ip": "10.0.0.10",
-                  "online": true,
-                  "stale": false
-                }
-              ],
-              "readError": null
-            }
-            """
+            body: String(decoding: try JSONEncoder().encode(responseDocument), as: UTF8.self)
         ))
         let gateway = try HTTPRuntimeGuestControlGateway(
             baseURL: "http://127.0.0.1:18330",
@@ -907,9 +910,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         let read = try gateway.vitalDBRecorders()
 
         XCTAssertEqual(read.state, .loaded)
-        XCTAssertEqual(read.observedAt, "2026-07-01T00:00:00+00:00")
-        XCTAssertEqual(read.ready, true)
-        XCTAssertEqual(read.recorderOnlineThresholdSeconds, 60)
+        XCTAssertEqual(read.updatedAt, "2026-07-01T00:00:00+00:00")
         XCTAssertEqual(read.recorders.map(\.vrcode), ["VR-001"])
         XCTAssertEqual(read.readError, nil)
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
@@ -922,16 +923,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
     func testVitalDBRecorderVisibilityCommandsPostGuestControlReadModelRequests() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,
-            body: """
-            {
-              "state": "loaded",
-              "observedAt": "2026-07-01T00:00:00+00:00",
-              "ready": true,
-              "recorderOnlineThresholdSeconds": 60,
-              "recorders": [],
-              "readError": null
-            }
-            """
+            body: String(decoding: try JSONEncoder().encode(RuntimeVitalRecorderHistory()), as: UTF8.self)
         ))
         let gateway = try HTTPRuntimeGuestControlGateway(
             baseURL: "http://127.0.0.1:18330",
@@ -1001,25 +993,26 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
     }
 
     func testVitalDBBedsRequestsGuestControlReadModelEndpoint() throws {
+        let responseDocument = RuntimeVitalBedHistory(
+            updatedAt: "2026-07-01T00:00:00+00:00",
+            beds: [
+                RuntimeVitalBedRecord(
+                    bedID: "bed-a",
+                    name: "OR-A",
+                    vrcode: "VR-001",
+                    status: .online,
+                    patientConnected: nil,
+                    firstSeenAt: "2026-07-01T00:00:00+00:00",
+                    lastSeenAt: "2026-07-01T00:00:00+00:00",
+                    observationCount: 1,
+                    currentAnomalyCount: 0,
+                    latestAnomalySeverity: nil
+                ),
+            ]
+        )
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,
-            body: """
-            {
-              "state": "loaded",
-              "observedAt": "2026-07-01T00:00:00+00:00",
-              "ready": true,
-              "recorderOnlineThresholdSeconds": 60,
-              "beds": [
-                {
-                  "bedID": "bed-a",
-                  "name": "OR-A",
-                  "vrcode": "VR-001",
-                  "online": true
-                }
-              ],
-              "readError": null
-            }
-            """
+            body: String(decoding: try JSONEncoder().encode(responseDocument), as: UTF8.self)
         ))
         let gateway = try HTTPRuntimeGuestControlGateway(
             baseURL: "http://127.0.0.1:18330",
@@ -1029,9 +1022,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         let read = try gateway.vitalDBBeds()
 
         XCTAssertEqual(read.state, .loaded)
-        XCTAssertEqual(read.observedAt, "2026-07-01T00:00:00+00:00")
-        XCTAssertEqual(read.ready, true)
-        XCTAssertEqual(read.recorderOnlineThresholdSeconds, 60)
+        XCTAssertEqual(read.updatedAt, "2026-07-01T00:00:00+00:00")
         XCTAssertEqual(read.beds.map(\.bedID), ["bed-a"])
         XCTAssertEqual(read.readError, nil)
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
@@ -1044,16 +1035,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
     func testVitalDBBedVisibilityCommandsPostGuestControlReadModelRequests() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,
-            body: """
-            {
-              "state": "loaded",
-              "observedAt": "2026-07-01T00:00:00+00:00",
-              "ready": true,
-              "recorderOnlineThresholdSeconds": 60,
-              "beds": [],
-              "readError": null
-            }
-            """
+            body: String(decoding: try JSONEncoder().encode(RuntimeVitalBedHistory()), as: UTF8.self)
         ))
         let gateway = try HTTPRuntimeGuestControlGateway(
             baseURL: "http://127.0.0.1:18330",

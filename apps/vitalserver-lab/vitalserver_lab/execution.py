@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import math
 import mimetypes
 import threading
 import time
@@ -59,6 +60,24 @@ class LabRecorderPayloadSender(Protocol):
     ) -> LabRecorderSendReceipt:
         """Send one Vital Recorder payload to a VitalServer-compatible endpoint."""
 
+    def close_recorder(self, *, target_url: str, vrcode: str) -> None:
+        """Close the connection explicitly owned by one recorder."""
+
+    def close_all(self) -> None:
+        """Close every recorder connection owned by this sender."""
+
+
+class SocketIOClient(Protocol):
+    connected: bool
+
+    def connect(self, url: str, *, transports: list[str]) -> None: ...
+
+    def emit(self, event: str, data: object) -> None: ...
+
+    def sleep(self, seconds: float) -> None: ...
+
+    def disconnect(self) -> None: ...
+
 
 class LabVitalFileUploader(Protocol):
     def upload(
@@ -84,6 +103,8 @@ class _RunningLabSession:
     thread: threading.Thread
     active_recorder_ids: set[str]
     active_recorder_ids_lock: threading.Lock
+    target_url: str
+    recorder_vrcodes: dict[str, str]
 
 
 class VitalServerRecorderPayloadSender:
@@ -95,6 +116,8 @@ class VitalServerRecorderPayloadSender:
     ):
         self.timeout_seconds = timeout_seconds
         self.settle_seconds = settle_seconds
+        self._clients: dict[tuple[str, str], SocketIOClient] = {}
+        self._clients_lock = threading.Lock()
 
     def send(
         self,
@@ -104,34 +127,97 @@ class VitalServerRecorderPayloadSender:
     ) -> LabRecorderSendReceipt:
         body = _encode_socketio_send_data_payload(payload)
         vrcode = _payload_vrcode(payload)
+        if vrcode is None:
+            raise LabRecorderSendError(
+                "VitalServer recorder Socket.IO payload is missing vrcode"
+            )
         try:
-            client = _connect_socketio(target_url, timeout_seconds=self.timeout_seconds)
+            client = self._connected_client(target_url=target_url, vrcode=vrcode)
         except Exception as error:
+            if isinstance(error, LabRecorderSendError):
+                raise
             raise LabRecorderSendError(
                 f"VitalServer recorder Socket.IO connection failed: {error}"
             ) from error
 
         try:
-            if vrcode is not None:
-                client.emit("join_vr", vrcode)
             client.emit("send_data", body)
-            client.sleep(self.settle_seconds)
         except Exception as error:
+            self._discard_client(target_url=target_url, vrcode=vrcode, client=client)
             raise LabRecorderSendError(
                 f"VitalServer recorder Socket.IO send_data failed: {error}"
             ) from error
-        finally:
-            if getattr(client, "connected", False):
-                client.disconnect()
 
         return LabRecorderSendReceipt(transport="socket.io", bytes_sent=len(body))
+
+    def close_recorder(self, *, target_url: str, vrcode: str) -> None:
+        with self._clients_lock:
+            client = self._clients.pop((target_url, vrcode), None)
+        if client is not None:
+            self._disconnect_client(client)
+
+    def close_all(self) -> None:
+        with self._clients_lock:
+            clients = tuple(self._clients.values())
+            self._clients.clear()
+        for client in clients:
+            self._disconnect_client(client)
+
+    def _connected_client(
+        self,
+        *,
+        target_url: str,
+        vrcode: str,
+    ) -> SocketIOClient:
+        key = (target_url, vrcode)
+        with self._clients_lock:
+            client = self._clients.get(key)
+            if client is not None and getattr(client, "connected", False):
+                return client
+            if client is not None:
+                self._clients.pop(key, None)
+                self._disconnect_client(client)
+            client = _connect_socketio(
+                target_url,
+                timeout_seconds=self.timeout_seconds,
+            )
+            try:
+                client.emit("join_vr", vrcode)
+            except Exception:
+                self._disconnect_client(client)
+                raise
+            self._clients[key] = client
+            return client
+
+    def _discard_client(
+        self,
+        *,
+        target_url: str,
+        vrcode: str,
+        client: SocketIOClient,
+    ) -> None:
+        with self._clients_lock:
+            if self._clients.get((target_url, vrcode)) is client:
+                self._clients.pop((target_url, vrcode), None)
+        self._disconnect_client(client)
+
+    def _disconnect_client(self, client: SocketIOClient) -> None:
+        if not getattr(client, "connected", False):
+            return
+        if self.settle_seconds > 0:
+            client.sleep(self.settle_seconds)
+        client.disconnect()
 
 
 class LabRecorderSendError(Exception):
     pass
 
 
-def _connect_socketio(target_url: str, *, timeout_seconds: float):
+def _connect_socketio(
+    target_url: str,
+    *,
+    timeout_seconds: float,
+) -> SocketIOClient:
     try:
         import socketio
     except ImportError as error:
@@ -291,6 +377,17 @@ class LabExecutionEngine:
         )
         if recorder is None:
             return None
+        if session.target_url is None:
+            result = LabRecorderExecutionResult(
+                recorder_id=recorder.recorder_id,
+                messages_sent=0,
+                last_send_state="skipped",
+                last_send_at=None,
+                last_send_error="targetURL is not configured",
+            )
+            if result_sink is not None:
+                result_sink((result,))
+            return result
         beds_by_id = {bed.bed_id: bed for bed in beds}
         with self._running_sessions_lock:
             running = self._running_sessions.get(session.session_id)
@@ -323,6 +420,12 @@ class LabExecutionEngine:
             return
         with running.active_recorder_ids_lock:
             running.active_recorder_ids.discard(recorder_id)
+        vrcode = running.recorder_vrcodes.get(recorder_id)
+        if vrcode is not None:
+            self.sender.close_recorder(
+                target_url=running.target_url,
+                vrcode=vrcode,
+            )
 
     def stop_session(self, session_id: str) -> None:
         with self._running_sessions_lock:
@@ -332,12 +435,18 @@ class LabExecutionEngine:
         running.stop_event.set()
         if threading.current_thread() is not running.thread:
             running.thread.join(timeout=2)
+        for vrcode in running.recorder_vrcodes.values():
+            self.sender.close_recorder(
+                target_url=running.target_url,
+                vrcode=vrcode,
+            )
 
     def shutdown(self) -> None:
         with self._running_sessions_lock:
             session_ids = tuple(self._running_sessions)
         for session_id in session_ids:
             self.stop_session(session_id)
+        self.sender.close_all()
 
     def _start_session_runner(
         self,
@@ -349,6 +458,9 @@ class LabExecutionEngine:
         initial_sequence: int,
         result_sink: LabRecorderExecutionResultSink | None,
     ) -> None:
+        target_url = session.target_url
+        if target_url is None:
+            raise LabRecorderSendError("targetURL is not configured")
         stop_event = threading.Event()
         active_recorder_ids_lock = threading.Lock()
 
@@ -391,6 +503,10 @@ class LabExecutionEngine:
                 thread=thread,
                 active_recorder_ids=active_recorder_ids,
                 active_recorder_ids_lock=active_recorder_ids_lock,
+                target_url=target_url,
+                recorder_vrcodes={
+                    recorder.recorder_id: recorder.vrcode for recorder in recorders
+                },
             )
         if previous is not None:
             previous.stop_event.set()
@@ -404,6 +520,9 @@ class LabExecutionEngine:
         recorders: tuple[LabRecorder, ...],
         sequence: int,
     ) -> tuple[LabRecorderExecutionResult, ...]:
+        target_url = session.target_url
+        if target_url is None:
+            raise LabRecorderSendError("targetURL is not configured")
         results: list[LabRecorderExecutionResult] = []
         for recorder in recorders:
             bed = beds_by_id.get(recorder.bed_id)
@@ -439,7 +558,7 @@ class LabExecutionEngine:
                 )
                 continue
             try:
-                self.sender.send(target_url=session.target_url, payload=payload)
+                self.sender.send(target_url=target_url, payload=payload)
             except LabRecorderSendError as error:
                 results.append(
                     LabRecorderExecutionResult(
@@ -582,6 +701,11 @@ def lab_recorder_payload(
 
     now = time.time()
     profile = lab_signal_profile(session.scenario_id)
+    waveforms = lab_waveform_frame(
+        scenario_id=session.scenario_id,
+        profile=profile,
+        started_at=now,
+    )
     room = {
         "roomname": bed.name,
         "seqid": sequence,
@@ -589,7 +713,7 @@ def lab_recorder_payload(
         "dtend": now + 1,
         "dtcase": now,
         "dtapp": now,
-        "dtserver": now,
+        "dtserver": now + 1,
         "ptcon": 1,
         "recording": 1,
         "devs": [
@@ -673,7 +797,7 @@ def lab_recorder_payload(
                 "unit": "mV",
                 "mindisp": -1,
                 "maxdisp": 1,
-                "recs": [{"dt": now, "val": profile["ecg"]}],
+                "recs": [{"dt": now, "val": waveforms["ecg"]}],
             },
             {
                 "id": 1002,
@@ -681,11 +805,11 @@ def lab_recorder_payload(
                 "dname": "VitalServer Lab",
                 "montype": "PLETH_WAV",
                 "type": "wav",
-                "srate": 62.5,
+                "srate": 100,
                 "unit": "%",
                 "mindisp": 0,
-                "maxdisp": 1,
-                "recs": [{"dt": now, "val": profile["pleth"]}],
+                "maxdisp": 100,
+                "recs": [{"dt": now, "val": waveforms["pleth"]}],
             },
             {
                 "id": 1003,
@@ -697,7 +821,7 @@ def lab_recorder_payload(
                 "unit": "mmHg",
                 "mindisp": 0,
                 "maxdisp": 50,
-                "recs": [{"dt": now, "val": profile["co2"]}],
+                "recs": [{"dt": now, "val": waveforms["co2"]}],
             },
         ],
         "evts": [
@@ -715,6 +839,106 @@ def lab_recorder_payload(
     }
 
 
+def lab_waveform_frame(
+    *,
+    scenario_id: str,
+    profile: dict[str, object],
+    started_at: float,
+    frame_seconds: float = 1.0,
+) -> dict[str, list[float]]:
+    heart_rate = _profile_number(profile, "hr")
+    respiratory_rate = _profile_number(profile, "rr")
+    sample_rates = {"ecg": 125, "pleth": 100, "co2": 25}
+    values: dict[str, list[float]] = {}
+    for waveform, sample_rate in sample_rates.items():
+        sample_count = round(sample_rate * frame_seconds)
+        values[waveform] = [
+            _lab_waveform_sample(
+                waveform=waveform,
+                sample_time=started_at + index / sample_rate,
+                heart_rate=heart_rate,
+                respiratory_rate=respiratory_rate,
+                arrhythmia=scenario_id == "arrhythmia-like-variation",
+            )
+            for index in range(sample_count)
+        ]
+    return values
+
+
+def _lab_waveform_sample(
+    *,
+    waveform: str,
+    sample_time: float,
+    heart_rate: float,
+    respiratory_rate: float,
+    arrhythmia: bool,
+) -> float:
+    if waveform == "co2":
+        phase = _cycle_phase(sample_time, respiratory_rate)
+        if phase < 0.35:
+            value = 0.0
+        elif phase < 0.48:
+            value = (phase - 0.35) / 0.13 * 38
+        elif phase < 0.82:
+            value = 38 + math.sin((phase - 0.48) / 0.34 * math.pi) * 2
+        else:
+            value = max(0.0, 38 * (1 - (phase - 0.82) / 0.18))
+        return round(value, 3)
+
+    phase = _cycle_phase(sample_time, heart_rate)
+    if arrhythmia:
+        phase = (
+            phase
+            + math.sin(sample_time * 0.9) * 0.12
+            + math.sin(sample_time * 2.7) * 0.04
+        ) % 1
+    if waveform == "ecg":
+        value = (
+            _gaussian(phase, center=0.18, width=0.025, amplitude=0.06)
+            - _gaussian(phase, center=0.36, width=0.012, amplitude=0.18)
+            + _gaussian(phase, center=0.39, width=0.008, amplitude=1.0)
+            - _gaussian(phase, center=0.42, width=0.014, amplitude=0.28)
+            + _gaussian(phase, center=0.65, width=0.055, amplitude=0.22)
+        )
+        return round(value - 0.02, 4)
+
+    if waveform == "pleth":
+        if phase < 0.18:
+            value = 38 + phase / 0.18 * 26
+        elif phase < 0.42:
+            value = 64 - (phase - 0.18) / 0.24 * 9
+        else:
+            value = 55 - (phase - 0.42) / 0.58 * 17
+        value -= _gaussian(phase, center=0.32, width=0.018, amplitude=3.0)
+        return round(value, 3)
+
+    raise LabRecorderSendError(f"unsupported Lab waveform: {waveform}")
+
+
+def _cycle_phase(sample_time: float, cycles_per_minute: float) -> float:
+    if cycles_per_minute <= 0:
+        raise LabRecorderSendError("Lab waveform rate must be greater than zero")
+    return (sample_time * cycles_per_minute / 60) % 1
+
+
+def _gaussian(
+    phase: float,
+    *,
+    center: float,
+    width: float,
+    amplitude: float,
+) -> float:
+    distance = min(abs(phase - center), 1 - abs(phase - center))
+    return amplitude * math.exp(-0.5 * (distance / width) ** 2)
+
+
+def _profile_number(profile: dict[str, object], key: str) -> float:
+    value = profile.get(key)
+    if not isinstance(value, int | float):
+        raise LabRecorderSendError(f"Lab signal profile is missing numeric {key}")
+    return float(value)
+
+
 def lab_signal_profile(scenario_id: str) -> dict[str, object]:
     profiles: dict[str, dict[str, object]] = {
         "baseline-monitoring": {
@@ -725,9 +949,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 88,
             "rr": 14,
             "bt": 36.8,
-            "ecg": [0.0, 0.2, 0.9, 0.2, 0.0],
-            "pleth": [5, 22, 78, 42, 12],
-            "co2": [0, 2, 8, 28, 38, 35, 12],
             "event": "Baseline monitoring started",
         },
         "postoperative-recovery": {
@@ -738,9 +959,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 83,
             "rr": 16,
             "bt": 37.2,
-            "ecg": [0.0, 0.18, 0.82, 0.24, 0.02],
-            "pleth": [8, 24, 72, 48, 16],
-            "co2": [0, 3, 10, 30, 39, 34, 14],
             "event": "Postoperative recovery profile started",
         },
         "hypotension-episode": {
@@ -751,9 +969,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 58,
             "rr": 20,
             "bt": 36.6,
-            "ecg": [0.0, 0.22, 1.0, 0.25, 0.0],
-            "pleth": [3, 14, 42, 24, 8],
-            "co2": [0, 2, 9, 26, 36, 32, 10],
             "event": "Hypotension episode profile started",
         },
         "hypertension-episode": {
@@ -764,9 +979,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 129,
             "rr": 15,
             "bt": 36.9,
-            "ecg": [0.0, 0.2, 0.88, 0.18, 0.0],
-            "pleth": [6, 22, 68, 38, 10],
-            "co2": [0, 2, 8, 27, 37, 33, 12],
             "event": "Hypertension episode profile started",
         },
         "tachycardia-response": {
@@ -777,9 +989,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 93,
             "rr": 22,
             "bt": 37.0,
-            "ecg": [0.0, 0.16, 0.95, 0.16, 0.0],
-            "pleth": [4, 20, 70, 32, 8],
-            "co2": [0, 4, 14, 32, 38, 31, 9],
             "event": "Tachycardia response profile started",
         },
         "bradycardia-response": {
@@ -790,9 +999,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 75,
             "rr": 12,
             "bt": 36.7,
-            "ecg": [0.0, 0.12, 0.74, 0.3, 0.04],
-            "pleth": [8, 26, 82, 55, 18],
-            "co2": [0, 2, 7, 24, 36, 34, 15],
             "event": "Bradycardia response profile started",
         },
         "desaturation-event": {
@@ -803,9 +1009,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 86,
             "rr": 28,
             "bt": 36.9,
-            "ecg": [0.0, 0.2, 0.86, 0.22, 0.0],
-            "pleth": [2, 12, 52, 30, 8],
-            "co2": [0, 3, 15, 35, 42, 30, 8],
             "event": "Desaturation event profile started",
         },
         "respiratory-variation": {
@@ -816,9 +1019,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 85,
             "rr": 24,
             "bt": 36.8,
-            "ecg": [0.0, 0.18, 0.84, 0.2, 0.0],
-            "pleth": [4, 18, 72, 40, 12],
-            "co2": [0, 4, 16, 34, 43, 28, 7],
             "event": "Respiratory variation profile started",
         },
         "fever-trend": {
@@ -829,9 +1029,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 90,
             "rr": 20,
             "bt": 38.7,
-            "ecg": [0.0, 0.2, 0.9, 0.22, 0.0],
-            "pleth": [5, 20, 74, 42, 14],
-            "co2": [0, 3, 11, 29, 39, 34, 12],
             "event": "Fever trend profile started",
         },
         "arrhythmia-like-variation": {
@@ -842,9 +1039,6 @@ def lab_signal_profile(scenario_id: str) -> dict[str, object]:
             "abp_mbp": 88,
             "rr": 16,
             "bt": 36.8,
-            "ecg": [0.0, 0.24, 0.7, 0.18, 0.0, 0.05, 1.05, 0.12],
-            "pleth": [5, 18, 70, 30, 6, 16, 62, 26],
-            "co2": [0, 2, 8, 28, 38, 32, 10],
             "event": "Arrhythmia-like variation profile started",
         },
     }

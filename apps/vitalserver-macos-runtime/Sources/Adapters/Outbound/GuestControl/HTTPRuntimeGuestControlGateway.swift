@@ -128,7 +128,10 @@ private struct RuntimeGuestControlUpdateShutdownRequest: Encodable {
     let version: String
 }
 
-public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, RuntimeGuestProductLabGateway {
+public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
+    RuntimeGuestProductLabGateway,
+    RuntimeVitalDBGuestControlGateway
+{
     private let baseURL: URL
     private let httpClient: any RuntimeGuestControlHTTPClient
     private let decoder: JSONDecoder
@@ -346,35 +349,35 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         )
     }
 
-    public func vitalDBRecorders() throws -> RuntimeGuestControlVitalDBRecorderRead {
+    public func vitalDBRecorders() throws -> RuntimeVitalRecorderHistory {
         try decode(
-            RuntimeGuestControlVitalDBRecorderRead.self,
+            RuntimeVitalRecorderHistory.self,
             method: "GET",
             path: "/runtime/vitaldb/recorders"
         )
     }
 
-    public func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead {
+    public func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeVitalRecorderHistory {
         try decode(
-            RuntimeGuestControlVitalDBRecorderRead.self,
+            RuntimeVitalRecorderHistory.self,
             method: "POST",
             path: "/runtime/vitaldb/recorders/hide",
             body: request
         )
     }
 
-    public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead {
+    public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeVitalRecorderHistory {
         try decode(
-            RuntimeGuestControlVitalDBRecorderRead.self,
+            RuntimeVitalRecorderHistory.self,
             method: "POST",
             path: "/runtime/vitaldb/recorders/unhide",
             body: request
         )
     }
 
-    public func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead {
+    public func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeVitalRecorderHistory {
         try decode(
-            RuntimeGuestControlVitalDBRecorderRead.self,
+            RuntimeVitalRecorderHistory.self,
             method: "POST",
             path: "/runtime/vitaldb/recorders/delete",
             body: request
@@ -389,35 +392,35 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         )
     }
 
-    public func vitalDBBeds() throws -> RuntimeGuestControlVitalDBBedRead {
+    public func vitalDBBeds() throws -> RuntimeVitalBedHistory {
         try decode(
-            RuntimeGuestControlVitalDBBedRead.self,
+            RuntimeVitalBedHistory.self,
             method: "GET",
             path: "/runtime/vitaldb/beds"
         )
     }
 
-    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead {
+    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeVitalBedHistory {
         try decode(
-            RuntimeGuestControlVitalDBBedRead.self,
+            RuntimeVitalBedHistory.self,
             method: "POST",
             path: "/runtime/vitaldb/beds/hide",
             body: request
         )
     }
 
-    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead {
+    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeVitalBedHistory {
         try decode(
-            RuntimeGuestControlVitalDBBedRead.self,
+            RuntimeVitalBedHistory.self,
             method: "POST",
             path: "/runtime/vitaldb/beds/unhide",
             body: request
         )
     }
 
-    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead {
+    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeVitalBedHistory {
         try decode(
-            RuntimeGuestControlVitalDBBedRead.self,
+            RuntimeVitalBedHistory.self,
             method: "POST",
             path: "/runtime/vitaldb/beds/delete",
             body: request

@@ -2840,21 +2840,24 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeObservabilityProjectionAssemblyDoesNotLiveInOutboundReader() throws {
+    func testRuntimeObservabilityReaderConsumesGuestOwnedRecorderHistoryDirectly() throws {
         let root = packageRoot()
         let reader = root
             .appendingPathComponent("Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeObservabilityReader.swift")
         let readerText = try String(contentsOf: reader, encoding: .utf8)
 
-        for token in [
-            "RuntimeVitalDBObservationSnapshotAssembler.makeSnapshot",
-            "RuntimeVitalDBRecorderHistoryAssembler.makeHistory",
-        ] {
-            XCTAssertTrue(
-                readerText.contains(token),
-                "RuntimeObservabilityReader should collect projection reads and delegate read-model assembly: \(token)"
-            )
-        }
+        XCTAssertTrue(
+            readerText.contains("RuntimeVitalDBObservationSnapshotAssembler.makeSnapshot"),
+            "RuntimeObservabilityReader should delegate current observation snapshot assembly"
+        )
+        XCTAssertTrue(
+            readerText.contains("guestVitalDBReadModelProvider?.load()"),
+            "RuntimeObservabilityReader should consume the Guest-owned recorder history contract"
+        )
+        XCTAssertFalse(
+            readerText.contains("RuntimeVitalDBRecorderHistoryAssembler.makeHistory"),
+            "RuntimeObservabilityReader must not reconstruct Guest-owned recorder history"
+        )
         let relationshipProvider = root
             .appendingPathComponent(
                 "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeVitalDBGuestRelationshipProvider.swift"

@@ -346,31 +346,6 @@ public struct RuntimeGuestControlVitalDBObservationRead: Codable, Equatable, Sen
     }
 }
 
-public struct RuntimeGuestControlVitalDBRecorderRead: Codable, Equatable, Sendable {
-    public let state: RuntimeGuestControlReadState
-    public let recorders: [VitalDBRecorderObservation]
-    public let observedAt: String?
-    public let ready: Bool?
-    public let recorderOnlineThresholdSeconds: Int?
-    public let readError: String?
-
-    public init(
-        state: RuntimeGuestControlReadState,
-        recorders: [VitalDBRecorderObservation] = [],
-        observedAt: String? = nil,
-        ready: Bool? = nil,
-        recorderOnlineThresholdSeconds: Int? = nil,
-        readError: String? = nil
-    ) {
-        self.state = state
-        self.recorders = recorders
-        self.observedAt = observedAt
-        self.ready = ready
-        self.recorderOnlineThresholdSeconds = recorderOnlineThresholdSeconds
-        self.readError = readError
-    }
-}
-
 public struct RuntimeVitalDBRecorderVisibilityRequest: Codable, Equatable, Sendable {
     public let vrcodes: [String]
 
@@ -394,31 +369,6 @@ public struct RuntimeGuestControlVitalDBRecorderActivityRead: Codable, Equatable
         self.state = state
         self.vrcode = vrcode
         self.buckets = buckets
-        self.readError = readError
-    }
-}
-
-public struct RuntimeGuestControlVitalDBBedRead: Codable, Equatable, Sendable {
-    public let state: RuntimeGuestControlReadState
-    public let beds: [VitalDBBedObservation]
-    public let observedAt: String?
-    public let ready: Bool?
-    public let recorderOnlineThresholdSeconds: Int?
-    public let readError: String?
-
-    public init(
-        state: RuntimeGuestControlReadState,
-        beds: [VitalDBBedObservation] = [],
-        observedAt: String? = nil,
-        ready: Bool? = nil,
-        recorderOnlineThresholdSeconds: Int? = nil,
-        readError: String? = nil
-    ) {
-        self.state = state
-        self.beds = beds
-        self.observedAt = observedAt
-        self.ready = ready
-        self.recorderOnlineThresholdSeconds = recorderOnlineThresholdSeconds
         self.readError = readError
     }
 }

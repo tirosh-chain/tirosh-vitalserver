@@ -124,44 +124,6 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.observation?.observedAt, "2026-07-01T00:00:00+00:00")
     }
 
-    func testGuestControlVitalDBRecorderAndBedReadsRoundTripThroughJSON() throws {
-        let recorderRead = RuntimeGuestControlVitalDBRecorderRead(
-            state: .loaded,
-            recorders: [
-                VitalDBRecorderObservation(vrcode: "VR-001", online: true),
-            ],
-            observedAt: "2026-07-01T00:00:00+00:00",
-            ready: true,
-            recorderOnlineThresholdSeconds: 60
-        )
-        let bedRead = RuntimeGuestControlVitalDBBedRead(
-            state: .loaded,
-            beds: [
-                VitalDBBedObservation(
-                    bedID: "bed-a",
-                    name: "OR-A",
-                    vrcode: "VR-001",
-                    online: true
-                ),
-            ],
-            observedAt: "2026-07-01T00:00:00+00:00",
-            ready: true,
-            recorderOnlineThresholdSeconds: 60
-        )
-
-        let recorderData = try JSONEncoder().encode(recorderRead)
-        let bedData = try JSONEncoder().encode(bedRead)
-
-        XCTAssertEqual(
-            try JSONDecoder().decode(RuntimeGuestControlVitalDBRecorderRead.self, from: recorderData),
-            recorderRead
-        )
-        XCTAssertEqual(
-            try JSONDecoder().decode(RuntimeGuestControlVitalDBBedRead.self, from: bedData),
-            bedRead
-        )
-    }
-
     func testGuestControlVitalDBRelationshipReadRoundTripsThroughJSON() throws {
         let read = RuntimeGuestControlVitalDBRelationshipRead(
             state: .partiallyLoaded,

@@ -1464,7 +1464,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
-        XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
+        XCTAssertTrue(history.readError?.contains("guestControl=") == true)
     }
 
     func testObservabilityReaderDoesNotUseGuestRuntimeStateAsCurrentObservation() throws {
@@ -1558,7 +1558,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(status.platformHealth, .critical)
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
-        XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
+        XCTAssertTrue(history.readError?.contains("guestControl=") == true)
     }
 
     func testObservabilityReaderReportsVitalRelationshipReadFailure() throws {

@@ -123,12 +123,14 @@ def test_build_execution_engine_uses_socketio_sender() -> None:
     assert isinstance(engine.sender, VitalServerRecorderPayloadSender)
 
 
-def test_socketio_payload_sender_emits_join_and_send_data(monkeypatch: Any) -> None:
+def test_socketio_payload_sender_reuses_recorder_connection_until_closed(
+    monkeypatch: Any,
+) -> None:
     client = FakeSocketIOClient()
     monkeypatch.setitem(sys.modules, "socketio", FakeSocketIOModule(client))
     sender = VitalServerRecorderPayloadSender(timeout_seconds=1)
 
-    receipt = sender.send(
+    first_receipt = sender.send(
         target_url="http://edge/",
         payload={
             "vrcode": "LAB-VR-1",
@@ -136,16 +138,49 @@ def test_socketio_payload_sender_emits_join_and_send_data(monkeypatch: Any) -> N
             "rooms": {"OR-A": {"roomname": "OR-A"}},
         },
     )
+    second_receipt = sender.send(
+        target_url="http://edge/",
+        payload={
+            "vrcode": "LAB-VR-1",
+            "ver": "vitalserver-lab",
+            "rooms": {"OR-A": {"roomname": "OR-A", "seqid": 2}},
+        },
+    )
 
-    assert receipt.transport == "socket.io"
-    assert receipt.bytes_sent > 0
+    assert first_receipt.transport == "socket.io"
+    assert first_receipt.bytes_sent > 0
+    assert second_receipt.bytes_sent > 0
     assert client.connected_url == "http://edge/"
+    assert client.connect_count == 1
     assert client.emitted[0] == ("join_vr", "LAB-VR-1")
     event, encoded = client.emitted[1]
     assert event == "send_data"
     decoded = json.loads(zlib.decompress(encoded))
     assert decoded["vrcode"] == "LAB-VR-1"
     assert decoded["rooms"] == {"OR-A": {"roomname": "OR-A"}}
+    assert [event for event, _ in client.emitted] == [
+        "join_vr",
+        "send_data",
+        "send_data",
+    ]
+    assert client.disconnected is False
+
+    client.connected = False
+    sender.send(
+        target_url="http://edge/",
+        payload={
+            "vrcode": "LAB-VR-1",
+            "ver": "vitalserver-lab",
+            "rooms": {"OR-A": {"roomname": "OR-A", "seqid": 3}},
+        },
+    )
+
+    assert client.connect_count == 2
+    assert client.emitted[-2] == ("join_vr", "LAB-VR-1")
+    assert client.emitted[-1][0] == "send_data"
+
+    sender.close_recorder(target_url="http://edge/", vrcode="LAB-VR-1")
+
     assert client.disconnected is True
 
 
@@ -348,10 +383,42 @@ def test_running_session_recorders_can_be_stopped_and_started_individually() -> 
 
     assert stopped["status"] == 202
     assert stopped["body"]["recorder"]["state"] == "stopped"
+    assert ("http://edge/", vrcode) in sender.closed_recorders
     assert all(call["payload"]["vrcode"] != vrcode for call in calls_while_stopped)
     assert started["status"] == 202
     assert started["body"]["recorder"]["state"] == "running"
     assert any(call["payload"]["vrcode"] == vrcode for call in sender.calls)
+
+
+def test_running_recorder_can_be_stopped_when_session_state_is_inconsistent() -> None:
+    sender = FakeSender()
+    with running_server(["lab_session_1"], sender=sender) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "name": "Recorder recovery",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+        recorder = address.store.list_recorders()[0]
+        session = address.store.get("lab_session_1")
+        assert session is not None
+        session.state = "accepted"
+
+        stopped = request(
+            address,
+            "POST",
+            f"/lab/sessions/lab_session_1/recorders/{recorder.recorder_id}/stop",
+        )
+
+    assert stopped["status"] == 202
+    assert stopped["body"]["recorder"]["state"] == "stopped"
+    assert ("http://edge/", recorder.vrcode) in sender.closed_recorders
 
 
 def test_lab_beds_and_recorders_are_served_from_product_read_model() -> None:
@@ -635,6 +702,15 @@ def test_session_start_sends_lab_recorder_payloads_and_updates_read_model() -> N
         isinstance(track.get("montype"), str) and track["montype"]
         for track in sender.calls[0]["payload"]["rooms"]["OR-A"]["trks"]
     )
+    tracks = {
+        track["name"]: track
+        for track in sender.calls[0]["payload"]["rooms"]["OR-A"]["trks"]
+    }
+    assert len(tracks["ECG"]["recs"][0]["val"]) == tracks["ECG"]["srate"]
+    assert len(tracks["PLETH"]["recs"][0]["val"]) == tracks["PLETH"]["srate"]
+    assert len(tracks["CO2"]["recs"][0]["val"]) == tracks["CO2"]["srate"]
+    assert min(tracks["PLETH"]["recs"][0]["val"]) >= tracks["PLETH"]["mindisp"]
+    assert max(tracks["PLETH"]["recs"][0]["val"]) <= tracks["PLETH"]["maxdisp"]
     recorder = recorders["body"]["recorders"][0]
     assert recorder["messagesSent"] == 1
     assert recorder["lastSendState"] == "sent"
@@ -666,6 +742,7 @@ def test_session_start_streams_until_session_stop() -> None:
         running_recorders = request(address, "GET", "/lab/recorders")
         stopped = request(address, "POST", "/lab/sessions/lab_session_1/stop")
         sent_at_stop = len(sender.calls)
+        vrcode = running_recorders["body"]["recorders"][0]["vrcode"]
         time.sleep(0.03)
         sent_after_stop_wait = len(sender.calls)
 
@@ -673,6 +750,7 @@ def test_session_start_streams_until_session_stop() -> None:
     assert stopped["status"] == 202
     assert running_recorders["body"]["recorders"][0]["messagesSent"] > 1
     assert sent_after_stop_wait == sent_at_stop
+    assert ("http://edge/", vrcode) in sender.closed_recorders
 
 
 def test_session_start_records_recorder_send_failure() -> None:
@@ -963,6 +1041,8 @@ def request(
 class FakeSender:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.closed_recorders: list[tuple[str, str]] = []
+        self.closed_all = False
 
     def send(
         self,
@@ -972,6 +1052,12 @@ class FakeSender:
     ) -> LabRecorderSendReceipt:
         self.calls.append({"target_url": target_url, "payload": payload})
         return LabRecorderSendReceipt(transport="fake", bytes_sent=123)
+
+    def close_recorder(self, *, target_url: str, vrcode: str) -> None:
+        self.closed_recorders.append((target_url, vrcode))
+
+    def close_all(self) -> None:
+        self.closed_all = True
 
 
 class FailingSender:
@@ -984,6 +1070,13 @@ class FailingSender:
         del target_url
         del payload
         raise LabRecorderSendError("send dependency unavailable")
+
+    def close_recorder(self, *, target_url: str, vrcode: str) -> None:
+        del target_url
+        del vrcode
+
+    def close_all(self) -> None:
+        return None
 
 
 class FakeSocketIOModule:
@@ -1000,11 +1093,13 @@ class FakeSocketIOClient:
         self.connected = False
         self.disconnected = False
         self.connected_url: str | None = None
+        self.connect_count = 0
         self.client_options: dict[str, Any] = {}
         self.emitted: list[tuple[str, Any]] = []
 
     def connect(self, url: str, *, transports: list[str]) -> None:
         self.connected = True
+        self.connect_count += 1
         self.connected_url = url
         self.transports = transports
 

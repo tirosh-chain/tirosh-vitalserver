@@ -19,7 +19,7 @@ The product boundary exposed create and single-session reads but did not expose 
 
 - Product Lab owns `GET /lab/sessions` and returns its persisted session collection.
 - Guest Control and Runtime Control expose `GET /runtime/lab/sessions` without converting dependency failure into an empty list.
-- Recorder Start/Stop routes validate that the session is running and that the recorder explicitly belongs to that session.
+- Recorder Start requires a running session and explicit session ownership. Recorder Stop requires an explicitly running recorder with the same ownership, and remains available to recover an inconsistent persisted session state.
 - SwiftUI and PWA separate new-session input, persisted Sessions, selected-session control, and selected-session recorder control.
 - Windows and Linux Platform Agents forward the same Runtime Control routes; Linux Native does not invent Guest-specific UI state.
 

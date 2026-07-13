@@ -32,6 +32,30 @@ def test_sqlalchemy_store_uses_same_domain_contract_with_sqlite(tmp_path: Path) 
     assert re.fullmatch(r"LAB-[A-Z0-9]{6}", recorders[0].vrcode)
 
 
+def test_sqlalchemy_store_persists_session_and_children_as_one_start_transition(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path / 'lab.sqlite'}"
+    store = SQLAlchemyLabSessionStore(url, id_factory=lambda: "lab_session_1")
+    created = store.create(
+        LabSessionCreateInput(
+            scenario_id="baseline-monitoring",
+            name="Atomic transition",
+            recorder_count=1,
+            target_url="http://edge/",
+        )
+    )
+
+    started = store.start(created.session_id)
+    reopened = SQLAlchemyLabSessionStore(url)
+
+    assert started is not None
+    assert started.state == "running"
+    assert reopened.get(created.session_id).state == "running"
+    assert {bed.state for bed in reopened.list_beds()} == {"running"}
+    assert {recorder.state for recorder in reopened.list_recorders()} == {"running"}
+
+
 def test_sqlalchemy_store_writes_existing_timestamp_columns(tmp_path: Path) -> None:
     database_path = tmp_path / "legacy-schema.sqlite"
     with sqlite3.connect(database_path) as connection:

@@ -255,7 +255,6 @@ struct RuntimeLabPanel: View {
                             }
                             .disabled(
                                 viewModel.isRunningLabAction
-                                    || viewModel.selectedLabSession?.state != .running
                                     || recorder.state != .running
                             )
                         }

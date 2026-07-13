@@ -26,6 +26,7 @@ from .model import (
     LabSessionStore,
     LabSessionStoreUnavailable,
     LabVitalFile,
+    lab_recorder_control_rejection,
     utc_now_iso,
 )
 from .persistence import SQLAlchemyLabSessionStore
@@ -344,16 +345,6 @@ def route_lab_request(
                     session_id,
                     operation_id=operation_id,
                 )
-            if session.state != "running":
-                return HTTPStatus.CONFLICT, {
-                    "state": "failed",
-                    "operationId": operation_id,
-                    "recorder": None,
-                    "readError": (
-                        "Lab recorder control requires a running session: "
-                        f"{session_id} state={session.state}"
-                    ),
-                }
             session_beds = tuple(
                 bed for bed in session_store.list_beds() if bed.session_id == session_id
             )
@@ -362,6 +353,36 @@ def route_lab_request(
                 for recorder in session_store.list_recorders()
                 if recorder.session_id == session_id
             )
+            target_recorder = next(
+                (
+                    recorder
+                    for recorder in session_recorders
+                    if recorder.recorder_id == recorder_id
+                ),
+                None,
+            )
+            if target_recorder is None:
+                return HTTPStatus.NOT_FOUND, {
+                    "state": "failed",
+                    "operationId": operation_id,
+                    "recorder": None,
+                    "readError": (
+                        "Lab recorder is not available in session: "
+                        f"{session_id} recorder={recorder_id}"
+                    ),
+                }
+            rejection = lab_recorder_control_rejection(
+                action=action,
+                session_state=session.state,
+                recorder_state=target_recorder.state,
+            )
+            if rejection is not None:
+                return HTTPStatus.CONFLICT, {
+                    "state": "failed",
+                    "operationId": operation_id,
+                    "recorder": None,
+                    "readError": f"Lab recorder {action} rejected: {rejection}",
+                }
             if action == "start":
                 recorder = session_store.start_recorder(session_id, recorder_id)
                 if recorder is not None:

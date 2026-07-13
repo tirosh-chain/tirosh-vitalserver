@@ -197,46 +197,6 @@ public enum RuntimeVitalDBRecorderHistoryAssembler {
     }
 }
 
-public enum RuntimeVitalDBBedHistoryAssembler {
-    public static func makeHistory(
-        read: RuntimeGuestControlVitalDBBedRead,
-        statusEvaluationTime: String? = nil
-    ) -> RuntimeVitalBedHistory {
-        guard read.state == .loaded else {
-            return .failed(readError: read.readError ?? "beds=\(read.state.rawValue)")
-        }
-        guard let observedAt = read.observedAt, !observedAt.isEmpty else {
-            return .failed(readError: "bedsObservedAtMissing")
-        }
-        guard let ready = read.ready else {
-            return .failed(readError: "bedsReadyMissing")
-        }
-        guard let threshold = read.recorderOnlineThresholdSeconds else {
-            return .failed(readError: "bedsRecorderOnlineThresholdMissing")
-        }
-
-        let observation = VitalDBObservationDocument(
-            source: "guest-control-api",
-            observedAt: observedAt,
-            ready: ready,
-            recorderOnlineThresholdSeconds: threshold,
-            recorders: [],
-            beds: read.beds
-        )
-        let recorderHistory = RuntimeVitalRecorderHistory(
-            observations: [observation],
-            statusEvaluationTime: statusEvaluationTime ?? observedAt
-        )
-        return RuntimeVitalBedHistory(
-            state: recorderHistory.state,
-            updatedAt: recorderHistory.updatedAt,
-            beds: recorderHistory.beds,
-            summary: RuntimeVitalBedHistorySummary(recorderSummary: recorderHistory.summary),
-            readError: read.readError
-        )
-    }
-}
-
 public enum RuntimeVitalDBRelationshipHistoryAssembler {
     public static func makeHistory(
         read: RuntimeGuestControlVitalDBRelationshipRead

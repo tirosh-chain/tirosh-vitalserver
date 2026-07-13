@@ -43,7 +43,10 @@ public actor MacRuntimeControlReadWorker {
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader
             ),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
             fileReader: fileReader,
             settingsReader: SystemRuntimeSettingsReader()
         )

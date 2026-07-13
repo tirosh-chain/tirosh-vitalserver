@@ -14,9 +14,7 @@ struct RuntimeVitalDBGuestRelationshipProvider {
     }
 
     static func live(
-        guestControlBaseURL: @escaping @Sendable () -> String? = {
-            RuntimeControlClientConstants.Product.localGuestControlAPIBaseURL
-        },
+        guestControlBaseURL: @escaping @Sendable () -> String?,
         guestControlGateway: @escaping @Sendable (String) throws -> any RuntimeGuestControlGateway = {
             try HTTPRuntimeGuestControlGateway(
                 baseURL: $0,

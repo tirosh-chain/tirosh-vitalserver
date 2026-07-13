@@ -61,7 +61,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader
             ),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
             commandWorker: commandWorker

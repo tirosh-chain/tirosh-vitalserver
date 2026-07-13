@@ -1343,6 +1343,35 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertFalse(viewModel.labCanStartSelectedSession)
     }
 
+    func testProductLabSelectedSessionUsesNewerDetailStateThanSessionList() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "lab-session-1",
+                    state: .accepted,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshProductLabReadModels()
+
+        XCTAssertEqual(viewModel.labSessions.sessions.first?.state, .accepted)
+        XCTAssertEqual(viewModel.labSessionResponse.session?.state, .running)
+        XCTAssertEqual(viewModel.selectedLabSession?.state, .running)
+        XCTAssertTrue(viewModel.labCanStopSelectedSession)
+        XCTAssertFalse(viewModel.labCanStartSelectedSession)
+    }
+
     func testProductLabRecorderControlsUseExplicitRunningSessionOwnership() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.labSessionsToLoad = RuntimeLabSessionList(
@@ -1390,6 +1419,57 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.labStoppedRecorderRequests, ["running-session/session-recorder"])
         XCTAssertEqual(client.labStartedRecorderRequests, ["running-session/session-recorder"])
         XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.chooseSessionLabRecorder)
+    }
+
+    func testProductLabRunningRecorderCanStopWhenSessionStateIsAccepted() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "accepted-session",
+                    state: .accepted,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+            ]
+        )
+        client.labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "running-recorder",
+                    sessionId: "accepted-session",
+                    bedId: "session-bed",
+                    vrcode: "LAB-REC001",
+                    state: .running
+                ),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        await viewModel.refreshProductLabReadModels()
+        viewModel.labSessionResponse = RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: "accepted-session",
+                state: .accepted,
+                scenarioId: "case-a",
+                recorderCount: 1,
+                targetURL: "http://edge/"
+            )
+        )
+
+        await viewModel.stopProductLabRecorder("running-recorder")
+
+        XCTAssertEqual(
+            client.labStoppedRecorderRequests,
+            ["accepted-session/running-recorder"]
+        )
     }
 
     func testProductLabVitalFileReplayUsesGuestMountedPath() async {

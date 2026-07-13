@@ -29,7 +29,18 @@ enum RuntimeControlClientConstants {
             "http://\(vmIP):18330"
         }
 
-        static let localGuestControlAPIBaseURL = "http://127.0.0.1:18330"
+        static func guestControlAPIBaseURL(
+            guestAddressRead: RuntimeGuestAddressReadResult
+        ) -> String? {
+            guard let vmIP = guestAddressRead.loadedAddress?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !vmIP.isEmpty
+            else {
+                return nil
+            }
+            return guestControlAPIBaseURL(vmIP: vmIP)
+        }
+
         static let guestControlAPIReadinessTimeoutSeconds: TimeInterval = 5
         static let guestControlAPIStackStatusTimeoutSeconds: TimeInterval = 5
         static let guestControlAPIProductReadModelTimeoutSeconds: TimeInterval = 5

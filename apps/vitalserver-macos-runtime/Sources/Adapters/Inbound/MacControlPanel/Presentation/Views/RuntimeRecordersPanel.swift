@@ -99,6 +99,7 @@ struct RuntimeRecordersPanel: View {
                 recorderRelationshipHistory(recorder)
             } else if let recorder = selectedLabRecorder {
                 selectedLabRecorderSummary(recorder)
+                selectedLabRecorderObservation(recorder)
             } else {
                 Text("Select a VRecorder or Product Lab recorder to view details.")
                     .foregroundStyle(.secondary)
@@ -403,6 +404,39 @@ struct RuntimeRecordersPanel: View {
                 detailRow("Created", viewModel.presentationFormatter.systemTimeText(recorder.createdAt))
                 detailRow("Updated", viewModel.presentationFormatter.systemTimeText(recorder.updatedAt))
             }
+        }
+    }
+
+    @ViewBuilder
+    private func selectedLabRecorderObservation(_ labRecorder: RuntimeLabRecorder) -> some View {
+        if let recorder = vitalDBRecorder(for: labRecorder) {
+            Text("VitalDB observation")
+                .font(.headline)
+            selectedRecorderSummary(recorder)
+            recorderNetworkAccess(recorder)
+            recorderActivity(recorder)
+            recorderMetadata(recorder)
+            recorderRelationshipHistory(recorder)
+        } else if let readError = viewModel.vitalRecorders.readError {
+            Text("VitalDB observation read issue: \(readError)")
+                .foregroundStyle(.red)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        } else {
+            Text("VitalDB has not observed this Product Lab recorder. Packet history is unavailable until the recorder observation is reported.")
+                .foregroundStyle(.secondary)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func vitalDBRecorder(for labRecorder: RuntimeLabRecorder) -> RuntimeVitalRecorderRecord? {
+        viewModel.vitalRecorders.recorders.first { recorder in
+            recorder.vrcode == labRecorder.vrcode
         }
     }
 

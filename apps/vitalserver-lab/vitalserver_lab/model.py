@@ -5,7 +5,7 @@ import string
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import uuid4
 
 RANDOM_SUFFIX_ALPHABET = string.ascii_uppercase + string.digits
@@ -17,6 +17,24 @@ def random_suffix() -> str:
 
 def utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def lab_recorder_control_rejection(
+    *,
+    action: Literal["start", "stop"],
+    session_state: str,
+    recorder_state: str,
+) -> str | None:
+    """Return the explicit guard rejection for one recorder transition."""
+    if action == "start":
+        if session_state != "running":
+            return f"start requires a running session; session state={session_state}"
+        if recorder_state == "running":
+            return "start requires a recorder that is not already running"
+        return None
+    if recorder_state != "running":
+        return f"stop requires a running recorder; recorder state={recorder_state}"
+    return None
 
 
 @dataclass(frozen=True)
@@ -268,7 +286,7 @@ class InMemoryLabSessionStore:
     def create(self, request: LabSessionCreateInput) -> LabSession:
         now = utc_now_iso()
         selected_beds = (
-            explicit_beds_for_session(self.list_beds(), request.bed_ids)
+            explicit_beds_for_session(tuple(self.beds.values()), request.bed_ids)
             if request.bed_ids
             else ()
         )
@@ -373,10 +391,10 @@ class InMemoryLabSessionStore:
         )
         self.sessions[session.session_id] = session
         self._save_session_read_model(session, state="accepted", with_recorders=False)
-        return self.list_beds()
+        return tuple(self.beds.values())
 
     def delete_beds(self, request: LabBedDeleteInput) -> tuple[LabBed, ...]:
-        matches = matching_beds(self.list_beds(), request)
+        matches = matching_beds(tuple(self.beds.values()), request)
         if not matches:
             raise LabSessionStoreUnavailable(
                 "No Lab beds matched the delete request.",
@@ -388,18 +406,20 @@ class InMemoryLabSessionStore:
         for recorder_id, recorder in list(self.recorders.items()):
             if recorder.bed_id in matched_bed_ids:
                 self.recorders.pop(recorder_id, None)
-        return self.list_beds()
+        return tuple(self.beds.values())
 
     def reset_beds(self) -> tuple[LabBed, ...]:
         self.beds.clear()
         self.recorders.clear()
-        return self.list_beds()
+        return tuple(self.beds.values())
 
     def create_recorders(
         self,
         request: LabRecorderCreateInput,
     ) -> tuple[LabRecorder, ...]:
-        beds = matching_beds_for_recorder_create(self.list_beds(), request)
+        beds = matching_beds_for_recorder_create(
+            tuple(self.beds.values()), request
+        )
         if not beds:
             raise LabSessionStoreUnavailable(
                 "No Lab beds matched the recorder create request.",
@@ -416,13 +436,13 @@ class InMemoryLabSessionStore:
                 updated_at=now,
             )
             self.recorders[recorder.recorder_id] = recorder
-        return self.list_recorders()
+        return tuple(self.recorders.values())
 
     def delete_recorders(
         self,
         request: LabRecorderDeleteInput,
     ) -> tuple[LabRecorder, ...]:
-        matches = matching_recorders(self.list_recorders(), request)
+        matches = matching_recorders(tuple(self.recorders.values()), request)
         if not matches:
             raise LabSessionStoreUnavailable(
                 "No Lab recorders matched the delete request.",
@@ -430,11 +450,11 @@ class InMemoryLabSessionStore:
             )
         for recorder in matches:
             self.recorders.pop(recorder.recorder_id, None)
-        return self.list_recorders()
+        return tuple(self.recorders.values())
 
     def reset_recorders(self) -> tuple[LabRecorder, ...]:
         self.recorders.clear()
-        return self.list_recorders()
+        return tuple(self.recorders.values())
 
     def start_recorder(self, session_id: str, recorder_id: str) -> LabRecorder | None:
         return self._transition_recorder(session_id, recorder_id, state="running")
@@ -501,12 +521,16 @@ class InMemoryLabSessionStore:
         if session.bed_ids:
             self._occupy_existing_read_model_beds(
                 session,
-                explicit_beds_for_session(self.list_beds(), session.bed_ids),
+                explicit_beds_for_session(
+                    tuple(self.beds.values()), session.bed_ids
+                ),
                 state=state,
             )
             return
         existing_beds = tuple(
-            bed for bed in self.list_beds() if bed.session_id == session.session_id
+            bed
+            for bed in self.beds.values()
+            if bed.session_id == session.session_id
         )
         if existing_beds:
             self._occupy_existing_read_model_beds(session, existing_beds, state=state)

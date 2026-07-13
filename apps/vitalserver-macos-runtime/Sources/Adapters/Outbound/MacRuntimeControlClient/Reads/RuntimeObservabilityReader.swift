@@ -44,9 +44,7 @@ struct RuntimeRecorderIngressGuestStatusReadProvider: RuntimeRecorderIngressStat
     private let guestControlGateway: @Sendable (String) throws -> any RuntimeGuestControlGateway
 
     init(
-        guestControlBaseURL: @escaping @Sendable () -> String? = {
-            RuntimeControlClientConstants.Product.localGuestControlAPIBaseURL
-        },
+        guestControlBaseURL: @escaping @Sendable () -> String?,
         guestControlGateway: @escaping @Sendable (String) throws -> any RuntimeGuestControlGateway = {
             try HTTPRuntimeGuestControlGateway(
                 baseURL: $0,
@@ -89,7 +87,6 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     private let guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider?
     private let guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider?
     private let guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider?
-    private let recorderIngressStatusReadProvider: (any RuntimeRecorderIngressStatusReadProviding)?
 
     init(
         paths: RuntimeObservabilityPaths,
@@ -99,8 +96,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider? = nil,
         guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider? = nil,
         guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider? = nil,
-        guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider? = nil,
-        recorderIngressStatusReadProvider: (any RuntimeRecorderIngressStatusReadProviding)? = nil
+        guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider? = nil
     ) {
         self.eventHistoryReader = eventHistoryReader ?? SystemRuntimeObservabilityReader.liveEventHistoryReader(
             paths: paths,
@@ -111,23 +107,27 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         self.guestVitalDBBedReadModelProvider = guestVitalDBBedReadModelProvider
         self.guestVitalDBActivityProvider = guestVitalDBActivityProvider
         self.guestVitalDBRelationshipProvider = guestVitalDBRelationshipProvider
-        self.recorderIngressStatusReadProvider = recorderIngressStatusReadProvider
     }
 
     static func live(
         paths: RuntimeObservabilityPaths,
-        fileStore: RuntimeFileStore = SystemRuntimeFileStore()
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        guestAddressProvider: any RuntimeGuestAddressProvider = RuntimeControlAPIGuestAddressProvider()
     ) -> SystemRuntimeObservabilityReader {
-        SystemRuntimeObservabilityReader(
+        let guestControlBaseURL: @Sendable () -> String? = {
+            RuntimeControlClientConstants.Product.guestControlAPIBaseURL(
+                guestAddressRead: guestAddressProvider.readGuestAddress()
+            )
+        }
+        return SystemRuntimeObservabilityReader(
             paths: paths,
             fileStore: fileStore,
             eventHistoryReader: liveEventHistoryReader(paths: paths, fileStore: fileStore),
-            currentObservationProvider: .live(),
-            guestVitalDBReadModelProvider: .live(),
-            guestVitalDBBedReadModelProvider: .live(),
-            guestVitalDBActivityProvider: .live(),
-            guestVitalDBRelationshipProvider: .live(),
-            recorderIngressStatusReadProvider: RuntimeRecorderIngressGuestStatusReadProvider()
+            currentObservationProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBBedReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBActivityProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBRelationshipProvider: .live(guestControlBaseURL: guestControlBaseURL)
         )
     }
 
@@ -161,11 +161,8 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
-            reads: recorderProjectionReads(includeActivityBuckets: true),
-            recorderIngressStatusRead: recorderIngressStatusReadProvider?.loadRecorderIngressStatusRead(),
-            statusEvaluationTime: currentTimestamp()
-        )
+        guestVitalDBReadModelProvider?.load()
+            ?? .failed(readError: "Guest VitalDB recorder read model is unavailable.")
     }
 
     func loadVitalDBBeds() -> RuntimeVitalBedHistory {
@@ -176,11 +173,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     }
 
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
-        return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
-            reads: recorderProjectionReads(includeActivityBuckets: false),
-            recorderIngressStatusRead: recorderIngressStatusReadProvider?.loadRecorderIngressStatusRead(),
-            statusEvaluationTime: currentTimestamp()
-        )
+        loadVitalDBRecorders()
     }
 
     func loadVitalDBRecorderActivityWindow(
@@ -284,24 +277,6 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         )
     }
 
-    private func recorderProjectionReads(includeActivityBuckets: Bool) -> RuntimeVitalDBRecorderProjectionReads {
-        if let guestRead = guestVitalDBReadModelProvider?.load() {
-            return RuntimeVitalDBRecorderProjectionReads(
-                observations: .loaded([]),
-                currentObservation: guestRead,
-                activityBuckets: .notLoaded
-            )
-        }
-        return RuntimeVitalDBRecorderProjectionReads(
-            observations: .loaded([]),
-            currentObservation: .unavailable(readIssues: ["guestControl=readModelProviderUnavailable"]),
-            activityBuckets: .notLoaded
-        )
-    }
-
-    private func currentTimestamp() -> String {
-        ISO8601DateFormatter().string(from: Date())
-    }
 }
 
 private func guestActivityBounds(

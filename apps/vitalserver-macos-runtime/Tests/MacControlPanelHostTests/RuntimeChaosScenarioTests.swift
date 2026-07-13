@@ -80,7 +80,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertNotNil(eventHistory.readError)
         XCTAssertEqual(recorderHistory.activityHistory.source, .notProvided)
         XCTAssertNotNil(recorderHistory.readError)
-        XCTAssertNotNil(recorderHistory.activityHistory.readError)
+        XCTAssertNil(recorderHistory.activityHistory.readError)
         XCTAssertTrue(relationships.readError?.contains("guestControl=") == true)
         XCTAssertFalse(relationships.readError?.contains("sqlite") == true)
         XCTAssertFalse(FileManager.default.fileExists(atPath: statusDirectory.path))

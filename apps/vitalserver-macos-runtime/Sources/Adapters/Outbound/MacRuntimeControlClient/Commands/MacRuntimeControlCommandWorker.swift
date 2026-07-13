@@ -429,25 +429,19 @@ public actor MacRuntimeControlCommandWorker {
 
     public func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
         await runVitalDBVisibilityCommand { gateway in
-            let recorders = try gateway.hideVitalDBRecorders(request)
-            let beds = try gateway.vitalDBBeds()
-            return (recorders, beds)
+            try gateway.hideVitalDBRecorders(request)
         }
     }
 
     public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
         await runVitalDBVisibilityCommand { gateway in
-            let recorders = try gateway.unhideVitalDBRecorders(request)
-            let beds = try gateway.vitalDBBeds()
-            return (recorders, beds)
+            try gateway.unhideVitalDBRecorders(request)
         }
     }
 
     public func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
         await runVitalDBVisibilityCommand { gateway in
-            let recorders = try gateway.deleteVitalDBRecorders(request)
-            let beds = try gateway.vitalDBBeds()
-            return (recorders, beds)
+            try gateway.deleteVitalDBRecorders(request)
         }
     }
 
@@ -591,41 +585,35 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     private func runVitalDBVisibilityCommand(
-        _ command: @escaping @Sendable (any RuntimeGuestControlGateway) throws -> (
-            RuntimeGuestControlVitalDBRecorderRead,
-            RuntimeGuestControlVitalDBBedRead
-        )
+        _ command: @escaping @Sendable (any RuntimeVitalDBGuestControlGateway) throws -> RuntimeVitalRecorderHistory
     ) async -> RuntimeVitalRecorderHistory {
         do {
-            let reads = try await runGuestControlCommand { gateway in
+            return try await runVitalDBGuestControlCommand { gateway in
                 try command(gateway)
             }
-            let current = RuntimeVitalDBGuestReadModelProvider.makeCurrentObservation(
-                recorders: reads.0,
-                beds: reads.1
-            )
-            guard let observation = current.observation else {
-                return RuntimeVitalRecorderHistory(
-                    readError: current.readIssues.joined(separator: "; ")
-                )
-            }
-            return RuntimeVitalRecorderHistory(observations: [observation])
         } catch {
             return RuntimeVitalRecorderHistory(readError: "VitalDB read model command failed: \(error)")
         }
     }
 
     private func runVitalDBBedVisibilityCommand(
-        _ command: @escaping @Sendable (any RuntimeGuestControlGateway) throws -> RuntimeGuestControlVitalDBBedRead
+        _ command: @escaping @Sendable (any RuntimeVitalDBGuestControlGateway) throws -> RuntimeVitalBedHistory
     ) async -> RuntimeVitalBedHistory {
         do {
-            let read = try await runGuestControlCommand { gateway in
+            return try await runVitalDBGuestControlCommand { gateway in
                 try command(gateway)
             }
-            return RuntimeVitalDBBedHistoryAssembler.makeHistory(read: read)
         } catch {
             return .failed(readError: "VitalDB bed read model command failed: \(error)")
         }
+    }
+
+    private func runVitalDBGuestControlCommand<T>(
+        _ command: @escaping @Sendable (any RuntimeVitalDBGuestControlGateway) throws -> T
+    ) async throws -> T {
+        let baseURL = try guestControlBaseURL()
+        let gateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
+        return try command(gateway)
     }
 
     private func runPrivileged(_ shellCommand: String) async -> RuntimeCommandResult {

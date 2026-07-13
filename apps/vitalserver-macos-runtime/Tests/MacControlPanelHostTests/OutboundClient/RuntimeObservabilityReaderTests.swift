@@ -9,6 +9,23 @@ import Errors
 @testable import InboundAdapters
 
 final class RuntimeObservabilityReaderTests: XCTestCase {
+    func testGuestControlBaseURLUsesExplicitGuestAddressOwnerRead() {
+        XCTAssertEqual(
+            RuntimeControlClientConstants.Product.guestControlAPIBaseURL(
+                guestAddressRead: .loaded(
+                    address: "192.168.64.21",
+                    source: .platformAgent
+                )
+            ),
+            "http://192.168.64.21:18330"
+        )
+        XCTAssertNil(
+            RuntimeControlClientConstants.Product.guestControlAPIBaseURL(
+                guestAddressRead: .missing("VM address is not published")
+            )
+        )
+    }
+
     func testProtocolRequiresExplicitObservationSnapshot() {
         let reader = DefaultSnapshotObservabilityReader(snapshot: .loaded(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
@@ -96,7 +113,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(snapshot.state, .failed)
         XCTAssertEqual(snapshot.readError, "guestControl=unavailable")
         XCTAssertEqual(history.state, .readFailed)
-        XCTAssertEqual(history.readError, "currentObservation=guestControl=readModelProviderUnavailable")
+        XCTAssertEqual(history.readError, "Guest VitalDB recorder read model is unavailable.")
         XCTAssertEqual(relationships.state, .readFailed)
         XCTAssertEqual(relationships.readError, "Guest VitalDB relationship read model is unavailable.")
         XCTAssertEqual(window.state, .readFailed)
@@ -127,7 +144,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(history.state, .readFailed)
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
-        XCTAssertEqual(history.readError, "currentObservation=guestControl=readModelProviderUnavailable")
+        XCTAssertEqual(history.readError, "Guest VitalDB recorder read model is unavailable.")
     }
 
     func testLiveCurrentObservationProviderReadsGuestControlAPI() {
@@ -179,148 +196,21 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         )
     }
 
-    func testLiveGuestReadModelProviderBuildsObservationFromRecordersAndBeds() {
+    func testLiveGuestReadModelProviderReturnsGuestOwnedRecorderHistory() {
+        let expected = makeGuestRecorderHistory(vrcode: "VR_GUEST", bedID: "bed-a")
         let provider = RuntimeVitalDBGuestReadModelProvider.live(
             guestControlBaseURL: { "http://127.0.0.1:18330" },
             guestControlGateway: { _ in
                 GuestVitalDBObservationGatewayStub(
                     read: RuntimeGuestControlVitalDBObservationRead(state: .unavailable),
-                    recorderRead: RuntimeGuestControlVitalDBRecorderRead(
-                        state: .loaded,
-                        recorders: [
-                            VitalDBRecorderObservation(vrcode: "VR_GUEST", online: true),
-                        ],
-                        observedAt: "2026-07-01T00:00:00+00:00",
-                        ready: true,
-                        recorderOnlineThresholdSeconds: 60
-                    ),
-                    bedRead: RuntimeGuestControlVitalDBBedRead(
-                        state: .loaded,
-                        beds: [
-                            VitalDBBedObservation(
-                                bedID: "bed-a",
-                                name: "OR-A",
-                                vrcode: "VR_GUEST",
-                                online: true
-                            ),
-                        ],
-                        observedAt: "2026-07-01T00:00:00+00:00",
-                        ready: true,
-                        recorderOnlineThresholdSeconds: 60
-                    )
+                    recorderRead: expected
                 )
             }
         )
 
         let read = provider.load()
 
-        XCTAssertEqual(read.source, .guestControlAPI)
-        XCTAssertEqual(read.observation?.source, "guest-control-api")
-        XCTAssertEqual(read.observation?.recorders.map(\.vrcode), ["VR_GUEST"])
-        XCTAssertEqual(read.observation?.beds.map(\.bedID), ["bed-a"])
-        XCTAssertEqual(read.readIssues, [])
-    }
-
-    func testLiveGuestReadModelProviderMergesLabRecordersAndBeds() {
-        let provider = RuntimeVitalDBGuestReadModelProvider.live(
-            guestControlBaseURL: { "http://127.0.0.1:18330" },
-            guestControlGateway: { _ in
-                GuestVitalDBObservationGatewayStub(
-                    read: RuntimeGuestControlVitalDBObservationRead(state: .unavailable),
-                    recorderRead: RuntimeGuestControlVitalDBRecorderRead(
-                        state: .loaded,
-                        recorders: [
-                            VitalDBRecorderObservation(
-                                vrcode: "VR_GUEST",
-                                lastSeenAt: "2026-07-01T00:00:00+00:00",
-                                online: true
-                            ),
-                        ],
-                        observedAt: "2026-07-01T00:00:00+00:00",
-                        ready: true,
-                        recorderOnlineThresholdSeconds: 60
-                    ),
-                    bedRead: RuntimeGuestControlVitalDBBedRead(
-                        state: .loaded,
-                        beds: [
-                            VitalDBBedObservation(
-                                bedID: "bed-a",
-                                name: "OR-A",
-                                vrcode: "VR_GUEST",
-                                lastSeenAt: "2026-07-01T00:00:00+00:00",
-                                online: true
-                            ),
-                        ],
-                        observedAt: "2026-07-01T00:00:00+00:00",
-                        ready: true,
-                        recorderOnlineThresholdSeconds: 60
-                    ),
-                    labRecorders: RuntimeLabRecorderList(
-                        state: .loaded,
-                        recorders: [
-                            RuntimeLabRecorder(
-                                recorderId: "rec-lab-1",
-                                sessionId: "session-lab-1",
-                                bedId: "bed-b",
-                                vrcode: "VR_LAB_1",
-                                state: .running,
-                                createdAt: "2026-07-01T00:00:00+00:00"
-                            )
-                        ]
-                    ),
-                    labBeds: RuntimeLabBedList(
-                        state: .loaded,
-                        beds: [
-                            RuntimeLabBed(
-                                bedId: "bed-b",
-                                sessionId: "session-lab-1",
-                                name: "Lab Bed",
-                                state: .running,
-                                createdAt: "2026-07-01T00:00:00+00:00"
-                            )
-                        ]
-                    )
-                )
-            }
-        )
-
-        let read = provider.load()
-
-        XCTAssertEqual(read.source, .guestControlAPI)
-        XCTAssertEqual(read.observation?.recorders.map(\.vrcode), ["VR_GUEST", "VR_LAB_1"])
-        XCTAssertEqual(read.observation?.beds.map(\.bedID), ["bed-a", "bed-b"])
-        XCTAssertEqual(read.observation?.beds.first(where: { $0.bedID == "bed-b" })?.vrcode, "VR_LAB_1")
-        XCTAssertEqual(read.readIssues, [])
-    }
-
-    func testLiveGuestReadModelProviderRejectsMismatchedReadMetadata() {
-        let provider = RuntimeVitalDBGuestReadModelProvider.live(
-            guestControlBaseURL: { "http://127.0.0.1:18330" },
-            guestControlGateway: { _ in
-                GuestVitalDBObservationGatewayStub(
-                    read: RuntimeGuestControlVitalDBObservationRead(state: .unavailable),
-                    recorderRead: RuntimeGuestControlVitalDBRecorderRead(
-                        state: .loaded,
-                        observedAt: "2026-07-01T00:00:00+00:00",
-                        ready: true,
-                        recorderOnlineThresholdSeconds: 60
-                    ),
-                    bedRead: RuntimeGuestControlVitalDBBedRead(
-                        state: .loaded,
-                        observedAt: "2026-07-01T00:00:01+00:00",
-                        ready: true,
-                        recorderOnlineThresholdSeconds: 60
-                    )
-                )
-            }
-        )
-
-        let read = provider.load()
-
-        XCTAssertNil(read.observation)
-        XCTAssertTrue(read.readIssues.contains {
-            $0.contains("guestControl=observedAtMismatch")
-        })
+        XCTAssertEqual(read, expected)
     }
 
     func testLoadVitalDBRecordersUsesGuestReadModelBeforeSQLiteProjection() throws {
@@ -342,26 +232,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 .unavailable()
             },
             guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider {
-                .loaded(
-                    VitalDBObservationDocument(
-                        source: "guest-control-api",
-                        observedAt: "2026-07-01T00:00:00+00:00",
-                        ready: true,
-                        recorderOnlineThresholdSeconds: 60,
-                        recorders: [
-                            VitalDBRecorderObservation(vrcode: "VR_GUEST", online: true),
-                        ],
-                        beds: [
-                            VitalDBBedObservation(
-                                bedID: "bed-a",
-                                name: "OR-A",
-                                vrcode: "VR_GUEST",
-                                online: true
-                            ),
-                        ]
-                    ),
-                    source: .guestControlAPI
-                )
+                makeGuestRecorderHistory(vrcode: "VR_GUEST", bedID: "bed-a")
             }
         )
 
@@ -380,18 +251,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 .unavailable()
             },
             guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider {
-                .loaded(
-                    VitalDBObservationDocument(
-                        source: "guest-control-api",
-                        observedAt: "2026-07-01T00:00:00+00:00",
-                        ready: true,
-                        recorderOnlineThresholdSeconds: 60,
-                        recorders: [
-                            VitalDBRecorderObservation(vrcode: "VR_GUEST", online: true),
-                        ]
-                    ),
-                    source: .guestControlAPI
-                )
+                makeGuestRecorderHistory(vrcode: "VR_GUEST")
             }
         )
 
@@ -664,7 +524,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
         XCTAssertEqual(history.activityHistory.source, .notProvided)
-        XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
+        XCTAssertTrue(history.readError?.contains("guestControl=") == true)
     }
 
     func testLoadVitalDBRecordersReportsCurrentObservationNotProvided() throws {
@@ -692,10 +552,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
         XCTAssertEqual(history.activityHistory.source, .notProvided)
-        XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
-        XCTAssertTrue(
-            history.activityHistory.readError?.contains("currentObservation=guestControl=") == true
-        )
+        XCTAssertTrue(history.readError?.contains("guestControl=") == true)
+        XCTAssertNil(history.activityHistory.readError)
     }
 
     func testLoadVitalDBRecordersReturnsNilStatusFallbackWhenStatusFileIsMissing() throws {
@@ -714,10 +572,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertNil(history.updatedAt)
         XCTAssertEqual(history.recorders, [])
         XCTAssertEqual(history.activityHistory.source, .notProvided)
-        XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
-        XCTAssertTrue(
-            history.activityHistory.readError?.contains("currentObservation=guestControl=") == true
-        )
+        XCTAssertTrue(history.readError?.contains("guestControl=") == true)
+        XCTAssertNil(history.activityHistory.readError)
     }
 
     func testLoadVitalDBBedsDoesNotUseSQLiteProjectionWhenGuestBedReadIsUnavailable() throws {
@@ -751,8 +607,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 guestControlGateway: { _ in
                     GuestVitalDBObservationGatewayStub(
                         read: RuntimeGuestControlVitalDBObservationRead(state: .unavailable),
-                        bedRead: RuntimeGuestControlVitalDBBedRead(
-                            state: .unavailable,
+                        bedRead: .failed(
                             readError: "Guest Bed read model is unavailable."
                         )
                     )
@@ -795,9 +650,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 .loaded(currentObservation, source: .guestControlAPI)
             },
             guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider {
-                .loaded(currentObservation, source: .guestControlAPI)
-            },
-            recorderIngressStatusReadProvider: StubRecorderIngressStatusReadProvider(result: ingressRead)
+                RuntimeVitalRecorderHistory(recorderIngressStatusRead: ingressRead)
+            }
         )
 
         let history = reader.loadVitalDBRecorders()
@@ -837,9 +691,8 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                 .loaded(currentObservation, source: .guestControlAPI)
             },
             guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider {
-                .loaded(currentObservation, source: .guestControlAPI)
-            },
-            recorderIngressStatusReadProvider: StubRecorderIngressStatusReadProvider(result: ingressRead)
+                RuntimeVitalRecorderHistory(recorderIngressStatusRead: ingressRead)
+            }
         )
 
         let history = reader.loadVitalDBRecorderSummaries()
@@ -875,8 +728,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
                     ),
                     source: .guestControlAPI
                 )
-            },
-            recorderIngressStatusReadProvider: StubRecorderIngressStatusReadProvider(result: nil)
+            }
         )
 
         let history = reader.loadVitalDBRecorders()
@@ -1372,18 +1224,54 @@ private struct FailingVitalDBProjectionRepository: RuntimeVitalDBObservationProj
     }
 }
 
-private struct StubRecorderIngressStatusReadProvider: RuntimeRecorderIngressStatusReadProviding {
-    let result: RuntimeRecorderIngressStatusReadResult?
-
-    func loadRecorderIngressStatusRead() -> RuntimeRecorderIngressStatusReadResult? {
-        result
-    }
+private func makeGuestRecorderHistory(
+    vrcode: String,
+    bedID: String? = nil
+) -> RuntimeVitalRecorderHistory {
+    let recorder = RuntimeVitalRecorderRecord(
+        vrcode: vrcode,
+        status: .online,
+        lastIP: "192.168.64.25",
+        version: nil,
+        bedID: bedID,
+        bedName: bedID == nil ? nil : "OR-A",
+        patientConnected: nil,
+        firstSeenAt: "2026-07-01T00:00:00+00:00",
+        lastSeenAt: "2026-07-01T00:00:00+00:00",
+        observationCount: 1,
+        currentAnomalyCount: 0,
+        latestAnomalySeverity: nil
+    )
+    let beds = bedID.map { value in
+        [
+            RuntimeVitalBedRecord(
+                bedID: value,
+                name: "OR-A",
+                vrcode: vrcode,
+                status: .online,
+                patientConnected: nil,
+                firstSeenAt: "2026-07-01T00:00:00+00:00",
+                lastSeenAt: "2026-07-01T00:00:00+00:00",
+                observationCount: 1,
+                currentAnomalyCount: 0,
+                latestAnomalySeverity: nil
+            ),
+        ]
+    } ?? []
+    return RuntimeVitalRecorderHistory(
+        updatedAt: "2026-07-01T00:00:00+00:00",
+        recorders: [recorder],
+        beds: beds
+    )
 }
 
-private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway, RuntimeGuestProductLabGateway {
+private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway,
+    RuntimeGuestProductLabGateway,
+    RuntimeVitalDBGuestControlGateway
+{
     let read: RuntimeGuestControlVitalDBObservationRead
-    let recorderRead: RuntimeGuestControlVitalDBRecorderRead
-    let bedRead: RuntimeGuestControlVitalDBBedRead
+    let recorderRead: RuntimeVitalRecorderHistory
+    let bedRead: RuntimeVitalBedHistory
     let relationshipRead: RuntimeGuestControlVitalDBRelationshipRead
     let activityRead: RuntimeGuestControlVitalDBRecorderActivityRead
     let recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult
@@ -1392,8 +1280,8 @@ private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway, R
 
     init(
         read: RuntimeGuestControlVitalDBObservationRead,
-        recorderRead: RuntimeGuestControlVitalDBRecorderRead = .init(state: .unavailable),
-        bedRead: RuntimeGuestControlVitalDBBedRead = .init(state: .unavailable),
+        recorderRead: RuntimeVitalRecorderHistory = .failed(readError: "not provided"),
+        bedRead: RuntimeVitalBedHistory = .failed(readError: "not provided"),
         relationshipRead: RuntimeGuestControlVitalDBRelationshipRead = .init(state: .unavailable),
         activityRead: RuntimeGuestControlVitalDBRecorderActivityRead = .init(state: .unavailable),
         labRecorders: RuntimeLabRecorderList = .init(state: .loaded, recorders: []),
@@ -1451,7 +1339,7 @@ private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway, R
         read
     }
 
-    func vitalDBRecorders() throws -> RuntimeGuestControlVitalDBRecorderRead {
+    func vitalDBRecorders() throws -> RuntimeVitalRecorderHistory {
         recorderRead
     }
 
@@ -1464,7 +1352,7 @@ private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway, R
         return activityRead
     }
 
-    func vitalDBBeds() throws -> RuntimeGuestControlVitalDBBedRead {
+    func vitalDBBeds() throws -> RuntimeVitalBedHistory {
         bedRead
     }
 

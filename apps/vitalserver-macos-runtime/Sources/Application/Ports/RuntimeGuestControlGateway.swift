@@ -26,15 +26,7 @@ public protocol RuntimeGuestControlGateway {
     func requestGuestPoweroff() throws -> RuntimeGuestControlServiceOperation
     func operation(_ operationId: String) throws -> RuntimeGuestControlServiceOperation
     func latestVitalDBObservation() throws -> RuntimeGuestControlVitalDBObservationRead
-    func vitalDBRecorders() throws -> RuntimeGuestControlVitalDBRecorderRead
-    func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead
-    func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead
-    func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead
     func vitalDBRecorderActivity(_ vrcode: String) throws -> RuntimeGuestControlVitalDBRecorderActivityRead
-    func vitalDBBeds() throws -> RuntimeGuestControlVitalDBBedRead
-    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead
-    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead
-    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead
     func vitalDBRelationships() throws -> RuntimeGuestControlVitalDBRelationshipRead
     func recorderIngressStatus() throws -> RuntimeRecorderIngressStatusReadResult
     func redisRelayStatus() throws -> RuntimeRedisRelayStatusReadResult
@@ -122,40 +114,8 @@ public extension RuntimeGuestControlGateway {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("guest-service-resource")
     }
 
-    func vitalDBRecorders() throws -> RuntimeGuestControlVitalDBRecorderRead {
-        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-recorders")
-    }
-
-    func hideVitalDBRecorders(_: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead {
-        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-recorders-hide")
-    }
-
-    func unhideVitalDBRecorders(_: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead {
-        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-recorders-unhide")
-    }
-
-    func deleteVitalDBRecorders(_: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeGuestControlVitalDBRecorderRead {
-        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-recorders-delete")
-    }
-
     func vitalDBRecorderActivity(_: String) throws -> RuntimeGuestControlVitalDBRecorderActivityRead {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-recorder-activity")
-    }
-
-    func vitalDBBeds() throws -> RuntimeGuestControlVitalDBBedRead {
-        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-beds")
-    }
-
-    func hideVitalDBBeds(_: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead {
-        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-beds-hide")
-    }
-
-    func unhideVitalDBBeds(_: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead {
-        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-beds-unhide")
-    }
-
-    func deleteVitalDBBeds(_: RuntimeVitalDBBedVisibilityRequest) throws -> RuntimeGuestControlVitalDBBedRead {
-        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-beds-delete")
     }
 
     func vitalDBRelationships() throws -> RuntimeGuestControlVitalDBRelationshipRead {
