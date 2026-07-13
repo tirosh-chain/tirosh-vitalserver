@@ -189,7 +189,8 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             resources: runtimeServiceResources,
             resourceReadIssues: runtimeServiceResourceReadIssues,
             installInProgress: operationState.installInProgress,
-            initializationInProgress: operationState.initializationInProgress,
+            initializationInProgress: operationState.initializationInProgress
+                || guestReadinessPolicy.isWaitingForInitialGuestState(status),
             recoveryInProgress: operationState.recoveryInProgress,
             updateInProgress: operationState.updateInProgress
         ))

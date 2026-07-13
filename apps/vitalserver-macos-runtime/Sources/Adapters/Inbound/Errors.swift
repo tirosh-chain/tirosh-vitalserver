@@ -4,6 +4,7 @@ import Foundation
 public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
     case platformAffordanceUnavailable
     case runtimeProviderControlUnavailable(String)
+    case platformSettingsCurrentStateInvalid([String])
     case unsupportedFileReference(String)
 
     public var errorDescription: String? {
@@ -12,6 +13,8 @@ public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
             return "Host affordance client is unavailable."
         case .runtimeProviderControlUnavailable(let reason):
             return "Runtime Provider control is unavailable. \(reason)"
+        case .platformSettingsCurrentStateInvalid(let issues):
+            return "Platform settings apply requires a complete current Host state. \(issues.joined(separator: "; "))"
         case .unsupportedFileReference(let kind):
             return "File reference kind \(kind) is not supported by this local Runtime Control handler."
         }

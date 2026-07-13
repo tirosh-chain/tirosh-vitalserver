@@ -284,6 +284,24 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         try await commandClient.loadRuntimeProductSettings()
     }
 
+    public func loadRuntimePlatformSettings() async throws -> RuntimePlatformSettingsRead {
+        RuntimePlatformSettingsRead(runtimeSettings: await readWorker.loadSettings())
+    }
+
+    public func applyRuntimePlatformSettings(
+        _ settings: RuntimePlatformSettingsApplyDocument
+    ) async throws -> RuntimeControlCommandResponse {
+        let current = await readWorker.loadSettings()
+        guard current.readIssues.isEmpty else {
+            throw RuntimeControlAPIReadHandlerError.platformSettingsCurrentStateInvalid(
+                current.readIssues.map { "\($0.source): \($0.message)" }
+            )
+        }
+        return RuntimeControlCommandResponse(
+            result: try await commandClient.applySettings(settings.applying(to: current))
+        )
+    }
+
     public func applyRuntimeProductSettings(
         _ settings: GuestRuntimeSettingsDocument
     ) async throws -> RuntimeGuestControlServiceOperation {

@@ -404,6 +404,7 @@ function createGateway(): GatewayMock {
       createdAt: "2026-07-01T00:00:00Z",
       updatedAt: "2026-07-01T00:00:01Z"
     }),
+    applyRuntimePlatformSettings: vi.fn().mockResolvedValue(commandResult),
     applyUpdateBundle: vi.fn().mockResolvedValue(commandResult),
     rollbackRelease: vi.fn().mockResolvedValue(commandResult),
     createRedisBackup: vi.fn().mockResolvedValue(commandResult),
@@ -457,6 +458,29 @@ function createGateway(): GatewayMock {
       lease: { state: "unavailable", document: null, readError: null, staleReason: null }
     }),
     getRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    getRecorderActivity: vi.fn().mockResolvedValue({
+      state: "empty",
+      query: { vrcode: "VR_A", bucketSeconds: 60, period: "lastHour" },
+      page: {
+        index: 0,
+        count: 1,
+        windowSeconds: 3600,
+        windowStartedAt: null,
+        windowEndedAt: null,
+        firstBucketStartedAt: null,
+        latestBucketStartedAt: null
+      },
+      buckets: [],
+      latestSampleAt: null,
+      readError: null
+    }),
+    getReleaseInfo: vi.fn().mockResolvedValue({
+      helperVersion: "1.0.0",
+      minimumUpdaterVersion: "1.0.0",
+      vitalServerVersion: "1.0.0",
+      services: []
+    }),
+    getInstallInfo: vi.fn().mockResolvedValue({}),
     getRelationships: vi.fn().mockResolvedValue({
       state: "loaded",
       assignments: [],
@@ -508,6 +532,12 @@ function createGateway(): GatewayMock {
       state: "loaded",
       settings: productSettings(),
       readError: null
+    }),
+    getRuntimePlatformSettings: vi.fn().mockResolvedValue({
+      state: "unavailable",
+      settings: null,
+      readIssues: [],
+      readError: "Platform settings are unavailable in this test adapter."
     }),
     getPlatformState: vi.fn().mockResolvedValue({
       runtimeInstallationState: "executable",

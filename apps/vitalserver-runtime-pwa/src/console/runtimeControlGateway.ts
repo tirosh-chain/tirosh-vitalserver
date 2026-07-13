@@ -1,5 +1,6 @@
 import type {
   RuntimeApplyProductSettingsRequest,
+  RuntimeApplyPlatformSettingsRequest,
   RuntimeAdminPasswordRequest,
   RuntimeBackup,
   RuntimeBackupRequest,
@@ -38,7 +39,12 @@ import type {
   RuntimeRedisRelaySettingsRead,
   RuntimeRedisRelaySettingsApplyRequest,
   RuntimeVitalDBObservationSnapshot,
+  RuntimeVitalRecorderActivityWindow,
+  RuntimeVitalRecorderActivityWindowQuery,
+  RuntimeReleaseInfo,
+  RuntimeInstallInfo,
   RuntimeProductSettingsRead,
+  RuntimePlatformSettingsRead,
   RuntimeProviderCommandResponse,
   PlatformState,
   RuntimeUninstallRequest,
@@ -73,6 +79,10 @@ export type RuntimeControlGateway = {
   getOperationState(): Promise<PlatformOperationState>;
   getPlatformWorkflow(): Promise<PlatformWorkflowResource>;
   getRuntimeProductSettings(): Promise<RuntimeProductSettingsRead>;
+  getRuntimePlatformSettings(): Promise<RuntimePlatformSettingsRead>;
+  applyRuntimePlatformSettings(
+    request: RuntimeApplyPlatformSettingsRequest
+  ): Promise<RuntimeCommandResponse>;
   applyRuntimeProductSettings(
     request: RuntimeApplyProductSettingsRequest
   ): Promise<RuntimeGuestControlServiceOperation>;
@@ -128,6 +138,11 @@ export type RuntimeControlGateway = {
   uninstallRuntime(request: RuntimeUninstallRequest): Promise<PlatformWorkflowOperation>;
   getRuntimeEvents(query?: RuntimeEventQuery): Promise<RuntimeEventHistory>;
   getRecorders(): Promise<VitalDBRecorders>;
+  getRecorderActivity(
+    query: RuntimeVitalRecorderActivityWindowQuery
+  ): Promise<RuntimeVitalRecorderActivityWindow>;
+  getReleaseInfo(): Promise<RuntimeReleaseInfo>;
+  getInstallInfo(): Promise<RuntimeInstallInfo>;
   hideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;
   unhideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;
   deleteRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;

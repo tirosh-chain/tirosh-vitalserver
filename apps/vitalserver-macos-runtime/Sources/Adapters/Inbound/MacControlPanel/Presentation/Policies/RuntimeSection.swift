@@ -47,6 +47,14 @@ public enum RuntimeSection: CaseIterable, Equatable, Identifiable {
             return false
         }
     }
+
+    public var refreshesRuntimeProductServicesWhileSelected: Bool {
+        self == .status || self == .advanced
+    }
+
+    public var refreshesRedisRelayWhileSelected: Bool {
+        self == .advanced
+    }
 }
 
 extension RuntimeSection {

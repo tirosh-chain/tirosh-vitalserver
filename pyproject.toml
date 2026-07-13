@@ -2,7 +2,7 @@
 name = "tirosh-vitalserver"
 version = "0.2.0"
 description = "Production wrapper and validation workspace for upstream VitalServer."
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
   "jupyter>=1.1.1",
   "pydantic-settings>=2.14.1",
@@ -68,7 +68,7 @@ exclude = [
   "vendor/*",
 ]
 line-length = 88
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -130,7 +130,7 @@ mypy_path = [
 ]
 namespace_packages = true
 no_implicit_optional = true
-python_version = "3.14"
+python_version = "3.12"
 show_error_codes = true
 warn_redundant_casts = true
 warn_unused_configs = true

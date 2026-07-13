@@ -10,6 +10,7 @@ import {
 } from "@/console/hooks";
 import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import type { PlatformWorkflowOperation } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
 export function UpdatePage() {
@@ -21,12 +22,33 @@ export function UpdatePage() {
   const workflow = usePlatformWorkflow();
   const rollback = useRollbackRelease();
   const [reloadScheduled, setReloadScheduled] = useState(false);
+  const [verificationRequestedPath, setVerificationRequestedPath] = useState<string | null>(null);
+  const [verifiedBundlePath, setVerifiedBundlePath] = useState<string | null>(null);
   const hasBundlePath = bundlePath.trim().length > 0;
-  const applyBundle = () => apply.mutate(bundlePath);
+  const applyBundle = () => apply.mutate(bundlePath.trim());
   const currentOperation = workflow.data?.state === "loaded" ? workflow.data.operation : null;
   const observedApplyOperation = currentOperation ?? apply.data ?? null;
+  const observedVerifyOperation =
+    currentOperation?.kind === "update-verify"
+      ? currentOperation
+      : verify.data?.kind === "update-verify"
+        ? verify.data
+        : null;
   const workflowActive = currentOperation?.state === "accepted" || currentOperation?.state === "running";
   const canApplyBundle = capabilities.data?.canApplyBundle === true;
+  const selectedBundleVerified =
+    verifiedBundlePath !== null && verifiedBundlePath === bundlePath.trim();
+
+  useEffect(() => {
+    if (!verificationRequestedPath || !observedVerifyOperation) {
+      return;
+    }
+    if (observedVerifyOperation.state === "completed") {
+      setVerifiedBundlePath(verificationRequestedPath);
+    } else if (observedVerifyOperation.state === "failed") {
+      setVerifiedBundlePath(null);
+    }
+  }, [observedVerifyOperation, verificationRequestedPath]);
 
   useEffect(() => {
     if (
@@ -52,7 +74,11 @@ export function UpdatePage() {
               type="text"
               placeholder="/path/to/update-bundle.tar.gz"
               value={bundlePath}
-              onChange={(event) => setBundlePath(event.target.value)}
+              onChange={(event) => {
+                setBundlePath(event.target.value);
+                setVerificationRequestedPath(null);
+                setVerifiedBundlePath(null);
+              }}
             />
           </label>
           <button
@@ -76,7 +102,12 @@ export function UpdatePage() {
         </pre>
         <button
           type="button"
-          onClick={() => verify.mutate(bundlePath)}
+          onClick={() => {
+            const selectedPath = bundlePath.trim();
+            setVerificationRequestedPath(selectedPath);
+            setVerifiedBundlePath(null);
+            verify.mutate(selectedPath);
+          }}
           disabled={!hasBundlePath || verify.isPending || workflowActive}
         >
           Verify
@@ -93,13 +124,22 @@ export function UpdatePage() {
           Applies the verified bundle and may restart VitalServer services.
           VM/rootfs level changes remain administrator-level operations.
         </p>
-        <button
-          type="button"
+        <ConfirmButton
+          confirmMessage="Apply the verified update bundle? VitalServer services may restart."
           onClick={applyBundle}
-          disabled={!hasBundlePath || apply.isPending || workflowActive || !canApplyBundle}
+          disabled={
+            !hasBundlePath ||
+            !selectedBundleVerified ||
+            apply.isPending ||
+            workflowActive ||
+            !canApplyBundle
+          }
         >
           Apply Bundle
-        </button>
+        </ConfirmButton>
+        {!selectedBundleVerified && hasBundlePath ? (
+          <p className="muted">Verify the selected bundle successfully before applying it.</p>
+        ) : null}
         {capabilities.isError ? (
           <ErrorState title="Failed to read update capability" error={capabilities.error} />
         ) : null}

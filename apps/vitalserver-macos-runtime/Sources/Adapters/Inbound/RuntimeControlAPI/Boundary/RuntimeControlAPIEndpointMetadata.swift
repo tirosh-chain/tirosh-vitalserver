@@ -25,6 +25,8 @@ public extension RuntimeControlAPIEndpoint {
              .unhideVitalDBBeds,
              .deleteVitalDBBeds,
              .health,
+             .platformSettings,
+             .applyPlatformSettings,
              .settings,
              .applySettings,
              .applyAdminPassword,
@@ -114,6 +116,7 @@ public extension RuntimeControlAPIEndpoint {
              .vitalDBBed,
              .vitalDBRelationships,
              .health,
+             .platformSettings,
              .settings,
              .release,
              .installInfo,
@@ -133,7 +136,8 @@ public extension RuntimeControlAPIEndpoint {
             return .browserSafe
         case .exportLogs:
             return .nativeShellOnly
-        case .applySettings,
+        case .applyPlatformSettings,
+             .applySettings,
              .applyAdminPassword,
              .applyRedisRelaySettings,
              .createLabBeds,

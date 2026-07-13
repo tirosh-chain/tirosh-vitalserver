@@ -23,6 +23,8 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case unhideVitalDBBeds
     case deleteVitalDBBeds
     case health
+    case platformSettings
+    case applyPlatformSettings
     case settings
     case applySettings
     case applyAdminPassword

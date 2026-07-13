@@ -100,6 +100,8 @@ public protocol RuntimeControlAPIReadHandler {
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async throws -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
     func loadHealthStatus() async throws -> PlatformState
+    func loadRuntimePlatformSettings() async throws -> RuntimePlatformSettingsRead
+    func applyRuntimePlatformSettings(_ settings: RuntimePlatformSettingsApplyDocument) async throws -> RuntimeControlCommandResponse
     func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
     func loadInstallInfo() async throws -> RuntimeInstallInfo
@@ -219,6 +221,21 @@ public func createManagedPlatformSupportExport(
 }
 
 public extension RuntimeControlAPIReadHandler {
+    func loadRuntimePlatformSettings() async throws -> RuntimePlatformSettingsRead {
+        RuntimePlatformSettingsRead(
+            state: .unavailable,
+            settings: nil,
+            readIssues: [],
+            readError: "Platform settings owner is unavailable on this adapter."
+        )
+    }
+
+    func applyRuntimePlatformSettings(
+        _: RuntimePlatformSettingsApplyDocument
+    ) async throws -> RuntimeControlCommandResponse {
+        throw RuntimeControlClientUnsupportedError.unavailable("platform-settings:apply")
+    }
+
     func createPlatformSupportExport() async throws -> PlatformWorkflowOperation {
         throw RuntimeControlClientUnsupportedError.unavailable("platform-support-export")
     }

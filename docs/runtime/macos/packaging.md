@@ -156,7 +156,7 @@ Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `
 vitaldb-observer
   -> /health
   -> /ready
-  -> /api/runtime/observations
+  -> /api/v1/observations
   -> Guest Control VitalDB writer
   -> Postgres read model
   -> Guest Control API /runtime/vitaldb/*

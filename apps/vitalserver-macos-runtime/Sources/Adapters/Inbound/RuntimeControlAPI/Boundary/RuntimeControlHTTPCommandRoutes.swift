@@ -11,6 +11,11 @@ struct RuntimeControlHTTPCommandRoutes {
         request: RuntimeControlHTTPRequest
     ) async throws -> RuntimeControlHTTPResponse? {
         switch endpoint {
+        case .applyPlatformSettings:
+            let settingsRequest = try request.decodedBody(RuntimeApplyPlatformSettingsRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.applyRuntimePlatformSettings(settingsRequest.settings)
+            )
         case .startRuntimeProvider, .stopRuntimeProvider, .restartRuntimeProvider:
             let action: RuntimeProviderCommandAction
             switch endpoint {
@@ -239,6 +244,7 @@ struct RuntimeControlHTTPCommandRoutes {
              .vitalDBBed,
              .vitalDBRelationships,
              .health,
+             .platformSettings,
              .settings,
              .labScenarios,
              .labVitalFiles,

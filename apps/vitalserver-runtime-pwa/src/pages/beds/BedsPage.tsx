@@ -262,60 +262,106 @@ function LabBedsPanel({
   isFetching: boolean;
   onRefresh: () => void;
 }) {
+  const [selectedBedID, setSelectedBedID] = useState<string | null>(null);
+  const selectedBed =
+    beds.find((bed) => bed.bedId === selectedBedID) ?? beds[0] ?? null;
+
   return (
-    <Panel
-      title="Product Lab beds"
-      actions={
-        <button type="button" disabled={isFetching} onClick={onRefresh}>
-          Refresh
-        </button>
-      }
-    >
-      <MetricStrip
-        metrics={[
-          { label: "Lab beds", value: beds.length },
-          { label: "Read state", value: state ?? NOT_REPORTED },
-          { label: "Read error", value: readError ?? "-" }
-        ]}
-      />
-      {isPending ? (
-        <p className="empty-state">Loading Product Lab beds...</p>
-      ) : isError ? (
-        <ErrorState title="Product Lab beds are not available" error={error} />
-      ) : (
-        <DataTable
-          rows={beds}
-          getRowKey={(bed) => bed.bedId}
-          emptyText="No Product Lab beds found."
-          columns={[
-            {
-              key: "name",
-              header: "Name",
-              render: (bed) => <strong>{bed.name}</strong>
-            },
-            {
-              key: "bedId",
-              header: "Bed ID",
-              render: (bed) => bed.bedId
-            },
-            {
-              key: "session",
-              header: "Session",
-              render: (bed) => bed.sessionId
-            },
-            {
-              key: "state",
-              header: "State",
-              render: (bed) => <StatusBadge tone={labStateTone(bed.state)}>{bed.state}</StatusBadge>
-            },
-            {
-              key: "updated",
-              header: "Updated",
-              render: (bed) => formatLocalDateTime(bed.updatedAt)
-            }
+    <>
+      <Panel
+        title="Product Lab beds"
+        actions={
+          <button type="button" disabled={isFetching} onClick={onRefresh}>
+            Refresh
+          </button>
+        }
+      >
+        <MetricStrip
+          metrics={[
+            { label: "Lab beds", value: beds.length },
+            { label: "Read state", value: state ?? NOT_REPORTED },
+            { label: "Read error", value: readError ?? "-" }
           ]}
         />
-      )}
+        {isPending ? (
+          <p className="empty-state">Loading Product Lab beds...</p>
+        ) : isError ? (
+          <ErrorState title="Product Lab beds are not available" error={error} />
+        ) : (
+          <DataTable
+            rows={beds}
+            getRowKey={(bed) => bed.bedId}
+            selectedKey={selectedBed?.bedId}
+            onSelectRow={(bed) => setSelectedBedID(bed.bedId)}
+            emptyText="No Product Lab beds found."
+            columns={[
+              {
+                key: "name",
+                header: "Name",
+                render: (bed) => <strong>{bed.name}</strong>
+              },
+              {
+                key: "bedId",
+                header: "Bed ID",
+                render: (bed) => bed.bedId
+              },
+              {
+                key: "session",
+                header: "Session",
+                render: (bed) => bed.sessionId
+              },
+              {
+                key: "state",
+                header: "State",
+                render: (bed) => (
+                  <StatusBadge tone={labStateTone(bed.state)}>
+                    {bed.state}
+                  </StatusBadge>
+                )
+              },
+              {
+                key: "updated",
+                header: "Updated",
+                render: (bed) => formatLocalDateTime(bed.updatedAt)
+              }
+            ]}
+          />
+        )}
+      </Panel>
+
+      {selectedBed ? <ProductLabBedDetails bed={selectedBed} /> : null}
+    </>
+  );
+}
+
+function ProductLabBedDetails({ bed }: { bed: RuntimeLabBed }) {
+  return (
+    <Panel title="Product Lab Bed Details">
+      <div className="detail-heading">
+        <StatusBadge tone={labStateTone(bed.state)}>
+          <strong>{bed.name}</strong>
+          {bed.state}
+        </StatusBadge>
+        <span>{formatLocalDateTime(bed.updatedAt)}</span>
+      </div>
+
+      <KeyValueRows
+        rows={[
+          { label: "Name", value: bed.name },
+          { label: "Bed ID", value: bed.bedId },
+          { label: "Session", value: bed.sessionId },
+          {
+            label: "State",
+            value: (
+              <StatusBadge tone={labStateTone(bed.state)}>
+                {bed.state}
+              </StatusBadge>
+            )
+          },
+          { label: "Created", value: formatLocalDateTime(bed.createdAt) },
+          { label: "Updated", value: formatLocalDateTime(bed.updatedAt) }
+        ]}
+      />
     </Panel>
   );
 }

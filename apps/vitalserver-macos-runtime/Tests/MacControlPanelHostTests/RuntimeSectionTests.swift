@@ -68,6 +68,18 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertFalse(RuntimeSection.update.refreshesBackupListsWhileSelected)
     }
 
+    func testAdvancedSectionRefreshesRuntimeProductServicesWhileSelected() {
+        XCTAssertTrue(RuntimeSection.advanced.refreshesRuntimeProductServicesWhileSelected)
+        XCTAssertTrue(RuntimeSection.status.refreshesRuntimeProductServicesWhileSelected)
+        XCTAssertFalse(RuntimeSection.dangerZone.refreshesRuntimeProductServicesWhileSelected)
+    }
+
+    func testOnlyAdvancedSectionRefreshesRedisRelayWhileSelected() {
+        XCTAssertTrue(RuntimeSection.advanced.refreshesRedisRelayWhileSelected)
+        XCTAssertFalse(RuntimeSection.status.refreshesRedisRelayWhileSelected)
+        XCTAssertFalse(RuntimeSection.dangerZone.refreshesRedisRelayWhileSelected)
+    }
+
     @MainActor
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {
         XCTAssertEqual(

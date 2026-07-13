@@ -60,6 +60,12 @@ enum RuntimeControlHTTPErrorResponseMapper {
                 code: .platformAffordanceUnavailable,
                 message: error.localizedDescription
             )
+        case .platformSettingsCurrentStateInvalid:
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .serviceUnavailable,
+                code: .handlerFailed,
+                message: error.localizedDescription
+            )
         case .unsupportedFileReference:
             return RuntimeControlHTTPResponseFactory.error(
                 status: .badRequest,

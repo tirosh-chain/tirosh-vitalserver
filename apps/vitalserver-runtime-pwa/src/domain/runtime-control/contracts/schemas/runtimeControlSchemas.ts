@@ -578,6 +578,62 @@ export const runtimeProductSettingsReadSchema = z
     }
   });
 
+const runtimeSettingsReadIssueSchema = z
+  .object({
+    source: z.string(),
+    message: z.string()
+  })
+  .strict();
+
+export const runtimePlatformSettingsSchema = z
+  .object({
+    cpuCount: z.number().int().positive(),
+    memoryGiB: z.number().int().positive(),
+    diskGiB: z.number().int().positive(),
+    minimumDiskGiB: z.number().int().positive(),
+    networkMode: networkModeSchema,
+    bridgedInterface: z.string().nullable(),
+    proxyPort: z.number().int().min(1).max(65535),
+    runtimeControlPort: z.number().int().min(1).max(65535),
+    vitalFilesDirectory: z.string().min(1),
+    startOnBoot: z.boolean(),
+    startOnBootConfigurable: z.boolean(),
+    autoRecoveryEnabled: z.boolean(),
+    preventSystemSleep: z.boolean(),
+    automaticBackupEnabled: z.boolean(),
+    backupScheduleTimes: z.array(z.string()),
+    backupRetentionCount: z.number().int().positive(),
+    logArchiveRetentionDays: z.number().int().positive(),
+    logArchiveMaximumGiB: z.number().int().positive(),
+    restartAfterSave: z.boolean()
+  })
+  .strict();
+
+export const runtimePlatformSettingsReadSchema = z
+  .object({
+    state: z.enum(["loaded", "unavailable", "failed"]),
+    settings: runtimePlatformSettingsSchema.nullable(),
+    readIssues: z.array(runtimeSettingsReadIssueSchema),
+    readError: requiredNullableString
+  })
+  .strict()
+  .superRefine((read, context) => {
+    if (read.state === "loaded" && read.settings == null) {
+      context.addIssue({
+        code: "custom",
+        path: ["settings"],
+        message: "loaded platform settings reads must include settings"
+      });
+    }
+    if (read.state !== "loaded" && isBlank(read.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: `${read.state} platform settings reads must include readError`
+      });
+    }
+  });
+
 const runtimeDataDirectoryStatsSchema = z
   .object({
     fileCount: z.number().optional(),
@@ -1378,6 +1434,85 @@ export const vitalDBRecordersSchema = z
     readError: requiredNullableString
   })
   .passthrough();
+
+const recorderActivityWindowQuerySchema = z
+  .object({
+    vrcode: z.string(),
+    bucketSeconds: z.union([z.literal(60), z.literal(300)]),
+    period: z.enum(["lastHour", "last4Hours", "last8Hours", "last12Hours", "all"]),
+    pageIndex: z.number().int().nullable().optional()
+  })
+  .strict();
+
+const recorderActivityWindowPageSchema = z
+  .object({
+    index: z.number().int(),
+    count: z.number().int(),
+    windowSeconds: z.number(),
+    windowStartedAt: requiredNullableString,
+    windowEndedAt: requiredNullableString,
+    firstBucketStartedAt: requiredNullableString,
+    latestBucketStartedAt: requiredNullableString
+  })
+  .strict();
+
+export const recorderActivityWindowSchema = z
+  .object({
+    state: z.enum(["loaded", "empty", "invalidRequest", "readFailed"]),
+    query: recorderActivityWindowQuerySchema,
+    page: recorderActivityWindowPageSchema,
+    buckets: z.array(
+      z
+        .object({
+          bucketStartedAt: z.string(),
+          bucketSeconds: z.number(),
+          messageCount: z.number(),
+          byteCount: z.number(),
+          roomCount: z.number()
+        })
+        .strict()
+    ),
+    latestSampleAt: requiredNullableString,
+    readError: requiredNullableString
+  })
+  .strict()
+  .superRefine((window, context) => {
+    if ((window.state === "invalidRequest" || window.state === "readFailed") && isBlank(window.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: `${window.state} activity windows must include readError`
+      });
+    }
+  });
+
+export const runtimeReleaseInfoSchema = z
+  .object({
+    helperVersion: z.string().optional(),
+    minimumUpdaterVersion: z.string().optional(),
+    vitalServerVersion: z.string().optional(),
+    services: z
+      .array(
+        z.object({
+          name: z.string().optional(),
+          image: z.string().optional(),
+          version: z.string().optional()
+        }).strict()
+      )
+      .optional()
+  })
+  .strict();
+
+export const runtimeInstallInfoSchema = z
+  .object({
+    appBundlePath: z.string().optional(),
+    packageIdentifier: z.string().optional(),
+    runtimeHomePath: z.string().optional(),
+    backupsPath: z.string().optional(),
+    redisBackupsPath: z.string().optional(),
+    runtimeDataBackupsPath: z.string().optional()
+  })
+  .strict();
 
 export const vitalDBBedsSchema = z
   .object({

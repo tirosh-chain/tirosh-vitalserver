@@ -2,7 +2,7 @@
 name = "tirosh-vitalserver-recorder-recovery"
 version = "0.2.0"
 description = "Product raw-archive to .vital recovery service for VitalServer recorder ingress."
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1",
   "pydantic>=2.12,<3",

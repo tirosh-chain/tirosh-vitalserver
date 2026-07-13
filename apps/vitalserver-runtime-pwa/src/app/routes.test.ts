@@ -19,6 +19,7 @@ describe("consoleRoutes", () => {
     expect(labelsForGroup("overflow")).toEqual([
       "Observability",
       "Logs",
+      "Info",
       "Danger Zone"
     ]);
   });

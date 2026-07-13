@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 
 import {
   useApplyRuntimeAdminPassword,
+  useApplyRuntimePlatformSettings,
   useApplyRuntimeRedisRelaySettings,
   useApplyRuntimeProductSettings,
   useControlCapabilities,
   useRuntimeProductSettings,
+  useRuntimePlatformSettings,
   useRuntimeRedisRelaySettings
 } from "@/console/hooks";
 import {
@@ -15,9 +17,11 @@ import {
 } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import type {
   RuntimeProductSettings,
+  RuntimePlatformSettings,
   RuntimeRedisRelaySettingsApplyRequest
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { CommandResult } from "@/components/CommandResult";
 import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";
 
@@ -64,23 +68,34 @@ export function SettingsPage() {
   }, [relayRead.data]);
 
   if (read.isPending) {
-    return <Panel title="Runtime settings">Loading runtime settings...</Panel>;
+    return (
+      <div className="page-stack">
+        <PlatformSettingsPanel />
+        <Panel title="Runtime product settings">Loading runtime settings...</Panel>
+      </div>
+    );
   }
   if (read.isError) {
     return (
-      <Panel title="Runtime settings">
-        <ErrorState title="Failed to read runtime settings" error={read.error} />
-      </Panel>
+      <div className="page-stack">
+        <PlatformSettingsPanel />
+        <Panel title="Runtime product settings">
+          <ErrorState title="Failed to read runtime settings" error={read.error} />
+        </Panel>
+      </div>
     );
   }
   if (read.data?.state !== "loaded" || !read.data.settings || !draft) {
     return (
-      <Panel title="Runtime settings">
-        <ErrorState
-          title="Runtime settings are unavailable"
-          error={new Error(read.data?.readError ?? "Runtime settings were not reported.")}
-        />
-      </Panel>
+      <div className="page-stack">
+        <PlatformSettingsPanel />
+        <Panel title="Runtime product settings">
+          <ErrorState
+            title="Runtime settings are unavailable"
+            error={new Error(read.data?.readError ?? "Runtime settings were not reported.")}
+          />
+        </Panel>
+      </div>
     );
   }
 
@@ -102,8 +117,9 @@ export function SettingsPage() {
 
   return (
     <div className="page-stack">
+      <PlatformSettingsPanel />
       <Panel
-        title="Runtime settings"
+        title="Runtime product settings"
         actions={
           <ConfirmButton
             confirmMessage="Apply product runtime settings and reconcile the Compose stack?"
@@ -482,6 +498,148 @@ export function SettingsPage() {
         ) : null}
       </Panel>
     </div>
+  );
+}
+
+function PlatformSettingsPanel() {
+  const read = useRuntimePlatformSettings();
+  const apply = useApplyRuntimePlatformSettings();
+  const capabilities = useControlCapabilities();
+  const [draft, setDraft] = useState<RuntimePlatformSettings | null>(null);
+
+  useEffect(() => {
+    setDraft(read.data?.state === "loaded" ? read.data.settings : null);
+  }, [read.data]);
+
+  if (read.isPending) {
+    return <Panel title="Platform settings">Loading Platform Agent settings...</Panel>;
+  }
+  if (read.isError) {
+    return (
+      <Panel title="Platform settings">
+        <ErrorState title="Platform settings are unavailable" error={read.error} />
+      </Panel>
+    );
+  }
+  if (read.data?.state !== "loaded" || !draft) {
+    return (
+      <Panel title="Platform settings">
+        <ErrorState
+          title="Platform settings are unavailable"
+          error={new Error(read.data?.readError ?? "Platform settings were not reported.")}
+        />
+      </Panel>
+    );
+  }
+
+  const canApply =
+    capabilities.data?.canEditRuntimeProviderResources === true &&
+    capabilities.data.canEditNetworkExposure === true;
+  const validationError =
+    draft.diskGiB < draft.minimumDiskGiB
+      ? `Disk must be at least ${draft.minimumDiskGiB} GiB.`
+      : draft.networkMode === "bridged" && !draft.bridgedInterface?.trim()
+        ? "A bridged interface is required in bridged network mode."
+        : null;
+  const update = <K extends keyof RuntimePlatformSettings>(
+    field: K,
+    value: RuntimePlatformSettings[K]
+  ) => setDraft((current) => (current ? { ...current, [field]: value } : current));
+
+  return (
+    <Panel
+      title="Platform settings"
+      actions={
+        <ConfirmButton
+          confirmMessage="Apply Host settings? Runtime Provider resources or listeners may restart."
+          disabled={!canApply || validationError !== null || apply.isPending}
+          onClick={() => apply.mutate({ settings: platformApplyDocument(draft) })}
+        >
+          Apply Host settings
+        </ConfirmButton>
+      }
+    >
+      <p className="muted">
+        These settings are owned by the Platform Agent. macOS currently supports editing;
+        Windows and Linux report this contract as unavailable until their Host adapters own it.
+      </p>
+      {!canApply ? (
+        <p className="muted">This Platform Agent reports Host settings as read-only.</p>
+      ) : null}
+      {validationError ? <p className="form-error">{validationError}</p> : null}
+      {read.data.readIssues.map((issue) => (
+        <ErrorState key={`${issue.source}:${issue.message}`} title={issue.source} error={new Error(issue.message)} />
+      ))}
+      <div className="settings-grid">
+        <NumberField label="CPU count" value={draft.cpuCount} onChange={(value) => update("cpuCount", value)} />
+        <NumberField label="Memory GiB" value={draft.memoryGiB} onChange={(value) => update("memoryGiB", value)} />
+        <NumberField label={`Disk GiB (minimum ${draft.minimumDiskGiB})`} value={draft.diskGiB} min={draft.minimumDiskGiB} onChange={(value) => update("diskGiB", value)} />
+        <label>
+          Network mode
+          <select value={draft.networkMode} onChange={(event) => update("networkMode", event.target.value as RuntimePlatformSettings["networkMode"])}>
+            <option value="shared">shared</option>
+            <option value="bridged">bridged</option>
+          </select>
+        </label>
+        <TextField label="Bridged interface" value={draft.bridgedInterface ?? ""} onChange={(value) => update("bridgedInterface", value.trim() ? value : null)} />
+        <NumberField label="Public proxy port" value={draft.proxyPort} max={65535} onChange={(value) => update("proxyPort", value)} />
+        <NumberField label="Runtime Control port" value={draft.runtimeControlPort} max={65535} onChange={(value) => update("runtimeControlPort", value)} />
+        <TextField label="Vital files directory" value={draft.vitalFilesDirectory} onChange={(value) => update("vitalFilesDirectory", value)} />
+        <TextField label="Backup schedule times" value={draft.backupScheduleTimes.join(", ")} onChange={(value) => update("backupScheduleTimes", value.split(",").map((item) => item.trim()).filter(Boolean))} />
+        <NumberField label="Backup retention count" value={draft.backupRetentionCount} onChange={(value) => update("backupRetentionCount", value)} />
+        <NumberField label="Log retention days" value={draft.logArchiveRetentionDays} onChange={(value) => update("logArchiveRetentionDays", value)} />
+        <NumberField label="Maximum log archive GiB" value={draft.logArchiveMaximumGiB} onChange={(value) => update("logArchiveMaximumGiB", value)} />
+      </div>
+      <div className="settings-grid">
+        <SettingsToggle label="Start on boot" checked={draft.startOnBoot} disabled={!draft.startOnBootConfigurable} onChange={(value) => update("startOnBoot", value)} />
+        <SettingsToggle label="Automatic recovery" checked={draft.autoRecoveryEnabled} onChange={(value) => update("autoRecoveryEnabled", value)} />
+        <SettingsToggle label="Prevent system sleep" checked={draft.preventSystemSleep} onChange={(value) => update("preventSystemSleep", value)} />
+        <SettingsToggle label="Automatic backup" checked={draft.automaticBackupEnabled} onChange={(value) => update("automaticBackupEnabled", value)} />
+        <SettingsToggle label="Restart after save" checked={draft.restartAfterSave} onChange={(value) => update("restartAfterSave", value)} />
+      </div>
+      <CommandResult result={apply.data} error={apply.error} emptyText="No Host settings apply has run." />
+    </Panel>
+  );
+}
+
+function platformApplyDocument(settings: RuntimePlatformSettings) {
+  return {
+    cpuCount: settings.cpuCount,
+    memoryGiB: settings.memoryGiB,
+    diskGiB: settings.diskGiB,
+    networkMode: settings.networkMode,
+    bridgedInterface: settings.bridgedInterface,
+    proxyPort: settings.proxyPort,
+    runtimeControlPort: settings.runtimeControlPort,
+    vitalFilesDirectory: settings.vitalFilesDirectory,
+    startOnBoot: settings.startOnBoot,
+    autoRecoveryEnabled: settings.autoRecoveryEnabled,
+    preventSystemSleep: settings.preventSystemSleep,
+    automaticBackupEnabled: settings.automaticBackupEnabled,
+    backupScheduleTimes: settings.backupScheduleTimes,
+    backupRetentionCount: settings.backupRetentionCount,
+    logArchiveRetentionDays: settings.logArchiveRetentionDays,
+    logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
+    restartAfterSave: settings.restartAfterSave
+  };
+}
+
+function SettingsToggle({
+  label,
+  checked,
+  disabled = false,
+  onChange
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="checkbox-label block-checkbox">
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      {label}
+    </label>
   );
 }
 

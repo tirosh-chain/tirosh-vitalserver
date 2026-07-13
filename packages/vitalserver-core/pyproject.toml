@@ -2,7 +2,7 @@
 name = "tirosh-vitalserver-core"
 version = "0.2.0"
 description = "Shared VitalServer domain models and policies."
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = []
 
 [build-system]

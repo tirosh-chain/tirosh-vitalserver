@@ -46,6 +46,14 @@ PWA, macOS SwiftUI, Windows, and Linux clients use the same three presentation g
 
 `redis-ui` and `swagger-ui` are Runtime product services. A client must not add separate `Not reported` endpoint rows merely because links are known. Likewise, a healthy observed process with a missing spec, failed resource read, or `ReconcileBlocked=true` condition is a warning, not green success. Empty, unavailable, read-failed, and healthy remain different UI states.
 
+A client that keeps this group visible must continue reading the Runtime stack owner;
+refreshing Platform health alone does not refresh Runtime product-service state. A
+provider-specific Host shell may display `Initializing` while its explicit Provider
+lifecycle is `starting` and its explicit Guest-control readiness input is
+`missing-vm-ip`. Clients must not derive that readiness state by matching a localized
+API error. Once initialization ends, Runtime stack read failures remain visible until
+a successful owner read replaces them.
+
 Linux Native has no Guest VM, while macOS and Windows use VM providers. Therefore `Host` and `Guest` are implementation details, not the common section names. Platform-specific screens may expose provider details below these groups, but must not merge Platform ownership into Runtime product state.
 
 Installation state and installed version come from the Platform-owned install document. An executable, symlink, service registration, or filename is not evidence of an installed product. Linux uses `/var/lib/vitalserver/install.json` and Windows uses `C:\ProgramData\VitalServer\install.json`; missing, unconfigured, invalid, and read-failed owner states remain distinct.
@@ -382,10 +390,16 @@ both the Runtime Controller gateway call and the absence of that Host writer.
 Host watchdog/recovery policy does not accept Guest service, container,
 VitalDB, or Redis Relay product state as a recovery input; it remains limited
 to Host-owned VM, proxy, and Platform service boundaries.
-The canonical macOS settings route also has no mixed Host-settings read. Its
-OpenAPI operations and request schema are named for Runtime Product Settings,
-and the native Local API port coordinator is not injected into the Runtime API
-handler. The macOS Swift package currently passes all 2,051 tests, including
+The canonical settings boundary no longer mixes Host and Runtime Product state.
+`GET/PUT /runtime/settings` remains Runtime Controller-owned Product Settings,
+while `GET/PUT /platform/settings` is a separate Platform Agent contract for
+Host resources, network exposure, local paths, boot/recovery, backup, and log
+retention. The Platform document excludes Runtime credentials and read-only
+owner fields are excluded from the apply document. macOS maps this contract to
+its explicit Host settings owner and refuses apply when that owner reports any
+read issue. The shared Windows/Linux Agent currently returns a typed `501`
+instead of manufacturing settings; its resource/network edit capabilities stay
+false until those Platform adapters own the state. The macOS Swift package currently passes all 2,051 tests, including
 the architecture proof that prevents the Host Redis Relay writer from
 returning and lifecycle proofs that include the Platform Agent in fresh
 install and uninstall state.

@@ -68,13 +68,19 @@ export function DataTable<T>({
           const rowKey = getRowKey(row);
           const selected = selectedKey === rowKey;
           const [titleColumn, ...detailColumns] = columns;
-          const Tag = onSelectRow ? "button" : "article";
           return (
-            <Tag
+            <article
               key={rowKey}
-              type={onSelectRow ? "button" : undefined}
               className={selected ? "data-card selected-row" : "data-card"}
+              role={onSelectRow ? "button" : undefined}
+              tabIndex={onSelectRow ? 0 : undefined}
               onClick={onSelectRow ? () => onSelectRow(row) : undefined}
+              onKeyDown={onSelectRow ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectRow(row);
+                }
+              } : undefined}
             >
               <div className="data-card-title">
                 {titleColumn ? titleColumn.render(row) : rowKey}
@@ -87,7 +93,7 @@ export function DataTable<T>({
                   </div>
                 ))}
               </dl>
-            </Tag>
+            </article>
           );
         })}
       </div>

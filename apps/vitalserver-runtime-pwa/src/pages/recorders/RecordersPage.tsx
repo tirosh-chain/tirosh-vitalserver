@@ -11,7 +11,6 @@ import {
 import type {
   RuntimeLabRecorder,
   VitalDBRecorderRecord,
-  VitalDBRecorders,
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
@@ -48,6 +47,7 @@ export function RecordersPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [selectedVrcode, setSelectedVrcode] = useState<string | null>(null);
+  const [selectedLabRecorderID, setSelectedLabRecorderID] = useState<string | null>(null);
   const hideRecorders = useHideVitalDBRecorders();
   const unhideRecorders = useUnhideVitalDBRecorders();
   const deleteRecorders = useDeleteVitalDBRecorders();
@@ -71,10 +71,15 @@ export function RecordersPage() {
     deleteRecorders.isPending;
   const visibilityMutationError =
     hideRecorders.error ?? unhideRecorders.error ?? deleteRecorders.error;
-  const selectedRecorder =
-    recorders?.find((recorder) => recorder.vrcode === selectedVrcode) ??
-    recorders?.[0] ??
-    null;
+  const selectedRecorder = selectedLabRecorderID === null
+    ? recorders?.find((recorder) => recorder.vrcode === selectedVrcode) ??
+      recorders?.[0] ??
+      null
+    : null;
+  const selectedLabRecorder =
+    labRecordersQuery.data?.recorders.find(
+      (recorder) => recorder.recorderId === selectedLabRecorderID
+    ) ?? null;
   const summary = recordersQuery.data?.summary ?? null;
 
   return (
@@ -164,7 +169,10 @@ export function RecordersPage() {
             rows={recorders}
             getRowKey={(recorder) => recorder.vrcode}
             selectedKey={selectedRecorder?.vrcode}
-            onSelectRow={(recorder) => setSelectedVrcode(recorder.vrcode)}
+            onSelectRow={(recorder) => {
+              setSelectedVrcode(recorder.vrcode);
+              setSelectedLabRecorderID(null);
+            }}
             emptyText="No VitalDB VRecorder observations found."
             columns={[
               {
@@ -272,10 +280,13 @@ export function RecordersPage() {
       {selectedRecorder && recordersQuery.data ? (
         <RecorderDetails
           recorder={selectedRecorder}
-          activityHistory={recordersQuery.data.activityHistory}
           relationships={relationshipsQuery.data}
           relationshipsError={relationshipsQuery.error}
         />
+      ) : null}
+
+      {selectedLabRecorder ? (
+        <LabRecorderDetails recorder={selectedLabRecorder} />
       ) : null}
 
       <LabRecordersPanel
@@ -287,6 +298,11 @@ export function RecordersPage() {
         error={labRecordersQuery.error}
         isFetching={labRecordersQuery.isFetching}
         onRefresh={() => labRecordersQuery.refetch()}
+        selectedRecorderID={selectedLabRecorderID}
+        onSelect={(recorder) => {
+          setSelectedLabRecorderID(recorder.recorderId);
+          setSelectedVrcode(null);
+        }}
       />
     </div>
   );
@@ -300,7 +316,9 @@ function LabRecordersPanel({
   isError,
   error,
   isFetching,
-  onRefresh
+  onRefresh,
+  selectedRecorderID,
+  onSelect
 }: {
   recorders: RuntimeLabRecorder[];
   state: string | undefined;
@@ -310,6 +328,8 @@ function LabRecordersPanel({
   error: unknown;
   isFetching: boolean;
   onRefresh: () => void;
+  selectedRecorderID: string | null;
+  onSelect: (recorder: RuntimeLabRecorder) => void;
 }) {
   return (
     <Panel
@@ -335,6 +355,8 @@ function LabRecordersPanel({
         <DataTable
           rows={recorders}
           getRowKey={(recorder) => recorder.recorderId}
+          selectedKey={selectedRecorderID ?? undefined}
+          onSelectRow={onSelect}
           emptyText="No Product Lab recorders found."
           columns={[
             {
@@ -383,14 +405,39 @@ function LabRecordersPanel({
   );
 }
 
+function LabRecorderDetails({ recorder }: { recorder: RuntimeLabRecorder }) {
+  return (
+    <Panel title="Recorder Details">
+      <div className="detail-heading">
+        <StatusBadge tone={labStateTone(recorder.state)}>
+          <strong>{recorder.vrcode}</strong>
+          {recorder.state}
+        </StatusBadge>
+        <span>{formatLocalDateTime(recorder.updatedAt)}</span>
+      </div>
+      <KeyValueRows
+        rows={[
+          { label: "Recorder ID", value: recorder.recorderId },
+          { label: "Bed", value: recorder.bedId },
+          { label: "Session", value: recorder.sessionId },
+          { label: "Messages", value: recorder.messagesSent },
+          { label: "Last send", value: recorder.lastSendState },
+          { label: "Last send at", value: formatLocalDateTime(recorder.lastSendAt) },
+          { label: "Last error", value: recorder.lastSendError ?? "-" },
+          { label: "Created", value: formatLocalDateTime(recorder.createdAt) },
+          { label: "Updated", value: formatLocalDateTime(recorder.updatedAt) }
+        ]}
+      />
+    </Panel>
+  );
+}
+
 function RecorderDetails({
   recorder,
-  activityHistory,
   relationships,
   relationshipsError
 }: {
   recorder: VitalDBRecorderRecord;
-  activityHistory: VitalDBRecorders["activityHistory"];
   relationships: VitalDBRelationships | undefined;
   relationshipsError: unknown;
 }) {
@@ -465,14 +512,7 @@ function RecorderDetails({
 
       <div className="subsection">
         <h3>Activity</h3>
-        {activityHistory.readError ? (
-          <ErrorState
-            title="Recorder activity history is incomplete"
-            error={new Error(activityHistory.readError)}
-          />
-        ) : (
-          <RecorderActivityChart recorder={recorder} />
-        )}
+        <RecorderActivityChart recorder={recorder} />
       </div>
 
       <RelationshipHistory

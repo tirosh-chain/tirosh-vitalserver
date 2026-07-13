@@ -87,6 +87,21 @@ npm --prefix apps/vitalserver-runtime-pwa run generate:api
 
 `check`와 `build`는 내부적으로 `generate:api`를 먼저 실행합니다.
 
+Settings 화면은 owner 경계를 두 섹션으로 유지합니다.
+
+- `Platform settings`: Host CPU/memory/disk, network/listener, local path,
+  start-on-boot/recovery, backup, log retention. macOS Platform Agent는 조회와
+  적용을 제공하고, Windows/Linux는 현재 명시적인 미지원 응답을 제공합니다.
+- `Runtime product settings`: Runtime Controller가 소유하는 advertised endpoint,
+  recorder ingress, container limit, Product backup, Redis Relay, administrator
+  password command입니다. Platform settings 응답이나 UI가 Runtime secret을
+  읽거나 보관하지 않습니다.
+
+Recorders 화면은 실제 recorder의 activity를
+`GET /runtime/vitaldb/recorders/{vrcode}/activity`에서 읽으며, Product Lab
+recorder와 Bed 행은 선택 가능한 detail을 제공합니다. Info 화면은 Platform
+release/install metadata를 독립적으로 읽고 미지원 응답을 오류 상태로 보존합니다.
+
 ## Architecture
 
 `src` 내부 import는 package-relative alias인 `@/*`를 사용합니다. 같은 폴더의 파일만

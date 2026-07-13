@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import importlib.util
@@ -31,9 +32,9 @@ GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS = frozenset(
         "host-time.json",
     }
 )
-GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS = (
-    GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS | {ROOTFS_INPUT_METADATA_RELATIVE_PATH}
-)
+GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS = GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS | {
+    ROOTFS_INPUT_METADATA_RELATIVE_PATH
+}
 
 
 def stage_materialized_guest_deploy(source: Path, destination: Path) -> None:
@@ -71,10 +72,7 @@ def stage_materialized_guest_deploy(source: Path, destination: Path) -> None:
     for relative_path in GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS:
         volatile_contract = destination / relative_path
         if volatile_contract.exists():
-            if (
-                not volatile_contract.is_file()
-                or volatile_contract.is_symlink()
-            ):
+            if not volatile_contract.is_file() or volatile_contract.is_symlink():
                 raise SystemExit(
                     "error: staged volatile Guest deploy contract is unsafe: "
                     f"{volatile_contract}"
@@ -116,13 +114,11 @@ def guest_deploy_material_sha256(deploy_dir: Path) -> str:
             file_status = path.lstat()
         except OSError as error:
             raise SystemExit(
-                "error: Guest deploy material entry is unreadable: "
-                f"{path}: {error}"
+                f"error: Guest deploy material entry is unreadable: {path}: {error}"
             ) from error
         if stat.S_ISLNK(file_status.st_mode):
             raise SystemExit(
-                "error: Guest deploy material must not contain symlinks: "
-                f"{path}"
+                f"error: Guest deploy material must not contain symlinks: {path}"
             )
         if relative_path == ROOTFS_INPUT_METADATA_RELATIVE_PATH:
             if not stat.S_ISREG(file_status.st_mode):
@@ -202,8 +198,7 @@ def require_rootfs_input_metadata(deploy_dir: Path) -> dict[str, object]:
         status = metadata.lstat()
     except FileNotFoundError as error:
         raise SystemExit(
-            "error: Guest deploy material is missing rootfs input metadata: "
-            f"{metadata}"
+            f"error: Guest deploy material is missing rootfs input metadata: {metadata}"
         ) from error
     except OSError as error:
         raise SystemExit(
@@ -229,8 +224,7 @@ def require_rootfs_input_metadata(deploy_dir: Path) -> dict[str, object]:
         ) from error
     if not isinstance(document, dict):
         raise SystemExit(
-            "error: Guest deploy rootfs input metadata must be an object: "
-            f"{metadata}"
+            f"error: Guest deploy rootfs input metadata must be an object: {metadata}"
         )
     try:
         return rootfs_input_material_document(document)
@@ -258,8 +252,7 @@ def digest_guest_deploy_entry(
     entry: dict[str, object],
 ) -> None:
     digest.update(
-        json.dumps(entry, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        + b"\n"
+        json.dumps(entry, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n"
     )
 
 
@@ -407,13 +400,24 @@ def stage_guest_python_wheelhouse(
     shutil.copy2(built_wheel, staged_guest_wheel)
     guest_wheel_identity = file_identity(staged_guest_wheel)
 
-    target_documents: dict[str, object] = {}
+    target_configs: list[tuple[str, GuestRuntimeTarget]] = []
     for target in targets:
         target_config = GUEST_RUNTIME_TARGETS.get(target)
         if target_config is None:
             raise SystemExit(
                 f"error: unsupported Guest Python runtime target: {target}"
             )
+        target_configs.append((target, target_config))
+    for python_version in sorted(
+        {target["python_version"] for _, target in target_configs}
+    ):
+        validate_guest_python_wheel_syntax(
+            staged_guest_wheel,
+            python_version=python_version,
+        )
+
+    target_documents: dict[str, object] = {}
+    for target, target_config in target_configs:
         lock = project / "requirements" / f"guest-runtime-{target}.txt"
         if not lock.is_file():
             raise SystemExit(f"error: missing Guest runtime dependency lock: {lock}")
@@ -462,6 +466,48 @@ def stage_guest_python_wheelhouse(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def validate_guest_python_wheel_syntax(
+    wheel: Path,
+    *,
+    python_version: str,
+) -> None:
+    if len(python_version) < 2 or not python_version.isdigit():
+        raise SystemExit(
+            f"error: Guest Python runtime target version is invalid: {python_version}"
+        )
+    feature_version = (int(python_version[0]), int(python_version[1:]))
+    version_label = f"{feature_version[0]}.{feature_version[1]}"
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            python_modules = sorted(
+                name for name in archive.namelist() if name.endswith(".py")
+            )
+            if not python_modules:
+                raise SystemExit(
+                    f"error: Guest Tools wheel contains no Python modules: {wheel}"
+                )
+            for module in python_modules:
+                source = archive.read(module)
+                try:
+                    ast.parse(
+                        source,
+                        filename=module,
+                        feature_version=feature_version,
+                    )
+                except (SyntaxError, UnicodeDecodeError) as error:
+                    line = getattr(error, "lineno", None)
+                    line_detail = f" line={line}" if line is not None else ""
+                    raise SystemExit(
+                        "error: Guest Tools wheel is not compatible with "
+                        f"CPython {version_label}: wheel={wheel} module={module}"
+                        f"{line_detail} reason={error}"
+                    ) from error
+    except (OSError, zipfile.BadZipFile) as error:
+        raise SystemExit(
+            f"error: Guest Tools wheel is unreadable: {wheel}: {error}"
+        ) from error
 
 
 def download_guest_runtime_wheels(
@@ -593,8 +639,7 @@ def project_runtime_dependencies(project: Path) -> list[str]:
         isinstance(item, str) and item for item in dependencies
     ):
         raise SystemExit(
-            "error: invalid project.dependencies: "
-            f"{project / 'pyproject.toml'}"
+            f"error: invalid project.dependencies: {project / 'pyproject.toml'}"
         )
     return dependencies
 

@@ -5,6 +5,7 @@ import { BedsPage } from "@/pages/beds/BedsPage";
 import { DangerZonePage } from "@/pages/danger-zone/DangerZonePage";
 import { LabPage } from "@/pages/lab/LabPage";
 import { LogsPage } from "@/pages/logs/LogsPage";
+import { InfoPage } from "@/pages/info/InfoPage";
 import { ObservabilityPage } from "@/pages/observability/ObservabilityPage";
 import { RecordersPage } from "@/pages/recorders/RecordersPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
@@ -43,6 +44,7 @@ export const consoleRoutes: ConsoleRoute[] = [
     group: "overflow"
   },
   { path: "/logs", label: "Logs", Page: LogsPage, group: "overflow" },
+  { path: "/info", label: "Info", Page: InfoPage, group: "overflow" },
   {
     path: "/danger-zone",
     label: "Danger Zone",

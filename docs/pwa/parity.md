@@ -19,13 +19,14 @@
 | Swift UI 화면 | PWA route | 상태 | 메모 |
 |---|---|---|---|
 | Status | `/` | `Implemented` | runtime summary, VitalServer URL, data directory stats, recorder summary, resource usage 제공 |
-| Settings | `/settings` | `Implemented` | VM resources, network exposure, storage/Redis, sleep prevention, validation 제공 |
-| Update | `/update` | `Needs review` | bundle selection/apply flow는 UI가 있으나 file picker/download affordance는 browser 제약 검토 필요 |
+| Settings | `/settings` | `Capability gated` | Platform Agent-owned Host settings와 Runtime Controller-owned Product settings를 별도 섹션/계약으로 제공; Host edit는 macOS만 지원 |
+| Update | `/update` | `Needs review` | 같은 bundle의 verify 완료 후에만 apply 가능; local file picker/download affordance는 browser 제약 검토 필요 |
 | Observability | `/observability` | `Implemented` | observation pipeline, runtime events period/type/limit filtering 제공 |
-| Recorders | `/recorders` | `Implemented` | VRecorder list/detail/activity chart/relationship history 제공 |
-| Beds | `/beds` | `Implemented` | bed list/detail/relationship history 제공 |
+| Recorders | `/recorders` | `Implemented` | VRecorder list/detail/activity window/relationship history와 Product Lab recorder 선택/detail 제공 |
+| Beds | `/beds` | `Implemented` | VitalDB bed list/detail/relationship history와 Product Lab bed 선택/detail 제공 |
 | Lab | `/lab` | `Implemented` | Product Lab scenario/session/`.vital` replay를 `/runtime/lab/*`로 제공 |
 | Logs | `/logs` | `Implemented` | source/line/live stream/read/export controls 제공 |
+| Info | `/info` | `Capability gated` | Platform release/install metadata와 bundled service 정보를 독립 조회; 미지원은 오류 상태로 표시 |
 | Advanced | `/advanced` | `Capability gated` | Swift Advanced 구조에 맞춰 diagnostics, VM health, service health, recovery operations, advanced network, admin operations 제공 |
 | Danger Zone | `/danger-zone` | `Capability gated` | Swift Danger Zone 구조에 맞춰 update backup 삭제, VitalServer backup 삭제, destructive operations 제공 |
 
@@ -37,6 +38,7 @@
 | Product status | `Implemented` | `/runtime/stack`, `/runtime/services/*`, `/runtime/vitaldb/*` | Runtime Controller owner를 독립 조회 |
 | Runtime events | `Implemented` | `/runtime/events` | 최신순, period/type/limit filter |
 | Runtime settings read/apply | `Implemented` | `/runtime/settings` | domain policy로 validation |
+| Platform settings read/apply | `Capability gated` | `/platform/settings` | macOS는 실제 Host owner를 조회/적용; Windows/Linux는 typed `501`로 미지원 보고 |
 | Runtime service start/stop | `Removed from PWA` | native Host CLI maintenance only | PWA controls product services through Guest service operations |
 | Runtime repair | `Capability gated` | `/runtime/services/repair-*` | Advanced에서 제공 |
 | Rollback backup list/delete | `Capability gated` | `/platform/backups`, `DELETE /platform/backups/update` | update backup 삭제는 Danger Zone에서 명시 action으로 제공 |
@@ -45,10 +47,10 @@
 | Logs read/stream | `Implemented` | `/platform/logs/read`, `/platform/logs/stream` | host log path는 직접 열지 않음 |
 | Logs export | `Host affordance` | host log export endpoint | browser download endpoint가 없으면 native와 동일 UX 불가 |
 | VRecorder history | `Implemented` | `/runtime/vitaldb/recorders` | identity는 `vrcode` |
-| VRecorder activity chart | `Needs migration` | `/runtime/vitaldb/recorders/{vrcode}/activity` | lazy 12-hour window query로 이동 필요 |
+| VRecorder activity chart | `Implemented` | `/runtime/vitaldb/recorders/{vrcode}/activity` | bucket/period/page를 명시한 lazy server window 조회 |
 | Bed history | `Implemented` | `/runtime/vitaldb/beds` | bed identity는 `bedID` |
 | Relationship history | `Implemented` | `/runtime/vitaldb/relationships` | recorder/bed detail에 assignments/events 최대 8개씩 표시 |
-| Product Lab virtual recorder | `Implemented` | `/runtime/lab/*` | product route; TestKit은 container implementation detail |
+| Product Lab virtual recorder | `Implemented` | `/runtime/lab/*` | persisted session 선택, session/recorder start-stop, Lab recorder detail 제공; TestKit은 container implementation detail |
 | TestKit diagnostics | `Removed from product surface` | More/Advanced diagnostics only | `/dev/testkit/*` must not be a product route |
 | Authentication/session | `Deferred` | planned runtime auth/session contract | 별도 이슈에서 독립 진행 |
 | Online update | `Deferred` | planned update source contract | 인증/session 이후 재검토 |

@@ -1080,6 +1080,64 @@
         }
       }
     },
+    "/platform/settings": {
+      "get": {
+        "operationId": "getRuntimePlatformSettings",
+        "summary": "Read Platform Agent-owned host settings",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Platform settings read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimePlatformSettingsRead"
+                }
+              }
+            }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "operationId": "applyRuntimePlatformSettings",
+        "summary": "Apply Platform Agent-owned host settings",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeApplyPlatformSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/platform/release": {
       "get": {
         "operationId": "getRuntimeRelease",
@@ -1097,6 +1155,9 @@
                 }
               }
             }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -1121,6 +1182,9 @@
                 }
               }
             }
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -7038,6 +7102,148 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "RuntimePlatformSettingsRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "settings",
+          "readIssues",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "loaded",
+              "unavailable",
+              "failed"
+            ]
+          },
+          "settings": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimePlatformSettingsDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeSettingsReadIssue"
+            }
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimePlatformSettingsDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cpuCount",
+          "memoryGiB",
+          "diskGiB",
+          "minimumDiskGiB",
+          "networkMode",
+          "bridgedInterface",
+          "proxyPort",
+          "runtimeControlPort",
+          "vitalFilesDirectory",
+          "startOnBoot",
+          "startOnBootConfigurable",
+          "autoRecoveryEnabled",
+          "preventSystemSleep",
+          "automaticBackupEnabled",
+          "backupScheduleTimes",
+          "backupRetentionCount",
+          "logArchiveRetentionDays",
+          "logArchiveMaximumGiB",
+          "restartAfterSave"
+        ],
+        "properties": {
+          "cpuCount": { "type": "integer", "minimum": 1 },
+          "memoryGiB": { "type": "integer", "minimum": 1 },
+          "diskGiB": { "type": "integer", "minimum": 1 },
+          "minimumDiskGiB": { "type": "integer", "minimum": 1 },
+          "networkMode": { "type": "string", "enum": ["shared", "bridged"] },
+          "bridgedInterface": { "type": ["string", "null"] },
+          "proxyPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "runtimeControlPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "vitalFilesDirectory": { "type": "string", "minLength": 1 },
+          "startOnBoot": { "type": "boolean" },
+          "startOnBootConfigurable": { "type": "boolean" },
+          "autoRecoveryEnabled": { "type": "boolean" },
+          "preventSystemSleep": { "type": "boolean" },
+          "automaticBackupEnabled": { "type": "boolean" },
+          "backupScheduleTimes": { "type": "array", "items": { "type": "string" } },
+          "backupRetentionCount": { "type": "integer", "minimum": 1 },
+          "logArchiveRetentionDays": { "type": "integer", "minimum": 1 },
+          "logArchiveMaximumGiB": { "type": "integer", "minimum": 1 },
+          "restartAfterSave": { "type": "boolean" }
+        }
+      },
+      "RuntimePlatformSettingsApplyDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cpuCount",
+          "memoryGiB",
+          "diskGiB",
+          "networkMode",
+          "bridgedInterface",
+          "proxyPort",
+          "runtimeControlPort",
+          "vitalFilesDirectory",
+          "startOnBoot",
+          "autoRecoveryEnabled",
+          "preventSystemSleep",
+          "automaticBackupEnabled",
+          "backupScheduleTimes",
+          "backupRetentionCount",
+          "logArchiveRetentionDays",
+          "logArchiveMaximumGiB",
+          "restartAfterSave"
+        ],
+        "properties": {
+          "cpuCount": { "type": "integer", "minimum": 1 },
+          "memoryGiB": { "type": "integer", "minimum": 1 },
+          "diskGiB": { "type": "integer", "minimum": 1 },
+          "networkMode": { "type": "string", "enum": ["shared", "bridged"] },
+          "bridgedInterface": { "type": ["string", "null"] },
+          "proxyPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "runtimeControlPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "vitalFilesDirectory": { "type": "string", "minLength": 1 },
+          "startOnBoot": { "type": "boolean" },
+          "autoRecoveryEnabled": { "type": "boolean" },
+          "preventSystemSleep": { "type": "boolean" },
+          "automaticBackupEnabled": { "type": "boolean" },
+          "backupScheduleTimes": { "type": "array", "items": { "type": "string" } },
+          "backupRetentionCount": { "type": "integer", "minimum": 1 },
+          "logArchiveRetentionDays": { "type": "integer", "minimum": 1 },
+          "logArchiveMaximumGiB": { "type": "integer", "minimum": 1 },
+          "restartAfterSave": { "type": "boolean" }
+        }
+      },
+      "RuntimeApplyPlatformSettingsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "settings"
+        ],
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/RuntimePlatformSettingsApplyDocument"
           }
         }
       },

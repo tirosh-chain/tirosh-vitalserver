@@ -241,6 +241,30 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.runtimeServiceResourceReadIssues, [])
     }
 
+    func testRuntimeStackRefreshReplacesInitialReadFailureAfterGuestBecomesReady() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeStackError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "guest address is unavailable: missing-vm-ip"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshRuntimeStack()
+        XCTAssertEqual(viewModel.runtimeStackReadError, "guest address is unavailable: missing-vm-ip")
+
+        client.runtimeStackError = nil
+        await viewModel.refreshRuntimeStack()
+
+        XCTAssertEqual(client.runtimeStackStatusCount, 2)
+        XCTAssertEqual(viewModel.runtimeStackStatus, client.runtimeStackStatus)
+        XCTAssertNil(viewModel.runtimeStackReadError)
+    }
+
     func testRestrictedClientPreventsLocalOnlyOperations() async {
         let client = FakeRuntimeClient(capabilities: .restricted)
         let nativeShell = FakeRuntimeNativeShell()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import tomllib
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -33,6 +34,53 @@ ROOT = Path(__file__).resolve().parents[4]
 GUEST_TOOLS_RUNTIME_INSTALLER = (
     ROOT / "apps/vitalserver-macos-runtime/Support/Guest/install-guest-tools-runtime.py"
 )
+HOST_PYTHON_PACKAGES = (
+    ROOT / "packages/vitalserver-core/pyproject.toml",
+    ROOT / "packages/vitalserver-testkit/pyproject.toml",
+    ROOT / "apps/vitalserver-recorder-recovery/pyproject.toml",
+)
+
+
+def test_packaged_guest_configs_use_vitaldb_observer_api_contract() -> None:
+    expected_url = "http://127.0.0.1:18084/api/v1/observations"
+    config_paths = (
+        ROOT
+        / (
+            "packages/vitalserver-guest-tools/src/tirosh_guest_tools/resources/"
+            "guest-tools.toml"
+        ),
+        ROOT
+        / "apps/vitalserver-platform-agent/packaging/linux/runtime-controller.toml",
+        ROOT
+        / (
+            "apps/vitalserver-platform-agent/packaging/windows/hyperv-guest/"
+            "guest-tools.toml"
+        ),
+    )
+
+    for config_path in config_paths:
+        config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        assert config["observability"]["vitaldbObserverUrl"] == expected_url
+
+
+def test_host_python_baseline_matches_guest_runtime_targets() -> None:
+    host_python = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+    root_pyproject = tomllib.loads(
+        (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    guest_python_versions = {
+        f"{target['python_version'][0]}.{target['python_version'][1:]}"
+        for target in deploy_bundle.GUEST_RUNTIME_TARGETS.values()
+    }
+
+    assert host_python == "3.12"
+    assert guest_python_versions == {host_python}
+    assert root_pyproject["project"]["requires-python"] == ">=3.12"
+    assert root_pyproject["tool"]["ruff"]["target-version"] == "py312"
+    assert root_pyproject["tool"]["mypy"]["python_version"] == host_python
+    for package_pyproject in HOST_PYTHON_PACKAGES:
+        package = tomllib.loads(package_pyproject.read_text(encoding="utf-8"))
+        assert package["project"]["requires-python"] == ">=3.12"
 
 
 def runtime_product_minimal_compose(
@@ -124,8 +172,7 @@ def test_guest_compose_contract_rejects_stale_product_image_tag() -> None:
 
     assert any(
         "Guest compose image is not declared in VM Docker image config: "
-        "service=recorder-recovery image=vitalserver-recorder-recovery:0.1.0"
-        in error
+        "service=recorder-recovery image=vitalserver-recorder-recovery:0.1.0" in error
         for error in errors
     )
 
@@ -369,8 +416,7 @@ def test_guest_runtime_wheelhouse_validation_reports_missing_dependency(
     requirements = tmp_path / "linux-aarch64/requirements.txt"
     requirements.parent.mkdir(parents=True)
     requirements.write_text(
-        "../guest-tools/guest_tools-0.1.0-py3-none-any.whl "
-        "--hash=sha256:deadbeef\n",
+        "../guest-tools/guest_tools-0.1.0-py3-none-any.whl --hash=sha256:deadbeef\n",
         encoding="utf-8",
     )
     guest_tools_directory = tmp_path / "guest-tools"
@@ -403,6 +449,29 @@ def test_guest_runtime_wheelhouse_validation_reports_missing_dependency(
         )
 
 
+def test_guest_runtime_wheelhouse_rejects_newer_python_syntax(
+    tmp_path: Path,
+) -> None:
+    wheel = tmp_path / "guest_tools-0.2.0-py3-none-any.whl"
+    with ZipFile(wheel, "w") as archive:
+        archive.writestr(
+            "tirosh_guest_tools/adapter.py",
+            "try:\n    pass\nexcept ValueError, TypeError:\n    pass\n",
+        )
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            r"not compatible with CPython 3\.12.*"
+            r"module=tirosh_guest_tools/adapter\.py line=3"
+        ),
+    ):
+        deploy_bundle.validate_guest_python_wheel_syntax(
+            wheel,
+            python_version="312",
+        )
+
+
 def test_guest_tools_runtime_installer_does_not_initialize_control_state() -> None:
     installer = GUEST_TOOLS_RUNTIME_INSTALLER.read_text(encoding="utf-8")
 
@@ -430,8 +499,7 @@ def test_guest_tools_runtime_installer_resolves_local_requirements_from_wheelhou
         encoding="utf-8",
     )
     guest_wheel = (
-        tmp_path
-        / "python-wheels/guest-tools/guest-tools-0.2.0-py3-none-any.whl"
+        tmp_path / "python-wheels/guest-tools/guest-tools-0.2.0-py3-none-any.whl"
     )
     guest_wheel.parent.mkdir(parents=True)
     guest_wheel.write_bytes(b"guest-tools-wheel")

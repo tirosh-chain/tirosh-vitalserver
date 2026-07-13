@@ -68,6 +68,8 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBRelationships())
         case .health:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadHealthStatus())
+        case .platformSettings:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimePlatformSettings())
         case .settings:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeProductSettings())
         case .release:
@@ -120,7 +122,8 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRedisBackups())
         case .runtimeDataBackups:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeDataBackups())
-        case .applySettings,
+        case .applyPlatformSettings,
+             .applySettings,
              .applyAdminPassword,
              .applyRedisRelaySettings,
              .createLabBeds,

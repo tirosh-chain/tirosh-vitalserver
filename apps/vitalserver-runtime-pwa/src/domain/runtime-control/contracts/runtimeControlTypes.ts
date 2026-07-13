@@ -13,6 +13,7 @@ import {
   runtimeGuestControlStackStatusSchema,
   runtimeRedisRelayStatusReadResultSchema,
   runtimeRedisRelaySettingsReadSchema,
+  runtimePlatformSettingsReadSchema,
   runtimeProductSettingsReadSchema,
   runtimeProductSettingsSchema,
   runtimeSettingsSchema,
@@ -133,6 +134,14 @@ export type RuntimeProductSettings = z.infer<typeof runtimeProductSettingsSchema
 export type RuntimeProductSettingsRead =
   z.infer<typeof runtimeProductSettingsReadSchema>;
 
+export type RuntimePlatformSettingsRead =
+  z.infer<typeof runtimePlatformSettingsReadSchema>;
+
+export type RuntimePlatformSettings = NonNullable<RuntimePlatformSettingsRead["settings"]>;
+
+export type RuntimeApplyPlatformSettingsRequest =
+  paths["/platform/settings"]["put"]["requestBody"]["content"]["application/json"];
+
 export type RuntimeApplyProductSettingsRequest =
   paths["/runtime/settings"]["put"]["requestBody"]["content"]["application/json"];
 
@@ -172,6 +181,20 @@ export type VitalDBObservationDocument =
 
 export type RuntimeVitalDBObservationSnapshot =
   z.infer<typeof runtimeVitalDBObservationSnapshotSchema>;
+
+export type RuntimeVitalRecorderActivityWindow =
+  components["schemas"]["RuntimeVitalRecorderActivityWindow"];
+
+export type RuntimeVitalRecorderActivityWindowQuery = {
+  vrcode: string;
+  bucketSeconds: 60 | 300;
+  period: components["schemas"]["RuntimeVitalRecorderActivityWindowPeriod"];
+  pageIndex?: number;
+};
+
+export type RuntimeReleaseInfo = components["schemas"]["RuntimeReleaseInfo"];
+
+export type RuntimeInstallInfo = components["schemas"]["RuntimeInstallInfo"];
 
 export type VitalDBAnomalyObservation =
   components["schemas"]["VitalDBAnomalyObservation"];

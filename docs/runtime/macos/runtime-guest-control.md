@@ -374,7 +374,10 @@ The regular VitalDB Bed and Recorder tabs continue to display Guest/Postgres
 VitalDB observation state. Helper also surfaces Product Lab beds and
 recorders separately so Lab-managed virtual resources are visible without
 pretending they are VitalDB-observed resources before the upstream product
-read model reports them.
+read model reports them. Product Lab bed rows are selectable in SwiftUI and the
+common PWA; their detail renders only the Lab-owned `RuntimeLabBed` fields
+(`name`, `bedId`, `sessionId`, `state`, `createdAt`, `updatedAt`) and does not
+infer VitalDB relationship, patient, or recorder state.
 
 The Lab presentation does not keep the just-created session only in client memory. SwiftUI and the common PWA read the persisted session collection, select a session explicitly, then read its detail. Whole-session Start/Stop and per-recorder Start/Stop are separate commands. A recorder command is available only when the selected session is explicitly `running` and the recorder read model explicitly names that session. Refresh/read failure remains visible and does not become an empty session list or a locally reconstructed session.
 

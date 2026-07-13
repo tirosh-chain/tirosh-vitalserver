@@ -11,6 +11,8 @@ class RecorderActivityBucket:
     message_count: int
     byte_count: int
     room_count: int
+    first_observed_at: str
+    last_observed_at: str
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -19,6 +21,8 @@ class RecorderActivityBucket:
             "messageCount": self.message_count,
             "byteCount": self.byte_count,
             "roomCount": self.room_count,
+            "firstObservedAt": self.first_observed_at,
+            "lastObservedAt": self.last_observed_at,
         }
 
 
@@ -176,6 +180,12 @@ class ObservationDocument:
     read_issues: list[ObservationReadIssue] = field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
+        activity_buckets = [
+            {"vrcode": recorder.vrcode, **bucket.as_json()}
+            for recorder in self.recorders
+            if recorder.activity is not None
+            for bucket in recorder.activity.buckets
+        ]
         return {
             "schemaVersion": 1,
             "source": "vitaldb-observer",
@@ -183,6 +193,7 @@ class ObservationDocument:
             "ready": self.ready,
             "recorderOnlineThresholdSeconds": self.recorder_online_threshold_seconds,
             "recorders": [item.as_json() for item in self.recorders],
+            "activityBuckets": activity_buckets,
             "beds": [item.as_json() for item in self.beds],
             "devices": [item.as_json() for item in self.devices],
             "filters": [item.as_json() for item in self.filters],

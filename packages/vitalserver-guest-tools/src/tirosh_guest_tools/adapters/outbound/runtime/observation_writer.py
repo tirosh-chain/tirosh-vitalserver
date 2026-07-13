@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from contextlib import suppress
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -61,6 +62,11 @@ def write_runtime_observation(
     )
     vitaldb_probe_errors: list[ProbeError] = []
     vitaldb_observation = collector.vitaldb_observation(vitaldb_probe_errors)
+    if vitaldb_probe_errors:
+        state = replace(
+            state,
+            probe_errors=tuple(state.probe_errors) + tuple(vitaldb_probe_errors),
+        )
     write_runtime_observation_document(
         runtime_observation,
         state,

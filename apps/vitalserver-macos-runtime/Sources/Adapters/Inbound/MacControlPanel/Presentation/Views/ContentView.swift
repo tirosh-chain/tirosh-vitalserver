@@ -424,6 +424,12 @@ public struct ContentView: View {
         default:
             break
         }
+        if selectedSection.refreshesRuntimeProductServicesWhileSelected {
+            await viewModel.refreshRuntimeStack()
+        }
+        if selectedSection.refreshesRedisRelayWhileSelected {
+            await viewModel.refreshRedisRelayStatus()
+        }
         if selectedSection.refreshesBackupListsWhileSelected {
             await viewModel.refreshBackupList()
         }

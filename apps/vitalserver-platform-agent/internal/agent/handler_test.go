@@ -152,6 +152,29 @@ func TestProtectedRoutesDoNotTreatAnEmptyConfiguredTokenAsCredentials(t *testing
 	}
 }
 
+func TestUnsupportedPlatformMetadataAndSettingsAreExplicit(t *testing.T) {
+	handler := NewHandler(Config{APIToken: "test-token"}, stubServices{}, time.Now())
+	tests := []struct {
+		method string
+		path   string
+		code   string
+	}{
+		{http.MethodGet, "/platform/settings", "platformSettingsUnavailable"},
+		{http.MethodPut, "/platform/settings", "platformSettingsUnavailable"},
+		{http.MethodGet, "/platform/release", "releaseMetadataUnavailable"},
+		{http.MethodGet, "/platform/installation", "installMetadataUnavailable"},
+	}
+	for _, test := range tests {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		request.Header.Set("X-Runtime-Control-Token", "test-token")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNotImplemented || !strings.Contains(response.Body.String(), test.code) {
+			t.Fatalf("%s %s status=%d body=%s", test.method, test.path, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestPlatformDeliveryKeepsApplyUnavailableWithoutTrustedPublisherPolicy(t *testing.T) {
 	handler := NewHandler(Config{
 		APIToken: "test-token",

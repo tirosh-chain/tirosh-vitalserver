@@ -7,6 +7,7 @@ struct RuntimeBedsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
     @State private var selectedBedID: String?
+    @State private var selectedProductLabBedID: String?
     @State private var showingHiddenBeds = false
     private let displayPolicy = RuntimeVitalRecorderDisplayPolicy()
 
@@ -85,6 +86,14 @@ struct RuntimeBedsPanel: View {
                 }
             }
         }
+    }
+
+    private var selectedProductLabBed: RuntimeLabBed? {
+        if let selectedProductLabBedID,
+           let bed = viewModel.labBeds.beds.first(where: { $0.bedId == selectedProductLabBedID }) {
+            return bed
+        }
+        return viewModel.labBeds.beds.first
     }
 
     private var bedDetails: some View {
@@ -425,6 +434,9 @@ struct RuntimeBedsPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
+            if let bed = selectedProductLabBed {
+                productLabBedDetails(bed)
+            }
         }
     }
 
@@ -440,18 +452,62 @@ struct RuntimeBedsPanel: View {
     }
 
     private func productLabBedRow(_ bed: RuntimeLabBed) -> some View {
-        HStack(spacing: 12) {
-            tableValue(bed.name, minWidth: 160, weight: .semibold)
-            tableValue(bed.bedId, minWidth: 220)
-            tableValue(bed.sessionId, minWidth: 220)
-            Text(labSessionStateText(bed.state))
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(labSessionStateColor(bed.state))
-                .frame(minWidth: 90, alignment: .leading)
-            tableValue(viewModel.presentationFormatter.systemTimeText(bed.updatedAt), minWidth: 160)
+        Button {
+            selectedProductLabBedID = bed.bedId
+        } label: {
+            HStack(spacing: 12) {
+                tableValue(bed.name, minWidth: 160, weight: .semibold)
+                tableValue(bed.bedId, minWidth: 220)
+                tableValue(bed.sessionId, minWidth: 220)
+                Text(labSessionStateText(bed.state))
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(labSessionStateColor(bed.state))
+                    .frame(minWidth: 90, alignment: .leading)
+                tableValue(viewModel.presentationFormatter.systemTimeText(bed.updatedAt), minWidth: 160)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(10)
+        .background(
+            selectedProductLabBed?.bedId == bed.bedId
+                ? Color.accentColor.opacity(0.10)
+                : Color.clear
+        )
+    }
+
+    private func productLabBedDetails(_ bed: RuntimeLabBed) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Product Lab Bed Details")
+                .font(.headline)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Circle()
+                    .fill(labSessionStateColor(bed.state))
+                    .frame(width: 9, height: 9)
+                Text(bed.name)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Text(labSessionStateText(bed.state))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(labSessionStateColor(bed.state))
+                Spacer()
+                Text(viewModel.presentationFormatter.systemTimeText(bed.updatedAt))
+                    .foregroundStyle(.secondary)
+            }
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
+                detailRow("Name", bed.name)
+                detailRow("Bed ID", bed.bedId)
+                detailRow("Session", bed.sessionId)
+                detailRow("State", labSessionStateText(bed.state))
+                detailRow("Created", viewModel.presentationFormatter.systemTimeText(bed.createdAt))
+                detailRow("Updated", viewModel.presentationFormatter.systemTimeText(bed.updatedAt))
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func tableHeader(_ text: String, minWidth: CGFloat) -> some View {

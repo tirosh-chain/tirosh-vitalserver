@@ -1051,6 +1051,40 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertNil(item(GeneratedRelease.recorderIngressName, in: items))
     }
 
+    func testAdvancedServiceHealthShowsInitializingForGuestControlReadFailureWhileVMStarts() {
+        let status = platformState(
+            runtimeInstallationState: .executable,
+            vmState: .starting,
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP
+        )
+        let items = advancedServiceHealth(
+            status: status,
+            operationState: operationState(),
+            runtimeStackReadError: "Guest Control API is unavailable. guest address is unavailable: missing-vm-ip"
+        )
+
+        let guestServices = item(AppConstants.Labels.guestProductServices, in: items)
+        XCTAssertEqual(guestServices?.value.text, AppConstants.StatusText.initializing)
+        XCTAssertEqual(guestServices?.value.severity, .warning)
+    }
+
+    func testHealthDetailsShowsInitializingForGuestControlReadFailureWhileVMStarts() {
+        let status = platformState(
+            runtimeInstallationState: .executable,
+            vmState: .starting,
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP
+        )
+        let details = policy.healthDetails(
+            status: status,
+            operationState: operationState(),
+            runtimeStackReadError: "Guest Control API is unavailable. guest address is unavailable: missing-vm-ip"
+        )
+
+        let guestServices = item(AppConstants.Labels.guestProductServices, in: details)
+        XCTAssertEqual(guestServices?.value.text, AppConstants.StatusText.initializing)
+        XCTAssertEqual(guestServices?.value.severity, .warning)
+    }
+
     func testAdvancedServiceHealthShowsRedisRelayHealthyWhenEnabledAndHealthy() {
         let status = platformState(
             runtimeInstallationState: .executable

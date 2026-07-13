@@ -11,6 +11,7 @@ import {
 } from "@/console/requestBuilders";
 import type {
   RuntimeApplyProductSettingsRequest,
+  RuntimeApplyPlatformSettingsRequest,
   RuntimeAdminPasswordRequest,
   RuntimeRedisRelaySettingsApplyRequest,
   RuntimeCommandResponse,
@@ -22,6 +23,7 @@ import type {
   RuntimeLabVitalFileUploadRequest,
   RuntimeLabVitalFileReplayRequest,
   RuntimeLogSource,
+  RuntimeVitalRecorderActivityWindowQuery,
   VitalDBBedVisibilityRequest,
   VitalDBRecorderVisibilityRequest,
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
@@ -169,6 +171,30 @@ export function useRuntimeProductSettings() {
     queryKey: consoleQueryKeys.runtimeProductSettings,
     queryFn: () => runtimeControlGateway.getRuntimeProductSettings(),
     refetchInterval: 5_000
+  });
+}
+
+export function useRuntimePlatformSettings() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.runtimePlatformSettings,
+    queryFn: () => runtimeControlGateway.getRuntimePlatformSettings(),
+    refetchInterval: 5_000
+  });
+}
+
+export function useApplyRuntimePlatformSettings() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RuntimeApplyPlatformSettingsRequest) =>
+      runtimeControlGateway.applyRuntimePlatformSettings(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.runtimePlatformSettings
+      });
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformState });
+    }
   });
 }
 
@@ -373,6 +399,33 @@ export function useVitalDBRecorders() {
     queryKey: consoleQueryKeys.recorders,
     queryFn: () => runtimeControlGateway.getRecorders(),
     refetchInterval: 5_000
+  });
+}
+
+export function useVitalDBRecorderActivity(
+  query: RuntimeVitalRecorderActivityWindowQuery
+) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderActivity(query),
+    queryFn: () => runtimeControlGateway.getRecorderActivity(query),
+    refetchInterval: 5_000
+  });
+}
+
+export function useReleaseInfo() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.releaseInfo,
+    queryFn: () => runtimeControlGateway.getReleaseInfo()
+  });
+}
+
+export function useInstallInfo() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.installInfo,
+    queryFn: () => runtimeControlGateway.getInstallInfo()
   });
 }
 

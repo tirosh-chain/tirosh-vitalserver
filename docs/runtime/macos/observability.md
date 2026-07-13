@@ -28,7 +28,7 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 | recorder ingress stdout | `vitalserver-recorder-ingress` | container log collector | collector 호환 raw event log |
 | Redis List `vitalserver:audit_events` | `vitalserver-recorder-ingress` | 운영 조회/디버깅 | Redis 3.2 호환 보조 조회 sink |
 | `/recorder-ingress/status` | `vitalserver-recorder-ingress` | Guest Control API, operator | recorder ingress runtime counters |
-| `/api/runtime/observations` | `vitaldb-observer` | Guest/Postgres read model writer | VitalDB recorder/bed/anomaly snapshot |
+| `/api/v1/observations` | `vitaldb-observer` | Guest/Postgres read model writer | VitalDB recorder/bed/anomaly snapshot |
 | vitaldb-observer stdout JSONL | `vitaldb-observer` | container log collector, operator diagnostics | observer collection/readiness diagnostic history |
 | `/run/tirosh/status/redis-relay-status.json` | `vitalserver-redis-relay` | Guest Control API, operator diagnostics | relay process/progress/error snapshot |
 
@@ -48,7 +48,7 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 - compose service와 container는 stdout/stderr에 raw log를 남깁니다.
 - upstream VitalServer app은 제품 runtime event를 직접 알 필요가 없습니다.
 
-`vitaldb-observer` observation의 `readIssues`는 Redis audit event, proxy/access log, bed JSON처럼 source별 read/parse 문제가 있었음을 나타냅니다. 관련 `readIssues`가 있는 빈 `proxyConnections`, 빈 activity, 또는 부분 recorder/bed snapshot은 실제 관측값 0과 같은 의미가 아닙니다. 반복되는 audit event parse 실패는 실패 원인과 event count를 보존한 bounded summary로 보고하여, 같은 결함이 observation payload와 UI 메시지를 무한히 키우지 않게 합니다. Recorder activity의 `roomCount`는 해당 버킷에서 받은 `send_data` payload들의 room entry 합계입니다. 이는 고유 room 수나 현재 연결된 room 수가 아니므로 기본 UI 판단 지표로 노출하지 않습니다. 필요할 때 API/diagnostics contract에서만 확인합니다.
+`vitaldb-observer` observation의 `readIssues`는 Redis audit event, proxy/access log, bed JSON처럼 source별 read/parse 문제가 있었음을 나타냅니다. 관련 `readIssues`가 있는 빈 `proxyConnections`, 빈 activity, 또는 부분 recorder/bed snapshot은 실제 관측값 0과 같은 의미가 아닙니다. 반복되는 audit event parse 실패는 실패 원인과 event count를 보존한 bounded summary로 보고하여, 같은 결함이 observation payload와 UI 메시지를 무한히 키우지 않게 합니다. Recorder별 live summary는 `recorders[].activity`가 제공하고, chart/history용 canonical projection은 observation 최상위 `activityBuckets`가 `vrcode`, bucket identity, count, first/last observed timestamp를 명시해서 제공합니다. Consumer는 중첩 activity에서 chart bucket을 추정하면 안 됩니다. Recorder activity의 `roomCount`는 해당 버킷에서 받은 `send_data` payload들의 room entry 합계입니다. 이는 고유 room 수나 현재 연결된 room 수가 아니므로 기본 UI 판단 지표로 노출하지 않습니다. 필요할 때 API/diagnostics contract에서만 확인합니다.
 
 각 app은 제품 전체 상태를 판단하지 않습니다.
 
@@ -513,7 +513,7 @@ audit_event_index (
 | bed/VRecorder assignment projection | Guest/Postgres read model |
 | Helper/PWA 조회 API | Runtime Control API가 Guest/Product API를 소비 |
 
-이 구조는 수집/계산 장애를 traffic path와 Host watchdog core loop에서 분리하면서도, 제품이 보는 최종 관측 SoT를 Guest/Postgres read model로 유지하기 위한 결정입니다. Observer container는 자체 SQLite를 갖지 않고 `/api/runtime/observations` snapshot을 제공합니다. Guest writer가 이 snapshot을 Postgres read model에 저장하고, Runtime Control API는 Guest/Product API를 소비합니다. Host `runtime-observability.sqlite`는 transitional diagnostics 또는 migration evidence로만 남아야 하며 product read source로 승격하면 안 됩니다. Observer stdout JSONL은 `server_started`, `readiness_failed`, `observation_collected`, `observation_failed` 같은 진단 이벤트만 남깁니다. 이 로그는 raw history이고, Runtime Control API가 보는 canonical observation history는 아닙니다.
+이 구조는 수집/계산 장애를 traffic path와 Host watchdog core loop에서 분리하면서도, 제품이 보는 최종 관측 SoT를 Guest/Postgres read model로 유지하기 위한 결정입니다. Observer container는 자체 SQLite를 갖지 않고 `/api/v1/observations` snapshot을 제공합니다. Guest writer가 이 snapshot을 Postgres read model에 저장하고, Runtime Control API는 Guest/Product API를 소비합니다. Host `runtime-observability.sqlite`는 transitional diagnostics 또는 migration evidence로만 남아야 하며 product read source로 승격하면 안 됩니다. Observer stdout JSONL은 `server_started`, `readiness_failed`, `observation_collected`, `observation_failed` 같은 진단 이벤트만 남깁니다. 이 로그는 raw history이고, Runtime Control API가 보는 canonical observation history는 아닙니다.
 
 ### 9-1. External Redis relay
 

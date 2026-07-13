@@ -173,6 +173,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
             ),
         ])
         items.append(contentsOf: guestServiceHealthDetails(
+            status: status,
             stackStatus: runtimeStackStatus,
             stackReadError: runtimeStackReadError,
             resources: runtimeServiceResources,
@@ -227,11 +228,20 @@ public struct RuntimeStatusHealthDetailsPolicy {
     }
 
     private func guestServiceHealthDetails(
+        status: PlatformState,
         stackStatus: RuntimeGuestControlStackStatus?,
         stackReadError: String?,
         resources: [RuntimeGuestServiceResource],
         resourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     ) -> [RuntimeStatusHealthDetailItem] {
+        if stackStatus == nil, guestReadinessPolicy.isWaitingForInitialGuestState(status) {
+            return [
+                RuntimeStatusHealthDetailItem(
+                    label: vocabulary.guestProductServicesLabel,
+                    value: value(httpValuePolicy.initializingValue(uptimeText: nil))
+                ),
+            ]
+        }
         if let stackReadError {
             return [
                 RuntimeStatusHealthDetailItem(

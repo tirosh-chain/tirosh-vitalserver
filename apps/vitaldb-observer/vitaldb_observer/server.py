@@ -89,6 +89,7 @@ class ObserverRequestHandler(BaseHTTPRequestHandler):
                     "ready": False,
                     "recorderOnlineThresholdSeconds": threshold,
                     "recorders": [],
+                    "activityBuckets": [],
                     "beds": [],
                     "devices": [],
                     "filters": [],

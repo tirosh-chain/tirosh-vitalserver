@@ -17,6 +17,7 @@ import type {
   PlatformCapabilities,
   RuntimeCapabilities,
   RuntimeApplyProductSettingsRequest,
+  RuntimeApplyPlatformSettingsRequest,
   RuntimeAdminPasswordRequest,
   RuntimeBackup,
   RuntimeBackupRequest,
@@ -52,7 +53,12 @@ import type {
   RuntimeRedisRelaySettingsRead,
   RuntimeRedisRelaySettingsApplyRequest,
   RuntimeVitalDBObservationSnapshot,
+  RuntimeVitalRecorderActivityWindow,
+  RuntimeVitalRecorderActivityWindowQuery,
+  RuntimeReleaseInfo,
+  RuntimeInstallInfo,
   RuntimeProductSettingsRead,
+  RuntimePlatformSettingsRead,
   RuntimeProviderCommandResponse,
   PlatformState,
   RuntimeUninstallRequest,
@@ -89,7 +95,11 @@ import {
   runtimeRedisRelayStatusReadResultSchema,
   runtimeRedisRelaySettingsReadSchema,
   runtimeVitalDBObservationSnapshotSchema,
+  recorderActivityWindowSchema,
+  runtimeReleaseInfoSchema,
+  runtimeInstallInfoSchema,
   runtimeProductSettingsReadSchema,
+  runtimePlatformSettingsReadSchema,
   runtimeProviderCommandResponseSchema,
   platformStateSchema,
   runtimeUpdateBundleSummaryResponseSchema,
@@ -165,6 +175,14 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get("/platform", platformStateSchema);
   }
 
+  getReleaseInfo(): Promise<RuntimeReleaseInfo> {
+    return this.get("/platform/release", runtimeReleaseInfoSchema);
+  }
+
+  getInstallInfo(): Promise<RuntimeInstallInfo> {
+    return this.get("/platform/installation", runtimeInstallInfoSchema);
+  }
+
   getRedisRelayStatus(): Promise<RuntimeRedisRelayStatusReadResult> {
     return this.get(
       "/runtime/redis-relay/status",
@@ -206,6 +224,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   getRuntimeProductSettings(): Promise<RuntimeProductSettingsRead> {
     return this.get("/runtime/settings", runtimeProductSettingsReadSchema);
+  }
+
+  getRuntimePlatformSettings(): Promise<RuntimePlatformSettingsRead> {
+    return this.get("/platform/settings", runtimePlatformSettingsReadSchema);
   }
 
   getLabScenarios(): Promise<RuntimeLabScenarioList> {
@@ -381,6 +403,12 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     );
   }
 
+  applyRuntimePlatformSettings(
+    request: RuntimeApplyPlatformSettingsRequest
+  ): Promise<RuntimeCommandResponse> {
+    return this.put("/platform/settings", request, runtimeCommandResponseSchema);
+  }
+
   applyRuntimeAdminPassword(
     request: RuntimeAdminPasswordRequest
   ): Promise<RuntimeGuestControlServiceOperation> {
@@ -413,6 +441,21 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   getRecorders(): Promise<VitalDBRecorders> {
     return this.get("/runtime/vitaldb/recorders", vitalDBRecordersSchema);
+  }
+
+  getRecorderActivity(
+    query: RuntimeVitalRecorderActivityWindowQuery
+  ): Promise<RuntimeVitalRecorderActivityWindow> {
+    const pageIndex = query.pageIndex;
+    return this.get(
+      `/runtime/vitaldb/recorders/${encodeURIComponent(query.vrcode)}/activity`,
+      recorderActivityWindowSchema,
+      {
+        bucketSeconds: query.bucketSeconds,
+        period: query.period,
+        ...(pageIndex === undefined ? {} : { pageIndex })
+      }
+    );
   }
 
   hideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders> {

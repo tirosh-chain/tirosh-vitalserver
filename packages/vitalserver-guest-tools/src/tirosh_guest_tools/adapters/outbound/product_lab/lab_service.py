@@ -344,7 +344,7 @@ def _http_error_detail(error: HTTPError) -> str:
     try:
         data = error.read()
         document = json.loads(data.decode("utf-8"))
-    except UnicodeDecodeError, json.JSONDecodeError:
+    except (UnicodeDecodeError, json.JSONDecodeError) as _decode_error:
         return f"status={error.code}"
     if isinstance(document, dict) and isinstance(document.get("readError"), str):
         return f"status={error.code} detail={document['readError']}"

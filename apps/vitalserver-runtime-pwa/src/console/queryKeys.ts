@@ -12,6 +12,7 @@ export const consoleQueryKeys = {
     ["runtime", "services", service, "resource"] as const,
   capabilities: ["console", "capabilities"] as const,
   runtimeProductSettings: ["runtime", "settings"] as const,
+  runtimePlatformSettings: ["platform", "settings"] as const,
   labScenarios: ["lab", "scenarios"] as const,
   labBeds: ["lab", "beds"] as const,
   labRecorders: ["lab", "recorders"] as const,
@@ -26,6 +27,14 @@ export const consoleQueryKeys = {
   redisBackups: ["host", "backups", "redis"] as const,
   runtimeDataBackups: ["host", "backups", "runtime-data"] as const,
   recorders: ["vitaldb", "recorders"] as const,
+  recorderActivity: (query: {
+    vrcode: string;
+    bucketSeconds: number;
+    period: string;
+    pageIndex?: number;
+  }) => ["vitaldb", "recorders", query.vrcode, "activity", query] as const,
+  releaseInfo: ["platform", "release"] as const,
+  installInfo: ["platform", "installation"] as const,
   beds: ["vitaldb", "beds"] as const,
   relationships: ["vitaldb", "relationships"] as const
 };

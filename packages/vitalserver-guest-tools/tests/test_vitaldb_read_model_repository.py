@@ -5,12 +5,18 @@ from pathlib import Path
 
 import pytest
 
-from tirosh_guest_tools.adapters.outbound.postgres import PostgresVitalDBReadModelRepository
-from tirosh_guest_tools.domain.guest_control.models import VitalDBReadModelDependencyError
+from tirosh_guest_tools.adapters.outbound.postgres import (
+    PostgresVitalDBReadModelRepository,
+)
+from tirosh_guest_tools.domain.guest_control.models import (
+    VitalDBReadModelDependencyError,
+)
 
 
 def repository(tmp_path: Path) -> PostgresVitalDBReadModelRepository:
-    value = PostgresVitalDBReadModelRepository(f"sqlite:///{tmp_path / 'vitaldb.sqlite'}")
+    value = PostgresVitalDBReadModelRepository(
+        f"sqlite:///{tmp_path / 'vitaldb.sqlite'}"
+    )
     value.ensure_schema()
     return value
 
@@ -20,23 +26,37 @@ def observation(*, vrcode: str = "VR-001", bed_id: str = "bed-a") -> dict[str, o
         "observedAt": "2026-07-01T00:00:00+00:00",
         "ready": True,
         "recorderOnlineThresholdSeconds": 60,
-        "recorders": [{"vrcode": vrcode, "bedID": bed_id, "online": True, "stale": False}],
+        "recorders": [
+            {"vrcode": vrcode, "bedID": bed_id, "online": True, "stale": False}
+        ],
         "beds": [{"bedID": bed_id, "name": "OR-A", "online": True}],
-        "activityBuckets": [{
-            "vrcode": vrcode, "bucketStartedAt": "2026-07-01T00:00:00Z",
-            "bucketSeconds": 60, "messageCount": 2, "byteCount": 20,
-            "roomCount": 1, "firstObservedAt": "2026-07-01T00:00:01Z",
-            "lastObservedAt": "2026-07-01T00:00:40Z",
-        }],
+        "activityBuckets": [
+            {
+                "vrcode": vrcode,
+                "bucketStartedAt": "2026-07-01T00:00:00Z",
+                "bucketSeconds": 60,
+                "messageCount": 2,
+                "byteCount": 20,
+                "roomCount": 1,
+                "firstObservedAt": "2026-07-01T00:00:01Z",
+                "lastObservedAt": "2026-07-01T00:00:40Z",
+            }
+        ],
         "readIssues": [],
     }
 
 
-def test_sqlalchemy_repository_round_trips_observation_on_sqlite(tmp_path: Path) -> None:
+def test_sqlalchemy_repository_round_trips_observation_on_sqlite(
+    tmp_path: Path,
+) -> None:
     store = repository(tmp_path)
     document = observation()
     store.save_latest_observation(document, observed_at=datetime.now(UTC))
-    assert store.latest_observation() == {"state": "loaded", "observation": document, "readError": None}
+    assert store.latest_observation() == {
+        "state": "loaded",
+        "observation": document,
+        "readError": None,
+    }
     assert store.recorders()["recorders"][0]["vrcode"] == "VR-001"
     assert store.beds()["beds"][0]["bedID"] == "bed-a"
 
@@ -64,6 +84,68 @@ def test_sqlalchemy_repository_reads_activity(tmp_path: Path) -> None:
     result = store.recorder_activity("VR-001")
     assert result["state"] == "loaded"
     assert result["buckets"][0]["messageCount"] == 2
+
+
+def test_sqlalchemy_repository_rejects_missing_activity_contract(
+    tmp_path: Path,
+) -> None:
+    store = repository(tmp_path)
+    document = observation()
+    del document["activityBuckets"]
+    store.save_latest_observation(document, observed_at=datetime.now(UTC))
+
+    with pytest.raises(VitalDBReadModelDependencyError) as error:
+        store.recorder_activity("VR-001")
+
+    assert error.value.kind == "vitaldb-read-model-invalid"
+    assert error.value.message == "VitalDB recorder activity read model field is invalid."
+
+
+def test_sqlalchemy_repository_reads_activity_history_across_snapshots(
+    tmp_path: Path,
+) -> None:
+    store = repository(tmp_path)
+    first = observation()
+    latest = observation()
+    latest["observedAt"] = "2026-07-01T00:01:00+00:00"
+    latest["activityBuckets"] = [
+        {
+            "vrcode": "VR-001",
+            "bucketStartedAt": "2026-07-01T00:00:00Z",
+            "bucketSeconds": 60,
+            "messageCount": 5,
+            "byteCount": 50,
+            "roomCount": 2,
+            "firstObservedAt": "2026-07-01T00:00:01Z",
+            "lastObservedAt": "2026-07-01T00:00:55Z",
+        },
+        {
+            "vrcode": "VR-001",
+            "bucketStartedAt": "2026-07-01T00:01:00Z",
+            "bucketSeconds": 60,
+            "messageCount": 3,
+            "byteCount": 30,
+            "roomCount": 1,
+            "firstObservedAt": "2026-07-01T00:01:01Z",
+            "lastObservedAt": "2026-07-01T00:01:50Z",
+        }
+    ]
+    store.save_latest_observation(
+        first,
+        observed_at=datetime.fromisoformat("2026-07-01T00:00:00+00:00"),
+    )
+    store.save_latest_observation(
+        latest,
+        observed_at=datetime.fromisoformat("2026-07-01T00:01:00+00:00"),
+    )
+
+    result = store.recorder_activity("VR-001")
+
+    assert [bucket["bucketStartedAt"] for bucket in result["buckets"]] == [
+        "2026-07-01T00:00:00Z",
+        "2026-07-01T00:01:00Z",
+    ]
+    assert [bucket["messageCount"] for bucket in result["buckets"]] == [5, 3]
 
 
 def test_sqlalchemy_repository_round_trips_relationship_history(tmp_path: Path) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,6 +43,58 @@ def test_runtime_observation_document_reports_probe_failures(
 
     assert document["vmIP"] is None
     assert document["probeErrors"] == [{"source": "vmIP", "message": "missing"}]
+
+
+def test_write_runtime_observation_preserves_vitaldb_probe_failure_in_diagnostics(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    writer = VitalDBReadModelWriterSpy()
+    state = GuestRuntimeObservation(
+        updated_at="2026-07-01T00:00:01+00:00",
+        vm_ip="192.168.64.2",
+        boot_id="boot-1",
+        cpu_usage_percent=10.0,
+        guest_http=None,
+        memory=None,
+        probe_errors=[],
+        redis_ui_http=None,
+        system_disk=None,
+        disk_health=None,
+        swagger_ui_http=None,
+        vital_files_disk=None,
+    )
+
+    def unavailable_observer(probe_errors: list[ProbeError]) -> None:
+        probe_errors.append(
+            ProbeError(
+                source="vitalDBObservation",
+                message="HTTP Error 404: Not Found",
+            )
+        )
+
+    monkeypatch.setattr(
+        observation_writer,
+        "runtime_observation_document",
+        lambda **_: state,
+    )
+    monkeypatch.setattr(collector, "vitaldb_observation", unavailable_observer)
+
+    runtime_observation = tmp_path / "runtime-observation.json"
+    observation_writer.write_runtime_observation(
+        runtime_observation,
+        vitaldb_read_model=writer,
+    )
+
+    document = json.loads(runtime_observation.read_text(encoding="utf-8"))
+    assert document["probeErrors"] == [
+        {
+            "source": "vitalDBObservation",
+            "message": "HTTP Error 404: Not Found",
+        }
+    ]
+    assert writer.schema_ensured is True
+    assert writer.observation is None
 
 
 def test_write_runtime_observation_document_updates_vitaldb_postgres_read_models(

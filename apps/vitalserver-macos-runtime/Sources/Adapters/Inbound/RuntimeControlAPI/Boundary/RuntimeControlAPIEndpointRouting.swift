@@ -45,6 +45,10 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .post, path: "/runtime/vitaldb/beds/delete", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/platform/health", scope: .runtimeControl)
+        case .platformSettings:
+            return .init(method: .get, path: "/platform/settings", scope: .runtimeControl)
+        case .applyPlatformSettings:
+            return .init(method: .put, path: "/platform/settings", scope: .runtimeControl)
         case .settings:
             return .init(method: .get, path: "/runtime/settings", scope: .runtimeControl)
         case .applySettings:

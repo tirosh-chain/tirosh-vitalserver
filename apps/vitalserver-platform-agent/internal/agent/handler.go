@@ -65,6 +65,10 @@ func (h *Handler) routes() {
 	})
 	h.mux.HandleFunc("GET /platform", h.getPlatform)
 	h.mux.HandleFunc("GET /platform/capabilities", h.getCapabilities)
+	h.mux.HandleFunc("GET /platform/settings", h.platformSettingsUnavailable)
+	h.mux.HandleFunc("PUT /platform/settings", h.platformSettingsUnavailable)
+	h.mux.HandleFunc("GET /platform/release", h.releaseMetadataUnavailable)
+	h.mux.HandleFunc("GET /platform/installation", h.installMetadataUnavailable)
 	h.mux.HandleFunc("GET /platform/operations", h.getOperations)
 	h.mux.HandleFunc("POST /platform/operations/lease/acquire", h.acquireOperationLease)
 	h.mux.HandleFunc("POST /platform/operations/lease/heartbeat", h.heartbeatOperationLease)
@@ -88,6 +92,27 @@ func (h *Handler) routes() {
 		h.mux.HandleFunc("POST "+browserSessionBootstrapPath, h.createBrowserSession)
 		h.mux.Handle("/", http.FileServer(http.Dir(h.config.PWA)))
 	}
+}
+
+func (h *Handler) platformSettingsUnavailable(response http.ResponseWriter, _ *http.Request) {
+	writeJSON(response, http.StatusNotImplemented, contract.ErrorResponse{
+		Code:    "platformSettingsUnavailable",
+		Message: "Platform settings are not supported by this Platform Agent.",
+	})
+}
+
+func (h *Handler) releaseMetadataUnavailable(response http.ResponseWriter, _ *http.Request) {
+	writeJSON(response, http.StatusNotImplemented, contract.ErrorResponse{
+		Code:    "releaseMetadataUnavailable",
+		Message: "Release metadata is not provided by this Platform Agent.",
+	})
+}
+
+func (h *Handler) installMetadataUnavailable(response http.ResponseWriter, _ *http.Request) {
+	writeJSON(response, http.StatusNotImplemented, contract.ErrorResponse{
+		Code:    "installMetadataUnavailable",
+		Message: "Installation metadata is not provided by this Platform Agent.",
+	})
 }
 
 func (h *Handler) getPlatform(response http.ResponseWriter, _ *http.Request) {

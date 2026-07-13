@@ -44,7 +44,7 @@ retainedFiles = 5
 rotateCheckLines = 200
 
 [observability]
-vitaldbObserverUrl = "http://127.0.0.1:18084/api/runtime/observations"
+vitaldbObserverUrl = "http://127.0.0.1:18084/api/v1/observations"
 
 [logging]
 format = "json"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import create_engine, select
@@ -76,28 +76,35 @@ class PostgresVitalDBReadModelRepository:
         return self.recorders()
 
     def recorder_activity(self, vrcode: str) -> dict[str, Any]:
-        observation = self._latest_observation_document()
-        activity_buckets = observation.get("activityBuckets", [])
-        if not isinstance(activity_buckets, list):
-            raise VitalDBReadModelDependencyError(
-                "VitalDB recorder activity read model field is invalid.",
-                kind="vitaldb-read-model-invalid",
-            )
-        buckets: list[dict[str, Any]] = []
-        for bucket in activity_buckets:
-            if not isinstance(bucket, dict):
+        buckets_by_identity: dict[tuple[str, int], dict[str, Any]] = {}
+        for observation in self._observation_documents():
+            activity_buckets = observation.get("activityBuckets")
+            if not isinstance(activity_buckets, list):
                 raise VitalDBReadModelDependencyError(
-                    "VitalDB recorder activity bucket item is invalid.",
+                    "VitalDB recorder activity read model field is invalid.",
                     kind="vitaldb-read-model-invalid",
                 )
-            bucket_vrcode = bucket.get("vrcode")
-            if not isinstance(bucket_vrcode, str):
-                raise VitalDBReadModelDependencyError(
-                    "VitalDB recorder activity bucket vrcode field is invalid.",
-                    kind="vitaldb-read-model-invalid",
-                )
-            if bucket_vrcode == vrcode:
-                buckets.append(_validated_activity_bucket(bucket, vrcode=vrcode))
+            for bucket in activity_buckets:
+                if not isinstance(bucket, dict):
+                    raise VitalDBReadModelDependencyError(
+                        "VitalDB recorder activity bucket item is invalid.",
+                        kind="vitaldb-read-model-invalid",
+                    )
+                bucket_vrcode = bucket.get("vrcode")
+                if not isinstance(bucket_vrcode, str):
+                    raise VitalDBReadModelDependencyError(
+                        "VitalDB recorder activity bucket vrcode field is invalid.",
+                        kind="vitaldb-read-model-invalid",
+                    )
+                if bucket_vrcode == vrcode:
+                    validated = _validated_activity_bucket(bucket, vrcode=vrcode)
+                    buckets_by_identity[
+                        (validated["bucketStartedAt"], validated["bucketSeconds"])
+                    ] = validated
+        buckets = sorted(
+            buckets_by_identity.values(),
+            key=lambda bucket: (bucket["bucketStartedAt"], bucket["bucketSeconds"]),
+        )
         return {
             "state": "loaded",
             "vrcode": vrcode,
@@ -179,10 +186,12 @@ class PostgresVitalDBReadModelRepository:
         try:
             with Session(self._engine) as session:
                 record = session.scalar(
-                    select(VitalDBObservationRecord).order_by(
+                    select(VitalDBObservationRecord)
+                    .order_by(
                         VitalDBObservationRecord.observed_at.desc(),
                         VitalDBObservationRecord.snapshot_id.desc(),
-                    ).limit(1)
+                    )
+                    .limit(1)
                 )
         except SQLAlchemyError as error:
             raise _database_error(error, stage="latest observation read") from error
@@ -196,12 +205,16 @@ class PostgresVitalDBReadModelRepository:
     def _observation_documents(self, *, limit: int = 1000) -> list[dict[str, Any]]:
         try:
             with Session(self._engine) as session:
-                records = list(session.scalars(
-                    select(VitalDBObservationRecord).order_by(
-                        VitalDBObservationRecord.observed_at.desc(),
-                        VitalDBObservationRecord.snapshot_id.desc(),
-                    ).limit(limit)
-                ))
+                records = list(
+                    session.scalars(
+                        select(VitalDBObservationRecord)
+                        .order_by(
+                            VitalDBObservationRecord.observed_at.desc(),
+                            VitalDBObservationRecord.snapshot_id.desc(),
+                        )
+                        .limit(limit)
+                    )
+                )
         except SQLAlchemyError as error:
             raise _database_error(error, stage="observation history read") from error
         if not records:
@@ -209,7 +222,10 @@ class PostgresVitalDBReadModelRepository:
                 "VitalDB observation read model is empty.",
                 kind="vitaldb-read-model-unavailable",
             )
-        return [domain_document(record.document, label="observation history") for record in reversed(records)]
+        return [
+            domain_document(record.document, label="observation history")
+            for record in reversed(records)
+        ]
 
     def _history_document(self) -> dict[str, Any]:
         try:
@@ -227,7 +243,14 @@ class PostgresVitalDBReadModelRepository:
     def _latest_relationship_history_document(self) -> dict[str, Any]:
         try:
             with Session(self._engine) as session:
-                record = session.scalar(select(VitalDBRelationshipRecord).order_by(VitalDBRelationshipRecord.observed_at.desc(), VitalDBRelationshipRecord.snapshot_id.desc()).limit(1))
+                record = session.scalar(
+                    select(VitalDBRelationshipRecord)
+                    .order_by(
+                        VitalDBRelationshipRecord.observed_at.desc(),
+                        VitalDBRelationshipRecord.snapshot_id.desc(),
+                    )
+                    .limit(1)
+                )
         except SQLAlchemyError as error:
             raise _database_error(error, stage="relationship history read") from error
         if record is None:
@@ -292,7 +315,13 @@ class PostgresVitalDBReadModelRepository:
     def _visibility_by_id(self, entity_kind: str) -> dict[str, str]:
         try:
             with Session(self._engine) as session:
-                records = list(session.scalars(select(VitalDBVisibilityRecord).where(VitalDBVisibilityRecord.entity_kind == entity_kind)))
+                records = list(
+                    session.scalars(
+                        select(VitalDBVisibilityRecord).where(
+                            VitalDBVisibilityRecord.entity_kind == entity_kind
+                        )
+                    )
+                )
         except SQLAlchemyError as error:
             raise _database_error(error, stage="entity visibility read") from error
         return {record.entity_id: record.visibility for record in records}
@@ -312,9 +341,19 @@ class PostgresVitalDBReadModelRepository:
         try:
             with Session(self._engine) as session, session.begin():
                 for entity_id in entity_ids:
-                    record = session.get(VitalDBVisibilityRecord, {"entity_kind": entity_kind, "entity_id": entity_id})
+                    record = session.get(
+                        VitalDBVisibilityRecord,
+                        {"entity_kind": entity_kind, "entity_id": entity_id},
+                    )
                     if record is None:
-                        session.add(VitalDBVisibilityRecord(entity_kind=entity_kind, entity_id=entity_id, visibility=visibility, updated_at=datetime.now(UTC)))
+                        session.add(
+                            VitalDBVisibilityRecord(
+                                entity_kind=entity_kind,
+                                entity_id=entity_id,
+                                visibility=visibility,
+                                updated_at=datetime.now(UTC),
+                            )
+                        )
                     else:
                         record.visibility = visibility
                         record.updated_at = datetime.now(UTC)
@@ -335,8 +374,7 @@ class PostgresVitalDBReadModelRepository:
         ]
         if not_hidden:
             raise VitalDBReadModelDependencyError(
-                "VitalDB entity must be hidden before delete: "
-                + ", ".join(not_hidden),
+                "VitalDB entity must be hidden before delete: " + ", ".join(not_hidden),
                 kind="vitaldb-read-model-delete-not-hidden",
             )
         self._set_visibility(
@@ -353,7 +391,11 @@ class PostgresVitalDBReadModelRepository:
     ) -> None:
         try:
             with Session(self._engine) as session, session.begin():
-                session.add(VitalDBObservationRecord(document=observation, observed_at=observed_at))
+                session.add(
+                    VitalDBObservationRecord(
+                        document=observation, observed_at=observed_at
+                    )
+                )
         except SQLAlchemyError as error:
             raise _database_error(error, stage="latest observation save") from error
 
@@ -365,12 +407,18 @@ class PostgresVitalDBReadModelRepository:
     ) -> None:
         try:
             with Session(self._engine) as session, session.begin():
-                session.add(VitalDBRelationshipRecord(document=relationship_history, observed_at=observed_at))
+                session.add(
+                    VitalDBRelationshipRecord(
+                        document=relationship_history, observed_at=observed_at
+                    )
+                )
         except SQLAlchemyError as error:
             raise _database_error(error, stage="relationship history save") from error
 
 
-def _database_error(error: SQLAlchemyError, *, stage: str) -> VitalDBReadModelDependencyError:
+def _database_error(
+    error: SQLAlchemyError, *, stage: str
+) -> VitalDBReadModelDependencyError:
     return VitalDBReadModelDependencyError(
         f"VitalDB database {stage} failed: {error}",
         kind="vitaldb-read-model-unavailable",

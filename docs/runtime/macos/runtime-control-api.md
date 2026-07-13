@@ -90,6 +90,8 @@ Runtime capability identifier `services:start`, `services:stop`,
 | `POST` | `/runtime/lab/vital-files/upload` |
 | `POST` | `/runtime/health` |
 | `GET` | `/runtime/settings` |
+| `GET` | `/platform/settings` |
+| `PUT` | `/platform/settings` |
 | `GET` | `/platform/release` |
 | `GET` | `/platform/installation` |
 | `POST` | `/platform/backups/redis` |
@@ -316,6 +318,8 @@ Provider `start|stop|restart` command는 Platform effect와 Provider state를 �
 | `GET` | `/runtime/settings` | current runtime settings |
 | `PUT` | `/runtime/settings` | apply runtime settings |
 | `POST` | `/runtime/admin-password` | replace the Runtime administrator password without exposing a read contract |
+| `GET` | `/platform/settings` | read Platform Agent-owned Host resources, network, filesystem, boot, recovery, backup, and log-retention settings without exposing Runtime credentials |
+| `PUT` | `/platform/settings` | apply the mutable Host settings through the Platform Agent; a failed/incomplete current owner read blocks apply |
 | `GET` | `/platform/release` | helper/release/component metadata |
 | `GET` | `/platform/installation` | installed runtime paths and install metadata |
 | `GET` | `/runtime/stack` | read the Runtime Controller-owned service stack status |
@@ -394,8 +398,8 @@ action when the corresponding Platform capability permits it.
 
 | Access | 의미 | 현재 route |
 |---|---|---|
-| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /platform`, `GET /platform/stream`, `GET /runtime/capabilities`, `GET /platform/operations`, `GET /runtime/stack`, `GET /runtime/services`, `GET /runtime/services/{service}/status`, `GET /runtime/events`, `GET /runtime/vitaldb/observations/latest`, `GET /runtime/vitaldb/observations/stream`, `GET /runtime/vitaldb/recorders`, `GET /runtime/vitaldb/recorders/{vrcode}`, `GET /runtime/vitaldb/beds`, `GET /runtime/vitaldb/beds/{bedID}`, `GET /runtime/vitaldb/relationships`, `GET /runtime/lab/scenarios`, `GET /runtime/lab/beds`, `GET /runtime/lab/recorders`, `GET /runtime/lab/sessions`, `GET /runtime/lab/sessions/{sessionId}`, `GET /runtime/lab/vital-files`, `POST /platform/health`, `GET /runtime/settings`, `GET /platform/release`, `GET /platform/installation` |
-| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Product Lab session commands, Product Lab `replay` and `upload`, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
+| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /platform`, `GET /platform/stream`, `GET /runtime/capabilities`, `GET /platform/operations`, `GET /runtime/stack`, `GET /runtime/services`, `GET /runtime/services/{service}/status`, `GET /runtime/events`, `GET /runtime/vitaldb/observations/latest`, `GET /runtime/vitaldb/observations/stream`, `GET /runtime/vitaldb/recorders`, `GET /runtime/vitaldb/recorders/{vrcode}`, `GET /runtime/vitaldb/recorders/{vrcode}/activity`, `GET /runtime/vitaldb/beds`, `GET /runtime/vitaldb/beds/{bedID}`, `GET /runtime/vitaldb/relationships`, `GET /runtime/lab/scenarios`, `GET /runtime/lab/beds`, `GET /runtime/lab/recorders`, `GET /runtime/lab/sessions`, `GET /runtime/lab/sessions/{sessionId}`, `GET /runtime/lab/vital-files`, `POST /platform/health`, `GET /runtime/settings`, `GET /platform/settings`, `GET /platform/release`, `GET /platform/installation` |
+| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, `PUT /platform/settings`, Product Lab session commands, Product Lab `replay` and `upload`, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /platform/logs/export` |
 
 Portable `/runtime/*` route는 `RuntimeControlFileReference`를 사용하지 않습니다. 파일, update bundle, backup, log export destination처럼 host resource를 가리키는 값은 `/host/*` affordance에서만 `RuntimeControlFileReference`로 표현합니다.

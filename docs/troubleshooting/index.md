@@ -134,6 +134,9 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-123 | Golden rootfs Guest Tools 설치가 psycopg wheel 누락으로 실패함 | Packaging / Guest bootstrap | active | [Guest Tools air-gap dependency missing from wheelhouse](123_guest_tools_airgap_dependency_missing.md) |
 | TS-124 | Runtime smoke bootstrap이 Postgres 시작 전 schema migration으로 실패함 | Guest bootstrap / Data store | active | [VitalDB schema migration runs before Postgres readiness](124_vitaldb_schema_migration_before_postgres_ready.md) |
 | TS-125 | 생성한 Product Lab session이 목록에 없고 recorder를 개별 제어할 수 없음 | Product Lab / Runtime Control PWA / macOS Helper UI | resolved | [Product Lab session collection and recorder controls missing](125_product-lab-session-collection-recorder-control-missing.md) |
+| TS-126 | Golden rootfs smoke가 Host에서 허용된 Python 3.14 문법 때문에 Guest Python 3.12에서 실패함 | Packaging / Guest bootstrap | resolved | [Guest wheel uses Python syntax newer than the Guest runtime](126_guest-wheel-python-syntax-newer-than-runtime.md) |
+| TS-127 | 설치 직후 Runtime product services가 정상화 후에도 `missing-vm-ip`를 표시함 | Runtime health / macOS Helper UI | active | [Runtime product services keeps the initial `missing-vm-ip` failure](127_runtime-product-services-stale-missing-vm-ip.md) |
+| TS-128 | 실제 Vital Recorder는 접속했지만 목록과 packet graph가 비어 있음 | Runtime health / Recorder streaming / Observability | resolved | [Vital Recorder is connected but the recorder list and packet graph are empty](128_vital-recorder-read-model-empty-and-activity-graph-missing.md) |
 
 ## Follow-up 규칙
 
