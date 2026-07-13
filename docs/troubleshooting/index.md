@@ -129,6 +129,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-118 | Guest bootstrap이 product image를 다시 build하려고 함 | Packaging / Guest bootstrap / Guest containers | resolved | [Guest bootstrap product image rebuild fallback](118_guest_bootstrap_product_image_rebuild_fallback.md) |
 | TS-119 | Release sync가 Docker export 뒤 compile input을 rewrite함 | Packaging / Release contract / Rootfs compile | resolved | [Release sync mutated compile inputs after Docker export](119_release_sync_mutated_compile_inputs.md) |
 | TS-120 | Guest wheel 생성물이 같은 delivery run의 rootfs fingerprint를 바꿈 | Packaging / Rootfs compile / Local development | resolved | [Generated Guest wheel changed rootfs fingerprint during the same delivery run](120_generated_guest_wheel_changes_rootfs_fingerprint.md) |
+| TS-121 | pkg 설치가 runtime disk 공간 부족으로 실패함 | Packaging / Install | active | [pkg 설치가 runtime disk 공간 부족으로 실패함](121_pkg_install_insufficient_runtime_disk_space.md) |
 
 ## Follow-up 규칙
 

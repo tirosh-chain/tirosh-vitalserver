@@ -286,6 +286,23 @@ launchd
 
 `vm-disk.img`는 sparse disk라 package payload에 그대로 넣으면 `pkgbuild`가 실패할 수 있습니다. 따라서 package에는 immutable base artifact인 `rootfs-base.raw.gz`를 넣고, 설치 시 `postinstall`에서 `vm-disk.img`를 생성합니다.
 
+### Fresh install disk-space contract
+
+새 VM disk와 runtime data disk가 모두 없는 fresh install은 rootfs expansion과
+runtime data disk reservation에 필요한 Host Data volume 공간을 **side effect 전에
+합산하여 한 번** 확인합니다. 기본 16 GiB runtime data disk에서는 package payload
+copy 뒤 약 28 GiB가 필요하므로, Installer를 시작하기 전에는 최소 32 GiB 이상의
+여유 공간을 권장합니다. 정확한 값은 package rootfs artifact 크기와 configured
+runtime data disk size에 따라 달라집니다.
+
+이 preflight가 실패하면 `gunzip`, temporary disk 제거, VM disk move, `truncate`를
+시작하지 않습니다. 오류에는 `operation`, `required`, `available`이 명시되며,
+smaller disk나 empty runtime을 만들어 성공처럼 진행하지 않습니다. 이미 VM disk가
+있고 runtime data disk만 없으면 runtime data disk requirement만 검사하고, 둘 다
+있으면 existing disk validation을 사용합니다. 현장 진단과 안전한 재시도 절차는
+[TS-121](../../troubleshooting/121_pkg_install_insufficient_runtime_disk_space.md)를
+따릅니다.
+
 직접 배포되는 `.pkg`는 fresh install 전용입니다. 이미 `/Library/Application Support/VitalServerHelper`, Helper app, runtime tools, LaunchDaemon plist, package receipt가 있거나 Host proxy port가 다른 listener에 점유되어 있으면 `preinstall`에서 실패해야 합니다. 기존 설치본의 교체는 Helper app의 update flow가 소유하며, `.pkg` 설치가 기존 `vm-disk.img`나 partially installed runtime을 재사용해서 upgrade처럼 동작하면 안 됩니다.
 
 ## DMG Build 흐름

@@ -77,19 +77,26 @@ public struct RuntimeInstallVMDiskProvisioner {
         let vmDiskState = try stateForExistingOrMissingFile(context.vmDisk)
         if vmDiskState == .missing {
             try requireExistingFile(context.rootfsBase)
+        }
+        let runtimeDataDiskState = try stateForExistingOrMissingFile(context.runtimeDataDisk)
+        try requireProvisioningFreeSpace(
+            vmDiskState: vmDiskState,
+            runtimeDataDiskState: runtimeDataDiskState,
+            runtimeDataDiskGiB: runtimeDataDiskGiB
+        )
+        if vmDiskState == .missing {
             try createDiskFromRootfs()
         }
         try requireExistingFile(context.vmDisk)
         try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", context.vmDisk.path])
-        try provisionRuntimeDataDisk(context.runtimeDataDisk, diskGiB: runtimeDataDiskGiB)
+        try provisionRuntimeDataDisk(
+            context.runtimeDataDisk,
+            state: runtimeDataDiskState,
+            diskGiB: runtimeDataDiskGiB
+        )
     }
 
     private func createDiskFromRootfs() throws {
-        try operations.requireFreeSpace(
-            context.vmDisk.deletingLastPathComponent(),
-            (try operations.fileSize(context.rootfsBase) * 6) + context.freeSpaceMarginBytes,
-            "provision-vm-disk"
-        )
         let temporary = context.vmDisk
             .deletingLastPathComponent()
             .appendingPathComponent(".\(context.vmDisk.lastPathComponent).tmp")
@@ -106,18 +113,57 @@ public struct RuntimeInstallVMDiskProvisioner {
         operations.log("created vm disk path=\(context.vmDisk.path) source=\(context.rootfsBase.lastPathComponent)")
     }
 
-    private func provisionRuntimeDataDisk(_ disk: URL, diskGiB: Int) throws {
-        let state = try stateForExistingOrMissingFile(disk)
+    private func requireProvisioningFreeSpace(
+        vmDiskState: RuntimeFileState,
+        runtimeDataDiskState: RuntimeFileState,
+        runtimeDataDiskGiB: Int
+    ) throws {
+        let requiresVMDisk = vmDiskState == .missing
+        let requiresRuntimeDataDisk = runtimeDataDiskState == .missing
+
+        switch (requiresVMDisk, requiresRuntimeDataDisk) {
+        case (false, false):
+            return
+        case (true, false):
+            try operations.requireFreeSpace(
+                context.vmDisk.deletingLastPathComponent(),
+                try requiredVMDiskFreeSpaceBytes(),
+                "provision-vm-disk"
+            )
+        case (false, true):
+            try operations.requireFreeSpace(
+                context.runtimeDataDisk.deletingLastPathComponent(),
+                requiredRuntimeDataDiskFreeSpaceBytes(diskGiB: runtimeDataDiskGiB),
+                "provision-runtime-data-disk"
+            )
+        case (true, true):
+            try operations.requireFreeSpace(
+                context.vmDisk.deletingLastPathComponent(),
+                try requiredVMDiskFreeSpaceBytes()
+                    + requiredRuntimeDataDiskFreeSpaceBytes(diskGiB: runtimeDataDiskGiB),
+                "provision-vm-and-runtime-data-disks"
+            )
+        }
+    }
+
+    private func requiredVMDiskFreeSpaceBytes() throws -> UInt64 {
+        (try operations.fileSize(context.rootfsBase) * 6) + context.freeSpaceMarginBytes
+    }
+
+    private func requiredRuntimeDataDiskFreeSpaceBytes(diskGiB: Int) -> UInt64 {
+        UInt64(diskGiB) * 1024 * 1024 * 1024 + context.freeSpaceMarginBytes
+    }
+
+    private func provisionRuntimeDataDisk(
+        _ disk: URL,
+        state: RuntimeFileState,
+        diskGiB: Int
+    ) throws {
         switch state {
         case .present, .executable:
             try validateExistingRuntimeDataDisk(disk, diskGiB: diskGiB)
             operations.log("preserved runtime data disk path=\(disk.path)")
         case .missing:
-            try operations.requireFreeSpace(
-                disk.deletingLastPathComponent(),
-                UInt64(diskGiB) * 1024 * 1024 * 1024 + context.freeSpaceMarginBytes,
-                "provision-runtime-data-disk"
-            )
             try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", disk.path])
             operations.log("created runtime data disk path=\(disk.path) size=\(diskGiB)G")
         case .inspectFailed, .unknown:
