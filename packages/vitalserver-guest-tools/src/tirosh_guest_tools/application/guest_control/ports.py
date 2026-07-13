@@ -8,6 +8,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceResource,
     OperationLease,
     ProductLabReadModelResult,
+    ProductLabRecorderResult,
     ProductLabSessionResult,
     ProductLabUploadResult,
     RedisBackupResult,
@@ -67,6 +68,9 @@ class ProductLabPort(Protocol):
     def list_recorders(self) -> dict[str, Any]:
         raise NotImplementedError
 
+    def list_sessions(self) -> dict[str, Any]:
+        raise NotImplementedError
+
     def create_session(self, request: dict[str, Any]) -> ProductLabSessionResult:
         raise NotImplementedError
 
@@ -101,6 +105,16 @@ class ProductLabPort(Protocol):
         raise NotImplementedError
 
     def reset_recorders(self) -> ProductLabReadModelResult:
+        raise NotImplementedError
+
+    def start_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> ProductLabRecorderResult:
+        raise NotImplementedError
+
+    def stop_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> ProductLabRecorderResult:
         raise NotImplementedError
 
 

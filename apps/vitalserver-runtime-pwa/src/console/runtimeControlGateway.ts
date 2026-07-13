@@ -16,9 +16,11 @@ import type {
   RuntimeLabRecorderCreateRequest,
   RuntimeLabRecorderDeleteRequest,
   RuntimeLabRecorderList,
+  RuntimeLabRecorderResponse,
   RuntimeLabScenarioList,
   RuntimeLabSessionCreateRequest,
   RuntimeLabSessionResponse,
+  RuntimeLabSessionList,
   RuntimeLabVitalFileList,
   RuntimeLabVitalFileUploadRequest,
   RuntimeLabVitalFileUploadResponse,
@@ -90,12 +92,21 @@ export type RuntimeControlGateway = {
     request: RuntimeLabRecorderDeleteRequest
   ): Promise<RuntimeLabRecorderList>;
   resetLabRecorders(): Promise<RuntimeLabRecorderList>;
+  getLabSessions(): Promise<RuntimeLabSessionList>;
   createLabSession(
     request: RuntimeLabSessionCreateRequest
   ): Promise<RuntimeLabSessionResponse>;
   getLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
   startLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
   stopLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
+  startLabRecorder(
+    sessionId: string,
+    recorderId: string
+  ): Promise<RuntimeLabRecorderResponse>;
+  stopLabRecorder(
+    sessionId: string,
+    recorderId: string
+  ): Promise<RuntimeLabRecorderResponse>;
   getLabVitalFiles(): Promise<RuntimeLabVitalFileList>;
   uploadLabVitalFile(
     request: RuntimeLabVitalFileUploadRequest

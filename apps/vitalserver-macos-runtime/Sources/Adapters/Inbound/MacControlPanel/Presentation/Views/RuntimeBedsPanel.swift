@@ -493,7 +493,7 @@ struct RuntimeBedsPanel: View {
             return .green
         case .stopped:
             return .secondary
-        case .failed, .unavailable:
+        case .stopping, .failed, .unavailable:
             return .orange
         }
     }

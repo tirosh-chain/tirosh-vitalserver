@@ -138,8 +138,34 @@ struct RuntimeAdvancedPanel: View {
 
     private var serviceHealthCard: some View {
         advancedDisclosureCard(AppConstants.Labels.sectionServiceHealth, isExpanded: $showingServiceHealth) {
+            VStack(alignment: .leading, spacing: 14) {
+                serviceHealthSection(
+                    AppConstants.Labels.sectionPlatformServices,
+                    section: .platform
+                )
+                Divider()
+                serviceHealthSection(
+                    AppConstants.Labels.sectionRuntimeProductServices,
+                    section: .runtime
+                )
+                Divider()
+                serviceHealthSection(
+                    AppConstants.Labels.sectionAccessEndpoints,
+                    section: .access
+                )
+            }
+        }
+    }
+
+    private func serviceHealthSection(
+        _ title: String,
+        section: RuntimeStatusAdvancedServiceHealthSection
+    ) -> some View {
+        let items = serviceHealthItems.filter { $0.section == section }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
-                ForEach(serviceHealthItems) { item in
+                ForEach(items) { item in
                     serviceHealthRow(item)
                 }
             }

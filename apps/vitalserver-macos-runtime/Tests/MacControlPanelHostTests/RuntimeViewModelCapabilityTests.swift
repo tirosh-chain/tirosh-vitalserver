@@ -1264,6 +1264,110 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         ])
     }
 
+    func testProductLabRefreshSelectsPersistedRunningSessionAndItsRecorders() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "stopped-session",
+                    state: .stopped,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+                RuntimeLabSession(
+                    sessionId: "running-session",
+                    state: .running,
+                    scenarioId: "case-b",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+            ]
+        )
+        client.labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "running-recorder",
+                    sessionId: "running-session",
+                    bedId: "running-bed",
+                    vrcode: "LAB-RUN001",
+                    state: .running
+                ),
+                RuntimeLabRecorder(
+                    recorderId: "other-recorder",
+                    sessionId: "stopped-session",
+                    bedId: "stopped-bed",
+                    vrcode: "LAB-STOP01",
+                    state: .stopped
+                ),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshProductLabReadModels()
+
+        XCTAssertEqual(viewModel.selectedLabSessionID, "running-session")
+        XCTAssertEqual(viewModel.selectedLabSession?.state, .running)
+        XCTAssertEqual(viewModel.selectedLabSessionRecorders.map(\.recorderId), ["running-recorder"])
+        XCTAssertTrue(viewModel.labCanStopSelectedSession)
+        XCTAssertFalse(viewModel.labCanStartSelectedSession)
+    }
+
+    func testProductLabRecorderControlsUseExplicitRunningSessionOwnership() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "running-session",
+                    state: .running,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+            ]
+        )
+        client.labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "session-recorder",
+                    sessionId: "running-session",
+                    bedId: "session-bed",
+                    vrcode: "LAB-REC001",
+                    state: .running
+                ),
+                RuntimeLabRecorder(
+                    recorderId: "foreign-recorder",
+                    sessionId: "another-session",
+                    bedId: "foreign-bed",
+                    vrcode: "LAB-REC002",
+                    state: .running
+                ),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        await viewModel.refreshProductLabReadModels()
+
+        await viewModel.stopProductLabRecorder("session-recorder")
+        await viewModel.startProductLabRecorder("session-recorder")
+        await viewModel.stopProductLabRecorder("foreign-recorder")
+
+        XCTAssertEqual(client.labStoppedRecorderRequests, ["running-session/session-recorder"])
+        XCTAssertEqual(client.labStartedRecorderRequests, ["running-session/session-recorder"])
+        XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.chooseSessionLabRecorder)
+    }
+
     func testProductLabVitalFileReplayUsesGuestMountedPath() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
@@ -1701,6 +1805,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var labVitalFilesToLoad = RuntimeLabVitalFileList(state: .loaded, vitalFiles: [])
     var labBedsToLoad = RuntimeLabBedList(state: .loaded, beds: [])
     var labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+    var labSessionsToLoad = RuntimeLabSessionList.unavailable(
+        readError: "Product Lab sessions are not configured in this test."
+    )
     var labCreateRequests: [RuntimeLabSessionCreateRequest] = []
     var labReplayRequests: [RuntimeLabVitalFileReplayRequest] = []
     var labUploadRequests: [RuntimeLabVitalFileUploadRequest] = []
@@ -1712,6 +1819,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var labResetRecordersCount = 0
     var labStartedSessionIDs: [String] = []
     var labStoppedSessionIDs: [String] = []
+    var labStartedRecorderRequests: [String] = []
+    var labStoppedRecorderRequests: [String] = []
     var hiddenRecorderRequests: [RuntimeVitalDBRecorderVisibilityRequest] = []
     var unhiddenRecorderRequests: [RuntimeVitalDBRecorderVisibilityRequest] = []
     var deletedRecorderRequests: [RuntimeVitalDBRecorderVisibilityRequest] = []
@@ -2014,6 +2123,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         labRecordersToLoad
     }
 
+    func loadLabSessions() async throws -> RuntimeLabSessionList {
+        labSessionsToLoad
+    }
+
     func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
         labCreateBedRequests.append(request)
         labBedsToLoad = RuntimeLabBedList(
@@ -2141,6 +2254,64 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
                 targetURL: "http://edge/"
             ),
             operationId: "operation-stop"
+        )
+    }
+
+    func startLabRecorder(
+        sessionId: String,
+        recorderId: String
+    ) async throws -> RuntimeLabRecorderResponse {
+        labStartedRecorderRequests.append("\(sessionId)/\(recorderId)")
+        return labRecorderCommandResponse(
+            sessionId: sessionId,
+            recorderId: recorderId,
+            state: .running
+        )
+    }
+
+    func stopLabRecorder(
+        sessionId: String,
+        recorderId: String
+    ) async throws -> RuntimeLabRecorderResponse {
+        labStoppedRecorderRequests.append("\(sessionId)/\(recorderId)")
+        return labRecorderCommandResponse(
+            sessionId: sessionId,
+            recorderId: recorderId,
+            state: .stopped
+        )
+    }
+
+    private func labRecorderCommandResponse(
+        sessionId: String,
+        recorderId: String,
+        state: RuntimeLabSessionState
+    ) -> RuntimeLabRecorderResponse {
+        guard let recorder = labRecordersToLoad.recorders.first(where: {
+            $0.sessionId == sessionId && $0.recorderId == recorderId
+        }) else {
+            return .unavailable(readError: "recorder is not owned by session")
+        }
+        let updated = RuntimeLabRecorder(
+            recorderId: recorder.recorderId,
+            sessionId: recorder.sessionId,
+            bedId: recorder.bedId,
+            vrcode: recorder.vrcode,
+            state: state,
+            messagesSent: recorder.messagesSent,
+            lastSendState: recorder.lastSendState,
+            lastSendAt: recorder.lastSendAt,
+            lastSendError: recorder.lastSendError
+        )
+        labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: labRecordersToLoad.recorders.map {
+                $0.recorderId == recorderId ? updated : $0
+            }
+        )
+        return RuntimeLabRecorderResponse(
+            state: .loaded,
+            recorder: updated,
+            operationId: "operation-recorder"
         )
     }
 

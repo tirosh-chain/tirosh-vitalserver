@@ -114,6 +114,8 @@ Watchdog은 raw source를 제품 관점 current read model/event/diagnostics pro
 - 상태 전이와 주요 관측 결과는 `runtime-events.jsonl`에 append-only로 기록합니다.
 - 조회가 필요한 event/index row는 SQLite read model에도 best-effort로 반영합니다.
 - VitalDB observation snapshot의 product read model은 Guest/Postgres가 소유합니다.
+- VitalDB read model repository는 SQLAlchemy ORM record와 명시 mapper를 사용합니다. 운영 engine은 Postgres이고 SQLite URL은 동일 domain/repository contract의 portability test에만 사용합니다.
+- Runtime observation writer lifecycle은 observation document 유무와 무관하게 VitalDB ORM schema migration을 먼저 완료해야 합니다. Successful observation이 생긴 뒤에만 schema를 만들면 unavailable 수집 상태에서 reader가 존재하지 않는 relation을 반복 조회하게 됩니다. Guest Control core route 시작은 Product Postgres availability에 결합하지 않습니다.
 - Host `runtime-observability.sqlite`의 `vitaldb_*` namespace는 migration/diagnostics evidence로만 남깁니다.
 - 자동 복구 판단도 watchdog에서 수행합니다.
 

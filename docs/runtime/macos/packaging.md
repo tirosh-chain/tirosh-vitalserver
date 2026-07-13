@@ -62,6 +62,8 @@ Release manifest는 build input이고, Product Lab/API 구현의 세부 contract
 
 `bundle.optionalContainerServices`는 dev-only 선택 container service를 포함할지 여부만 표현합니다. Runtime v2 product stack의 Product Lab과 Postgres는 선택 TestKit service가 아니라 `services.lab`, `services.postgres`, Guest compose, Guest compile contract가 함께 검증하는 product dependency입니다. Lab route, API shape, 화면 정책은 release manifest가 아니라 Runtime Control `/runtime/lab/*`, Guest Control `/runtime/lab/*`, `apps/vitalserver-lab` 구현이 소유합니다.
 
+Product Lab과 VitalDB read model은 Postgres를 운영 store로 사용하되 SQL 문자열을 shell `psql`에 조립하지 않습니다. Domain class, SQLAlchemy ORM record, mapper, repository를 분리하고 database URL로 engine을 조립합니다. SQLite는 fallback이 아니라 동일 persistence contract를 검증하는 대체 dialect이며, 운영 store 변경은 명시 configuration/migration으로만 수행합니다.
+
 Runtime Control PWA와 headless `vitalserver-platform-agent`는 Helper app bundle에
 함께 포함됩니다. Agent executable은 app 전체 서명 전에 nested code로 먼저
 서명되며 launchd plist는 app 내부 executable을 직접 실행합니다. `make devtools/app`,
@@ -104,6 +106,8 @@ Package 단계는 Docker image를 다시 만들거나 Guest source를 다시 sta
 `dist/dmg/dev/cached`의 fingerprint는 Guest support/tools만이 아니라 실제 deploy source, Docker build source, deploy serializer, rootfs receipt schema, effective build config와 rootfs size를 포함합니다. receipt와 fingerprint가 모두 일치할 때만 cache를 재사용합니다. 하나라도 다르거나 cache가 없으면 이전 golden `vm-disk.img`를 계속 쓰지 않고 새 Ubuntu base disk에서 compile합니다.
 
 Guest-tools wheel은 temporary build output에서 만든 뒤 compiled deploy material에만 복사합니다. source tree의 `packages/vitalserver-guest-tools/dist`는 compile input도, compile output도 아닙니다. 따라서 같은 delivery run의 wheel staging이 이후 runtime-smoke의 rootfs fingerprint를 바꾸지 않습니다.
+
+Guest Tools의 air-gap dependency authority는 repository root `uv.lock`이 아니라 CPython 3.12와 Guest architecture별 `packages/vitalserver-guest-tools/requirements/guest-runtime-<target>.txt`입니다. Wheelhouse staging은 hash-pinned lock을 target platform wheel로 materialize한 뒤, 생성한 Guest Tools wheel까지 포함한 전체 requirements를 `--no-index`로 다시 resolve합니다. 따라서 project metadata에 새 dependency가 추가됐지만 target lock/wheel이 빠진 경우 golden VM을 시작하기 전에 compile failure로 끝납니다. Linux ARM64 target은 Ubuntu 24.04의 glibc contract 안에서 `manylinux_2_28_aarch64`와 이전 `manylinux2014_aarch64` wheel을 모두 명시적으로 허용합니다. 이는 missing wheel을 network에서 보정하는 fallback이 아니라, 한 dependency closure 안에 공존하는 호환 platform tag 계약입니다.
 
 Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. Devtools가 VM을 직접 시작하는 runtime-smoke 경로에서도 `data/deploy/host-time.json`을 써야 하며, Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-observation, observability, compose service를 시작합니다. `host-time.json`이 missing/invalid이면 NTP나 현재 Guest clock으로 보정하지 않고 smoke failure로 처리합니다.
 

@@ -124,12 +124,12 @@ def save_vitaldb_read_models(
     *,
     vitaldb_read_model: VitalDBReadModelWriter | None = None,
 ) -> None:
+    repository = vitaldb_read_model or PostgresVitalDBReadModelRepository()
+    repository.ensure_schema()
     if observation is None:
         return
     observed_at = observed_at_datetime(observation)
     observation_document = dict(observation)
-    repository = vitaldb_read_model or PostgresVitalDBReadModelRepository()
-    repository.ensure_schema()
     previous_relationship_history = repository.previous_relationship_history()
     relationship_history = relationship_history_from_observation(
         observation_document,

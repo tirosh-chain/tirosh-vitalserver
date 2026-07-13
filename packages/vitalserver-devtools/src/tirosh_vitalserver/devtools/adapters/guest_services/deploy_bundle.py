@@ -13,6 +13,7 @@ import zipfile
 from email.message import Message
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import TypedDict
 
 from tirosh_vitalserver.devtools.core.guest_services import (
     IGNORED_NAMES,
@@ -348,15 +349,25 @@ def stage_python_wheel(project: GuestPythonWheelProject) -> None:
         shutil.copy2(wheel, project.destination_directory / wheel.name)
 
 
-GUEST_RUNTIME_TARGETS = {
+class GuestRuntimeTarget(TypedDict):
+    platforms: tuple[str, ...]
+    python_version: str
+    implementation: str
+    abi: str
+
+
+GUEST_RUNTIME_TARGETS: dict[str, GuestRuntimeTarget] = {
     "linux-aarch64": {
-        "platform": "manylinux2014_aarch64",
+        "platforms": (
+            "manylinux_2_28_aarch64",
+            "manylinux2014_aarch64",
+        ),
         "python_version": "312",
         "implementation": "cp",
         "abi": "cp312",
     },
     "linux-amd64": {
-        "platform": "manylinux2014_x86_64",
+        "platforms": ("manylinux2014_x86_64",),
         "python_version": "312",
         "implementation": "cp",
         "abi": "cp312",
@@ -420,6 +431,12 @@ def stage_guest_python_wheelhouse(
             + lock.read_text(encoding="utf-8"),
             encoding="utf-8",
         )
+        validate_guest_runtime_wheelhouse(
+            requirements=requirements,
+            target_directory=target_directory,
+            guest_tools_directory=guest_tools_directory,
+            target=target_config,
+        )
         target_documents[target] = {
             "requirementsPath": requirements.relative_to(destination).as_posix(),
             "requirementsSHA256": file_identity(requirements)["sha256"],
@@ -450,7 +467,7 @@ def stage_guest_python_wheelhouse(
 def download_guest_runtime_wheels(
     lock: Path,
     destination: Path,
-    target: dict[str, str],
+    target: GuestRuntimeTarget,
 ) -> None:
     command = [
         *host_pip_command(),
@@ -459,14 +476,7 @@ def download_guest_runtime_wheels(
         str(destination),
         "--only-binary=:all:",
         "--require-hashes",
-        "--platform",
-        target["platform"],
-        "--python-version",
-        target["python_version"],
-        "--implementation",
-        target["implementation"],
-        "--abi",
-        target["abi"],
+        *guest_runtime_pip_target_arguments(target),
         "-r",
         str(lock),
     ]
@@ -481,6 +491,67 @@ def download_guest_runtime_wheels(
             "error: failed to stage Guest Python runtime wheelhouse "
             f"lock={lock}{suffix}"
         ) from error
+
+
+def validate_guest_runtime_wheelhouse(
+    *,
+    requirements: Path,
+    target_directory: Path,
+    guest_tools_directory: Path,
+    target: GuestRuntimeTarget,
+) -> None:
+    with TemporaryDirectory(prefix="tirosh-guest-wheel-validation-") as temporary:
+        command = [
+            *host_pip_command(),
+            "download",
+            "--dest",
+            temporary,
+            "--no-index",
+            "--find-links",
+            str(target_directory),
+            "--find-links",
+            str(guest_tools_directory),
+            "--only-binary=:all:",
+            "--require-hashes",
+            *guest_runtime_pip_target_arguments(target),
+            "-r",
+            str(requirements),
+        ]
+        try:
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=requirements.parent,
+            )
+        except subprocess.CalledProcessError as error:
+            output = "\n".join(
+                item for item in (error.stdout, error.stderr) if item
+            ).strip()
+            suffix = f": {output}" if output else ""
+            raise SystemExit(
+                "error: Guest Python runtime wheelhouse dependency closure is "
+                f"invalid: requirements={requirements} "
+                f"platforms={','.join(target['platforms'])}{suffix}"
+            ) from error
+
+
+def guest_runtime_pip_target_arguments(target: GuestRuntimeTarget) -> list[str]:
+    platform_arguments = [
+        argument
+        for platform in target["platforms"]
+        for argument in ("--platform", platform)
+    ]
+    return [
+        *platform_arguments,
+        "--python-version",
+        target["python_version"],
+        "--implementation",
+        target["implementation"],
+        "--abi",
+        target["abi"],
+    ]
 
 
 def host_pip_command() -> list[str]:

@@ -13,7 +13,6 @@ class LabSettings:
     session_store: str
     allow_memory_store: bool
     database_url: str | None
-    psql_command: str
     vital_files_mount: Path
 
 
@@ -55,7 +54,6 @@ def load_settings() -> LabSettings:
         session_store=os.environ.get("VITALSERVER_LAB_SESSION_STORE", "postgres"),
         allow_memory_store=bool_from_env("VITALSERVER_LAB_ALLOW_MEMORY_STORE"),
         database_url=os.environ.get("VITALSERVER_LAB_DATABASE_URL"),
-        psql_command=os.environ.get("VITALSERVER_LAB_PSQL_COMMAND", "psql"),
         vital_files_mount=Path(
             os.environ.get(
                 "VITALSERVER_LAB_VITAL_FILES_MOUNT",

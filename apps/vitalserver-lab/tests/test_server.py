@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import subprocess
+import re
 import sys
 import time
 import zlib
@@ -22,11 +22,9 @@ from vitalserver_lab.model import (
     InMemoryLabSessionStore,
     LabBed,
     LabRecorder,
-    LabSessionCreateInput,
     LabSessionStore,
     LabSessionStoreUnavailable,
 )
-from vitalserver_lab.postgres_store import PostgresLabSessionStore
 from vitalserver_lab.server import (
     build_execution_engine,
     build_session_store,
@@ -61,7 +59,6 @@ def test_ready_reports_session_store_unavailable() -> None:
         session_store="memory",
         allow_memory_store=True,
         database_url=None,
-        psql_command="psql",
         vital_files_mount=Path("/mnt/tirosh-vital-files"),
     )
     store = UnavailableStore()
@@ -90,7 +87,6 @@ def test_memory_session_store_requires_explicit_dev_override() -> None:
         session_store="memory",
         allow_memory_store=False,
         database_url=None,
-        psql_command="psql",
         vital_files_mount=Path("/mnt/tirosh-vital-files"),
     )
 
@@ -120,7 +116,6 @@ def test_build_execution_engine_uses_socketio_sender() -> None:
         session_store=settings.session_store,
         allow_memory_store=True,
         database_url=None,
-        psql_command=settings.psql_command,
         vital_files_mount=settings.vital_files_mount,
     )
     engine = build_execution_engine(settings=settings)
@@ -223,7 +218,10 @@ def test_lab_vital_files_report_mount_missing(tmp_path: Path) -> None:
     assert response["status"] == 404
     assert response["body"]["state"] == "failed"
     assert response["body"]["vitalFiles"] == []
-    assert response["body"]["readError"] == "Configured vital files mount is not available."
+    assert (
+        response["body"]["readError"]
+        == "Configured vital files mount is not available."
+    )
 
 
 def test_create_session_returns_product_lab_session() -> None:
@@ -283,6 +281,79 @@ def test_session_lifecycle_is_served_by_lab_product_api() -> None:
     assert stopped["body"]["session"]["state"] == "stopped"
 
 
+def test_lab_sessions_are_listed_after_creation() -> None:
+    with running_server(["lab_session_1", "lab_session_2"]) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {"scenarioId": "baseline-monitoring", "name": "First"},
+        )
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {"scenarioId": "baseline-monitoring", "name": "Second"},
+        )
+        response = request(address, "GET", "/lab/sessions")
+
+    assert response["status"] == 200
+    assert response["body"]["state"] == "loaded"
+    assert response["body"]["readError"] is None
+    assert {session["sessionId"] for session in response["body"]["sessions"]} == {
+        "lab_session_1",
+        "lab_session_2",
+    }
+
+
+def test_running_session_recorders_can_be_stopped_and_started_individually() -> None:
+    sender = FakeSender()
+    with running_server(
+        ["lab_session_1"],
+        sender=sender,
+        frame_interval_seconds=0.01,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "name": "Recorder control",
+                "recorderCount": 2,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+        recorders = request(address, "GET", "/lab/recorders")["body"]["recorders"]
+        recorder = recorders[0]
+        recorder_id = recorder["recorderId"]
+        vrcode = recorder["vrcode"]
+
+        stopped = request(
+            address,
+            "POST",
+            f"/lab/sessions/lab_session_1/recorders/{recorder_id}/stop",
+        )
+        sender.calls.clear()
+        time.sleep(0.04)
+        calls_while_stopped = list(sender.calls)
+
+        started = request(
+            address,
+            "POST",
+            f"/lab/sessions/lab_session_1/recorders/{recorder_id}/start",
+        )
+        time.sleep(0.02)
+
+    assert stopped["status"] == 202
+    assert stopped["body"]["recorder"]["state"] == "stopped"
+    assert all(call["payload"]["vrcode"] != vrcode for call in calls_while_stopped)
+    assert started["status"] == 202
+    assert started["body"]["recorder"]["state"] == "running"
+    assert any(call["payload"]["vrcode"] == vrcode for call in sender.calls)
+
+
 def test_lab_beds_and_recorders_are_served_from_product_read_model() -> None:
     with running_server(["lab_session_1"]) as address:
         request(
@@ -307,15 +378,10 @@ def test_lab_beds_and_recorders_are_served_from_product_read_model() -> None:
     assert [bed["state"] for bed in beds["body"]["beds"]] == ["running", "running"]
     assert recorders["status"] == 200
     assert recorders["body"]["state"] == "loaded"
-    assert [
-        recorder["bedId"] for recorder in recorders["body"]["recorders"]
-    ] == [
-        "lab_session_1-bed-1",
-        "lab_session_1-bed-2",
+    assert [recorder["bedId"] for recorder in recorders["body"]["recorders"]] == [
+        bed["bedId"] for bed in beds["body"]["beds"]
     ]
-    assert [
-        recorder["state"] for recorder in recorders["body"]["recorders"]
-    ] == [
+    assert [recorder["state"] for recorder in recorders["body"]["recorders"]] == [
         "running",
         "running",
     ]
@@ -344,11 +410,12 @@ def test_lab_bed_management_creates_and_deletes_product_read_model() -> None:
                 "prefix": "Manual lab",
             },
         )
+        created_bed_id = created["body"]["beds"][0]["bedId"]
         deleted = request(
             address,
             "POST",
             "/lab/beds/delete",
-            {"bedIds": ["manual_session_1-bed-1"]},
+            {"bedIds": [created_bed_id]},
         )
         recorders = request(address, "GET", "/lab/recorders")
 
@@ -357,9 +424,7 @@ def test_lab_bed_management_creates_and_deletes_product_read_model() -> None:
     assert recorders["status"] == 200
     assert recorders["body"]["recorders"] == []
     assert deleted["status"] == 202
-    assert [bed["bedId"] for bed in deleted["body"]["beds"]] == [
-        "manual_session_1-bed-2"
-    ]
+    assert [bed["name"] for bed in deleted["body"]["beds"]] == ["Lab-B"]
 
 
 def test_lab_bed_management_reset_removes_beds_and_attached_recorders() -> None:
@@ -380,17 +445,18 @@ def test_lab_bed_management_reset_removes_beds_and_attached_recorders() -> None:
 
 def test_lab_session_create_can_occupy_existing_lab_bed_and_recorder() -> None:
     with running_server(["manual_session_1", "lab_session_2"]) as address:
-        request(
+        beds_created = request(
             address,
             "POST",
             "/lab/beds/create",
             {"roomNames": ["Lab-A"]},
         )
+        bed_id = beds_created["body"]["beds"][0]["bedId"]
         request(
             address,
             "POST",
             "/lab/recorders/create",
-            {"bedIds": ["manual_session_1-bed-1"]},
+            {"bedIds": [bed_id]},
         )
         created = request(
             address,
@@ -399,7 +465,7 @@ def test_lab_session_create_can_occupy_existing_lab_bed_and_recorder() -> None:
             {
                 "scenarioId": "baseline-monitoring",
                 "name": "Occupy existing bed",
-                "bedIds": ["manual_session_1-bed-1"],
+                "bedIds": [bed_id],
             },
         )
         request(address, "POST", "/lab/sessions/lab_session_2/start")
@@ -409,10 +475,10 @@ def test_lab_session_create_can_occupy_existing_lab_bed_and_recorder() -> None:
     assert created["status"] == 202
     assert created["body"]["session"]["recorderCount"] == 1
     assert created["body"]["session"]["bedRoomNames"] == ["Lab-A"]
-    assert created["body"]["session"]["bedIds"] == ["manual_session_1-bed-1"]
+    assert created["body"]["session"]["bedIds"] == [bed_id]
     assert beds["body"]["beds"] == [
         {
-            "bedId": "manual_session_1-bed-1",
+            "bedId": bed_id,
             "sessionId": "lab_session_2",
             "name": "Lab-A",
             "state": "running",
@@ -420,9 +486,11 @@ def test_lab_session_create_can_occupy_existing_lab_bed_and_recorder() -> None:
             "updatedAt": beds["body"]["beds"][0]["updatedAt"],
         }
     ]
-    assert recorders["body"]["recorders"][0]["recorderId"] == "manual_session_1-recorder-1"
+    assert re.fullmatch(
+        r"rec_[A-Z0-9]{6}", recorders["body"]["recorders"][0]["recorderId"]
+    )
     assert recorders["body"]["recorders"][0]["sessionId"] == "lab_session_2"
-    assert recorders["body"]["recorders"][0]["bedId"] == "manual_session_1-bed-1"
+    assert recorders["body"]["recorders"][0]["bedId"] == bed_id
     assert recorders["body"]["recorders"][0]["state"] == "running"
 
 
@@ -460,7 +528,9 @@ def test_lab_bed_create_failure_bubbles_as_service_unavailable() -> None:
     assert response["body"]["readError"] == "lab session read model is unavailable"
 
 
-def test_lab_session_start_returns_service_unavailable_if_read_model_is_broken() -> None:
+def test_lab_session_start_returns_service_unavailable_if_read_model_is_broken() -> (
+    None
+):
     class ReadModelUnavailableAfterStartStore(InMemoryLabSessionStore):
         def list_beds(self) -> tuple[LabBed, ...]:
             raise LabSessionStoreUnavailable(
@@ -495,29 +565,31 @@ def test_lab_session_start_returns_service_unavailable_if_read_model_is_broken()
 
 def test_lab_recorder_management_creates_and_deletes_product_read_model() -> None:
     with running_server(["manual_session_1"]) as address:
-        request(
+        beds_created = request(
             address,
             "POST",
             "/lab/beds/create",
             {"roomNames": ["Lab-A"]},
         )
+        bed_id = beds_created["body"]["beds"][0]["bedId"]
         created = request(
             address,
             "POST",
             "/lab/recorders/create",
-            {"bedIds": ["manual_session_1-bed-1"]},
+            {"bedIds": [bed_id]},
         )
+        recorder_id = created["body"]["recorders"][0]["recorderId"]
         deleted = request(
             address,
             "POST",
             "/lab/recorders/delete",
-            {"recorderIds": ["manual_session_1-recorder-1"]},
+            {"recorderIds": [recorder_id]},
         )
 
     assert created["status"] == 202
-    assert [recorder["recorderId"] for recorder in created["body"]["recorders"]] == [
-        "manual_session_1-recorder-1",
-    ]
+    assert re.fullmatch(
+        r"rec_[A-Z0-9]{6}", created["body"]["recorders"][0]["recorderId"]
+    )
     assert deleted["status"] == 202
     assert deleted["body"]["recorders"] == []
 
@@ -542,11 +614,10 @@ def test_session_start_sends_lab_recorder_payloads_and_updates_read_model() -> N
 
     assert started["status"] == 202
     assert sender.calls[0]["target_url"] == "http://edge/"
-    assert sender.calls[0]["payload"]["vrcode"] == "LAB-lab_session_1-1"
+    assert re.fullmatch(r"LAB-[A-Z0-9]{6}", sender.calls[0]["payload"]["vrcode"])
     assert list(sender.calls[0]["payload"]["rooms"].keys()) == ["OR-A"]
     track_names = {
-        track["name"]
-        for track in sender.calls[0]["payload"]["rooms"]["OR-A"]["trks"]
+        track["name"] for track in sender.calls[0]["payload"]["rooms"]["OR-A"]["trks"]
     }
     assert track_names == {
         "HR",
@@ -849,7 +920,6 @@ class running_server:
             session_store="memory",
             allow_memory_store=True,
             database_url=None,
-            psql_command="psql",
             vital_files_mount=self.vital_files_mount,
         )
         self.store = (
@@ -1114,218 +1184,3 @@ class UnavailableReadModelStore:
             "lab session read model is unavailable",
             kind="labReadModelUnavailable",
         )
-
-
-def test_postgres_store_runs_schema_migration(monkeypatch: Any) -> None:
-    calls: list[list[str]] = []
-
-    def fake_run(
-        command: list[str],
-        *,
-        check: bool,
-        capture_output: bool,
-        text: bool,
-        timeout: float,
-    ) -> subprocess.CompletedProcess[str]:
-        assert check is True
-        assert capture_output is True
-        assert text is True
-        assert timeout == 15
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    PostgresLabSessionStore("postgresql://lab-db").ensure_ready()
-
-    assert calls[0][:2] == ["psql", "postgresql://lab-db"]
-    assert "CREATE TABLE IF NOT EXISTS lab_sessions" in calls[0][-1]
-    assert "CREATE TABLE IF NOT EXISTS lab_beds" in calls[0][-1]
-    assert "CREATE TABLE IF NOT EXISTS lab_recorders" in calls[0][-1]
-
-
-def test_postgres_store_persists_and_reads_lab_session(monkeypatch: Any) -> None:
-    saved_sql: list[str] = []
-    store = PostgresLabSessionStore(
-        "postgresql://lab-db",
-        id_factory=lambda: "lab_session_pg_1",
-    )
-
-    def fake_run(
-        command: list[str],
-        *,
-        check: bool,
-        capture_output: bool,
-        text: bool,
-        timeout: float,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del capture_output
-        del text
-        del timeout
-        sql = command[-1]
-        saved_sql.append(sql)
-        if "FROM lab_recorders" in sql:
-            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-        if "FROM lab_sessions" in sql:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=json.dumps(created.as_json(), sort_keys=True),
-                stderr="",
-            )
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    created = store.create(
-        request=LabSessionCreateInput(
-            scenario_id="baseline-monitoring",
-            name="Postgres backed session",
-            recorder_count=2,
-            target_url="http://edge/",
-            bed_room_names=("OR-A", "OR-B"),
-        )
-    )
-    loaded = store.get("lab_session_pg_1")
-
-    assert loaded == created
-    assert any("INSERT INTO lab_sessions" in sql for sql in saved_sql)
-    assert any("ON CONFLICT (session_id) DO UPDATE" in sql for sql in saved_sql)
-    assert any("INSERT INTO lab_beds" in sql for sql in saved_sql)
-    assert any("INSERT INTO lab_recorders" in sql for sql in saved_sql)
-    assert any("SELECT document::text FROM lab_sessions" in sql for sql in saved_sql)
-
-
-def test_postgres_store_persists_private_vital_file_replay_source(
-    monkeypatch: Any,
-) -> None:
-    saved_sql: list[str] = []
-    store = PostgresLabSessionStore(
-        "postgresql://lab-db",
-        id_factory=lambda: "lab_replay_pg_1",
-    )
-
-    def fake_run(
-        command: list[str],
-        *,
-        check: bool,
-        capture_output: bool,
-        text: bool,
-        timeout: float,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del capture_output
-        del text
-        del timeout
-        sql = command[-1]
-        saved_sql.append(sql)
-        if "FROM lab_recorders" in sql:
-            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-        if "FROM lab_sessions" in sql:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=json.dumps(private_document, sort_keys=True),
-                stderr="",
-            )
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    created = store.create(
-        request=LabSessionCreateInput(
-            scenario_id="vital-file-replay",
-            name="Replay",
-            recorder_count=1,
-            target_url="http://edge/",
-            vital_file_path="/mnt/tirosh-vital-files/private/sample.vital",
-        )
-    )
-    private_document = created.as_private_json()
-    loaded = store.get("lab_replay_pg_1")
-
-    assert loaded is not None
-    assert loaded.vital_file_path == "/mnt/tirosh-vital-files/private/sample.vital"
-    assert "vitalFilePath" not in created.as_json()
-    assert any("vitalFilePath" in sql for sql in saved_sql)
-
-
-def test_postgres_store_reports_psql_failure(monkeypatch: Any) -> None:
-    def fake_run(
-        command: list[str],
-        *,
-        check: bool,
-        capture_output: bool,
-        text: bool,
-        timeout: float,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del capture_output
-        del text
-        del timeout
-        raise subprocess.CalledProcessError(
-            2,
-            command,
-            output="",
-            stderr="relation does not exist",
-        )
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    with pytest.raises(LabSessionStoreUnavailable) as error:
-        PostgresLabSessionStore("postgresql://lab-db").ensure_ready()
-
-    assert error.value.kind == "postgresCommandFailed"
-    assert "relation does not exist" in error.value.message
-
-
-def test_postgres_store_reports_psql_command_start_failure(monkeypatch: Any) -> None:
-    def fake_run(
-        command: list[str],
-        *,
-        check: bool,
-        capture_output: bool,
-        text: bool,
-        timeout: float,
-    ) -> subprocess.CompletedProcess[str]:
-        del command
-        del check
-        del capture_output
-        del text
-        del timeout
-        raise FileNotFoundError("psql")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    with pytest.raises(LabSessionStoreUnavailable) as error:
-        PostgresLabSessionStore("postgresql://lab-db").ensure_ready()
-
-    assert error.value.kind == "postgresCommandUnavailable"
-    assert "postgres command could not start" in error.value.message
-
-
-def test_postgres_store_reports_psql_timeout(monkeypatch: Any) -> None:
-    def fake_run(
-        command: list[str],
-        *,
-        check: bool,
-        capture_output: bool,
-        text: bool,
-        timeout: float,
-    ) -> subprocess.CompletedProcess[str]:
-        del check
-        del capture_output
-        del text
-        raise subprocess.TimeoutExpired(command, timeout)
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    with pytest.raises(LabSessionStoreUnavailable) as error:
-        PostgresLabSessionStore(
-            "postgresql://lab-db",
-            psql_timeout_seconds=3,
-        ).ensure_ready()
-
-    assert error.value.kind == "postgresCommandTimedOut"
-    assert "timeoutSeconds=3" in error.value.message

@@ -33,9 +33,11 @@ import type {
   RuntimeLabRecorderCreateRequest,
   RuntimeLabRecorderDeleteRequest,
   RuntimeLabRecorderList,
+  RuntimeLabRecorderResponse,
   RuntimeLabScenarioList,
   RuntimeLabSessionCreateRequest,
   RuntimeLabSessionResponse,
+  RuntimeLabSessionList,
   RuntimeLabVitalFileList,
   RuntimeLabVitalFileUploadRequest,
   RuntimeLabVitalFileUploadResponse,
@@ -73,8 +75,10 @@ import {
   runtimeGuestServiceResourceSchema,
   runtimeLabBedListSchema,
   runtimeLabRecorderListSchema,
+  runtimeLabRecorderResponseSchema,
   runtimeLabScenarioListSchema,
   runtimeLabSessionResponseSchema,
+  runtimeLabSessionListSchema,
   runtimeLabVitalFileListSchema,
   runtimeLabVitalFileUploadResponseSchema,
   runtimeLogExportResultSchema,
@@ -144,6 +148,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
         available.has("services:stop") &&
         available.has("services:restart"),
       canUseLab: available.has("lab:scenarios"),
+      canListLabSessions: available.has("lab:sessions:list"),
+      canControlLabRecorders:
+        available.has("lab:recorders:start") &&
+        available.has("lab:recorders:stop"),
       canApplyRuntimeProductSettings: available.has("settings:apply"),
       canApplyRuntimeAdminPassword: available.has("admin-password:apply"),
       canApplyRuntimeRedisRelaySettings:
@@ -240,6 +248,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.post("/runtime/lab/recorders/reset", undefined, runtimeLabRecorderListSchema);
   }
 
+  getLabSessions(): Promise<RuntimeLabSessionList> {
+    return this.get("/runtime/lab/sessions", runtimeLabSessionListSchema);
+  }
+
   createLabSession(
     request: RuntimeLabSessionCreateRequest
   ): Promise<RuntimeLabSessionResponse> {
@@ -266,6 +278,28 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
       `${labSessionPath(sessionId)}/stop`,
       undefined,
       runtimeLabSessionResponseSchema
+    );
+  }
+
+  startLabRecorder(
+    sessionId: string,
+    recorderId: string
+  ): Promise<RuntimeLabRecorderResponse> {
+    return this.post(
+      `${labSessionPath(sessionId)}/recorders/${encodeURIComponent(recorderId)}/start`,
+      undefined,
+      runtimeLabRecorderResponseSchema
+    );
+  }
+
+  stopLabRecorder(
+    sessionId: string,
+    recorderId: string
+  ): Promise<RuntimeLabRecorderResponse> {
+    return this.post(
+      `${labSessionPath(sessionId)}/recorders/${encodeURIComponent(recorderId)}/stop`,
+      undefined,
+      runtimeLabRecorderResponseSchema
     );
   }
 

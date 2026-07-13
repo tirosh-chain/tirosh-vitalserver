@@ -93,6 +93,7 @@ func runtimeControllerConcreteRoutePath(template string) string {
 	replacements := strings.NewReplacer(
 		"{service}", "app",
 		"{sessionID}", "session-1",
+		"{recorderID}", "recorder-1",
 		"{vrcode}", "VR-A",
 		"{bedID}", "BED-A",
 		"{operationID}", "op-1",

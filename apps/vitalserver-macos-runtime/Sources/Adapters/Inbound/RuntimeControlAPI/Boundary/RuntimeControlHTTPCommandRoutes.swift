@@ -91,6 +91,20 @@ struct RuntimeControlHTTPCommandRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.stopLabSession(sessionId: try request.runtimeLabSessionID())
             )
+        case .startLabRecorder:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.startLabRecorder(
+                    sessionId: try request.runtimeLabSessionID(),
+                    recorderId: try request.runtimeLabRecorderID()
+                )
+            )
+        case .stopLabRecorder:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.stopLabRecorder(
+                    sessionId: try request.runtimeLabSessionID(),
+                    recorderId: try request.runtimeLabRecorderID()
+                )
+            )
         case .replayLabVitalFile:
             let replayRequest = try request.decodedBody(RuntimeLabVitalFileReplayRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.replayLabVitalFile(replayRequest))
@@ -230,6 +244,7 @@ struct RuntimeControlHTTPCommandRoutes {
              .labVitalFiles,
              .labBeds,
              .labRecorders,
+             .labSessions,
              .labSession,
              .release,
              .installInfo,

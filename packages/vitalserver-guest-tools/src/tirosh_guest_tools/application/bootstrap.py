@@ -206,10 +206,6 @@ class GuestBootstrapWorkflow:
             (GuestBootstrapStep.INSTALL_RUNTIME_FILES, self.install_runtime_files),
             (GuestBootstrapStep.PREPARE_RUNTIME_DATA, self.prepare_runtime_data),
             (GuestBootstrapStep.MIGRATE_CONTROL_STORE, self.migrate_control_store),
-            (
-                GuestBootstrapStep.WRITE_INITIAL_RUNTIME_OBSERVATION,
-                self.operations.write_initial_runtime_observation,
-            ),
             (GuestBootstrapStep.START_DOCKER, self.start_docker),
             (GuestBootstrapStep.START_AVAHI, self.operations.start_avahi),
             (
@@ -227,6 +223,10 @@ class GuestBootstrapWorkflow:
                 self.operations.cleanup_docker_cache,
             ),
             (GuestBootstrapStep.START_COMPOSE, self.start_compose),
+            (
+                GuestBootstrapStep.WRITE_INITIAL_RUNTIME_OBSERVATION,
+                self.write_initial_runtime_observation,
+            ),
             (GuestBootstrapStep.START_CONTAINER_LOGS, self.start_container_logs),
             (GuestBootstrapStep.WAIT_EDGE_READY, self.wait_for_vitalserver_edge),
             (
@@ -370,6 +370,13 @@ class GuestBootstrapWorkflow:
             GuestBootstrapStep.START_COMPOSE,
         )
         self.operations.start_compose()
+
+    def write_initial_runtime_observation(self) -> None:
+        self.state.require_completed(
+            GuestBootstrapStep.START_COMPOSE,
+            GuestBootstrapStep.WRITE_INITIAL_RUNTIME_OBSERVATION,
+        )
+        self.operations.write_initial_runtime_observation()
 
     def start_container_logs(self) -> None:
         self.state.require_completed(

@@ -5,7 +5,10 @@ enum RuntimeLabPanelText {
     static let runtimeControlConsole = "Remote Console"
     static let runtimeControlConsoleHelp = "Opens the Remote Console for Runtime Control API status, event streams, and log streams."
     static let productLab = "Product Lab"
-    static let productLabSession = "Scenario session"
+    static let productLabSession = "New scenario session"
+    static let productLabSessions = "Sessions"
+    static let selectedLabSession = "Selected session"
+    static let sessionRecorders = "Session recorders"
     static let productLabResources = "Advanced resources"
     static let vitalFileReplay = ".vital replay"
     static let vitalFileSource = ".vital file"
@@ -18,11 +21,16 @@ enum RuntimeLabPanelText {
     static let creatingLabSession = "Creating Product Lab session..."
     static let startingLabSession = "Starting Product Lab session..."
     static let stoppingLabSession = "Stopping Product Lab session..."
+    static let startingLabRecorder = "Starting Product Lab recorder..."
+    static let stoppingLabRecorder = "Stopping Product Lab recorder..."
     static let replayingLabVitalFile = "Starting .vital replay session..."
     static let uploadingLabVitalFile = "Uploading .vital file..."
     static let uploadFailed = ".vital file upload failed."
     static let labTargetURLRequired = "Target URL is required."
     static let noLabSession = "No Product Lab session is selected."
+    static let runningLabSessionRequired = "Select a running Product Lab session to control its recorders."
+    static let chooseSessionLabRecorder = "Choose a recorder owned by the selected Product Lab session."
+    static let labRecorderCommandFailed = "Product Lab recorder command failed."
     static let labCapabilityUnavailable = "Product Lab is not available for this runtime connection."
     static let labTargetURL = "Target URL"
     static let labSessionBedIDs = "Advanced bed IDs"
@@ -63,6 +71,14 @@ enum RuntimeLabPanelText {
 
     static func stoppedLabSession(_ id: String) -> String {
         "Stopped Product Lab session \(id)."
+    }
+
+    static func startedLabRecorder(_ vrcode: String) -> String {
+        "Started Product Lab recorder \(vrcode)."
+    }
+
+    static func stoppedLabRecorder(_ vrcode: String) -> String {
+        "Stopped Product Lab recorder \(vrcode)."
     }
 
     static func replayedLabVitalFile(_ id: String) -> String {

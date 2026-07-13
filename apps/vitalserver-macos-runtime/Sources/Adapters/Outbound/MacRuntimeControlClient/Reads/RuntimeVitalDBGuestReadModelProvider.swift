@@ -204,7 +204,7 @@ struct RuntimeVitalDBGuestReadModelProvider {
         switch state {
         case .accepted, .running:
             return true
-        case .stopped, .failed, .unavailable:
+        case .stopping, .stopped, .failed, .unavailable:
             return false
         }
     }

@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
   "SQLAlchemy==2.0.51",
   "alembic==1.16.5",
+  "psycopg[binary]==3.3.4",
 ]
 
 [project.scripts]

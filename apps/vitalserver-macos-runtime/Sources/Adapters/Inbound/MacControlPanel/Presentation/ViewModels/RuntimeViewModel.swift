@@ -83,6 +83,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var labVitalFiles = RuntimeLabVitalFileList.unavailable(readError: "Product Lab .vital files have not been loaded.")
     @Published var labBeds = RuntimeLabBedList.unavailable(readError: "Product Lab beds have not been loaded.")
     @Published var labRecorders = RuntimeLabRecorderList.unavailable(readError: "Product Lab recorders have not been loaded.")
+    @Published var labSessions = RuntimeLabSessionList.unavailable(readError: "Product Lab sessions have not been loaded.")
     @Published var selectedLabScenarioID = ""
     @Published var selectedLabVitalFileGuestPath = ""
     @Published var labVitalFileQuery = ""

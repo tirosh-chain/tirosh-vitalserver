@@ -300,7 +300,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
         XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
-        XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertNil(item(GeneratedRelease.redisUIName, in: serviceHealth))
     }
 
     func testServiceHealthShowsRecoveringForApplyBundleRecovery() {
@@ -334,7 +334,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
-        XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
+        XCTAssertNil(item(GeneratedRelease.redisUIName, in: serviceHealth))
     }
 
     func testAdvancedServiceHealthShowsInstallingForInitialServiceChangesDuringInstall() {
@@ -367,7 +367,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
-        XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
+        XCTAssertNil(item(GeneratedRelease.redisUIName, in: serviceHealth))
     }
 
     func testAdvancedServiceHealthShowsInitializingWhileRuntimeBecomesReady() {
@@ -848,6 +848,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let items = advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(items.map(\.label), [
+            AppConstants.Labels.runtimeProviderService,
             AppConstants.Labels.proxyService,
             AppConstants.Labels.guestLogSyncService,
             AppConstants.Labels.sleepPreventionService,
@@ -856,9 +857,25 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             AppConstants.Labels.redisRelay,
             GeneratedRelease.vitalServerName,
             GeneratedRelease.hostProxyName,
-            GeneratedRelease.redisUIName,
-            GeneratedRelease.swaggerUIName,
         ])
+        XCTAssertEqual(
+            items.filter { $0.section == .platform }.map(\.label),
+            [
+                AppConstants.Labels.runtimeProviderService,
+                AppConstants.Labels.proxyService,
+                AppConstants.Labels.guestLogSyncService,
+                AppConstants.Labels.sleepPreventionService,
+                AppConstants.Labels.watchdogService,
+            ]
+        )
+        XCTAssertEqual(
+            items.filter { $0.section == .runtime }.map(\.label),
+            [AppConstants.Labels.guestProductServices, AppConstants.Labels.redisRelay]
+        )
+        XCTAssertEqual(
+            items.filter { $0.section == .access }.map(\.label),
+            [GeneratedRelease.vitalServerName, GeneratedRelease.hostProxyName]
+        )
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.action, .openVitalServer)
         XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
         XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.text, AppConstants.StatusText.unavailable)
@@ -868,8 +885,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.sleepPreventionService, in: items)?.value.text, AppConstants.StatusText.running)
         XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.text, AppConstants.StatusText.disabled)
         XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.severity, .neutral)
-        XCTAssertEqual(item(GeneratedRelease.redisUIName, in: items)?.action, .openRedisUI)
-        XCTAssertEqual(item(GeneratedRelease.swaggerUIName, in: items)?.action, .openSwagger)
+        XCTAssertNil(item(GeneratedRelease.redisUIName, in: items))
+        XCTAssertNil(item(GeneratedRelease.swaggerUIName, in: items))
     }
 
     func testAdvancedServiceHealthShowsGuestControlServiceStatusesWhenLoaded() {

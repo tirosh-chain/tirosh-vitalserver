@@ -154,6 +154,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         try await client.createLabSession(request)
     }
 
+    public func loadLabSessions() async throws -> RuntimeLabSessionList {
+        try await client.loadLabSessions()
+    }
+
     public func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
         try await client.loadLabSession(sessionId: sessionId)
     }
@@ -164,6 +168,14 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
 
     public func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
         try await client.stopLabSession(sessionId: sessionId)
+    }
+
+    public func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        try await client.startLabRecorder(sessionId: sessionId, recorderId: recorderId)
+    }
+
+    public func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        try await client.stopLabRecorder(sessionId: sessionId, recorderId: recorderId)
     }
 
     public func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {

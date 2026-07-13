@@ -29,8 +29,24 @@ The following published Runtime v2 routes are outside the default read-only run 
 | Runtime Controller | `GET`/`PUT /runtime/redis-relay/settings` | Relay config read without secret material and explicit secret preserve/replace/clear apply |
 | Runtime Controller | `GET /runtime/events` | Runtime-owned operation event page and opaque cursor |
 | Runtime Controller | `POST /runtime/maintenance/datastore/repair` | optional Guest-owned datastore maintenance operation, negotiated through `maintenance:datastore-repair:create` |
+| Runtime Controller | `GET /runtime/lab/sessions` | explicit persisted Lab session collection; absence, failure, and empty remain distinct |
+| Runtime Controller | `POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start|stop` | control one recorder only after explicit session-state and ownership validation |
 
 The Platform response must not expose `vmIP`, `vmState`, `guestHTTP`, Redis UI probes, Swagger UI probes, or product service state. A platform that does not need one of the fixed service roles still reports that role with an explicit unavailable or not-installed state; it does not omit the role and ask a client to infer why. Platform service state uses the canonical values `running`, `stopped`, `not-installed`, `unavailable`, `read-failed`, `permission-denied`, and `failed`. Every service entry carries explicit nullable `readError`; launchd `loaded/not loaded` wording is not part of the cross-platform wire contract.
+
+## Common status presentation
+
+PWA, macOS SwiftUI, Windows, and Linux clients use the same three presentation groups even though their Platform Providers differ:
+
+| UI group | Owner contract | Contents |
+| --- | --- | --- |
+| Platform services | `GET /platform` | fixed OS-owned Platform roles and their explicit service/read states |
+| Runtime product services | `GET /runtime/stack` plus `GET /runtime/services/{service}/resource` | observed container/process state beside desired/control state; each product service appears once |
+| Access endpoints | explicit Platform endpoint/probe/link contracts | public access and support links only when a provider reports them |
+
+`redis-ui` and `swagger-ui` are Runtime product services. A client must not add separate `Not reported` endpoint rows merely because links are known. Likewise, a healthy observed process with a missing spec, failed resource read, or `ReconcileBlocked=true` condition is a warning, not green success. Empty, unavailable, read-failed, and healthy remain different UI states.
+
+Linux Native has no Guest VM, while macOS and Windows use VM providers. Therefore `Host` and `Guest` are implementation details, not the common section names. Platform-specific screens may expose provider details below these groups, but must not merge Platform ownership into Runtime product state.
 
 Installation state and installed version come from the Platform-owned install document. An executable, symlink, service registration, or filename is not evidence of an installed product. Linux uses `/var/lib/vitalserver/install.json` and Windows uses `C:\ProgramData\VitalServer\install.json`; missing, unconfigured, invalid, and read-failed owner states remain distinct.
 

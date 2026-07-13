@@ -44,6 +44,7 @@ from tirosh_guest_tools.application.guest_control.usecases import GuestControlUs
 from tirosh_guest_tools.domain.guest_control.models import (
     RUNTIME_OPERATION_EVENT_TYPES,
     GuestControlDependencyError,
+    GuestServiceDesiredState,
     RedisRelayStatusContractError,
     ServiceNotFoundError,
     VitalDBReadModelDependencyError,
@@ -64,6 +65,22 @@ from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 18330
+DEFAULT_GUEST_SERVICE_SPECS = dict.fromkeys(
+    (
+        "postgres",
+        "redis",
+        "app",
+        "recorder-recovery",
+        "recorder-ingress",
+        "vitaldb-observer",
+        "redis-relay",
+        "lab",
+        "redis-ui",
+        "swagger-ui",
+        "edge",
+    ),
+    GuestServiceDesiredState.RUNNING,
+)
 REDIS_RELAY_STATUS_OWNER_PATH = "/runtime/redis-relay/status"
 # This declaration is a build-time parity boundary. The normal Guest HTTP
 # transport continues to dispatch explicit extension routes below; it must not
@@ -117,6 +134,7 @@ def build_default_usecases() -> GuestControlUseCases:
         clock=SystemClock(),
     )
     usecases.recover_interrupted_operations()
+    usecases.initialize_guest_service_specs(DEFAULT_GUEST_SERVICE_SPECS)
     return usecases
 
 
@@ -374,9 +392,7 @@ def route_request(
         and parts[:2] == ["runtime", "services"]
         and parts[3] == "reconcile"
     ):
-        return HTTPStatus.ACCEPTED, usecases.reconcile_guest_service(
-            parts[2]
-        ).as_json()
+        return HTTPStatus.ACCEPTED, usecases.reconcile_guest_service(parts[2]).as_json()
 
     if (
         method == "POST"
@@ -407,6 +423,9 @@ def route_request(
 
     if method == "GET" and parts == ["runtime", "lab", "recorders"]:
         return HTTPStatus.OK, usecases.list_lab_recorders()
+
+    if method == "GET" and parts == ["runtime", "lab", "sessions"]:
+        return HTTPStatus.OK, usecases.list_lab_sessions()
 
     if method == "POST" and parts == ["runtime", "lab", "beds", "create"]:
         return HTTPStatus.ACCEPTED, usecases.create_lab_beds(_json_body(body))
@@ -451,6 +470,24 @@ def route_request(
         and parts[4] == "stop"
     ):
         return HTTPStatus.ACCEPTED, usecases.stop_lab_session(parts[3])
+
+    if (
+        method == "POST"
+        and len(parts) == 7
+        and parts[:3] == ["runtime", "lab", "sessions"]
+        and parts[4] == "recorders"
+        and parts[6] == "start"
+    ):
+        return HTTPStatus.ACCEPTED, usecases.start_lab_recorder(parts[3], parts[5])
+
+    if (
+        method == "POST"
+        and len(parts) == 7
+        and parts[:3] == ["runtime", "lab", "sessions"]
+        and parts[4] == "recorders"
+        and parts[6] == "stop"
+    ):
+        return HTTPStatus.ACCEPTED, usecases.stop_lab_recorder(parts[3], parts[5])
 
     if method == "POST" and parts == ["runtime", "lab", "vital-files", "replay"]:
         return HTTPStatus.ACCEPTED, usecases.replay_lab_vital_file(_json_body(body))
@@ -638,9 +675,7 @@ def _required_string(document: dict[str, Any], field: str) -> str:
     return value
 
 
-def _optional_query_string(
-    query: dict[str, list[str]], field: str
-) -> str | None:
+def _optional_query_string(query: dict[str, list[str]], field: str) -> str | None:
     values = query.get(field)
     if values is None:
         return None

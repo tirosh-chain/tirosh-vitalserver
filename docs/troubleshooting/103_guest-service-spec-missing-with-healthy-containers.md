@@ -5,7 +5,7 @@
 - ID: TS-103
 - Category: Runtime health / Guest containers / macOS Helper UI
 - Owner: Guest Control service resource contract
-- Status: active
+- Status: resolved
 
 ## Symptom
 
@@ -25,7 +25,7 @@ Container health and Guest service control resources are separate contracts.
 
 When the guest service resource repository has no resource for a known product service, Guest Control used to return a synthetic `SpecMissing` resource. That preserved the missing-state signal, but it also left fresh installs with no explicit desired state for normal product services.
 
-## Fix Direction
+## Fix
 
 Known Guest product services must have an explicit default service resource owned by Guest Control:
 
@@ -35,6 +35,10 @@ Known Guest product services must have an explicit default service resource owne
 - conditions computed from the same reconcile policy used by service commands
 
 Guest Control must seed missing or legacy `spec.state=missing` resources idempotently. It must preserve existing configured desired states, such as an operator-set `desiredState=stopped`.
+
+Guest Control startup now initializes an explicit default catalog for the packaged product services. It first verifies that every catalog entry exists in the Compose owner, then writes only missing or legacy-missing specs with `desiredState=running`. Existing configured specs are preserved. Conditions are recomputed through the same domain reconcile policy used by service commands; the UI continues to show resource read failures or a true `ReconcileBlocked` condition as warnings.
+
+Redis UI and Swagger UI are displayed once as Runtime product services from the stack/resource contracts. They are no longer duplicated as synthetic HTTP rows whose missing probe values appeared as `Not reported`.
 
 ## Prevention
 

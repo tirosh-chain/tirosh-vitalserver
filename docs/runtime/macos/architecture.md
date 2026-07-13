@@ -154,6 +154,8 @@ RuntimeControl
 
 `Infrastructure`는 installed path, JSON/JSONL repository, Host diagnostics SQLite index, log rotation, guest config reading/writing, package receipt, VM lifecycle document store 같은 Host-side persistence와 read adapter를 소유합니다. `HostAdapters`는 Virtualization.framework, launchd, process execution, host proxy, sleep/system clock, cloud-init seed writing처럼 macOS host effect를 소유합니다. `Interfaces/HostCLI`는 CLI command parsing과 status output formatting을 소유합니다. `Bootstrap`은 composition root로서 Host ports, Guest Control gateway, Runtime Control API, lifecycle workflow를 조립합니다.
 
+Guest product persistence는 domain class와 SQLAlchemy ORM record를 직접 결합하지 않습니다. Application port는 domain object만 다루고, mapper가 domain object와 ORM record/document를 변환하며 repository가 SQLAlchemy `Engine`과 transaction을 소유합니다. 운영 dialect는 Postgres이지만 repository contract와 mapper는 dialect 중립적으로 유지하여 SQLite 전환 검증을 동일 repository contract test로 수행합니다. Database URL 선택은 composition/configuration 책임이며 domain과 UI가 dialect를 분기하지 않습니다.
+
 `Interfaces/RuntimeControlAPI`는 Runtime Control HTTP/API route, wire codec, local loopback server, static file responder, Product Lab routes, Guest service routes, VitalDB read routes를 소유합니다. Legacy `/dev/testkit/*` router는 product API surface가 아닙니다. `Interfaces/MacRuntimeControlApp`는 Runtime Control app의 presentation-facing policy, Product Lab panel, status/event/log presentation, settings validation, section grouping, action planning, observability refresh policy를 소유합니다. Transitional `RuntimeWorkflow` target은 제거되었습니다. 기존 `Core`, `HostInfrastructure`, `RuntimeControlAPI`, `HostCLI`, `MacRuntimeControlApp` target은 operation별 migration이 끝날 때까지 전환기 target으로 유지합니다.
 
 책임 기준은 아래처럼 읽습니다.

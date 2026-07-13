@@ -111,7 +111,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-100 | Guest는 healthy인데 Host가 `missing-vm-ip`로 critical 표시 | Runtime health / Guest bootstrap | active | [Missing `vm-ip` bootstrap file after runtime-state refactor](100_missing-vm-ip-bootstrap-file-after-runtime-state-refactor.md) |
 | TS-101 | Docker image bundle build가 `context canceled`와 traceback으로 끝남 | Packaging / Local development / Docker image bundle | implemented | [Docker build context canceled after interrupt](101_docker-build-context-canceled-after-interrupt.md) |
 | TS-102 | Helper 설치 후 guest는 healthy인데 status가 Critical로 남음 | Runtime health / macOS Helper UI | active | [Helper status stays Critical after guest is healthy](102_helper-status-critical-after-healthy-guest.md) |
-| TS-103 | Guest service가 healthy인데 `SpecMissing`으로 표시됨 | Runtime health / Guest containers / macOS Helper UI | active | [Guest service spec missing while containers are healthy](103_guest-service-spec-missing-with-healthy-containers.md) |
+| TS-103 | Guest service가 healthy인데 `SpecMissing`으로 표시됨 | Runtime health / Guest containers / macOS Helper UI | resolved | [Guest service spec missing while containers are healthy](103_guest-service-spec-missing-with-healthy-containers.md) |
 | TS-104 | 새 설치 후 runtime은 healthy인데 Helper가 Installing으로 남음 | Runtime health / macOS Helper UI / Packaging | active | [Helper stays Installing after provisioned install](104_helper-stays-installing-after-provisioned.md) |
 | TS-105 | Guest product services가 `/runtime/stack` timeout으로 Degraded 표시 | Runtime health / Guest containers / macOS Helper UI | active | [Guest stack status times out on docker stats](105_guest-stack-status-timeout-from-docker-stats.md) |
 | TS-106 | Product Lab recorder start가 `/api/send` 404로 실패 | Product Lab / Recorder streaming / macOS Helper UI | active | [Product Lab recorder send 404](106_product-lab-recorder-send-404.md) |
@@ -130,6 +130,10 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-119 | Release sync가 Docker export 뒤 compile input을 rewrite함 | Packaging / Release contract / Rootfs compile | resolved | [Release sync mutated compile inputs after Docker export](119_release_sync_mutated_compile_inputs.md) |
 | TS-120 | Guest wheel 생성물이 같은 delivery run의 rootfs fingerprint를 바꿈 | Packaging / Rootfs compile / Local development | resolved | [Generated Guest wheel changed rootfs fingerprint during the same delivery run](120_generated_guest_wheel_changes_rootfs_fingerprint.md) |
 | TS-121 | pkg 설치가 runtime disk 공간 부족으로 실패함 | Packaging / Install | active | [pkg 설치가 runtime disk 공간 부족으로 실패함](121_pkg_install_insufficient_runtime_disk_space.md) |
+| TS-122 | 새 설치 직후 VitalDB read model table이 없어 상태 조회가 실패함 | Runtime health / Data store | active | [VitalDB read model schema startup race](122_vitaldb_schema_reader_startup_race.md) |
+| TS-123 | Golden rootfs Guest Tools 설치가 psycopg wheel 누락으로 실패함 | Packaging / Guest bootstrap | active | [Guest Tools air-gap dependency missing from wheelhouse](123_guest_tools_airgap_dependency_missing.md) |
+| TS-124 | Runtime smoke bootstrap이 Postgres 시작 전 schema migration으로 실패함 | Guest bootstrap / Data store | active | [VitalDB schema migration runs before Postgres readiness](124_vitaldb_schema_migration_before_postgres_ready.md) |
+| TS-125 | 생성한 Product Lab session이 목록에 없고 recorder를 개별 제어할 수 없음 | Product Lab / Runtime Control PWA / macOS Helper UI | resolved | [Product Lab session collection and recorder controls missing](125_product-lab-session-collection-recorder-control-missing.md) |
 
 ## Follow-up 규칙
 

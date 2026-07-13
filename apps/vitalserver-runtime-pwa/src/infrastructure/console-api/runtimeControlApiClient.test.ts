@@ -301,6 +301,9 @@ describe("RuntimeControlApiClient", () => {
           "services:stop",
           "services:restart",
           "lab:scenarios",
+          "lab:sessions:list",
+          "lab:recorders:start",
+          "lab:recorders:stop",
           "maintenance:datastore-repair:create"
         ]
       },
@@ -381,10 +384,19 @@ describe("RuntimeControlApiClient", () => {
         ],
         readError: null
       },
-      "/runtime/lab/sessions": labSessionResponse(),
+      "GET /runtime/lab/sessions": {
+        state: "loaded",
+        sessions: [labSessionResponse().session],
+        readError: null
+      },
+      "POST /runtime/lab/sessions": labSessionResponse(),
       "/runtime/lab/sessions/lab-1": labSessionResponse(),
       "/runtime/lab/sessions/lab-1/start": labSessionResponse(),
       "/runtime/lab/sessions/lab-1/stop": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1/recorders/lab-1-recorder-1/start":
+        labRecorderResponse("running"),
+      "/runtime/lab/sessions/lab-1/recorders/lab-1-recorder-1/stop":
+        labRecorderResponse("stopped"),
       "/runtime/lab/vital-files": {
         state: "loaded",
         vitalFiles: [
@@ -467,6 +479,8 @@ describe("RuntimeControlApiClient", () => {
 
     await expect(client.getCapabilities()).resolves.toMatchObject({
       canUseLab: true,
+      canListLabSessions: true,
+      canControlLabRecorders: true,
       canRepairRuntimeDatastore: true
     });
     await expect(client.getLatestVitalDBObservation()).resolves.toEqual({
@@ -493,6 +507,9 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getLabRecorders()).resolves.toMatchObject({
       recorders: [{ vrcode: "LAB-lab-1-1", messagesSent: 1, lastSendState: "sent" }]
     });
+    await expect(client.getLabSessions()).resolves.toMatchObject({
+      sessions: [{ sessionId: "lab-1" }]
+    });
     await expect(client.createLabSession({
       scenarioId: "baseline",
       name: "Lab A",
@@ -502,6 +519,12 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getLabSession("lab-1")).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
     await expect(client.startLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
     await expect(client.stopLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
+    await expect(
+      client.startLabRecorder("lab-1", "lab-1-recorder-1")
+    ).resolves.toMatchObject({ recorder: { state: "running" } });
+    await expect(
+      client.stopLabRecorder("lab-1", "lab-1-recorder-1")
+    ).resolves.toMatchObject({ recorder: { state: "stopped" } });
     await expect(client.getLabVitalFiles()).resolves.toMatchObject({
       vitalFiles: [{ displayName: "case.vital" }]
     });
@@ -679,12 +702,20 @@ function fullCapabilities() {
     canControlGuestServices: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseLab: true
+    canUseLab: true,
+    canListLabSessions: true,
+    canControlLabRecorders: true
   };
 }
 
 function platformCapabilities() {
-  const { canControlGuestServices: _, canUseLab: __, ...platform } = fullCapabilities();
+  const {
+    canControlGuestServices: _,
+    canUseLab: __,
+    canListLabSessions: ___,
+    canControlLabRecorders: ____,
+    ...platform
+  } = fullCapabilities();
   return platform;
 }
 
@@ -934,6 +965,24 @@ function labSessionResponse() {
       targetURL: "http://edge/",
       createdAt: null,
       updatedAt: null
+    }
+  };
+}
+
+function labRecorderResponse(state: "running" | "stopped") {
+  return {
+    state: "loaded" as const,
+    operationId: `op-recorder-${state}`,
+    labOperationId: `lab-op-recorder-${state}`,
+    readError: null,
+    recorder: {
+      recorderId: "lab-1-recorder-1",
+      sessionId: "lab-1",
+      bedId: "lab-1-bed-1",
+      vrcode: "LAB-lab-1-1",
+      state,
+      messagesSent: 1,
+      lastSendState: "sent" as const
     }
   };
 }

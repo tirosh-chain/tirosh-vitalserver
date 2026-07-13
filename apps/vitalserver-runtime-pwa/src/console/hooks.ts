@@ -226,6 +226,16 @@ export function useLabRecorders() {
   });
 }
 
+export function useLabSessions(enabled = true) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.labSessions,
+    queryFn: () => runtimeControlGateway.getLabSessions(),
+    enabled,
+    refetchInterval: 2_000
+  });
+}
+
 export function useLabVitalFiles() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
@@ -311,6 +321,31 @@ export function useStopLabSession() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useLabMutation((sessionId: string) =>
     runtimeControlGateway.stopLabSession(parseSessionId(sessionId))
+  );
+}
+
+export type RuntimeLabRecorderCommand = {
+  sessionId: string;
+  recorderId: string;
+};
+
+export function useStartLabRecorder() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation(({ sessionId, recorderId }: RuntimeLabRecorderCommand) =>
+    runtimeControlGateway.startLabRecorder(
+      parseSessionId(sessionId),
+      parseSessionId(recorderId)
+    )
+  );
+}
+
+export function useStopLabRecorder() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation(({ sessionId, recorderId }: RuntimeLabRecorderCommand) =>
+    runtimeControlGateway.stopLabRecorder(
+      parseSessionId(sessionId),
+      parseSessionId(recorderId)
+    )
   );
 }
 
@@ -652,7 +687,8 @@ function useLabMutation<TVariables, TResult>(
         queryKey: consoleQueryKeys.beds
       });
       const sessionId = (response as { session?: { sessionId?: string } | null })
-        .session?.sessionId;
+        .session?.sessionId ??
+        (response as { recorder?: { sessionId?: string } | null }).recorder?.sessionId;
       if (sessionId) {
         queryClient.invalidateQueries({
           queryKey: consoleQueryKeys.labSession(sessionId)

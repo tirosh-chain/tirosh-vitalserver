@@ -4577,6 +4577,8 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         relative(endpoint_path): [
             'path: "/runtime/lab/scenarios"',
             'path: "/runtime/lab/sessions"',
+            'path: "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start"',
+            'path: "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop"',
             'path: "/runtime/lab/vital-files/replay"',
             'path: "/runtime/stack"',
             'path: "/runtime/services/{service}/start"',
@@ -4588,6 +4590,9 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         ],
         relative(read_handler_path): [
             "try await client.loadLabScenarios()",
+            "try await client.loadLabSessions()",
+            "try await client.startLabRecorder(",
+            "try await client.stopLabRecorder(",
             "try await client.replayLabVitalFile(request)",
             "try await client.guestStackStatus()",
             "try await client.startGuestService(request)",
@@ -4599,6 +4604,8 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
             '"RuntimeCapabilities"',
             '"/runtime/lab/scenarios"',
             '"/runtime/lab/sessions"',
+            '"/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start"',
+            '"/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop"',
             '"/runtime/lab/vital-files/replay"',
             '"/runtime/services"',
             '"/runtime/stack"',
@@ -4628,6 +4635,8 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         relative(pwa_client_path): [
             '"/runtime/lab/scenarios"',
             '"/runtime/lab/sessions"',
+            "startLabRecorder(",
+            "stopLabRecorder(",
             '"/runtime/lab/vital-files/replay"',
             '"/runtime/stack"',
             '/runtime/services/${encodeURIComponent(request.service)}/start',
@@ -4644,8 +4653,8 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
             "useRuntimeStack",
             "useRuntimeServiceResources",
             'stackStatus.state !== "loaded"',
-            "Guest stack status is",
-            "Failed to read Guest services",
+            "Runtime stack status is",
+            "Failed to read Runtime product services",
         ],
         relative(pwa_hooks_path): [
             "export function useRuntimeStack()",
@@ -4656,11 +4665,13 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
         relative(pwa_lab_page_path): [
             "useControlCapabilities",
             "capabilities.data?.canUseLab",
+            "capabilities.data?.canListLabSessions",
+            "capabilities.data?.canControlLabRecorders",
             "labCapability === true",
         ],
         relative(pwa_pages_test_path): [
             (
-                "shows non-loaded Guest stack status without treating it as "
+                "shows non-loaded Runtime stack status without treating it as "
                 "an empty service list"
             ),
             (
@@ -4669,8 +4680,8 @@ def check_runtime_control_api_exposes_v2_product_surface() -> CheckResult:
             ),
             'state: "failed"',
             "canUseLab: false",
-            "Guest stack status is failed.",
-            "No Guest services are reported.",
+            "Runtime stack status is failed.",
+            "No Runtime product services are reported.",
         ],
     }
     forbidden = [
@@ -4811,10 +4822,20 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
     sqlite_tests_path = GUEST_TOOLS / "tests/test_guest_control_sqlite_repository.py"
     lab_settings_path = ROOT / "apps/vitalserver-lab/vitalserver_lab/settings.py"
     lab_server_path = ROOT / "apps/vitalserver-lab/vitalserver_lab/server.py"
-    lab_postgres_store_path = (
-        ROOT / "apps/vitalserver-lab/vitalserver_lab/postgres_store.py"
+    lab_sqlalchemy_store_path = (
+        ROOT
+        / "apps/vitalserver-lab/vitalserver_lab/persistence/sqlalchemy_store.py"
+    )
+    lab_records_path = (
+        ROOT / "apps/vitalserver-lab/vitalserver_lab/persistence/records.py"
+    )
+    lab_mappers_path = (
+        ROOT / "apps/vitalserver-lab/vitalserver_lab/persistence/mappers.py"
     )
     lab_tests_path = ROOT / "apps/vitalserver-lab/tests/test_server.py"
+    lab_sqlalchemy_tests_path = (
+        ROOT / "apps/vitalserver-lab/tests/test_sqlalchemy_store.py"
+    )
     lab_readme_path = ROOT / "apps/vitalserver-lab/README.md"
     compose_path = MACOS_RUNTIME / "Support/Guest/compose.yaml"
     api_text = read(api_path)
@@ -4834,8 +4855,11 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
     sqlite_tests_text = read(sqlite_tests_path)
     lab_settings_text = read(lab_settings_path)
     lab_server_text = read(lab_server_path)
-    lab_postgres_store_text = read(lab_postgres_store_path)
+    lab_sqlalchemy_store_text = read(lab_sqlalchemy_store_path)
+    lab_records_text = read(lab_records_path)
+    lab_mappers_text = read(lab_mappers_path)
     lab_tests_text = read(lab_tests_path)
+    lab_sqlalchemy_tests_text = read(lab_sqlalchemy_tests_path)
     lab_readme_text = read(lab_readme_path)
     compose_text = read(compose_path)
     required = {
@@ -4970,20 +4994,37 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
             "VITALSERVER_LAB_ALLOW_MEMORY_STORE",
             "labSessionStoreConfigurationInvalid",
         ],
-        relative(lab_postgres_store_path): [
-            "except OSError as error:",
-            "postgresCommandUnavailable",
-            "postgres command could not start during",
+        relative(lab_sqlalchemy_store_path): [
+            "class SQLAlchemyLabSessionStore",
+            "create_engine(_sqlalchemy_url(database_url)",
+            '"postgresql+psycopg://"',
+            "LabRecordBase.metadata.create_all",
+            'kind="labSessionStoreUnavailable"',
+        ],
+        relative(lab_records_path): [
+            "class LabSessionRecord",
+            "class LabBedRecord",
+            "class LabRecorderRecord",
+        ],
+        relative(lab_mappers_path): [
+            "def session_record(",
+            "def session_domain(",
+            "def bed_record(",
+            "def bed_domain(",
+            "def recorder_record(",
+            "def recorder_domain(",
         ],
         relative(lab_tests_path): [
             "test_memory_session_store_requires_explicit_dev_override",
             "test_load_settings_reports_invalid_port_configuration",
             "test_load_settings_reports_non_positive_port_configuration",
-            "test_postgres_store_reports_psql_command_start_failure",
             "LabSettingsConfigurationError",
-            "postgresCommandUnavailable",
             "allow_memory_store=False",
             "VITALSERVER_LAB_ALLOW_MEMORY_STORE",
+        ],
+        relative(lab_sqlalchemy_tests_path): [
+            "test_sqlalchemy_store_uses_same_domain_contract_with_sqlite",
+            "test_sqlalchemy_store_writes_existing_timestamp_columns",
         ],
         relative(lab_readme_path): [
             "Runtime v2 product service",
@@ -5014,8 +5055,11 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
         relative(sqlite_tests_path): sqlite_tests_text,
         relative(lab_settings_path): lab_settings_text,
         relative(lab_server_path): lab_server_text,
-        relative(lab_postgres_store_path): lab_postgres_store_text,
+        relative(lab_sqlalchemy_store_path): lab_sqlalchemy_store_text,
+        relative(lab_records_path): lab_records_text,
+        relative(lab_mappers_path): lab_mappers_text,
         relative(lab_tests_path): lab_tests_text,
+        relative(lab_sqlalchemy_tests_path): lab_sqlalchemy_tests_text,
         relative(lab_readme_path): lab_readme_text,
     }
     missing = {
@@ -5670,11 +5714,6 @@ def check_product_packaging_uses_lab_not_testkit() -> CheckResult:
             / "packages/vitalserver-devtools/src/tirosh_vitalserver"
             / "devtools/config/release_manifest.py"
         ),
-        (
-            ROOT
-            / "packages/vitalserver-devtools/src/tirosh_vitalserver"
-            / "devtools/application/usecases/macos_package.py"
-        ),
     ]
     texts = {relative(path): read(path) for path in paths}
     required = {
@@ -5703,7 +5742,8 @@ def check_product_packaging_uses_lab_not_testkit() -> CheckResult:
             '"image": "postgres:',
         ],
         "apps/vitalserver-lab/Dockerfile": [
-            "RUN apk add --no-cache postgresql-client",
+            "'SQLAlchemy==2.0.51'",
+            "'psycopg[binary]==3.3.4'",
             "VITALSERVER_LAB_VITAL_FILES_MOUNT=/mnt/tirosh-vital-files",
         ],
         (
@@ -5713,17 +5753,6 @@ def check_product_packaging_uses_lab_not_testkit() -> CheckResult:
             'required_service_string(release, "lab", "image")',
             'required_service_string(release, "postgres", "image")',
             "Lab is the product service",
-        ],
-        (
-            "packages/vitalserver-devtools/src/tirosh_vitalserver"
-            "/devtools/application/usecases/macos_package.py"
-        ): [
-            "REQUIRED_RUNTIME_PRODUCT_COMPOSE_SERVICES",
-            '"postgres"',
-            '"lab"',
-            '"edge"',
-            '"guest-compose-product-services"',
-            'service == "testkit"',
         ],
     }
     missing = {
@@ -6026,7 +6055,9 @@ def check_swift_product_lab_commands_require_lab_capability() -> CheckResult:
         ],
         relative(panel_path): [
             ".disabled(!viewModel.labCanCreateSession)",
-            ".disabled(!viewModel.labCanControlSelectedSession)",
+            ".disabled(!viewModel.labCanStartSelectedSession)",
+            ".disabled(!viewModel.labCanStopSelectedSession)",
+            "viewModel.selectedLabSession?.state != .running",
             ".disabled(!viewModel.labCanReplayVitalFile)",
         ],
         relative(test_path): [
@@ -7315,7 +7346,7 @@ def check_api_catalog_exposes_runtime_support_specs() -> CheckResult:
             'label: "VitalDB Observer API"',
         ],
         "apps/vitalserver-runtime-pwa/src/pages/pages.test.tsx": [
-            'screen.getByText("API catalog")',
+            'screen.getByText("Access endpoints")',
             'screen.getByText("VitalServer API")',
             'screen.getByText("Runtime Control API")',
             'screen.getByText("Recorder Ingress API")',

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import secrets
+import string
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
+
+RANDOM_SUFFIX_ALPHABET = string.ascii_uppercase + string.digits
+
+
+def random_suffix() -> str:
+    return "".join(secrets.choice(RANDOM_SUFFIX_ALPHABET) for _ in range(6))
 
 
 def utc_now_iso() -> str:
@@ -188,6 +196,9 @@ class LabSessionStore(Protocol):
     def get(self, session_id: str) -> LabSession | None:
         """Return an existing Lab session, or None when it is explicitly absent."""
 
+    def list_sessions(self) -> tuple[LabSession, ...]:
+        """Return all persisted Lab sessions in deterministic update order."""
+
     def start(self, session_id: str) -> LabSession | None:
         """Transition an existing Lab session to running."""
 
@@ -223,6 +234,12 @@ class LabSessionStore(Protocol):
 
     def reset_recorders(self) -> tuple[LabRecorder, ...]:
         """Remove all Lab-managed recorders while preserving beds."""
+
+    def start_recorder(self, session_id: str, recorder_id: str) -> LabRecorder | None:
+        """Transition one recorder owned by a running session to running."""
+
+    def stop_recorder(self, session_id: str, recorder_id: str) -> LabRecorder | None:
+        """Transition one recorder owned by a running session to stopped."""
 
     def save_recorder_execution_results(
         self,
@@ -264,7 +281,9 @@ class InMemoryLabSessionStore:
             session_id=self.id_factory(),
             scenario_id=request.scenario_id,
             name=request.name,
-            recorder_count=len(selected_beds) if selected_beds else request.recorder_count,
+            recorder_count=len(selected_beds)
+            if selected_beds
+            else request.recorder_count,
             target_url=request.target_url,
             bed_room_names=bed_room_names,
             bed_ids=tuple(bed.bed_id for bed in selected_beds),
@@ -281,11 +300,22 @@ class InMemoryLabSessionStore:
                 state="accepted",
             )
         else:
-            self._save_session_read_model(session, state="accepted", with_recorders=True)
+            self._save_session_read_model(
+                session, state="accepted", with_recorders=True
+            )
         return session
 
     def get(self, session_id: str) -> LabSession | None:
         return self.sessions.get(session_id)
+
+    def list_sessions(self) -> tuple[LabSession, ...]:
+        return tuple(
+            sorted(
+                self.sessions.values(),
+                key=lambda session: (session.updated_at, session.session_id),
+                reverse=True,
+            )
+        )
 
     def start(self, session_id: str) -> LabSession | None:
         session = self.sessions.get(session_id)
@@ -306,15 +336,10 @@ class InMemoryLabSessionStore:
         return session
 
     def list_beds(self) -> tuple[LabBed, ...]:
-        return tuple(sorted(self.beds.values(), key=lambda bed: bed.bed_id))
+        return tuple(self.beds.values())
 
     def list_recorders(self) -> tuple[LabRecorder, ...]:
-        return tuple(
-            sorted(
-                self.recorders.values(),
-                key=lambda recorder: recorder.recorder_id,
-            )
-        )
+        return tuple(self.recorders.values())
 
     def save_recorder_execution_results(
         self,
@@ -411,6 +436,26 @@ class InMemoryLabSessionStore:
         self.recorders.clear()
         return self.list_recorders()
 
+    def start_recorder(self, session_id: str, recorder_id: str) -> LabRecorder | None:
+        return self._transition_recorder(session_id, recorder_id, state="running")
+
+    def stop_recorder(self, session_id: str, recorder_id: str) -> LabRecorder | None:
+        return self._transition_recorder(session_id, recorder_id, state="stopped")
+
+    def _transition_recorder(
+        self,
+        session_id: str,
+        recorder_id: str,
+        *,
+        state: str,
+    ) -> LabRecorder | None:
+        recorder = self.recorders.get(recorder_id)
+        if recorder is None or recorder.session_id != session_id:
+            return None
+        updated = replace(recorder, state=state, updated_at=utc_now_iso())
+        self.recorders[recorder_id] = updated
+        return updated
+
     def _save_session_read_model(
         self,
         session: LabSession,
@@ -450,13 +495,21 @@ class InMemoryLabSessionStore:
                     )
                 self.recorders[recorder.recorder_id] = recorder
 
-    def _save_session_state_read_model(self, session: LabSession, *, state: str) -> None:
+    def _save_session_state_read_model(
+        self, session: LabSession, *, state: str
+    ) -> None:
         if session.bed_ids:
             self._occupy_existing_read_model_beds(
                 session,
                 explicit_beds_for_session(self.list_beds(), session.bed_ids),
                 state=state,
             )
+            return
+        existing_beds = tuple(
+            bed for bed in self.list_beds() if bed.session_id == session.session_id
+        )
+        if existing_beds:
+            self._occupy_existing_read_model_beds(session, existing_beds, state=state)
             return
         self._save_session_read_model(session, state=state, with_recorders=True)
 
@@ -548,7 +601,7 @@ def lab_bed_for_session(
     updated_at: str,
 ) -> LabBed:
     return LabBed(
-        bed_id=f"{session_id}-bed-{index}",
+        bed_id=f"bed_{random_suffix()}",
         session_id=session_id,
         name=name,
         state=state,
@@ -567,10 +620,10 @@ def lab_recorder_for_bed(
     updated_at: str,
 ) -> LabRecorder:
     return LabRecorder(
-        recorder_id=f"{session_id}-recorder-{index}",
+        recorder_id=f"rec_{random_suffix()}",
         session_id=session_id,
         bed_id=bed_id,
-        vrcode=f"LAB-{session_id}-{index}",
+        vrcode=f"LAB-{random_suffix()}",
         state=state,
         created_at=created_at,
         updated_at=updated_at,
@@ -617,8 +670,7 @@ def matching_recorders(
         if (recorder_ids and recorder.recorder_id in recorder_ids)
         or (vrcodes and recorder.vrcode in vrcodes)
         or (
-            request.session_id is not None
-            and recorder.session_id == request.session_id
+            request.session_id is not None and recorder.session_id == request.session_id
         )
     )
 
@@ -670,7 +722,9 @@ DEFAULT_SCENARIOS = (
         scenario_id="postoperative-recovery",
         name="Postoperative Recovery",
         category="generated",
-        description="Improving heart rate, oxygenation, blood pressure, and temperature.",
+        description=(
+            "Improving heart rate, oxygenation, blood pressure, and temperature."
+        ),
     ),
     LabScenario(
         scenario_id="hypotension-episode",

@@ -162,7 +162,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Runtime Lab sessions
+         * @description Reads the Product Lab session collection through the Runtime Control boundary.
+         */
+        get: operations["listRuntimeLabSessions"];
         put?: never;
         /**
          * Create a Runtime Lab session
@@ -229,6 +233,46 @@ export interface paths {
          * @description Stops one product Lab session through the Runtime Control boundary.
          */
         post: operations["stopRuntimeLabSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a recorder in a running Runtime Lab session
+         * @description Starts one recorder owned by the selected running Product Lab session.
+         */
+        post: operations["startRuntimeLabRecorder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a recorder in a running Runtime Lab session
+         * @description Stops one recorder owned by the selected running Product Lab session.
+         */
+        post: operations["stopRuntimeLabRecorder"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1929,6 +1973,13 @@ export interface components {
             recorders: components["schemas"]["RuntimeLabRecorder"][];
             readError?: string | null;
         };
+        RuntimeLabRecorderResponse: {
+            state: components["schemas"]["RuntimeLabReadState"];
+            recorder?: components["schemas"]["RuntimeLabRecorder"] | null;
+            operationId?: string | null;
+            labOperationId?: string | null;
+            readError?: string | null;
+        };
         RuntimeLabSession: {
             sessionId: string;
             state: components["schemas"]["RuntimeLabSessionState"];
@@ -1939,6 +1990,11 @@ export interface components {
             bedIds?: string[];
             createdAt?: string | null;
             updatedAt?: string | null;
+        };
+        RuntimeLabSessionList: {
+            state: components["schemas"]["RuntimeLabReadState"];
+            sessions: components["schemas"]["RuntimeLabSession"][];
+            readError?: string | null;
         };
         RuntimeLabSessionResponse: {
             state: components["schemas"]["RuntimeLabReadState"];
@@ -2988,6 +3044,27 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    listRuntimeLabSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab session list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabSessionList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     createRuntimeLabSession: {
         parameters: {
             query?: never;
@@ -3079,6 +3156,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimeLabSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
+        };
+    };
+    startRuntimeLabRecorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                recorderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab recorder response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabRecorderResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
+        };
+    };
+    stopRuntimeLabRecorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                recorderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab recorder response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabRecorderResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];

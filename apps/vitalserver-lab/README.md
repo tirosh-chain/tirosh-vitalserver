@@ -13,7 +13,8 @@ Runtime Control `/runtime/lab/*`; they must not call a TestKit container or
 The Lab service owns:
 
 - scenario catalog reads
-- Lab session creation, start, stop, and readback
+- Lab session collection, creation, start, stop, and readback
+- running-session recorder start and stop after explicit ownership validation
 - Lab bed and recorder read models
 - `.vital` replay request validation and session creation
 - Postgres-backed session/read-model state
@@ -28,15 +29,18 @@ The container exposes a small HTTP API:
 ```text
 GET  /health
 GET  /ready
-GET  /runtime/lab/scenarios
-GET  /runtime/lab/beds
-GET  /runtime/lab/recorders
-POST /runtime/lab/sessions
-GET  /runtime/lab/sessions/{sessionId}
-POST /runtime/lab/sessions/{sessionId}/start
-POST /runtime/lab/sessions/{sessionId}/stop
-POST /runtime/lab/vital-files/replay
-POST /runtime/lab/vital-files/upload
+GET  /lab/scenarios
+GET  /lab/beds
+GET  /lab/recorders
+GET  /lab/sessions
+POST /lab/sessions
+GET  /lab/sessions/{sessionId}
+POST /lab/sessions/{sessionId}/start
+POST /lab/sessions/{sessionId}/stop
+POST /lab/sessions/{sessionId}/recorders/{recorderId}/start
+POST /lab/sessions/{sessionId}/recorders/{recorderId}/stop
+POST /lab/vital-files/replay
+POST /lab/vital-files/upload
 ```
 
 Read failures remain explicit. Missing sessions, invalid request bodies,
@@ -51,6 +55,11 @@ Runtime v2 uses Postgres as the default Lab session store:
 VITALSERVER_LAB_SESSION_STORE=postgres
 VITALSERVER_LAB_DATABASE_URL=postgresql://vitalserver@postgres:5432/vitalserver
 ```
+
+The production repository uses SQLAlchemy ORM records and explicit domain
+mappers. The same repository contract is exercised with a SQLite URL in tests;
+switching dialects is a composition/configuration decision, not a domain or UI
+branch.
 
 The in-memory store is a local development override only and must be enabled
 explicitly with `VITALSERVER_LAB_ALLOW_MEMORY_STORE`.

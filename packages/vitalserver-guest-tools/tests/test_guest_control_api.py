@@ -22,6 +22,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     OperationLease,
     OperationState,
     ProductLabReadModelResult,
+    ProductLabRecorderResult,
     ProductLabSessionResult,
     ProductLabUploadResult,
     RedisBackupResult,
@@ -361,6 +362,19 @@ class FakeProductLab:
             "readError": None,
         }
 
+    def list_sessions(self) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "sessions": [
+                lab_session(
+                    session_id="lab-session-1",
+                    scenario_id="normal_monitoring",
+                    state="running",
+                )
+            ],
+            "readError": None,
+        }
+
     def create_beds(self, request: dict[str, object]) -> ProductLabReadModelResult:
         return ProductLabReadModelResult(document=self.list_beds())
 
@@ -419,6 +433,47 @@ class FakeProductLab:
                 state="stopped",
             ),
             lab_operation_id=f"lab-session-stop-{session_id}",
+        )
+
+    def start_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> ProductLabRecorderResult:
+        return self._recorder_result(
+            session_id=session_id,
+            recorder_id=recorder_id,
+            state="running",
+            command="start",
+        )
+
+    def stop_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> ProductLabRecorderResult:
+        return self._recorder_result(
+            session_id=session_id,
+            recorder_id=recorder_id,
+            state="stopped",
+            command="stop",
+        )
+
+    def _recorder_result(
+        self,
+        *,
+        session_id: str,
+        recorder_id: str,
+        state: str,
+        command: str,
+    ) -> ProductLabRecorderResult:
+        recorder = dict(self.list_recorders()["recorders"][0])
+        recorder.update(
+            {
+                "recorderId": recorder_id,
+                "sessionId": session_id,
+                "state": state,
+            }
+        )
+        return ProductLabRecorderResult(
+            recorder=recorder,
+            lab_operation_id=f"lab-recorder-{command}-{recorder_id}",
         )
 
     def replay_vital_file(self, request: dict[str, object]) -> ProductLabSessionResult:
@@ -555,9 +610,7 @@ class FakeVitalDBReadModel:
         ]
         return {
             "state": "loaded",
-            "beds": [
-                bed for bed in beds if bed["bedID"] not in self.deleted_beds
-            ],
+            "beds": [bed for bed in beds if bed["bedID"] not in self.deleted_beds],
             "observedAt": "2026-07-01T00:00:00+00:00",
             "ready": True,
             "recorderOnlineThresholdSeconds": 60,
@@ -821,7 +874,9 @@ def test_default_usecases_require_migrated_sqlite_without_postgres_startup(
     monkeypatch.setattr(
         guest_control_api,
         "ComposeGuestControlAdapter",
-        FakeServiceControl,
+        lambda: FakeServiceControl(
+            services=list(guest_control_api.DEFAULT_GUEST_SERVICE_SPECS)
+        ),
     )
 
     usecases = guest_control_api.build_default_usecases()
@@ -849,9 +904,9 @@ def test_runtime_read_core_manifest_routes_dispatch_from_guest_controller(
 ) -> None:
     repository_root = Path(__file__).resolve().parents[3]
     manifest = json.loads(
-        (
-            repository_root / "docs/runtime/runtime-v2-route-manifest.json"
-        ).read_text(encoding="utf-8")
+        (repository_root / "docs/runtime/runtime-v2-route-manifest.json").read_text(
+            encoding="utf-8"
+        )
     )
     routes = manifest["routes"]
     assert isinstance(routes, list)
@@ -1407,9 +1462,11 @@ def test_redis_restore_route_returns_operation_with_restored_archive_result(
     status, document = route_request(
         method="POST",
         path="/runtime/maintenance/redis-restore",
-        body=json.dumps({
-            "archive": "/mnt/tirosh-runtime/backups/redis/redis-20260701.tar.gz",
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "archive": "/mnt/tirosh-runtime/backups/redis/redis-20260701.tar.gz",
+            }
+        ).encode("utf-8"),
         usecases=usecases,
     )
 
@@ -1445,10 +1502,12 @@ def test_update_activation_route_returns_operation_with_request_result(
     status, document = route_request(
         method="POST",
         path="/runtime/maintenance/update-activation",
-        body=json.dumps({
-            "requestId": "update-activation-request-1",
-            "version": "0.2.0",
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "requestId": "update-activation-request-1",
+                "version": "0.2.0",
+            }
+        ).encode("utf-8"),
         usecases=usecases,
     )
 
@@ -1483,10 +1542,12 @@ def test_update_shutdown_route_returns_operation_with_ready_result(
     status, document = route_request(
         method="POST",
         path="/runtime/maintenance/update-shutdown",
-        body=json.dumps({
-            "requestId": "update-shutdown-request-1",
-            "version": "0.2.0",
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "requestId": "update-shutdown-request-1",
+                "version": "0.2.0",
+            }
+        ).encode("utf-8"),
         usecases=usecases,
     )
 
@@ -1510,9 +1571,7 @@ def test_update_shutdown_route_rejects_missing_version(
         route_request(
             method="POST",
             path="/runtime/maintenance/update-shutdown",
-            body=json.dumps({"requestId": "update-shutdown-request-1"}).encode(
-                "utf-8"
-            ),
+            body=json.dumps({"requestId": "update-shutdown-request-1"}).encode("utf-8"),
             usecases=usecases,
         )
 
@@ -1682,6 +1741,22 @@ def test_lab_get_session_route_returns_loaded_session_response(
     assert document["session"]["state"] == "accepted"
 
 
+def test_lab_list_sessions_route_returns_explicit_session_collection(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="GET",
+        path="/runtime/lab/sessions",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document["state"] == "loaded"
+    assert document["readError"] is None
+    assert document["sessions"][0]["sessionId"] == "lab-session-1"
+    assert document["sessions"][0]["state"] == "running"
+
+
 def test_recorder_ingress_status_route_returns_explicit_status_read(
     usecases: GuestControlUseCases,
 ) -> None:
@@ -1801,6 +1876,35 @@ def test_lab_session_command_routes_return_explicit_session_state(
     assert started["labOperationId"] == "lab-session-start-lab-session-1"
     assert stopped["session"]["state"] == "stopped"
     assert stopped["labOperationId"] == "lab-session-stop-lab-session-1"
+
+
+def test_lab_recorder_command_routes_return_explicit_recorder_state(
+    usecases: GuestControlUseCases,
+) -> None:
+    _, stopped = route_request(
+        method="POST",
+        path=(
+            "/runtime/lab/sessions/lab-session-1/recorders/"
+            "lab-session-1-recorder-1/stop"
+        ),
+        usecases=usecases,
+    )
+    _, started = route_request(
+        method="POST",
+        path=(
+            "/runtime/lab/sessions/lab-session-1/recorders/"
+            "lab-session-1-recorder-1/start"
+        ),
+        usecases=usecases,
+    )
+
+    assert stopped["state"] == "loaded"
+    assert stopped["operationId"] == "op_product-lab_lab-stop-recorder_1"
+    assert stopped["labOperationId"] == ("lab-recorder-stop-lab-session-1-recorder-1")
+    assert stopped["recorder"]["state"] == "stopped"
+    assert started["state"] == "loaded"
+    assert started["operationId"] == "op_product-lab_lab-start-recorder_1"
+    assert started["recorder"]["state"] == "running"
 
 
 def test_lab_replay_vital_file_route_uses_explicit_request_body(

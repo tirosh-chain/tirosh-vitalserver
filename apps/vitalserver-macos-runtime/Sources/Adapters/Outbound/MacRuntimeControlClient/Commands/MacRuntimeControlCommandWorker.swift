@@ -385,6 +385,12 @@ public actor MacRuntimeControlCommandWorker {
         }
     }
 
+    public func loadLabSessions() async throws -> RuntimeLabSessionList {
+        return try await runGuestProductLabCommand {
+            try $0.labSessions()
+        }
+    }
+
     public func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
         return try await runGuestProductLabCommand {
             try $0.createLabBeds(request)
@@ -484,6 +490,18 @@ public actor MacRuntimeControlCommandWorker {
     public func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
         return try await runGuestProductLabCommand {
             try $0.stopLabSession(sessionId)
+        }
+    }
+
+    public func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        return try await runGuestProductLabCommand {
+            try $0.startLabRecorder(sessionId: sessionId, recorderId: recorderId)
+        }
+    }
+
+    public func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        return try await runGuestProductLabCommand {
+            try $0.stopLabRecorder(sessionId: sessionId, recorderId: recorderId)
         }
     }
 
@@ -723,7 +741,9 @@ extension RuntimeLabScenarioList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabVitalFileList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabBedList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabRecorderList: RuntimeLabResponseUnavailableFactory {}
+extension RuntimeLabSessionList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabSessionResponse: RuntimeLabResponseUnavailableFactory {}
+extension RuntimeLabRecorderResponse: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabVitalFileUploadResponse: RuntimeLabResponseUnavailableFactory {}
 
 extension MacRuntimeControlCommandWorker: RuntimeGuestMaintenanceOperationClient {}

@@ -19,6 +19,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     OperationState,
     ProductLabDependencyError,
     ProductLabReadModelResult,
+    ProductLabRecorderResult,
     ProductLabSessionResult,
     ProductLabUploadResult,
     RecorderIngressDependencyError,
@@ -311,6 +312,13 @@ class FakeProductLab:
             "readError": None,
         }
 
+    def list_sessions(self) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "sessions": [self.get_session("lab-session-1").session],
+            "readError": None,
+        }
+
     def create_beds(self, request: dict[str, object]) -> ProductLabReadModelResult:
         return ProductLabReadModelResult(document=self.list_beds())
 
@@ -335,6 +343,29 @@ class FakeProductLab:
     def reset_recorders(self) -> ProductLabReadModelResult:
         return ProductLabReadModelResult(
             document={"state": "loaded", "recorders": [], "readError": None}
+        )
+
+    def start_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> ProductLabRecorderResult:
+        return self._recorder_result(session_id, recorder_id, "running")
+
+    def stop_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> ProductLabRecorderResult:
+        return self._recorder_result(session_id, recorder_id, "stopped")
+
+    def _recorder_result(
+        self, session_id: str, recorder_id: str, state: str
+    ) -> ProductLabRecorderResult:
+        return ProductLabRecorderResult(
+            recorder={
+                **self.list_recorders()["recorders"][0],
+                "sessionId": session_id,
+                "recorderId": recorder_id,
+                "state": state,
+            },
+            lab_operation_id=f"lab-recorder-{state}-{recorder_id}",
         )
 
     def create_session(
@@ -530,9 +561,7 @@ class FakeVitalDBReadModel:
         ]
         return {
             "state": "loaded",
-            "beds": [
-                bed for bed in beds if bed["bedID"] not in self.deleted_beds
-            ],
+            "beds": [bed for bed in beds if bed["bedID"] not in self.deleted_beds],
             "observedAt": "2026-07-01T00:00:00+00:00",
             "ready": True,
             "recorderOnlineThresholdSeconds": 60,
@@ -809,6 +838,9 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "lab:recorders:create",
         "lab:recorders:delete",
         "lab:recorders:reset",
+        "lab:recorders:start",
+        "lab:recorders:stop",
+        "lab:sessions:list",
         "lab:sessions:create",
         "lab:sessions:get",
         "lab:sessions:start",
@@ -850,13 +882,13 @@ def test_capabilities_omit_unconfigured_adapter_features() -> None:
     assert document == {
         "schemaVersion": 1,
         "capabilities": [
-                "services:list",
-                "stack:status",
-                "services:status",
-                "services:resource:get",
-                "services:spec:update",
-                "services:reconcile",
-                "services:start",
+            "services:list",
+            "stack:status",
+            "services:status",
+            "services:resource:get",
+            "services:spec:update",
+            "services:reconcile",
+            "services:start",
             "services:stop",
             "services:restart",
             "stack:reconcile",
@@ -1080,6 +1112,83 @@ def test_guest_service_resource_get_reports_missing_spec_without_seeding() -> No
     assert operations.service_resources == {}
 
 
+def test_guest_service_spec_initialization_seeds_missing_resources_explicitly() -> None:
+    operations = FakeOperations()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    usecases.initialize_guest_service_specs(
+        {
+            "app": GuestServiceDesiredState.RUNNING,
+            "redis": GuestServiceDesiredState.RUNNING,
+        }
+    )
+
+    assert operations.service_resources["app"].spec.as_json() == {
+        "state": "configured",
+        "desiredState": "running",
+        "updatedAt": "2026-07-01T00:00:00+00:00",
+    }
+    assert operations.service_resources["redis"].spec.as_json()["state"] == (
+        "configured"
+    )
+
+
+def test_guest_service_spec_initialization_migrates_missing_and_preserves_configured(
+) -> None:
+    operations = FakeOperations()
+    operations.save_guest_service_resource(
+        GuestServiceResource(
+            service="app",
+            spec=GuestServiceSpec.configured(
+                desired_state=GuestServiceDesiredState.STOPPED,
+                updated_at=datetime(2026, 6, 30, tzinfo=UTC),
+            ),
+            status=GuestServiceStatusRead.failed(
+                OperationFailure(kind="notObserved", message="not observed")
+            ),
+            conditions=[],
+        )
+    )
+    operations.save_guest_service_resource(
+        GuestServiceResource(
+            service="redis",
+            spec=GuestServiceSpec.missing(),
+            status=GuestServiceStatusRead.failed(
+                OperationFailure(kind="notObserved", message="not observed")
+            ),
+            conditions=[],
+        )
+    )
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    usecases.initialize_guest_service_specs(
+        {
+            "app": GuestServiceDesiredState.RUNNING,
+            "redis": GuestServiceDesiredState.RUNNING,
+        }
+    )
+
+    assert operations.service_resources["app"].spec.desired_state == (
+        GuestServiceDesiredState.STOPPED
+    )
+    assert operations.service_resources["app"].spec.updated_at == datetime(
+        2026, 6, 30, tzinfo=UTC
+    )
+    assert operations.service_resources["redis"].spec.desired_state == (
+        GuestServiceDesiredState.RUNNING
+    )
+
+
 def test_observe_guest_service_reads_and_persists_loaded_status() -> None:
     operations = FakeOperations()
     usecases = build_usecases(
@@ -1122,9 +1231,12 @@ def test_observe_guest_service_uses_explicit_status_and_resource_repositories() 
     assert operations.status_snapshots == []
     assert operations.service_resources == {}
     assert status_snapshots.status_snapshots[0].service == "app"
-    assert guest_service_resources.service_resources["app"].status.as_json()[
-        "observedState"
-    ] == "running"
+    assert (
+        guest_service_resources.service_resources["app"].status.as_json()[
+            "observedState"
+        ]
+        == "running"
+    )
 
 
 def test_guest_service_spec_update_persists_desired_state() -> None:
@@ -1373,8 +1485,9 @@ def test_restart_service_failure_is_persisted_as_failed_operation() -> None:
     assert [status.service for status in operations.status_snapshots] == ["app"]
 
 
-def test_restart_service_status_snapshot_failure_is_persisted_as_failed_operation(
-) -> None:
+def test_restart_service_status_snapshot_failure_is_persisted_as_failed_operation() -> (
+    None
+):
     operations = FakeOperations()
     service_control = FakeServiceControl(fail_status=True)
     usecases = build_usecases(
@@ -1730,7 +1843,7 @@ def test_prepare_update_shutdown_rejects_missing_persisted_operation_state() -> 
         usecases.prepare_update_shutdown(
             request_id="update-shutdown-request-1",
             version="0.2.0",
-    )
+        )
 
     assert error.value.kind == "operationStateMissing"
     assert (
@@ -1876,11 +1989,43 @@ def test_lab_read_models_are_loaded_from_product_lab_port() -> None:
 
     beds = usecases.list_lab_beds()
     recorders = usecases.list_lab_recorders()
+    sessions = usecases.list_lab_sessions()
 
     assert beds["state"] == "loaded"
     assert beds["beds"][0]["name"] == "OR-A"
     assert recorders["state"] == "loaded"
     assert recorders["recorders"][0]["vrcode"] == "LAB-lab-session-1-1"
+    assert sessions["state"] == "loaded"
+    assert sessions["sessions"][0]["sessionId"] == "lab-session-1"
+
+
+def test_lab_recorder_commands_persist_explicit_operation_and_result() -> None:
+    operations = FakeOperations()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        product_lab=FakeProductLab(),
+    )
+
+    stopped = usecases.stop_lab_recorder("lab-session-1", "lab-session-1-recorder-1")
+    started = usecases.start_lab_recorder("lab-session-1", "lab-session-1-recorder-1")
+
+    assert stopped["state"] == "loaded"
+    assert stopped["recorder"]["state"] == "stopped"
+    assert stopped["operationId"] == "op_product-lab_lab-stop-recorder_1"
+    assert started["state"] == "loaded"
+    assert started["recorder"]["state"] == "running"
+    assert started["operationId"] == "op_product-lab_lab-start-recorder_1"
+    assert [
+        operation.command
+        for operation in operations.saved
+        if operation.state == OperationState.COMPLETED
+    ] == [
+        ServiceCommand.LAB_STOP_RECORDER,
+        ServiceCommand.LAB_START_RECORDER,
+    ]
 
 
 def test_create_lab_session_failure_is_persisted_as_failed_operation() -> None:

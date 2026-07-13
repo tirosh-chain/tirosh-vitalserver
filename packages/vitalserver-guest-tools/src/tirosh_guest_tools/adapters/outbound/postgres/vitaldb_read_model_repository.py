@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-import json
-from datetime import datetime
+from datetime import UTC, datetime
+import os
 from typing import Any
 
-from tirosh_guest_tools.adapters.outbound.postgres.psql import (
-    PostgresCommandError,
-    jsonb_literal,
-    run_psql,
-    run_schema_migration,
-    sql_literal,
+from sqlalchemy import create_engine, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from tirosh_guest_tools.adapters.outbound.postgres.mappings import domain_document
+from tirosh_guest_tools.adapters.outbound.postgres.records import (
+    VitalDBObservationRecord,
+    VitalDBRecordBase,
+    VitalDBRelationshipRecord,
+    VitalDBVisibilityRecord,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
     VitalDBReadModelDependencyError,
@@ -20,38 +24,6 @@ from tirosh_guest_tools.domain.vitaldb_history import (
     project_vitaldb_history,
 )
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS vitaldb_observation_snapshots (
-    snapshot_id bigserial PRIMARY KEY,
-    document jsonb NOT NULL,
-    observed_at timestamptz NOT NULL,
-    inserted_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS vitaldb_observation_snapshots_observed_at_idx
-    ON vitaldb_observation_snapshots (observed_at DESC, snapshot_id DESC);
-
-CREATE TABLE IF NOT EXISTS vitaldb_relationship_history_snapshots (
-    snapshot_id bigserial PRIMARY KEY,
-    document jsonb NOT NULL,
-    observed_at timestamptz NOT NULL,
-    inserted_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS vitaldb_relationship_history_snapshots_observed_at_idx
-    ON vitaldb_relationship_history_snapshots (observed_at DESC, snapshot_id DESC);
-
-CREATE TABLE IF NOT EXISTS vitaldb_entity_visibility (
-    entity_kind text NOT NULL,
-    entity_id text NOT NULL,
-    visibility text NOT NULL,
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (entity_kind, entity_id),
-    CONSTRAINT vitaldb_entity_visibility_kind_check
-        CHECK (entity_kind IN ('recorder', 'bed')),
-    CONSTRAINT vitaldb_entity_visibility_value_check
-        CHECK (visibility IN ('visible', 'hidden', 'deleted'))
-);
-"""
-
 RELATIONSHIP_HISTORY_STATES = {"loaded", "partiallyLoaded", "readFailed"}
 VISIBLE = "visible"
 HIDDEN = "hidden"
@@ -59,17 +31,23 @@ DELETED = "deleted"
 
 
 class PostgresVitalDBReadModelRepository:
+    def __init__(self, database_url: str | None = None) -> None:
+        raw_url = database_url or os.environ.get(
+            "VITALSERVER_DATABASE_URL",
+            "postgresql://vitalserver:vitalserver@127.0.0.1:15432/vitalserver",
+        )
+        url = (
+            "postgresql+psycopg://" + raw_url.removeprefix("postgresql://")
+            if raw_url.startswith("postgresql://")
+            else raw_url
+        )
+        self._engine = create_engine(url, pool_pre_ping=True)
+
     def ensure_schema(self) -> None:
         try:
-            run_schema_migration(
-                SCHEMA_SQL,
-                stage="vitaldb read model schema migration",
-            )
-        except PostgresCommandError as error:
-            raise VitalDBReadModelDependencyError(
-                error.message,
-                kind=error.kind,
-            ) from error
+            VitalDBRecordBase.metadata.create_all(self._engine)
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="schema migration") from error
 
     def latest_observation(self) -> dict[str, Any]:
         observation = self._latest_observation_document()
@@ -198,71 +176,40 @@ class PostgresVitalDBReadModelRepository:
         }
 
     def _latest_observation_document(self) -> dict[str, Any]:
-        sql = (
-            "SELECT document::text FROM vitaldb_observation_snapshots "
-            "ORDER BY observed_at DESC, snapshot_id DESC LIMIT 1;"
-        )
-        completed = _run_vitaldb_psql(sql, stage="vitaldb latest observation read")
-        text = (completed.stdout or "").strip()
-        if not text:
+        try:
+            with Session(self._engine) as session:
+                record = session.scalar(
+                    select(VitalDBObservationRecord).order_by(
+                        VitalDBObservationRecord.observed_at.desc(),
+                        VitalDBObservationRecord.snapshot_id.desc(),
+                    ).limit(1)
+                )
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="latest observation read") from error
+        if record is None:
             raise VitalDBReadModelDependencyError(
                 "VitalDB observation read model is empty.",
                 kind="vitaldb-read-model-unavailable",
             )
-
-        try:
-            observation = json.loads(text)
-        except json.JSONDecodeError as error:
-            raise VitalDBReadModelDependencyError(
-                "VitalDB observation read model document is invalid JSON.",
-                kind="vitaldb-read-model-invalid",
-            ) from error
-
-        if not isinstance(observation, dict):
-            raise VitalDBReadModelDependencyError(
-                "VitalDB observation read model document is not an object.",
-                kind="vitaldb-read-model-invalid",
-            )
-
-        return observation
+        return domain_document(record.document, label="observation read model")
 
     def _observation_documents(self, *, limit: int = 1000) -> list[dict[str, Any]]:
-        sql = (
-            "SELECT COALESCE(jsonb_agg(document ORDER BY observed_at, snapshot_id), "
-            "'[]'::jsonb)::text FROM ("
-            "SELECT snapshot_id, document, observed_at "
-            "FROM vitaldb_observation_snapshots "
-            "ORDER BY observed_at DESC, snapshot_id DESC "
-            f"LIMIT {limit}"
-            ") AS recent;"
-        )
-        completed = _run_vitaldb_psql(sql, stage="vitaldb observation history read")
-        text = (completed.stdout or "").strip()
-        if not text:
-            raise VitalDBReadModelDependencyError(
-                "VitalDB observation history read returned no document.",
-                kind="vitaldb-read-model-unavailable",
-            )
         try:
-            observations = json.loads(text)
-        except json.JSONDecodeError as error:
-            raise VitalDBReadModelDependencyError(
-                "VitalDB observation history is invalid JSON.",
-                kind="vitaldb-read-model-invalid",
-            ) from error
-        if not isinstance(observations, list) or not all(
-            isinstance(observation, dict) for observation in observations
-        ):
-            raise VitalDBReadModelDependencyError(
-                "VitalDB observation history is not a document list.",
-                kind="vitaldb-read-model-invalid",
-            )
-        if not observations:
+            with Session(self._engine) as session:
+                records = list(session.scalars(
+                    select(VitalDBObservationRecord).order_by(
+                        VitalDBObservationRecord.observed_at.desc(),
+                        VitalDBObservationRecord.snapshot_id.desc(),
+                    ).limit(limit)
+                ))
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="observation history read") from error
+        if not records:
             raise VitalDBReadModelDependencyError(
                 "VitalDB observation read model is empty.",
                 kind="vitaldb-read-model-unavailable",
             )
-        return observations
+        return [domain_document(record.document, label="observation history") for record in reversed(records)]
 
     def _history_document(self) -> dict[str, Any]:
         try:
@@ -278,33 +225,17 @@ class PostgresVitalDBReadModelRepository:
             ) from error
 
     def _latest_relationship_history_document(self) -> dict[str, Any]:
-        sql = (
-            "SELECT document::text FROM vitaldb_relationship_history_snapshots "
-            "ORDER BY observed_at DESC, snapshot_id DESC LIMIT 1;"
-        )
-        completed = _run_vitaldb_psql(sql, stage="vitaldb relationship history read")
-        text = (completed.stdout or "").strip()
-        if not text:
+        try:
+            with Session(self._engine) as session:
+                record = session.scalar(select(VitalDBRelationshipRecord).order_by(VitalDBRelationshipRecord.observed_at.desc(), VitalDBRelationshipRecord.snapshot_id.desc()).limit(1))
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="relationship history read") from error
+        if record is None:
             raise VitalDBReadModelDependencyError(
                 "VitalDB relationship read model is empty.",
                 kind="vitaldb-read-model-unavailable",
             )
-
-        try:
-            relationship_history = json.loads(text)
-        except json.JSONDecodeError as error:
-            raise VitalDBReadModelDependencyError(
-                "VitalDB relationship read model document is invalid JSON.",
-                kind="vitaldb-read-model-invalid",
-            ) from error
-
-        if not isinstance(relationship_history, dict):
-            raise VitalDBReadModelDependencyError(
-                "VitalDB relationship read model document is not an object.",
-                kind="vitaldb-read-model-invalid",
-            )
-
-        return relationship_history
+        return domain_document(record.document, label="relationship read model")
 
     def _collection_document(
         self,
@@ -359,46 +290,12 @@ class PostgresVitalDBReadModelRepository:
         }
 
     def _visibility_by_id(self, entity_kind: str) -> dict[str, str]:
-        sql = (
-            "SELECT COALESCE(jsonb_object_agg(entity_id, visibility), "
-            "'{}'::jsonb)::text "
-            "FROM vitaldb_entity_visibility "
-            f"WHERE entity_kind = {sql_literal(entity_kind)};"
-        )
-        completed = _run_vitaldb_psql(sql, stage="vitaldb entity visibility read")
-        text = (completed.stdout or "").strip()
-        if not text:
-            raise VitalDBReadModelDependencyError(
-                "VitalDB entity visibility read returned no document.",
-                kind="vitaldb-read-model-unavailable",
-            )
         try:
-            document = json.loads(text)
-        except json.JSONDecodeError as error:
-            raise VitalDBReadModelDependencyError(
-                "VitalDB entity visibility document is invalid JSON.",
-                kind="vitaldb-read-model-invalid",
-            ) from error
-        if not isinstance(document, dict):
-            raise VitalDBReadModelDependencyError(
-                "VitalDB entity visibility document is not an object.",
-                kind="vitaldb-read-model-invalid",
-            )
-        visibility_by_id: dict[str, str] = {}
-        for entity_id, visibility in document.items():
-            if not isinstance(entity_id, str) or not isinstance(
-                visibility, str
-            ) or visibility not in {
-                VISIBLE,
-                HIDDEN,
-                DELETED,
-            }:
-                raise VitalDBReadModelDependencyError(
-                    "VitalDB entity visibility document contains an invalid item.",
-                    kind="vitaldb-read-model-invalid",
-                )
-            visibility_by_id[entity_id] = str(visibility)
-        return visibility_by_id
+            with Session(self._engine) as session:
+                records = list(session.scalars(select(VitalDBVisibilityRecord).where(VitalDBVisibilityRecord.entity_kind == entity_kind)))
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="entity visibility read") from error
+        return {record.entity_id: record.visibility for record in records}
 
     def _set_visibility(
         self,
@@ -412,23 +309,17 @@ class PostgresVitalDBReadModelRepository:
                 "VitalDB entity visibility command is invalid.",
                 kind="vitaldb-read-model-invalid",
             )
-        values = ", ".join(
-            "("
-            f"{sql_literal(entity_kind)}, "
-            f"{sql_literal(entity_id)}, "
-            f"{sql_literal(visibility)}, "
-            "now()"
-            ")"
-            for entity_id in entity_ids
-        )
-        sql = (
-            "INSERT INTO vitaldb_entity_visibility "
-            "(entity_kind, entity_id, visibility, updated_at) VALUES "
-            f"{values} "
-            "ON CONFLICT (entity_kind, entity_id) DO UPDATE SET "
-            "visibility = EXCLUDED.visibility, updated_at = EXCLUDED.updated_at;"
-        )
-        _run_vitaldb_psql(sql, stage="vitaldb entity visibility write")
+        try:
+            with Session(self._engine) as session, session.begin():
+                for entity_id in entity_ids:
+                    record = session.get(VitalDBVisibilityRecord, {"entity_kind": entity_kind, "entity_id": entity_id})
+                    if record is None:
+                        session.add(VitalDBVisibilityRecord(entity_kind=entity_kind, entity_id=entity_id, visibility=visibility, updated_at=datetime.now(UTC)))
+                    else:
+                        record.visibility = visibility
+                        record.updated_at = datetime.now(UTC)
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="entity visibility write") from error
 
     def _mark_deleted_if_hidden(
         self,
@@ -460,14 +351,11 @@ class PostgresVitalDBReadModelRepository:
         *,
         observed_at: datetime,
     ) -> None:
-        sql = (
-            "INSERT INTO vitaldb_observation_snapshots "
-            "(document, observed_at) VALUES ("
-            f"{jsonb_literal(observation)}, "
-            f"{sql_literal(observed_at.isoformat())}::timestamptz"
-            ");"
-        )
-        _run_vitaldb_psql(sql, stage="vitaldb latest observation save")
+        try:
+            with Session(self._engine) as session, session.begin():
+                session.add(VitalDBObservationRecord(document=observation, observed_at=observed_at))
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="latest observation save") from error
 
     def save_relationship_history(
         self,
@@ -475,24 +363,18 @@ class PostgresVitalDBReadModelRepository:
         *,
         observed_at: datetime,
     ) -> None:
-        sql = (
-            "INSERT INTO vitaldb_relationship_history_snapshots "
-            "(document, observed_at) VALUES ("
-            f"{jsonb_literal(relationship_history)}, "
-            f"{sql_literal(observed_at.isoformat())}::timestamptz"
-            ");"
-        )
-        _run_vitaldb_psql(sql, stage="vitaldb relationship history save")
+        try:
+            with Session(self._engine) as session, session.begin():
+                session.add(VitalDBRelationshipRecord(document=relationship_history, observed_at=observed_at))
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="relationship history save") from error
 
 
-def _run_vitaldb_psql(sql: str, *, stage: str):
-    try:
-        return run_psql(sql, stage=stage)
-    except PostgresCommandError as error:
-        raise VitalDBReadModelDependencyError(
-            error.message,
-            kind="vitaldb-read-model-unavailable",
-        ) from error
+def _database_error(error: SQLAlchemyError, *, stage: str) -> VitalDBReadModelDependencyError:
+    return VitalDBReadModelDependencyError(
+        f"VitalDB database {stage} failed: {error}",
+        kind="vitaldb-read-model-unavailable",
+    )
 
 
 def _validated_activity_bucket(

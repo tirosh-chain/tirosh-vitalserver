@@ -28,7 +28,7 @@ from .model import (
     LabVitalFile,
     utc_now_iso,
 )
-from .postgres_store import PostgresLabSessionStore
+from .persistence import SQLAlchemyLabSessionStore
 from .settings import LabSettings, load_settings
 
 
@@ -45,7 +45,9 @@ class LabServer(ThreadingHTTPServer):
         self.settings = settings
         self.scenarios = scenarios
         self.session_store = session_store or build_session_store(settings)
-        self.execution_engine = execution_engine or build_execution_engine(settings=settings)
+        self.execution_engine = execution_engine or build_execution_engine(
+            settings=settings
+        )
 
     def server_close(self) -> None:
         self.execution_engine.shutdown()
@@ -185,6 +187,17 @@ def route_lab_request(
             "readError": None,
         }
 
+    if method == "GET" and path == "/lab/sessions":
+        try:
+            sessions = session_store.list_sessions()
+        except LabSessionStoreUnavailable as error:
+            return _read_model_failure_response(error, collection="sessions")
+        return HTTPStatus.OK, {
+            "state": "loaded",
+            "sessions": [session.as_json() for session in sessions],
+            "readError": None,
+        }
+
     if method == "POST" and path == "/lab/beds/create":
         try:
             request = _parse_bed_create(_json_body(body))
@@ -312,6 +325,96 @@ def route_lab_request(
             session.as_json(),
             operation_id=operation_id,
         )
+
+    if (
+        method == "POST"
+        and len(parts) == 6
+        and parts[:2] == ["lab", "sessions"]
+        and parts[3] == "recorders"
+        and parts[5] in {"start", "stop"}
+    ):
+        session_id = parts[2]
+        recorder_id = parts[4]
+        action = parts[5]
+        operation_id = f"lab-recorder-{action}-{recorder_id}"
+        try:
+            session = session_store.get(session_id)
+            if session is None:
+                return HTTPStatus.NOT_FOUND, _missing_session_response(
+                    session_id,
+                    operation_id=operation_id,
+                )
+            if session.state != "running":
+                return HTTPStatus.CONFLICT, {
+                    "state": "failed",
+                    "operationId": operation_id,
+                    "recorder": None,
+                    "readError": (
+                        "Lab recorder control requires a running session: "
+                        f"{session_id} state={session.state}"
+                    ),
+                }
+            session_beds = tuple(
+                bed for bed in session_store.list_beds() if bed.session_id == session_id
+            )
+            session_recorders = tuple(
+                recorder
+                for recorder in session_store.list_recorders()
+                if recorder.session_id == session_id
+            )
+            if action == "start":
+                recorder = session_store.start_recorder(session_id, recorder_id)
+                if recorder is not None:
+                    execution_engine.start_recorder(
+                        session=session,
+                        beds=session_beds,
+                        recorders=session_recorders,
+                        recorder_id=recorder_id,
+                        result_sink=session_store.save_recorder_execution_results,
+                    )
+            else:
+                recorder = session_store.stop_recorder(session_id, recorder_id)
+                if recorder is not None:
+                    execution_engine.stop_recorder(session_id, recorder_id)
+        except LabSessionStoreUnavailable as error:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {
+                "state": "failed",
+                "operationId": operation_id,
+                "recorder": None,
+                "readError": error.message,
+            }
+        if recorder is None:
+            return HTTPStatus.NOT_FOUND, {
+                "state": "failed",
+                "operationId": operation_id,
+                "recorder": None,
+                "readError": (
+                    "Lab recorder is not available in session: "
+                    f"{session_id}/{recorder_id}"
+                ),
+            }
+        try:
+            refreshed = next(
+                (
+                    candidate
+                    for candidate in session_store.list_recorders()
+                    if candidate.recorder_id == recorder_id
+                ),
+                recorder,
+            )
+        except LabSessionStoreUnavailable as error:
+            return HTTPStatus.SERVICE_UNAVAILABLE, {
+                "state": "failed",
+                "operationId": operation_id,
+                "recorder": None,
+                "readError": error.message,
+            }
+        return HTTPStatus.ACCEPTED, {
+            "state": "loaded",
+            "operationId": operation_id,
+            "recorder": refreshed.as_json(),
+            "readError": None,
+        }
 
     if method == "POST" and parts == ["lab", "vital-files", "replay"]:
         try:
@@ -512,11 +615,7 @@ def _parse_recorder_delete(payload: dict[str, Any]) -> LabRecorderDeleteInput:
         vrcodes=optional_string_list_field(payload, "vrcodes") or (),
         session_id=optional_string_field(payload, "sessionId"),
     )
-    if (
-        not request.recorder_ids
-        and not request.vrcodes
-        and request.session_id is None
-    ):
+    if not request.recorder_ids and not request.vrcodes and request.session_id is None:
         raise LabRequestError(
             "recorder_delete_target_required",
             "recorderIds, vrcodes, or sessionId is required.",
@@ -665,9 +764,12 @@ def list_vital_files(
 
 
 def utc_now_iso_from_timestamp(timestamp: float) -> str:
-    return datetime.fromtimestamp(timestamp, UTC).replace(
-        microsecond=0
-    ).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.fromtimestamp(timestamp, UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _session_response(
@@ -704,8 +806,13 @@ def _vital_file_upload_response(
     *,
     operation_id: str,
 ) -> dict[str, object]:
-    read_error = None if receipt.ok else (
-        receipt.response_text or f"VitalServer upload failed: status={receipt.status_code}"
+    read_error = (
+        None
+        if receipt.ok
+        else (
+            receipt.response_text
+            or f"VitalServer upload failed: status={receipt.status_code}"
+        )
     )
     return {
         "state": "loaded" if receipt.ok else "failed",
@@ -780,10 +887,9 @@ def build_session_store(settings: LabSettings) -> LabSessionStore:
                 "VITALSERVER_LAB_DATABASE_URL is required for postgres session store",
                 kind="labSessionStoreConfigurationInvalid",
             )
-        return PostgresLabSessionStore(
-            settings.database_url,
-            psql_command=settings.psql_command,
-        )
+        store = SQLAlchemyLabSessionStore(settings.database_url)
+        store.ensure_ready()
+        return store
     raise LabSessionStoreUnavailable(
         f"unsupported Lab session store: {settings.session_store}",
         kind="labSessionStoreConfigurationInvalid",

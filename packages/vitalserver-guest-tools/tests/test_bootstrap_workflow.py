@@ -37,6 +37,11 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
     assert_before(
         events,
         "start-compose",
+        "write-runtime-observation",
+    )
+    assert_before(
+        events,
+        "write-runtime-observation",
         "start-container-logs",
     )
     assert "build-missing-images" not in events
@@ -72,6 +77,21 @@ def test_guest_bootstrap_rejects_container_logs_before_compose(
         match="start-container-logs requires start-compose",
     ):
         workflow.start_container_logs()
+
+
+def test_guest_bootstrap_rejects_initial_observation_before_compose(
+    tmp_path: Path,
+) -> None:
+    workflow = GuestBootstrapWorkflow(
+        context=bootstrap_context(tmp_path),
+        operations=fake_operations([]),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="write-initial-runtime-observation requires start-compose",
+    ):
+        workflow.write_initial_runtime_observation()
 
 
 def test_guest_bootstrap_cli_is_registered() -> None:

@@ -9,6 +9,7 @@ public enum RuntimeLabReadState: String, Codable, Equatable, Sendable {
 public enum RuntimeLabSessionState: String, Codable, Equatable, Sendable {
     case accepted
     case running
+    case stopping
     case stopped
     case failed
     case unavailable
@@ -302,6 +303,57 @@ public struct RuntimeLabRecorderList: Codable, Equatable, Sendable {
 
     public static func unavailable(readError: String) -> RuntimeLabRecorderList {
         RuntimeLabRecorderList(state: .unavailable, recorders: [], readError: readError)
+    }
+}
+
+public struct RuntimeLabRecorderResponse: Codable, Equatable, Sendable {
+    public let state: RuntimeLabReadState
+    public let recorder: RuntimeLabRecorder?
+    public let operationId: String?
+    public let labOperationId: String?
+    public let readError: String?
+
+    public init(
+        state: RuntimeLabReadState,
+        recorder: RuntimeLabRecorder?,
+        operationId: String? = nil,
+        labOperationId: String? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.recorder = recorder
+        self.operationId = operationId
+        self.labOperationId = labOperationId
+        self.readError = readError
+    }
+
+    public static func unavailable(readError: String) -> RuntimeLabRecorderResponse {
+        RuntimeLabRecorderResponse(
+            state: .unavailable,
+            recorder: nil,
+            operationId: nil,
+            readError: readError
+        )
+    }
+}
+
+public struct RuntimeLabSessionList: Codable, Equatable, Sendable {
+    public let state: RuntimeLabReadState
+    public let sessions: [RuntimeLabSession]
+    public let readError: String?
+
+    public init(
+        state: RuntimeLabReadState,
+        sessions: [RuntimeLabSession],
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.sessions = sessions
+        self.readError = readError
+    }
+
+    public static func unavailable(readError: String) -> RuntimeLabSessionList {
+        RuntimeLabSessionList(state: .unavailable, sessions: [], readError: readError)
     }
 }
 

@@ -33,30 +33,9 @@ struct RuntimeLabPanel: View {
                         Text(displayName(viewModel.labScenarios.state.rawValue))
                             .fontWeight(.medium)
                     }
-                    statusRow(AppConstants.Labels.scenario) {
-                        if viewModel.labScenarios.scenarios.isEmpty {
-                            Text(AppConstants.Values.empty)
-                                .fontWeight(.medium)
-                        } else {
-                            Picker(AppConstants.Labels.scenario, selection: $viewModel.selectedLabScenarioID) {
-                                ForEach(viewModel.labScenarios.scenarios, id: \.scenarioId) { scenario in
-                                    Text(scenario.name).tag(scenario.scenarioId)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(maxWidth: 280)
-                        }
-                    }
-                    statusRow(RuntimeLabPanelText.labTargetURL) {
-                        TextField(RuntimeLabPanelText.labTargetURL, text: $viewModel.labTargetURL)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 360)
-                    }
                     statusRow(AppConstants.Labels.sessions) {
-                        Text(viewModel.selectedLabSessionID.isEmpty ? AppConstants.Values.empty : viewModel.selectedLabSessionID)
+                        Text(String(viewModel.labSessions.sessions.count))
                             .fontWeight(.medium)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
                     }
                     if let session = viewModel.labSessionResponse.session {
                         statusRow(AppConstants.Labels.recorders) {
@@ -89,6 +68,9 @@ struct RuntimeLabPanel: View {
                 }
 
                 labSessionSection
+                labSessionsSection
+                selectedLabSessionSection
+                selectedLabSessionRecordersSection
                 labVitalFileReplaySection
                 labResourceManagementSection
             }
@@ -100,6 +82,21 @@ struct RuntimeLabPanel: View {
             Divider()
             Text(RuntimeLabPanelText.productLabSession)
                 .font(.headline)
+            HStack(spacing: 12) {
+                Picker(AppConstants.Labels.scenario, selection: $viewModel.selectedLabScenarioID) {
+                    if viewModel.labScenarios.scenarios.isEmpty {
+                        Text(AppConstants.Values.empty).tag("")
+                    } else {
+                        ForEach(viewModel.labScenarios.scenarios, id: \.scenarioId) { scenario in
+                            Text(scenario.name).tag(scenario.scenarioId)
+                        }
+                    }
+                }
+                .frame(maxWidth: 280)
+                TextField(RuntimeLabPanelText.labTargetURL, text: $viewModel.labTargetURL)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 360)
+            }
             HStack(spacing: 12) {
                 TextField("Session name", text: $viewModel.labSessionName)
                     .textFieldStyle(.roundedBorder)
@@ -134,19 +131,141 @@ struct RuntimeLabPanel: View {
                 }
                 .disabled(!viewModel.labCanCreateSession)
 
-                Button(AppConstants.Actions.start) {
-                    Task { await viewModel.startProductLabSession() }
-                }
-                .disabled(!viewModel.labCanControlSelectedSession)
-
-                Button(AppConstants.Actions.stop) {
-                    Task { await viewModel.stopProductLabSession() }
-                }
-                .disabled(!viewModel.labCanControlSelectedSession)
-
                 if viewModel.isRunningLabAction {
                     ProgressView()
                         .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private var labSessionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            HStack {
+                Text(RuntimeLabPanelText.productLabSessions)
+                    .font(.headline)
+                Text(String(viewModel.labSessions.sessions.count))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(AppConstants.Actions.refresh) {
+                    Task { await viewModel.refreshProductLabReadModels() }
+                }
+                .disabled(viewModel.isRunningLabAction)
+            }
+
+            Picker(RuntimeLabPanelText.productLabSessions, selection: $viewModel.selectedLabSessionID) {
+                if viewModel.labSessions.sessions.isEmpty {
+                    Text(AppConstants.Values.empty).tag("")
+                } else {
+                    ForEach(viewModel.labSessions.sessions, id: \.sessionId) { session in
+                        Text("\(session.name ?? session.sessionId) · \(session.state.rawValue)")
+                            .tag(session.sessionId)
+                    }
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 520)
+            .onChange(of: viewModel.selectedLabSessionID) {
+                Task { await viewModel.selectProductLabSession(viewModel.selectedLabSessionID) }
+            }
+
+            if let readError = viewModel.labSessions.readError {
+                Text(readError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private var selectedLabSessionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            Text(RuntimeLabPanelText.selectedLabSession)
+                .font(.headline)
+            if let session = viewModel.selectedLabSession {
+                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 6) {
+                    statusRow(AppConstants.Labels.status) {
+                        Text(session.state.rawValue).fontWeight(.medium)
+                    }
+                    statusRow("Session ID") {
+                        Text(session.sessionId)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    statusRow(AppConstants.Labels.scenario) {
+                        Text(session.scenarioId).fontWeight(.medium)
+                    }
+                    statusRow(AppConstants.Labels.recorders) {
+                        Text(String(session.recorderCount)).fontWeight(.medium)
+                    }
+                    statusRow(AppConstants.Labels.target) {
+                        Text(session.targetURL ?? AppConstants.StatusText.notAvailable)
+                            .fontWeight(.medium)
+                    }
+                }
+                HStack(spacing: 8) {
+                    Button(AppConstants.Actions.start) {
+                        Task { await viewModel.startProductLabSession() }
+                    }
+                    .disabled(!viewModel.labCanStartSelectedSession)
+                    Button(AppConstants.Actions.stop) {
+                        Task { await viewModel.stopProductLabSession() }
+                    }
+                    .disabled(!viewModel.labCanStopSelectedSession)
+                }
+            } else {
+                Text(RuntimeLabPanelText.noLabSession)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var selectedLabSessionRecordersSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            HStack {
+                Text(RuntimeLabPanelText.sessionRecorders)
+                    .font(.headline)
+                Text(String(viewModel.selectedLabSessionRecorders.count))
+                    .foregroundStyle(.secondary)
+            }
+
+            if viewModel.selectedLabSessionRecorders.isEmpty {
+                Text("No recorders reported for the selected session.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(viewModel.selectedLabSessionRecorders, id: \.recorderId) { recorder in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(recorder.vrcode).fontWeight(.medium)
+                            Text(recorder.state.rawValue).foregroundStyle(.secondary)
+                            Spacer()
+                            Button(AppConstants.Actions.start) {
+                                Task { await viewModel.startProductLabRecorder(recorder.recorderId) }
+                            }
+                            .disabled(
+                                viewModel.isRunningLabAction
+                                    || viewModel.selectedLabSession?.state != .running
+                                    || recorder.state == .running
+                            )
+                            Button(AppConstants.Actions.stop) {
+                                Task { await viewModel.stopProductLabRecorder(recorder.recorderId) }
+                            }
+                            .disabled(
+                                viewModel.isRunningLabAction
+                                    || viewModel.selectedLabSession?.state != .running
+                                    || recorder.state != .running
+                            )
+                        }
+                        Text("\(recorder.recorderId) · \(recorder.bedId) · \(recorder.lastSendState.rawValue)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .padding(.vertical, 4)
                 }
             }
         }
@@ -366,6 +485,7 @@ struct RuntimeLabPanel: View {
     private var labReadIssues: [String] {
         let rawIssues = [
             viewModel.labScenarios.readError,
+            viewModel.labSessions.readError,
             viewModel.labSessionResponse.readError,
             viewModel.labBeds.readError,
             viewModel.labRecorders.readError,

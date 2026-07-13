@@ -28,6 +28,7 @@ import {
   useLabRecorders,
   useLabScenarios,
   useLabSession,
+  useLabSessions,
   useLabVitalFiles,
   useReplayLabVitalFile,
   useRedisBackups,
@@ -37,6 +38,7 @@ import {
   useRestartRuntimeProvider,
   useRestartGuestService,
   useStartLabSession,
+  useStartLabRecorder,
   useRollbackBackup,
   useRestoreRuntimeDataBackup,
   useControlCapabilities,
@@ -49,6 +51,7 @@ import {
   useStartGuestService,
   useStopGuestService,
   useStopLabSession,
+  useStopLabRecorder,
   useSummarizeUpdateBundle,
   useUnhideVitalDBBeds,
   useUnhideVitalDBRecorders,
@@ -89,6 +92,7 @@ describe("console hooks", () => {
     await expectQuery(useLabScenarios, wrapper, gateway.getLabScenarios);
     await expectQuery(useLabBeds, wrapper, gateway.getLabBeds);
     await expectQuery(useLabRecorders, wrapper, gateway.getLabRecorders);
+    await expectQuery(useLabSessions, wrapper, gateway.getLabSessions);
     await expectQuery(useLabVitalFiles, wrapper, gateway.getLabVitalFiles);
     await expectQuery(() => useHostBackups(true), wrapper, gateway.listHostBackups);
     await expectQuery(() => useRedisBackups(true), wrapper, gateway.listRedisBackups);
@@ -294,6 +298,12 @@ describe("console hooks", () => {
     expect(gateway.startLabSession).toHaveBeenCalledWith("lab-1");
     expect(gateway.stopLabSession).toHaveBeenCalledWith("lab-1");
 
+    const recorderCommand = { sessionId: "lab-1", recorderId: "recorder-1" };
+    await mutateHook(() => useStartLabRecorder(), recorderCommand, wrapper);
+    await mutateHook(() => useStopLabRecorder(), recorderCommand, wrapper);
+    expect(gateway.startLabRecorder).toHaveBeenCalledWith("lab-1", "recorder-1");
+    expect(gateway.stopLabRecorder).toHaveBeenCalledWith("lab-1", "recorder-1");
+
     await mutateHook(
       () => useReplayLabVitalFile(),
       {
@@ -431,7 +441,15 @@ function createGateway(): GatewayMock {
     getPlatformCapabilities: vi.fn().mockResolvedValue(platformCapabilities()),
     getRuntimeCapabilities: vi.fn().mockResolvedValue({
       schemaVersion: 1,
-      capabilities: ["services:start", "services:stop", "services:restart", "lab:scenarios"]
+      capabilities: [
+        "services:start",
+        "services:stop",
+        "services:restart",
+        "lab:scenarios",
+        "lab:sessions:list",
+        "lab:recorders:start",
+        "lab:recorders:stop"
+      ]
     }),
     getOperationState: vi.fn().mockResolvedValue({
       activeOperation: "apply-bundle",
@@ -468,6 +486,11 @@ function createGateway(): GatewayMock {
     getLabRecorders: vi.fn().mockResolvedValue({
       state: "loaded",
       recorders: [],
+      readError: null
+    }),
+    getLabSessions: vi.fn().mockResolvedValue({
+      state: "loaded",
+      sessions: [labSessionResponse().session],
       readError: null
     }),
     getLabVitalFiles: vi.fn().mockResolvedValue({
@@ -543,8 +566,10 @@ function createGateway(): GatewayMock {
     restartGuestService: vi.fn().mockResolvedValue(guestServiceOperation("restart")),
     startGuestService: vi.fn().mockResolvedValue(guestServiceOperation("start")),
     startLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
+    startLabRecorder: vi.fn().mockResolvedValue(labRecorderResponse("running")),
     stopGuestService: vi.fn().mockResolvedValue(guestServiceOperation("stop")),
     stopLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
+    stopLabRecorder: vi.fn().mockResolvedValue(labRecorderResponse("stopped")),
     summarizeUpdateBundle: vi.fn().mockResolvedValue({ summary: "ok" }),
     uninstallRuntime: vi.fn().mockResolvedValue(platformWorkflowOperation("uninstall")),
     unhideBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
@@ -557,6 +582,24 @@ function createGateway(): GatewayMock {
       readError: null
     }),
     verifyUpdateBundle: vi.fn().mockResolvedValue(commandResult)
+  };
+}
+
+function labRecorderResponse(state: "running" | "stopped") {
+  return {
+    state: "loaded" as const,
+    operationId: `op-recorder-${state}`,
+    labOperationId: `lab-op-recorder-${state}`,
+    readError: null,
+    recorder: {
+      recorderId: "recorder-1",
+      sessionId: "lab-1",
+      bedId: "bed-1",
+      vrcode: "LAB-REC001",
+      state,
+      messagesSent: 0,
+      lastSendState: "notAttempted" as const
+    }
   };
 }
 
@@ -577,7 +620,9 @@ function fullCapabilities() {
     canRepairRuntimeDatastore: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseLab: true
+    canUseLab: true,
+    canListLabSessions: true,
+    canControlLabRecorders: true
   };
 }
 
@@ -586,6 +631,8 @@ function platformCapabilities() {
     canControlGuestServices: _,
     canUseLab: __,
     canRepairRuntimeDatastore: ___,
+    canListLabSessions: ____,
+    canControlLabRecorders: _____,
     ...platform
   } = fullCapabilities();
   return platform;

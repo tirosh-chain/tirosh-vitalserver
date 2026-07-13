@@ -310,16 +310,21 @@ def test_stage_guest_deploy_stages_verified_runtime_wheelhouse(
     def fake_download(
         lock: Path,
         destination: Path,
-        target: dict[str, str],
+        target: deploy_bundle.GuestRuntimeTarget,
     ) -> None:
         del lock
-        target_name = target["platform"].replace("manylinux2014_", "")
+        target_name = target["platforms"][-1].replace("manylinux2014_", "")
         (destination / f"sqlalchemy-{target_name}.whl").write_bytes(b"wheel")
 
     monkeypatch.setattr(
         deploy_bundle,
         "download_guest_runtime_wheels",
         fake_download,
+    )
+    monkeypatch.setattr(
+        deploy_bundle,
+        "validate_guest_runtime_wheelhouse",
+        lambda **_: None,
     )
     plan = guest_deploy_plan(
         root=root,
@@ -355,6 +360,47 @@ def test_stage_guest_deploy_stages_verified_runtime_wheelhouse(
         metadata = archive.read("guest_tools-0.1.0.dist-info/METADATA").decode()
     assert "Requires-Python: >=3.11" in metadata
     assert "Requires-Dist: SQLAlchemy==2.0.51" in metadata
+
+
+def test_guest_runtime_wheelhouse_validation_reports_missing_dependency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requirements = tmp_path / "linux-aarch64/requirements.txt"
+    requirements.parent.mkdir(parents=True)
+    requirements.write_text(
+        "../guest-tools/guest_tools-0.1.0-py3-none-any.whl "
+        "--hash=sha256:deadbeef\n",
+        encoding="utf-8",
+    )
+    guest_tools_directory = tmp_path / "guest-tools"
+    guest_tools_directory.mkdir()
+
+    def fail_validation(command: list[str], **_: object) -> None:
+        assert "--no-index" in command
+        assert "--require-hashes" in command
+        assert "manylinux_2_28_aarch64" in command
+        raise deploy_bundle.subprocess.CalledProcessError(
+            returncode=1,
+            cmd=command,
+            stderr="No matching distribution found for psycopg==3.3.4",
+        )
+
+    monkeypatch.setattr(deploy_bundle.subprocess, "run", fail_validation)
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            r"Guest Python runtime wheelhouse dependency closure is invalid.*"
+            r"No matching distribution found for psycopg==3\.3\.4"
+        ),
+    ):
+        deploy_bundle.validate_guest_runtime_wheelhouse(
+            requirements=requirements,
+            target_directory=requirements.parent,
+            guest_tools_directory=guest_tools_directory,
+            target=deploy_bundle.GUEST_RUNTIME_TARGETS["linux-aarch64"],
+        )
 
 
 def test_guest_tools_runtime_installer_does_not_initialize_control_state() -> None:

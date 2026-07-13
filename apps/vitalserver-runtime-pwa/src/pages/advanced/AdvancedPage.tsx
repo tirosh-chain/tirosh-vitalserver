@@ -278,8 +278,11 @@ export function AdvancedPage() {
         <VMHealth overview={platformOverview} />
       </Panel>
 
-      <Panel title="Service health">
-        <ServiceHealth overview={platformOverview} runtimeStack={runtimeStack.data} />
+      <Panel title="Platform services">
+        <PlatformServices state={platformState.data} />
+      </Panel>
+
+      <Panel title="Runtime product services">
         <GuestServiceControls
           stackStatus={runtimeStack.data}
           resourceReads={runtimeServiceResources}
@@ -305,7 +308,15 @@ export function AdvancedPage() {
         />
       </Panel>
 
-      <Panel title="API catalog">
+      <Panel title="Access endpoints">
+        <KeyValueRows
+          rows={[
+            {
+              label: "Public proxy",
+              value: formatHTTPStatus(platformState.data?.publicProxyHTTP)
+            }
+          ]}
+        />
         <APICatalog platformState={platformState.data} />
       </Panel>
 
@@ -727,69 +738,67 @@ function VMHealth({ overview }: { overview: RuntimeOverviewPresentation | undefi
   );
 }
 
-function ServiceHealth({
-  overview,
-  runtimeStack
-}: {
-  overview: RuntimeOverviewPresentation | undefined;
-  runtimeStack: RuntimeGuestControlStackStatus | undefined;
-}) {
-  const status = overview?.status;
-  const services = [
-    {
-      label: "Proxy service",
-      value: formatServiceLoaded(platformServiceRunning(status, "public-proxy")),
-      healthy: platformServiceRunning(status, "public-proxy")
-    },
-    {
-      label: "Guest log sync service",
-      value: formatServiceLoaded(platformServiceRunning(status, "log-sync")),
-      healthy: platformServiceRunning(status, "log-sync")
-    },
-    {
-      label: "Sleep prevention service",
-      value: formatServiceLoaded(platformServiceRunning(status, "sleep-prevention")),
-      healthy: platformServiceRunning(status, "sleep-prevention")
-    },
-    {
-      label: "Watchdog service",
-      value: formatServiceLoaded(platformServiceRunning(status, "watchdog")),
-      healthy: platformServiceRunning(status, "watchdog")
-    },
-    {
-      label: "VitalServer",
-      value: runtimeServiceState(runtimeStack, "app"),
-      healthy: null
-    },
-    {
-      label: "Network access",
-      value: formatHTTPStatus(status?.publicProxyHTTP),
-      healthy: null
-    },
-    {
-      label: "Redis UI service",
-      value: runtimeServiceState(runtimeStack, "redis-ui"),
-      healthy: null
-    },
-    {
-      label: "Swagger UI service",
-      value: runtimeServiceState(runtimeStack, "swagger-ui"),
-      healthy: null
-    }
-  ];
+function PlatformServices({ state }: { state: PlatformState | undefined }) {
+  if (!state) {
+    return <p className="muted">Platform service state has not been read.</p>;
+  }
 
   return (
-    <KeyValueRows
-      rows={services.map((service) => ({
-        label: service.label,
-        value: (
-          <StatusBadge tone={serviceTone(service.healthy, service.value)}>
-            {service.value}
-          </StatusBadge>
-        )
-      }))}
+    <DataTable
+      rows={state.services}
+      getRowKey={(service) => service.role}
+      columns={[
+        {
+          key: "role",
+          header: "Role",
+          render: (service) => platformServiceLabel(service.role)
+        },
+        {
+          key: "state",
+          header: "State",
+          render: (service) => (
+            <StatusBadge tone={platformServiceTone(service.state)}>
+              {service.state}
+            </StatusBadge>
+          )
+        },
+        {
+          key: "readError",
+          header: "Read error",
+          render: (service) => service.readError ?? "-"
+        }
+      ]}
+      emptyText="No Platform service state was reported."
     />
   );
+}
+
+function platformServiceLabel(
+  role: PlatformState["services"][number]["role"]
+): string {
+  const labels: Record<typeof role, string> = {
+    "runtime-provider": "Runtime provider",
+    "public-proxy": "Public proxy",
+    "log-sync": "Runtime log sync",
+    "sleep-prevention": "Sleep prevention",
+    watchdog: "Watchdog"
+  };
+  return labels[role];
+}
+
+function platformServiceTone(
+  state: PlatformState["services"][number]["state"]
+): "success" | "warning" | "danger" | "neutral" {
+  if (state === "running") {
+    return "success";
+  }
+  if (state === "stopped" || state === "not-installed" || state === "unavailable") {
+    return "neutral";
+  }
+  if (state === "failed" || state === "permission-denied" || state === "read-failed") {
+    return "danger";
+  }
+  return "warning";
 }
 
 function APICatalog({
@@ -886,7 +895,7 @@ function GuestServiceControls({
     .sort();
   const stackStatusIssue =
     stackStatus && stackStatus.state !== "loaded"
-      ? `Guest stack status is ${stackStatus.state}.`
+      ? `Runtime stack status is ${stackStatus.state}.`
       : "";
   const guestServicesReadError = stackStatusError?.message ?? stackStatusIssue;
   const guestServicesReadFailed =
@@ -898,7 +907,7 @@ function GuestServiceControls({
 
   return (
     <div className="subsection">
-      <h3>Product service controls</h3>
+      <h3>Observed state and control</h3>
       {knownServices.length > 0 ? (
         <DataTable
           rows={knownServices.map((service) => {
@@ -956,21 +965,21 @@ function GuestServiceControls({
               render: (row) => (
                 <div className="action-row compact">
                   <ConfirmButton
-                    confirmMessage={`Start Guest service ${row.service}?`}
+                    confirmMessage={`Start Runtime service ${row.service}?`}
                     disabled={disabled || isPending}
                     onClick={() => onStart(row.service)}
                   >
                     Start
                   </ConfirmButton>
                   <ConfirmButton
-                    confirmMessage={`Stop Guest service ${row.service}?`}
+                    confirmMessage={`Stop Runtime service ${row.service}?`}
                     disabled={disabled || isPending}
                     onClick={() => onStop(row.service)}
                   >
                     Stop
                   </ConfirmButton>
                   <ConfirmButton
-                    confirmMessage={`Restart Guest service ${row.service}?`}
+                    confirmMessage={`Restart Runtime service ${row.service}?`}
                     disabled={disabled || isPending}
                     onClick={() => onRestart(row.service)}
                   >
@@ -980,12 +989,12 @@ function GuestServiceControls({
               )
             }
           ]}
-          emptyText="No Guest services are reported."
+          emptyText="No Runtime product services are reported."
         />
       ) : null}
       {guestServicesReadFailed ? (
         <ErrorState
-          title="Failed to read Guest services"
+          title="Failed to read Runtime product services"
           error={new Error(guestServicesReadError)}
         />
       ) : null}
@@ -1084,32 +1093,6 @@ function ValidationErrors({
       ))}
     </div>
   );
-}
-
-function runtimeServiceState(
-  stack: RuntimeGuestControlStackStatus | undefined,
-  serviceName: string
-): string {
-  const service = stack?.services.find(
-    (candidate) => candidate.service === serviceName
-  );
-  if (!service) {
-    return NOT_REPORTED;
-  }
-  return service.health ? `${service.state} (${service.health})` : service.state;
-}
-
-function serviceTone(
-  healthy: boolean | null | undefined,
-  value: string
-): "success" | "warning" | "neutral" {
-  if (healthy === true) {
-    return "success";
-  }
-  if (healthy === false || value === NOT_REPORTED) {
-    return "warning";
-  }
-  return "neutral";
 }
 
 function booleanTone(

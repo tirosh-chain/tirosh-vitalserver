@@ -50,7 +50,8 @@ maintenance actions such as settings activation, recovery, backup/restore, and
 VM/proxy/watchdog lifecycle work를 제어합니다. Runtime product service 제어는
 Runtime capability identifier `services:start`, `services:stop`,
 `services:restart`가 모두 있을 때만 사용할 수 있습니다. Product Lab은
-`lab:scenarios` 등 Runtime Controller가 보고한 Lab capability를 사용합니다.
+`lab:scenarios`, `lab:sessions:list`, `lab:recorders:start`,
+`lab:recorders:stop` 등 Runtime Controller가 보고한 Lab capability를 사용합니다.
 
 | Method | Path |
 |---|---|
@@ -77,10 +78,13 @@ Runtime capability identifier `services:start`, `services:stop`,
 | `GET` | `/runtime/lab/scenarios` |
 | `GET` | `/runtime/lab/beds` |
 | `GET` | `/runtime/lab/recorders` |
+| `GET` | `/runtime/lab/sessions` |
 | `POST` | `/runtime/lab/sessions` |
 | `GET` | `/runtime/lab/sessions/{sessionId}` |
 | `POST` | `/runtime/lab/sessions/{sessionId}/start` |
 | `POST` | `/runtime/lab/sessions/{sessionId}/stop` |
+| `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start` |
+| `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop` |
 | `GET` | `/runtime/lab/vital-files` |
 | `POST` | `/runtime/lab/vital-files/replay` |
 | `POST` | `/runtime/lab/vital-files/upload` |
@@ -155,15 +159,20 @@ Runtime Lab is the product-facing boundary for virtual recorder scenarios and `.
 | `GET` | `/runtime/lab/scenarios` | list product lab scenarios available for virtual recorder sessions |
 | `GET` | `/runtime/lab/beds` | list Product Lab bed read model |
 | `GET` | `/runtime/lab/recorders` | list Product Lab recorder read model with execution send state |
+| `GET` | `/runtime/lab/sessions` | list persisted Product Lab sessions so a client can discover sessions it did not create locally |
 | `POST` | `/runtime/lab/sessions` | create a Product Lab virtual recorder session |
 | `GET` | `/runtime/lab/sessions/{sessionId}` | read one Product Lab session state |
 | `POST` | `/runtime/lab/sessions/{sessionId}/start` | start one Product Lab session |
 | `POST` | `/runtime/lab/sessions/{sessionId}/stop` | stop one Product Lab session |
+| `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start` | start one recorder owned by a running session |
+| `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop` | stop one recorder owned by a running session |
 | `GET` | `/runtime/lab/vital-files` | list configured `.vital` files available for Product Lab replay |
 | `POST` | `/runtime/lab/vital-files/replay` | create a virtual recorder session from a configured `.vital` file path |
 | `POST` | `/runtime/lab/vital-files/upload` | upload a selected mounted `.vital` file to VitalServer storage |
 
-`RuntimeLabScenarioList.state` and `RuntimeLabSessionResponse.state` preserve `loaded`, `failed`, and `unavailable` as different meanings. The API must not convert a missing Lab backend, Product Lab HTTP failure, or invalid Lab response into an empty scenario list or a successful stopped session. Command-style Lab requests also preserve the Guest operation id when Guest Control accepts the command.
+`RuntimeLabScenarioList.state`, `RuntimeLabSessionList.state`, `RuntimeLabSessionResponse.state`, and `RuntimeLabRecorderResponse.state` preserve `loaded`, `failed`, and `unavailable` as different meanings. The API must not convert a missing Lab backend, Product Lab HTTP failure, or invalid Lab response into an empty scenario/session list or a successful stopped session. Recorder commands require an explicitly running session and a recorder whose `sessionId` matches the path session; the UI must not infer either relationship from labels or IDs. Command-style Lab requests also preserve the Guest operation id when Guest Control accepts the command.
+
+The common Lab presentation is split into three explicit areas on Swift and PWA clients: `New scenario session`, persisted `Sessions`, and `Selected session`. Creating a session refreshes the collection and selects the returned session. The selected session owns whole-session Start/Stop controls and its filtered recorder rows own per-recorder Start/Stop controls. An unavailable or failed collection remains visible as a read state and must not be replaced with a locally remembered session.
 
 The runtime CLI exposes the same Product Lab boundary for local automation and field diagnostics. CLI commands call Guest Control API and print the returned contract JSON; they do not inspect Lab files, TestKit files, or container internals directly.
 
@@ -187,7 +196,8 @@ Runtime Control API는 wire payload에서 `runtimeInstallationState`, `runtimeSt
 | Runtime installation | `RuntimeStatus.runtimeInstallationState` | `Executable`, `Present but not executable`, `Missing`, `Inspect failed`, `Unknown` |
 | Runtime state | `RuntimeStatus.runtimeState` | `Installing`, `Initializing`, `Updating`, `Recovering`, `Healthy`, `Degraded`, `Critical`, `Unknown` |
 | VM/proxy/watchdog/guest log sync/sleep prevention service | launchd loaded flags | `Running`, `Stopped` |
-| VitalServer/Network access/Redis UI/Swagger UI | HTTP probe fields | `Reachable`, `Unreachable`, `Waiting` |
+| VitalServer/Network access | explicit HTTP probe fields where the platform provides them | `Reachable`, `Unreachable`, `Waiting` |
+| Redis UI/Swagger UI | Runtime product service resource and observed stack state | service resource/stack vocabulary; no separate inferred probe row |
 | Redis container health | guest compose observation | `Healthy`, `Unhealthy`, `Starting`, `Running`, `Stopped` |
 | VitalDB recorder/bed status | VitalDB observation history | `Online`, `Stale`, `Offline`, `Not observed`, `Unknown` |
 | Command/progress step | `RuntimeProgressDocument` | `Waiting`, `Running`, `Done`, `Failed`, `Skipped` |
@@ -292,10 +302,13 @@ Provider `start|stop|restart` command는 Platform effect와 Provider state를 �
 | `GET` | `/runtime/lab/scenarios` | Product Lab scenario list |
 | `GET` | `/runtime/lab/beds` | Product Lab bed read model |
 | `GET` | `/runtime/lab/recorders` | Product Lab recorder read model |
+| `GET` | `/runtime/lab/sessions` | persisted Product Lab session list |
 | `POST` | `/runtime/lab/sessions` | create Product Lab virtual recorder session |
 | `GET` | `/runtime/lab/sessions/{sessionId}` | Product Lab session state |
 | `POST` | `/runtime/lab/sessions/{sessionId}/start` | start Product Lab session |
 | `POST` | `/runtime/lab/sessions/{sessionId}/stop` | stop Product Lab session |
+| `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start` | start one session-owned recorder |
+| `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop` | stop one session-owned recorder |
 | `GET` | `/runtime/lab/vital-files` | configured `.vital` files available for Product Lab replay |
 | `POST` | `/runtime/lab/vital-files/replay` | create Product Lab `.vital` replay session |
 | `POST` | `/runtime/lab/vital-files/upload` | enqueue `.vital` file upload for VitalServer storage |
@@ -381,7 +394,7 @@ action when the corresponding Platform capability permits it.
 
 | Access | 의미 | 현재 route |
 |---|---|---|
-| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /platform`, `GET /platform/stream`, `GET /runtime/capabilities`, `GET /platform/operations`, `GET /runtime/stack`, `GET /runtime/services`, `GET /runtime/services/{service}/status`, `GET /runtime/events`, `GET /runtime/vitaldb/observations/latest`, `GET /runtime/vitaldb/observations/stream`, `GET /runtime/vitaldb/recorders`, `GET /runtime/vitaldb/recorders/{vrcode}`, `GET /runtime/vitaldb/beds`, `GET /runtime/vitaldb/beds/{bedID}`, `GET /runtime/vitaldb/relationships`, `GET /runtime/lab/scenarios`, `GET /runtime/lab/beds`, `GET /runtime/lab/recorders`, `GET /runtime/lab/sessions/{sessionId}`, `GET /runtime/lab/vital-files`, `POST /platform/health`, `GET /runtime/settings`, `GET /platform/release`, `GET /platform/installation` |
+| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /platform`, `GET /platform/stream`, `GET /runtime/capabilities`, `GET /platform/operations`, `GET /runtime/stack`, `GET /runtime/services`, `GET /runtime/services/{service}/status`, `GET /runtime/events`, `GET /runtime/vitaldb/observations/latest`, `GET /runtime/vitaldb/observations/stream`, `GET /runtime/vitaldb/recorders`, `GET /runtime/vitaldb/recorders/{vrcode}`, `GET /runtime/vitaldb/beds`, `GET /runtime/vitaldb/beds/{bedID}`, `GET /runtime/vitaldb/relationships`, `GET /runtime/lab/scenarios`, `GET /runtime/lab/beds`, `GET /runtime/lab/recorders`, `GET /runtime/lab/sessions`, `GET /runtime/lab/sessions/{sessionId}`, `GET /runtime/lab/vital-files`, `POST /platform/health`, `GET /runtime/settings`, `GET /platform/release`, `GET /platform/installation` |
 | `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Product Lab session commands, Product Lab `replay` and `upload`, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /platform/logs/export` |
 

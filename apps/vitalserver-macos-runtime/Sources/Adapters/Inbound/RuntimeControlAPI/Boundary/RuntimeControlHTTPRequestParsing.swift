@@ -248,6 +248,24 @@ public extension RuntimeControlHTTPRequest {
         }
         return decoded
     }
+
+    func runtimeLabRecorderID() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 7,
+              components[0] == "runtime",
+              components[1] == "lab",
+              components[2] == "sessions",
+              components[4] == "recorders",
+              let decoded = String(components[5]).removingPercentEncoding,
+              !decoded.isEmpty,
+              ["start", "stop"].contains(String(components[6]))
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("recorderId")
+        }
+        return decoded
+    }
 }
 
 private extension String {

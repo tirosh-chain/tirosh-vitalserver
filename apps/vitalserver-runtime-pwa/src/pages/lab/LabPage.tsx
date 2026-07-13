@@ -10,12 +10,15 @@ import {
   useLabRecorders,
   useLabScenarios,
   useLabSession,
+  useLabSessions,
   useLabVitalFiles,
   useReplayLabVitalFile,
   useResetLabBeds,
   useResetLabRecorders,
   useControlCapabilities,
   useStartLabSession,
+  useStartLabRecorder,
+  useStopLabRecorder,
   useStopLabSession,
   useUploadLabVitalFile
 } from "@/console/hooks";
@@ -25,6 +28,7 @@ import type {
   RuntimeLabVitalFileUploadResponse,
   RuntimeLabRecorder,
   RuntimeLabScenario,
+  RuntimeLabSession,
   RuntimeLabSessionResponse
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
@@ -38,6 +42,9 @@ export function LabPage() {
   const scenarios = useLabScenarios();
   const beds = useLabBeds();
   const recorders = useLabRecorders();
+  const sessions = useLabSessions(
+    capabilities.data?.canListLabSessions === true
+  );
   const vitalFiles = useLabVitalFiles();
   const createBeds = useCreateLabBeds();
   const deleteBeds = useDeleteLabBeds();
@@ -48,6 +55,8 @@ export function LabPage() {
   const createSession = useCreateLabSession();
   const startSession = useStartLabSession();
   const stopSession = useStopLabSession();
+  const startRecorder = useStartLabRecorder();
+  const stopRecorder = useStopLabRecorder();
   const replayVitalFile = useReplayLabVitalFile();
   const uploadVitalFile = useUploadLabVitalFile();
 
@@ -78,6 +87,14 @@ export function LabPage() {
     () => scenarioOptions.find((scenario) => scenario.scenarioId === selectedScenarioId),
     [scenarioOptions, selectedScenarioId]
   );
+  const sessionOptions = sessions.data?.sessions ?? [];
+  const selectedSessionRecorders = useMemo(
+    () =>
+      (recorders.data?.recorders ?? []).filter(
+        (recorder) => recorder.sessionId === selectedSessionId
+      ),
+    [recorders.data?.recorders, selectedSessionId]
+  );
 
   useEffect(() => {
     if (
@@ -94,6 +111,16 @@ export function LabPage() {
     }
   }, [vitalFileOptions, vitalFilePath]);
 
+  useEffect(() => {
+    if (selectedSessionId.length > 0 || sessionOptions.length === 0) {
+      return;
+    }
+    const initialSession =
+      sessionOptions.find((candidate) => candidate.state === "running") ??
+      sessionOptions[0];
+    setSelectedSessionId(initialSession?.sessionId ?? "");
+  }, [selectedSessionId, sessionOptions]);
+
   const isBusy =
     createSession.isPending ||
     createBeds.isPending ||
@@ -104,12 +131,15 @@ export function LabPage() {
     resetRecorders.isPending ||
     startSession.isPending ||
     stopSession.isPending ||
+    startRecorder.isPending ||
+    stopRecorder.isPending ||
     replayVitalFile.isPending ||
     uploadVitalFile.isPending;
   const latestError =
     scenarios.error ??
     beds.error ??
     recorders.error ??
+    sessions.error ??
     vitalFiles.error ??
     session.error ??
     capabilities.error ??
@@ -122,10 +152,17 @@ export function LabPage() {
     createSession.error ??
     startSession.error ??
     stopSession.error ??
+    startRecorder.error ??
+    stopRecorder.error ??
     replayVitalFile.error ??
     uploadVitalFile.error;
   const labCapability = capabilities.data?.canUseLab;
-  const activeResponse = session.data ?? lastResponse;
+  const canListSessions = capabilities.data?.canListLabSessions === true;
+  const canControlRecorders =
+    capabilities.data?.canControlLabRecorders === true;
+  const activeResponse =
+    (lastResponse?.session?.sessionId === selectedSessionId ? lastResponse : null) ??
+    session.data;
   const activeSessionId = activeResponse?.session?.sessionId ?? selectedSessionId.trim();
   const canCreate =
     labCapability === true &&
@@ -134,6 +171,12 @@ export function LabPage() {
     recorderCount >= 1 &&
     !isBusy;
   const canControl = labCapability === true && activeSessionId.length > 0 && !isBusy;
+  const canStartSession =
+    canControl &&
+    (activeResponse?.session?.state === "accepted" ||
+      activeResponse?.session?.state === "stopped");
+  const canStopSession =
+    canControl && activeResponse?.session?.state === "running";
   const hasTargetURL = targetURL.trim().length > 0;
   const canReplay =
     labCapability === true && vitalFilePath.trim().length > 0 && hasTargetURL && !isBusy;
@@ -258,6 +301,8 @@ export function LabPage() {
               label: "Capability",
               value: labCapability === undefined ? NOT_REPORTED : String(labCapability)
             },
+            { label: "Session list", value: String(canListSessions) },
+            { label: "Recorder control", value: String(canControlRecorders) },
             { label: "Scenarios", value: scenarioOptions.length },
             { label: "Vital files", value: vitalFileOptions.length },
             { label: "Read error", value: scenarios.data?.readError ?? "-" },
@@ -269,7 +314,7 @@ export function LabPage() {
       </Panel>
 
       <Panel
-        title="Scenario session"
+        title="New scenario session"
         actions={
           <button
             type="button"
@@ -336,29 +381,75 @@ export function LabPage() {
       </Panel>
 
       <Panel
-        title="Session control"
+        title="Sessions"
+        actions={
+          <button
+            type="button"
+            disabled={!canListSessions || sessions.isFetching}
+            onClick={() => sessions.refetch()}
+          >
+            Refresh
+          </button>
+        }
+      >
+        <KeyValueRows
+          rows={[
+            { label: "Read state", value: sessions.data?.state ?? NOT_REPORTED },
+            { label: "Sessions", value: sessionOptions.length },
+            { label: "Read error", value: sessions.data?.readError ?? "-" }
+          ]}
+        />
+        <LabSessionList
+          sessions={sessionOptions}
+          selectedSessionId={selectedSessionId}
+          onSelect={setSelectedSessionId}
+        />
+      </Panel>
+
+      <Panel
+        title="Selected session"
         actions={
           <>
-            <button type="button" disabled={!canControl} onClick={start}>
+            <button type="button" disabled={!canStartSession} onClick={start}>
               Start
             </button>
-            <button type="button" disabled={!canControl} onClick={stop}>
+            <button type="button" disabled={!canStopSession} onClick={stop}>
               Stop
             </button>
           </>
         }
       >
-        <div className="settings-grid">
-          <label className="full-width">
-            Session ID
-            <input
-              type="text"
-              value={selectedSessionId}
-              onChange={(event) => setSelectedSessionId(event.target.value)}
-            />
-          </label>
-        </div>
         <LabResponseSummary response={activeResponse} />
+      </Panel>
+
+      <Panel
+        title="Session recorders"
+        actions={
+          <button
+            type="button"
+            disabled={recorders.isFetching}
+            onClick={() => recorders.refetch()}
+          >
+            Refresh
+          </button>
+        }
+      >
+        {activeResponse?.session?.state !== "running" && selectedSessionId ? (
+          <p className="muted">
+            Recorder controls are available while the selected session is running.
+          </p>
+        ) : null}
+        <LabSessionRecorderList
+          recorders={selectedSessionRecorders}
+          sessionState={activeResponse?.session?.state}
+          disabled={labCapability !== true || !canControlRecorders || isBusy}
+          onStart={(recorderId) =>
+            startRecorder.mutate({ sessionId: selectedSessionId, recorderId })
+          }
+          onStop={(recorderId) =>
+            stopRecorder.mutate({ sessionId: selectedSessionId, recorderId })
+          }
+        />
       </Panel>
 
       <Panel
@@ -555,6 +646,111 @@ function optionalText(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function LabSessionList({
+  sessions,
+  selectedSessionId,
+  onSelect
+}: {
+  sessions: RuntimeLabSession[];
+  selectedSessionId: string;
+  onSelect: (sessionId: string) => void;
+}) {
+  if (sessions.length === 0) {
+    return <p className="muted">No Lab sessions reported.</p>;
+  }
+
+  return (
+    <div className="session-list">
+      {sessions.map((session) => (
+        <button
+          key={session.sessionId}
+          type="button"
+          className="session-row"
+          aria-pressed={session.sessionId === selectedSessionId}
+          onClick={() => onSelect(session.sessionId)}
+        >
+          <div>
+            <strong>{session.name ?? session.sessionId}</strong>
+            <StatusBadge tone={labSessionStateTone(session.state)}>
+              {session.state}
+            </StatusBadge>
+          </div>
+          <KeyValueRows
+            rows={[
+              { label: "Scenario", value: session.scenarioId },
+              { label: "Recorders", value: session.recorderCount },
+              { label: "Session ID", value: session.sessionId },
+              { label: "Updated", value: session.updatedAt ?? NOT_REPORTED }
+            ]}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LabSessionRecorderList({
+  recorders,
+  sessionState,
+  disabled,
+  onStart,
+  onStop
+}: {
+  recorders: RuntimeLabRecorder[];
+  sessionState: RuntimeLabSession["state"] | undefined;
+  disabled: boolean;
+  onStart: (recorderId: string) => void;
+  onStop: (recorderId: string) => void;
+}) {
+  if (recorders.length === 0) {
+    return <p className="muted">No recorders reported for the selected session.</p>;
+  }
+
+  return (
+    <div className="session-list">
+      {recorders.map((recorder) => (
+        <div key={recorder.recorderId} className="session-row">
+          <div>
+            <strong>{recorder.vrcode}</strong>
+            <StatusBadge tone={labSessionStateTone(recorder.state)}>
+              {recorder.state}
+            </StatusBadge>
+          </div>
+          <KeyValueRows
+            rows={[
+              { label: "Recorder ID", value: recorder.recorderId },
+              { label: "Bed", value: recorder.bedId },
+              { label: "Messages", value: recorder.messagesSent },
+              { label: "Last send", value: recorder.lastSendState },
+              { label: "Send error", value: recorder.lastSendError ?? "-" }
+            ]}
+          />
+          <div className="button-row">
+            <button
+              type="button"
+              disabled={
+                disabled || sessionState !== "running" || recorder.state === "running"
+              }
+              onClick={() => onStart(recorder.recorderId)}
+            >
+              Start recorder
+            </button>
+            <button
+              type="button"
+              disabled={
+                disabled || sessionState !== "running" || recorder.state !== "running"
+              }
+              onClick={() => onStop(recorder.recorderId)}
+            >
+              Stop recorder
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LabReadModelList({
   beds,
   recorders
@@ -742,5 +938,22 @@ function labStateTone(
       return "danger";
     case "unavailable":
       return "warning";
+  }
+}
+
+function labSessionStateTone(
+  state: RuntimeLabSession["state"]
+): "success" | "warning" | "danger" | "neutral" {
+  switch (state) {
+    case "running":
+      return "success";
+    case "accepted":
+    case "stopping":
+      return "warning";
+    case "failed":
+      return "danger";
+    case "stopped":
+    case "unavailable":
+      return "neutral";
   }
 }

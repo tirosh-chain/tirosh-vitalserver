@@ -112,6 +112,7 @@ def test_runtime_compose_includes_postgres_service() -> None:
     assert isinstance(postgres, dict)
     assert postgres["image"] == "postgres:16-alpine"
     assert postgres["environment"]["POSTGRES_DB"] == "vitalserver"
+    assert postgres["ports"] == ["127.0.0.1:15432:5432"]
     assert "postgres-data" in volumes
 
 

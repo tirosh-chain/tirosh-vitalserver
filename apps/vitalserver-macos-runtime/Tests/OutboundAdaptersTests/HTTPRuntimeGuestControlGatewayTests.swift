@@ -6,6 +6,14 @@ import RuntimeControl
 import XCTest
 
 final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
+    func testGatewayErrorLocalizedDescriptionPreservesTypedFailureReason() {
+        let error = RuntimeGuestControlHTTPGatewayError.decodeFailed("missing field services")
+        XCTAssertEqual(
+            error.localizedDescription,
+            "guest control API response decode failed: missing field services"
+        )
+    }
+
     func testReadyRequestsGuestControlReadyEndpoint() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,
@@ -1278,6 +1286,33 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(object["targetURL"] as? String, "http://edge/")
     }
 
+    func testLabSessionsReadsExplicitSessionCollection() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state": "loaded",
+              "sessions": [\(labSessionObjectBody())],
+              "readError": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let response = try gateway.labSessions()
+
+        XCTAssertEqual(response.state, .loaded)
+        XCTAssertEqual(response.sessions.first?.sessionId, "lab-session-1")
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/runtime/lab/sessions"]
+        )
+    }
+
     func testLabSessionCommandsEncodeSessionIDAsOnePathSegment() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 202,
@@ -1293,6 +1328,31 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
             ["http://127.0.0.1:18330/runtime/lab/sessions/session%2Fwith%20space/start"]
+        )
+    }
+
+    func testLabRecorderCommandEncodesSessionAndRecorderAsPathSegments() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: labRecorderResponseBody(operationId: "op_recorder_1")
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let response = try gateway.stopLabRecorder(
+            sessionId: "session/with space",
+            recorderId: "recorder/with space"
+        )
+
+        XCTAssertEqual(response.recorder?.state, .stopped)
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            [
+                "http://127.0.0.1:18330/runtime/lab/sessions/session%2Fwith%20space/recorders/recorder%2Fwith%20space/stop"
+            ]
         )
     }
 
@@ -1503,6 +1563,41 @@ private func labSessionResponseBody(operationId: String) -> String {
         "targetURL": "http://edge/",
         "createdAt": "2026-07-01T00:00:00+00:00",
         "updatedAt": "2026-07-01T00:00:01+00:00"
+      },
+      "operationId": "\(operationId)",
+      "labOperationId": "lab_\(operationId)",
+      "readError": null
+    }
+    """
+}
+
+private func labSessionObjectBody() -> String {
+    """
+    {
+      "sessionId": "lab-session-1",
+      "state": "running",
+      "scenarioId": "normal_monitoring",
+      "name": "Recovery",
+      "recorderCount": 2,
+      "targetURL": "http://edge/",
+      "createdAt": "2026-07-01T00:00:00+00:00",
+      "updatedAt": "2026-07-01T00:00:01+00:00"
+    }
+    """
+}
+
+private func labRecorderResponseBody(operationId: String) -> String {
+    """
+    {
+      "state": "loaded",
+      "recorder": {
+        "recorderId": "lab-session-1-recorder-1",
+        "sessionId": "lab-session-1",
+        "bedId": "lab-session-1-bed-1",
+        "vrcode": "LAB-REC001",
+        "state": "stopped",
+        "messagesSent": 1,
+        "lastSendState": "sent"
       },
       "operationId": "\(operationId)",
       "labOperationId": "lab_\(operationId)",

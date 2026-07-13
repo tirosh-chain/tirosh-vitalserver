@@ -6,6 +6,7 @@ RequiresMountsFor=/mnt/runtime
 
 [Service]
 Type=simple
+Environment=VITALSERVER_DATABASE_URL=postgresql+psycopg://vitalserver:vitalserver@127.0.0.1:15432/vitalserver
 ExecStartPre=/opt/tirosh/guest-tools/venv/bin/tirosh-guest-tools-migrate-control-store
 ExecStart=/usr/local/bin/tirosh-vitalserver-guest-control-api --host 0.0.0.0 --port 18330
 Restart=always

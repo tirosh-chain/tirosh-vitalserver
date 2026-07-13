@@ -296,10 +296,13 @@ Runtime v2 treats virtual recorder scenarios and `.vital` replay as Product Lab 
 
 ```text
 GET  /runtime/lab/scenarios
+GET  /runtime/lab/sessions
 POST /runtime/lab/sessions
 GET  /runtime/lab/sessions/{sessionId}
 POST /runtime/lab/sessions/{sessionId}/start
 POST /runtime/lab/sessions/{sessionId}/stop
+POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start
+POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop
 GET  /runtime/lab/beds
 POST /runtime/lab/beds/create
 POST /runtime/lab/recorders/create
@@ -318,10 +321,13 @@ Guest Product Lab endpoints:
 
 ```text
 GET  /runtime/lab/scenarios
+GET  /runtime/lab/sessions
 POST /runtime/lab/sessions
 GET  /runtime/lab/sessions/{sessionId}
 POST /runtime/lab/sessions/{sessionId}/start
 POST /runtime/lab/sessions/{sessionId}/stop
+POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start
+POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop
 GET  /runtime/lab/beds
 POST /runtime/lab/beds/create
 POST /runtime/lab/recorders/create
@@ -339,15 +345,18 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 
 | Product Lab operation | Guest adapter target |
 |---|---|
-| Scenario list | `GET http://lab:8080/runtime/lab/scenarios` |
-| Bed read model | `GET http://lab:8080/runtime/lab/beds` |
-| Recorder read model | `GET http://lab:8080/runtime/lab/recorders` |
-| Create session | `POST http://lab:8080/runtime/lab/sessions` |
-| Read session | `GET http://lab:8080/runtime/lab/sessions/{sessionId}` |
-| Start session | `POST http://lab:8080/runtime/lab/sessions/{sessionId}/start` |
-| Stop session | `POST http://lab:8080/runtime/lab/sessions/{sessionId}/stop` |
-| `.vital` replay | `POST http://lab:8080/runtime/lab/vital-files/replay` |
-| `.vital` upload | `POST http://lab:8080/runtime/lab/vital-files/upload` |
+| Scenario list | `GET http://lab:8080/lab/scenarios` |
+| Bed read model | `GET http://lab:8080/lab/beds` |
+| Recorder read model | `GET http://lab:8080/lab/recorders` |
+| Session collection | `GET http://lab:8080/lab/sessions` |
+| Create session | `POST http://lab:8080/lab/sessions` |
+| Read session | `GET http://lab:8080/lab/sessions/{sessionId}` |
+| Start session | `POST http://lab:8080/lab/sessions/{sessionId}/start` |
+| Stop session | `POST http://lab:8080/lab/sessions/{sessionId}/stop` |
+| Start recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/start` |
+| Stop recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/stop` |
+| `.vital` replay | `POST http://lab:8080/lab/vital-files/replay` |
+| `.vital` upload | `POST http://lab:8080/lab/vital-files/upload` |
 
 This makes Product Lab the product boundary and removes the TestKit adapter from the Guest Control Lab execution path.
 
@@ -366,6 +375,8 @@ VitalDB observation state. Helper also surfaces Product Lab beds and
 recorders separately so Lab-managed virtual resources are visible without
 pretending they are VitalDB-observed resources before the upstream product
 read model reports them.
+
+The Lab presentation does not keep the just-created session only in client memory. SwiftUI and the common PWA read the persisted session collection, select a session explicitly, then read its detail. Whole-session Start/Stop and per-recorder Start/Stop are separate commands. A recorder command is available only when the selected session is explicitly `running` and the recorder read model explicitly names that session. Refresh/read failure remains visible and does not become an empty session list or a locally reconstructed session.
 
 VitalDB Recorder and Bed product reads are separate contracts. `/runtime/vitaldb/recorders`
 returns recorder history and recorder-linked summary fields; `/runtime/vitaldb/beds`

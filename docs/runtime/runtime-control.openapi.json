@@ -221,6 +221,29 @@
       }
     },
     "/runtime/lab/sessions": {
+      "get": {
+        "operationId": "listRuntimeLabSessions",
+        "summary": "List Runtime Lab sessions",
+        "description": "Reads the Product Lab session collection through the Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab session list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabSessionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
       "post": {
         "operationId": "createRuntimeLabSession",
         "summary": "Create a Runtime Lab session",
@@ -356,6 +379,98 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RuntimeLabSessionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start": {
+      "post": {
+        "operationId": "startRuntimeLabRecorder",
+        "summary": "Start a recorder in a running Runtime Lab session",
+        "description": "Starts one recorder owned by the selected running Product Lab session.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recorderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime Lab recorder response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabRecorderResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop": {
+      "post": {
+        "operationId": "stopRuntimeLabRecorder",
+        "summary": "Stop a recorder in a running Runtime Lab session",
+        "description": "Stops one recorder owned by the selected running Product Lab session.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recorderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime Lab recorder response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabRecorderResponse"
                 }
               }
             }
@@ -4784,6 +4899,46 @@
           }
         }
       },
+      "RuntimeLabRecorderResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabReadState"
+          },
+          "recorder": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeLabRecorder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "labOperationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "RuntimeLabSession": {
         "type": "object",
         "additionalProperties": false,
@@ -4833,6 +4988,31 @@
             ]
           },
           "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabSessionList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "sessions"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabReadState"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLabSession"
+            }
+          },
+          "readError": {
             "type": [
               "string",
               "null"

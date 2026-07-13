@@ -1568,6 +1568,24 @@ export const runtimeLabRecorderListSchema = z
   })
   .passthrough();
 
+export const runtimeLabRecorderResponseSchema = z
+  .object({
+    state: runtimeLabReadStateSchema,
+    recorder: runtimeLabRecorderSchema.nullable().optional(),
+    operationId: nullableString,
+    labOperationId: nullableString,
+    readError: nullableString
+  })
+  .passthrough();
+
+export const runtimeLabSessionListSchema = z
+  .object({
+    state: runtimeLabReadStateSchema,
+    sessions: z.array(runtimeLabSessionSchema),
+    readError: nullableString
+  })
+  .passthrough();
+
 export const runtimeLabVitalFileListSchema = z
   .object({
     state: runtimeLabReadStateSchema,

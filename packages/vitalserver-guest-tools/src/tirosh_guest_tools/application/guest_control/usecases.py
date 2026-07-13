@@ -31,11 +31,13 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceObservedState,
     GuestServiceResource,
     GuestServiceSpec,
+    GuestServiceSpecState,
     GuestServiceStatusRead,
     OperationFailure,
     OperationLease,
     ProductLabDependencyError,
     ProductLabReadModelResult,
+    ProductLabRecorderResult,
     ProductLabSessionResult,
     ProductLabUploadResult,
     RecorderIngressDependencyError,
@@ -122,6 +124,38 @@ class GuestControlUseCases:
             )
             self._operations.record_transition(interrupted)
 
+    def initialize_guest_service_specs(
+        self,
+        defaults: dict[str, GuestServiceDesiredState],
+    ) -> None:
+        available_services = self._service_control.list_services()
+        available_service_set = set(available_services)
+        for service, desired_state in defaults.items():
+            if service not in available_service_set:
+                raise ServiceNotFoundError(
+                    service,
+                    available_services=available_services,
+                )
+            existing = self._guest_service_resources.get_guest_service_resource(service)
+            if (
+                existing is not None
+                and existing.spec.state == GuestServiceSpecState.CONFIGURED
+            ):
+                continue
+            previous = existing or self._missing_guest_service_resource(service)
+            spec = GuestServiceSpec.configured(
+                desired_state=desired_state,
+                updated_at=self._clock.now(),
+            )
+            initialized = GuestServiceResource(
+                service=service,
+                spec=spec,
+                status=previous.status,
+                conditions=self._guest_service_conditions(spec, previous.status),
+                last_operation_id=previous.last_operation_id,
+            )
+            self._guest_service_resources.save_guest_service_resource(initialized)
+
     def capabilities(self) -> dict[str, object]:
         capabilities = [
             "services:list",
@@ -150,6 +184,9 @@ class GuestControlUseCases:
                     "lab:recorders:create",
                     "lab:recorders:delete",
                     "lab:recorders:reset",
+                    "lab:recorders:start",
+                    "lab:recorders:stop",
+                    "lab:sessions:list",
                     "lab:sessions:create",
                     "lab:sessions:get",
                     "lab:sessions:start",
@@ -228,8 +265,7 @@ class GuestControlUseCases:
         status = (
             "ready"
             if all(
-                dependency["state"] == "ready"
-                for dependency in required_dependencies
+                dependency["state"] == "ready" for dependency in required_dependencies
             )
             else "unavailable"
         )
@@ -719,6 +755,19 @@ class GuestControlUseCases:
         except ProductLabDependencyError as error:
             return _lab_read_model_failed_document(error, collection="recorders")
 
+    def list_lab_sessions(self) -> dict[str, object]:
+        if self._product_lab is None:
+            return {
+                "state": "unavailable",
+                "sessions": [],
+                "readError": "Product Lab adapter is unavailable.",
+            }
+
+        try:
+            return self._product_lab.list_sessions()
+        except ProductLabDependencyError as error:
+            return _lab_read_model_failed_document(error, collection="sessions")
+
     def create_lab_session(self, request: dict[str, object]) -> dict[str, object]:
         return self._run_lab_session_operation(
             command=ServiceCommand.LAB_CREATE_SESSION,
@@ -747,6 +796,24 @@ class GuestControlUseCases:
         return self._run_lab_session_operation(
             command=ServiceCommand.LAB_STOP_SESSION,
             action=lambda: self._require_product_lab().stop_session(session_id),
+        )
+
+    def start_lab_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> dict[str, object]:
+        return self._run_lab_recorder_operation(
+            command=ServiceCommand.LAB_START_RECORDER,
+            action=lambda: self._require_product_lab().start_recorder(
+                session_id, recorder_id
+            ),
+        )
+
+    def stop_lab_recorder(self, session_id: str, recorder_id: str) -> dict[str, object]:
+        return self._run_lab_recorder_operation(
+            command=ServiceCommand.LAB_STOP_RECORDER,
+            action=lambda: self._require_product_lab().stop_recorder(
+                session_id, recorder_id
+            ),
         )
 
     def replay_lab_vital_file(self, request: dict[str, object]) -> dict[str, object]:
@@ -1444,6 +1511,38 @@ class GuestControlUseCases:
         self._save_operation_transition(completed)
         return _lab_session_loaded_document(lab_result, operation=completed)
 
+    def _run_lab_recorder_operation(
+        self,
+        *,
+        command: ServiceCommand,
+        action: Callable[[], ProductLabRecorderResult],
+    ) -> dict[str, object]:
+        operation = accept_service_operation(
+            operation_id=self._operation_ids.new_operation_id(
+                service="product-lab",
+                command=command.value,
+            ),
+            service="product-lab",
+            command=command,
+            now=self._clock.now(),
+        )
+        self._create_operation(operation)
+        running = start_operation(operation, now=self._clock.now())
+        self._save_operation_transition(running)
+        try:
+            lab_result = action()
+        except ProductLabDependencyError as error:
+            failed = fail_operation(
+                running,
+                failure=OperationFailure(kind=error.kind, message=error.message),
+                now=self._clock.now(),
+            )
+            self._save_operation_transition(failed)
+            return _lab_recorder_failed_document(error, operation=failed)
+        completed = finish_operation(running, now=self._clock.now())
+        self._save_operation_transition(completed)
+        return _lab_recorder_loaded_document(lab_result, operation=completed)
+
     def _run_lab_read_model_operation(
         self,
         *,
@@ -1663,6 +1762,35 @@ def _lab_session_loaded_document(
         "state": "loaded",
         "session": lab_result.session,
         "operationId": None if operation is None else operation.operation_id,
+        "labOperationId": lab_result.lab_operation_id,
+        "readError": None,
+    }
+
+
+def _lab_recorder_failed_document(
+    error: ProductLabDependencyError,
+    *,
+    operation: ServiceOperation,
+) -> dict[str, object]:
+    state = "unavailable" if error.kind == "product-lab-unavailable" else "failed"
+    return {
+        "state": state,
+        "recorder": None,
+        "operationId": operation.operation_id,
+        "labOperationId": None,
+        "readError": error.message,
+    }
+
+
+def _lab_recorder_loaded_document(
+    lab_result: ProductLabRecorderResult,
+    *,
+    operation: ServiceOperation,
+) -> dict[str, object]:
+    return {
+        "state": "loaded",
+        "recorder": lab_result.recorder,
+        "operationId": operation.operation_id,
         "labOperationId": lab_result.lab_operation_id,
         "readError": None,
     }

@@ -142,6 +142,7 @@ def test_write_runtime_observation_document_writes_vm_ip_file(
         tmp_path / "runtime-observation.json",
         state,
         vm_ip_file=vm_ip_file,
+        vitaldb_read_model=VitalDBReadModelWriterSpy(),
     )
 
     assert vm_ip_file.read_text(encoding="utf-8") == "192.168.64.2\n"
@@ -171,6 +172,7 @@ def test_write_runtime_observation_document_removes_stale_vm_ip_file_when_ip_mis
         tmp_path / "runtime-observation.json",
         state,
         vm_ip_file=vm_ip_file,
+        vitaldb_read_model=VitalDBReadModelWriterSpy(),
     )
 
     assert not vm_ip_file.exists()
@@ -254,7 +256,7 @@ def test_write_runtime_observation_document_uses_previous_relationship_history(
     assert writer.relationship_history["assignments"][0]["observationCount"] == 2
 
 
-def test_write_runtime_observation_skips_vitaldb_read_models_without_observation(
+def test_write_runtime_observation_prepares_schema_without_observation_document(
     tmp_path: Path,
 ) -> None:
     writer = VitalDBReadModelWriterSpy()
@@ -279,7 +281,7 @@ def test_write_runtime_observation_skips_vitaldb_read_models_without_observation
         vitaldb_read_model=writer,
     )
 
-    assert writer.schema_ensured is False
+    assert writer.schema_ensured is True
     assert writer.observation is None
     assert writer.relationship_history is None
 

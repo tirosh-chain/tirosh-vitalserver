@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabDependencyError,
     ProductLabReadModelResult,
+    ProductLabRecorderResult,
     ProductLabSessionResult,
     ProductLabUploadResult,
 )
@@ -42,7 +43,7 @@ class ProductLabServiceAdapter:
             raise ProductLabDependencyError(
                 "Product Lab service response is missing scenarios.",
                 kind="product-lab-contract-invalid",
-        )
+            )
         return document
 
     def list_vital_files(self) -> dict[str, Any]:
@@ -74,6 +75,17 @@ class ProductLabServiceAdapter:
         if not isinstance(recorders, list):
             raise ProductLabDependencyError(
                 "Product Lab service response is missing recorders.",
+                kind="product-lab-contract-invalid",
+            )
+        return document
+
+    def list_sessions(self) -> dict[str, Any]:
+        document = self._request_json("GET", "/lab/sessions")
+        _require_state_document(document, expected_state="loaded")
+        sessions = document.get("sessions")
+        if not isinstance(sessions, list):
+            raise ProductLabDependencyError(
+                "Product Lab service response is missing sessions.",
                 kind="product-lab-contract-invalid",
             )
         return document
@@ -148,6 +160,30 @@ class ProductLabServiceAdapter:
         return _read_model_from_response(
             self._request_json("POST", "/lab/recorders/reset", {}),
             collection="recorders",
+        )
+
+    def start_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> ProductLabRecorderResult:
+        return _recorder_from_response(
+            self._request_json(
+                "POST",
+                "/lab/sessions/"
+                f"{_path_segment(session_id)}/recorders/"
+                f"{_path_segment(recorder_id)}/start",
+            )
+        )
+
+    def stop_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> ProductLabRecorderResult:
+        return _recorder_from_response(
+            self._request_json(
+                "POST",
+                "/lab/sessions/"
+                f"{_path_segment(session_id)}/recorders/"
+                f"{_path_segment(recorder_id)}/stop",
+            )
         )
 
     def _request_json(
@@ -240,6 +276,26 @@ def _read_model_from_response(
     )
 
 
+def _recorder_from_response(document: dict[str, Any]) -> ProductLabRecorderResult:
+    _require_state_document(document, expected_state="loaded")
+    recorder = document.get("recorder")
+    if not isinstance(recorder, dict):
+        raise ProductLabDependencyError(
+            "Product Lab service response is missing recorder.",
+            kind="product-lab-contract-invalid",
+        )
+    operation_id = document.get("operationId")
+    if operation_id is not None and not isinstance(operation_id, str):
+        raise ProductLabDependencyError(
+            "Product Lab service response operationId must be a string or null.",
+            kind="product-lab-contract-invalid",
+        )
+    return ProductLabRecorderResult(
+        recorder=recorder,
+        lab_operation_id=operation_id,
+    )
+
+
 def _upload_from_response(document: dict[str, Any]) -> ProductLabUploadResult:
     _require_state_document(document, expected_state="loaded")
     upload = document.get("upload")
@@ -288,7 +344,7 @@ def _http_error_detail(error: HTTPError) -> str:
     try:
         data = error.read()
         document = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except UnicodeDecodeError, json.JSONDecodeError:
         return f"status={error.code}"
     if isinstance(document, dict) and isinstance(document.get("readError"), str):
         return f"status={error.code} detail={document['readError']}"

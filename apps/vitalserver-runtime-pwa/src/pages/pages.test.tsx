@@ -33,6 +33,7 @@ const hooks = vi.hoisted(() => ({
   useLabRecorders: vi.fn(),
   useLabScenarios: vi.fn(),
   useLabSession: vi.fn(),
+  useLabSessions: vi.fn(),
   useLabVitalFiles: vi.fn(),
   useReplayLabVitalFile: vi.fn(),
   useResetLabBeds: vi.fn(),
@@ -54,9 +55,11 @@ const hooks = vi.hoisted(() => ({
   useRuntimeProductSettings: vi.fn(),
   useRuntimeRedisRelaySettings: vi.fn(),
   useStartLabSession: vi.fn(),
+  useStartLabRecorder: vi.fn(),
   useStartGuestService: vi.fn(),
   useStopGuestService: vi.fn(),
   useStopLabSession: vi.fn(),
+  useStopLabRecorder: vi.fn(),
   useSummarizeUpdateBundle: vi.fn(),
   useUnhideVitalDBBeds: vi.fn(),
   useUnhideVitalDBRecorders: vi.fn(),
@@ -945,10 +948,12 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Runtime provider health")).toBeInTheDocument();
     expect(screen.getByText("Advanced network")).toBeInTheDocument();
     expect(screen.queryByText("Admin operations")).not.toBeInTheDocument();
-    expect(screen.getByText("Sleep prevention service")).toBeInTheDocument();
-    expect(screen.getByText("Redis UI service")).toBeInTheDocument();
-    expect(screen.getByText("Swagger UI service")).toBeInTheDocument();
-    expect(screen.getByText("API catalog")).toBeInTheDocument();
+    expect(screen.getAllByText("Sleep prevention").length).toBeGreaterThan(0);
+    expect(screen.getByText("Platform services")).toBeInTheDocument();
+    expect(screen.getByText("Runtime product services")).toBeInTheDocument();
+    expect(screen.getByText("Access endpoints")).toBeInTheDocument();
+    expect(screen.queryByText("Redis UI service")).not.toBeInTheDocument();
+    expect(screen.queryByText("Swagger UI service")).not.toBeInTheDocument();
     expect(screen.getByText("VitalServer API")).toBeInTheDocument();
     expect(screen.getByText("Runtime Control API")).toBeInTheDocument();
     expect(screen.getByText("Recorder Ingress API")).toBeInTheDocument();
@@ -1126,8 +1131,8 @@ describe("runtime console pages", () => {
 
     renderPage(<AdvancedPage />);
 
-    expect(screen.getByText("Product service controls")).toBeInTheDocument();
-    expect(screen.getByText("Failed to read Guest services")).toBeInTheDocument();
+    expect(screen.getByText("Observed state and control")).toBeInTheDocument();
+    expect(screen.getByText("Failed to read Runtime product services")).toBeInTheDocument();
     expect(screen.getByText("guest control api timed out")).toBeInTheDocument();
     expect(screen.queryByText("VitalDB Observer")).not.toBeInTheDocument();
   });
@@ -1252,7 +1257,7 @@ describe("runtime console pages", () => {
     expect(postgresRow).toBeInTheDocument();
   });
 
-  it("shows non-loaded Guest stack status without treating it as an empty service list", () => {
+  it("shows non-loaded Runtime stack status without treating it as an empty service list", () => {
     hooks.useRuntimeStack.mockReturnValue(
       query({
         state: "failed",
@@ -1263,10 +1268,10 @@ describe("runtime console pages", () => {
 
     renderPage(<AdvancedPage />);
 
-    expect(screen.getByText("Product service controls")).toBeInTheDocument();
-    expect(screen.getByText("Failed to read Guest services")).toBeInTheDocument();
-    expect(screen.getByText("Guest stack status is failed.")).toBeInTheDocument();
-    expect(screen.queryByText("No Guest services are reported.")).not.toBeInTheDocument();
+    expect(screen.getByText("Observed state and control")).toBeInTheDocument();
+    expect(screen.getByText("Failed to read Runtime product services")).toBeInTheDocument();
+    expect(screen.getByText("Runtime stack status is failed.")).toBeInTheDocument();
+    expect(screen.queryByText("No Runtime product services are reported.")).not.toBeInTheDocument();
   });
 
   it("gates Guest service actions with Guest service control capability", () => {
@@ -1405,6 +1410,52 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("button", { name: "Replay" })).toBeDisabled();
   });
 
+  it("selects a running Lab session and controls only its recorders", () => {
+    const runningSession = labSessionResponse("running");
+    const startLabRecorder = mutation({});
+    const stopLabRecorder = mutation({});
+    hooks.useLabSessions.mockReturnValue(query({
+      state: "loaded",
+      sessions: [runningSession.session],
+      readError: null
+    }));
+    hooks.useLabSession.mockReturnValue(query(runningSession));
+    hooks.useLabRecorders.mockReturnValue(query({
+      state: "loaded",
+      recorders: [
+        labRecorder("recorder-running", "running"),
+        labRecorder("recorder-stopped", "stopped"),
+        { ...labRecorder("other-session-recorder", "running"), sessionId: "lab-2" }
+      ],
+      readError: null
+    }));
+    hooks.useStartLabRecorder.mockReturnValue(startLabRecorder);
+    hooks.useStopLabRecorder.mockReturnValue(stopLabRecorder);
+
+    renderPage(<LabPage />);
+
+    expect(screen.getByText("Case review")).toBeInTheDocument();
+    const recorderPanel = screen.getByText("Session recorders").closest("section")!;
+    expect(within(recorderPanel).queryByText("other-session-recorder")).not.toBeInTheDocument();
+    const startButtons = within(recorderPanel).getAllByRole("button", {
+      name: "Start recorder"
+    });
+    const stopButtons = within(recorderPanel).getAllByRole("button", {
+      name: "Stop recorder"
+    });
+    fireEvent.click(startButtons[1]!);
+    fireEvent.click(stopButtons[0]!);
+
+    expect(startLabRecorder.mutate).toHaveBeenCalledWith({
+      sessionId: "lab-1",
+      recorderId: "recorder-stopped"
+    });
+    expect(stopLabRecorder.mutate).toHaveBeenCalledWith({
+      sessionId: "lab-1",
+      recorderId: "recorder-running"
+    });
+  });
+
   it("creates a Product Lab session for explicit Lab bed IDs", () => {
     const createLabSession = mutation(labSessionResponse("accepted"));
     hooks.useCreateLabSession.mockReturnValue(createLabSession);
@@ -1527,6 +1578,11 @@ function setupDefaultHooks() {
     readError: null
   }));
   hooks.useLabSession.mockReturnValue(query(labSessionResponse("accepted")));
+  hooks.useLabSessions.mockReturnValue(query({
+    state: "loaded",
+    sessions: [labSessionResponse("accepted").session],
+    readError: null
+  }));
 
   for (const mock of [
     hooks.useApplyRuntimeAdminPassword,
@@ -1557,9 +1613,11 @@ function setupDefaultHooks() {
     hooks.useResetLabBeds,
     hooks.useResetLabRecorders,
     hooks.useStartLabSession,
+    hooks.useStartLabRecorder,
     hooks.useStartGuestService,
     hooks.useStopGuestService,
     hooks.useStopLabSession,
+    hooks.useStopLabRecorder,
     hooks.useSummarizeUpdateBundle,
     hooks.useUnhideVitalDBBeds,
     hooks.useUnhideVitalDBRecorders,
@@ -1625,6 +1683,8 @@ function capabilities() {
     canExportLogs: true,
     canViewReleaseMetadata: true,
     canUseLab: true,
+    canListLabSessions: true,
+    canControlLabRecorders: true,
     canApplyRuntimeProductSettings: true,
     canApplyRuntimeAdminPassword: true,
     canApplyRuntimeRedisRelaySettings: true,
@@ -2159,5 +2219,24 @@ function labSessionResponse(
       createdAt: "2026-05-31T00:00:00Z",
       updatedAt: "2026-05-31T00:00:00Z"
     }
+  };
+}
+
+function labRecorder(
+  recorderId: string,
+  state: "running" | "stopped"
+) {
+  return {
+    recorderId,
+    sessionId: "lab-1",
+    bedId: `${recorderId}-bed`,
+    vrcode: recorderId,
+    state,
+    createdAt: "2026-05-31T00:00:00Z",
+    updatedAt: "2026-05-31T00:00:00Z",
+    messagesSent: 0,
+    lastSendState: "notAttempted" as const,
+    lastSendAt: null,
+    lastSendError: null
   };
 }

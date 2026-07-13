@@ -17,7 +17,7 @@ public protocol RuntimeGuestControlHTTPClient: Sendable {
     func send(_ request: URLRequest) throws -> RuntimeGuestControlHTTPResponse
 }
 
-public enum RuntimeGuestControlHTTPGatewayError: Error, Equatable, CustomStringConvertible {
+public enum RuntimeGuestControlHTTPGatewayError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case invalidBaseURL(String)
     case invalidRequestURL(baseURL: String, path: String)
     case invalidHTTPResponse(String)
@@ -49,6 +49,8 @@ public enum RuntimeGuestControlHTTPGatewayError: Error, Equatable, CustomStringC
             return "guest control API response decode failed: \(message)"
         }
     }
+
+    public var errorDescription: String? { description }
 }
 
 public struct URLSessionRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPClient {
@@ -514,6 +516,14 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         )
     }
 
+    public func labSessions() throws -> RuntimeLabSessionList {
+        try decode(
+            RuntimeLabSessionList.self,
+            method: "GET",
+            path: "/runtime/lab/sessions"
+        )
+    }
+
     public func createLabSession(_ request: RuntimeLabSessionCreateRequest) throws -> RuntimeLabSessionResponse {
         try decode(
             RuntimeLabSessionResponse.self,
@@ -544,6 +554,22 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
             RuntimeLabSessionResponse.self,
             method: "POST",
             path: "/runtime/lab/sessions/\(pathSegment(sessionId))/stop"
+        )
+    }
+
+    public func startLabRecorder(sessionId: String, recorderId: String) throws -> RuntimeLabRecorderResponse {
+        try decode(
+            RuntimeLabRecorderResponse.self,
+            method: "POST",
+            path: "/runtime/lab/sessions/\(pathSegment(sessionId))/recorders/\(pathSegment(recorderId))/start"
+        )
+    }
+
+    public func stopLabRecorder(sessionId: String, recorderId: String) throws -> RuntimeLabRecorderResponse {
+        try decode(
+            RuntimeLabRecorderResponse.self,
+            method: "POST",
+            path: "/runtime/lab/sessions/\(pathSegment(sessionId))/recorders/\(pathSegment(recorderId))/stop"
         )
     }
 

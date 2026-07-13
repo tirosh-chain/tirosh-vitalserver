@@ -20,6 +20,25 @@ extension RuntimeViewModel {
             && !selectedLabSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var labCanStartSelectedSession: Bool {
+        guard labCanControlSelectedSession, let session = selectedLabSession else {
+            return false
+        }
+        return session.state == .accepted || session.state == .stopped
+    }
+
+    var labCanStopSelectedSession: Bool {
+        labCanControlSelectedSession && selectedLabSession?.state == .running
+    }
+
+    var selectedLabSession: RuntimeLabSession? {
+        labSessions.sessions.first { $0.sessionId == selectedLabSessionID }
+    }
+
+    var selectedLabSessionRecorders: [RuntimeLabRecorder] {
+        labRecorders.recorders.filter { $0.sessionId == selectedLabSessionID }
+    }
+
     var labCanReplayVitalFile: Bool {
         labCanUseProductLab
             && !isRunningLabAction
@@ -152,6 +171,30 @@ extension RuntimeViewModel {
         )
     }
 
+    func selectProductLabSession(_ sessionID: String) async {
+        selectedLabSessionID = sessionID
+        guard !sessionID.isEmpty else {
+            labSessionResponse = RuntimeLabSessionResponse.unavailable(
+                readError: RuntimeLabPanelText.noLabSession
+            )
+            return
+        }
+        do {
+            applyLabSessionResponse(try await controlClient.loadLabSession(sessionId: sessionID))
+        } catch {
+            applyLabSessionResponse(RuntimeLabSessionResponse.unavailable(readError: error.localizedDescription))
+            recordLabActionMessage(error.localizedDescription, tone: .failure)
+        }
+    }
+
+    func startProductLabRecorder(_ recorderID: String) async {
+        await runProductLabRecorderCommand(recorderID: recorderID, start: true)
+    }
+
+    func stopProductLabRecorder(_ recorderID: String) async {
+        await runProductLabRecorderCommand(recorderID: recorderID, start: false)
+    }
+
     func chooseVitalFileForProductLabReplay() {
         let selectedFiles = nativeShell.chooseVitalFiles(
             prompt: RuntimeLabPanelText.choosingVitalFileForPlayback,
@@ -242,6 +285,19 @@ extension RuntimeViewModel {
     func refreshProductLabReadModels() async {
         guard labCanUseProductLab else {
             return
+        }
+
+        do {
+            applyLabSessions(try await controlClient.loadLabSessions())
+            if !selectedLabSessionID.isEmpty {
+                applyLabSessionResponse(
+                    try await controlClient.loadLabSession(sessionId: selectedLabSessionID)
+                )
+            }
+        } catch {
+            labSessions = RuntimeLabSessionList.unavailable(readError: error.localizedDescription)
+            labSessionResponse = RuntimeLabSessionResponse.unavailable(readError: error.localizedDescription)
+            recordLabActionMessage(error.localizedDescription, tone: .failure)
         }
 
         do {
@@ -412,6 +468,56 @@ extension RuntimeViewModel {
         }
     }
 
+    private func runProductLabRecorderCommand(recorderID: String, start: Bool) async {
+        guard labCanUseProductLab, !isRunningLabAction else {
+            recordLabActionMessage(RuntimeLabPanelText.labCapabilityUnavailable, tone: .failure)
+            return
+        }
+        guard let session = selectedLabSession, session.state == .running else {
+            recordLabActionMessage(RuntimeLabPanelText.runningLabSessionRequired, tone: .failure)
+            return
+        }
+        guard selectedLabSessionRecorders.contains(where: { $0.recorderId == recorderID }) else {
+            recordLabActionMessage(RuntimeLabPanelText.chooseSessionLabRecorder, tone: .failure)
+            return
+        }
+
+        isRunningLabAction = true
+        defer { isRunningLabAction = false }
+        recordLabActionMessage(
+            start ? RuntimeLabPanelText.startingLabRecorder : RuntimeLabPanelText.stoppingLabRecorder
+        )
+        do {
+            let response = if start {
+                try await controlClient.startLabRecorder(
+                    sessionId: session.sessionId,
+                    recorderId: recorderID
+                )
+            } else {
+                try await controlClient.stopLabRecorder(
+                    sessionId: session.sessionId,
+                    recorderId: recorderID
+                )
+            }
+            if response.state == .loaded, let recorder = response.recorder {
+                recordLabActionMessage(
+                    start
+                        ? RuntimeLabPanelText.startedLabRecorder(recorder.vrcode)
+                        : RuntimeLabPanelText.stoppedLabRecorder(recorder.vrcode)
+                )
+            } else {
+                recordLabActionMessage(
+                    response.readError ?? RuntimeLabPanelText.labRecorderCommandFailed,
+                    tone: .failure
+                )
+            }
+            applyLabRecorders(try await controlClient.loadLabRecorders())
+            await refreshVitalRecorders()
+        } catch {
+            recordLabActionMessage(error.localizedDescription, tone: .failure)
+        }
+    }
+
     private func applyLabScenarios(_ scenarios: RuntimeLabScenarioList) {
         labScenarios = scenarios
         if selectedLabScenarioID.isEmpty || !scenarios.scenarios.contains(where: { $0.scenarioId == selectedLabScenarioID }) {
@@ -433,6 +539,21 @@ extension RuntimeViewModel {
         if let session = response.session {
             selectedLabSessionID = session.sessionId
         }
+    }
+
+    private func applyLabSessions(_ response: RuntimeLabSessionList) {
+        labSessions = response
+        guard response.state == .loaded else {
+            return
+        }
+        guard selectedLabSessionID.isEmpty
+            || !response.sessions.contains(where: { $0.sessionId == selectedLabSessionID })
+        else {
+            return
+        }
+        selectedLabSessionID = response.sessions.first(where: { $0.state == .running })?.sessionId
+            ?? response.sessions.first?.sessionId
+            ?? ""
     }
 
     private func applyLabBeds(_ response: RuntimeLabBedList) {

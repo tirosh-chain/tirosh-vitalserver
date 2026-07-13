@@ -5,6 +5,7 @@ public protocol RuntimeGuestProductLabGateway {
     func labVitalFiles() throws -> RuntimeLabVitalFileList
     func labBeds() throws -> RuntimeLabBedList
     func labRecorders() throws -> RuntimeLabRecorderList
+    func labSessions() throws -> RuntimeLabSessionList
     func createLabBeds(_ request: RuntimeLabBedCreateRequest) throws -> RuntimeLabBedList
     func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) throws -> RuntimeLabBedList
     func resetLabBeds() throws -> RuntimeLabBedList
@@ -17,10 +18,38 @@ public protocol RuntimeGuestProductLabGateway {
     func labSession(_ sessionId: String) throws -> RuntimeLabSessionResponse
     func startLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse
     func stopLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse
+    func startLabRecorder(sessionId: String, recorderId: String) throws -> RuntimeLabRecorderResponse
+    func stopLabRecorder(sessionId: String, recorderId: String) throws -> RuntimeLabRecorderResponse
     func replayLabVitalFile(
         _ request: RuntimeLabVitalFileReplayRequest
     ) throws -> RuntimeLabSessionResponse
     func uploadLabVitalFile(
         _ request: RuntimeLabVitalFileUploadRequest
     ) throws -> RuntimeLabVitalFileUploadResponse
+}
+
+public extension RuntimeGuestProductLabGateway {
+    func labSessions() throws -> RuntimeLabSessionList {
+        RuntimeLabSessionList.unavailable(
+            readError: "Product Lab session collection is unavailable."
+        )
+    }
+
+    func startLabRecorder(
+        sessionId: String,
+        recorderId: String
+    ) throws -> RuntimeLabRecorderResponse {
+        RuntimeLabRecorderResponse.unavailable(
+            readError: "Product Lab recorder control is unavailable."
+        )
+    }
+
+    func stopLabRecorder(
+        sessionId: String,
+        recorderId: String
+    ) throws -> RuntimeLabRecorderResponse {
+        RuntimeLabRecorderResponse.unavailable(
+            readError: "Product Lab recorder control is unavailable."
+        )
+    }
 }

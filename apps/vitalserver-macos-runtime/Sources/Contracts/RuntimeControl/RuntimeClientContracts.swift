@@ -49,6 +49,7 @@ public protocol RuntimeControlClient {
     func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList
     func loadLabBeds() async throws -> RuntimeLabBedList
     func loadLabRecorders() async throws -> RuntimeLabRecorderList
+    func loadLabSessions() async throws -> RuntimeLabSessionList
     func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList
     func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList
     func resetLabBeds() async throws -> RuntimeLabBedList
@@ -65,6 +66,8 @@ public protocol RuntimeControlClient {
     func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse
+    func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse
     func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse
     func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse
     func guestStackStatus() async throws -> RuntimeGuestControlStackStatus
@@ -250,6 +253,10 @@ public extension RuntimeControlClient {
         RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
 
+    func loadLabSessions() async throws -> RuntimeLabSessionList {
+        RuntimeLabSessionList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
     func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
         RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
@@ -264,6 +271,14 @@ public extension RuntimeControlClient {
 
     func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
         RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        RuntimeLabRecorderResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        RuntimeLabRecorderResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
 
     func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {

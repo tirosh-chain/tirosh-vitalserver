@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+Environment=VITALSERVER_DATABASE_URL=postgresql+psycopg://vitalserver:vitalserver@127.0.0.1:15432/vitalserver
 ExecStart=/usr/local/bin/tirosh-runtime-observation watch
 Restart=always
 RestartSec=5

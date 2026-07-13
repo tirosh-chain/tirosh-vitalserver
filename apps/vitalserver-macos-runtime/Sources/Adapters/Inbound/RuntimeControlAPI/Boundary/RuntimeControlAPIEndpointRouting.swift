@@ -77,12 +77,18 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .post, path: "/runtime/lab/recorders/reset", scope: .runtimeControl)
         case .createLabSession:
             return .init(method: .post, path: "/runtime/lab/sessions", scope: .runtimeControl)
+        case .labSessions:
+            return .init(method: .get, path: "/runtime/lab/sessions", scope: .runtimeControl)
         case .labSession:
             return .init(method: .get, path: "/runtime/lab/sessions/{sessionId}", scope: .runtimeControl)
         case .startLabSession:
             return .init(method: .post, path: "/runtime/lab/sessions/{sessionId}/start", scope: .runtimeControl)
         case .stopLabSession:
             return .init(method: .post, path: "/runtime/lab/sessions/{sessionId}/stop", scope: .runtimeControl)
+        case .startLabRecorder:
+            return .init(method: .post, path: "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start", scope: .runtimeControl)
+        case .stopLabRecorder:
+            return .init(method: .post, path: "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop", scope: .runtimeControl)
         case .replayLabVitalFile:
             return .init(method: .post, path: "/runtime/lab/vital-files/replay", scope: .runtimeControl)
         case .uploadLabVitalFile:
@@ -266,6 +272,17 @@ public extension RuntimeControlAPIEndpoint {
                 && components[2] == "sessions"
                 && !components[3].isEmpty
                 && components[4] == "stop"
+        case .startLabRecorder, .stopLabRecorder:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            let expectedAction: Substring = self == .startLabRecorder ? "start" : "stop"
+            return components.count == 7
+                && components[0] == "runtime"
+                && components[1] == "lab"
+                && components[2] == "sessions"
+                && !components[3].isEmpty
+                && components[4] == "recorders"
+                && !components[5].isEmpty
+                && components[6] == expectedAction
         default:
             return route.path == path
         }

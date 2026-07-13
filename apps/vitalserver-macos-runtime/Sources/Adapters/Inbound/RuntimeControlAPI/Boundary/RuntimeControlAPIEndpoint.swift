@@ -39,9 +39,12 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case deleteLabRecorders
     case resetLabRecorders
     case createLabSession
+    case labSessions
     case labSession
     case startLabSession
     case stopLabSession
+    case startLabRecorder
+    case stopLabRecorder
     case replayLabVitalFile
     case uploadLabVitalFile
     case guestStackStatus

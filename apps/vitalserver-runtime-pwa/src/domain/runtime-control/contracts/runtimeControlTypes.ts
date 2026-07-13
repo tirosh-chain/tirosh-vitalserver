@@ -3,6 +3,8 @@ import {
   runtimeLabBedListSchema,
   runtimeLabVitalFileListSchema,
   runtimeLabRecorderListSchema,
+  runtimeLabRecorderResponseSchema,
+  runtimeLabSessionListSchema,
   runtimeEventHistorySchema,
   platformOperationStateSchema,
   platformWorkflowOperationSchema,
@@ -32,6 +34,8 @@ export type PlatformCapabilities =
 export type ControlCapabilities = PlatformCapabilities & {
   canControlGuestServices: boolean;
   canUseLab: boolean;
+  canListLabSessions?: boolean;
+  canControlLabRecorders?: boolean;
   canRepairRuntimeDatastore: boolean;
   canApplyRuntimeProductSettings?: boolean;
   canApplyRuntimeAdminPassword?: boolean;
@@ -57,6 +61,9 @@ export type RuntimeLabRecorderList = z.infer<typeof runtimeLabRecorderListSchema
 
 export type RuntimeLabRecorder = RuntimeLabRecorderList["recorders"][number];
 
+export type RuntimeLabRecorderResponse =
+  z.infer<typeof runtimeLabRecorderResponseSchema>;
+
 export type RuntimeLabRecorderCreateRequest =
   paths["/runtime/lab/recorders/create"]["post"]["requestBody"]["content"]["application/json"];
 
@@ -67,6 +74,8 @@ export type RuntimeLabSessionResponse =
   paths["/runtime/lab/sessions"]["post"]["responses"]["200"]["content"]["application/json"];
 
 export type RuntimeLabSession = NonNullable<RuntimeLabSessionResponse["session"]>;
+
+export type RuntimeLabSessionList = z.infer<typeof runtimeLabSessionListSchema>;
 
 export type RuntimeLabSessionCreateRequest =
   paths["/runtime/lab/sessions"]["post"]["requestBody"]["content"]["application/json"];

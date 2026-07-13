@@ -82,6 +82,8 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabBeds())
         case .labRecorders:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabRecorders())
+        case .labSessions:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabSessions())
         case .labSession:
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.loadLabSession(sessionId: try request.runtimeLabSessionID())
@@ -136,6 +138,8 @@ struct RuntimeControlHTTPReadRoutes {
              .createLabSession,
              .startLabSession,
              .stopLabSession,
+             .startLabRecorder,
+             .stopLabRecorder,
              .replayLabVitalFile,
              .uploadLabVitalFile,
              .startGuestService,

@@ -78,10 +78,12 @@ LabRecorderExecutionResultSink = Callable[
 ]
 
 
-@dataclass(frozen=True)
+@dataclass
 class _RunningLabSession:
     stop_event: threading.Event
     thread: threading.Thread
+    active_recorder_ids: set[str]
+    active_recorder_ids_lock: threading.Lock
 
 
 class VitalServerRecorderPayloadSender:
@@ -264,10 +266,63 @@ class LabExecutionEngine:
                 session=session,
                 beds_by_id=beds_by_id,
                 recorders=recorders,
+                active_recorder_ids={recorder.recorder_id for recorder in recorders},
                 initial_sequence=2,
                 result_sink=result_sink,
             )
         return results
+
+    def start_recorder(
+        self,
+        *,
+        session: LabSession,
+        beds: tuple[LabBed, ...],
+        recorders: tuple[LabRecorder, ...],
+        recorder_id: str,
+        result_sink: LabRecorderExecutionResultSink | None = None,
+    ) -> LabRecorderExecutionResult | None:
+        recorder = next(
+            (
+                candidate
+                for candidate in recorders
+                if candidate.recorder_id == recorder_id
+            ),
+            None,
+        )
+        if recorder is None:
+            return None
+        beds_by_id = {bed.bed_id: bed for bed in beds}
+        with self._running_sessions_lock:
+            running = self._running_sessions.get(session.session_id)
+        if running is not None:
+            with running.active_recorder_ids_lock:
+                running.active_recorder_ids.add(recorder_id)
+        results = self._send_session_frame(
+            session=session,
+            beds_by_id=beds_by_id,
+            recorders=(recorder,),
+            sequence=1,
+        )
+        if running is None:
+            self._start_session_runner(
+                session=session,
+                beds_by_id=beds_by_id,
+                recorders=recorders,
+                active_recorder_ids={recorder_id},
+                initial_sequence=2,
+                result_sink=result_sink,
+            )
+        if result_sink is not None:
+            result_sink(results)
+        return results[0]
+
+    def stop_recorder(self, session_id: str, recorder_id: str) -> None:
+        with self._running_sessions_lock:
+            running = self._running_sessions.get(session_id)
+        if running is None:
+            return
+        with running.active_recorder_ids_lock:
+            running.active_recorder_ids.discard(recorder_id)
 
     def stop_session(self, session_id: str) -> None:
         with self._running_sessions_lock:
@@ -290,18 +345,28 @@ class LabExecutionEngine:
         session: LabSession,
         beds_by_id: dict[str, LabBed],
         recorders: tuple[LabRecorder, ...],
+        active_recorder_ids: set[str],
         initial_sequence: int,
         result_sink: LabRecorderExecutionResultSink | None,
     ) -> None:
         stop_event = threading.Event()
+        active_recorder_ids_lock = threading.Lock()
 
         def run() -> None:
             sequence = initial_sequence
             while not stop_event.wait(self.frame_interval_seconds):
+                with active_recorder_ids_lock:
+                    active_recorders = tuple(
+                        recorder
+                        for recorder in recorders
+                        if recorder.recorder_id in active_recorder_ids
+                    )
+                if not active_recorders:
+                    continue
                 results = self._send_session_frame(
                     session=session,
                     beds_by_id=beds_by_id,
-                    recorders=recorders,
+                    recorders=active_recorders,
                     sequence=sequence,
                 )
                 if result_sink is not None:
@@ -324,6 +389,8 @@ class LabExecutionEngine:
             self._running_sessions[session.session_id] = _RunningLabSession(
                 stop_event=stop_event,
                 thread=thread,
+                active_recorder_ids=active_recorder_ids,
+                active_recorder_ids_lock=active_recorder_ids_lock,
             )
         if previous is not None:
             previous.stop_event.set()
@@ -348,8 +415,7 @@ class LabExecutionEngine:
                         last_send_state="failed",
                         last_send_at=utc_now_iso(),
                         last_send_error=(
-                            "Lab recorder bed read model is missing: "
-                            f"{recorder.bed_id}"
+                            f"Lab recorder bed read model is missing: {recorder.bed_id}"
                         ),
                     )
                 )
@@ -478,7 +544,9 @@ def _multipart_file_boundaries(
     chunks: list[bytes] = []
     for name, value in form_fields.items():
         chunks.append(f"--{boundary}\r\n".encode("ascii"))
-        chunks.append((f'Content-Disposition: form-data; name="{name}"\r\n\r\n').encode())
+        chunks.append(
+            (f'Content-Disposition: form-data; name="{name}"\r\n\r\n').encode()
+        )
         chunks.append(str(value).encode("utf-8"))
         chunks.append(b"\r\n")
 

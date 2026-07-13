@@ -37,6 +37,7 @@ struct RuntimeStatusDisplayPolicy {
 
     struct ServiceHealthItem: Equatable, Identifiable {
         var id: String { label }
+        let section: RuntimeStatusAdvancedServiceHealthSection
         let label: String
         let value: StatusValue
         let httpStatus: String?
@@ -285,6 +286,7 @@ struct RuntimeStatusDisplayPolicy {
 
     private func serviceHealthItem(_ item: RuntimeStatusAdvancedServiceHealthItem) -> ServiceHealthItem {
         ServiceHealthItem(
+            section: item.section,
             label: item.label,
             value: statusValue(item.value),
             httpStatus: item.httpStatus,
@@ -757,6 +759,7 @@ private struct AppRuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusV
 
 private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdvancedServiceHealthVocabulary {
     var proxyServiceLabel: String { AppConstants.Labels.proxyService }
+    var runtimeProviderServiceLabel: String { AppConstants.Labels.runtimeProviderService }
     var guestLogSyncServiceLabel: String { AppConstants.Labels.guestLogSyncService }
     var sleepPreventionServiceLabel: String { AppConstants.Labels.sleepPreventionService }
     var watchdogServiceLabel: String { AppConstants.Labels.watchdogService }

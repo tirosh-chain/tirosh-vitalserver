@@ -27,6 +27,8 @@ class ServiceCommand(StrEnum):
     LAB_CREATE_RECORDERS = "lab-create-recorders"
     LAB_DELETE_RECORDERS = "lab-delete-recorders"
     LAB_RESET_RECORDERS = "lab-reset-recorders"
+    LAB_START_RECORDER = "lab-start-recorder"
+    LAB_STOP_RECORDER = "lab-stop-recorder"
     REDIS_BACKUP = "redis-backup"
     REDIS_RESTORE = "redis-restore"
     REPAIR_DATASTORE = "repair-datastore"
@@ -225,9 +227,7 @@ class GuestServiceResource:
             "service": self.service,
             "spec": self.spec.as_json(),
             "status": self.status.as_json(),
-            "conditions": [
-                condition.as_json() for condition in self.conditions
-            ],
+            "conditions": [condition.as_json() for condition in self.conditions],
             "lastOperationId": self.last_operation_id,
         }
 
@@ -508,6 +508,12 @@ class ProductLabSessionResult:
 @dataclass(frozen=True)
 class ProductLabReadModelResult:
     document: dict[str, Any]
+    lab_operation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ProductLabRecorderResult:
+    recorder: dict[str, Any]
     lab_operation_id: str | None = None
 
 
