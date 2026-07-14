@@ -48,7 +48,15 @@ public struct RuntimeHostSettingsActivationState: Equatable, Sendable {
 public struct RuntimeHostSettingsActivationPolicy: Sendable {
     public init() {}
 
+    public func initialRevision(currentRevision: Int?) throws -> Int {
+        try requireInitialRevision(currentRevision: currentRevision)
+    }
+
     public func importRevision(currentRevision: Int?) throws -> Int {
+        try requireInitialRevision(currentRevision: currentRevision)
+    }
+
+    private func requireInitialRevision(currentRevision: Int?) throws -> Int {
         if let currentRevision {
             throw RuntimeHostSettingsActivationError.alreadyExists(revision: currentRevision)
         }

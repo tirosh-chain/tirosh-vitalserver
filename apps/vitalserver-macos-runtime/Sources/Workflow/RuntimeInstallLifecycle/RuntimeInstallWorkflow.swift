@@ -44,7 +44,7 @@ public struct InstallRuntimeEffects<Settings> {
     public var waitInstallRuntimeHealth: (Settings) throws -> Void
     public var cleanupInstallSettings: () throws -> Void
     public var describeError: (Error) -> String
-    public var prepareHostStateStore: () throws -> Void
+    public var prepareHostStateStore: (Settings) throws -> Void
 
     public init(
         log: @escaping (String) -> Void,
@@ -62,7 +62,7 @@ public struct InstallRuntimeEffects<Settings> {
         waitInstallRuntimeHealth: @escaping (Settings) throws -> Void,
         cleanupInstallSettings: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
-        prepareHostStateStore: @escaping () throws -> Void = {}
+        prepareHostStateStore: @escaping (Settings) throws -> Void = { _ in }
     ) {
         self.log = log
         self.prepareInstallDirectories = prepareInstallDirectories
@@ -345,7 +345,7 @@ public struct RuntimeInstallWorkflow {
         case .prepareInstallDirectories:
             try effects.prepareInstallDirectories(settings)
         case .prepareHostStateStore:
-            try effects.prepareHostStateStore()
+            try effects.prepareHostStateStore(settings)
         case .rotateRuntimeLogs:
             try effects.rotateRuntimeLogs()
         case .configureDeployEnvironment:

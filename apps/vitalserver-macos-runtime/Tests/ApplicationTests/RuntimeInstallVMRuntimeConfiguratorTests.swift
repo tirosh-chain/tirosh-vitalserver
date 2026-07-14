@@ -62,6 +62,27 @@ final class RuntimeInstallVMRuntimeConfiguratorTests: XCTestCase {
         ))
     }
 
+    func testConfiguredBuildsFreshConfigWithoutWritingBootDocument() throws {
+        let events = EventLog()
+        let configURL = URL(fileURLWithPath: "/runtime/config/vm.json")
+        let configurator = makeConfigurator(
+            configURL: configURL,
+            configPathState: .missing,
+            loadedConfig: TestVMConfig(),
+            defaultConfig: TestVMConfig(),
+            events: events
+        )
+
+        let config = configurator.configuredFromDefault(input: input(networkMode: .shared))
+
+        XCTAssertEqual(config.installCPUCount, 4)
+        XCTAssertEqual(config.installMemoryMiB, 8192)
+        XCTAssertEqual(config.installNetworkMode, .shared)
+        XCTAssertFalse(events.values.contains("load:/runtime/config/vm.json"))
+        XCTAssertFalse(events.values.contains { $0.hasPrefix("mkdir:") })
+        XCTAssertFalse(events.values.contains { $0.hasPrefix("write:") })
+    }
+
     func testConfigureFailsInsteadOfCreatingDefaultConfigWhenConfigInspectionFails() throws {
         let events = EventLog()
         let configURL = URL(fileURLWithPath: "/runtime/config/vm.json")

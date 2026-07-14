@@ -47,8 +47,11 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
                 waitInstallRuntimeHealth: { _ in },
                 cleanupInstallSettings: {},
                 log: { _ in },
-                prepareHostStateStore: {
-                    events.append("prepare-state-store")
+                initializeHostStateStore: {
+                    events.append("initialize-state-store")
+                },
+                prepareHostSettings: { _ in
+                    events.append("prepare-host-settings")
                 },
                 workflowOperationStateRepository: stateRepository,
                 operationID: { "install-operation-1" }
@@ -57,8 +60,9 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
 
         try composition.install()
 
-        XCTAssertEqual(Array(events.prefix(2)), ["preflight", "prepare-state-store"])
-        XCTAssertEqual(events.filter { $0 == "prepare-state-store" }.count, 2)
+        XCTAssertEqual(Array(events.prefix(2)), ["preflight", "initialize-state-store"])
+        XCTAssertEqual(events.filter { $0 == "initialize-state-store" }.count, 1)
+        XCTAssertEqual(events.filter { $0 == "prepare-host-settings" }.count, 1)
         let state = try XCTUnwrap(stateRepository.states["install-operation-1"])
         XCTAssertEqual(state.operation, .install)
         XCTAssertEqual(state.phase, .completed)
@@ -111,10 +115,11 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
                 waitInstallRuntimeHealth: { _ in events.append("wait-health") },
                 cleanupInstallSettings: { events.append("cleanup-settings") },
                 log: { _ in },
-                prepareHostStateStore: {
-                    events.append("prepare-state-store")
+                initializeHostStateStore: {
+                    events.append("initialize-state-store")
                     throw RuntimeInstallCompositionSQLiteStateTestError.databaseUnavailable
                 },
+                prepareHostSettings: { _ in events.append("prepare-host-settings") },
                 workflowOperationStateRepository: stateRepository,
                 operationID: { "install-operation-1" }
             )
@@ -126,7 +131,7 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
                 .databaseUnavailable
             )
         }
-        XCTAssertEqual(events, ["preflight", "prepare-state-store"])
+        XCTAssertEqual(events, ["preflight", "initialize-state-store"])
         XCTAssertTrue(stateRepository.states.isEmpty)
     }
 

@@ -141,6 +141,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-130 | Vital Files upload가 단일 Guest path를 받고 replay가 선택 파일을 읽지 않음 | Runtime Control PWA / Product Lab | resolved | [Vital Files upload accepts one path and replay does not use the selected file](130_vital-files-upload-and-replay-semantics.md) |
 | TS-131 | Settings 저장 후 VM 재시작이 invalid config, 잘못된 activation intent, 조기 applied 기록으로 실패 | Packaging / Runtime health / macOS Helper | package verification pending | [Settings VM restart fails after saving VM activation settings](131_settings-vm-restart-invalid-config-and-platform-agent-stop.md) |
 | TS-132 | Golden rootfs가 Host settings SQLite 없이 launcher를 시작해 manifest 생성 전 timeout | Packaging / Guest bootstrap | resolved | [Golden rootfs times out before creating the runtime manifest](132_golden-rootfs-launcher-missing-host-settings-sqlite.md) |
+| TS-133 | Golden rootfs proof 통과 후 lifecycle은 stopped지만 launcher PID가 남아 package 생성 중단 | Packaging / Local development / VM lifecycle | resolved | [Golden rootfs cleanup reports stopped while launcher still runs](133_golden-rootfs-stopped-lifecycle-launcher-process-race.md) |
+| TS-134 | PKG fresh install이 Host settings materialization 전에 `vm-config.json`을 읽어 즉시 실패 | Packaging / Host state persistence | package install verification pending | [PKG fresh install fails before Host settings materialization](134_pkg-fresh-install-host-settings-before-materialization.md) |
 
 ## Follow-up 규칙
 

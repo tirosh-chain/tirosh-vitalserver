@@ -5,6 +5,10 @@ public typealias RuntimeHostSettingsStateTransitionError = RuntimeHostSettingsAc
 public struct RuntimeHostSettingsActivationUseCase {
     public init() {}
 
+    public func initialRevision(currentRevision: Int?) throws -> Int {
+        try RuntimeHostSettingsActivationPolicy().initialRevision(currentRevision: currentRevision)
+    }
+
     public func importRevision(currentRevision: Int?) throws -> Int {
         try RuntimeHostSettingsActivationPolicy().importRevision(currentRevision: currentRevision)
     }

@@ -5,12 +5,28 @@ final class RuntimeHostSettingsActivationPolicyTests: XCTestCase {
     private let policy = RuntimeHostSettingsActivationPolicy()
 
     func testDesiredRevisionRequiresExactCurrentRevision() throws {
+        XCTAssertEqual(try policy.initialRevision(currentRevision: nil), 1)
         XCTAssertEqual(try policy.importRevision(currentRevision: nil), 1)
         XCTAssertEqual(try policy.nextDesiredRevision(currentRevision: 1, expectedRevision: 1), 2)
         XCTAssertThrowsError(try policy.nextDesiredRevision(currentRevision: 2, expectedRevision: 1)) { error in
             XCTAssertEqual(
                 error as? RuntimeHostSettingsActivationError,
                 .staleRevision(expected: 1, actual: 2)
+            )
+        }
+    }
+
+    func testInitialAndImportRevisionRejectExistingState() {
+        XCTAssertThrowsError(try policy.initialRevision(currentRevision: 3)) { error in
+            XCTAssertEqual(
+                error as? RuntimeHostSettingsActivationError,
+                .alreadyExists(revision: 3)
+            )
+        }
+        XCTAssertThrowsError(try policy.importRevision(currentRevision: 3)) { error in
+            XCTAssertEqual(
+                error as? RuntimeHostSettingsActivationError,
+                .alreadyExists(revision: 3)
             )
         }
     }

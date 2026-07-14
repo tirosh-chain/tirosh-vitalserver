@@ -6,6 +6,36 @@ import XCTest
 @testable import OutboundAdapters
 
 final class SQLiteRuntimeHostSettingsRepositoryTests: XCTestCase {
+    func testFreshInstallInitializesDesiredSettingsBeforeMaterialization() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sqlite-host-settings-initialize-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let databaseURL = directory.appendingPathComponent("runtime-state.sqlite")
+        _ = try SQLiteHostRuntimeStateDatabase(url: databaseURL).initialize()
+        let repository = SQLiteRuntimeHostSettingsRepository(
+            databaseURL: databaseURL,
+            transitionDecider: RuntimeHostSettingsActivationUseCase()
+        )
+
+        let initialized = try repository.initializeDesiredHostSettings(
+            payload("fresh"),
+            desiredAt: "2026-07-14T13:00:00Z"
+        )
+
+        XCTAssertEqual(initialized.revision, 1)
+        XCTAssertEqual(initialized.payload, payload("fresh"))
+        XCTAssertNil(initialized.materializedRevision)
+        XCTAssertNil(initialized.materializedAt)
+        XCTAssertTrue(initialized.requiresVMRestart)
+
+        let materialized = try repository.markHostSettingsMaterialized(
+            revision: initialized.revision,
+            materializedAt: "2026-07-14T13:00:01Z"
+        )
+        XCTAssertEqual(materialized.materializedRevision, 1)
+        XCTAssertEqual(materialized.materializedAt, "2026-07-14T13:00:01Z")
+    }
+
     func testDesiredMaterializedBootAndAppliedRevisionsRequireExplicitProof() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("sqlite-host-settings-tests-\(UUID().uuidString)")

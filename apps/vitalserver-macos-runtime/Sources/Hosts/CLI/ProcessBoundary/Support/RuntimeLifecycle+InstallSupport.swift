@@ -62,8 +62,76 @@ extension RuntimeLifecycle {
         )
     }
 
+    func initializeHostStateStore() throws {
+        let migrationResult = try SQLiteRuntimeOperationLeaseLegacyMigrator(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            sourceURL: installedPaths.runtimeOperationLease,
+            fileStore: fileStore
+        ).migrate()
+        let database = SQLiteHostRuntimeStateDatabase(
+            url: installedPaths.runtimeStateDatabase,
+            fileStore: fileStore
+        )
+        switch database.loadHostStateStoreReadiness() {
+        case .loaded(let metadata):
+            log(
+                "Host runtime state store ready schemaVersion=\(metadata.schemaVersion) databaseId=\(metadata.databaseID) leaseMigration=\(migrationResult)"
+            )
+        case .missing:
+            throw RuntimeHostStateStoreStartupError.missing(
+                path: installedPaths.runtimeStateDatabase.path
+            )
+        case .failed(let failure):
+            throw RuntimeHostStateStoreStartupError.failed(
+                path: installedPaths.runtimeStateDatabase.path,
+                stage: failure.stage.rawValue,
+                reason: failure.message
+            )
+        }
+    }
+
+    func prepareHostSettings(_ settings: RuntimeInstallSettings) throws {
+        let repository = runtimeHostSettingsRepository()
+        switch repository.loadHostSettings() {
+        case .missing:
+            break
+        case .loaded(let record):
+            throw RuntimeHostSettingsStateTransitionError.alreadyExists(revision: record.revision)
+        case .failed(let reason):
+            throw RuntimeHostStateStoreStartupError.failed(
+                path: installedPaths.runtimeStateDatabase.path,
+                stage: "host-settings-read",
+                reason: reason
+            )
+        }
+        let record = try repository.initializeDesiredHostSettings(
+            try freshInstallHostSettingsPayload(settings),
+            desiredAt: ISO8601DateFormatter().string(from: clock.now)
+        )
+        log("Host settings initialized revision=\(record.revision)")
+    }
+
     func configureDeployEnvironment(_ settings: RuntimeInstallSettings) throws {
-        try runtimeGuestConfigWriter().write(runtimeConfig: guestRuntimeConfigDocument(settings))
+        let record = try requiredInstallHostSettings()
+        _ = try JSONDecoder().decode(
+            GuestRuntimeConfigDocument.self,
+            from: record.payload.guestRuntimeConfigJSON
+        )
+        _ = try JSONDecoder().decode(
+            GuestRuntimeSettingsDocument.self,
+            from: record.payload.guestRuntimeSettingsJSON
+        )
+        try fileStore.writeData(
+            record.payload.guestRuntimeConfigJSON,
+            to: installedPaths.guestRuntimeConfig,
+            options: .atomic
+        )
+        try fileStore.writeData(
+            record.payload.guestRuntimeSettingsJSON,
+            to: installedPaths.guestRuntimeSettings,
+            options: .atomic
+        )
+        try restrictSecretFile(installedPaths.guestRuntimeConfig)
     }
 
     func guestRuntimeConfigDocument(_ settings: RuntimeInstallSettings) throws -> GuestRuntimeConfigDocument {
@@ -143,25 +211,48 @@ extension RuntimeLifecycle {
     }
 
     func configureInstalledVMRuntime(_ settings: RuntimeInstallSettings) throws {
-        try RuntimeInstallVMRuntimeConfigurator<VMRuntimeConfig>(
+        let record = try requiredInstallHostSettings()
+        _ = try JSONDecoder().decode(VMRuntimeConfig.self, from: record.payload.vmConfigJSON)
+        for directory in [
+            installedPaths.runtimeDirectory,
+            installedPaths.vitalFilesDirectory,
+            installedPaths.vrReleaseDirectory,
+            installedPaths.hostRunDirectory,
+        ] {
+            try fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        try fileStore.writeData(record.payload.vmConfigJSON, to: paths.config, options: .atomic)
+        let materialized = RuntimeHostSettingsPayload(
+            vmConfigJSON: try fileStore.readData(paths.config),
+            guestRuntimeConfigJSON: try fileStore.readData(installedPaths.guestRuntimeConfig),
+            guestRuntimeSettingsJSON: try fileStore.readData(installedPaths.guestRuntimeSettings)
+        )
+        guard materialized == record.payload else {
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings materialization verification failed revision=\(record.revision)"
+            )
+        }
+        _ = try runtimeHostSettingsRepository().markHostSettingsMaterialized(
+            revision: record.revision,
+            materializedAt: ISO8601DateFormatter().string(from: clock.now)
+        )
+    }
+
+    func freshInstallHostSettingsPayload(
+        _ settings: RuntimeInstallSettings
+    ) throws -> RuntimeHostSettingsPayload {
+        let configurator = RuntimeInstallVMRuntimeConfigurator<VMRuntimeConfig>(
             context: RuntimeInstallVMRuntimeConfigurationContext(
                 configURL: paths.config,
-                requiredDirectories: [
-                    installedPaths.runtimeDirectory,
-                    installedPaths.vitalFilesDirectory,
-                    installedPaths.vrReleaseDirectory,
-                    installedPaths.hostRunDirectory,
-                ]
+                requiredDirectories: []
             ),
             operations: RuntimeInstallVMRuntimeConfigurationOperations(
-                createDirectory: { url, withIntermediateDirectories in
-                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
-                },
-                configPathState: { url in
-                    fileStore.pathState(at: url)
-                },
-                loadConfig: { url in
-                    try VMRuntimeConfigComposition.load(from: url, fileStore: fileStore)
+                createDirectory: { _, _ in },
+                configPathState: { _ in .missing },
+                loadConfig: { _ in
+                    throw LauncherError.runtimeOperationFailed(
+                        "fresh install must not read materialized VM config"
+                    )
                 },
                 defaultConfig: {
                     VMRuntimeConfig.default(paths: installedPaths)
@@ -172,11 +263,10 @@ extension RuntimeLifecycle {
                 encodeConfig: { config in
                     try VMRuntimeConfigComposition.prettyJSONEncoder().encode(config)
                 },
-                writeData: { data, url, options in
-                    try fileStore.writeData(data, to: url, options: options)
-                }
+                writeData: { _, _, _ in }
             )
-        ).configure(input: RuntimeInstallVMRuntimeConfigurationInput(
+        )
+        let input = RuntimeInstallVMRuntimeConfigurationInput(
             cpuCount: settings.cpuCount,
             memoryGiB: settings.memoryGiB,
             networkMode: settings.networkMode,
@@ -189,7 +279,34 @@ extension RuntimeLifecycle {
             vitalFilesDirectoryGuestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             preventSystemSleep: settings.preventSystemSleep,
             sshAuthorizedKeys: settings.sshAuthorizedKeys
-        ))
+        )
+        let vmConfig = configurator.configuredFromDefault(input: input)
+        let guestConfig = try guestRuntimeConfigDocument(settings)
+        let guestSettings = GuestRuntimeSettingsDocument(runtimeConfig: guestConfig)
+        let encoder = VMRuntimeConfigComposition.prettyJSONEncoder()
+        return RuntimeHostSettingsPayload(
+            vmConfigJSON: try encoder.encode(vmConfig),
+            guestRuntimeConfigJSON: try encoder.encode(guestConfig),
+            guestRuntimeSettingsJSON: try encoder.encode(guestSettings)
+        )
+    }
+
+    func runtimeHostSettingsRepository() -> SQLiteRuntimeHostSettingsRepository {
+        SQLiteRuntimeHostSettingsRepository(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            transitionDecider: RuntimeHostSettingsActivationUseCase()
+        )
+    }
+
+    func requiredInstallHostSettings() throws -> RuntimeHostSettingsRecord {
+        switch runtimeHostSettingsRepository().loadHostSettings() {
+        case .loaded(let record):
+            return record
+        case .missing:
+            throw LauncherError.runtimeOperationFailed("Host settings SQLite state is missing")
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
     }
 
     func createCloudInitSeed(_ settings: RuntimeInstallSettings) throws {

@@ -116,6 +116,7 @@ def test_distribution_review_covers_release_contract_and_guest_repair() -> None:
     )
 
     assert "GuestCommandDispatcherSupportTests" in review
+    assert "RuntimeFreshInstallHostSettingsTests" in review
     assert "test_release_sync_contract.py" in review
     assert "packages/vitalserver-guest-tools/tests/test_redis_repair.py" in review
 

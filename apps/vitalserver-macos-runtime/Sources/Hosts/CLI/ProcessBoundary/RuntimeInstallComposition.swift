@@ -42,7 +42,8 @@ public struct RuntimeInstallCompositionOperations<Settings> {
     let waitInstallRuntimeHealth: (Settings) throws -> Void
     let cleanupInstallSettings: () throws -> Void
     let log: (String) -> Void
-    let prepareHostStateStore: () throws -> Void
+    let initializeHostStateStore: () throws -> Void
+    let prepareHostSettings: (Settings) throws -> Void
     let workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository
     let operationID: () -> String
 
@@ -68,7 +69,8 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         waitInstallRuntimeHealth: @escaping (Settings) throws -> Void,
         cleanupInstallSettings: @escaping () throws -> Void,
         log: @escaping (String) -> Void,
-        prepareHostStateStore: @escaping () throws -> Void,
+        initializeHostStateStore: @escaping () throws -> Void,
+        prepareHostSettings: @escaping (Settings) throws -> Void,
         workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository,
         operationID: @escaping () -> String
     ) {
@@ -93,7 +95,8 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         self.waitInstallRuntimeHealth = waitInstallRuntimeHealth
         self.cleanupInstallSettings = cleanupInstallSettings
         self.log = log
-        self.prepareHostStateStore = prepareHostStateStore
+        self.initializeHostStateStore = initializeHostStateStore
+        self.prepareHostSettings = prepareHostSettings
         self.workflowOperationStateRepository = workflowOperationStateRepository
         self.operationID = operationID
     }
@@ -116,7 +119,7 @@ public struct RuntimeInstallComposition<Settings> {
             mode: .full
         ))
         let preflight = operations.freshInstallPreflight()
-        try operations.prepareHostStateStore()
+        try operations.initializeHostStateStore()
         let operationID = operations.operationID()
         try RuntimeInstallWorkflow().run(
             plan,
@@ -134,7 +137,7 @@ public struct RuntimeInstallComposition<Settings> {
             mode: .provision
         ))
         let provisionPayload = operations.installProvisionPayload()
-        try operations.prepareHostStateStore()
+        try operations.initializeHostStateStore()
         let operationID = operations.operationID()
         try RuntimeInstallWorkflow().run(
             plan,
@@ -179,7 +182,7 @@ public struct RuntimeInstallComposition<Settings> {
                 waitInstallRuntimeHealth: operations.waitInstallRuntimeHealth,
                 cleanupInstallSettings: operations.cleanupInstallSettings,
                 describeError: RuntimeErrorDescription.describe,
-                prepareHostStateStore: operations.prepareHostStateStore
+                prepareHostStateStore: operations.prepareHostSettings
             ),
             writer: InstallRuntimeStateWriter(
                 writeState: { state, mode, currentStep, message, blockers in

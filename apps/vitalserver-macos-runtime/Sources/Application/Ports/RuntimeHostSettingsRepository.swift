@@ -75,6 +75,12 @@ public protocol RuntimeHostSettingsReading: Sendable {
 
 public protocol RuntimeHostSettingsRepository: RuntimeHostSettingsReading {
     @discardableResult
+    func initializeDesiredHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        desiredAt: String
+    ) throws -> RuntimeHostSettingsRecord
+
+    @discardableResult
     func importMaterializedHostSettings(
         _ payload: RuntimeHostSettingsPayload,
         importedAt: String
@@ -109,6 +115,7 @@ public protocol RuntimeHostSettingsRepository: RuntimeHostSettingsReading {
 }
 
 public protocol RuntimeHostSettingsTransitionDeciding: Sendable {
+    func initialRevision(currentRevision: Int?) throws -> Int
     func importRevision(currentRevision: Int?) throws -> Int
     func nextDesiredRevision(currentRevision: Int?, expectedRevision: Int) throws -> Int
     func requireMaterialization(record: RuntimeHostSettingsRecord, revision: Int) throws

@@ -54,6 +54,23 @@ public struct SQLiteRuntimeHostSettingsRepository: RuntimeHostSettingsRepository
         }
     }
 
+    public func initializeDesiredHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        desiredAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        try write { db, current in
+            let revision = try transitionDecider.initialRevision(currentRevision: current?.revision)
+            let record = RuntimeHostSettingsRecord(
+                payload: try validated(payload),
+                revision: revision,
+                desiredAt: try required(desiredAt, field: "desired_at")
+            )
+            try insert(db, record: record)
+            try appendEvent(db, record: record, type: "host-settings-initialized")
+            return record
+        }
+    }
+
     public func importMaterializedHostSettings(
         _ payload: RuntimeHostSettingsPayload,
         importedAt: String

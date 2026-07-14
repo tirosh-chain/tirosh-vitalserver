@@ -449,6 +449,22 @@ private final class RuntimeHostSettingsRepositorySpy: RuntimeHostSettingsReposit
         record.map(RuntimeHostSettingsReadResult.loaded) ?? .missing
     }
 
+    func initializeDesiredHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        desiredAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        guard record == nil else {
+            throw RuntimeHostSettingsStateTransitionError.alreadyExists(revision: record!.revision)
+        }
+        let next = RuntimeHostSettingsRecord(
+            payload: payload,
+            revision: 1,
+            desiredAt: desiredAt
+        )
+        record = next
+        return next
+    }
+
     func importMaterializedHostSettings(
         _ payload: RuntimeHostSettingsPayload,
         importedAt: String
