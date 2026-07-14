@@ -175,6 +175,7 @@ Product Lab virtual recorder 또는 dev testkit이 실제 VRecorder처럼 보이
 | 접속 등록 | Socket.IO 연결 후 `join_vr` 전송 |
 | IP 검증 | `ip_<vrcode>`가 VM 또는 장비의 실제 LAN IP로 저장되는지 확인 |
 | Online 표시 | 같은 연결에서 주기적으로 `send_data` 전송 |
+| Case 경과 시간 | 실행 시작 시각을 `dtcase`로 한 번 정하고 같은 실행의 모든 frame에서 유지 |
 | Device 표시 | `devs`에 `status` 값을 명시해 파란/빨간 사각형을 의도적으로 재현 |
 | Patient status 표시 | `ptcon` 값을 조정해 patient icon 재현 |
 | Command 수신 | `update`, `restart`, `reboot`, `del_bed`, `add_event`, `edit_bed`, `edit_conf` 수신 |
@@ -185,6 +186,8 @@ Product Lab virtual recorder 또는 dev testkit이 실제 VRecorder처럼 보이
 macOS runtime의 Helper UI는 Product Lab surface를 통해 virtual recorder를 제어합니다. Product Lab session, bed, recorder read model은 Runtime Control API `/runtime/lab/*`와 Guest Control API `/runtime/lab/*` 계약을 거쳐 `apps/vitalserver-lab` service가 소유합니다. 이 경로는 Helper가 dev-only test harness를 직접 제어하지 않고도 VitalServer 수신, recorder-ingress, observer, Guest/Postgres read model 반영을 검증하기 위한 제품 경로입니다.
 
 Lab에서 별도로 만든 bed/recorder를 session이 사용해야 할 때는 session 생성 요청에 명시적인 `bedIds`를 전달해야 합니다. Helper나 Host는 기존 Lab bed/recorder를 이름, fixture, 이전 명령 결과로 추측해 점유하지 않습니다. `bedIds`가 없으면 Product Lab은 새 session-scoped bed/recorder read model을 만들고, `bedIds`가 있으면 Lab service가 해당 Lab-owned bed/recorder rows를 session 상태로 전이합니다.
+
+Product Lab 실행 상태는 `case_started_at`을 명시적으로 소유합니다. 최초 frame과 이후 stream frame은 같은 값을 `dtcase`로 전송하고, 실행 중 개별 Recorder를 중지했다가 다시 시작해도 현재 session 실행의 값을 사용합니다. `dtstart`, `dtend`, track record 시각은 각 frame의 명시적인 생성 시각을 사용합니다. Payload 생성기는 현재 시각이나 session 생성 시각에서 case 시작 상태를 추론하지 않습니다.
 
 ### 7-3. 실제 network behavior 검증
 

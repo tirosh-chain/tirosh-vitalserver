@@ -105,6 +105,7 @@ class _RunningLabSession:
     active_recorder_ids_lock: threading.Lock
     target_url: str
     recorder_vrcodes: dict[str, str]
+    case_started_at: float
 
 
 class VitalServerRecorderPayloadSender:
@@ -341,11 +342,14 @@ class LabExecutionEngine:
                 for recorder in recorders
             )
 
+        case_started_at = time.time()
         results = self._send_session_frame(
             session=session,
             beds_by_id=beds_by_id,
             recorders=recorders,
             sequence=1,
+            frame_started_at=case_started_at,
+            case_started_at=case_started_at,
         )
         if recorders:
             self._start_session_runner(
@@ -354,6 +358,7 @@ class LabExecutionEngine:
                 recorders=recorders,
                 active_recorder_ids={recorder.recorder_id for recorder in recorders},
                 initial_sequence=2,
+                case_started_at=case_started_at,
                 result_sink=result_sink,
             )
         return results
@@ -394,11 +399,16 @@ class LabExecutionEngine:
         if running is not None:
             with running.active_recorder_ids_lock:
                 running.active_recorder_ids.add(recorder_id)
+            case_started_at = running.case_started_at
+        else:
+            case_started_at = time.time()
         results = self._send_session_frame(
             session=session,
             beds_by_id=beds_by_id,
             recorders=(recorder,),
             sequence=1,
+            frame_started_at=time.time(),
+            case_started_at=case_started_at,
         )
         if running is None:
             self._start_session_runner(
@@ -407,6 +417,7 @@ class LabExecutionEngine:
                 recorders=recorders,
                 active_recorder_ids={recorder_id},
                 initial_sequence=2,
+                case_started_at=case_started_at,
                 result_sink=result_sink,
             )
         if result_sink is not None:
@@ -456,6 +467,7 @@ class LabExecutionEngine:
         recorders: tuple[LabRecorder, ...],
         active_recorder_ids: set[str],
         initial_sequence: int,
+        case_started_at: float,
         result_sink: LabRecorderExecutionResultSink | None,
     ) -> None:
         target_url = session.target_url
@@ -480,6 +492,8 @@ class LabExecutionEngine:
                     beds_by_id=beds_by_id,
                     recorders=active_recorders,
                     sequence=sequence,
+                    frame_started_at=time.time(),
+                    case_started_at=case_started_at,
                 )
                 if result_sink is not None:
                     try:
@@ -507,6 +521,7 @@ class LabExecutionEngine:
                 recorder_vrcodes={
                     recorder.recorder_id: recorder.vrcode for recorder in recorders
                 },
+                case_started_at=case_started_at,
             )
         if previous is not None:
             previous.stop_event.set()
@@ -519,6 +534,8 @@ class LabExecutionEngine:
         beds_by_id: dict[str, LabBed],
         recorders: tuple[LabRecorder, ...],
         sequence: int,
+        frame_started_at: float,
+        case_started_at: float,
     ) -> tuple[LabRecorderExecutionResult, ...]:
         target_url = session.target_url
         if target_url is None:
@@ -545,6 +562,8 @@ class LabExecutionEngine:
                     bed=bed,
                     recorder=recorder,
                     sequence=sequence,
+                    frame_started_at=frame_started_at,
+                    case_started_at=case_started_at,
                 )
             except LabRecorderSendError as error:
                 results.append(
@@ -688,6 +707,8 @@ def lab_recorder_payload(
     bed: LabBed,
     recorder: LabRecorder,
     sequence: int = 1,
+    frame_started_at: float,
+    case_started_at: float,
 ) -> dict[str, object]:
     if session.scenario_id == "vital-file-replay":
         if session.vital_file_path is None:
@@ -697,9 +718,11 @@ def lab_recorder_payload(
             bed=bed,
             recorder=recorder,
             sequence=sequence,
+            frame_started_at=frame_started_at,
+            case_started_at=case_started_at,
         )
 
-    now = time.time()
+    now = frame_started_at
     profile = lab_signal_profile(session.scenario_id)
     waveforms = lab_waveform_frame(
         scenario_id=session.scenario_id,
@@ -711,7 +734,7 @@ def lab_recorder_payload(
         "seqid": sequence,
         "dtstart": now,
         "dtend": now + 1,
-        "dtcase": now,
+        "dtcase": case_started_at,
         "dtapp": now,
         "dtserver": now + 1,
         "ptcon": 1,
@@ -1051,14 +1074,16 @@ def lab_vital_file_replay_payload(
     bed: LabBed,
     recorder: LabRecorder,
     sequence: int = 1,
+    frame_started_at: float,
+    case_started_at: float,
 ) -> dict[str, object]:
-    now = time.time()
+    now = frame_started_at
     room = {
         "roomname": bed.name,
         "seqid": sequence,
         "dtstart": now,
         "dtend": now + 1,
-        "dtcase": now,
+        "dtcase": case_started_at,
         "dtapp": now,
         "dtserver": now,
         "ptcon": 1,

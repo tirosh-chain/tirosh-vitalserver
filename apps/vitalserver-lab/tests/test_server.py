@@ -364,6 +364,11 @@ def test_running_session_recorders_can_be_stopped_and_started_individually() -> 
         recorder = recorders[0]
         recorder_id = recorder["recorderId"]
         vrcode = recorder["vrcode"]
+        session_case_started_at = next(
+            next(iter(call["payload"]["rooms"].values()))["dtcase"]
+            for call in sender.calls
+            if call["payload"]["vrcode"] == vrcode
+        )
 
         stopped = request(
             address,
@@ -380,6 +385,11 @@ def test_running_session_recorders_can_be_stopped_and_started_individually() -> 
             f"/lab/sessions/lab_session_1/recorders/{recorder_id}/start",
         )
         time.sleep(0.02)
+        restarted_case_started_at = next(
+            next(iter(call["payload"]["rooms"].values()))["dtcase"]
+            for call in sender.calls
+            if call["payload"]["vrcode"] == vrcode
+        )
 
     assert stopped["status"] == 202
     assert stopped["body"]["recorder"]["state"] == "stopped"
@@ -388,6 +398,7 @@ def test_running_session_recorders_can_be_stopped_and_started_individually() -> 
     assert started["status"] == 202
     assert started["body"]["recorder"]["state"] == "running"
     assert any(call["payload"]["vrcode"] == vrcode for call in sender.calls)
+    assert restarted_case_started_at == session_case_started_at
 
 
 def test_running_recorder_can_be_stopped_when_session_state_is_inconsistent() -> None:
@@ -741,6 +752,7 @@ def test_session_start_streams_until_session_stop() -> None:
         time.sleep(0.05)
         running_recorders = request(address, "GET", "/lab/recorders")
         stopped = request(address, "POST", "/lab/sessions/lab_session_1/stop")
+        payloads_at_stop = [call["payload"] for call in sender.calls]
         sent_at_stop = len(sender.calls)
         vrcode = running_recorders["body"]["recorders"][0]["vrcode"]
         time.sleep(0.03)
@@ -749,6 +761,9 @@ def test_session_start_streams_until_session_stop() -> None:
     assert started["status"] == 202
     assert stopped["status"] == 202
     assert running_recorders["body"]["recorders"][0]["messagesSent"] > 1
+    rooms = [next(iter(payload["rooms"].values())) for payload in payloads_at_stop]
+    assert len({room["dtcase"] for room in rooms}) == 1
+    assert len({room["dtstart"] for room in rooms}) > 1
     assert sent_after_stop_wait == sent_at_stop
     assert ("http://edge/", vrcode) in sender.closed_recorders
 
@@ -832,6 +847,7 @@ def test_replay_vital_file_start_uses_replay_payload_without_exposing_path(
         ["lab_replay_1"],
         sender=sender,
         vital_files_mount=tmp_path,
+        frame_interval_seconds=0.01,
     ) as address:
         request(
             address,
@@ -843,14 +859,20 @@ def test_replay_vital_file_start_uses_replay_payload_without_exposing_path(
             },
         )
         started = request(address, "POST", "/lab/sessions/lab_replay_1/start")
+        time.sleep(0.03)
         recorders = request(address, "GET", "/lab/recorders")
+        payloads = [call["payload"] for call in sender.calls]
 
     assert started["status"] == 202
     assert sender.calls[0]["payload"]["source"] == {"kind": "vital-file-replay"}
     assert str(vital_file) not in json.dumps(sender.calls[0]["payload"])
+    rooms = [next(iter(payload["rooms"].values())) for payload in payloads]
+    assert len(rooms) > 1
+    assert len({room["dtcase"] for room in rooms}) == 1
+    assert len({room["dtstart"] for room in rooms}) > 1
     recorder = recorders["body"]["recorders"][0]
     assert recorder["lastSendState"] == "sent"
-    assert recorder["messagesSent"] == 1
+    assert recorder["messagesSent"] > 1
 
 
 def test_replay_vital_file_rejects_unavailable_or_unmounted_source(

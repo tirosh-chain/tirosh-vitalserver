@@ -7,8 +7,9 @@ Recorders tab still shows no Vital Recorder data or no recorder activity detail.
 VitalServer Web Monitoring may show the Lab bed row as `N/A`, with no visible
 vital-sign tracks.
 
-Another form of the same failure shows the Web Monitoring connection age
-repeatedly returning to `0s` or `1s`. ECG appears as one narrow spike per second,
+Another form of the same failure shows the Web Monitoring case/recording elapsed
+time repeatedly returning to `0s` or `1s`. This value is calculated from
+`dtcase`; it is not the Socket.IO connection age. ECG appears as one narrow spike per second,
 PLETH as isolated dots, and CO2 as a repeated short sawtooth. Product Lab can
 report a growing `sent` count while packet history is still absent from the
 VitalDB recorder observation.
@@ -44,6 +45,13 @@ The generated waveform tracks also declared sample rates of 125 Hz, 62.5 Hz,
 and 25 Hz while providing only 5, 5, and 7 values in each one-second record.
 PLETH declared display bounds of 0 to 1 but sent values as large as 78. Those
 payloads cannot render as continuous one-second physiological waveforms.
+
+Product Lab also assigned the current frame timestamp to `dtcase` every time it
+built a payload. Web Monitoring calculates case/recording elapsed time from
+`dtcase`, so replacing that value on every frame reset the red timer to `0s`.
+The red color means the payload reports `recording`; it does not report a
+connection failure. Socket.IO connection reuse and `dtcase` lifetime are
+separate contracts.
 
 The native VitalDB read providers previously used the fixed loopback endpoint
 `127.0.0.1:18330`. Guest Control API is owned by the VM and listens at the
@@ -93,6 +101,12 @@ the recorder testkit:
   reuses it for every frame, and closes it only on recorder/session stop;
 - generated waveform records contain one second of samples matching the
   declared sample rate and display bounds;
+- the running Lab session explicitly owns one `case_started_at`; every regular
+  and `.vital` replay frame uses it as `dtcase`, while frame and track timestamps
+  continue to advance;
+- restarting an individual Recorder inside a running session preserves the
+  current session's `case_started_at`; a new session execution creates a new
+  value;
 - Lab start/replay refreshes the VitalDB recorder read model after refreshing
   the Product Lab read model.
 
@@ -135,6 +149,12 @@ tests must assert that multiple sends reuse one connection, `Start` creates a
 continuing stream, and `Stop` ends and disconnects it. Waveform tests must assert
 that each one-second record's sample count matches its declared sample rate and
 that values remain inside declared display bounds.
+
+Do not generate case lifetime state inside a payload formatter. The running
+execution owner must provide `case_started_at` and the current frame timestamp
+as separate complete inputs. Regression tests must assert that `dtcase` remains
+constant across multiple frames and individual Recorder restart, including the
+`.vital` replay path, while `dtstart` advances.
 
 Do not hardcode a Host loopback address for a Guest-owned API unless an explicit
 Host port-forward contract exists. Read the Guest address owner and preserve
