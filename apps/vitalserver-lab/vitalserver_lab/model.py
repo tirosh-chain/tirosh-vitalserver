@@ -217,6 +217,9 @@ class LabSessionStore(Protocol):
     def list_sessions(self) -> tuple[LabSession, ...]:
         """Return all persisted Lab sessions in deterministic update order."""
 
+    def delete_session(self, session_id: str) -> tuple[LabSession, ...] | None:
+        """Delete one Lab session aggregate and all of its owned children."""
+
     def start(self, session_id: str) -> LabSession | None:
         """Transition an existing Lab session to running."""
 
@@ -327,6 +330,24 @@ class InMemoryLabSessionStore:
         return self.sessions.get(session_id)
 
     def list_sessions(self) -> tuple[LabSession, ...]:
+        return tuple(
+            sorted(
+                self.sessions.values(),
+                key=lambda session: (session.updated_at, session.session_id),
+                reverse=True,
+            )
+        )
+
+    def delete_session(self, session_id: str) -> tuple[LabSession, ...] | None:
+        if session_id not in self.sessions:
+            return None
+        self.sessions.pop(session_id)
+        for bed_id, bed in list(self.beds.items()):
+            if bed.session_id == session_id:
+                self.beds.pop(bed_id)
+        for recorder_id, recorder in list(self.recorders.items()):
+            if recorder.session_id == session_id:
+                self.recorders.pop(recorder_id)
         return tuple(
             sorted(
                 self.sessions.values(),

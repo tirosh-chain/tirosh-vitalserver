@@ -56,6 +56,29 @@ def test_sqlalchemy_store_persists_session_and_children_as_one_start_transition(
     assert {recorder.state for recorder in reopened.list_recorders()} == {"running"}
 
 
+def test_sqlalchemy_store_deletes_session_and_owned_children_atomically(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path / 'lab.sqlite'}"
+    store = SQLAlchemyLabSessionStore(url, id_factory=lambda: "lab_session_1")
+    created = store.create(
+        LabSessionCreateInput(
+            scenario_id="baseline-monitoring",
+            name="Delete aggregate",
+            recorder_count=1,
+            target_url="http://edge/",
+        )
+    )
+
+    remaining = store.delete_session(created.session_id)
+    reopened = SQLAlchemyLabSessionStore(url)
+
+    assert remaining == ()
+    assert reopened.list_sessions() == ()
+    assert reopened.list_beds() == ()
+    assert reopened.list_recorders() == ()
+
+
 def test_sqlalchemy_store_writes_existing_timestamp_columns(tmp_path: Path) -> None:
     database_path = tmp_path / "legacy-schema.sqlite"
     with sqlite3.connect(database_path) as connection:

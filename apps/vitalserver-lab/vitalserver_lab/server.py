@@ -315,6 +315,24 @@ def route_lab_request(
                 session = session_store.stop(session_id)
             except LabSessionStoreUnavailable as error:
                 return _store_failure_response(error, operation_id=operation_id)
+        elif parts[3] == "delete":
+            try:
+                session = session_store.get(session_id)
+                if session is None:
+                    return HTTPStatus.NOT_FOUND, _missing_session_response(
+                        session_id,
+                        operation_id=None,
+                    )
+                execution_engine.stop_session(session_id)
+                remaining_sessions = session_store.delete_session(session_id)
+            except LabSessionStoreUnavailable as error:
+                return _read_model_failure_response(error, collection="sessions")
+            if remaining_sessions is None:
+                return HTTPStatus.NOT_FOUND, _missing_session_response(
+                    session_id,
+                    operation_id=None,
+                )
+            return HTTPStatus.ACCEPTED, _session_list_response(remaining_sessions)
         else:
             return HTTPStatus.NOT_FOUND, {"error": "not_found"}
         if session is None:
@@ -818,6 +836,14 @@ def _recorder_list_response(recorders: tuple[object, ...]) -> dict[str, object]:
     return {
         "state": "loaded",
         "recorders": [recorder.as_json() for recorder in recorders],
+        "readError": None,
+    }
+
+
+def _session_list_response(sessions: tuple[object, ...]) -> dict[str, object]:
+    return {
+        "state": "loaded",
+        "sessions": [session.as_json() for session in sessions],
         "readError": None,
     }
 

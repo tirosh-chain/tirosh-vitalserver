@@ -76,6 +76,13 @@ class PostgresVitalDBReadModelRepository:
         return self.recorders()
 
     def recorder_activity(self, vrcode: str) -> dict[str, Any]:
+        if self._visibility_by_id("recorder").get(vrcode) == DELETED:
+            return {
+                "state": "loaded",
+                "vrcode": vrcode,
+                "buckets": [],
+                "readError": None,
+            }
         buckets_by_identity: dict[tuple[str, int], dict[str, Any]] = {}
         for observation in self._observation_documents():
             activity_buckets = observation.get("activityBuckets")
@@ -132,7 +139,42 @@ class PostgresVitalDBReadModelRepository:
 
     def relationships(self) -> dict[str, Any]:
         relationship_history = self._latest_relationship_history_document()
-        return self._relationship_history_response(relationship_history)
+        document = self._relationship_history_response(relationship_history)
+        deleted_vrcodes = {
+            identity
+            for identity, visibility in self._visibility_by_id("recorder").items()
+            if visibility == DELETED
+        }
+        deleted_bed_ids = {
+            identity
+            for identity, visibility in self._visibility_by_id("bed").items()
+            if visibility == DELETED
+        }
+        if any(not isinstance(item, dict) for item in document["assignments"]):
+            raise VitalDBReadModelDependencyError(
+                "VitalDB relationship read model assignment item is invalid.",
+                kind="vitaldb-read-model-invalid",
+            )
+        if any(not isinstance(item, dict) for item in document["events"]):
+            raise VitalDBReadModelDependencyError(
+                "VitalDB relationship read model event item is invalid.",
+                kind="vitaldb-read-model-invalid",
+            )
+        document["assignments"] = [
+            assignment
+            for assignment in document["assignments"]
+            if assignment.get("vrcode") not in deleted_vrcodes
+            and assignment.get("bedID") not in deleted_bed_ids
+        ]
+        document["events"] = [
+            event
+            for event in document["events"]
+            if event.get("vrcode") not in deleted_vrcodes
+            and event.get("previousVrcode") not in deleted_vrcodes
+            and event.get("bedID") not in deleted_bed_ids
+            and event.get("previousBedID") not in deleted_bed_ids
+        ]
+        return document
 
     def previous_relationship_history(self) -> dict[str, Any] | None:
         try:

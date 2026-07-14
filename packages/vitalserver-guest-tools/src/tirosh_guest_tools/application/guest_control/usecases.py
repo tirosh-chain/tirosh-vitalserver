@@ -66,6 +66,11 @@ from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
     GuestServiceReconcileEffect,
     reconcile_guest_service,
 )
+from tirosh_guest_tools.domain.vitaldb_deletion import (
+    VitalDBDeletionPolicyError,
+    plan_bed_deletion,
+    plan_recorder_deletion,
+)
 from tirosh_guest_tools.domain.vitaldb_history import attach_recorder_ingress_status
 
 
@@ -1089,8 +1094,24 @@ class GuestControlUseCases:
     ) -> dict[str, object]:
         return self._run_vitaldb_read_model_command(
             collection="recorders",
-            action=lambda: self._require_vitaldb_read_model().delete_recorders(request),
+            action=lambda: self._delete_vitaldb_recorders(request),
         )
+
+    def _delete_vitaldb_recorders(
+        self,
+        request: dict[str, object],
+    ) -> dict[str, object]:
+        read_model = self._require_vitaldb_read_model()
+        vrcodes = _required_command_ids(request, field="vrcodes")
+        try:
+            plan = plan_recorder_deletion(read_model.recorders(), vrcodes)
+        except VitalDBDeletionPolicyError as error:
+            raise VitalDBReadModelDependencyError(
+                error.message,
+                kind=error.kind,
+            ) from error
+        self._delete_owning_lab_sessions(set(plan.lab_vrcodes))
+        return read_model.delete_recorders(request)
 
     def get_vitaldb_recorder_activity(self, vrcode: str) -> dict[str, object]:
         if self._vitaldb_read_model is None:
@@ -1159,8 +1180,68 @@ class GuestControlUseCases:
     def delete_vitaldb_beds(self, request: dict[str, object]) -> dict[str, object]:
         return self._run_vitaldb_read_model_command(
             collection="beds",
-            action=lambda: self._require_vitaldb_read_model().delete_beds(request),
+            action=lambda: self._delete_vitaldb_beds(request),
         )
+
+    def _delete_vitaldb_beds(
+        self,
+        request: dict[str, object],
+    ) -> dict[str, object]:
+        read_model = self._require_vitaldb_read_model()
+        bed_ids = _required_command_ids(request, field="bedIDs")
+        try:
+            plan = plan_bed_deletion(read_model.beds(), bed_ids)
+        except VitalDBDeletionPolicyError as error:
+            raise VitalDBReadModelDependencyError(
+                error.message,
+                kind=error.kind,
+            ) from error
+        self._delete_owning_lab_sessions(set(plan.lab_vrcodes))
+        return read_model.delete_beds(request)
+
+    def _delete_owning_lab_sessions(self, lab_vrcodes: set[str]) -> None:
+        if not lab_vrcodes:
+            return
+        try:
+            product_lab = self._require_product_lab()
+            document = product_lab.list_recorders()
+            recorders = document.get("recorders")
+            if document.get("state") != "loaded" or not isinstance(recorders, list):
+                raise ProductLabDependencyError(
+                    "Product Lab recorder read model contract is invalid.",
+                    kind="product-lab-contract-invalid",
+                )
+            session_ids: set[str] = set()
+            for recorder in recorders:
+                if not isinstance(recorder, dict):
+                    raise ProductLabDependencyError(
+                        "Product Lab recorder read model item is invalid.",
+                        kind="product-lab-contract-invalid",
+                    )
+                if recorder.get("vrcode") not in lab_vrcodes:
+                    continue
+                session_id = recorder.get("sessionId")
+                if not isinstance(session_id, str) or not session_id:
+                    raise ProductLabDependencyError(
+                        "Product Lab recorder sessionId is invalid.",
+                        kind="product-lab-contract-invalid",
+                    )
+                session_ids.add(session_id)
+            for session_id in sorted(session_ids):
+                result = product_lab.delete_session(session_id)
+                sessions = result.document.get("sessions")
+                if result.document.get("state") != "loaded" or not isinstance(
+                    sessions, list
+                ):
+                    raise ProductLabDependencyError(
+                        "Product Lab session delete result is invalid.",
+                        kind="product-lab-contract-invalid",
+                    )
+        except ProductLabDependencyError as error:
+            raise VitalDBReadModelDependencyError(
+                f"Product Lab session cleanup failed: {error.message}",
+                kind="vitaldb-delete-lab-cleanup-failed",
+            ) from error
 
     def get_vitaldb_relationships(self) -> dict[str, object]:
         if self._vitaldb_read_model is None:
@@ -1652,6 +1733,25 @@ class GuestControlUseCases:
 
     def _save_operation_transition(self, operation: ServiceOperation) -> None:
         self._operations.record_transition(operation)
+
+
+def _required_command_ids(
+    request: dict[str, object],
+    *,
+    field: str,
+) -> list[str]:
+    values = request.get(field)
+    if not isinstance(values, list) or not values:
+        raise VitalDBReadModelDependencyError(
+            f"VitalDB delete request {field} field is invalid.",
+            kind="vitaldb-read-model-invalid",
+        )
+    if any(not isinstance(value, str) or not value for value in values):
+        raise VitalDBReadModelDependencyError(
+            f"VitalDB delete request {field} field is invalid.",
+            kind="vitaldb-read-model-invalid",
+        )
+    return list(dict.fromkeys(values))
 
 
 def _required_readiness_dependency(

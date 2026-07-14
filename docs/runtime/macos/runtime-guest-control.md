@@ -353,6 +353,7 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 | Read session | `GET http://lab:8080/lab/sessions/{sessionId}` |
 | Start session | `POST http://lab:8080/lab/sessions/{sessionId}/start` |
 | Stop session | `POST http://lab:8080/lab/sessions/{sessionId}/stop` |
+| Delete session aggregate | `POST http://lab:8080/lab/sessions/{sessionId}/delete` |
 | Start recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/start` |
 | Stop recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/stop` |
 | `.vital` replay | `POST http://lab:8080/lab/vital-files/replay` |
@@ -387,6 +388,17 @@ returns `RuntimeVitalBedHistory` from the Guest/Postgres bed read document.
 The Beds tab must consume the Bed document directly, not slice `beds` out of
 recorder history. Bed hide/unhide/delete commands return the refreshed Bed
 history so recorder read failures cannot mask a successful Bed state change.
+Permanent delete plans Lab cleanup only when the selected VitalDB row carries
+the explicit `vitalserver-lab` recorder version. Guest Control resolves its
+owning session from the Product Lab recorder contract, stops that session's
+execution, deletes the session with all owned beds and recorders, and only then
+commits the VitalDB visibility tombstone. An unavailable or invalid Product Lab
+contract fails the delete; it is never treated as an empty Lab collection or a
+successful cleanup. A successful Product Lab read with no matching vrcode is
+an explicit already-absent cleanup result, which keeps repeated child deletes
+idempotent. Deleted entities are also excluded from recorder activity and
+relationship read models, while the tombstone remains to prevent a producer
+from silently recreating visible state.
 The Swift Helper ViewModel keeps `vitalBeds` as a distinct published read
 result; Recorder panels may link to beds for display, but they must read those
 links from the Bed read result rather than the Recorder history payload.

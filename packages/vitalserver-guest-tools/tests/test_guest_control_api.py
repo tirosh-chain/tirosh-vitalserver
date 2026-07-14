@@ -435,6 +435,12 @@ class FakeProductLab:
             lab_operation_id=f"lab-session-stop-{session_id}",
         )
 
+    def delete_session(self, session_id: str) -> ProductLabReadModelResult:
+        del session_id
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "sessions": [], "readError": None}
+        )
+
     def start_recorder(
         self, session_id: str, recorder_id: str
     ) -> ProductLabRecorderResult:

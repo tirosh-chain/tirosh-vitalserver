@@ -273,9 +273,16 @@ class FakeServiceControl:
 
 
 class FakeProductLab:
-    def __init__(self, *, fail_create: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_create: bool = False,
+        fail_delete: bool = False,
+    ) -> None:
         self.fail_create = fail_create
+        self.fail_delete = fail_delete
         self.created: list[dict[str, object]] = []
+        self.deleted_sessions: list[str] = []
 
     def list_scenarios(self) -> dict[str, object]:
         return {"state": "loaded", "scenarios": [], "readError": None}
@@ -298,9 +305,10 @@ class FakeProductLab:
         }
 
     def list_recorders(self) -> dict[str, object]:
-        return {
-            "state": "loaded",
-            "recorders": [
+        recorders = (
+            []
+            if "lab-session-1" in self.deleted_sessions
+            else [
                 {
                     "recorderId": "lab-session-1-recorder-1",
                     "sessionId": "lab-session-1",
@@ -308,7 +316,11 @@ class FakeProductLab:
                     "vrcode": "LAB-lab-session-1-1",
                     "state": "running",
                 }
-            ],
+            ]
+        )
+        return {
+            "state": "loaded",
+            "recorders": recorders,
             "readError": None,
         }
 
@@ -413,6 +425,17 @@ class FakeProductLab:
     def stop_session(self, session_id: str) -> dict[str, object]:
         raise NotImplementedError(session_id)
 
+    def delete_session(self, session_id: str) -> ProductLabReadModelResult:
+        if self.fail_delete:
+            raise ProductLabDependencyError(
+                "Product Lab service is not reachable",
+                kind="product-lab-unavailable",
+            )
+        self.deleted_sessions.append(session_id)
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "sessions": [], "readError": None}
+        )
+
     def replay_vital_file(self, request: dict[str, object]) -> dict[str, object]:
         raise NotImplementedError(request)
 
@@ -437,8 +460,9 @@ class FakeProductLab:
 
 
 class FakeVitalDBReadModel:
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(self, *, fail: bool = False, lab_owned: bool = False) -> None:
         self.fail = fail
+        self.lab_owned = lab_owned
         self.hidden_recorders: set[str] = set()
         self.deleted_recorders: set[str] = set()
         self.hidden_beds: set[str] = set()
@@ -478,11 +502,15 @@ class FakeVitalDBReadModel:
             )
         recorders = [
             {
-                "vrcode": "VR-001",
+                "vrcode": ("LAB-lab-session-1-1" if self.lab_owned else "VR-001"),
                 "bedName": "OR-A",
                 "status": "connected",
+                "version": "vitalserver-lab" if self.lab_owned else "1.0",
                 "visibility": (
-                    "hidden" if "VR-001" in self.hidden_recorders else "visible"
+                    "hidden"
+                    if ("LAB-lab-session-1-1" if self.lab_owned else "VR-001")
+                    in self.hidden_recorders
+                    else "visible"
                 ),
             }
         ]
@@ -555,6 +583,10 @@ class FakeVitalDBReadModel:
             {
                 "bedID": "bed-a",
                 "name": "OR-A",
+                "vrcode": ("LAB-lab-session-1-1" if self.lab_owned else "VR-001"),
+                "linkedRecorderVersion": (
+                    "vitalserver-lab" if self.lab_owned else "1.0"
+                ),
                 "recorderCount": 1,
                 "visibility": "hidden" if "bed-a" in self.hidden_beds else "visible",
             }
@@ -2183,6 +2215,49 @@ def test_vitaldb_recorders_visibility_commands_require_hidden_before_delete() ->
     assert deleted["recorders"] == []
 
 
+def test_vitaldb_lab_recorder_delete_removes_owning_lab_session() -> None:
+    product_lab = FakeProductLab()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        product_lab=product_lab,
+        vitaldb_read_model=FakeVitalDBReadModel(lab_owned=True),
+    )
+
+    vrcode = "LAB-lab-session-1-1"
+    usecases.hide_vitaldb_recorders({"vrcodes": [vrcode]})
+    deleted = usecases.delete_vitaldb_recorders({"vrcodes": [vrcode]})
+
+    assert deleted["state"] == "loaded"
+    assert deleted["recorders"] == []
+    assert product_lab.deleted_sessions == ["lab-session-1"]
+
+
+def test_vitaldb_lab_recorder_delete_preserves_cleanup_failure() -> None:
+    product_lab = FakeProductLab(fail_delete=True)
+    read_model = FakeVitalDBReadModel(lab_owned=True)
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        product_lab=product_lab,
+        vitaldb_read_model=read_model,
+    )
+
+    vrcode = "LAB-lab-session-1-1"
+    usecases.hide_vitaldb_recorders({"vrcodes": [vrcode]})
+    result = usecases.delete_vitaldb_recorders({"vrcodes": [vrcode]})
+
+    assert result["state"] == "readFailed"
+    assert result["readError"] == (
+        "Product Lab session cleanup failed: Product Lab service is not reachable"
+    )
+    assert read_model.deleted_recorders == set()
+
+
 def test_vitaldb_recorders_unhide_restores_visible_state() -> None:
     usecases = build_usecases(
         service_control=FakeServiceControl(),
@@ -2322,6 +2397,25 @@ def test_vitaldb_beds_visibility_commands_require_hidden_before_delete() -> None
     )
     assert hidden["beds"][0]["visibility"] == "hidden"
     assert deleted["beds"] == []
+
+
+def test_vitaldb_lab_bed_delete_removes_owning_lab_session() -> None:
+    product_lab = FakeProductLab()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        product_lab=product_lab,
+        vitaldb_read_model=FakeVitalDBReadModel(lab_owned=True),
+    )
+
+    usecases.hide_vitaldb_beds({"bedIDs": ["bed-a"]})
+    deleted = usecases.delete_vitaldb_beds({"bedIDs": ["bed-a"]})
+
+    assert deleted["state"] == "loaded"
+    assert deleted["beds"] == []
+    assert product_lab.deleted_sessions == ["lab-session-1"]
 
 
 def test_vitaldb_beds_unhide_restores_visible_state() -> None:

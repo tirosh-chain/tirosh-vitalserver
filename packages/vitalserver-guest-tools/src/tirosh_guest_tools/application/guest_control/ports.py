@@ -83,6 +83,9 @@ class ProductLabPort(Protocol):
     def stop_session(self, session_id: str) -> ProductLabSessionResult:
         raise NotImplementedError
 
+    def delete_session(self, session_id: str) -> ProductLabReadModelResult:
+        raise NotImplementedError
+
     def replay_vital_file(self, request: dict[str, Any]) -> ProductLabSessionResult:
         raise NotImplementedError
 

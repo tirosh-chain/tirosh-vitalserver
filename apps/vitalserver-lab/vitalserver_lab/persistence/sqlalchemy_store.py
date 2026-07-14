@@ -66,6 +66,11 @@ class SQLAlchemyLabSessionStore(InMemoryLabSessionStore):
             lambda: super(SQLAlchemyLabSessionStore, self).list_sessions()
         )
 
+    def delete_session(self, session_id: str) -> tuple[LabSession, ...] | None:
+        return self._mutate(
+            lambda: super(SQLAlchemyLabSessionStore, self).delete_session(session_id)
+        )
+
     def start(self, session_id: str) -> LabSession | None:
         return self._mutate(
             lambda: super(SQLAlchemyLabSessionStore, self).start(session_id)

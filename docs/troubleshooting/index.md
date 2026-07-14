@@ -137,6 +137,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-126 | Golden rootfs smoke가 Host에서 허용된 Python 3.14 문법 때문에 Guest Python 3.12에서 실패함 | Packaging / Guest bootstrap | resolved | [Guest wheel uses Python syntax newer than the Guest runtime](126_guest-wheel-python-syntax-newer-than-runtime.md) |
 | TS-127 | 설치 직후 Runtime product services가 정상화 후에도 `missing-vm-ip`를 표시함 | Runtime health / macOS Helper UI | active | [Runtime product services keeps the initial `missing-vm-ip` failure](127_runtime-product-services-stale-missing-vm-ip.md) |
 | TS-128 | 실제 Vital Recorder는 접속했지만 목록과 packet graph가 비어 있음 | Runtime health / Recorder streaming / Observability | resolved | [Vital Recorder is connected but the recorder list and packet graph are empty](128_vital-recorder-read-model-empty-and-activity-graph-missing.md) |
+| TS-129 | VitalDB Recorder/Bed 삭제 후 Product Lab session과 정보가 남음 | Runtime Control PWA / Product Lab / Observability | resolved | [VitalDB delete leaves the Product Lab session running](129-vitaldb-delete-leaves-product-lab-session.md) |
 
 ## Follow-up 규칙
 

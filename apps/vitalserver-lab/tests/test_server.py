@@ -341,6 +341,48 @@ def test_lab_sessions_are_listed_after_creation() -> None:
     }
 
 
+def test_running_session_delete_stops_execution_and_removes_owned_read_models() -> None:
+    sender = FakeSender()
+    with running_server(
+        ["lab_session_1"],
+        sender=sender,
+        frame_interval_seconds=0.01,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "name": "Delete aggregate",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+        recorder = address.store.list_recorders()[0]
+
+        deleted = request(
+            address,
+            "POST",
+            "/lab/sessions/lab_session_1/delete",
+        )
+        sessions = request(address, "GET", "/lab/sessions")
+        beds = request(address, "GET", "/lab/beds")
+        recorders = request(address, "GET", "/lab/recorders")
+
+    assert deleted["status"] == 202
+    assert deleted["body"] == {
+        "state": "loaded",
+        "sessions": [],
+        "readError": None,
+    }
+    assert sessions["body"]["sessions"] == []
+    assert beds["body"]["beds"] == []
+    assert recorders["body"]["recorders"] == []
+    assert ("http://edge/", recorder.vrcode) in sender.closed_recorders
+
+
 def test_running_session_recorders_can_be_stopped_and_started_individually() -> None:
     sender = FakeSender()
     with running_server(
@@ -1182,6 +1224,10 @@ class UnavailableStore:
         del session_id
         raise AssertionError("get should not be called")
 
+    def delete_session(self, session_id: str) -> Any:
+        del session_id
+        raise AssertionError("delete_session should not be called")
+
     def start(self, session_id: str) -> Any:
         del session_id
         raise AssertionError("start should not be called")
@@ -1234,6 +1280,10 @@ class UnavailableReadModelStore:
     def get(self, session_id: str) -> Any:
         del session_id
         raise AssertionError("get should not be called")
+
+    def delete_session(self, session_id: str) -> Any:
+        del session_id
+        raise AssertionError("delete_session should not be called")
 
     def start(self, session_id: str) -> Any:
         del session_id

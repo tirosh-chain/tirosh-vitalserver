@@ -59,6 +59,7 @@ def test_product_lab_service_adapter_maps_session_lifecycle(
     loaded = adapter.get_session("lab-session-1")
     started = adapter.start_session("lab-session-1")
     stopped = adapter.stop_session("lab-session-1")
+    deleted = adapter.delete_session("lab-session-1")
 
     assert created.session["sessionId"] == "lab-session-1"
     assert created.session["state"] == "accepted"
@@ -68,6 +69,11 @@ def test_product_lab_service_adapter_maps_session_lifecycle(
     assert loaded.lab_operation_id == "lab-operation-1"
     assert started.session["state"] == "running"
     assert stopped.session["state"] == "stopped"
+    assert deleted.document == {
+        "state": "loaded",
+        "sessions": [],
+        "readError": None,
+    }
 
 
 def test_product_lab_service_adapter_maps_beds_and_recorders(
@@ -222,6 +228,8 @@ def fake_urlopen(request: Request, timeout: float) -> FakeResponse:
         return FakeResponse(session_response(session_state="running"))
     if method == "POST" and path == "/lab/sessions/lab-session-1/stop":
         return FakeResponse(session_response(session_state="stopped"))
+    if method == "POST" and path == "/lab/sessions/lab-session-1/delete":
+        return FakeResponse({"state": "loaded", "sessions": [], "readError": None})
     if method == "POST" and path == "/lab/vital-files/replay":
         return FakeResponse(
             session_response(

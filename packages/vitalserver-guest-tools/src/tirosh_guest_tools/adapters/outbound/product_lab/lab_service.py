@@ -116,6 +116,15 @@ class ProductLabServiceAdapter:
             )
         )
 
+    def delete_session(self, session_id: str) -> ProductLabReadModelResult:
+        return _read_model_from_response(
+            self._request_json(
+                "POST",
+                f"/lab/sessions/{_path_segment(session_id)}/delete",
+            ),
+            collection="sessions",
+        )
+
     def replay_vital_file(self, request: dict[str, Any]) -> ProductLabSessionResult:
         return _session_from_response(
             self._request_json("POST", "/lab/vital-files/replay", request)

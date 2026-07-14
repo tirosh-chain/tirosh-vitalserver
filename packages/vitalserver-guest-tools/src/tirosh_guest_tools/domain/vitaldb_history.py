@@ -68,7 +68,14 @@ def project_vitaldb_history(
         if isinstance(bed.get("vrcode"), str) and bed["vrcode"]
     }
     anomalies_by_subject = _group_anomalies(latest["anomalies"])
-    activity_by_recorder, activity_history = _project_activity(ordered)
+    activity_by_recorder, activity_history = _project_activity(
+        ordered,
+        excluded_vrcodes={
+            vrcode
+            for vrcode, visibility in recorder_visibility.items()
+            if visibility == "deleted"
+        },
+    )
 
     recorders: list[dict[str, Any]] = []
     for vrcode, builder in recorder_builders.items():
@@ -394,6 +401,8 @@ def _bed_status(bed: Mapping[str, Any] | None) -> str:
 
 def _project_activity(
     observations: Sequence[Mapping[str, Any]],
+    *,
+    excluded_vrcodes: set[str],
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     buckets: dict[tuple[str, str, int], dict[str, Any]] = {}
     for observation in observations:
@@ -409,6 +418,8 @@ def _project_activity(
             bucket_seconds = bucket.get("bucketSeconds")
             if not isinstance(vrcode, str) or not isinstance(started_at, str) or not isinstance(bucket_seconds, int):
                 raise VitalDBHistoryProjectionError("VitalDB activity bucket identity is invalid.")
+            if vrcode in excluded_vrcodes:
+                continue
             for field in ("messageCount", "byteCount", "roomCount"):
                 if not isinstance(bucket.get(field), int):
                     raise VitalDBHistoryProjectionError(f"VitalDB activity bucket {field} is invalid.")

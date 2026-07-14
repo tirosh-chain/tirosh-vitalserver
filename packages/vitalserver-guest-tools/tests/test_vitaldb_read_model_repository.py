@@ -68,6 +68,8 @@ def test_sqlalchemy_repository_applies_visibility_policy(tmp_path: Path) -> None
     assert hidden["recorders"][0]["visibility"] == "hidden"
     deleted = store.delete_recorders({"vrcodes": ["VR-001"]})
     assert deleted["recorders"] == []
+    assert deleted["activityHistory"]["bucketCount"] == 0
+    assert store.recorder_activity("VR-001")["buckets"] == []
 
 
 def test_sqlalchemy_repository_requires_hidden_before_delete(tmp_path: Path) -> None:
@@ -98,7 +100,9 @@ def test_sqlalchemy_repository_rejects_missing_activity_contract(
         store.recorder_activity("VR-001")
 
     assert error.value.kind == "vitaldb-read-model-invalid"
-    assert error.value.message == "VitalDB recorder activity read model field is invalid."
+    assert error.value.message == (
+        "VitalDB recorder activity read model field is invalid."
+    )
 
 
 def test_sqlalchemy_repository_reads_activity_history_across_snapshots(
@@ -128,7 +132,7 @@ def test_sqlalchemy_repository_reads_activity_history_across_snapshots(
             "roomCount": 1,
             "firstObservedAt": "2026-07-01T00:01:01Z",
             "lastObservedAt": "2026-07-01T00:01:50Z",
-        }
+        },
     ]
     store.save_latest_observation(
         first,
@@ -154,6 +158,43 @@ def test_sqlalchemy_repository_round_trips_relationship_history(tmp_path: Path) 
     store.save_relationship_history(document, observed_at=datetime.now(UTC))
     assert store.relationships() == document
     assert store.previous_relationship_history() == document
+
+
+def test_sqlalchemy_repository_excludes_deleted_entities_from_relationships(
+    tmp_path: Path,
+) -> None:
+    store = repository(tmp_path)
+    store.save_latest_observation(observation(), observed_at=datetime.now(UTC))
+    store.save_relationship_history(
+        {
+            "state": "loaded",
+            "assignments": [
+                {
+                    "assignmentID": "assignment-1",
+                    "bedID": "bed-a",
+                    "vrcode": "VR-001",
+                }
+            ],
+            "events": [
+                {
+                    "eventID": "event-1",
+                    "bedID": "bed-a",
+                    "vrcode": "VR-001",
+                    "previousBedID": None,
+                    "previousVrcode": None,
+                }
+            ],
+            "readError": None,
+        },
+        observed_at=datetime.now(UTC),
+    )
+    store.hide_recorders({"vrcodes": ["VR-001"]})
+    store.delete_recorders({"vrcodes": ["VR-001"]})
+
+    result = store.relationships()
+
+    assert result["assignments"] == []
+    assert result["events"] == []
 
 
 def test_sqlalchemy_repository_preserves_empty_as_unavailable(tmp_path: Path) -> None:
