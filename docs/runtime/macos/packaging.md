@@ -64,6 +64,15 @@ Release manifest는 build input이고, Product Lab/API 구현의 세부 contract
 
 Product Lab과 VitalDB read model은 Postgres를 운영 store로 사용하되 SQL 문자열을 shell `psql`에 조립하지 않습니다. Domain class, SQLAlchemy ORM record, mapper, repository를 분리하고 database URL로 engine을 조립합니다. SQLite는 fallback이 아니라 동일 persistence contract를 검증하는 대체 dialect이며, 운영 store 변경은 명시 configuration/migration으로만 수행합니다.
 
+Vital Files library upload는 packaging이 파일을 미리 포함하거나 Guest path를 추정하는
+기능이 아닙니다. 설치된 Runtime Control API가 Host/PWA에서 선택한 N개 `.vital` 파일을
+multipart batch로 받고, 전체 batch 검증과 staging commit 후 configured library에
+반영합니다. `.vital`이 아닌 파일, duplicate filename, existing destination, unreadable
+source, missing library는 성공이나 빈 결과로 바꾸지 않습니다. Replay는 upload와 별도이며
+library read model이 제공한 상대 경로 하나만 사용합니다. 자세한 owner/UI 계약은
+[macOS Runtime Architecture](architecture.md#7-2-vital-files-upload와-replay-경계)를
+따릅니다.
+
 Runtime Control PWA와 headless `vitalserver-platform-agent`는 Helper app bundle에
 함께 포함됩니다. Agent executable은 app 전체 서명 전에 nested code로 먼저
 서명되며 launchd plist는 app 내부 executable을 직접 실행합니다. `make devtools/app`,
@@ -841,14 +850,20 @@ sudo /usr/local/bin/vitalserver-vm runtime configure \
   --vital-files-dir "/Library/Application Support/VitalServerHelper/vm/data/vital-files" \
   --vitalserver-url "http://127.0.0.1:80/" \
   --remote-console-url "http://127.0.0.1:18321/" \
-  --public-host "" \
+  --public-host "127.0.0.1" \
   --public-port 80 \
   --start-on-boot true \
   --admin-password-file "/private/tmp/admin-password" \
   --restart
 ```
 
-이 command는 `vm-config.json`, deploy `runtime-config.json`, proxy LaunchDaemon plist, launchd enable/disable 정책을 갱신하고 `--restart`가 있으면 VM/proxy/watchdog을 kickstart합니다. Helper app의 Settings tab도 이 command를 호출합니다. Helper UI는 advertised service URL 입력에 local 기본 URL을 채우며, Apply 시 빈 값이나 absolute `http`/`https` URL 형식이 아닌 값은 실패시킵니다. remote client가 접속해야 하는 운영 환경에서는 `127.0.0.1` 기본값을 외부에서 도달 가능한 URL로 바꿔야 합니다. Helper app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `/private/tmp` 아래 0600 임시 파일을 만들고 `--admin-password-file`을 전달합니다. CLI의 `--admin-password`는 개발/수동 복구용으로 남기지만, 운영 UI에서는 argv/log 노출을 줄이기 위해 file 입력을 사용합니다.
+이 command는 SQLite `host_runtime_settings`에 desired revision을 먼저 저장하고, `vm-config.json`, deploy `runtime-config.json`, `runtime-settings.json`을 boot materialization으로 생성·재검증한 뒤 proxy LaunchDaemon plist와 launchd enable/disable 정책을 갱신합니다. `--restart`는 같은 configure 요청에서 실제로 변경된 구성요소만 activation합니다. Apply로 이미 저장된 설정을 나중에 활성화하는 Helper의 `Restart VM Runtime` 액션은 별도 typed intent인 `--restart-vm-runtime`을 사용합니다. 이 명령은 현재 파일 diff가 없어도 `restartAfterSettingsApply` VM workflow를 실행하며, Platform Agent를 포함한 전체 repair를 호출하지 않습니다. 새 VM lifecycle run ID와 materialized settings revision을 결합하고 runtime health가 통과한 뒤에만 desired payload를 applied payload로 복사하고 applied revision을 갱신하므로, 성공 반환은 실제 재시작과 설정 적용 증명을 포함합니다. VM start, lifecycle binding, health 중 하나라도 실패하면 applied revision/payload는 이전 값으로 남고 command는 실패합니다. Schema v6처럼 applied revision만 있고 당시 payload가 없는 설치는 v7 migration에서 그 증명을 명시적으로 무효화해 `Requires VM restart`로 유지하며, 현재 desired payload나 `applied-vm-config.json`으로 추정하지 않습니다. Fresh-install 기본 `runtime-config.json`은 `publicHost`, `publicPort`, `vitalServerURL`, `remoteConsoleURL`이 서로 일치해야 하며 writer는 저장 전에 encode/decode round trip을 검증합니다. Helper UI는 advertised service URL 입력에 local 기본 URL을 채우며, Apply 시 빈 값이나 absolute `http`/`https` URL 형식이 아닌 값은 실패시킵니다. remote client가 접속해야 하는 운영 환경에서는 `127.0.0.1` 기본값을 외부에서 도달 가능한 URL로 바꿔야 합니다. Helper app의 admin password 입력은 기존 값을 표시하지 않고, 운영자용 admin password reset을 선택했을 때만 `/private/tmp` 아래 0600 임시 파일을 만들고 `--admin-password-file`을 전달합니다. CLI의 `--admin-password`는 개발/수동 복구용으로 남기지만, 운영 UI에서는 argv/log 노출을 줄이기 위해 file 입력을 사용합니다.
+
+Authoritative Host runtime state는 단계적으로 `runtime/runtime-state.sqlite`로 이전합니다. JSON/JSONL은 diagnostics projection 또는 SQLite 설정에서 생성한 boot contract이며 fallback state source가 아닙니다. Aggregate cutover가 완료되면 packaging은 DB schema/readiness와 boot document round-trip proof가 완료되기 전에 서비스를 시작하면 안 됩니다. 현재 cutover 상태와 상세 ownership 규칙은 [Host runtime state persistence](host-runtime-state-persistence.md)를 참고합니다.
+
+Golden-rootfs, runtime-smoke, local dev VM도 installed launcher와 같은 Host settings owner 계약을 사용합니다. `internal/vm/stage`는 Guest deploy가 `vm-config.json`, `runtime-config.json`, `runtime-settings.json`을 모두 배치한 뒤 restart 없는 `runtime configure`를 호출하여 workspace의 `runtime-state.sqlite`를 초기화하고 materialized revision을 증명해야 합니다. 이 단계가 없으면 launcher는 JSON을 fallback으로 읽지 않고 시작 전에 실패합니다. 증상과 확인 절차는 [TS-132](../../troubleshooting/132_golden-rootfs-launcher-missing-host-settings-sqlite.md)를 참고합니다.
+
+Runtime repair와 uninstall은 같은 service set을 사용하지 않습니다. Runtime repair/stop은 `RuntimeManagedService.stopOrder`만 내리므로 Platform Agent control plane을 유지하고, `uninstallOrder`는 uninstall cleanup에서만 Platform Agent를 포함합니다. HostCLI health는 Platform API listener가 아니라 SQLite `vm_lifecycle` owner를 직접 읽습니다. 자세한 재현과 예방 규칙은 [TS-131](../../troubleshooting/131_settings-vm-restart-invalid-config-and-platform-agent-stop.md)을 참고합니다.
 
 admin password reset은 VitalServer 본체의 사용자 계정 기능을 확장하거나 수정하는 기능이 아닙니다. VitalServer UI의 비밀번호 변경은 현재 비밀번호를 아는 사용자가 본인 계정을 변경하는 흐름이고, Helper의 reset은 설치/운영 관리자가 `admin` 계정을 복구하거나 초기화하기 위한 패키징 레벨의 유지보수 기능입니다. 위험도가 높은 설정이므로 향후 운영 정책에 따라 Helper UI에서 제거하고 CLI 또는 recovery flow로만 남길 수 있습니다. deploy `runtime-config.json`은 admin reset 값을 포함하므로 install/configure 직후 0600 권한으로 제한합니다.
 

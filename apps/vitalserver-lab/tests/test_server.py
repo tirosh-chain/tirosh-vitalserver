@@ -14,7 +14,6 @@ from vitalserver_lab.execution import (
     LabExecutionEngine,
     LabRecorderSendError,
     LabRecorderSendReceipt,
-    LabVitalFileUploadReceipt,
     VitalServerRecorderPayloadSender,
 )
 from vitalserver_lab.model import (
@@ -35,6 +34,7 @@ from vitalserver_lab.settings import (
     LabSettingsConfigurationError,
     load_settings,
 )
+from vitalserver_lab.vital_replay import LabVitalReplayFrame
 
 
 def test_health_and_ready_are_explicit() -> None:
@@ -861,8 +861,10 @@ def test_replay_vital_file_creates_replay_session_without_exposing_file_path(
             "POST",
             "/lab/vital-files/replay",
             {
-                "vitalFilePath": str(vital_file),
+                "vitalFileRelativePath": "private/sample.vital",
                 "targetURL": "http://edge/",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
             },
         )
 
@@ -875,6 +877,9 @@ def test_replay_vital_file_creates_replay_session_without_exposing_file_path(
     stored_session = address.store.get("lab_replay_1")
     assert stored_session is not None
     assert stored_session.vital_file_path == str(vital_file)
+    assert stored_session.vital_file_relative_path == "private/sample.vital"
+    assert stored_session.replay_policy is not None
+    assert stored_session.replay_policy.mode == "once"
 
 
 def test_replay_vital_file_start_uses_replay_payload_without_exposing_path(
@@ -890,15 +895,18 @@ def test_replay_vital_file_start_uses_replay_payload_without_exposing_path(
         sender=sender,
         vital_files_mount=tmp_path,
         frame_interval_seconds=0.01,
+        replay_source_factory=FakeVitalReplaySourceFactory(),
     ) as address:
         request(
             address,
             "POST",
             "/lab/vital-files/replay",
-            {
-                "vitalFilePath": str(vital_file),
-                "targetURL": "http://edge/",
-            },
+                {
+                    "vitalFileRelativePath": "private/sample.vital",
+                    "targetURL": "http://edge/",
+                    "resourceSelection": {"mode": "quickCreate"},
+                    "repeatPolicy": {"mode": "continuous"},
+                },
         )
         started = request(address, "POST", "/lab/sessions/lab_replay_1/start")
         time.sleep(0.03)
@@ -907,6 +915,8 @@ def test_replay_vital_file_start_uses_replay_payload_without_exposing_path(
 
     assert started["status"] == 202
     assert sender.calls[0]["payload"]["source"] == {"kind": "vital-file-replay"}
+    first_track = next(iter(sender.calls[0]["payload"]["rooms"].values()))["trks"][0]
+    assert first_track["sourceTrack"] == "Source/HR"
     assert str(vital_file) not in json.dumps(sender.calls[0]["payload"])
     rooms = [next(iter(payload["rooms"].values())) for payload in payloads]
     assert len(rooms) > 1
@@ -932,91 +942,65 @@ def test_replay_vital_file_rejects_unavailable_or_unmounted_source(
             address,
             "POST",
             "/lab/vital-files/replay",
-            {"vitalFilePath": "case.vital"},
+            {
+                "vitalFileRelativePath": str(valid),
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
+            },
         )
         invalid_extension = request(
             address,
             "POST",
             "/lab/vital-files/replay",
-            {"vitalFilePath": str(wrong_extension)},
+            {
+                "vitalFileRelativePath": "case.txt",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
+            },
         )
         outside_mount = request(
             address,
             "POST",
             "/lab/vital-files/replay",
-            {"vitalFilePath": str(outside)},
+            {
+                "vitalFileRelativePath": "../outside.vital",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
+            },
         )
         missing = request(
             address,
             "POST",
             "/lab/vital-files/replay",
-            {"vitalFilePath": str(tmp_path / "missing.vital")},
+            {
+                "vitalFileRelativePath": "missing.vital",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
+            },
         )
         accepted = request(
             address,
             "POST",
             "/lab/vital-files/replay",
-            {"vitalFilePath": str(valid)},
-        )
-
-    assert relative["status"] == 400
-    assert relative["body"]["error"] == "vitalFilePath_not_absolute"
-    assert invalid_extension["status"] == 400
-    assert invalid_extension["body"]["error"] == "vitalFilePath_invalid_extension"
-    assert outside_mount["status"] == 400
-    assert outside_mount["body"]["error"] == "vitalFilePath_outside_mount"
-    assert missing["status"] == 404
-    assert missing["body"]["error"] == "vitalFilePath_missing"
-    assert accepted["status"] == 202
-
-
-def test_vital_file_upload_sends_mounted_file_to_vitalserver(tmp_path: Path) -> None:
-    vital_file = tmp_path / "MORA04_230102_074641.vital"
-    vital_file.write_bytes(b"vital")
-    uploader = FakeVitalFileUploader()
-
-    with running_server(vital_files_mount=tmp_path, uploader=uploader) as address:
-        response = request(
-            address,
-            "POST",
-            "/lab/vital-files/upload",
             {
-                "vitalFilePath": str(vital_file),
-                "targetURL": "http://edge/",
+                "vitalFileRelativePath": "case.vital",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
             },
         )
 
-    assert response["status"] == 202
-    assert response["body"]["state"] == "loaded"
-    assert response["body"]["operationId"] == "lab-vital-file-upload"
-    assert response["body"]["readError"] is None
-    assert response["body"]["upload"]["filename"] == "MORA04_230102_074641.vital"
-    assert response["body"]["upload"]["endpoint"] == "/upload"
-    assert response["body"]["upload"]["targetURL"] == "http://edge/"
-    assert uploader.calls == [
-        {
-            "target_url": "http://edge/",
-            "file_path": vital_file,
-            "endpoint": "/upload",
-            "vrcode": None,
-        }
-    ]
-
-
-def test_vital_file_upload_reports_target_url_as_required(tmp_path: Path) -> None:
-    vital_file = tmp_path / "case.vital"
-    vital_file.write_bytes(b"vital")
-
-    with running_server(vital_files_mount=tmp_path) as address:
-        response = request(
-            address,
-            "POST",
-            "/lab/vital-files/upload",
-            {"vitalFilePath": str(vital_file)},
-        )
-
-    assert response["status"] == 400
-    assert response["body"]["error"] == "targetURL_required"
+    assert relative["status"] == 400
+    assert relative["body"]["error"] == "vitalFileRelativePath_absolute"
+    assert invalid_extension["status"] == 400
+    assert (
+        invalid_extension["body"]["error"]
+        == "vitalFileRelativePath_invalid_extension"
+    )
+    assert outside_mount["status"] == 400
+    assert outside_mount["body"]["error"] == "vitalFileRelativePath_outside_library"
+    assert missing["status"] == 404
+    assert missing["body"]["error"] == "vitalFileRelativePath_missing"
+    assert accepted["status"] == 202
 
 
 def test_create_session_reports_missing_scenario() -> None:
@@ -1041,16 +1025,16 @@ class running_server:
         ids: list[str] | None = None,
         *,
         sender: FakeSender | None = None,
-        uploader: FakeVitalFileUploader | None = None,
         vital_files_mount: Path | None = None,
         session_store: LabSessionStore | None = None,
+        replay_source_factory: Any | None = None,
         frame_interval_seconds: float = 1.0,
     ) -> None:
         self.ids = ids or ["lab_session_1"]
         self.sender = sender or FakeSender()
-        self.uploader = uploader or FakeVitalFileUploader()
         self.vital_files_mount = vital_files_mount or Path("/mnt/tirosh-vital-files")
         self.session_store = session_store
+        self.replay_source_factory = replay_source_factory
         self.frame_interval_seconds = frame_interval_seconds
 
     def __enter__(self) -> running_server:
@@ -1073,7 +1057,7 @@ class running_server:
             self.store.id_factory = lambda: next(counter)
         self.engine = LabExecutionEngine(
             sender=self.sender,
-            vital_file_uploader=self.uploader,
+            vital_replay_source_factory=self.replay_source_factory,
             frame_interval_seconds=self.frame_interval_seconds,
         )
         return self
@@ -1178,34 +1162,32 @@ class FakeSocketIOClient:
         self.disconnected = True
 
 
-class FakeVitalFileUploader:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
+class FakeVitalReplaySourceFactory:
+    def open(self, path: Path) -> FakeVitalReplaySource:
+        assert path.name == "sample.vital"
+        return FakeVitalReplaySource()
 
-    def upload(
-        self,
-        *,
-        target_url: str,
-        file_path: Path,
-        endpoint: str,
-        vrcode: str | None = None,
-    ) -> LabVitalFileUploadReceipt:
-        self.calls.append(
-            {
-                "target_url": target_url,
-                "file_path": file_path,
-                "endpoint": endpoint,
-                "vrcode": vrcode,
-            }
-        )
-        return LabVitalFileUploadReceipt(
-            filename=file_path.name,
-            endpoint=endpoint,
-            target_url=target_url,
-            status_code=200,
-            bytes_sent=456,
-            response_text="success",
-            ok=True,
+
+class FakeVitalReplaySource:
+    duration_seconds = 2
+
+    def frame(self, *, offset_seconds: int, output_time: float) -> LabVitalReplayFrame:
+        return LabVitalReplayFrame(
+            devices=(
+                {"type": "VitalFileReplay", "name": "Source", "status": "connected"},
+            ),
+            tracks=(
+                {
+                    "id": 2001,
+                    "type": "num",
+                    "name": "HR",
+                    "dname": "Source",
+                    "montype": "ECG_HR",
+                    "unit": "/min",
+                    "sourceTrack": "Source/HR",
+                    "recs": [{"dt": output_time, "val": 70 + offset_seconds}],
+                },
+            ),
         )
 
 

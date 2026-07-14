@@ -138,6 +138,9 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-127 | 설치 직후 Runtime product services가 정상화 후에도 `missing-vm-ip`를 표시함 | Runtime health / macOS Helper UI | active | [Runtime product services keeps the initial `missing-vm-ip` failure](127_runtime-product-services-stale-missing-vm-ip.md) |
 | TS-128 | 실제 Vital Recorder는 접속했지만 목록과 packet graph가 비어 있음 | Runtime health / Recorder streaming / Observability | resolved | [Vital Recorder is connected but the recorder list and packet graph are empty](128_vital-recorder-read-model-empty-and-activity-graph-missing.md) |
 | TS-129 | VitalDB Recorder/Bed 삭제 후 Product Lab session과 정보가 남음 | Runtime Control PWA / Product Lab / Observability | resolved | [VitalDB delete leaves the Product Lab session running](129-vitaldb-delete-leaves-product-lab-session.md) |
+| TS-130 | Vital Files upload가 단일 Guest path를 받고 replay가 선택 파일을 읽지 않음 | Runtime Control PWA / Product Lab | resolved | [Vital Files upload accepts one path and replay does not use the selected file](130_vital-files-upload-and-replay-semantics.md) |
+| TS-131 | Settings 저장 후 VM 재시작이 invalid config, 잘못된 activation intent, 조기 applied 기록으로 실패 | Packaging / Runtime health / macOS Helper | package verification pending | [Settings VM restart fails after saving VM activation settings](131_settings-vm-restart-invalid-config-and-platform-agent-stop.md) |
+| TS-132 | Golden rootfs가 Host settings SQLite 없이 launcher를 시작해 manifest 생성 전 timeout | Packaging / Guest bootstrap | resolved | [Golden rootfs times out before creating the runtime manifest](132_golden-rootfs-launcher-missing-host-settings-sqlite.md) |
 
 ## Follow-up 규칙
 

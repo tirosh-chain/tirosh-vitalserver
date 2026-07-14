@@ -585,15 +585,6 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         )
     }
 
-    public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) throws -> RuntimeLabVitalFileUploadResponse {
-        try decode(
-            RuntimeLabVitalFileUploadResponse.self,
-            method: "POST",
-            path: "/runtime/lab/vital-files/upload",
-            body: request
-        )
-    }
-
     private func decode<T: Decodable>(
         _ type: T.Type,
         method: String,

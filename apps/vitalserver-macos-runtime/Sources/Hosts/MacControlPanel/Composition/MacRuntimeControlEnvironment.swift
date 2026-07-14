@@ -15,20 +15,27 @@ final class MacRuntimeControlEnvironment: ObservableObject {
 
     static func live() -> MacRuntimeControlEnvironment {
         let installedPaths = InstalledRuntimePaths.defaultInstalled
-        let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(
-            url: installedPaths.runtimeOperationLease
+        let operationLeaseOwner = SQLiteRuntimeOperationLeaseRepository(
+            databaseURL: installedPaths.runtimeStateDatabase
         )
-        let vmLifecycleStore = FileRuntimeVMLifecycleResourceStore(
-            documentURL: installedPaths.vmLifecycle
+        let vmLifecycleStore = SQLiteRuntimeVMLifecycleResourceStore(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            transitionDecider: RuntimeVMLifecycleTransitionUseCase()
         )
-        let runtimeEndpointStore = FileRuntimeGuestAddressResourceStore(
-            documentURL: installedPaths.runtimeEndpoint
+        let runtimeEndpointStore = SQLiteRuntimeGuestAddressResourceStore(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            lifecycleTransitionDecider: RuntimeVMLifecycleTransitionUseCase()
+        )
+        let hostSettingsRepository = SQLiteRuntimeHostSettingsRepository(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            transitionDecider: RuntimeHostSettingsActivationUseCase()
         )
         let readWorker = MacRuntimeControlReadWorker(
             releaseInfo: .generated,
             operationLeaseReader: operationLeaseOwner,
             guestAddressProvider: runtimeEndpointStore,
-            vmLifecycleResourceReader: vmLifecycleStore
+            vmLifecycleResourceReader: vmLifecycleStore,
+            hostSettingsReader: hostSettingsRepository
         )
         let commandWorker = MacRuntimeControlCommandWorker(
             guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
@@ -40,6 +47,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             operationLeaseReader: operationLeaseOwner,
             guestAddressProvider: runtimeEndpointStore,
             vmLifecycleResourceReader: vmLifecycleStore,
+            hostSettingsReader: hostSettingsRepository,
             commandWorker: commandWorker
         )
         let viewModel = RuntimeViewModel(

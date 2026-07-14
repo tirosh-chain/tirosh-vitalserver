@@ -10,6 +10,7 @@ final class RuntimeInstallPermissionConfiguratorTests: XCTestCase {
             context: RuntimeInstallPermissionContext(
                 runtimeHome: URL(fileURLWithPath: "/Library/Application Support/VitalServer"),
                 nginxDirectory: URL(fileURLWithPath: "/Library/Application Support/VitalServer/nginx"),
+                runtimeStateDatabase: URL(fileURLWithPath: "/Library/Application Support/VitalServer/vm/runtime/runtime-state.sqlite"),
                 proxyLaunchDaemonPlist: "/Library/LaunchDaemons/proxy.plist",
                 serviceLaunchDaemonPlists: [
                     "/Library/LaunchDaemons/vm.plist",
@@ -32,6 +33,7 @@ final class RuntimeInstallPermissionConfiguratorTests: XCTestCase {
         XCTAssertEqual(events.values, [
             "run:/usr/sbin/chown -R root:wheel /Library/Application Support/VitalServer",
             "run:/usr/sbin/chown -R root:wheel /Library/Application Support/VitalServer/nginx",
+            "run:/bin/chmod 0600 /Library/Application Support/VitalServer/vm/runtime/runtime-state.sqlite",
             "run:/usr/libexec/PlistBuddy -c Set :EnvironmentVariables:VITALSERVER_PROXY_PORT 18443 /Library/LaunchDaemons/proxy.plist",
             "run:/bin/chmod 0644 /Library/LaunchDaemons/vm.plist",
             "run:/usr/sbin/chown root:wheel /Library/LaunchDaemons/vm.plist",

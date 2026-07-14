@@ -238,12 +238,12 @@ Current Host status owner inputs are classified as follows:
 
 | Input | Current owner role | File status | Next migration direction |
 |---|---|---|---|
-| Runtime endpoint | Platform-owned runtime/process address state | `vm/run/runtime-endpoint.json` is the durable owner document and `GET`/`PUT /platform/runtime-endpoint` exposes that owner contract. `vitalserver-proxy-run` promotes loaded bootstrap `vm-ip` evidence into the owner with an atomic replace and clears it when the proxy exits. Runtime lifecycle, health checker, command routing, and API consume `FileRuntimeGuestAddressResourceStore` or the API resource; UI/API listener availability is not required for Host operation. Proxy readiness comes from direct HTTP probes, not `runtime-observation.json.guestHTTP`. Missing, invalid, and read/write failure remain distinct | Implement the same Platform endpoint owner contract in Windows Service and Linux systemd adapters; do not reintroduce `runtime-status.json.vmIP` or `runtime-observation.json.vmIP` as current owners |
-| Runtime Provider lifecycle | Platform-owned runtime/process state | `GET`/`PUT /platform/runtime-provider` is the API contract. `FileRuntimeVMLifecycleResourceStore` owns the durable lifecycle document so the provider can publish before the UI/API process starts; controller, watchdog, VM launcher/delegate, and status/health readers consume the same repository contract. Missing, invalid, failed, and loaded stay distinct | Add richer provider reconciliation on top of this owner contract; do not use `runtime-status.json` or probe output as lifecycle state |
+| Runtime endpoint | Platform-owned runtime/process address state | Host `runtime-state.sqlite.runtime_endpoint` is the durable owner and `GET`/`PUT /platform/runtime-endpoint` exposes that repository contract. `vitalserver-proxy-run` promotes loaded bootstrap `vm-ip` evidence through the SQLite owner and clears the same row when the proxy exits. Runtime lifecycle, health checker, command routing, and API consume `SQLiteRuntimeGuestAddressResourceStore` or the API resource; UI/API listener availability is not required for Host operation. Proxy readiness comes from direct HTTP probes, not `runtime-observation.json.guestHTTP`. Missing, invalid, and read/write failure remain distinct | Implement the same Platform endpoint owner contract in Windows Service and Linux systemd adapters; do not reintroduce endpoint JSON, `runtime-status.json.vmIP`, or `runtime-observation.json.vmIP` as current owners |
+| Runtime Provider lifecycle | Platform-owned runtime/process state | `GET`/`PUT /platform/runtime-provider` is the API contract. `runtime-state.sqlite.vm_lifecycle` owns durable lifecycle state so the provider can publish before the UI/API process starts; controller, watchdog, VM launcher/delegate, and status/health readers consume `SQLiteRuntimeVMLifecycleResourceStore`. Missing, invalid, failed, and loaded stay distinct | Add richer provider reconciliation on top of this owner contract; do not use lifecycle JSON, `runtime-status.json`, or probe output as lifecycle state |
 | Host proxy port | Host launchd/config owner input | `RuntimeHostProxyPortReader` reads the proxy launch daemon plist as the explicit Host config source for current `proxyPort` display and probe routing. Missing, unreadable, invalid, and out-of-range values are preserved in `proxyPortReadState`; they do not become current health failure reasons and they do not fall back to `RuntimeSettings` or `runtime-status.json.proxyPort` | Promote to a Host API owner resource only if proxy config becomes mutable controller state; until then keep it as a typed Host config read and do not hide config read failures with settings fallback |
 | Runtime version | Applied package/runtime artifact | `runtime-version.json` is install/update artifact metadata, not health state | Keep as artifact read unless version ownership becomes a release registry API |
 | Latest backup | Managed backup inventory | Backup directory scan is operational metadata; read failure is a read issue only | Keep as explicit inventory read or expose through a backup inventory API |
-| Applied VM config / host time | Host-provided contract to VM/bootstrap | Contract files are inputs owned by Host, not RuntimeStatus owner state | Keep as Host contracts; do not use as status fallback |
+| Boot VM config / host time | Host-provided contract to VM/bootstrap | `vm-config.json` and host-time JSON are generated inputs owned by Host SQLite/config providers, not RuntimeStatus owner state. Applied settings remain in SQLite; `applied-vm-config.json` is diagnostics-only | Keep boot files as generated contracts; do not use them as settings or status fallback |
 
 Watchdog active-operation suppression and Runtime Control active-operation display both avoid `runtime-status.json` as the current owner. Recovery is blocked only by the explicit Host operation lease exposed through PlatformOperationState. `runtime-progress.json` is a diagnostics/export artifact for workflow step detail, not a RuntimeStatus field. Status documents, progress documents, and bootstrap proof files may describe what was last published, but they must not act as the active-operation lock, recreate operation ownership, or provide health/recovery state from stale file state.
 
@@ -315,7 +315,7 @@ The Host contract explicitly returns `unavailable` when Guest Control or Product
 
 ### 2-7. Guest Control API mediates Product Lab execution
 
-Runtime v2 routes Product Lab execution through Guest Control API. Host Runtime Control clients call `/runtime/lab/*`, the Host adapter calls Guest Control `/runtime/lab/*`, and the Guest adapter talks to the Product Lab service API as the implementation boundary.
+Runtime v2 routes Product Lab execution through Guest Control API. Host Runtime Control clients call `/runtime/lab/*`, the Host adapter calls Guest Control `/runtime/lab/*`, and the Guest adapter talks to the Product Lab service API as the implementation boundary. Vital Files import is the exception: it is a storage operation owned by the Runtime Control/Guest library adapter and is not forwarded to Product Lab as an execution command.
 
 Guest Product Lab endpoints:
 
@@ -336,10 +336,13 @@ POST /runtime/lab/vital-files/replay
 POST /runtime/lab/vital-files/upload
 ```
 
-Command-style Lab requests create persisted Guest Control operations using the
+Command-style Product Lab requests create persisted Guest Control operations using the
 same SQLite control ledger as service restart. Lab operation failures are saved
 as failed operations and returned through the Lab response `readError` instead
 of being converted into an empty scenario list or a successful stopped session.
+The multipart Vital Files import validates and commits one explicit batch through
+the configured library adapter; it does not create a Product Lab operation or
+send the files to VitalServer `/upload`.
 
 The current Guest adapter maps these Product Lab commands to the `lab` service API:
 
@@ -357,9 +360,14 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 | Start recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/start` |
 | Stop recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/stop` |
 | `.vital` replay | `POST http://lab:8080/lab/vital-files/replay` |
-| `.vital` upload | `POST http://lab:8080/lab/vital-files/upload` |
 
 This makes Product Lab the product boundary and removes the TestKit adapter from the Guest Control Lab execution path.
+
+`POST /runtime/lab/vital-files/upload` accepts repeated multipart `files` fields.
+Every filename must be a basename ending in `.vital`; an empty batch, duplicate
+name, invalid extension, missing library, or destination conflict fails the whole
+batch. The adapter validates every entry before staging and only then commits all
+files. It never treats a partially imported batch as success.
 
 Product Lab session creation does not infer ownership from existing beds,
 recorders, fixture names, or previous command output. A session that should

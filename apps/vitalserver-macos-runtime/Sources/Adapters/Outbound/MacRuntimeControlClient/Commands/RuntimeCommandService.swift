@@ -42,7 +42,8 @@ enum RuntimeCommandFactory {
     static func configureRuntimeArguments(
         settings: RuntimeSettings,
         adminPasswordFile: String? = nil,
-        recorderIngressSettingsFile: String? = nil
+        recorderIngressSettingsFile: String? = nil,
+        forceVMRuntimeRestart: Bool = false
     ) -> [String] {
         var arguments: [String] = [
             RuntimeControlClientConstants.RuntimeCommand.runtime,
@@ -130,7 +131,9 @@ enum RuntimeCommandFactory {
                 recorderIngressSettingsFile,
             ]
         }
-        if settings.restartAfterSave {
+        if forceVMRuntimeRestart {
+            arguments.append(RuntimeControlClientConstants.RuntimeCommand.optionRestartVMRuntime)
+        } else if settings.restartAfterSave {
             arguments.append(RuntimeControlClientConstants.RuntimeCommand.optionRestart)
         }
         return arguments

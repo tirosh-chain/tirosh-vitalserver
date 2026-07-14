@@ -165,6 +165,57 @@ extension RuntimeLifecycle {
                 log: log
             )
         )
+        try markBootedHostSettingsAppliedAfterHealth()
+    }
+
+    func markBootedHostSettingsAppliedAfterHealth() throws {
+        let repository = SQLiteRuntimeHostSettingsRepository(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            transitionDecider: RuntimeHostSettingsActivationUseCase()
+        )
+        let settings: RuntimeHostSettingsRecord
+        switch repository.loadHostSettings() {
+        case .loaded(let record):
+            settings = record
+        case .missing:
+            throw LauncherError.runtimeOperationFailed("Host settings SQLite state is missing")
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
+        guard let bootRevision = settings.bootRevision,
+              let bootRunID = settings.bootRunID else {
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings boot proof is missing revision=\(settings.revision)"
+            )
+        }
+        let applied = try repository.markHostSettingsApplied(
+            revision: bootRevision,
+            runID: bootRunID,
+            appliedAt: isoTimestamp()
+        )
+        guard let appliedPayload = applied.appliedPayload else {
+            throw LauncherError.runtimeOperationFailed(
+                "Applied Host settings payload is missing revision=\(bootRevision)"
+            )
+        }
+        do {
+            try fileStore.writeData(
+                appliedPayload.vmConfigJSON,
+                to: installedPaths.appliedVMConfig,
+                options: .atomic
+            )
+            guard try fileStore.readData(installedPaths.appliedVMConfig) == appliedPayload.vmConfigJSON else {
+                throw LauncherError.runtimeOperationFailed(
+                    "Applied VM settings projection verification failed revision=\(bootRevision)"
+                )
+            }
+        } catch {
+            log(
+                "Host settings applied projection failed revision=\(bootRevision) "
+                    + "path=\(installedPaths.appliedVMConfig.path) reason=\(error)"
+            )
+        }
+        log("Host settings applied revision=\(bootRevision) runId=\(bootRunID)")
     }
 
     func reconcileGuestStackServicesThroughGuestControl() throws {

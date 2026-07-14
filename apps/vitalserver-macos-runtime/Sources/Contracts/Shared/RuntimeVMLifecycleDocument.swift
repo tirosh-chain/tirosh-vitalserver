@@ -60,6 +60,7 @@ public enum RuntimeVMLifecycleState: Codable, Equatable, Sendable {
 
 public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
     case launchFailed
+    case stopRequestFailed
     case diskAttachmentInvalid
     case guestFilesystemReadOnly
     case guestDiskIO
@@ -70,6 +71,8 @@ public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
         switch rawValue {
         case "launch-failed":
             self = .launchFailed
+        case "stop-request-failed":
+            self = .stopRequestFailed
         case "disk-attachment-invalid":
             self = .diskAttachmentInvalid
         case "guest-filesystem-read-only":
@@ -87,6 +90,8 @@ public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
         switch self {
         case .launchFailed:
             return "launch-failed"
+        case .stopRequestFailed:
+            return "stop-request-failed"
         case .diskAttachmentInvalid:
             return "disk-attachment-invalid"
         case .guestFilesystemReadOnly:
@@ -195,6 +200,8 @@ public extension RuntimeVMLifecycleDocument {
         switch terminalReason {
         case .launchFailed:
             return [.launchFailed(terminalReason.rawValue)]
+        case .stopRequestFailed:
+            return [.unknown(terminalReason.rawValue)]
         case .diskAttachmentInvalid:
             return [.diskAttachmentInvalid]
         case .guestFilesystemReadOnly:

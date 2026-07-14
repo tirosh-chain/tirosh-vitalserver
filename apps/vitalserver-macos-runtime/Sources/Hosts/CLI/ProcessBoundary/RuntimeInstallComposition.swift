@@ -3,6 +3,7 @@ import Bootstrap
 import Foundation
 import OutboundAdapters
 import Contracts
+import Domain
 import Workflow
 import Errors
 
@@ -41,6 +42,9 @@ public struct RuntimeInstallCompositionOperations<Settings> {
     let waitInstallRuntimeHealth: (Settings) throws -> Void
     let cleanupInstallSettings: () throws -> Void
     let log: (String) -> Void
+    let prepareHostStateStore: () throws -> Void
+    let workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository
+    let operationID: () -> String
 
     public init(
         fileStore: RuntimeFileStore,
@@ -63,7 +67,10 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         applyStartOnBootPolicy: @escaping (Settings) throws -> Void,
         waitInstallRuntimeHealth: @escaping (Settings) throws -> Void,
         cleanupInstallSettings: @escaping () throws -> Void,
-        log: @escaping (String) -> Void
+        log: @escaping (String) -> Void,
+        prepareHostStateStore: @escaping () throws -> Void,
+        workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository,
+        operationID: @escaping () -> String
     ) {
         self.fileStore = fileStore
         self.now = now
@@ -86,6 +93,9 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         self.waitInstallRuntimeHealth = waitInstallRuntimeHealth
         self.cleanupInstallSettings = cleanupInstallSettings
         self.log = log
+        self.prepareHostStateStore = prepareHostStateStore
+        self.workflowOperationStateRepository = workflowOperationStateRepository
+        self.operationID = operationID
     }
 }
 
@@ -105,10 +115,17 @@ public struct RuntimeInstallComposition<Settings> {
         let plan = installRuntimeUseCase().plan(for: InstallRuntimeRequest(
             mode: .full
         ))
+        let preflight = operations.freshInstallPreflight()
+        try operations.prepareHostStateStore()
+        let operationID = operations.operationID()
         try RuntimeInstallWorkflow().run(
             plan,
             context: InstallRuntimeExecutionContext(runtimeHomePath: context.paths.home.path),
-            operations: installRuntimeOperations()
+            operations: installRuntimeOperations(
+                operationID: operationID,
+                freshInstallPreflight: { preflight },
+                provisionPayload: operations.installProvisionPayload
+            )
         )
     }
 
@@ -116,10 +133,17 @@ public struct RuntimeInstallComposition<Settings> {
         let plan = installRuntimeUseCase().plan(for: InstallRuntimeRequest(
             mode: .provision
         ))
+        let provisionPayload = operations.installProvisionPayload()
+        try operations.prepareHostStateStore()
+        let operationID = operations.operationID()
         try RuntimeInstallWorkflow().run(
             plan,
             context: InstallRuntimeExecutionContext(runtimeHomePath: context.paths.home.path),
-            operations: installRuntimeOperations()
+            operations: installRuntimeOperations(
+                operationID: operationID,
+                freshInstallPreflight: operations.freshInstallPreflight,
+                provisionPayload: { provisionPayload }
+            )
         )
     }
 
@@ -127,12 +151,17 @@ public struct RuntimeInstallComposition<Settings> {
         InstallRuntimeUseCase()
     }
 
-    private func installRuntimeOperations() -> InstallRuntimeOperations<Settings> {
-        InstallRuntimeOperations(
+    private func installRuntimeOperations(
+        operationID: String,
+        freshInstallPreflight: @escaping () -> RuntimeFreshInstallPreflightDocument,
+        provisionPayload: @escaping () -> RuntimeInstallProvisionPayloadDocument
+    ) -> InstallRuntimeOperations<Settings> {
+        let statePersistence = PersistRuntimeWorkflowOperationStateUseCase()
+        return InstallRuntimeOperations(
             readers: InstallRuntimeStateReaders(
                 loadSettings: operations.loadInstallSettings,
-                freshInstallPreflight: operations.freshInstallPreflight,
-                provisionPayload: operations.installProvisionPayload
+                freshInstallPreflight: freshInstallPreflight,
+                provisionPayload: provisionPayload
             ),
             effects: InstallRuntimeEffects(
                 log: operations.log,
@@ -149,21 +178,42 @@ public struct RuntimeInstallComposition<Settings> {
                 applyStartOnBootPolicy: operations.applyStartOnBootPolicy,
                 waitInstallRuntimeHealth: operations.waitInstallRuntimeHealth,
                 cleanupInstallSettings: operations.cleanupInstallSettings,
-                describeError: RuntimeErrorDescription.describe
+                describeError: RuntimeErrorDescription.describe,
+                prepareHostStateStore: operations.prepareHostStateStore
             ),
             writer: InstallRuntimeStateWriter(
                 writeState: { state, mode, currentStep, message, blockers in
-                    try RuntimeInstallWorkflowStateArtifactStore(
-                        url: context.installedPaths.runtimeInstallState,
-                        fileStore: operations.fileStore,
-                        now: operations.now
-                    ).write(
+                    let occurredAt = ISO8601DateFormatter().string(from: operations.now())
+                    let event = try RuntimeInstallWorkflowOperationStateProjectionPolicy.event(
+                        operationID: operationID,
                         state: state,
-                        mode: mode,
                         currentStep: currentStep,
                         message: message,
                         blockers: blockers
                     )
+                    try statePersistence.transition(
+                        repository: operations.workflowOperationStateRepository,
+                        operationID: operationID,
+                        event: event,
+                        occurredAt: occurredAt
+                    )
+                    do {
+                        try RuntimeInstallWorkflowStateArtifactStore(
+                        url: context.installedPaths.runtimeInstallState,
+                        fileStore: operations.fileStore,
+                        now: operations.now
+                        ).write(
+                            state: state,
+                            mode: mode,
+                            currentStep: currentStep,
+                            message: message,
+                            blockers: blockers
+                        )
+                    } catch {
+                        operations.log(
+                            "runtime install diagnostic snapshot write failed operationId=\(operationID) path=\(context.installedPaths.runtimeInstallState.path) reason=\(RuntimeErrorDescription.describe(error))"
+                        )
+                    }
                 },
                 writeStatus: operations.writeRuntimeStatus,
                 writeProgress: operations.writeRuntimeProgress

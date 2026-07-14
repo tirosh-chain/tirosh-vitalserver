@@ -4,7 +4,6 @@ import Contracts
 import OutboundAdapters
 import InboundAdapters
 import Errors
-import RuntimeControl
 
 public struct RuntimeLifecycleComposition {
     public let httpProber: RuntimeHTTPProber
@@ -36,8 +35,9 @@ public struct RuntimeLifecycleComposition {
         let installedPaths = paths.installed
         let resolvedHTTPProber = httpProber ?? CurlRuntimeHTTPProber(commandRunner: commandRunner)
         let resolvedServiceManager = serviceManager ?? LaunchdRuntimeServiceManager(commandRunner: commandRunner)
-        let resolvedGuestAddressProvider = guestAddressProvider ?? FileRuntimeGuestAddressResourceStore(
-            documentURL: installedPaths.runtimeEndpoint
+        let resolvedGuestAddressProvider = guestAddressProvider ?? SQLiteRuntimeGuestAddressResourceStore(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            lifecycleTransitionDecider: RuntimeVMLifecycleTransitionUseCase()
         )
         let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
         let statusReporter = RuntimeStatusReporter(
@@ -67,7 +67,10 @@ public struct RuntimeLifecycleComposition {
             commandRunner: commandRunner,
             httpProber: resolvedHTTPProber,
             guestAddressProvider: resolvedGuestAddressProvider,
-            vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader(),
+            vmLifecycleResourceReader: SQLiteRuntimeVMLifecycleResourceStore(
+                databaseURL: installedPaths.runtimeStateDatabase,
+                transitionDecider: RuntimeVMLifecycleTransitionUseCase()
+            ),
             guestControlGatewayForBaseURL: { baseURL in
                 try HTTPRuntimeGuestControlGateway(
                     baseURL: baseURL,

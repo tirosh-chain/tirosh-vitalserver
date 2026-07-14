@@ -536,13 +536,14 @@ final class RuntimeControlContractsTests: XCTestCase {
         let rotated = RuntimeLogExportSourceContract.rotatedSupplementalDestinations()
 
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)"))
-        XCTAssertTrue(destinations.contains("diagnostics/platform/\(RuntimeHostOwnerFileNames.operationLease)"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/runtime-state.sqlite"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/\(RuntimeDiagnosticsArtifactFileNames.hostRuntimeStateEvents)"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/\(RuntimeDiagnosticsArtifactFileNames.hostRuntimeState)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)-wal"))
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)-shm"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)"))
-        XCTAssertTrue(destinations.contains("diagnostics/runtime/\(RuntimeHostOwnerFileNames.vmLifecycle)"))
         XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeBootstrapEvidenceFileNames.vmIP)"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
         XCTAssertTrue(destinations.contains("diagnostics/runtime/runtime-version.json"))
@@ -832,6 +833,76 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(stale.document, document)
         XCTAssertEqual(stale.staleReason, "expired")
         XCTAssertNil(stale.readError)
+    }
+
+    func testRuntimeWorkflowOperationStateResourceRoundTripsExplicitOwnerState() throws {
+        let document = RuntimeWorkflowOperationStateDocument(
+            operationID: "operation-1",
+            operation: .applyBundle,
+            phase: .running,
+            currentStep: .replaceRootfsBase,
+            stepStatus: .started,
+            message: "replacing rootfs",
+            reasonCodes: [],
+            startedAt: "2026-07-14T06:00:00Z",
+            updatedAt: "2026-07-14T06:01:00Z",
+            completedAt: nil,
+            revision: 3
+        )
+        let state = PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable(),
+            workflow: .loaded(document)
+        )
+
+        let decoded = try JSONDecoder().decode(
+            PlatformOperationState.self,
+            from: JSONEncoder().encode(state)
+        )
+
+        XCTAssertEqual(decoded.workflow.state, .loaded)
+        XCTAssertEqual(decoded.workflow.document, document)
+        XCTAssertNil(decoded.workflow.readError)
+    }
+
+    func testPlatformOperationStateUsesOnlyExplicitNonterminalWorkflowAsActiveOperation() {
+        let running = RuntimeWorkflowOperationStateDocument(
+            operationID: "install-1",
+            operation: .install,
+            phase: .running,
+            currentStep: .provisionVMDisk,
+            stepStatus: .started,
+            message: "installing",
+            reasonCodes: [],
+            startedAt: "2026-07-14T06:00:00Z",
+            updatedAt: "2026-07-14T06:01:00Z",
+            completedAt: nil,
+            revision: 2
+        )
+        let completed = RuntimeWorkflowOperationStateDocument(
+            operationID: running.operationID,
+            operation: running.operation,
+            phase: .completed,
+            currentStep: nil,
+            stepStatus: nil,
+            message: "installed",
+            reasonCodes: [],
+            startedAt: running.startedAt,
+            updatedAt: "2026-07-14T06:02:00Z",
+            completedAt: "2026-07-14T06:02:00Z",
+            revision: 3
+        )
+
+        XCTAssertEqual(PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable(),
+            workflow: .loaded(running)
+        ).activeOperation, .install)
+        XCTAssertNil(PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable(),
+            workflow: .loaded(completed)
+        ).activeOperation)
     }
 
     func testPlatformOperationStateEncodesNullableOperationFieldsAsExplicitNull() throws {

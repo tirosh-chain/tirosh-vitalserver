@@ -4,6 +4,8 @@ import json
 import os
 import stat
 from datetime import UTC, datetime
+from email import policy
+from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -36,6 +38,7 @@ from tirosh_guest_tools.adapters.outbound.runtime_settings import (
     FileRuntimeSettingsRepository,
 )
 from tirosh_guest_tools.adapters.outbound.sqlite_control import SQLiteControlRepository
+from tirosh_guest_tools.adapters.outbound.vital_files import FileVitalFileLibrary
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
     UUIDOperationIdFactory,
@@ -132,6 +135,7 @@ def build_default_usecases() -> GuestControlUseCases:
         guest_service_resources=operations,
         operation_ids=UUIDOperationIdFactory(),
         clock=SystemClock(),
+        vital_file_library=FileVitalFileLibrary(SETTINGS.shares.vital_files_mount),
     )
     usecases.recover_interrupted_operations()
     usecases.initialize_guest_service_specs(DEFAULT_GUEST_SERVICE_SPECS)
@@ -176,6 +180,7 @@ def make_handler(
                     path=parsed.path,
                     query=parse_qs(parsed.query, keep_blank_values=True),
                     body=self._request_body(),
+                    headers={key.lower(): value for key, value in self.headers.items()},
                     usecases=usecases,
                 )
             except GuestControlAPIError as error:
@@ -198,6 +203,18 @@ def make_handler(
                 )
                 return
             except GuestControlDependencyError as error:
+                if error.kind == "vitalFileUploadInvalid":
+                    self._write_json(
+                        HTTPStatus.BAD_REQUEST,
+                        {"detail": error.message, "code": error.kind},
+                    )
+                    return
+                if error.kind == "vitalFileUploadConflict":
+                    self._write_json(
+                        HTTPStatus.CONFLICT,
+                        {"detail": error.message, "code": error.kind},
+                    )
+                    return
                 if error.kind == "guestServiceSpecInvalid":
                     self._write_json(
                         HTTPStatus.BAD_REQUEST,
@@ -273,10 +290,12 @@ def route_request(
     path: str,
     query: dict[str, list[str]] | None = None,
     body: bytes = b"",
+    headers: dict[str, str] | None = None,
     usecases: GuestControlUseCases,
 ) -> tuple[HTTPStatus, dict[str, Any]]:
     parts = [unquote(part) for part in path.split("/") if part]
     query = query or {}
+    headers = headers or {}
 
     if method == "GET" and parts == ["health"]:
         return HTTPStatus.OK, {"status": "ok"}
@@ -493,7 +512,11 @@ def route_request(
         return HTTPStatus.ACCEPTED, usecases.replay_lab_vital_file(_json_body(body))
 
     if method == "POST" and parts == ["runtime", "lab", "vital-files", "upload"]:
-        return HTTPStatus.ACCEPTED, usecases.upload_lab_vital_file(_json_body(body))
+        files = _multipart_vital_files(
+            body,
+            content_type=headers.get("content-type"),
+        )
+        return HTTPStatus.OK, usecases.import_lab_vital_files(files)
 
     if method == "POST" and parts == ["runtime", "maintenance", "redis-backup"]:
         return HTTPStatus.ACCEPTED, usecases.create_redis_backup().as_json()
@@ -638,6 +661,70 @@ def route_request(
         detail=f"route is not available: {method} {path}",
         code="routeNotFound",
     )
+
+
+def _multipart_vital_files(
+    body: bytes,
+    *,
+    content_type: str | None,
+) -> list[tuple[str, bytes]]:
+    if content_type is None or not content_type.lower().startswith(
+        "multipart/form-data;"
+    ):
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Vital Files upload requires multipart/form-data.",
+            code="vitalFileUploadInvalid",
+        )
+    message = BytesParser(policy=policy.default).parsebytes(
+        b"Content-Type: "
+        + content_type.encode("latin-1")
+        + b"\r\nMIME-Version: 1.0\r\n\r\n"
+        + body
+    )
+    if not message.is_multipart():
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Vital Files upload multipart body is invalid.",
+            code="vitalFileUploadInvalid",
+        )
+
+    files: list[tuple[str, bytes]] = []
+    for part in message.iter_parts():
+        if part.get_content_disposition() != "form-data":
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail="Vital Files upload contains an invalid multipart part.",
+                code="vitalFileUploadInvalid",
+            )
+        if part.get_param("name", header="content-disposition") != "files":
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail="Vital Files upload only accepts multipart field 'files'.",
+                code="vitalFileUploadInvalid",
+            )
+        filename = part.get_filename()
+        if not isinstance(filename, str) or not filename:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail="Every Vital Files upload part requires a filename.",
+                code="vitalFileUploadInvalid",
+            )
+        content = part.get_payload(decode=True)
+        if not isinstance(content, bytes):
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=f"Vital Files upload part could not be decoded: {filename}",
+                code="vitalFileUploadInvalid",
+            )
+        files.append((filename, content))
+    if not files:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Select at least one .vital file.",
+            code="vitalFileUploadInvalid",
+        )
+    return files
 
 
 def _json_body(body: bytes) -> dict[str, Any]:

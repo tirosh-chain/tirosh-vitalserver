@@ -46,12 +46,10 @@ cat .tmp/vitalserver-vm-golden/run/vm-lifecycle.json
 
 ## Actions
 
-- VM launcher, stop workflow, watchdog는 `FileRuntimeVMLifecycleResourceStore`에
-  lifecycle을 직접 기록합니다.
-- Runtime Control API의 `/platform/runtime-provider` resource도 같은 durable store를
-  읽고 씁니다.
-- 상태 문서는 lock과 atomic replace를 사용하며 missing, decode, read, write failure를
-  성공이나 기본 상태로 바꾸지 않습니다.
+- Golden-rootfs build VM은 `.tmp/.../run/vm-lifecycle.json` compile proof를 사용합니다.
+- Installed runtime의 VM launcher, stop workflow, watchdog는 `SQLiteRuntimeVMLifecycleResourceStore`를 통해 `runtime-state.sqlite`에 lifecycle을 직접 기록합니다.
+- Runtime Control API의 `/platform/runtime-provider` resource도 installed runtime에서 같은 SQLite repository를 읽고 씁니다.
+- 두 환경의 계약을 섞지 않으며 missing, invalid, read, write failure를 성공이나 기본 상태로 바꾸지 않습니다.
 
 수정 후 `make runtime/proof/smoke`로 golden rootfs compile과 golden disk 재부팅
 smoke를 모두 확인합니다.

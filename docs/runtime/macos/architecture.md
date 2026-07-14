@@ -152,7 +152,9 @@ RuntimeControl
 
 `Domain`, `Workflow`, `Infrastructure`, `HostAdapters`, `Interfaces`, `Bootstrap`은 #47 skeleton-first migration에서 추가된 최종 구조 target입니다. `Domain`은 advertised URL validation, compatibility endpoint 결정, service lifecycle completion gate, health evaluator, watchdog recovery planner, install/update/rollback/repair policy처럼 순수 정책과 상태 전이 규칙을 소유합니다. `Application`은 외부 상태와 effect를 port로 받고, Guest Control, repository, clock, command 같은 dependency failure를 explicit result로 다룹니다. `Workflow`는 install, update, rollback, repair, watchdog처럼 순서가 있는 operation을 조율하지만 상태를 추측하지 않습니다.
 
-`Infrastructure`는 installed path, JSON/JSONL repository, Host diagnostics SQLite index, log rotation, guest config reading/writing, package receipt, VM lifecycle document store 같은 Host-side persistence와 read adapter를 소유합니다. `HostAdapters`는 Virtualization.framework, launchd, process execution, host proxy, sleep/system clock, cloud-init seed writing처럼 macOS host effect를 소유합니다. `Interfaces/HostCLI`는 CLI command parsing과 status output formatting을 소유합니다. `Bootstrap`은 composition root로서 Host ports, Guest Control gateway, Runtime Control API, lifecycle workflow를 조립합니다.
+`Infrastructure`는 installed path, authoritative Host SQLite repository, JSONL/JSON diagnostics projector, generated boot-contract adapter, log rotation, guest config materialization, package receipt 같은 Host-side persistence와 read adapter를 소유합니다. VM lifecycle, runtime endpoint, operation lease, workflow state, Host settings의 current owner는 `runtime-state.sqlite`이며 JSON repository나 lifecycle document store가 아닙니다. `HostAdapters`는 Virtualization.framework, launchd, process execution, host proxy, sleep/system clock, cloud-init seed writing처럼 macOS host effect를 소유합니다. `Interfaces/HostCLI`는 CLI command parsing과 status output formatting을 소유합니다. `Bootstrap`은 composition root로서 Host ports, Guest Control gateway, Runtime Control API, lifecycle workflow를 조립합니다.
+
+Authoritative Host state의 파일 repository는 단계적으로 Host-local `runtime-state.sqlite`로 이전합니다. JSONL은 append-only diagnostics event, JSON은 current diagnostics snapshot 또는 generated boot contract로만 유지하며 current state, operation ownership, recovery 입력으로 사용하지 않습니다. Aggregate별 cutover, transaction/outbox, revision, 명시적 legacy migration 규칙은 [Host runtime state persistence](host-runtime-state-persistence.md)를 따릅니다.
 
 Guest product persistence는 domain class와 SQLAlchemy ORM record를 직접 결합하지 않습니다. Application port는 domain object만 다루고, mapper가 domain object와 ORM record/document를 변환하며 repository가 SQLAlchemy `Engine`과 transaction을 소유합니다. 운영 dialect는 Postgres이지만 repository contract와 mapper는 dialect 중립적으로 유지하여 SQLite 전환 검증을 동일 repository contract test로 수행합니다. Database URL 선택은 composition/configuration 책임이며 domain과 UI가 dialect를 분기하지 않습니다.
 
@@ -586,12 +588,13 @@ VitalServerHelper.dmg
 
 | 설정 | 저장 위치 |
 |---|---|
-| VM CPU/RAM/kernel/disk/network/MAC | `runtime/vm-config.json` |
+| VM CPU/RAM/kernel/disk/network/MAC desired/applied state | `runtime/runtime-state.sqlite.host_runtime_settings` |
+| VM/Guest boot input | SQLite settings에서 생성한 `runtime/vm-config.json`, deploy `runtime-config.json`, `runtime-settings.json` |
 | cloud-init user/hostname/SSH key/bootstrap | `seed.iso` |
 | VitalServer container/runtime 설정 | deploy `runtime-config.json` |
 | 서비스 자동 실행 | LaunchDaemon plist |
 
-Helper app은 설치 이후 상태 확인, 설정 변경, offline/online Product Update bundle 적용, rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM Image와 privileged provisioning은 installer pkg가 담당합니다. 설정 변경은 Helper app이 직접 JSON/plist를 수정하지 않고 `vitalserver-vm runtime configure ... --restart`를 administrator privilege로 호출합니다.
+Helper app은 설치 이후 상태 확인, 설정 변경, offline/online Product Update bundle 적용, rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM Image와 privileged provisioning은 installer pkg가 담당합니다. 설정 저장은 Helper app이 JSON/plist를 직접 수정하지 않고 `vitalserver-vm runtime configure`를 administrator privilege로 호출합니다. 저장된 변경을 활성화하는 `Apply`는 별도 typed intent인 `--restart-vm-runtime`을 호출하며 새 lifecycle run과 health proof가 성공한 뒤에만 SQLite applied revision을 갱신합니다.
 
 역할 경계는 아래처럼 고정합니다.
 
@@ -643,15 +646,15 @@ VM IP/bootstrap HTTP readiness, Guest Control operation/read documents, guest lo
         | Guest Control API and diagnostics files
         v
 [Local Control Components]
-health/evaluator/waiter 판단, runtime-status.json 갱신
+health/evaluator/waiter 판단, Host SQLite owner 갱신, diagnostics projection
         |
-        | status JSON, command/install/container logs
+        | explicit API/read repository, diagnostics JSON/JSONL, logs
         v
 [MacRuntimeControlApp]
 Status/Settings/Update/Logs UI에 표시
 ```
 
-`Contracts`와 전환기 `Core`는 별도 실행 계층이 아닙니다. `Contracts`는 JSON schema, enum, file name, Guest Control, update bundle manifest처럼 PWA/API/server/host runtime이 함께 알아야 하는 계약을 담습니다. 실제 evaluator, operation plan, recovery policy, status document builder는 `Domain`에 있고, repository/clock/command/file/service/Guest Control gateway 같은 port protocol은 `Application/Ports`에 있습니다. filesystem, installed path, JSON/JSONL repository, SQLite observability/read-model 구현은 `Infrastructure`에 있습니다. `Core`와 `HostInfrastructure`는 기존 `MacHostRuntimeAdapter`와 `HostCLI` import 경로를 유지하기 위한 typealias shim이며, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임을 갖지 않습니다.
+`Contracts`와 전환기 `Core`는 별도 실행 계층이 아닙니다. `Contracts`는 JSON schema, enum, file name, Guest Control, update bundle manifest처럼 PWA/API/server/host runtime이 함께 알아야 하는 계약을 담습니다. 실제 evaluator, operation plan, recovery policy, status document builder는 `Domain`에 있고, repository/clock/command/file/service/Guest Control gateway 같은 port protocol은 `Application/Ports`에 있습니다. filesystem, installed path, authoritative Host SQLite repository, diagnostics projector, generated boot-contract 구현은 `Infrastructure`에 있습니다. `Core`와 `HostInfrastructure`는 기존 `MacHostRuntimeAdapter`와 `HostCLI` import 경로를 유지하기 위한 typealias shim이며, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임을 갖지 않습니다.
 
 현재 Helper app 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeControlClient` boundary를 구현한 모양입니다. 코드 배치도 같은 경계를 드러내도록 SwiftPM target을 나눕니다. `MacRuntimeControlApp`은 composition/presentation/native shell을 담고, `MacHostRuntimeAdapter`는 local file/process/CLI adapter를 담습니다. presentation/native shell은 adapter target을 import하지 않고, composition에서만 `MacHostRuntimeClient`를 조립합니다.
 
@@ -755,6 +758,33 @@ Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락�
 `MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. `MacHostRuntimeClient -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. Runtime Control API server는 PWA가 사용할 product API surface이므로 browser diagnostics page와 분리합니다. Stable profile에서도 API server를 시작할 수 있어야 하며, Product Lab은 `/runtime/lab/*` route를 사용하고 legacy `/dev/testkit/*` route는 product surface에 노출하지 않습니다. 이 경계는 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유하도록 유지합니다.
 
 `RuntimeHostClient`는 현재 SwiftUI 전환기에서 필요한 local host affordance 경계입니다. PWA 진입 시 이 계약을 그대로 browser client에 노출한다는 뜻이 아닙니다. PWA는 `RuntimeControlClient`에 해당하는 HTTP/SSE API를 우선 사용하고, local file 선택, log export destination, pairing/native shell 같은 기능은 native shell 또는 Runtime Control API의 별도 endpoint로 재배치합니다.
+
+### 7-2. Vital Files upload와 replay 경계
+
+`Upload`와 `Replay`는 서로 다른 operation이다.
+
+- Upload는 사용자가 Host 권한으로 읽을 수 있는 위치에서 한 개 이상의 파일을 선택해
+  configured Vital Files library로 가져오는 operation이다. Runtime Control API는
+  `POST /runtime/lab/vital-files/upload`의 `multipart/form-data` `files` field를 반복해
+  N개 파일의 명시적 byte input을 받는다.
+- Upload owner는 파일을 쓰기 전에 전체 batch의 파일명, `.vital` 확장자, batch 내 중복,
+  destination 충돌을 먼저 검증한다. 하나라도 invalid이면 아무 파일도 반영하지 않는다.
+  검증이 끝난 batch만 library 내부 staging directory에 기록하고 commit 중 실패하면 이번
+  batch에서 이동한 destination을 제거한다. Missing library는 새 빈 library로 추정하거나
+  자동 생성하지 않고 unavailable failure로 보고한다.
+- macOS native shell은 `NSOpenPanel.allowsMultipleSelection`으로 Host URL들을 받고 같은
+  batch import 규칙을 적용한다. PWA는 browser `File[]`을 multipart로 전달한다.
+  Linux/Windows Platform Agent는 같은 Runtime Control route와 body를 Runtime Controller에
+  전달하므로 PWA contract와 validation 결과가 platform별로 달라지지 않는다.
+- Replay는 library에 이미 등록되어 `GET /runtime/lab/vital-files`가 제공한
+  `relativePath` 하나만 받는다. 임의 Host path를 replay input으로 받지 않는다. Replay
+  request는 기존 bed/recorder 사용 또는 quick-create와 once/N/continuous repeat policy를
+  명시해야 한다.
+
+UI는 이 의미를 `Vital Files > Upload to library`와
+`Vital Files > Replay uploaded file`로 분리한다. Presentation은 file extension을 미리
+검사해 사용자를 안내할 수 있지만, authoritative validation과 atomic commit은 storage
+owner 경계에 남는다.
 
 ## 8. Source 책임
 

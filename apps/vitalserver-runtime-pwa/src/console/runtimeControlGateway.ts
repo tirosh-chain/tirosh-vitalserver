@@ -118,7 +118,7 @@ export type RuntimeControlGateway = {
     recorderId: string
   ): Promise<RuntimeLabRecorderResponse>;
   getLabVitalFiles(): Promise<RuntimeLabVitalFileList>;
-  uploadLabVitalFile(
+  uploadLabVitalFiles(
     request: RuntimeLabVitalFileUploadRequest
   ): Promise<RuntimeLabVitalFileUploadResponse>;
   replayLabVitalFile(

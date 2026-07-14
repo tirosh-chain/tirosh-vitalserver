@@ -11,7 +11,6 @@ from urllib.parse import unquote, urlparse
 from .execution import (
     LabExecutionEngine,
     LabRecorderSendError,
-    LabVitalFileUploadReceipt,
     VitalServerRecorderPayloadSender,
 )
 from .model import (
@@ -26,6 +25,7 @@ from .model import (
     LabSessionStore,
     LabSessionStoreUnavailable,
     LabVitalFile,
+    LabVitalFileReplayPolicy,
     lab_recorder_control_rejection,
     utc_now_iso,
 )
@@ -302,12 +302,23 @@ def route_lab_request(
                         beds=beds,
                         recorders=recorders,
                         result_sink=session_store.save_recorder_execution_results,
+                        completion_sink=lambda completed_session_id: session_store.stop(
+                            completed_session_id
+                        ),
                     )
                     session_store.save_recorder_execution_results(
                         execution_results,
                     )
             except LabSessionStoreUnavailable as error:
                 return _store_failure_response(error, operation_id=operation_id)
+            except LabRecorderSendError as error:
+                session_store.stop(session_id)
+                return HTTPStatus.UNPROCESSABLE_ENTITY, {
+                    "state": "failed",
+                    "operationId": operation_id,
+                    "session": None,
+                    "readError": str(error),
+                }
         elif parts[3] == "stop":
             operation_id = f"lab-session-stop-{session_id}"
             try:
@@ -410,6 +421,9 @@ def route_lab_request(
                         recorders=session_recorders,
                         recorder_id=recorder_id,
                         result_sink=session_store.save_recorder_execution_results,
+                        completion_sink=lambda completed_session_id: session_store.stop(
+                            completed_session_id
+                        ),
                     )
             else:
                 recorder = session_store.stop_recorder(session_id, recorder_id)
@@ -458,10 +472,17 @@ def route_lab_request(
     if method == "POST" and parts == ["lab", "vital-files", "replay"]:
         try:
             payload = _json_body(body)
-            vital_file_path = string_field(payload, "vitalFilePath")
-            validate_vital_file_path(vital_file_path, settings=settings)
+            vital_file_relative_path = string_field(payload, "vitalFileRelativePath")
+            vital_file_path = resolve_vital_file_path(
+                vital_file_relative_path, settings=settings
+            )
             session_name = optional_string_field(payload, "sessionName")
             target_url = optional_string_field(payload, "targetURL")
+            replay_policy = replay_policy_field(payload)
+            bed_ids, recorder_ids = replay_resource_selection(
+                payload,
+                session_store=session_store,
+            )
         except LabRequestError as error:
             return error.status, {"error": error.code, "message": error.message}
         try:
@@ -471,7 +492,11 @@ def route_lab_request(
                     name=session_name or "Vital File Replay",
                     recorder_count=1,
                     target_url=target_url,
+                    bed_ids=bed_ids,
+                    recorder_ids=recorder_ids,
                     vital_file_path=vital_file_path,
+                    vital_file_relative_path=vital_file_relative_path,
+                    replay_policy=replay_policy,
                 )
             )
         except LabSessionStoreUnavailable as error:
@@ -479,34 +504,6 @@ def route_lab_request(
         return HTTPStatus.ACCEPTED, _session_response(
             session.as_json(),
             operation_id=f"lab-vital-file-replay-{session.session_id}",
-        )
-
-    if method == "POST" and parts == ["lab", "vital-files", "upload"]:
-        operation_id = "lab-vital-file-upload"
-        try:
-            payload = _json_body(body)
-            vital_file_path = string_field(payload, "vitalFilePath")
-            validate_vital_file_path(vital_file_path, settings=settings)
-            target_url = string_field(payload, "targetURL")
-            endpoint = optional_string_field(payload, "endpoint") or "/upload"
-            vrcode = optional_string_field(payload, "vrcode")
-        except LabRequestError as error:
-            return error.status, {"error": error.code, "message": error.message}
-        try:
-            receipt = execution_engine.upload_vital_file(
-                target_url=target_url,
-                file_path=Path(vital_file_path),
-                endpoint=endpoint,
-                vrcode=vrcode,
-            )
-        except LabRecorderSendError as error:
-            return HTTPStatus.BAD_GATEWAY, _vital_file_upload_failure_response(
-                str(error),
-                operation_id=operation_id,
-            )
-        return HTTPStatus.ACCEPTED, _vital_file_upload_response(
-            receipt,
-            operation_id=operation_id,
         )
 
     return HTTPStatus.NOT_FOUND, {"error": "not_found"}
@@ -732,7 +729,150 @@ def int_field(payload: dict[str, Any], field_name: str, *, default: int) -> int:
     return value
 
 
+def replay_policy_field(payload: dict[str, Any]) -> LabVitalFileReplayPolicy:
+    value = payload.get("repeatPolicy")
+    if not isinstance(value, dict):
+        raise LabRequestError(
+            "repeatPolicy_required",
+            "repeatPolicy must explicitly select once, count, or continuous.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    mode = value.get("mode")
+    if mode not in ("once", "count", "continuous"):
+        raise LabRequestError(
+            "repeatPolicy_mode_invalid",
+            "repeatPolicy.mode must be once, count, or continuous.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    count = value.get("count")
+    if count is not None and (isinstance(count, bool) or not isinstance(count, int)):
+        raise LabRequestError(
+            "repeatPolicy_count_invalid",
+            "repeatPolicy.count must be an integer.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    try:
+        return LabVitalFileReplayPolicy(mode=mode, count=count)
+    except ValueError as error:
+        raise LabRequestError(
+            "repeatPolicy_invalid",
+            str(error),
+            HTTPStatus.BAD_REQUEST,
+        ) from error
+
+
+def replay_resource_selection(
+    payload: dict[str, Any],
+    *,
+    session_store: LabSessionStore,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    value = payload.get("resourceSelection")
+    if not isinstance(value, dict):
+        raise LabRequestError(
+            "resourceSelection_required",
+            (
+                "resourceSelection must explicitly select existing or "
+                "quickCreate resources."
+            ),
+            HTTPStatus.BAD_REQUEST,
+        )
+    mode = value.get("mode")
+    if mode == "quickCreate":
+        if value.keys() != {"mode"}:
+            raise LabRequestError(
+                "resourceSelection_quickCreate_invalid",
+                "quickCreate resourceSelection accepts only mode.",
+                HTTPStatus.BAD_REQUEST,
+            )
+        return (), ()
+    if mode != "existing":
+        raise LabRequestError(
+            "resourceSelection_mode_invalid",
+            "resourceSelection.mode must be existing or quickCreate.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    bed_id = value.get("bedId")
+    recorder_id = value.get("recorderId")
+    if not isinstance(bed_id, str) or not bed_id.strip():
+        raise LabRequestError(
+            "resourceSelection_bedId_required",
+            "Existing resourceSelection requires bedId.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    if not isinstance(recorder_id, str) or not recorder_id.strip():
+        raise LabRequestError(
+            "resourceSelection_recorderId_required",
+            "Existing resourceSelection requires recorderId.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    try:
+        beds = {bed.bed_id: bed for bed in session_store.list_beds()}
+        recorders = {
+            recorder.recorder_id: recorder
+            for recorder in session_store.list_recorders()
+        }
+    except LabSessionStoreUnavailable as error:
+        raise LabRequestError(
+            "resourceSelection_read_failed",
+            error.message,
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        ) from error
+    if bed_id not in beds:
+        raise LabRequestError(
+            "resourceSelection_bed_missing",
+            f"Selected Lab bed is not available: {bed_id}",
+            HTTPStatus.NOT_FOUND,
+        )
+    recorder = recorders.get(recorder_id)
+    if recorder is None:
+        raise LabRequestError(
+            "resourceSelection_recorder_missing",
+            f"Selected Lab recorder is not available: {recorder_id}",
+            HTTPStatus.NOT_FOUND,
+        )
+    if recorder.bed_id != bed_id:
+        raise LabRequestError(
+            "resourceSelection_mismatch",
+            f"Selected Lab recorder does not belong to bed: {recorder_id}/{bed_id}",
+            HTTPStatus.CONFLICT,
+        )
+    return (bed_id,), (recorder_id,)
+
+
+def resolve_vital_file_path(relative_path: str, *, settings: LabSettings) -> str:
+    candidate = Path(relative_path)
+    if candidate.is_absolute():
+        raise LabRequestError(
+            "vitalFileRelativePath_absolute",
+            "vitalFileRelativePath must be relative to the Vital Files library.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    if candidate.suffix.lower() != ".vital":
+        raise LabRequestError(
+            "vitalFileRelativePath_invalid_extension",
+            "vitalFileRelativePath must point to a .vital file.",
+            HTTPStatus.BAD_REQUEST,
+        )
+
+    mount = settings.vital_files_mount.resolve(strict=False)
+    resolved = (mount / candidate).resolve(strict=False)
+    if not resolved.is_relative_to(mount):
+        raise LabRequestError(
+            "vitalFileRelativePath_outside_library",
+            "vitalFileRelativePath must stay inside the Vital Files library.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    if not resolved.is_file():
+        raise LabRequestError(
+            "vitalFileRelativePath_missing",
+            "vitalFileRelativePath is not available in the Vital Files library.",
+            HTTPStatus.NOT_FOUND,
+        )
+    return str(resolved)
+
+
 def validate_vital_file_path(path: str, *, settings: LabSettings) -> None:
+    """Validate the legacy VitalServer transfer endpoint's guest-owned path."""
     candidate = Path(path)
     if not candidate.is_absolute():
         raise LabRequestError(
@@ -746,7 +886,6 @@ def validate_vital_file_path(path: str, *, settings: LabSettings) -> None:
             "vitalFilePath must point to a .vital file.",
             HTTPStatus.BAD_REQUEST,
         )
-
     mount = settings.vital_files_mount.resolve(strict=False)
     resolved = candidate.resolve(strict=False)
     if not resolved.is_relative_to(mount):
@@ -845,40 +984,6 @@ def _session_list_response(sessions: tuple[object, ...]) -> dict[str, object]:
         "state": "loaded",
         "sessions": [session.as_json() for session in sessions],
         "readError": None,
-    }
-
-
-def _vital_file_upload_response(
-    receipt: LabVitalFileUploadReceipt,
-    *,
-    operation_id: str,
-) -> dict[str, object]:
-    read_error = (
-        None
-        if receipt.ok
-        else (
-            receipt.response_text
-            or f"VitalServer upload failed: status={receipt.status_code}"
-        )
-    )
-    return {
-        "state": "loaded" if receipt.ok else "failed",
-        "operationId": operation_id,
-        "upload": receipt.as_json(),
-        "readError": read_error,
-    }
-
-
-def _vital_file_upload_failure_response(
-    message: str,
-    *,
-    operation_id: str,
-) -> dict[str, object]:
-    return {
-        "state": "failed",
-        "operationId": operation_id,
-        "upload": None,
-        "readError": message,
     }
 
 

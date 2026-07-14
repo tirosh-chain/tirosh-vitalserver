@@ -40,7 +40,6 @@ POST /lab/sessions/{sessionId}/stop
 POST /lab/sessions/{sessionId}/recorders/{recorderId}/start
 POST /lab/sessions/{sessionId}/recorders/{recorderId}/stop
 POST /lab/vital-files/replay
-POST /lab/vital-files/upload
 ```
 
 Read failures remain explicit. Missing sessions, invalid request bodies,

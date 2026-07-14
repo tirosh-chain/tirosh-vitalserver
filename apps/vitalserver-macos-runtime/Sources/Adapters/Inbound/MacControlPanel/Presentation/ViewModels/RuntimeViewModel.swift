@@ -85,7 +85,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var labRecorders = RuntimeLabRecorderList.unavailable(readError: "Product Lab recorders have not been loaded.")
     @Published var labSessions = RuntimeLabSessionList.unavailable(readError: "Product Lab sessions have not been loaded.")
     @Published var selectedLabScenarioID = ""
-    @Published var selectedLabVitalFileGuestPath = ""
+    @Published var selectedLabVitalFileRelativePath = ""
     @Published var labVitalFileQuery = ""
     @Published var selectedLabBedID = ""
     @Published var selectedLabRecorderID = ""
@@ -97,8 +97,11 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var labTargetURL = "http://edge/"
     @Published var selectedLabSessionID = ""
     @Published var labSessionResponse = RuntimeLabSessionResponse.unavailable(readError: "No Product Lab session has been selected.")
-    @Published var labVitalFilePath = ""
-    @Published var labVitalFileUploadResponse = RuntimeLabVitalFileUploadResponse.unavailable(readError: "No .vital file has been uploaded.")
+    @Published var labVitalFileUploadSources: [URL] = []
+    @Published var labVitalFileImportMessage = ""
+    @Published var labVitalFileReplayResourceMode = RuntimeLabVitalFileReplayResourceMode.quickCreate
+    @Published var labVitalFileReplayRepeatMode = RuntimeLabVitalFileReplayRepeatMode.once
+    @Published var labVitalFileReplayCount = 2
     @Published var isRunningLabAction = false
     @Published var labActionMessage = ""
     @Published var labActionMessageTone = RuntimeLabActionMessageTone.neutral
@@ -559,16 +562,19 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     func restartVMRuntimeFromSettings() async {
-        guard controlClient.capabilities.canControlRuntimeServices else {
+        guard canApplySettingsForCurrentConnection else {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
+        var settingsToActivate = savedSettings
+        settingsToActivate.appliedVMSettings = nil
+        settingsToActivate.restartAfterSave = false
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.restartVMRuntimePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.restartVMRuntimeRunning,
             successMessage: AppConstants.StatusText.restartVMRuntimeCompleted,
-            action: { try await self.hostClient.repairRuntimeServices() }
+            action: { try await self.controlClient.restartVMRuntime(applying: settingsToActivate) }
         )
         await refresh()
     }

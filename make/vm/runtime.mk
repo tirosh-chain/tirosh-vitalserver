@@ -108,7 +108,10 @@ internal/vm/stage: internal/vm/init
 		$$rootfs_run_args \
 		$$guest_deploy_source_args \
 		$$guest_rootfs_artifact_args \
-		$$runtime_boot_smoke_args
+		$$runtime_boot_smoke_args; \
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
+		--vm-home "$(VM_HOME)" \
+		runtime configure
 
 internal/vm/start: internal/vm/sign
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \

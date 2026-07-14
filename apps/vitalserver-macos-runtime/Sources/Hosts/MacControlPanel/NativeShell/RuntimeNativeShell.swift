@@ -72,6 +72,69 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         return panel.urls
     }
 
+    func importVitalFiles(_ sources: [URL], into libraryDirectory: URL) throws -> [URL] {
+        guard !sources.isEmpty else {
+            throw vitalFileImportError("Select at least one .vital file.")
+        }
+        let normalizedSources = sources.map(\.standardizedFileURL)
+        var filenames = Set<String>()
+        for source in normalizedSources {
+            guard source.pathExtension.lowercased() == "vital" else {
+                throw vitalFileImportError("Only .vital files can be uploaded: \(source.lastPathComponent)")
+            }
+            let values = try source.resourceValues(forKeys: [.isRegularFileKey])
+            guard values.isRegularFile == true else {
+                throw vitalFileImportError("Upload source is not a regular file: \(source.path)")
+            }
+            guard filenames.insert(source.lastPathComponent).inserted else {
+                throw vitalFileImportError("Upload contains duplicate filenames: \(source.lastPathComponent)")
+            }
+        }
+
+        let fileManager = FileManager.default
+        let library = libraryDirectory.standardizedFileURL
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: library.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            throw vitalFileImportError("Vital Files library is unavailable: \(library.path)")
+        }
+        for source in normalizedSources {
+            let destination = library.appendingPathComponent(source.lastPathComponent, isDirectory: false)
+            guard !fileManager.fileExists(atPath: destination.path) else {
+                throw vitalFileImportError("Vital Files library already contains: \(source.lastPathComponent)")
+            }
+        }
+
+        let staging = library.appendingPathComponent(".vital-import-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
+        var committed: [URL] = []
+        defer { try? fileManager.removeItem(at: staging) }
+        do {
+            for source in normalizedSources {
+                let accessed = source.startAccessingSecurityScopedResource()
+                defer {
+                    if accessed { source.stopAccessingSecurityScopedResource() }
+                }
+                try fileManager.copyItem(
+                    at: source,
+                    to: staging.appendingPathComponent(source.lastPathComponent, isDirectory: false)
+                )
+            }
+            for source in normalizedSources {
+                let staged = staging.appendingPathComponent(source.lastPathComponent, isDirectory: false)
+                let destination = library.appendingPathComponent(source.lastPathComponent, isDirectory: false)
+                try fileManager.moveItem(at: staged, to: destination)
+                committed.append(destination)
+            }
+            return committed
+        } catch {
+            for destination in committed {
+                try? fileManager.removeItem(at: destination)
+            }
+            throw error
+        }
+    }
+
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         let panel = NSSavePanel()
         let delegate = LogExportSavePanelDelegate()
@@ -222,6 +285,14 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         }
         return nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
     }
+}
+
+private func vitalFileImportError(_ message: String) -> NSError {
+    NSError(
+        domain: "VitalFileLibraryImport",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: message]
+    )
 }
 
 private final class VitalFilesDirectoryOpenPanelDelegate: NSObject, NSOpenSavePanelDelegate {

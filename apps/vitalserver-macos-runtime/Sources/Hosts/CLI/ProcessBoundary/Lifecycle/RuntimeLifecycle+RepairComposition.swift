@@ -52,6 +52,12 @@ extension RuntimeLifecycle {
                 restoreRuntimeToolsIfExists: { source in try backupStore().restoreRuntimeToolsIfExists(source) },
                 writeStatus: runtimeStatusWriterAction(),
                 writeProgress: runtimeProgressWriterAction(),
+                workflowOperationStateRepository: SQLiteRuntimeWorkflowOperationStateRepository(
+                    databaseURL: installedPaths.runtimeStateDatabase
+                ),
+                workflowOperationStateTimestamp: {
+                    ISO8601DateFormatter().string(from: clock.now)
+                },
                 log: log
             )
         )

@@ -269,6 +269,38 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertNil(failed.activeOperation)
     }
 
+    func testOperationStateReaderMapsLatestSQLiteWorkflowStateWithoutInferringActiveOperation() {
+        let state = RuntimeWorkflowOperationState(
+            operationID: "operation-1",
+            operation: .applyBundle,
+            phase: .completed,
+            currentStep: nil,
+            stepStatus: nil,
+            message: "bundle applied",
+            reasonCodes: [],
+            startedAt: "2026-07-14T06:00:00Z",
+            updatedAt: "2026-07-14T06:05:00Z",
+            completedAt: "2026-07-14T06:05:00Z",
+            revision: 9
+        )
+        let loaded = SystemPlatformOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
+            workflowOperationStateReader: AdapterStubWorkflowOperationStateReader(result: .loaded(state))
+        ).loadOperationState()
+        let failed = SystemPlatformOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
+            workflowOperationStateReader: AdapterStubWorkflowOperationStateReader(result: .failed("database denied"))
+        ).loadOperationState()
+
+        XCTAssertNil(loaded.activeOperation)
+        XCTAssertEqual(loaded.workflow.state, .loaded)
+        XCTAssertEqual(loaded.workflow.document?.operationID, "operation-1")
+        XCTAssertEqual(loaded.workflow.document?.phase, .completed)
+        XCTAssertEqual(loaded.workflow.document?.revision, 9)
+        XCTAssertEqual(failed.workflow.state, .failed)
+        XCTAssertEqual(failed.workflow.readError, "database denied")
+    }
+
     func testApplySettingsReportsAdminPasswordCleanupFailureAsOutputIssue() async throws {
         let environment = AdapterFakeActionEnvironment()
         environment.removeError = CocoaError(.fileWriteNoPermission)
@@ -512,6 +544,22 @@ private struct AdapterStubOperationLeaseReader: RuntimeOperationLeaseReading {
     }
 
     func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
+        result
+    }
+}
+
+private struct AdapterStubWorkflowOperationStateReader: RuntimeWorkflowOperationStateReading {
+    let result: RuntimeWorkflowOperationStateReadResult
+
+    func loadOperationState(operationID: String) -> RuntimeWorkflowOperationStateReadResult {
+        result
+    }
+
+    func loadLatestOperationState() -> RuntimeWorkflowOperationStateReadResult {
+        result
+    }
+
+    func loadLatestOperationState(operation: RuntimeOperation) -> RuntimeWorkflowOperationStateReadResult {
         result
     }
 }

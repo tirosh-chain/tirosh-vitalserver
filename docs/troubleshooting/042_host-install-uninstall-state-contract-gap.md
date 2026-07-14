@@ -130,7 +130,8 @@ Implemented on `feature/issue-44`.
 - Package receipt state now distinguishes `present`, `absent`, `readFailed`, and `forgetFailed`.
 - Fresh-install state now distinguishes install settings defaulted/loaded/readFailed/invalid, install artifact present/absent/inspectFailed, package receipt present/absent/readFailed, launchd state, and host proxy port clear/occupied/inspectFailed.
 - Core has uninstall and fresh-install readiness policies that consume explicit Host-owned states and return blockers.
-- Uninstall writes `/private/tmp/tirosh-vitalserver-uninstall-state.json` as workflow diagnostics/export evidence, not as a Runtime Control current state owner.
+- Uninstall persists workflow state only in Host SQLite. It relocates `productRoot` to an operation-unique same-volume tombstone before destructive cleanup so receipt verification and terminal persistence retain the same database owner. There is no uninstall JSON state file.
+- Tombstone disposal runs only after the terminal SQLite commit. A disposal failure reports the tombstone path and leaves that completed database available as explicit failure evidence; it is not converted into a different domain state.
 - Uninstall now records separate lifecycle states for service stop blocked, file removal blocked, receipt forget blocked, failed, and completed.
 - Uninstall now re-reads service/process state after stop returns and blocks file removal unless stopped state is explicit. A missing pid file after a successful service stop is still a blocker unless a concrete pid was observed and exited.
 - Clean uninstall verifies cleanup artifact states before forgetting receipts; command success is not treated as proof that files disappeared.

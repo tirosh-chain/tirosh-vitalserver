@@ -292,7 +292,7 @@ describe("RuntimeControlApiClient", () => {
   });
 
   it("covers read endpoints and host affordance endpoints", async () => {
-    const { client } = clientWithResponses({
+    const { client, requests } = clientWithResponses({
       "/platform/capabilities": platformCapabilities(),
       "/runtime/capabilities": {
         schemaVersion: 1,
@@ -411,11 +411,11 @@ describe("RuntimeControlApiClient", () => {
         readError: null
       },
       "/runtime/lab/vital-files/upload": {
-        state: "loaded",
-        upload: null,
-        operationId: "lab-vital-file-upload",
-        labOperationId: null,
-        readError: null
+        state: "completed",
+        files: [
+          { fileName: "case.vital", relativePath: "case.vital", sizeBytes: 4 },
+          { fileName: "other.vital", relativePath: "other.vital", sizeBytes: 5 }
+        ]
       },
       "/runtime/lab/vital-files/replay": labSessionResponse(),
       "/runtime/stack": {
@@ -528,16 +528,28 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getLabVitalFiles()).resolves.toMatchObject({
       vitalFiles: [{ displayName: "case.vital" }]
     });
-    await expect(client.uploadLabVitalFile({
-      vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
-      targetURL: "http://edge/",
-      endpoint: null,
-      vrcode: null
-    })).resolves.toMatchObject({ state: "loaded" });
+    const uploadResult = await client.uploadLabVitalFiles({
+      files: [
+        new File(["case"], "case.vital"),
+        new File(["other"], "other.vital")
+      ]
+    });
+    expect(uploadResult.state).toBe("completed");
+    expect(uploadResult.files.map((file) => file.fileName)).toEqual(["case.vital", "other.vital"]);
+    const uploadBody = requests.find(
+      (request) => new URL(request.url).pathname === "/runtime/lab/vital-files/upload"
+    )?.init.body;
+    expect(uploadBody).toBeInstanceOf(FormData);
+    expect((uploadBody as FormData).getAll("files").map((entry) => (entry as File).name)).toEqual([
+      "case.vital",
+      "other.vital"
+    ]);
     await expect(client.replayLabVitalFile({
-      vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+      vitalFileRelativePath: "sample.vital",
       sessionName: "Replay",
-      targetURL: null
+      targetURL: null,
+      resourceSelection: { mode: "quickCreate" },
+      repeatPolicy: { mode: "once" }
     })).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
     await expect(client.getRuntimeStack()).resolves.toMatchObject({
       state: "loaded",

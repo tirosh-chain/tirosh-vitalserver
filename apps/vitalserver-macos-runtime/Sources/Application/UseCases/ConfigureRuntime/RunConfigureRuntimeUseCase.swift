@@ -30,16 +30,13 @@ public struct RunConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRunt
 
         var vmConfig = plan.vmConfig
         operations.effects.ensureRuntimeDefaults(&vmConfig)
-        try operations.writer.writeData(try operations.writer.encodeVMConfig(vmConfig), context.vmConfigURL, .atomic)
-        try operations.writer.writeData(
+        try operations.writer.persistAndMaterialize(
+            try operations.writer.encodeVMConfig(vmConfig),
+            context.vmConfigURL,
             try operations.writer.encodeGuestRuntimeConfig(plan.guestRuntimeConfig),
             context.guestRuntimeConfigURL,
-            .atomic
-        )
-        try operations.writer.writeData(
             try operations.writer.encodeGuestRuntimeSettings(plan.guestRuntimeSettings),
-            context.guestRuntimeSettingsURL,
-            .atomic
+            context.guestRuntimeSettingsURL
         )
         operations.effects.log(plan.logMessage)
 
@@ -74,18 +71,26 @@ public struct ConfigureRuntimeDocumentWriter<VMConfig: ConfigureRuntimeMutableVM
     public var encodeVMConfig: (VMConfig) throws -> Data
     public var encodeGuestRuntimeConfig: (GuestRuntimeConfigDocument) throws -> Data
     public var encodeGuestRuntimeSettings: (GuestRuntimeSettingsDocument) throws -> Data
-    public var writeData: (Data, URL, Data.WritingOptions) throws -> Void
+    public var persistAndMaterialize: (
+        Data, URL,
+        Data, URL,
+        Data, URL
+    ) throws -> Void
 
     public init(
         encodeVMConfig: @escaping (VMConfig) throws -> Data,
         encodeGuestRuntimeConfig: @escaping (GuestRuntimeConfigDocument) throws -> Data,
         encodeGuestRuntimeSettings: @escaping (GuestRuntimeSettingsDocument) throws -> Data,
-        writeData: @escaping (Data, URL, Data.WritingOptions) throws -> Void
+        persistAndMaterialize: @escaping (
+            Data, URL,
+            Data, URL,
+            Data, URL
+        ) throws -> Void
     ) {
         self.encodeVMConfig = encodeVMConfig
         self.encodeGuestRuntimeConfig = encodeGuestRuntimeConfig
         self.encodeGuestRuntimeSettings = encodeGuestRuntimeSettings
-        self.writeData = writeData
+        self.persistAndMaterialize = persistAndMaterialize
     }
 }
 

@@ -47,7 +47,7 @@ public struct RuntimeServiceController {
 
     public func stopRuntimeServices() throws {
         log("stopping runtime services")
-        for service in RuntimeManagedService.uninstallOrder {
+        for service in RuntimeManagedService.stopOrder {
             try stopAndWaitIfLoaded(service)
         }
     }
@@ -146,7 +146,15 @@ public struct RuntimeServiceController {
     }
 
     private func stopAndWaitIfLoaded(_ service: RuntimeManagedService) throws {
-        if try serviceOperator.stopIfLoaded(service) {
+        let stopped: Bool
+        if service == .vm {
+            // Boot out the KeepAlive job before its process receives SIGTERM. Signalling the
+            // process first allows launchd to replace it and rewrites the pid file mid-stop.
+            stopped = try serviceOperator.unloadIfLoaded(service)
+        } else {
+            stopped = try serviceOperator.stopIfLoaded(service)
+        }
+        if stopped {
             try waitForStoppedService(service)
         }
     }

@@ -65,7 +65,9 @@ service state from Platform probes.
 Compare the Host and Guest owner contracts instead of relying on the stale UI row:
 
 ```sh
-cat "/Library/Application Support/VitalServerHelper/vm/run/vm-lifecycle.json"
+jq '.vmLifecycle' "/Library/Application Support/VitalServerHelper/status/host-runtime-state.json"
+sqlite3 "/Library/Application Support/VitalServerHelper/vm/runtime/runtime-state.sqlite" \
+  'SELECT revision,run_id,state,updated_at FROM vm_lifecycle;'
 cat "/Library/Application Support/VitalServerHelper/status/runtime-status.json"
 curl "http://$(cat '/Library/Application Support/VitalServerHelper/vm/data/run/vm-ip'):18330/runtime/stack"
 ```

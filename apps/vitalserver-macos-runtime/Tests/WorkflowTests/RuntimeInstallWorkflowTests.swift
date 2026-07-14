@@ -207,6 +207,9 @@ private final class InstallRuntimeUseCaseHarness {
                 },
                 describeError: { error in
                     error.localizedDescription
+                },
+                prepareHostStateStore: {
+                    try self.execute(.prepareHostStateStore)
                 }
             ),
             writer: InstallRuntimeStateWriter(

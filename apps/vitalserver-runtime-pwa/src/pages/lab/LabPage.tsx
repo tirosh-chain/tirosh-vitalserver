@@ -20,12 +20,11 @@ import {
   useStartLabRecorder,
   useStopLabRecorder,
   useStopLabSession,
-  useUploadLabVitalFile
+  useUploadLabVitalFiles
 } from "@/console/hooks";
 import type {
   RuntimeLabBed,
   RuntimeLabVitalFile,
-  RuntimeLabVitalFileUploadResponse,
   RuntimeLabRecorder,
   RuntimeLabScenario,
   RuntimeLabSession,
@@ -58,7 +57,7 @@ export function LabPage() {
   const startRecorder = useStartLabRecorder();
   const stopRecorder = useStopLabRecorder();
   const replayVitalFile = useReplayLabVitalFile();
-  const uploadVitalFile = useUploadLabVitalFile();
+  const uploadVitalFiles = useUploadLabVitalFiles();
 
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
   const [targetURL, setTargetURL] = useState("");
@@ -72,13 +71,17 @@ export function LabPage() {
   const [recorderBedTargets, setRecorderBedTargets] = useState("");
   const [deleteRecorderTargets, setDeleteRecorderTargets] = useState("");
   const [vitalFilePath, setVitalFilePath] = useState("");
+  const [vitalUploadFiles, setVitalUploadFiles] = useState<File[]>([]);
   const [vitalReplayName, setVitalReplayName] = useState("Vital file replay");
-  const [vitalUploadEndpoint, setVitalUploadEndpoint] = useState("");
-  const [vitalUploadVrcode, setVitalUploadVrcode] = useState("");
+  const [vitalReplayResourceMode, setVitalReplayResourceMode] =
+    useState<"quickCreate" | "existing">("quickCreate");
+  const [vitalReplayBedId, setVitalReplayBedId] = useState("");
+  const [vitalReplayRecorderId, setVitalReplayRecorderId] = useState("");
+  const [vitalReplayRepeatMode, setVitalReplayRepeatMode] =
+    useState<"once" | "count" | "continuous">("once");
+  const [vitalReplayCount, setVitalReplayCount] = useState(2);
   const [lastResponse, setLastResponse] =
     useState<RuntimeLabSessionResponse | null>(null);
-  const [lastUpload, setLastUpload] =
-    useState<RuntimeLabVitalFileUploadResponse | null>(null);
 
   const session = useLabSession(selectedSessionId.trim() || null);
   const scenarioOptions = scenarios.data?.scenarios ?? [];
@@ -107,9 +110,24 @@ export function LabPage() {
 
   useEffect(() => {
     if (vitalFilePath.length === 0 && vitalFileOptions.length > 0) {
-      setVitalFilePath(vitalFileOptions[0]?.guestPath ?? "");
+      setVitalFilePath(vitalFileOptions[0]?.relativePath ?? "");
     }
   }, [vitalFileOptions, vitalFilePath]);
+
+  useEffect(() => {
+    if (vitalReplayBedId.length === 0 && (beds.data?.beds.length ?? 0) > 0) {
+      setVitalReplayBedId(beds.data?.beds[0]?.bedId ?? "");
+    }
+  }, [beds.data?.beds, vitalReplayBedId]);
+
+  const replayBedRecorders = (recorders.data?.recorders ?? []).filter(
+    (recorder) => recorder.bedId === vitalReplayBedId
+  );
+  useEffect(() => {
+    if (!replayBedRecorders.some((recorder) => recorder.recorderId === vitalReplayRecorderId)) {
+      setVitalReplayRecorderId(replayBedRecorders[0]?.recorderId ?? "");
+    }
+  }, [replayBedRecorders, vitalReplayRecorderId]);
 
   useEffect(() => {
     if (selectedSessionId.length > 0 || sessionOptions.length === 0) {
@@ -134,7 +152,7 @@ export function LabPage() {
     startRecorder.isPending ||
     stopRecorder.isPending ||
     replayVitalFile.isPending ||
-    uploadVitalFile.isPending;
+    uploadVitalFiles.isPending;
   const latestError =
     scenarios.error ??
     beds.error ??
@@ -155,7 +173,7 @@ export function LabPage() {
     startRecorder.error ??
     stopRecorder.error ??
     replayVitalFile.error ??
-    uploadVitalFile.error;
+    uploadVitalFiles.error;
   const labCapability = capabilities.data?.canUseLab;
   const canListSessions = capabilities.data?.canListLabSessions === true;
   const canControlRecorders =
@@ -179,9 +197,21 @@ export function LabPage() {
     canControl && activeResponse?.session?.state === "running";
   const hasTargetURL = targetURL.trim().length > 0;
   const canReplay =
-    labCapability === true && vitalFilePath.trim().length > 0 && hasTargetURL && !isBusy;
-  const canUpload =
-    labCapability === true && vitalFilePath.trim().length > 0 && hasTargetURL && !isBusy;
+    labCapability === true &&
+    vitalFilePath.trim().length > 0 &&
+    hasTargetURL &&
+    (vitalReplayResourceMode === "quickCreate" ||
+      (vitalReplayBedId.length > 0 && vitalReplayRecorderId.length > 0)) &&
+    (vitalReplayRepeatMode !== "count" || vitalReplayCount >= 2) &&
+    !isBusy;
+  const invalidVitalUploadFile = vitalUploadFiles.find(
+    (file) => !file.name.toLowerCase().endsWith(".vital")
+  );
+  const canUploadVitalFiles =
+    labCapability === true &&
+    vitalUploadFiles.length > 0 &&
+    invalidVitalUploadFile === undefined &&
+    !isBusy;
   const canCreateBeds = labCapability === true && splitList(bedRoomNames).length > 0 && !isBusy;
   const canDeleteBeds = labCapability === true && splitList(deleteBedTargets).length > 0 && !isBusy;
   const canCreateRecorders = labCapability === true && splitList(recorderBedTargets).length > 0 && !isBusy;
@@ -229,9 +259,21 @@ export function LabPage() {
   const replay = () => {
     replayVitalFile.mutate(
       {
-        vitalFilePath: vitalFilePath.trim(),
+        vitalFileRelativePath: vitalFilePath.trim(),
         sessionName: vitalReplayName.trim() || null,
-        targetURL: optionalText(targetURL)
+        targetURL: optionalText(targetURL),
+        resourceSelection:
+          vitalReplayResourceMode === "quickCreate"
+            ? { mode: "quickCreate" }
+            : {
+                mode: "existing",
+                bedId: vitalReplayBedId,
+                recorderId: vitalReplayRecorderId
+              },
+        repeatPolicy:
+          vitalReplayRepeatMode === "count"
+            ? { mode: "count", count: Math.trunc(vitalReplayCount) }
+            : { mode: vitalReplayRepeatMode }
       },
       {
         onSuccess: (response) => {
@@ -239,6 +281,13 @@ export function LabPage() {
           setSelectedSessionId(response.session?.sessionId ?? "");
         }
       }
+    );
+  };
+
+  const uploadSelectedVitalFiles = () => {
+    uploadVitalFiles.mutate(
+      { files: vitalUploadFiles },
+      { onSuccess: () => setVitalUploadFiles([]) }
     );
   };
 
@@ -252,21 +301,6 @@ export function LabPage() {
     });
   };
 
-  const upload = () => {
-    uploadVitalFile.mutate(
-      {
-        vitalFilePath: vitalFilePath.trim(),
-        targetURL: targetURL.trim(),
-        endpoint: optionalText(vitalUploadEndpoint),
-        vrcode: optionalText(vitalUploadVrcode)
-      },
-      {
-        onSuccess: (response) => {
-          setLastUpload(response);
-        }
-      }
-    );
-  };
 
   const deleteManualBeds = () => {
     deleteBeds.mutate({ bedIds: splitList(deleteBedTargets) });
@@ -573,14 +607,11 @@ export function LabPage() {
       </Panel>
 
       <Panel
-        title="Vital file replay"
+        title="Vital Files"
         actions={
           <>
             <button type="button" disabled={vitalFiles.isFetching} onClick={() => vitalFiles.refetch()}>
               Refresh files
-            </button>
-            <button type="button" disabled={!canUpload} onClick={upload}>
-              Upload file
             </button>
             <button
               type="button"
@@ -593,6 +624,41 @@ export function LabPage() {
           </>
         }
       >
+        <section className="page-stack" aria-label="Upload Vital Files">
+          <h3>Upload to library</h3>
+          <p>
+            Select one or more <code>.vital</code> files. The complete batch is
+            rejected if any selected file is not a <code>.vital</code> file.
+          </p>
+          <input
+            key={vitalUploadFiles.length === 0 ? "empty" : "selected"}
+            type="file"
+            accept=".vital"
+            multiple
+            aria-label="Vital files to upload"
+            onChange={(event) => setVitalUploadFiles(Array.from(event.target.files ?? []))}
+          />
+          <div>
+            {vitalUploadFiles.length === 0
+              ? "No files selected"
+              : `${vitalUploadFiles.length} file(s): ${vitalUploadFiles.map((file) => file.name).join(", ")}`}
+          </div>
+          {invalidVitalUploadFile ? (
+            <ErrorState
+              title="Invalid upload selection"
+              error={new Error(`Only .vital files can be uploaded: ${invalidVitalUploadFile.name}`)}
+            />
+          ) : null}
+          <button
+            type="button"
+            disabled={!canUploadVitalFiles}
+            onClick={uploadSelectedVitalFiles}
+          >
+            Upload {vitalUploadFiles.length > 0 ? vitalUploadFiles.length : ""} file(s)
+          </button>
+        </section>
+        <hr />
+        <h3>Replay uploaded file</h3>
         <div className="settings-grid">
           <label>
             Session name
@@ -603,39 +669,78 @@ export function LabPage() {
             />
           </label>
           <label>
-            Vital file path
+            Uploaded Vital File
             <select
               value={vitalFilePath}
               onChange={(event) => setVitalFilePath(event.target.value)}
               disabled={vitalFileOptions.length === 0}
             >
               {vitalFileOptions.map((vitalFile) => (
-                <option key={vitalFile.guestPath} value={vitalFile.guestPath}>
+                <option key={vitalFile.relativePath} value={vitalFile.relativePath}>
                   {vitalFile.displayName}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Upload endpoint
-            <input
-              type="text"
-              value={vitalUploadEndpoint}
-              onChange={(event) => setVitalUploadEndpoint(event.target.value)}
-              placeholder="/upload"
-            />
+            Replay resources
+            <select
+              value={vitalReplayResourceMode}
+              onChange={(event) =>
+                setVitalReplayResourceMode(event.target.value as "quickCreate" | "existing")
+              }
+            >
+              <option value="quickCreate">Quick create bed and recorder</option>
+              <option value="existing">Use existing bed and recorder</option>
+            </select>
           </label>
           <label>
-            Upload vrcode
-            <input
-              type="text"
-              value={vitalUploadVrcode}
-              onChange={(event) => setVitalUploadVrcode(event.target.value)}
-            />
+            Repeat
+            <select
+              value={vitalReplayRepeatMode}
+              onChange={(event) =>
+                setVitalReplayRepeatMode(event.target.value as "once" | "count" | "continuous")
+              }
+            >
+              <option value="once">Once</option>
+              <option value="count">N times</option>
+              <option value="continuous">Continuous</option>
+            </select>
           </label>
+          {vitalReplayResourceMode === "existing" ? (
+            <>
+              <label>
+                Bed
+                <select value={vitalReplayBedId} onChange={(event) => setVitalReplayBedId(event.target.value)}>
+                  {(beds.data?.beds ?? []).map((bed) => (
+                    <option key={bed.bedId} value={bed.bedId}>{bed.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Recorder
+                <select value={vitalReplayRecorderId} onChange={(event) => setVitalReplayRecorderId(event.target.value)}>
+                  {replayBedRecorders.map((recorder) => (
+                    <option key={recorder.recorderId} value={recorder.recorderId}>{recorder.vrcode}</option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
+          {vitalReplayRepeatMode === "count" ? (
+            <label>
+              Repeat count
+              <input
+                type="number"
+                min={2}
+                step={1}
+                value={vitalReplayCount}
+                onChange={(event) => setVitalReplayCount(Number(event.target.value))}
+              />
+            </label>
+          ) : null}
         </div>
         <VitalFileList vitalFiles={vitalFileOptions} />
-        <VitalUploadSummary response={lastUpload} />
       </Panel>
     </div>
   );
@@ -817,36 +922,6 @@ function VitalFileList({ vitalFiles }: { vitalFiles: RuntimeLabVitalFile[] }) {
         </div>
       ))}
     </div>
-  );
-}
-
-function VitalUploadSummary({
-  response
-}: {
-  response: RuntimeLabVitalFileUploadResponse | null | undefined;
-}) {
-  if (!response) {
-    return null;
-  }
-
-  return (
-    <KeyValueRows
-      rows={[
-        {
-          label: "Upload state",
-          value: (
-            <StatusBadge tone={labStateTone(response.state)}>
-              {response.state}
-            </StatusBadge>
-          )
-        },
-        { label: "Operation", value: response.operationId ?? NOT_REPORTED },
-        { label: "Endpoint", value: response.upload?.endpoint ?? NOT_REPORTED },
-        { label: "Status", value: response.upload?.statusCode ?? NOT_REPORTED },
-        { label: "Bytes sent", value: response.upload?.bytesSent ?? NOT_REPORTED },
-        { label: "Read error", value: response.readError ?? "-" }
-      ]}
-    />
   );
 }
 

@@ -10,7 +10,7 @@
 - Runtime status becomes `critical` with message `watchdog recovery failed: vm-lifecycle-document-stale`.
 - Runtime Control status reports `failureReasons=["vm-lifecycle-document-stale"]` and `vmState="starting"` from the Host VM lifecycle owner even though Guest Control readiness and host proxy probes are successful. Older bundles may show the same symptom in `runtime-status.json`; current status diagnostics no longer own `vmState`, `vmErrors`, or `failureReasons`.
 - `watchdog.out.log` shows repeated recovery plans with `vm=false proxy=false hostProxyHealth=204 hostProxyReady=200 guestReady=200`.
-- Log export manifest may report permission failures such as `runtime-config.json` not copied, while the exported bundle lacks `diagnostics/runtime/vm-lifecycle.json`.
+- Log export manifest may report permission failures such as `runtime-config.json` not copied, while the exported bundle lacks `diagnostics/host/host-runtime-state.json` and `runtime-state.sqlite`.
 
 Observed field log bundle:
 
@@ -54,13 +54,13 @@ jq '.supplementalItems[] | select(.included == false)' \
 
 - If Guest Control readiness, host proxy HTTP, and explicit Guest service reads are healthy, do not treat this as VM/container outage.
 - Restarting VM/proxy is not expected to help if watchdog plan shows `vm=false proxy=false`.
-- Check whether `diagnostics/runtime/vm-lifecycle.json` is present in newer exports. If present, confirm whether state stayed `starting` or `bootstrapping` past `deadlineAt`.
+- Check `diagnostics/host/host-runtime-state.json.vmLifecycle` and, when needed, the exported SQLite `vm_lifecycle` row. Confirm whether state stayed `starting` or `bootstrapping` past `deadlineAt`.
 - For older exports without the lifecycle document, use watchdog timing: a transition from healthy watchdog passes to repeated stale lifecycle roughly 10 minutes after boot indicates this case.
 
 ## Prevention
 
 - Watchdog must explicitly mark the Host VM lifecycle `.running` after a healthy runtime observation when the lifecycle is still `starting` or `bootstrapping`.
-- Log export must include `diagnostics/runtime/vm-lifecycle.json`.
+- Log export must include `diagnostics/host/host-runtime-state.json`, its JSONL event history, and Host `runtime-state.sqlite` artifacts.
 - Log export manifest supplemental entries must expose `source`, `relativeDestination`, `sourcePresent`, `included`, `status`, and `error` so permission failures remain visible.
 
 ## Operational Notes
@@ -77,4 +77,5 @@ jq '.supplementalItems[] | select(.included == false)' \
 
 ## Follow-up
 
-- 2026-06-01: hotfix에서 healthy runtime 관측 후 Host VM lifecycle을 `.running`으로 명시 전환하고, log export에 `diagnostics/runtime/vm-lifecycle.json`과 supplemental item `status`를 추가했습니다. Focused Swift tests와 build를 통과해 문서 상태를 `implemented`로 갱신했습니다.
+- 2026-06-01: hotfix에서 healthy runtime 관측 후 Host VM lifecycle을 `.running`으로 명시 전환하고 lifecycle diagnostics를 export에 추가했습니다.
+- 2026-07-14: installed runtime lifecycle owner를 SQLite로 이전하고 export source를 `host-runtime-state.json`, JSONL event history, `runtime-state.sqlite`로 교체했습니다. Focused Swift tests와 build를 통과해 문서 상태를 `implemented`로 유지합니다.

@@ -24,7 +24,6 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabReadModelResult,
     ProductLabRecorderResult,
     ProductLabSessionResult,
-    ProductLabUploadResult,
     RedisBackupResult,
     RedisRestoreResult,
     ServiceNotFoundError,
@@ -487,30 +486,10 @@ class FakeProductLab:
             session=lab_session(
                 session_id="lab-replay-1",
                 scenario_id="normal_monitoring",
-                name=str(request["vitalFilePath"]),
+                name=str(request["vitalFileRelativePath"]),
             ),
             lab_operation_id="lab-vital-file-replay-lab-replay-1",
         )
-
-    def upload_vital_file(self, request: dict[str, object]) -> ProductLabUploadResult:
-        return ProductLabUploadResult(
-            document={
-                "state": "loaded",
-                "operationId": "lab-vital-file-upload",
-                "upload": {
-                    "filename": "sample.vital",
-                    "endpoint": "/upload",
-                    "targetURL": request["targetURL"],
-                    "statusCode": 200,
-                    "bytesSent": 456,
-                    "responseText": "success",
-                    "ok": True,
-                },
-                "readError": None,
-            },
-            lab_operation_id="lab-vital-file-upload",
-        )
-
 
 class FakeVitalDBReadModel:
     def __init__(self) -> None:
@@ -805,6 +784,24 @@ class FakeUpdateShutdown:
         return None
 
 
+class FakeVitalFileLibrary:
+    def __init__(self) -> None:
+        self.imported: list[list[tuple[str, bytes]]] = []
+
+    def import_files(
+        self, files: list[tuple[str, bytes]]
+    ) -> list[dict[str, object]]:
+        self.imported.append(files)
+        return [
+            {
+                "fileName": filename,
+                "relativePath": filename,
+                "sizeBytes": len(content),
+            }
+            for filename, content in files
+        ]
+
+
 def build_usecases(
     *,
     service_control: FakeServiceControl,
@@ -843,6 +840,7 @@ def usecases() -> GuestControlUseCases:
         datastore_repair=FakeDatastoreRepair(),
         update_activation=FakeUpdateActivation(),
         update_shutdown=FakeUpdateShutdown(),
+        vital_file_library=FakeVitalFileLibrary(),
     )
 
 
@@ -1920,7 +1918,11 @@ def test_lab_replay_vital_file_route_uses_explicit_request_body(
         method="POST",
         path="/runtime/lab/vital-files/replay",
         body=json.dumps(
-            {"vitalFilePath": "/mnt/tirosh-vital-files/sample.vital"}
+            {
+                "vitalFileRelativePath": "sample.vital",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
+            }
         ).encode("utf-8"),
         usecases=usecases,
     )
@@ -1929,30 +1931,39 @@ def test_lab_replay_vital_file_route_uses_explicit_request_body(
     assert document["state"] == "loaded"
     assert document["labOperationId"] == "lab-vital-file-replay-lab-replay-1"
     assert document["session"]["sessionId"] == "lab-replay-1"
-    assert document["session"]["name"] == "/mnt/tirosh-vital-files/sample.vital"
+    assert document["session"]["name"] == "sample.vital"
 
 
-def test_lab_upload_vital_file_route_uses_explicit_request_body(
+def test_lab_upload_vital_files_route_accepts_multiple_multipart_files(
     usecases: GuestControlUseCases,
 ) -> None:
+    boundary = "vital-files-boundary"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="files"; filename="first.vital"\r\n'
+        "Content-Type: application/octet-stream\r\n\r\n"
+    ).encode() + b"first-content\r\n" + (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="files"; filename="second.vital"\r\n'
+        "Content-Type: application/octet-stream\r\n\r\n"
+    ).encode() + b"second-content\r\n" + f"--{boundary}--\r\n".encode()
+
     status, document = route_request(
         method="POST",
         path="/runtime/lab/vital-files/upload",
-        body=json.dumps(
-            {
-                "vitalFilePath": "/mnt/tirosh-vital-files/sample.vital",
-                "targetURL": "http://edge/",
-            }
-        ).encode("utf-8"),
+        body=body,
+        headers={"content-type": f"multipart/form-data; boundary={boundary}"},
         usecases=usecases,
     )
 
-    assert status == HTTPStatus.ACCEPTED
-    assert document["state"] == "loaded"
-    assert document["operationId"] == "op_product-lab_lab-upload-vital-file_1"
-    assert document["labOperationId"] == "lab-vital-file-upload"
-    assert document["upload"]["filename"] == "sample.vital"
-    assert document["upload"]["targetURL"] == "http://edge/"
+    assert status == HTTPStatus.OK
+    assert document == {
+        "state": "completed",
+        "files": [
+            {"fileName": "first.vital", "relativePath": "first.vital", "sizeBytes": 13},
+            {"fileName": "second.vital", "relativePath": "second.vital", "sizeBytes": 14},
+        ],
+    }
 
 
 def test_latest_vitaldb_observation_route_returns_product_read_model(

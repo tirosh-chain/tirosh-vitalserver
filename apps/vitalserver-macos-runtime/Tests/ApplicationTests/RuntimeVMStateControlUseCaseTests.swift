@@ -89,6 +89,27 @@ final class RuntimeVMStateControlUseCaseTests: XCTestCase {
         ])
     }
 
+    func testSettingsRestartHealthFailureDoesNotPublishSuccessfulCompletion() {
+        let harness = RuntimeVMStateControlHarness()
+        harness.waitForHealthError = RuntimeVMStateControlTestError.healthFailed
+
+        XCTAssertThrowsError(try harness.restartAfterSettingsApply()) { error in
+            XCTAssertEqual(error as? RuntimeVMStateControlTestError, .healthFailed)
+        }
+
+        XCTAssertEqual(harness.events, [
+            "log:runtime settings applied; preparing guest shutdown before restart",
+            "status:recovering:configure:runtime settings applied; preparing guest shutdown before restart",
+            "pid",
+            "version",
+            "prepare:0.1.13",
+            "stop-after-poweroff:4242",
+            "start:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "clear",
+        ])
+    }
+
     func testWatchdogRecoveryRestartsVMRuntimeThroughStateControlOwner() throws {
         let harness = RuntimeVMStateControlHarness()
 
@@ -304,6 +325,7 @@ final class RuntimeVMStateControlUseCaseTests: XCTestCase {
 private enum RuntimeVMStateControlTestError: Error, Equatable {
     case prepareFailed
     case stopFailed
+    case healthFailed
 }
 
 private final class RuntimeVMStateControlHarness {
@@ -311,6 +333,7 @@ private final class RuntimeVMStateControlHarness {
     var prepareError: Error?
     var stopRuntimeServicesError: Error?
     var stopAfterPoweroffError: Error?
+    var waitForHealthError: Error?
     var vmRuntimeRestartErrors: [Error] = []
 
     func restartAfterSettingsApply() throws {
@@ -348,6 +371,9 @@ private final class RuntimeVMStateControlHarness {
                 },
                 waitForHealth: { policy in
                     self.events.append("wait-health:\(serviceLabels(for: policy))")
+                    if let waitForHealthError = self.waitForHealthError {
+                        throw waitForHealthError
+                    }
                 },
                 writeStatus: { status, operation, message in
                     self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")

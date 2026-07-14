@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..model import LabBed, LabRecorder, LabSession, LabSessionStoreUnavailable
+from ..model import (
+    LabBed,
+    LabRecorder,
+    LabSession,
+    LabSessionStoreUnavailable,
+    LabVitalFileReplayPolicy,
+)
 from .records import LabBedRecord, LabRecorderRecord, LabSessionRecord
 
 
@@ -41,7 +47,10 @@ def session_domain(record: LabSessionRecord) -> LabSession:
         target_url=_optional_string(d, "targetURL"),
         bed_room_names=_strings(d, "bedRoomNames"),
         bed_ids=_strings(d, "bedIds"),
+        recorder_ids=_strings(d, "recorderIds"),
         vital_file_path=_optional_string(d, "vitalFilePath"),
+        vital_file_relative_path=_optional_string(d, "vitalFileRelativePath"),
+        replay_policy=_optional_replay_policy(d, "replayPolicy"),
         state=_string(d, "state"),
         created_at=_string(d, "createdAt"),
         updated_at=_string(d, "updatedAt"),
@@ -109,6 +118,26 @@ def _strings(document: dict[str, object], field: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise _invalid(f"Lab document field is invalid: {field}")
     return tuple(value)
+
+
+def _optional_replay_policy(
+    document: dict[str, object], field: str
+) -> LabVitalFileReplayPolicy | None:
+    value = document.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise _invalid(f"Lab document field is invalid: {field}")
+    mode = value.get("mode")
+    count = value.get("count")
+    if mode not in ("once", "count", "continuous"):
+        raise _invalid(f"Lab document replay mode is invalid: {mode}")
+    if count is not None and (isinstance(count, bool) or not isinstance(count, int)):
+        raise _invalid("Lab document replay count is invalid")
+    try:
+        return LabVitalFileReplayPolicy(mode=mode, count=count)
+    except ValueError as error:
+        raise _invalid(str(error)) from error
 
 
 def _timestamp(value: str) -> datetime:

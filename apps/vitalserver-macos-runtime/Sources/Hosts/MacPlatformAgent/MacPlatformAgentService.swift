@@ -19,27 +19,54 @@ public final class MacPlatformAgentService {
         port: Int? = nil,
         automationToken: String? = nil
     ) throws -> MacPlatformAgentService {
-        let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(
-            url: installedPaths.runtimeOperationLease
+        let hostStateDatabase = SQLiteHostRuntimeStateDatabase(
+            url: installedPaths.runtimeStateDatabase
+        )
+        switch hostStateDatabase.loadHostStateStoreReadiness() {
+        case .loaded:
+            break
+        case .missing:
+            throw RuntimeHostStateStoreStartupError.missing(
+                path: installedPaths.runtimeStateDatabase.path
+            )
+        case .failed(let failure):
+            throw RuntimeHostStateStoreStartupError.failed(
+                path: installedPaths.runtimeStateDatabase.path,
+                stage: failure.stage.rawValue,
+                reason: failure.message
+            )
+        }
+        let operationLeaseOwner = SQLiteRuntimeOperationLeaseRepository(
+            databaseURL: installedPaths.runtimeStateDatabase
         )
         let operationLeaseController = RuntimeControlOperationLeaseController(
             owner: operationLeaseOwner
         )
-        let runtimeEndpointStore = FileRuntimeGuestAddressResourceStore(
-            documentURL: installedPaths.runtimeEndpoint
+        let workflowOperationStateRepository = SQLiteRuntimeWorkflowOperationStateRepository(
+            databaseURL: installedPaths.runtimeStateDatabase
+        )
+        let runtimeEndpointStore = SQLiteRuntimeGuestAddressResourceStore(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            lifecycleTransitionDecider: RuntimeVMLifecycleTransitionUseCase()
         )
         let guestAddressController = RuntimeControlGuestAddressController(
             reader: runtimeEndpointStore,
             writer: runtimeEndpointStore
         )
         let vmLifecycleController = RuntimeControlVMLifecycleController(
-            documentURL: installedPaths.vmLifecycle
+            databaseURL: installedPaths.runtimeStateDatabase
+        )
+        let hostSettingsRepository = SQLiteRuntimeHostSettingsRepository(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            transitionDecider: RuntimeHostSettingsActivationUseCase()
         )
         let readWorker = MacRuntimeControlReadWorker(
             releaseInfo: .generated,
             operationLeaseReader: operationLeaseController,
+            workflowOperationStateReader: workflowOperationStateRepository,
             guestAddressProvider: runtimeEndpointStore,
-            vmLifecycleResourceReader: vmLifecycleController
+            vmLifecycleResourceReader: vmLifecycleController,
+            hostSettingsReader: hostSettingsRepository
         )
         let commandWorker = MacRuntimeControlCommandWorker(
             guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
@@ -51,6 +78,7 @@ public final class MacPlatformAgentService {
             operationLeaseReader: operationLeaseController,
             guestAddressProvider: runtimeEndpointStore,
             vmLifecycleResourceReader: vmLifecycleController,
+            hostSettingsReader: hostSettingsRepository,
             commandWorker: commandWorker
         )
         let selectedPort: Int

@@ -144,11 +144,10 @@ public struct UninstallRuntimeUseCase {
     public func removalPlan(
         clean: Bool,
         managerApp: URL,
-        productRoot: URL,
         externalVitalFilesDirectory: URL?,
         configuredVitalFilesDirectoryReadFailure: String?
     ) -> UninstallRuntimeRemovalPlan {
-        var targets = [managerApp, productRoot]
+        var targets = [managerApp]
         var skippedExternalDirectoryLogMessage: String?
         if clean, let externalVitalFilesDirectory {
             targets.append(externalVitalFilesDirectory)
@@ -159,6 +158,24 @@ public struct UninstallRuntimeUseCase {
             targets: targets,
             skippedExternalDirectoryLogMessage: skippedExternalDirectoryLogMessage
         )
+    }
+
+    public func relocatedProductRoot(productRoot: URL, uniqueID: String) -> URL {
+        productRoot
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(productRoot.lastPathComponent).uninstall-\(uniqueID)")
+    }
+
+    public func relocatedProductRootAlreadyPresentMessage(path: String) -> String {
+        "refusing to replace existing uninstall tombstone path=\(path)"
+    }
+
+    public func relocatedProductRootLogMessage(source: String, destination: String) -> String {
+        "relocated product root source=\(source) destination=\(destination)"
+    }
+
+    public func relocatedProductRootDisposalFailedMessage(path: String, reason: String) -> String {
+        "uninstall completed but state-store tombstone disposal failed path=\(path) reason=\(reason)"
     }
 
     public func fileRemovalBlockers(

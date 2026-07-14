@@ -72,7 +72,6 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         let removal = useCase.removalPlan(
             clean: true,
             managerApp: URL(fileURLWithPath: "/Applications/VitalServer.app"),
-            productRoot: productRoot,
             externalVitalFilesDirectory: nil,
             configuredVitalFilesDirectoryReadFailure: "permission denied"
         )
@@ -88,11 +87,22 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         )
         XCTAssertEqual(removal.targets, [
             URL(fileURLWithPath: "/Applications/VitalServer.app"),
-            productRoot,
         ])
         XCTAssertEqual(
             removal.skippedExternalDirectoryLogMessage,
             "skipping external vital files directory cleanup because configured path is unavailable reason=permission denied"
+        )
+    }
+
+    func testRelocatedProductRootUsesSiblingTombstone() {
+        let useCase = UninstallRuntimeUseCase()
+
+        XCTAssertEqual(
+            useCase.relocatedProductRoot(
+                productRoot: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper"),
+                uniqueID: "operation-1"
+            ).path,
+            "/Library/Application Support/.VitalServerHelper.uninstall-operation-1"
         )
     }
 

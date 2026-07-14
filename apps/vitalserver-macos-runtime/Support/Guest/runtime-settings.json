@@ -5,7 +5,7 @@
     "03:15"
   ],
   "containerMemoryLimitsEnabled": true,
-  "publicHost": "",
+  "publicHost": "127.0.0.1",
   "publicPort": 80,
   "recorderIngress": {
     "rawArchiveAutoExportCursorStableSeconds": 60,
@@ -34,7 +34,7 @@
   "recorderIngressSendDataReplayBatchSize": 1000,
   "recorderIngressSendDataReplayMaxMiBPerSecond": 20,
   "redisContainerMemoryLimitMiB": 3277,
-  "remoteConsoleURL": "",
+  "remoteConsoleURL": "http://127.0.0.1:18321/",
   "vitalServerContainerMemoryLimitMiB": 2048,
-  "vitalServerURL": ""
+  "vitalServerURL": "http://127.0.0.1:80/"
 }

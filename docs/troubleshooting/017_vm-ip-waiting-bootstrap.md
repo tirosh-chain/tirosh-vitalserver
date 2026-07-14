@@ -18,7 +18,7 @@ cat "/Library/Application Support/TiroshVitalServer/vm/data/run/bootstrap.log"
 cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-observation.json"
 ```
 
-Current Platform reads consume the durable runtime endpoint owner (`vm/run/runtime-endpoint.json`), exposed by `GET /platform/runtime-endpoint`. The `vm/data/run/vm-ip` file is bootstrap evidence that the Platform proxy adapter explicitly promotes into the owner document; it is not a current-state fallback. `runtime-observation.json` and `runtime-status.json` are diagnostics artifacts, not current endpoint or active operation owners.
+Current Platform reads consume the durable `runtime-state.sqlite.runtime_endpoint` owner, exposed by `GET /platform/runtime-endpoint`. The `vm/data/run/vm-ip` file is bootstrap evidence that the Platform proxy adapter explicitly promotes into the SQLite owner; it is not a current-state fallback. Endpoint JSON, `runtime-observation.json`, and `runtime-status.json` are not current endpoint or active operation owners.
 
 원인:
 

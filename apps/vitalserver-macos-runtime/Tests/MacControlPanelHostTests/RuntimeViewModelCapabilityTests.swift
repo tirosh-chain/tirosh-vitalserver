@@ -678,9 +678,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.runtimeSettings.vitalFilesDirectory, "/applied/vital-files")
     }
 
-    func testRestartVMRuntimeFromSettingsUsesRuntimeServiceRestartPort() async {
+    func testRestartVMRuntimeFromSettingsActivatesSavedSettingsThroughConfigureWorkflow() async {
         let controlClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let hostClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var savedSettings = RuntimeSettings()
+        savedSettings.memoryGiB = 12
+        savedSettings.vitalFilesDirectory = "/saved/vital-files"
+        controlClient.settings = savedSettings
         let viewModel = RuntimeViewModel(
             controlClient: controlClient,
             hostClient: hostClient,
@@ -690,7 +694,12 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.restartVMRuntimeFromSettings()
 
         XCTAssertEqual(controlClient.repairRuntimeServicesCount, 0)
-        XCTAssertEqual(hostClient.repairRuntimeServicesCount, 1)
+        XCTAssertEqual(hostClient.repairRuntimeServicesCount, 0)
+        XCTAssertEqual(controlClient.applySettingsCount, 0)
+        XCTAssertEqual(controlClient.restartVMRuntimeCount, 1)
+        XCTAssertEqual(controlClient.lastAppliedSettings?.memoryGiB, 12)
+        XCTAssertEqual(controlClient.lastAppliedSettings?.vitalFilesDirectory, "/saved/vital-files")
+        XCTAssertEqual(controlClient.lastAppliedSettings?.restartAfterSave, false)
         XCTAssertEqual(controlClient.loadHealthStatusCount, 0)
         XCTAssertGreaterThanOrEqual(controlClient.loadStatusCount, 2)
     }
@@ -1234,7 +1243,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         XCTAssertEqual(viewModel.labScenarios.scenarios.count, 2)
         XCTAssertEqual(viewModel.selectedLabScenarioID, "case-a")
-        XCTAssertEqual(viewModel.selectedLabVitalFileGuestPath, "/mnt/tirosh-vital-files/MORA04/case.vital")
+        XCTAssertEqual(viewModel.selectedLabVitalFileRelativePath, "MORA04/case.vital")
         XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.loadedLabScenarios(2))
     }
 
@@ -1482,16 +1491,18 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             ),
             healthNotifications: NoopHealthNotifications()
         )
-        viewModel.labVitalFilePath = "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+        viewModel.selectedLabVitalFileRelativePath = "case.vital"
         viewModel.labSessionName = "Replay run"
 
         await viewModel.replayVitalFileWithProductLab()
 
         XCTAssertEqual(client.labReplayRequests, [
             RuntimeLabVitalFileReplayRequest(
-                vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
+                vitalFileRelativePath: "case.vital",
                 sessionName: "Replay run",
-                targetURL: "http://edge/"
+                targetURL: "http://edge/",
+                resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
+                repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
             )
         ])
         XCTAssertEqual(client.labStartedSessionIDs, ["lab-replay-1"])
@@ -1499,28 +1510,69 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedLabSessionID, "lab-replay-1")
     }
 
-    func testProductLabVitalFileUploadUsesGuestMountedPath() async {
+    func testProductLabVitalFileUploadImportsSelectedHostFilesIntoLibrary() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.importedVitalFileURLs = [
+            URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files/case.vital")
+        ]
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
             initialSettings: RuntimeSettings(
                 vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
             ),
-            healthNotifications: NoopHealthNotifications()
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
         )
-        viewModel.labVitalFilePath = "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+        viewModel.labVitalFileUploadSources = [URL(fileURLWithPath: "/tmp/case.vital")]
 
         await viewModel.uploadVitalFileToProductLab()
 
-        XCTAssertEqual(client.labUploadRequests, [
-            RuntimeLabVitalFileUploadRequest(
-                vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
-                targetURL: "http://edge/",
-                endpoint: "/upload"
-            )
-        ])
-        XCTAssertEqual(viewModel.labVitalFileUploadResponse.upload?.filename, "case.vital")
+        XCTAssertEqual(nativeShell.importVitalFilesSources, [[URL(fileURLWithPath: "/tmp/case.vital")]])
+        XCTAssertEqual(viewModel.labVitalFileImportMessage, RuntimeLabPanelText.uploadedLabVitalFiles(1))
+    }
+
+    func testSystemNativeShellImportsMultipleVitalFiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let sources = root.appendingPathComponent("sources", isDirectory: true)
+        let library = root.appendingPathComponent("library", isDirectory: true)
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = sources.appendingPathComponent("first.vital")
+        let second = sources.appendingPathComponent("second.VITAL")
+        try Data("first".utf8).write(to: first)
+        try Data("second".utf8).write(to: second)
+
+        let imported = try SystemRuntimeNativeShell().importVitalFiles(
+            [first, second],
+            into: library
+        )
+
+        XCTAssertEqual(imported.map(\.lastPathComponent), ["first.vital", "second.VITAL"])
+        XCTAssertEqual(try Data(contentsOf: library.appendingPathComponent("first.vital")), Data("first".utf8))
+        XCTAssertEqual(try Data(contentsOf: library.appendingPathComponent("second.VITAL")), Data("second".utf8))
+    }
+
+    func testSystemNativeShellRejectsWholeBatchContainingNonVitalFile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let sources = root.appendingPathComponent("sources", isDirectory: true)
+        let library = root.appendingPathComponent("library", isDirectory: true)
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let valid = sources.appendingPathComponent("valid.vital")
+        let invalid = sources.appendingPathComponent("invalid.txt")
+        try Data("valid".utf8).write(to: valid)
+        try Data("invalid".utf8).write(to: invalid)
+
+        XCTAssertThrowsError(
+            try SystemRuntimeNativeShell().importVitalFiles([valid, invalid], into: library)
+        ) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Only .vital files"))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: library.appendingPathComponent("valid.vital").path))
     }
 
     func testProductLabBedAndRecorderManagementUseRuntimeControlClient() async {
@@ -1568,7 +1620,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.labSessionName = "Morning run"
         viewModel.labRecorderCount = 3
         viewModel.selectedLabSessionID = "lab-session-1"
-        viewModel.labVitalFilePath = "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+        viewModel.selectedLabVitalFileRelativePath = "case.vital"
 
         XCTAssertFalse(viewModel.labCanUseProductLab)
         XCTAssertFalse(viewModel.labCanCreateSession)
@@ -1876,6 +1928,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var loadSettingsCount = 0
     var verifyUpdateBundleCount = 0
     var applySettingsCount = 0
+    var restartVMRuntimeCount = 0
     var applyUpdateBundleCount = 0
     var rollbackRuntimeCount = 0
     var restoreRedisBackupCount = 0
@@ -1914,7 +1967,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     )
     var labCreateRequests: [RuntimeLabSessionCreateRequest] = []
     var labReplayRequests: [RuntimeLabVitalFileReplayRequest] = []
-    var labUploadRequests: [RuntimeLabVitalFileUploadRequest] = []
     var labCreateBedRequests: [RuntimeLabBedCreateRequest] = []
     var labDeleteBedRequests: [RuntimeLabBedDeleteRequest] = []
     var labResetBedsCount = 0
@@ -2149,6 +2201,12 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {
         applySettingsCount += 1
+        lastAppliedSettings = settings
+        return success()
+    }
+
+    func restartVMRuntime(applying settings: RuntimeSettings) async throws -> RuntimeCommandResult {
+        restartVMRuntimeCount += 1
         lastAppliedSettings = settings
         return success()
     }
@@ -2435,23 +2493,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         )
     }
 
-    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
-        labUploadRequests.append(request)
-        return RuntimeLabVitalFileUploadResponse(
-            state: .loaded,
-            upload: RuntimeLabVitalFileUpload(
-                filename: URL(fileURLWithPath: request.vitalFilePath).lastPathComponent,
-                endpoint: request.endpoint ?? "/upload",
-                targetURL: request.targetURL,
-                statusCode: 200,
-                bytesSent: 456,
-                responseText: "success",
-                ok: true
-            ),
-            operationId: "operation-upload"
-        )
-    }
-
     func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
         startGuestServiceRequests.append(request)
         return guestServiceOperation(service: request.service, command: .start)
@@ -2520,6 +2561,9 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var updateBundleURL: URL?
     var redisBackupArchiveURL: URL?
     var vitalFileURLs: [URL] = []
+    var importedVitalFileURLs: [URL] = []
+    var importVitalFilesSources: [[URL]] = []
+    var importVitalFilesLibraries: [URL] = []
     var logExportDestinationURL: URL?
     var logExportDestinationValidationMessages: [String: String] = [:]
     var chooseDirectoryPrompts: [String] = []
@@ -2581,6 +2625,12 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
         chooseVitalFilesPrompts.append(prompt)
         chooseVitalFilesDirectoryURLs.append(directoryURL)
         return vitalFileURLs
+    }
+
+    func importVitalFiles(_ sources: [URL], into libraryDirectory: URL) throws -> [URL] {
+        importVitalFilesSources.append(sources)
+        importVitalFilesLibraries.append(libraryDirectory)
+        return importedVitalFileURLs
     }
 
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {

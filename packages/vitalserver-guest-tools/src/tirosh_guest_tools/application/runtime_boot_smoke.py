@@ -647,15 +647,17 @@ def validate_product_lab_session_operations(
         stop.get("operationId"),
         "guest control API Product Lab stop operationId",
     )
-    replay_vital_file_path = prepare_lab_replay_smoke_vital_file(run)
+    prepare_lab_replay_smoke_vital_file(run)
     replay = run.operations.http_json(
         "POST",
         f"{GUEST_CONTROL_API_BASE_URL}/runtime/lab/vital-files/replay",
         GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
         {
-            "vitalFilePath": replay_vital_file_path,
+            "vitalFileRelativePath": "runtime-boot-smoke-replay.vital",
             "sessionName": "RuntimeBootSmokeReplay",
             "targetURL": "http://edge/",
+            "resourceSelection": {"mode": "quickCreate"},
+            "repeatPolicy": {"mode": "once"},
         },
     )
     replay_session_id = validate_lab_session_response(

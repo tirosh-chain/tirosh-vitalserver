@@ -867,11 +867,11 @@ def fake_guest_control_http_json(
             )
         if method == "POST" and url.endswith("/runtime/lab/vital-files/replay"):
             assert body == {
-                "vitalFilePath": (
-                    "/mnt/tirosh-vital-files/runtime-boot-smoke-replay.vital"
-                ),
+                "vitalFileRelativePath": "runtime-boot-smoke-replay.vital",
                 "sessionName": "RuntimeBootSmokeReplay",
                 "targetURL": "http://edge/",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
             }
             return lab_session_response(
                 operation_id="op_lab_replay_smoke",

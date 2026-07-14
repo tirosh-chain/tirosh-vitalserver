@@ -178,6 +178,72 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertGreaterThan(events.filter { $0 == "heartbeat:lease-1" }.count, 0)
     }
 
+    func testApplyBundlePersistsLeaseBoundWorkflowStateThroughCompletion() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        try writeEmptyBundle(at: source, to: fileStore)
+        let stateRepository = RuntimeWorkflowOperationStateRepositorySpy()
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            workflowOperationStateRepository: stateRepository,
+            acquireOperationLease: { operation in
+                RuntimeOperationLeaseDocument(
+                    operationId: "lease-state-1",
+                    operation: operation,
+                    ownerPID: 123,
+                    startedAt: "2026-05-22T00:00:00Z",
+                    heartbeatAt: "2026-05-22T00:00:00Z",
+                    expiresAt: nil,
+                    message: nil
+                )
+            }
+        )
+
+        try workflow.applyBundle(source)
+
+        let state = try XCTUnwrap(stateRepository.states["lease-state-1"])
+        XCTAssertEqual(state.operation, .applyBundle)
+        XCTAssertEqual(state.phase, .completed)
+        XCTAssertNil(state.currentStep)
+        XCTAssertEqual(state.completedAt, "2026-05-22T00:00:01Z")
+        XCTAssertEqual(stateRepository.mutations.first?.expectedRevision, nil)
+        XCTAssertGreaterThan(state.revision, 1)
+    }
+
+    func testApplyBundlePersistsTerminalFailureWithoutReplacingOriginalFailure() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        try writeEmptyBundle(at: source, to: fileStore)
+        let stateRepository = RuntimeWorkflowOperationStateRepositorySpy()
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            stopRuntimeServices: {
+                throw TestRuntimeBundleCompositionError.vmStopFailed
+            },
+            workflowOperationStateRepository: stateRepository,
+            acquireOperationLease: { operation in
+                RuntimeOperationLeaseDocument(
+                    operationId: "lease-state-failed",
+                    operation: operation,
+                    ownerPID: 123,
+                    startedAt: "2026-05-22T00:00:00Z",
+                    heartbeatAt: "2026-05-22T00:00:00Z",
+                    expiresAt: nil,
+                    message: nil
+                )
+            }
+        )
+
+        XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
+            XCTAssertEqual(error as? TestRuntimeBundleCompositionError, .vmStopFailed)
+        }
+        let state = try XCTUnwrap(stateRepository.states["lease-state-failed"])
+        XCTAssertEqual(state.phase, .failed)
+        XCTAssertEqual(state.currentStep, .stopRuntimeServices)
+        XCTAssertEqual(state.stepStatus, .failed)
+        XCTAssertNotNil(state.completedAt)
+    }
+
     func testApplyBundleLogsLeaseReleaseFailureWithoutHidingApplyFailure() throws {
         let fileStore = RuntimeFileStoreSpy()
         let source = URL(fileURLWithPath: "/input/update-bundle")
@@ -210,6 +276,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool = { _ in false },
         rollback: @escaping (URL?) throws -> Void = { _ in },
         rotateRuntimeLogs: @escaping () throws -> Void = {},
+        workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository = RuntimeWorkflowOperationStateRepositorySpy(),
         acquireOperationLease: @escaping (RuntimeOperation) throws -> RuntimeOperationLeaseDocument = { operation in
             RuntimeOperationLeaseDocument(
                 operationId: UUID().uuidString,
@@ -239,7 +306,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                 fileStore: fileStore,
                 runtimeHealthSnapshot: { Self.healthSnapshot() },
                 rotateRuntimeLogs: rotateRuntimeLogs,
-                rollback: rollback,
+                rollback: { backup, _ in try rollback(backup) },
                 startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: stopRuntimeServices,
                 prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff,
@@ -251,6 +318,8 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                     describeError: { _ in "unexpected" },
                     log: log
                 ),
+                workflowOperationStateRepository: workflowOperationStateRepository,
+                workflowOperationStateTimestamp: { "2026-05-22T00:00:01Z" },
                 pruneOldRuntimeArtifacts: {},
                 materializeBundle: { url in
                     guard fileStore.directoryExists(url) else {

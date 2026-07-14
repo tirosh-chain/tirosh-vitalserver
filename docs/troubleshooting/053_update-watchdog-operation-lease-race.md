@@ -22,7 +22,7 @@ Update apply 또는 rollback 중 Helper의 Diagnostics가 짧은 시간 안에 �
 
 이 구조에서는 상태 writer가 여러 개이고, 별도의 durable operation owner가 없기 때문에 watchdog과 update apply가 status read-model을 lock처럼 공유하는 race가 생깁니다.
 
-Update 실패 후 rollback으로 전환되는 구간에서는 `updating`과 `recovering` 우선순위도 분리되어야 합니다. Current operation 표시는 Runtime Control operation-state API와 durable Platform operation lease owner에서 오고, recovery/update current state는 explicit workflow/health owner read에서 조립해야 합니다. macOS의 `vm/run/runtime-operation-lease.json`은 그 owner document이며 API와 CLI workflow가 같은 lock/atomic-write repository를 공유합니다. rollback workflow는 runtime service restart와 health wait를 함께 수행하므로, apply-bundle failure recovery가 rollback 성공 뒤에 다시 service restart를 추가로 수행하면 같은 service state가 두 번 흔들릴 수 있습니다.
+Update 실패 후 rollback으로 전환되는 구간에서는 `updating`과 `recovering` 우선순위도 분리되어야 합니다. Current operation 표시는 Runtime Control operation-state API와 durable Platform operation lease owner에서 오고, recovery/update current state는 explicit workflow/health owner read에서 조립해야 합니다. macOS의 `runtime-state.sqlite.runtime_operation_lease`가 owner이며 API와 CLI workflow가 같은 transaction/revision repository를 공유합니다. rollback workflow는 runtime service restart와 health wait를 함께 수행하므로, apply-bundle failure recovery가 rollback 성공 뒤에 다시 service restart를 추가로 수행하면 같은 service state가 두 번 흔들릴 수 있습니다.
 
 ## Checks
 
@@ -33,7 +33,15 @@ curl -fsS -H "X-Runtime-Control-Token: ${RUNTIME_CONTROL_TOKEN}" \
   "http://127.0.0.1:${RUNTIME_CONTROL_PORT:-18321}/platform/operations" | jq .
 ```
 
-Runtime Control API를 사용할 수 없으면 durable operation lease owner document를 직접 확인합니다. 이 문서는 current owner state이며 decode/read failure를 missing으로 취급하면 안 됩니다.
+Runtime Control API를 사용할 수 없으면 SQLite owner와 current diagnostic projection을 함께 확인합니다. SQLite read/open/integrity failure를 missing lease로 취급하면 안 됩니다.
+
+```sh
+sqlite3 "/Library/Application Support/VitalServerHelper/vm/runtime/runtime-state.sqlite" \
+  'SELECT revision,state,operation_id,operation,heartbeat_at,expires_at FROM runtime_operation_lease;'
+
+jq '.operationLease' \
+  "/Library/Application Support/VitalServerHelper/status/host-runtime-state.json"
+```
 
 runtime status projection과 event history를 diagnostics로 함께 확인합니다.
 
@@ -61,7 +69,7 @@ managed operation 소유권은 `runtime-status.json`이 아니라 durable Platfo
 - watchdog은 status guard보다 operation lease owner guard를 먼저 봅니다.
 - lease read failure는 성공/empty로 취급하지 않고 watchdog recovery를 차단합니다.
 - apply-bundle 종료 시 lease를 release합니다. release 실패는 원래 apply 실패를 덮지 않고 로그에 남깁니다.
-- diagnostic log export는 `runtime-operation-lease.json`을 포함해야 합니다.
+- diagnostic log export는 `runtime-state.sqlite`, WAL/SHM(존재 시), `host-runtime-state-events.jsonl`, `host-runtime-state.json`을 포함해야 합니다.
 - Service liveness 표시 우선순위는 install, initialization, recovery, update, explicit service state 순서로 적용합니다. recovery를 update 표시로 흡수하지 않습니다.
 - apply-bundle failure recovery는 rollback workflow를 recovery owner로 취급합니다. rollback 성공 뒤 apply-bundle layer가 별도의 runtime service restart를 추가로 수행하지 않습니다.
 

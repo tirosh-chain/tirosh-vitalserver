@@ -17,39 +17,11 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     private let commandWorker: MacRuntimeControlCommandWorker
 
     public init(
-        releaseInfo: RuntimeReleaseInfo
-    ) {
-        self.init(
-            releaseInfo: releaseInfo,
-            platformStateReader: Self.livePlatformStateReader(),
-            operationStateReader: SystemPlatformOperationStateReader.live(),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
-            fileReader: SystemRuntimeHostFileReader(),
-            settingsReader: SystemRuntimeSettingsReader(),
-            commandWorker: MacRuntimeControlCommandWorker()
-        )
-    }
-
-    public init(
-        releaseInfo: RuntimeReleaseInfo,
-        commandWorker: MacRuntimeControlCommandWorker
-    ) {
-        self.init(
-            releaseInfo: releaseInfo,
-            platformStateReader: Self.livePlatformStateReader(),
-            operationStateReader: SystemPlatformOperationStateReader.live(),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
-            fileReader: SystemRuntimeHostFileReader(),
-            settingsReader: SystemRuntimeSettingsReader(),
-            commandWorker: commandWorker
-        )
-    }
-
-    public init(
         releaseInfo: RuntimeReleaseInfo,
         operationLeaseReader: any RuntimeOperationLeaseReading,
         guestAddressProvider: any RuntimeGuestAddressProvider,
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        hostSettingsReader: any RuntimeHostSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker
     ) {
         self.init(
@@ -66,7 +38,12 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
                 guestAddressProvider: guestAddressProvider
             ),
             fileReader: SystemRuntimeHostFileReader(),
-            settingsReader: SystemRuntimeSettingsReader(),
+            settingsReader: SystemRuntimeSettingsReader(
+                paths: RuntimeSettingsPaths(),
+                fileStore: SystemRuntimeFileStore(),
+                runCommand: ProcessRunner.runSync,
+                hostSettingsReader: hostSettingsReader
+            ),
             commandWorker: commandWorker
         )
     }
@@ -77,7 +54,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         operationStateReader: PlatformOperationStateReading = SystemPlatformOperationStateReader.live(),
         observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
         fileReader: RuntimeHostFileReading = SystemRuntimeHostFileReader(),
-        settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
+        settingsReader: RuntimeSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker = MacRuntimeControlCommandWorker()
     ) {
         self.releaseInfo = releaseInfo
@@ -194,6 +171,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
 
     public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {
         try await commandWorker.applySettings(settings)
+    }
+
+    public func restartVMRuntime(applying settings: RuntimeSettings) async throws -> RuntimeCommandResult {
+        try await commandWorker.restartVMRuntime(applying: settings)
     }
 
     public func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
@@ -408,10 +389,6 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
 
     public func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
         try await commandWorker.replayLabVitalFile(request)
-    }
-
-    public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
-        try await commandWorker.uploadLabVitalFile(request)
     }
 
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {

@@ -329,13 +329,28 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get("/runtime/lab/vital-files", runtimeLabVitalFileListSchema);
   }
 
-  uploadLabVitalFile(
+  async uploadLabVitalFiles(
     request: RuntimeLabVitalFileUploadRequest
   ): Promise<RuntimeLabVitalFileUploadResponse> {
-    return this.post(
+    const form = new FormData();
+    request.files.forEach((file) => form.append("files", file, file.name));
+    const response = await this.request("/runtime/lab/vital-files/upload", {
+      method: "POST",
+      headers: this.headers(),
+      body: form
+    });
+    if (!response.ok) {
+      const responseBody = await response.text();
+      throw new RuntimeControlAPIError(
+        `Runtime Control API request failed: ${response.status}`,
+        response.status,
+        responseBody
+      );
+    }
+    return this.parse(
       "/runtime/lab/vital-files/upload",
-      request,
-      runtimeLabVitalFileUploadResponseSchema
+      runtimeLabVitalFileUploadResponseSchema,
+      await response.json()
     );
   }
 

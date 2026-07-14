@@ -21,7 +21,6 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabReadModelResult,
     ProductLabRecorderResult,
     ProductLabSessionResult,
-    ProductLabUploadResult,
     RecorderIngressDependencyError,
     RedisBackupDependencyError,
     RedisBackupResult,
@@ -439,26 +438,6 @@ class FakeProductLab:
     def replay_vital_file(self, request: dict[str, object]) -> dict[str, object]:
         raise NotImplementedError(request)
 
-    def upload_vital_file(self, request: dict[str, object]) -> ProductLabUploadResult:
-        return ProductLabUploadResult(
-            document={
-                "state": "loaded",
-                "operationId": "lab-vital-file-upload",
-                "upload": {
-                    "filename": "sample.vital",
-                    "endpoint": "/upload",
-                    "targetURL": request["targetURL"],
-                    "statusCode": 200,
-                    "bytesSent": 456,
-                    "responseText": "success",
-                    "ok": True,
-                },
-                "readError": None,
-            },
-            lab_operation_id="lab-vital-file-upload",
-        )
-
-
 class FakeVitalDBReadModel:
     def __init__(self, *, fail: bool = False, lab_owned: bool = False) -> None:
         self.fail = fail
@@ -829,6 +808,16 @@ def build_usecases(
     )
 
 
+class FakeVitalFileLibrary:
+    def import_files(
+        self, files: list[tuple[str, bytes]]
+    ) -> list[dict[str, object]]:
+        return [
+            {"fileName": name, "relativePath": name, "sizeBytes": len(content)}
+            for name, content in files
+        ]
+
+
 def test_capabilities_include_only_configured_adapter_features() -> None:
     usecases = build_usecases(
         service_control=FakeServiceControl(),
@@ -843,6 +832,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         datastore_repair=FakeDatastoreRepair(),
         update_activation=FakeUpdateActivation(),
         update_shutdown=FakeUpdateShutdown(),
+        vital_file_library=FakeVitalFileLibrary(),
     )
 
     document = usecases.capabilities()

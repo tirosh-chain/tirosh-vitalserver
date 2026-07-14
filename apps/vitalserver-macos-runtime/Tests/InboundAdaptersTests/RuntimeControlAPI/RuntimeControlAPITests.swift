@@ -146,9 +146,11 @@ final class RuntimeControlAPITests: XCTestCase {
             targetURL: "http://edge/"
         )
         let replay = RuntimeLabVitalFileReplayRequest(
-            vitalFilePath: "MORA04/202301/230102/sample.vital",
+            vitalFileRelativePath: "MORA04/202301/230102/sample.vital",
             sessionName: "Replay sample",
-            targetURL: "http://edge/"
+            targetURL: "http://edge/",
+            resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
+            repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
         )
 
         let decodedCreate = try JSONDecoder().decode(
@@ -1031,11 +1033,13 @@ final class RuntimeControlAPITests: XCTestCase {
             recorderCount: 2
         )
         let replayRequest = RuntimeLabVitalFileReplayRequest(
-            vitalFilePath: "MORA04/202301/230102/sample.vital"
+            vitalFileRelativePath: "MORA04/202301/230102/sample.vital",
+            resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
+            repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
         )
-        let uploadRequest = RuntimeLabVitalFileUploadRequest(
-            vitalFilePath: "MORA04/202301/230102/sample.vital",
-            targetURL: "http://edge/"
+        let uploadBoundary = "runtime-vital-files-boundary"
+        let uploadBody = Data(
+            "--\(uploadBoundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"first.vital\"\r\nContent-Type: application/octet-stream\r\n\r\nfirst\r\n--\(uploadBoundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"second.vital\"\r\nContent-Type: application/octet-stream\r\n\r\nsecond\r\n--\(uploadBoundary)--\r\n".utf8
         )
 
         let scenarios = try await decode(
@@ -1076,10 +1080,11 @@ final class RuntimeControlAPITests: XCTestCase {
             path: "/runtime/lab/vital-files/replay",
             body: try JSONEncoder().encode(replayRequest)
         )))
-        let upload = try await decode(RuntimeLabVitalFileUploadResponse.self, from: router.route(.init(
+        let upload = try await decode(RuntimeLabVitalFileLibraryUploadResponse.self, from: router.route(.init(
             method: .post,
             path: "/runtime/lab/vital-files/upload",
-            body: try JSONEncoder().encode(uploadRequest)
+            headers: ["Content-Type": "multipart/form-data; boundary=\(uploadBoundary)"],
+            body: uploadBody
         )))
 
         XCTAssertEqual(scenarios.state, .unavailable)
@@ -1096,7 +1101,8 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(start.state, .unavailable)
         XCTAssertEqual(stop.state, .unavailable)
         XCTAssertEqual(replay.state, .unavailable)
-        XCTAssertEqual(upload.state, .unavailable)
+        XCTAssertEqual(upload.state, "completed")
+        XCTAssertEqual(upload.files.map(\.fileName), ["first.vital", "second.vital"])
     }
 
     @MainActor
@@ -3206,6 +3212,18 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
 
     func loadPlatformCapabilities() async throws -> PlatformCapabilities {
         PlatformCapabilities()
+    }
+
+    func uploadLabVitalFiles(
+        _ sources: [RuntimeLabVitalFileUploadSource]
+    ) async throws -> RuntimeLabVitalFileLibraryUploadResponse {
+        RuntimeLabVitalFileLibraryUploadResponse(files: sources.map {
+            RuntimeLabVitalFileLibraryUploadItem(
+                fileName: $0.fileName,
+                relativePath: $0.fileName,
+                sizeBytes: $0.content.count
+            )
+        })
     }
 
     func loadRuntimeCapabilities() async throws -> RuntimeCapabilities {

@@ -43,8 +43,16 @@ struct RuntimeLogExportSupplementalSource {
             return installed.managerHelperMessageLog
         case .runtimeStatus:
             return installed.runtimeStatus
-        case .runtimeOperationLease:
-            return installed.runtimeOperationLease
+        case .hostRuntimeStateEvents:
+            return installed.hostRuntimeStateEvents
+        case .hostRuntimeStateSnapshot:
+            return installed.hostRuntimeStateSnapshot
+        case .hostRuntimeStateDatabase:
+            return installed.runtimeStateDatabase
+        case .hostRuntimeStateDatabaseWAL:
+            return URL(fileURLWithPath: "\(installed.runtimeStateDatabase.path)-wal")
+        case .hostRuntimeStateDatabaseSHM:
+            return URL(fileURLWithPath: "\(installed.runtimeStateDatabase.path)-shm")
         case .runtimeEvents:
             return installed.runtimeEvents
         case .runtimeObservabilityDB:
@@ -55,8 +63,6 @@ struct RuntimeLogExportSupplementalSource {
             return URL(fileURLWithPath: "\(installed.runtimeObservabilityDB.path)-shm")
         case .runtimeObservation:
             return installed.runtimeObservation
-        case .vmLifecycle:
-            return installed.vmLifecycle
         case .vmIP:
             return installed.vmIPFile
         case .vmConfig:

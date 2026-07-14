@@ -17,7 +17,6 @@ final class RuntimeFileNameContractsTests: XCTestCase {
 
     func testRuntimeWorkflowArtifactFileNamesRemainStableForDiagnosticsArtifacts() {
         XCTAssertEqual(RuntimeWorkflowArtifactFileNames.runtimeInstallState, "tirosh-vitalserver-install-state.json")
-        XCTAssertEqual(RuntimeWorkflowArtifactFileNames.runtimeUninstallState, "tirosh-vitalserver-uninstall-state.json")
     }
 
     func testRuntimeLogArtifactFileNamesRemainStableForDiagnosticsLogs() {
@@ -46,9 +45,7 @@ final class RuntimeFileNameContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeBootstrapEvidenceFileNames.vmIP, "vm-ip")
     }
 
-    func testRuntimeHostOwnerFileNamesRemainStableForHostOwnedState() {
-        XCTAssertEqual(RuntimeHostOwnerFileNames.vmLifecycle, "vm-lifecycle.json")
-        XCTAssertEqual(RuntimeHostOwnerFileNames.runtimeEndpoint, "runtime-endpoint.json")
-        XCTAssertEqual(RuntimeHostOwnerFileNames.operationLease, "runtime-operation-lease.json")
+    func testRuntimeLegacyHostStateFileNameRemainsStableForExplicitMigrationOnly() {
+        XCTAssertEqual(RuntimeLegacyHostStateFileNames.operationLease, "runtime-operation-lease.json")
     }
 }

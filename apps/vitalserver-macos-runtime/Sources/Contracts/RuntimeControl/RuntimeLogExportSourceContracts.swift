@@ -11,13 +11,16 @@ public enum RuntimeLogExportSupplementalSourceID: String, CaseIterable, Sendable
     case commandLog
     case helperMessageLog
     case runtimeStatus
-    case runtimeOperationLease
+    case hostRuntimeStateEvents
+    case hostRuntimeStateSnapshot
+    case hostRuntimeStateDatabase
+    case hostRuntimeStateDatabaseWAL
+    case hostRuntimeStateDatabaseSHM
     case runtimeEvents
     case runtimeObservabilityDB
     case runtimeObservabilityDBWAL
     case runtimeObservabilityDBSHM
     case runtimeObservation
-    case vmLifecycle
     case vmIP
     case vmConfig
     case runtimeVersion
@@ -77,13 +80,16 @@ public enum RuntimeLogExportSourceContract {
             .init(sourceID: .commandLog, relativeDestination: "command.log"),
             .init(sourceID: .helperMessageLog, relativeDestination: "helper-message.log"),
             .init(sourceID: .runtimeStatus, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)"),
-            .init(sourceID: .runtimeOperationLease, relativeDestination: "diagnostics/platform/\(RuntimeHostOwnerFileNames.operationLease)"),
+            .init(sourceID: .hostRuntimeStateEvents, relativeDestination: "diagnostics/host/\(RuntimeDiagnosticsArtifactFileNames.hostRuntimeStateEvents)"),
+            .init(sourceID: .hostRuntimeStateSnapshot, relativeDestination: "diagnostics/host/\(RuntimeDiagnosticsArtifactFileNames.hostRuntimeState)"),
+            .init(sourceID: .hostRuntimeStateDatabase, relativeDestination: "diagnostics/host/runtime-state.sqlite"),
+            .init(sourceID: .hostRuntimeStateDatabaseWAL, relativeDestination: "diagnostics/host/runtime-state.sqlite-wal"),
+            .init(sourceID: .hostRuntimeStateDatabaseSHM, relativeDestination: "diagnostics/host/runtime-state.sqlite-shm"),
             .init(sourceID: .runtimeEvents, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)"),
             .init(sourceID: .runtimeObservabilityDB, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)"),
             .init(sourceID: .runtimeObservabilityDBWAL, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)-wal"),
             .init(sourceID: .runtimeObservabilityDBSHM, relativeDestination: "diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)-shm"),
             .init(sourceID: .runtimeObservation, relativeDestination: "diagnostics/guest/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)"),
-            .init(sourceID: .vmLifecycle, relativeDestination: "diagnostics/runtime/\(RuntimeHostOwnerFileNames.vmLifecycle)"),
             .init(sourceID: .vmIP, relativeDestination: "diagnostics/guest/\(RuntimeBootstrapEvidenceFileNames.vmIP)"),
             .init(sourceID: .vmConfig, relativeDestination: "diagnostics/runtime/vm-config.json"),
             .init(sourceID: .runtimeVersion, relativeDestination: "diagnostics/runtime/runtime-version.json"),

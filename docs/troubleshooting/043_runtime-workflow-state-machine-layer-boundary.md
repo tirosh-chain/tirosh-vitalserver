@@ -142,7 +142,7 @@ Expected direction:
    RuntimeUninstallWorkflowCommand
    RuntimeUninstallTransitionPolicy
    RuntimeUninstallTransitionDecision -> persisted RuntimeUninstallState
-   RuntimeUninstallStateDocument
+   SQLite workflow operation state (`operation_type=uninstall`)
    ```
 
    Required invariants:

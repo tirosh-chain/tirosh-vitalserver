@@ -142,6 +142,16 @@ public enum RuntimeConfigureComposition {
             ),
             maximumAllowedCPUCount: context.maximumAllowedCPUCount,
             maximumAllowedMemoryGiB: context.maximumAllowedMemoryGiB,
+            prepareHostStateStore: {
+                _ = try SQLiteHostRuntimeStateDatabase(
+                    url: context.installedPaths.runtimeStateDatabase,
+                    fileStore: operations.fileStore
+                ).initialize()
+            },
+            hostSettingsRepository: SQLiteRuntimeHostSettingsRepository(
+                databaseURL: context.installedPaths.runtimeStateDatabase,
+                transitionDecider: RuntimeHostSettingsActivationUseCase()
+            ),
             log: operations.log
         )
     }
@@ -154,6 +164,8 @@ public struct RuntimeConfigureRunner {
     private let actions: RuntimeConfigureActions
     private let maximumAllowedCPUCount: Int
     private let maximumAllowedMemoryGiB: Int
+    private let prepareHostStateStore: () throws -> Void
+    private let hostSettingsRepository: any RuntimeHostSettingsRepository
     private let log: (String) -> Void
 
     public init(
@@ -163,6 +175,8 @@ public struct RuntimeConfigureRunner {
         actions: RuntimeConfigureActions,
         maximumAllowedCPUCount: Int,
         maximumAllowedMemoryGiB: Int,
+        prepareHostStateStore: @escaping () throws -> Void,
+        hostSettingsRepository: any RuntimeHostSettingsRepository,
         log: @escaping (String) -> Void
     ) {
         self.installedPaths = installedPaths
@@ -171,11 +185,15 @@ public struct RuntimeConfigureRunner {
         self.actions = actions
         self.maximumAllowedCPUCount = maximumAllowedCPUCount
         self.maximumAllowedMemoryGiB = maximumAllowedMemoryGiB
+        self.prepareHostStateStore = prepareHostStateStore
+        self.hostSettingsRepository = hostSettingsRepository
         self.log = log
     }
 
     public func configure(_ command: RuntimeConfigureCommand) throws -> RuntimeConfigureResult {
         do {
+            try prepareHostStateStore()
+            _ = try loadOrImportHostSettings()
             let result = try RunConfigureRuntimeUseCase<VMRuntimeConfig>().configure(
                 configureRuntimeRequest(from: command),
                 context: configureRuntimeContext(),
@@ -193,14 +211,23 @@ public struct RuntimeConfigureRunner {
     private func configureRuntimeOperations() -> ConfigureRuntimeOperations<VMRuntimeConfig> {
         ConfigureRuntimeOperations(
             readers: ConfigureRuntimeStateReaders(
-                loadVMConfig: { url in
-                    try VMRuntimeConfigComposition.load(from: url, fileStore: fileStore)
+                loadVMConfig: { _ in
+                    try JSONDecoder().decode(
+                        VMRuntimeConfig.self,
+                        from: try loadHostSettings().payload.vmConfigJSON
+                    )
                 },
-                loadGuestRuntimeConfig: { url in
-                    try loadGuestRuntimeConfig(from: url)
+                loadGuestRuntimeConfig: { _ in
+                    try JSONDecoder().decode(
+                        GuestRuntimeConfigDocument.self,
+                        from: try loadHostSettings().payload.guestRuntimeConfigJSON
+                    )
                 },
-                loadGuestRuntimeSettings: { url in
-                    try loadGuestRuntimeSettings(from: url)
+                loadGuestRuntimeSettings: { _ in
+                    try JSONDecoder().decode(
+                        GuestRuntimeSettingsDocument.self,
+                        from: try loadHostSettings().payload.guestRuntimeSettingsJSON
+                    )
                 },
                 loadVMDiskSizeGiB: {
                     try loadVMDiskSizeGiB()
@@ -216,8 +243,17 @@ public struct RuntimeConfigureRunner {
                 encodeGuestRuntimeSettings: { settings in
                     try prettyJSONEncoder().encode(settings)
                 },
-                writeData: { data, url, options in
-                    try fileStore.writeData(data, to: url, options: options)
+                persistAndMaterialize: { vmData, vmURL, guestConfigData, guestConfigURL, guestSettingsData, guestSettingsURL in
+                    try persistAndMaterializeHostSettings(
+                        RuntimeHostSettingsPayload(
+                            vmConfigJSON: vmData,
+                            guestRuntimeConfigJSON: guestConfigData,
+                            guestRuntimeSettingsJSON: guestSettingsData
+                        ),
+                        vmURL: vmURL,
+                        guestConfigURL: guestConfigURL,
+                        guestSettingsURL: guestSettingsURL
+                    )
                 }
             ),
             effects: ConfigureRuntimeEffects(
@@ -250,7 +286,7 @@ public struct RuntimeConfigureRunner {
                 return change
             }
         }
-        return ConfigureRuntimeRequest(changes: changes, restart: request.restart)
+        return ConfigureRuntimeRequest(changes: changes, activation: request.activation)
     }
 
     private func executeConfigureEffects(_ plannedEffects: [ConfigureRuntimeEffect]) throws {
@@ -413,6 +449,77 @@ public struct RuntimeConfigureRunner {
         return try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: data)
     }
 
+    private func loadOrImportHostSettings() throws -> RuntimeHostSettingsRecord {
+        switch hostSettingsRepository.loadHostSettings() {
+        case .loaded(let record):
+            return record
+        case .missing:
+            _ = try VMRuntimeConfigComposition.load(from: configURL, fileStore: fileStore)
+            _ = try loadGuestRuntimeConfig(from: installedPaths.guestRuntimeConfig)
+            _ = try loadGuestRuntimeSettings(from: installedPaths.guestRuntimeSettings)
+            let payload = RuntimeHostSettingsPayload(
+                vmConfigJSON: try fileStore.readData(configURL),
+                guestRuntimeConfigJSON: try fileStore.readData(installedPaths.guestRuntimeConfig),
+                guestRuntimeSettingsJSON: try fileStore.readData(installedPaths.guestRuntimeSettings)
+            )
+            _ = try JSONDecoder().decode(VMRuntimeConfig.self, from: payload.vmConfigJSON)
+            _ = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: payload.guestRuntimeConfigJSON)
+            _ = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: payload.guestRuntimeSettingsJSON)
+            return try hostSettingsRepository.importMaterializedHostSettings(
+                payload,
+                importedAt: timestamp()
+            )
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
+    }
+
+    private func loadHostSettings() throws -> RuntimeHostSettingsRecord {
+        switch hostSettingsRepository.loadHostSettings() {
+        case .loaded(let record):
+            return record
+        case .missing:
+            throw LauncherError.runtimeOperationFailed("Host settings SQLite state is missing")
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
+    }
+
+    private func persistAndMaterializeHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        vmURL: URL,
+        guestConfigURL: URL,
+        guestSettingsURL: URL
+    ) throws {
+        let current = try loadHostSettings()
+        let desired = try hostSettingsRepository.saveDesiredHostSettings(
+            payload,
+            expectedRevision: current.revision,
+            desiredAt: timestamp()
+        )
+        try fileStore.writeData(payload.vmConfigJSON, to: vmURL, options: .atomic)
+        try fileStore.writeData(payload.guestRuntimeConfigJSON, to: guestConfigURL, options: .atomic)
+        try fileStore.writeData(payload.guestRuntimeSettingsJSON, to: guestSettingsURL, options: .atomic)
+        let materialized = RuntimeHostSettingsPayload(
+            vmConfigJSON: try fileStore.readData(vmURL),
+            guestRuntimeConfigJSON: try fileStore.readData(guestConfigURL),
+            guestRuntimeSettingsJSON: try fileStore.readData(guestSettingsURL)
+        )
+        guard materialized == payload else {
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings materialization verification failed revision=\(desired.revision)"
+            )
+        }
+        _ = try hostSettingsRepository.markHostSettingsMaterialized(
+            revision: desired.revision,
+            materializedAt: timestamp()
+        )
+    }
+
+    private func timestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
+
     private func prettyJSONEncoder() -> JSONEncoder {
         VMRuntimeConfigComposition.prettyJSONEncoder()
     }
@@ -422,7 +529,7 @@ public struct RuntimeConfigureRunner {
     ) throws -> ConfigureRuntimeRequest<Contracts.RuntimeNetworkMode> {
         ConfigureRuntimeRequest(
             changes: try command.changes.map { try configureRuntimeChange($0) },
-            restart: command.restart
+            activation: command.activation
         )
     }
 

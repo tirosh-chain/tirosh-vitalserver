@@ -1,6 +1,7 @@
 public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
     case loadInstallSettings
     case prepareInstallDirectories
+    case prepareHostStateStore
     case rotateRuntimeLogs
     case configureGuestRuntimeConfig
     case prepareInstalledExecutables
@@ -13,6 +14,10 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
     case applyStartOnBootPolicy
     case waitInstallRuntimeHealth
     case cleanupInstallSettings
+    case uninstallCreateRedisBackup
+    case uninstallStopRuntimeServices
+    case uninstallRemoveFiles
+    case uninstallForgetPackageReceipts
     case stopRuntimeServices
     case replaceRootfsBase
     case replaceUpdateArtifacts
@@ -37,6 +42,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             self = .loadInstallSettings
         case "prepare-install-directories":
             self = .prepareInstallDirectories
+        case "prepare-host-state-store":
+            self = .prepareHostStateStore
         case "rotate-runtime-logs":
             self = .rotateRuntimeLogs
         case "configure-guest-runtime-config":
@@ -61,6 +68,14 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             self = .waitInstallRuntimeHealth
         case "cleanup-install-settings":
             self = .cleanupInstallSettings
+        case "uninstall-create-redis-backup":
+            self = .uninstallCreateRedisBackup
+        case "uninstall-stop-runtime-services":
+            self = .uninstallStopRuntimeServices
+        case "uninstall-remove-files":
+            self = .uninstallRemoveFiles
+        case "uninstall-forget-package-receipts":
+            self = .uninstallForgetPackageReceipts
         case "stop-runtime-services":
             self = .stopRuntimeServices
         case "replace-rootfs-base":
@@ -104,6 +119,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             return "load-install-settings"
         case .prepareInstallDirectories:
             return "prepare-install-directories"
+        case .prepareHostStateStore:
+            return "prepare-host-state-store"
         case .rotateRuntimeLogs:
             return "rotate-runtime-logs"
         case .configureGuestRuntimeConfig:
@@ -128,6 +145,14 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             return "wait-install-runtime-health"
         case .cleanupInstallSettings:
             return "cleanup-install-settings"
+        case .uninstallCreateRedisBackup:
+            return "uninstall-create-redis-backup"
+        case .uninstallStopRuntimeServices:
+            return "uninstall-stop-runtime-services"
+        case .uninstallRemoveFiles:
+            return "uninstall-remove-files"
+        case .uninstallForgetPackageReceipts:
+            return "uninstall-forget-package-receipts"
         case .stopRuntimeServices:
             return "stop-runtime-services"
         case .replaceRootfsBase:
@@ -169,6 +194,7 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
         switch self {
         case .loadInstallSettings,
              .prepareInstallDirectories,
+             .prepareHostStateStore,
              .rotateRuntimeLogs,
              .configureGuestRuntimeConfig,
              .prepareInstalledExecutables,
@@ -182,6 +208,11 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
              .waitInstallRuntimeHealth,
              .cleanupInstallSettings:
             return .install
+        case .uninstallCreateRedisBackup,
+             .uninstallStopRuntimeServices,
+             .uninstallRemoveFiles,
+             .uninstallForgetPackageReceipts:
+            return .uninstall
         case .stopRuntimeServices,
              .replaceRootfsBase,
              .replaceUpdateArtifacts,

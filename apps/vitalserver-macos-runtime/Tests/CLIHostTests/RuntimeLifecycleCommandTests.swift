@@ -346,7 +346,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse([
                 "lab-vital-replay",
-                "/mnt/tirosh-vital-files/sample.vital",
+                "sample.vital",
                 "--session-name",
                 "Replay run",
                 "--target-url",
@@ -354,9 +354,11 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             ]),
             .lab(RuntimeLabControlCommand(
                 action: .replayVitalFile(RuntimeLabVitalFileReplayRequest(
-                    vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+                    vitalFileRelativePath: "sample.vital",
                     sessionName: "Replay run",
-                    targetURL: "http://edge/"
+                    targetURL: "http://edge/",
+                    resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
+                    repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
                 ))
             ))
         )
@@ -388,7 +390,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         )
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["lab-vital-replay"]),
-            expectedMessage: "usage: vitalserver-vm runtime lab-vital-replay <vital-file-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]"
+            expectedMessage: "usage: vitalserver-vm runtime lab-vital-replay <vital-file-relative-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]"
         )
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["lab-session-create", "routine-case", "--recorder-count", "0"]),

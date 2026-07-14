@@ -463,21 +463,142 @@ public struct RuntimeOperationLeaseMutationResponse: Codable, Equatable, Sendabl
     }
 }
 
+public struct RuntimeWorkflowOperationStateDocument: Codable, Equatable, Sendable {
+    public let operationID: String
+    public let operation: RuntimeOperation
+    public let phase: RuntimeProgressPhase
+    public let currentStep: RuntimeWorkflowStep?
+    public let stepStatus: RuntimeProgressStepStatus?
+    public let message: String
+    public let reasonCodes: [String]
+    public let startedAt: String
+    public let updatedAt: String
+    public let completedAt: String?
+    public let revision: Int
+
+    public init(
+        operationID: String,
+        operation: RuntimeOperation,
+        phase: RuntimeProgressPhase,
+        currentStep: RuntimeWorkflowStep?,
+        stepStatus: RuntimeProgressStepStatus?,
+        message: String,
+        reasonCodes: [String],
+        startedAt: String,
+        updatedAt: String,
+        completedAt: String?,
+        revision: Int
+    ) {
+        self.operationID = operationID
+        self.operation = operation
+        self.phase = phase
+        self.currentStep = currentStep
+        self.stepStatus = stepStatus
+        self.message = message
+        self.reasonCodes = reasonCodes
+        self.startedAt = startedAt
+        self.updatedAt = updatedAt
+        self.completedAt = completedAt
+        self.revision = revision
+    }
+}
+
+public struct RuntimeWorkflowOperationStateResource: Codable, Equatable, Sendable {
+    public let state: RuntimeOperationResourceReadState
+    public let document: RuntimeWorkflowOperationStateDocument?
+    public let readError: String?
+
+    public init(
+        state: RuntimeOperationResourceReadState,
+        document: RuntimeWorkflowOperationStateDocument? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.document = document
+        self.readError = readError
+    }
+
+    public static func loaded(_ document: RuntimeWorkflowOperationStateDocument) -> Self {
+        Self(state: .loaded, document: document)
+    }
+
+    public static func unavailable(readError: String? = nil) -> Self {
+        Self(state: .unavailable, readError: readError)
+    }
+
+    public static func failed(readError: String) -> Self {
+        Self(state: .failed, readError: readError)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case document
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(RuntimeOperationResourceReadState.self, forKey: .state)
+        document = try container.decodeRequiredNullable(
+            RuntimeWorkflowOperationStateDocument.self,
+            forKey: .document
+        )
+        readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        if state == .loaded && document == nil {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "loaded workflow operation state must include document"
+            ))
+        }
+        if state == .failed && readError.isBlankOrMissing {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "failed workflow operation state must include readError"
+            ))
+        }
+        if state == .stale {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "workflow operation state cannot be stale"
+            ))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let document {
+            try container.encode(document, forKey: .document)
+        } else {
+            try container.encodeNil(forKey: .document)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+}
+
 public struct PlatformOperationState: Codable, Equatable, Sendable {
     public let activeOperation: RuntimeOperation?
     public let install: RuntimeInstallOperationState
     public let lease: RuntimeOperationLeaseState
+    public let workflow: RuntimeWorkflowOperationStateResource
 
     public init(
         activeOperation: RuntimeOperation?,
         install: RuntimeInstallOperationState,
-        lease: RuntimeOperationLeaseState = .unavailable()
+        lease: RuntimeOperationLeaseState = .unavailable(),
+        workflow: RuntimeWorkflowOperationStateResource = .unavailable()
     ) {
         self.activeOperation = activeOperation ?? Self.resolvedActiveOperation(
-            lease: lease
+            lease: lease,
+            workflow: workflow
         )
         self.install = install
         self.lease = lease
+        self.workflow = workflow
     }
 
     public var operationForPresentation: RuntimeOperation? {
@@ -489,18 +610,28 @@ public struct PlatformOperationState: Codable, Equatable, Sendable {
     }
 
     private static func resolvedActiveOperation(
-        lease: RuntimeOperationLeaseState
+        lease: RuntimeOperationLeaseState,
+        workflow: RuntimeWorkflowOperationStateResource
     ) -> RuntimeOperation? {
         if lease.state == .loaded {
             return lease.document?.operation
         }
-        return nil
+        guard workflow.state == .loaded, let document = workflow.document else {
+            return nil
+        }
+        switch document.phase {
+        case .completed, .failed, .cancelled:
+            return nil
+        case .preparing, .waitingForPrivilege, .running, .waiting, .recovering, .unknown:
+            return document.operation
+        }
     }
 
     enum CodingKeys: String, CodingKey {
         case activeOperation
         case install
         case lease
+        case workflow
     }
 
     public init(from decoder: Decoder) throws {
@@ -508,10 +639,12 @@ public struct PlatformOperationState: Codable, Equatable, Sendable {
         let activeOperation = try container.decodeRequiredNullable(RuntimeOperation.self, forKey: .activeOperation)
         let install = try container.decode(RuntimeInstallOperationState.self, forKey: .install)
         let lease = try container.decode(RuntimeOperationLeaseState.self, forKey: .lease)
+        let workflow = try container.decode(RuntimeWorkflowOperationStateResource.self, forKey: .workflow)
         self.init(
             activeOperation: activeOperation,
             install: install,
-            lease: lease
+            lease: lease,
+            workflow: workflow
         )
     }
 
@@ -524,6 +657,7 @@ public struct PlatformOperationState: Codable, Equatable, Sendable {
         }
         try container.encode(install, forKey: .install)
         try container.encode(lease, forKey: .lease)
+        try container.encode(workflow, forKey: .workflow)
     }
 }
 

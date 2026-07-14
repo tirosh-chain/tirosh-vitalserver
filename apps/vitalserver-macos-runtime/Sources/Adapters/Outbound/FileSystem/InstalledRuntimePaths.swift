@@ -55,6 +55,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         runtimeHome.appendingPathComponent("runtime")
     }
 
+    public var runtimeStateDatabase: URL {
+        runtimeDirectory.appendingPathComponent("runtime-state.sqlite")
+    }
+
     public var logsDirectory: URL {
         runtimeHome.appendingPathComponent("logs")
     }
@@ -158,11 +162,19 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
     }
 
     public var runtimeOperationLease: URL {
-        hostRunDirectory.appendingPathComponent(RuntimeHostOwnerFileNames.operationLease)
+        hostRunDirectory.appendingPathComponent(RuntimeLegacyHostStateFileNames.operationLease)
     }
 
     public var runtimeEvents: URL {
         statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
+    }
+
+    public var hostRuntimeStateEvents: URL {
+        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.hostRuntimeStateEvents)
+    }
+
+    public var hostRuntimeStateSnapshot: URL {
+        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.hostRuntimeState)
     }
 
     public var runtimeObservabilityDB: URL {
@@ -173,24 +185,12 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         statusDirectory.appendingPathComponent(RuntimeHostContractFileNames.appliedVMConfig)
     }
 
-    public var runtimeUninstallState: URL {
-        URL(fileURLWithPath: "/private/tmp/\(RuntimeWorkflowArtifactFileNames.runtimeUninstallState)")
-    }
-
     public var runtimeInstallState: URL {
         URL(fileURLWithPath: "/private/tmp/\(RuntimeWorkflowArtifactFileNames.runtimeInstallState)")
     }
 
     public var vmIPFile: URL {
         guestRunDirectory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
-    }
-
-    public var vmLifecycle: URL {
-        hostRunDirectory.appendingPathComponent(RuntimeHostOwnerFileNames.vmLifecycle)
-    }
-
-    public var runtimeEndpoint: URL {
-        hostRunDirectory.appendingPathComponent(RuntimeHostOwnerFileNames.runtimeEndpoint)
     }
 
     public var runtimeObservation: URL {

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import http.client
 import json
 import math
-import mimetypes
 import threading
 import time
 import zlib
@@ -11,8 +9,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import urljoin, urlparse
-from uuid import uuid4
 
 from .model import (
     LabBed,
@@ -21,34 +17,18 @@ from .model import (
     LabSession,
     utc_now_iso,
 )
+from .vital_replay import (
+    LabVitalReplaySource,
+    LabVitalReplaySourceFactory,
+    VitalDBReplaySourceFactory,
+    VitalReplaySourceError,
+)
 
 
 @dataclass(frozen=True)
 class LabRecorderSendReceipt:
     transport: str
     bytes_sent: int
-
-
-@dataclass(frozen=True)
-class LabVitalFileUploadReceipt:
-    filename: str
-    endpoint: str
-    target_url: str
-    status_code: int
-    bytes_sent: int
-    response_text: str
-    ok: bool
-
-    def as_json(self) -> dict[str, object]:
-        return {
-            "filename": self.filename,
-            "endpoint": self.endpoint,
-            "targetURL": self.target_url,
-            "statusCode": self.status_code,
-            "bytesSent": self.bytes_sent,
-            "responseText": self.response_text,
-            "ok": self.ok,
-        }
 
 
 class LabRecorderPayloadSender(Protocol):
@@ -79,22 +59,11 @@ class SocketIOClient(Protocol):
     def disconnect(self) -> None: ...
 
 
-class LabVitalFileUploader(Protocol):
-    def upload(
-        self,
-        *,
-        target_url: str,
-        file_path: Path,
-        endpoint: str,
-        vrcode: str | None = None,
-    ) -> LabVitalFileUploadReceipt:
-        """Upload one mounted .vital file to a VitalServer upload endpoint."""
-
-
 LabRecorderExecutionResultSink = Callable[
     [tuple[LabRecorderExecutionResult, ...]],
     None,
 ]
+LabSessionCompletionSink = Callable[[str], None]
 
 
 @dataclass
@@ -106,6 +75,7 @@ class _RunningLabSession:
     target_url: str
     recorder_vrcodes: dict[str, str]
     case_started_at: float
+    replay_source: LabVitalReplaySource | None
 
 
 class VitalServerRecorderPayloadSender:
@@ -248,74 +218,18 @@ def _payload_vrcode(payload: dict[str, object]) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-class VitalServerVitalFileUploader:
-    def __init__(self, *, timeout_seconds: float = 60.0) -> None:
-        self.timeout_seconds = timeout_seconds
-
-    def upload(
-        self,
-        *,
-        target_url: str,
-        file_path: Path,
-        endpoint: str,
-        vrcode: str | None = None,
-    ) -> LabVitalFileUploadReceipt:
-        boundary = f"----tirosh-vitalserver-lab-{uuid4().hex}"
-        form_fields = {"vrcode": vrcode} if vrcode is not None else {}
-        header, footer = _multipart_file_boundaries(
-            boundary=boundary,
-            file_field="vitalfile",
-            file_path=file_path,
-            form_fields=form_fields,
-        )
-        content_length = len(header) + file_path.stat().st_size + len(footer)
-        headers = {
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
-            "Content-Length": str(content_length),
-        }
-
-        response = _stream_file_request(
-            base_url=target_url,
-            endpoint=endpoint,
-            headers=headers,
-            header=header,
-            file_path=file_path,
-            footer=footer,
-            timeout_seconds=self.timeout_seconds,
-        )
-        response_text = response.body.decode("utf-8", errors="replace")
-        ok = 200 <= response.status_code < 300 and "success" in response_text.lower()
-        return LabVitalFileUploadReceipt(
-            filename=file_path.name,
-            endpoint=endpoint,
-            target_url=target_url,
-            status_code=response.status_code,
-            bytes_sent=content_length,
-            response_text=response_text,
-            ok=ok,
-        )
-
-
-@dataclass(frozen=True)
-class _UploadHTTPResponse:
-    status_code: int
-    body: bytes
-
-
-class LabVitalFileUploadError(Exception):
-    pass
-
-
 class LabExecutionEngine:
     def __init__(
         self,
         *,
         sender: LabRecorderPayloadSender,
-        vital_file_uploader: LabVitalFileUploader | None = None,
+        vital_replay_source_factory: LabVitalReplaySourceFactory | None = None,
         frame_interval_seconds: float = 1.0,
     ) -> None:
         self.sender = sender
-        self.vital_file_uploader = vital_file_uploader or VitalServerVitalFileUploader()
+        self.vital_replay_source_factory = (
+            vital_replay_source_factory or VitalDBReplaySourceFactory()
+        )
         self.frame_interval_seconds = max(0.0, frame_interval_seconds)
         self._running_sessions: dict[str, _RunningLabSession] = {}
         self._running_sessions_lock = threading.Lock()
@@ -327,6 +241,7 @@ class LabExecutionEngine:
         beds: tuple[LabBed, ...],
         recorders: tuple[LabRecorder, ...],
         result_sink: LabRecorderExecutionResultSink | None = None,
+        completion_sink: LabSessionCompletionSink | None = None,
     ) -> tuple[LabRecorderExecutionResult, ...]:
         self.stop_session(session.session_id)
         beds_by_id = {bed.bed_id: bed for bed in beds}
@@ -342,6 +257,7 @@ class LabExecutionEngine:
                 for recorder in recorders
             )
 
+        replay_source = self._open_replay_source(session)
         case_started_at = time.time()
         results = self._send_session_frame(
             session=session,
@@ -350,6 +266,7 @@ class LabExecutionEngine:
             sequence=1,
             frame_started_at=case_started_at,
             case_started_at=case_started_at,
+            replay_source=replay_source,
         )
         if recorders:
             self._start_session_runner(
@@ -360,6 +277,8 @@ class LabExecutionEngine:
                 initial_sequence=2,
                 case_started_at=case_started_at,
                 result_sink=result_sink,
+                replay_source=replay_source,
+                completion_sink=completion_sink,
             )
         return results
 
@@ -371,6 +290,7 @@ class LabExecutionEngine:
         recorders: tuple[LabRecorder, ...],
         recorder_id: str,
         result_sink: LabRecorderExecutionResultSink | None = None,
+        completion_sink: LabSessionCompletionSink | None = None,
     ) -> LabRecorderExecutionResult | None:
         recorder = next(
             (
@@ -400,8 +320,10 @@ class LabExecutionEngine:
             with running.active_recorder_ids_lock:
                 running.active_recorder_ids.add(recorder_id)
             case_started_at = running.case_started_at
+            replay_source = running.replay_source
         else:
             case_started_at = time.time()
+            replay_source = self._open_replay_source(session)
         results = self._send_session_frame(
             session=session,
             beds_by_id=beds_by_id,
@@ -409,6 +331,7 @@ class LabExecutionEngine:
             sequence=1,
             frame_started_at=time.time(),
             case_started_at=case_started_at,
+            replay_source=replay_source,
         )
         if running is None:
             self._start_session_runner(
@@ -419,6 +342,8 @@ class LabExecutionEngine:
                 initial_sequence=2,
                 case_started_at=case_started_at,
                 result_sink=result_sink,
+                replay_source=replay_source,
+                completion_sink=completion_sink,
             )
         if result_sink is not None:
             result_sink(results)
@@ -469,6 +394,8 @@ class LabExecutionEngine:
         initial_sequence: int,
         case_started_at: float,
         result_sink: LabRecorderExecutionResultSink | None,
+        replay_source: LabVitalReplaySource | None,
+        completion_sink: LabSessionCompletionSink | None,
     ) -> None:
         target_url = session.target_url
         if target_url is None:
@@ -479,6 +406,28 @@ class LabExecutionEngine:
         def run() -> None:
             sequence = initial_sequence
             while not stop_event.wait(self.frame_interval_seconds):
+                if self._replay_is_complete(
+                    session=session,
+                    replay_source=replay_source,
+                    sequence=sequence,
+                ):
+                    if completion_sink is not None:
+                        completion_sink(session.session_id)
+                    for vrcode in (
+                        recorder.vrcode for recorder in recorders
+                    ):
+                        self.sender.close_recorder(
+                            target_url=target_url,
+                            vrcode=vrcode,
+                        )
+                    with self._running_sessions_lock:
+                        current = self._running_sessions.get(session.session_id)
+                        if (
+                            current is not None
+                            and current.thread is threading.current_thread()
+                        ):
+                            self._running_sessions.pop(session.session_id, None)
+                    return
                 with active_recorder_ids_lock:
                     active_recorders = tuple(
                         recorder
@@ -494,6 +443,7 @@ class LabExecutionEngine:
                     sequence=sequence,
                     frame_started_at=time.time(),
                     case_started_at=case_started_at,
+                    replay_source=replay_source,
                 )
                 if result_sink is not None:
                     try:
@@ -522,10 +472,27 @@ class LabExecutionEngine:
                     recorder.recorder_id: recorder.vrcode for recorder in recorders
                 },
                 case_started_at=case_started_at,
+                replay_source=replay_source,
             )
         if previous is not None:
             previous.stop_event.set()
         thread.start()
+
+    def _replay_is_complete(
+        self,
+        *,
+        session: LabSession,
+        replay_source: LabVitalReplaySource | None,
+        sequence: int,
+    ) -> bool:
+        if replay_source is None:
+            return False
+        if session.replay_policy is None:
+            raise LabRecorderSendError("Vital File replay policy is not configured")
+        repeat_count = session.replay_policy.finite_count
+        if repeat_count is None:
+            return False
+        return sequence > replay_source.duration_seconds * repeat_count
 
     def _send_session_frame(
         self,
@@ -536,6 +503,7 @@ class LabExecutionEngine:
         sequence: int,
         frame_started_at: float,
         case_started_at: float,
+        replay_source: LabVitalReplaySource | None,
     ) -> tuple[LabRecorderExecutionResult, ...]:
         target_url = session.target_url
         if target_url is None:
@@ -564,6 +532,7 @@ class LabExecutionEngine:
                     sequence=sequence,
                     frame_started_at=frame_started_at,
                     case_started_at=case_started_at,
+                    replay_source=replay_source,
                 )
             except LabRecorderSendError as error:
                 results.append(
@@ -600,106 +569,17 @@ class LabExecutionEngine:
             )
         return tuple(results)
 
-    def upload_vital_file(
-        self,
-        *,
-        target_url: str,
-        file_path: Path,
-        endpoint: str = "/upload",
-        vrcode: str | None = None,
-    ) -> LabVitalFileUploadReceipt:
+    def _open_replay_source(
+        self, session: LabSession
+    ) -> LabVitalReplaySource | None:
+        if session.scenario_id != "vital-file-replay":
+            return None
+        if session.vital_file_path is None:
+            raise LabRecorderSendError("Vital File replay source is not configured")
         try:
-            return self.vital_file_uploader.upload(
-                target_url=target_url,
-                file_path=file_path,
-                endpoint=endpoint,
-                vrcode=vrcode,
-            )
-        except (OSError, LabVitalFileUploadError) as error:
+            return self.vital_replay_source_factory.open(Path(session.vital_file_path))
+        except VitalReplaySourceError as error:
             raise LabRecorderSendError(str(error)) from error
-
-
-def _stream_file_request(
-    *,
-    base_url: str,
-    endpoint: str,
-    headers: dict[str, str],
-    header: bytes,
-    file_path: Path,
-    footer: bytes,
-    timeout_seconds: float,
-    chunk_size: int = 1024 * 1024,
-) -> _UploadHTTPResponse:
-    parsed_base = urlparse(base_url)
-    request_url = urlparse(urljoin(base_url.rstrip("/") + "/", endpoint.lstrip("/")))
-    host = request_url.hostname or parsed_base.hostname
-    if host is None:
-        raise LabVitalFileUploadError(f"targetURL host is missing: {base_url}")
-    port = request_url.port
-    if request_url.scheme == "https":
-        connection: http.client.HTTPConnection = http.client.HTTPSConnection(
-            host,
-            port,
-            timeout=timeout_seconds,
-        )
-    elif request_url.scheme == "http":
-        connection = http.client.HTTPConnection(host, port, timeout=timeout_seconds)
-    else:
-        raise LabVitalFileUploadError(
-            f"targetURL scheme is unsupported: {request_url.scheme}"
-        )
-
-    request_path = request_url.path or "/"
-    if request_url.query:
-        request_path = f"{request_path}?{request_url.query}"
-
-    try:
-        connection.putrequest("POST", request_path)
-        for key, value in headers.items():
-            connection.putheader(key, value)
-        connection.endheaders()
-        connection.send(header)
-        with file_path.open("rb") as file_obj:
-            while chunk := file_obj.read(chunk_size):
-                connection.send(chunk)
-        connection.send(footer)
-        response = connection.getresponse()
-        return _UploadHTTPResponse(
-            status_code=int(response.status),
-            body=response.read(),
-        )
-    finally:
-        connection.close()
-
-
-def _multipart_file_boundaries(
-    *,
-    boundary: str,
-    file_field: str,
-    file_path: Path,
-    form_fields: dict[str, str],
-) -> tuple[bytes, bytes]:
-    chunks: list[bytes] = []
-    for name, value in form_fields.items():
-        chunks.append(f"--{boundary}\r\n".encode("ascii"))
-        chunks.append(
-            (f'Content-Disposition: form-data; name="{name}"\r\n\r\n').encode()
-        )
-        chunks.append(str(value).encode("utf-8"))
-        chunks.append(b"\r\n")
-
-    content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-    chunks.append(f"--{boundary}\r\n".encode("ascii"))
-    chunks.append(
-        (
-            f'Content-Disposition: form-data; name="{file_field}"; '
-            f'filename="{file_path.name}"\r\n'
-        ).encode()
-    )
-    chunks.append(f"Content-Type: {content_type}\r\n\r\n".encode("ascii"))
-    footer = f"\r\n--{boundary}--\r\n".encode("ascii")
-    return b"".join(chunks), footer
-
 
 def lab_recorder_payload(
     *,
@@ -709,10 +589,13 @@ def lab_recorder_payload(
     sequence: int = 1,
     frame_started_at: float,
     case_started_at: float,
+    replay_source: LabVitalReplaySource | None = None,
 ) -> dict[str, object]:
     if session.scenario_id == "vital-file-replay":
         if session.vital_file_path is None:
             raise LabRecorderSendError("vital file replay source is not configured")
+        if replay_source is None:
+            raise LabRecorderSendError("Vital File replay reader is not configured")
         return lab_vital_file_replay_payload(
             session=session,
             bed=bed,
@@ -720,6 +603,7 @@ def lab_recorder_payload(
             sequence=sequence,
             frame_started_at=frame_started_at,
             case_started_at=case_started_at,
+            replay_source=replay_source,
         )
 
     now = frame_started_at
@@ -1076,8 +960,17 @@ def lab_vital_file_replay_payload(
     sequence: int = 1,
     frame_started_at: float,
     case_started_at: float,
+    replay_source: LabVitalReplaySource,
 ) -> dict[str, object]:
     now = frame_started_at
+    source_offset = (sequence - 1) % replay_source.duration_seconds
+    try:
+        source_frame = replay_source.frame(
+            offset_seconds=source_offset,
+            output_time=now,
+        )
+    except VitalReplaySourceError as error:
+        raise LabRecorderSendError(str(error)) from error
     room = {
         "roomname": bed.name,
         "seqid": sequence,
@@ -1088,37 +981,15 @@ def lab_vital_file_replay_payload(
         "dtserver": now,
         "ptcon": 1,
         "recording": 1,
-        "devs": [
-            {
-                "type": "replay",
-                "name": "VitalServer Lab",
-                "status": "connected",
-            }
-        ],
-        "trks": [
-            {
-                "id": 2001,
-                "name": "HR",
-                "dname": "VitalServer Lab",
-                "montype": "ECG_HR",
-                "type": "num",
-                "unit": "/min",
-                "recs": [{"dt": now, "val": 75}],
-            },
-            {
-                "id": 2002,
-                "name": "PLETH_SPO2",
-                "dname": "VitalServer Lab",
-                "montype": "PLETH_SPO2",
-                "type": "num",
-                "unit": "%",
-                "recs": [{"dt": now, "val": 98}],
-            },
-        ],
+        "devs": list(source_frame.devices),
+        "trks": list(source_frame.tracks),
         "evts": [
             {
                 "dt": now,
-                "val": "Lab vital file replay started",
+                "val": (
+                    "Vital File replay source frame "
+                    f"{source_offset + 1}/{replay_source.duration_seconds}"
+                ),
             }
         ],
         "filts": [],

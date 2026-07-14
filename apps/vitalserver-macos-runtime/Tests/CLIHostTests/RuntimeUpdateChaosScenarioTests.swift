@@ -447,7 +447,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 fileStore: fileStore,
                 runtimeHealthSnapshot: { Self.healthSnapshot() },
                 rotateRuntimeLogs: {},
-                rollback: { _ in },
+                rollback: { _, _ in },
                 startRuntimeServices: { _ in },
                 stopRuntimeServices: {},
                 prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: { _ in },
@@ -459,6 +459,8 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     describeError: { _ in "unexpected" },
                     log: log
                 ),
+                workflowOperationStateRepository: RuntimeWorkflowOperationStateRepositorySpy(),
+                workflowOperationStateTimestamp: { "2026-05-22T00:00:01Z" },
                 pruneOldRuntimeArtifacts: {},
                 materializeBundle: { url in
                     guard fileStore.directoryExists(url) else {

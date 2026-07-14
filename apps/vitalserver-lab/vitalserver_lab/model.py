@@ -10,6 +10,40 @@ from uuid import uuid4
 
 RANDOM_SUFFIX_ALPHABET = string.ascii_uppercase + string.digits
 
+LabVitalFileReplayMode = Literal["once", "count", "continuous"]
+
+
+@dataclass(frozen=True)
+class LabVitalFileReplayPolicy:
+    """Explicit completion policy for one uploaded Vital File replay."""
+
+    mode: LabVitalFileReplayMode
+    count: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode == "count":
+            if self.count is None or self.count < 2:
+                raise ValueError(
+                    "count replay mode requires count greater than or equal to 2"
+                )
+            return
+        if self.count is not None:
+            raise ValueError(f"{self.mode} replay mode does not accept count")
+
+    @property
+    def finite_count(self) -> int | None:
+        if self.mode == "once":
+            return 1
+        if self.mode == "count":
+            return self.count
+        return None
+
+    def as_json(self) -> dict[str, object]:
+        document: dict[str, object] = {"mode": self.mode}
+        if self.count is not None:
+            document["count"] = self.count
+        return document
+
 
 def random_suffix() -> str:
     return "".join(secrets.choice(RANDOM_SUFFIX_ALPHABET) for _ in range(6))
@@ -79,7 +113,10 @@ class LabSessionCreateInput:
     target_url: str | None
     bed_room_names: tuple[str, ...] = ()
     bed_ids: tuple[str, ...] = ()
+    recorder_ids: tuple[str, ...] = ()
     vital_file_path: str | None = None
+    vital_file_relative_path: str | None = None
+    replay_policy: LabVitalFileReplayPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -119,13 +156,16 @@ class LabSession:
     target_url: str | None
     bed_room_names: tuple[str, ...]
     bed_ids: tuple[str, ...]
+    recorder_ids: tuple[str, ...]
     vital_file_path: str | None
+    vital_file_relative_path: str | None
+    replay_policy: LabVitalFileReplayPolicy | None
     state: str
     created_at: str
     updated_at: str
 
     def as_json(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "sessionId": self.session_id,
             "scenarioId": self.scenario_id,
             "name": self.name,
@@ -137,6 +177,13 @@ class LabSession:
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
         }
+        if self.vital_file_relative_path is not None:
+            document["vitalFileRelativePath"] = self.vital_file_relative_path
+        if self.replay_policy is not None:
+            document["replayPolicy"] = self.replay_policy.as_json()
+        if self.recorder_ids:
+            document["recorderIds"] = list(self.recorder_ids)
+        return document
 
     def as_private_json(self) -> dict[str, object]:
         document = self.as_json()
@@ -293,6 +340,12 @@ class InMemoryLabSessionStore:
             if request.bed_ids
             else ()
         )
+        if request.recorder_ids:
+            explicit_recorders_for_session(
+                tuple(self.recorders.values()),
+                request.recorder_ids,
+                tuple(bed.bed_id for bed in selected_beds),
+            )
         bed_room_names = (
             tuple(bed.name for bed in selected_beds)
             if selected_beds
@@ -308,7 +361,10 @@ class InMemoryLabSessionStore:
             target_url=request.target_url,
             bed_room_names=bed_room_names,
             bed_ids=tuple(bed.bed_id for bed in selected_beds),
+            recorder_ids=request.recorder_ids,
             vital_file_path=request.vital_file_path,
+            vital_file_relative_path=request.vital_file_relative_path,
+            replay_policy=request.replay_policy,
             state="accepted",
             created_at=now,
             updated_at=now,
@@ -405,7 +461,10 @@ class InMemoryLabSessionStore:
             target_url=request.target_url,
             bed_room_names=request.room_names,
             bed_ids=(),
+            recorder_ids=(),
             vital_file_path=None,
+            vital_file_relative_path=None,
+            replay_policy=None,
             state="accepted",
             created_at=utc_now_iso(),
             updated_at=utc_now_iso(),
@@ -579,6 +638,13 @@ class InMemoryLabSessionStore:
                 recorders_by_bed_id.get(bed.bed_id, []),
                 key=lambda recorder: recorder.recorder_id,
             )
+            if session.recorder_ids:
+                requested = set(session.recorder_ids)
+                existing_recorders = [
+                    recorder
+                    for recorder in existing_recorders
+                    if recorder.recorder_id in requested
+                ]
             if existing_recorders:
                 for recorder in existing_recorders:
                     self.recorders[recorder.recorder_id] = replace(
@@ -634,6 +700,37 @@ def explicit_beds_for_session(
             kind="labSessionCreateBedTargetMissing",
         )
     return tuple(by_id[bed_id] for bed_id in bed_ids)
+
+
+def explicit_recorders_for_session(
+    recorders: tuple[LabRecorder, ...],
+    recorder_ids: tuple[str, ...],
+    bed_ids: tuple[str, ...],
+) -> tuple[LabRecorder, ...]:
+    by_id = {recorder.recorder_id: recorder for recorder in recorders}
+    missing = tuple(
+        recorder_id for recorder_id in recorder_ids if recorder_id not in by_id
+    )
+    if missing:
+        raise LabSessionStoreUnavailable(
+            "No Lab recorders matched the session create request: "
+            + ", ".join(missing),
+            kind="labSessionCreateRecorderTargetMissing",
+        )
+    selected = tuple(by_id[recorder_id] for recorder_id in recorder_ids)
+    allowed_beds = set(bed_ids)
+    mismatched = tuple(
+        recorder.recorder_id
+        for recorder in selected
+        if recorder.bed_id not in allowed_beds
+    )
+    if mismatched:
+        raise LabSessionStoreUnavailable(
+            "Lab recorders do not belong to the selected beds: "
+            + ", ".join(mismatched),
+            kind="labSessionCreateRecorderBedMismatch",
+        )
+    return selected
 
 
 def lab_bed_for_session(

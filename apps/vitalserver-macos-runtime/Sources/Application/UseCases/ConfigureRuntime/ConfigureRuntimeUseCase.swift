@@ -77,15 +77,33 @@ public struct ConfigureRuntimeContext<NetworkMode: Equatable> {
 
 public struct ConfigureRuntimeRequest<NetworkMode: Equatable>: Equatable {
     public let changes: [ConfigureRuntimeChange<NetworkMode>]
-    public let restart: Bool
+    public let activation: ConfigureRuntimeActivationIntent
+
+    public var restart: Bool {
+        activation != .saveOnly
+    }
 
     public init(
         changes: [ConfigureRuntimeChange<NetworkMode>] = [],
         restart: Bool = false
     ) {
         self.changes = changes
-        self.restart = restart
+        self.activation = restart ? .activateChangedComponents : .saveOnly
     }
+
+    public init(
+        changes: [ConfigureRuntimeChange<NetworkMode>] = [],
+        activation: ConfigureRuntimeActivationIntent
+    ) {
+        self.changes = changes
+        self.activation = activation
+    }
+}
+
+public enum ConfigureRuntimeActivationIntent: Equatable, Sendable {
+    case saveOnly
+    case activateChangedComponents
+    case restartVMRuntime
 }
 
 public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
@@ -301,14 +319,20 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             ))
         }
         effects.append(.restrictSecretFile(context.guestRuntimeConfigURL))
-        let restartRequirement = restartRequirement(
+        let changedComponentsRequirement = restartRequirement(
             current: currentVMConfig,
             planned: vmConfig,
             currentVMDiskSizeGiB: currentVMDiskSizeGiB,
             requestedDiskGiB: requestedDiskGiB,
             changes: request.changes
         )
-        let restart = request.restart && restartRequirement.requiresRestart
+        let restartRequirement = switch request.activation {
+        case .saveOnly, .activateChangedComponents:
+            changedComponentsRequirement
+        case .restartVMRuntime:
+            ConfigureRuntimeRestartRequirement.vmRuntime
+        }
+        let restart = request.activation != .saveOnly && restartRequirement.requiresRestart
         if restart, let activationEffect = activationEffect(for: restartRequirement) {
             effects.append(activationEffect)
         }

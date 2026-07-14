@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Contracts
 
 struct RuntimeLabPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
@@ -273,19 +274,50 @@ struct RuntimeLabPanel: View {
     private var labVitalFileReplaySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            Text(RuntimeLabPanelText.vitalFileReplay)
+            Text(RuntimeLabPanelText.vitalFiles)
                 .font(.headline)
+
+            Text(RuntimeLabPanelText.uploadToLibrary)
+                .font(.subheadline.weight(.semibold))
+            HStack(spacing: 8) {
+                Button(RuntimeLabPanelText.chooseVitalFilesForUpload) {
+                    viewModel.chooseVitalFilesForProductLabUpload()
+                }
+                Text(RuntimeLabPanelText.selectedVitalFiles(viewModel.labVitalFileUploadSources.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button(RuntimeLabPanelText.uploadToLibrary) {
+                    Task { await viewModel.uploadVitalFileToProductLab() }
+                }
+                .disabled(!viewModel.labCanUploadVitalFile)
+            }
+            if !viewModel.labVitalFileUploadSources.isEmpty {
+                Text(viewModel.labVitalFileUploadSources.map(\.lastPathComponent).joined(separator: ", "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            }
+            if !viewModel.labVitalFileImportMessage.isEmpty {
+                Text(viewModel.labVitalFileImportMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+            Text(RuntimeLabPanelText.replayUploadedFile)
+                .font(.subheadline.weight(.semibold))
             HStack(spacing: 8) {
                 TextField(RuntimeLabPanelText.vitalFileFilter, text: $viewModel.labVitalFileQuery)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 220)
 
-                Picker(RuntimeLabPanelText.vitalFileSource, selection: $viewModel.selectedLabVitalFileGuestPath) {
+                Picker(RuntimeLabPanelText.vitalFileSource, selection: $viewModel.selectedLabVitalFileRelativePath) {
                     if viewModel.labFilteredVitalFiles.isEmpty {
                         Text(AppConstants.Values.empty).tag("")
                     } else {
-                        ForEach(viewModel.labFilteredVitalFiles, id: \.guestPath) { vitalFile in
-                            Text(vitalFile.relativePath).tag(vitalFile.guestPath)
+                        ForEach(viewModel.labFilteredVitalFiles, id: \.relativePath) { vitalFile in
+                            Text(vitalFile.relativePath).tag(vitalFile.relativePath)
                         }
                     }
                 }
@@ -293,35 +325,51 @@ struct RuntimeLabPanel: View {
                 .frame(maxWidth: 360)
             }
 
-            HStack {
-                Button(RuntimeLabPanelText.choosingVitalFileForPlayback) {
-                    viewModel.chooseVitalFileForProductLabReplay()
+            HStack(spacing: 8) {
+                Picker(RuntimeLabPanelText.replayResources, selection: $viewModel.labVitalFileReplayResourceMode) {
+                    Text(RuntimeLabPanelText.quickCreateResources).tag(RuntimeLabVitalFileReplayResourceMode.quickCreate)
+                    Text(RuntimeLabPanelText.useExistingResources).tag(RuntimeLabVitalFileReplayResourceMode.existing)
                 }
-                Text(vitalFilePlaybackName(viewModel.labVitalFilePath))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                .frame(maxWidth: 220)
+
+                if viewModel.labVitalFileReplayResourceMode == .existing {
+                    Picker(RuntimeLabPanelText.labBedManagement, selection: $viewModel.selectedLabBedID) {
+                        ForEach(viewModel.labBeds.beds, id: \.bedId) { bed in
+                            Text(bed.name).tag(bed.bedId)
+                        }
+                    }
+                    .frame(maxWidth: 220)
+                    Picker(RuntimeLabPanelText.labRecorderManagement, selection: $viewModel.selectedLabRecorderID) {
+                        ForEach(
+                            viewModel.labRecorders.recorders.filter { $0.bedId == viewModel.selectedLabBedID },
+                            id: \.recorderId
+                        ) { recorder in
+                            Text(recorder.vrcode).tag(recorder.recorderId)
+                        }
+                    }
+                    .frame(maxWidth: 220)
+                }
             }
 
             HStack(spacing: 8) {
-                Button("Replay .vital file") {
+                Picker(RuntimeLabPanelText.repeatMode, selection: $viewModel.labVitalFileReplayRepeatMode) {
+                    Text(RuntimeLabPanelText.repeatOnce).tag(RuntimeLabVitalFileReplayRepeatMode.once)
+                    Text(RuntimeLabPanelText.repeatCount).tag(RuntimeLabVitalFileReplayRepeatMode.count)
+                    Text(RuntimeLabPanelText.repeatContinuous).tag(RuntimeLabVitalFileReplayRepeatMode.continuous)
+                }
+                .frame(maxWidth: 220)
+                if viewModel.labVitalFileReplayRepeatMode == .count {
+                    Stepper(
+                        RuntimeLabPanelText.repeatTimes(viewModel.labVitalFileReplayCount),
+                        value: $viewModel.labVitalFileReplayCount,
+                        in: 2...10_000
+                    )
+                    .frame(maxWidth: 180)
+                }
+                Button(RuntimeLabPanelText.replayUploadedFile) {
                     Task { await viewModel.replayVitalFileWithProductLab() }
                 }
                 .disabled(!viewModel.labCanReplayVitalFile)
-
-                Button("Upload .vital file") {
-                    Task { await viewModel.uploadVitalFileToProductLab() }
-                }
-                .disabled(!viewModel.labCanUploadVitalFile)
-            }
-
-            if let upload = viewModel.labVitalFileUploadResponse.upload {
-                Text("\(upload.filename) · HTTP \(upload.statusCode)")
-                    .font(.caption)
-                    .foregroundStyle(upload.ok ? Color.secondary : Color.red)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
             }
         }
     }
@@ -528,13 +576,6 @@ struct RuntimeLabPanel: View {
                 word.prefix(1).uppercased() + word.dropFirst()
             }
             .joined(separator: " ")
-    }
-
-    private func vitalFilePlaybackName(_ path: String) -> String {
-        guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return RuntimeLabPanelText.chooseVitalFileForPlayback
-        }
-        return URL(fileURLWithPath: path).lastPathComponent
     }
 
 }

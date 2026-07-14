@@ -1452,9 +1452,11 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
 
         let response = try gateway.replayLabVitalFile(RuntimeLabVitalFileReplayRequest(
-            vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+            vitalFileRelativePath: "sample.vital",
             sessionName: "Replay",
-            targetURL: "http://edge/"
+            targetURL: "http://edge/",
+            resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
+            repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
         ))
 
         XCTAssertEqual(response.operationId, "op_replay_1")
@@ -1466,40 +1468,11 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
         let body = try XCTUnwrap(client.requests.first?.httpBody)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        XCTAssertEqual(object["vitalFilePath"] as? String, "/mnt/tirosh-vital-files/sample.vital")
+        XCTAssertEqual(object["vitalFileRelativePath"] as? String, "sample.vital")
         XCTAssertEqual(object["sessionName"] as? String, "Replay")
         XCTAssertEqual(object["targetURL"] as? String, "http://edge/")
     }
 
-    func testUploadLabVitalFilePostsRuntimeLabRequest() throws {
-        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
-            statusCode: 202,
-            body: labVitalFileUploadResponseBody(operationId: "op_upload_1")
-        ))
-        let gateway = try HTTPRuntimeGuestControlGateway(
-            baseURL: "http://127.0.0.1:18330",
-            httpClient: client
-        )
-
-        let response = try gateway.uploadLabVitalFile(RuntimeLabVitalFileUploadRequest(
-            vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
-            targetURL: "http://edge/",
-            endpoint: "/upload"
-        ))
-
-        XCTAssertEqual(response.operationId, "op_upload_1")
-        XCTAssertEqual(response.upload?.filename, "sample.vital")
-        XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
-        XCTAssertEqual(
-            client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/runtime/lab/vital-files/upload"]
-        )
-        let body = try XCTUnwrap(client.requests.first?.httpBody)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        XCTAssertEqual(object["vitalFilePath"] as? String, "/mnt/tirosh-vital-files/sample.vital")
-        XCTAssertEqual(object["targetURL"] as? String, "http://edge/")
-        XCTAssertEqual(object["endpoint"] as? String, "/upload")
-    }
 }
 
 private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPClient, @unchecked Sendable {
@@ -1580,26 +1553,6 @@ private func labRecorderResponseBody(operationId: String) -> String {
         "state": "stopped",
         "messagesSent": 1,
         "lastSendState": "sent"
-      },
-      "operationId": "\(operationId)",
-      "labOperationId": "lab_\(operationId)",
-      "readError": null
-    }
-    """
-}
-
-private func labVitalFileUploadResponseBody(operationId: String) -> String {
-    """
-    {
-      "state": "loaded",
-      "upload": {
-        "filename": "sample.vital",
-        "endpoint": "/upload",
-        "targetURL": "http://edge/",
-        "statusCode": 200,
-        "bytesSent": 456,
-        "responseText": "success",
-        "ok": true
       },
       "operationId": "\(operationId)",
       "labOperationId": "lab_\(operationId)",

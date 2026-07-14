@@ -1,4 +1,5 @@
 import Foundation
+@testable import Errors
 @testable import MacPlatformAgent
 import OutboundAdapters
 import RuntimeControl
@@ -6,13 +7,67 @@ import XCTest
 
 final class MacPlatformAgentServiceTests: XCTestCase {
     @MainActor
+    func testHeadlessServiceFailsWhenHostStateDatabaseIsMissing() throws {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("platform-agent-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+
+        XCTAssertThrowsError(try MacPlatformAgentService.live(
+            installedPaths: installedPaths,
+            servesDevConsole: false,
+            port: 0,
+            automationToken: "test-token"
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeHostStateStoreStartupError,
+                .missing(path: installedPaths.runtimeStateDatabase.path)
+            )
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: installedPaths.runtimeStateDatabase.path))
+    }
+
+    @MainActor
+    func testHeadlessServiceFailsWhenHostStateDatabaseIsCorrupt() throws {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("platform-agent-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        try FileManager.default.createDirectory(
+            at: installedPaths.runtimeStateDatabase.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("not-a-sqlite-database".utf8).write(to: installedPaths.runtimeStateDatabase)
+
+        XCTAssertThrowsError(try MacPlatformAgentService.live(
+            installedPaths: installedPaths,
+            servesDevConsole: false,
+            port: 0,
+            automationToken: "test-token"
+        )) { error in
+            guard case .failed(let path, _, let reason) = error as? RuntimeHostStateStoreStartupError else {
+                return XCTFail("expected corrupt Host state store failure, got \(error)")
+            }
+            XCTAssertEqual(path, installedPaths.runtimeStateDatabase.path)
+            XCTAssertFalse(reason.isEmpty)
+        }
+    }
+
+    @MainActor
     func testHeadlessServiceOwnsReachableRuntimeControlAPI() async throws {
         let productRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("platform-agent-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: productRoot) }
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        _ = try SQLiteHostRuntimeStateDatabase(
+            url: installedPaths.runtimeStateDatabase
+        ).initialize()
 
         let service = try MacPlatformAgentService.live(
-            installedPaths: InstalledRuntimePaths(productRoot: productRoot),
+            installedPaths: installedPaths,
             servesDevConsole: false,
             port: 0,
             automationToken: "test-token"
@@ -36,7 +91,7 @@ final class MacPlatformAgentServiceTests: XCTestCase {
         XCTAssertEqual(httpResponse.statusCode, 200)
         XCTAssertEqual(runtimeProvider.state, .missing)
         XCTAssertNil(runtimeProvider.document)
-        XCTAssertTrue(runtimeProvider.readError?.contains("vm-lifecycle.json") == true)
+        XCTAssertTrue(runtimeProvider.readError?.contains("VM lifecycle SQLite state is missing") == true)
     }
 
     @MainActor

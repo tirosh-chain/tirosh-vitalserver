@@ -1,11 +1,12 @@
-FROM python:3.14-alpine
+FROM python:3.12-slim
 
 WORKDIR /opt/vitalserver-lab
 
 RUN pip install --no-cache-dir \
     'python-socketio[client]>=4.6,<5' \
     'SQLAlchemy==2.0.51' \
-    'psycopg[binary]==3.3.4'
+    'psycopg[binary]==3.3.4' \
+    'vitaldb>=1.7,<2'
 
 COPY apps/vitalserver-lab/ ./
 

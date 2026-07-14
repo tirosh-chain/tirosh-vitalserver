@@ -158,7 +158,7 @@ sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
 이 TS의 1차 수정은 watchdog restart loop 증폭을 끊는 데 집중합니다.
 
 1. Host-owned VM lifecycle contract를 추가했습니다.
-   - `vm/run/vm-lifecycle.json`이 VM process lifecycle을 명시합니다.
+   - 초기 구현의 `vm/run/vm-lifecycle.json`은 installed runtime에서 `runtime-state.sqlite.vm_lifecycle`로 이전되었습니다. Golden-rootfs build VM의 lifecycle JSON은 별도 compile-proof 계약입니다.
    - VM launcher가 `starting`, `bootstrapping`, `stopping`, `stopped`, `failed`를 기록합니다.
    - `failed`는 `disk-attachment-invalid` 같은 terminal reason을 contract로 남깁니다.
 2. Health snapshot이 VM lifecycle contract를 소비합니다.

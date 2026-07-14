@@ -172,6 +172,79 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.runtimeAppliedSettings.cpuCount, 4)
     }
 
+    func testLiveSettingsReadUsesSQLiteDesiredAndAppliedPayloadsInsteadOfMaterializedFiles() throws {
+        let directory = try temporaryDirectory()
+        let desiredVM = Data("""
+        {
+          "cpuCount": 8,
+          "memoryMiB": 8192,
+          "network": { "mode": "shared", "bridgedInterface": null },
+          "vitalFilesDirectory": { "hostPath": "/Volumes/Desired" },
+          "autoRecoveryEnabled": true,
+          "preventSystemSleep": true
+        }
+        """.utf8)
+        let appliedVM = Data("""
+        {
+          "cpuCount": 4,
+          "memoryMiB": 4096,
+          "network": { "mode": "shared", "bridgedInterface": null },
+          "vitalFilesDirectory": { "hostPath": "/Volumes/Applied" },
+          "autoRecoveryEnabled": true,
+          "preventSystemSleep": true
+        }
+        """.utf8)
+        let guestSettings = Data("""
+        {
+          "vitalServerURL": "https://settings.example.test/",
+          "remoteConsoleURL": "https://console.settings.example.test/",
+          "publicHost": "settings.example.test",
+          "publicPort": 8443,
+          "automaticBackupEnabled": true,
+          "backupScheduleTimes": ["03:15"],
+          "backupRetentionCount": 12
+        }
+        """.utf8)
+        let record = RuntimeHostSettingsRecord(
+            payload: RuntimeHostSettingsPayload(
+                vmConfigJSON: desiredVM,
+                guestRuntimeConfigJSON: Data("{}".utf8),
+                guestRuntimeSettingsJSON: guestSettings
+            ),
+            appliedPayload: RuntimeHostSettingsPayload(
+                vmConfigJSON: appliedVM,
+                guestRuntimeConfigJSON: Data("{}".utf8),
+                guestRuntimeSettingsJSON: guestSettings
+            ),
+            revision: 2,
+            desiredAt: "2026-07-14T08:00:00Z",
+            appliedRevision: 1,
+            appliedRunID: "run-1",
+            appliedAt: "2026-07-14T07:00:00Z"
+        )
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: directory.appendingPathComponent("missing-vm-config.json").path,
+                appliedVMConfig: directory.appendingPathComponent("missing-applied-vm-config.json").path,
+                vmDisk: directory.appendingPathComponent("missing-disk.img").path,
+                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
+                proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
+            ),
+            fileStore: SystemRuntimeFileStore(),
+            runCommand: startOnBootCommand(),
+            hostSettingsReader: StubRuntimeHostSettingsReader(result: .loaded(record))
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.cpuCount, 8)
+        XCTAssertEqual(settings.vitalFilesDirectory, "/Volumes/Desired")
+        XCTAssertEqual(settings.runtimeAppliedSettings.cpuCount, 4)
+        XCTAssertEqual(settings.runtimeAppliedSettings.vitalFilesDirectory, "/Volumes/Applied")
+        XCTAssertEqual(settings.publicHost, "settings.example.test")
+        XCTAssertFalse(settings.readIssues.contains { ["vmConfig", "appliedVMConfig", "guestRuntimeSettings"].contains($0.source) })
+    }
+
     func testReportsSettingsReadIssuesWithoutReplacingMissingFilesWithErrors() throws {
         let directory = try temporaryDirectory()
         let vmConfig = directory.appendingPathComponent("vm-config.json")
@@ -588,6 +661,16 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertFalse(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRestart))
     }
 
+    func testConfigureArgumentsPreserveExplicitVMRuntimeRestartWhenSettingsAlreadyMatch() {
+        let arguments = RuntimeCommandFactory.configureRuntimeArguments(
+            settings: RuntimeSettings(),
+            forceVMRuntimeRestart: true
+        )
+
+        XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRestartVMRuntime))
+        XCTAssertFalse(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRestart))
+    }
+
     func testStatusReaderReportsDataDirectoryStats() throws {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
@@ -760,7 +843,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderDoesNotPromoteMissingRuntimeStatusDocumentToReadIssue() throws {
         let directory = try temporaryDirectory()
         let reader = SystemPlatformStateReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            runtimeVersionFile: directory.appendingPathComponent("runtime-version.json"),
+            backupsDirectory: directory.appendingPathComponent("backups"),
+            runSyncCommand: missingLaunchdServiceCommand()
         )
 
         let status = reader.loadPlatformState(settings: RuntimeSettings())
@@ -1014,7 +1100,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testStatusReaderDoesNotUseOperationLeaseForCurrentStatusFields() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
-        let operationLease = directory.appendingPathComponent(RuntimeHostOwnerFileNames.operationLease)
+        let operationLease = directory.appendingPathComponent(RuntimeLegacyHostStateFileNames.operationLease)
         try writeRuntimeStatusDocument(runtimeStatus, extraFields: "")
         try """
         {
@@ -1087,7 +1173,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try Data("not-json".utf8).write(to: runtimeStatus)
 
         let reader = SystemPlatformStateReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            runtimeVersionFile: directory.appendingPathComponent("runtime-version.json"),
+            backupsDirectory: directory.appendingPathComponent("backups"),
+            runSyncCommand: missingLaunchdServiceCommand()
         )
 
         let status = reader.loadPlatformState(settings: RuntimeSettings())
@@ -1133,7 +1222,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         """.write(to: runtimeInstallState, atomically: true, encoding: .utf8)
 
         let reader = SystemPlatformStateReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            runtimeVersionFile: directory.appendingPathComponent("runtime-version.json"),
+            backupsDirectory: directory.appendingPathComponent("backups"),
+            runSyncCommand: missingLaunchdServiceCommand()
         )
 
         let status = reader.loadPlatformState(settings: RuntimeSettings())
@@ -1548,7 +1640,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             runtimeObservabilityDB: directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB).path
         )
         let platformStateReader = SystemPlatformStateReader(
-            runtimeLauncherPath: directory.appendingPathComponent("launcher").path
+            runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
+            runtimeVersionFile: directory.appendingPathComponent("runtime-version.json"),
+            backupsDirectory: directory.appendingPathComponent("backups"),
+            runSyncCommand: missingLaunchdServiceCommand()
         )
         let observabilityReader = SystemRuntimeObservabilityReader.live(paths: observabilityPaths)
 
@@ -1631,7 +1726,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let client = MacRuntimeControlClient(
             releaseInfo: .generated,
             platformStateReader: StubStatusReader(),
-            observabilityReader: StubObservabilityReader()
+            observabilityReader: StubObservabilityReader(),
+            settingsReader: SystemRuntimeSettingsReader()
         )
 
         let status = client.loadPlatformState(settings: RuntimeSettings())
@@ -1669,6 +1765,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         stdout: String = ""
     ) -> @Sendable (String, [String]) -> RuntimeCommandResult {
         { _, _ in RuntimeCommandResult(exitCode: 0, stdout: stdout, stderr: "") }
+    }
+
+    private func missingLaunchdServiceCommand() -> @Sendable (String, [String]) -> RuntimeCommandResult {
+        { _, _ in RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service") }
     }
 
     private func runtimeEvent(id: String, timestamp: String) -> RuntimeEventDocument {
@@ -2204,5 +2304,13 @@ private struct StubRuntimeVMLifecycleResourceReader: RuntimeVMLifecycleResourceR
 
     func loadVMLifecycleResource() -> RuntimeVMLifecycleResourceState {
         resource
+    }
+}
+
+private struct StubRuntimeHostSettingsReader: RuntimeHostSettingsReading {
+    let result: RuntimeHostSettingsReadResult
+
+    func loadHostSettings() -> RuntimeHostSettingsReadResult {
+        result
     }
 }

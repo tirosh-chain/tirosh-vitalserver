@@ -117,6 +117,17 @@ public struct RuntimeWatchdogRunnerComposition {
     }
 
     public func run() throws {
+        projectHostDiagnostics(stage: "before-watchdog")
+        do {
+            try runWatchdog()
+        } catch {
+            projectHostDiagnostics(stage: "after-watchdog-failure")
+            throw error
+        }
+        projectHostDiagnostics(stage: "after-watchdog")
+    }
+
+    private func runWatchdog() throws {
         try RuntimeWatchdogRunner().run(
             operations: RuntimeWatchdogActions(
                 createLogsDirectory: operations.createLogsDirectory,
@@ -139,9 +150,9 @@ public struct RuntimeWatchdogRunnerComposition {
                 recordLifecycleEvent: operations.recordLifecycleEvent,
                 markVMLifecycleRunning: { lifecycle, message in
                     let timestamp = operations.now()
-                    _ = try FileRuntimeVMLifecycleResourceStore(
-                        documentURL: context.installedPaths.vmLifecycle,
-                        fileStore: operations.fileStore
+                    _ = try SQLiteRuntimeVMLifecycleResourceStore(
+                        databaseURL: context.installedPaths.runtimeStateDatabase,
+                        transitionDecider: RuntimeVMLifecycleTransitionUseCase()
                     ).putVMLifecycleResource(RuntimeVMLifecycleDocument(
                         state: .running,
                         operation: lifecycle.operation,
@@ -153,6 +164,58 @@ public struct RuntimeWatchdogRunnerComposition {
                         terminalReason: nil,
                         message: message
                     ))
+                    let settingsRepository = SQLiteRuntimeHostSettingsRepository(
+                        databaseURL: context.installedPaths.runtimeStateDatabase,
+                        transitionDecider: RuntimeHostSettingsActivationUseCase()
+                    )
+                    let settings: RuntimeHostSettingsRecord
+                    switch settingsRepository.loadHostSettings() {
+                    case .loaded(let record):
+                        settings = record
+                    case .missing:
+                        throw RuntimeHostSettingsStateTransitionError.missingState
+                    case .failed(let reason):
+                        throw SQLiteRuntimeHostSettingsRepositoryError.writeFailed(
+                            path: context.installedPaths.runtimeStateDatabase.path,
+                            reason: reason
+                        )
+                    }
+                    guard settings.bootRunID == lifecycle.bootID,
+                          let bootRevision = settings.bootRevision,
+                          let runID = settings.bootRunID else {
+                        throw SQLiteRuntimeHostSettingsRepositoryError.lifecycleProofFailed(
+                            reason: "watchdog lifecycle/settings boot identity mismatch"
+                        )
+                    }
+                    let applied = try settingsRepository.markHostSettingsApplied(
+                        revision: bootRevision,
+                        runID: runID,
+                        appliedAt: ISO8601DateFormatter().string(from: timestamp)
+                    )
+                    guard let appliedPayload = applied.appliedPayload else {
+                        throw SQLiteRuntimeHostSettingsRepositoryError.lifecycleProofFailed(
+                            reason: "applied Host settings payload is missing revision=\(bootRevision)"
+                        )
+                    }
+                    do {
+                        try operations.fileStore.writeData(
+                            appliedPayload.vmConfigJSON,
+                            to: context.installedPaths.appliedVMConfig,
+                            options: .atomic
+                        )
+                        guard try operations.fileStore.readData(context.installedPaths.appliedVMConfig)
+                            == appliedPayload.vmConfigJSON else {
+                            throw SQLiteRuntimeHostSettingsRepositoryError.writeFailed(
+                                path: context.installedPaths.appliedVMConfig.path,
+                                reason: "applied settings projection verification failed"
+                            )
+                        }
+                    } catch {
+                        operations.log(
+                            "Host settings applied projection failed revision=\(bootRevision) "
+                                + "path=\(context.installedPaths.appliedVMConfig.path) reason=\(error)"
+                        )
+                    }
                 },
                 recoveryWaitSeconds: operations.recoveryWaitSeconds,
                 sleep: operations.sleep
@@ -160,5 +223,35 @@ public struct RuntimeWatchdogRunnerComposition {
             log: operations.log,
             printLine: operations.printLine
         )
+    }
+
+    private func projectHostDiagnostics(stage: String) {
+        do {
+            let repository = SQLiteRuntimeHostDiagnosticOutboxRepository(
+                databaseURL: context.installedPaths.runtimeStateDatabase
+            )
+            let result = try RuntimeHostDiagnosticsProjectionWorkflow(
+                repository: repository,
+                eventSink: JSONLRuntimeHostDiagnosticEventSink(
+                    url: context.installedPaths.hostRuntimeStateEvents,
+                    fileStore: operations.fileStore
+                ),
+                snapshotSink: JSONRuntimeHostStateDiagnosticSnapshotSink(
+                    url: context.installedPaths.hostRuntimeStateSnapshot,
+                    fileStore: operations.fileStore
+                ),
+                timestamp: {
+                    ISO8601DateFormatter().string(from: operations.now())
+                },
+                describeError: RuntimeErrorDescription.describe
+            ).run()
+            operations.log(
+                "Host diagnostics projected stage=\(stage) events=\(result.projectedEventCount) sourceSequence=\(result.snapshotSourceSequence)"
+            )
+        } catch {
+            operations.log(
+                "Host diagnostics projection failed stage=\(stage) error=\(RuntimeErrorDescription.describe(error))"
+            )
+        }
     }
 }

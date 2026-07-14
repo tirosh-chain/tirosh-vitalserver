@@ -47,12 +47,22 @@ extension RuntimeViewModel {
     var labCanReplayVitalFile: Bool {
         labCanUseProductLab
             && !isRunningLabAction
-            && !resolvedLabVitalFileGuestPath().isEmpty
+            && !selectedLabVitalFileRelativePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (labVitalFileReplayResourceMode == .quickCreate || replayExistingResourceSelectionIsValid)
+            && (labVitalFileReplayRepeatMode != .count || labVitalFileReplayCount >= 2)
     }
 
     var labCanUploadVitalFile: Bool {
-        labCanReplayVitalFile
-            && !labTargetURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isRunningLabAction && !labVitalFileUploadSources.isEmpty
+    }
+
+    private var replayExistingResourceSelectionIsValid: Bool {
+        guard let recorder = labRecorders.recorders.first(where: {
+            $0.recorderId == selectedLabRecorderID
+        }) else {
+            return false
+        }
+        return !selectedLabBedID.isEmpty && recorder.bedId == selectedLabBedID
     }
 
     var labFilteredVitalFiles: [RuntimeLabVitalFile] {
@@ -200,16 +210,16 @@ extension RuntimeViewModel {
         await runProductLabRecorderCommand(recorderID: recorderID, start: false)
     }
 
-    func chooseVitalFileForProductLabReplay() {
+    func chooseVitalFilesForProductLabUpload() {
         let selectedFiles = nativeShell.chooseVitalFiles(
-            prompt: RuntimeLabPanelText.choosingVitalFileForPlayback,
-            directoryURL: URL(fileURLWithPath: runtimeSettings.vitalFilesDirectory)
+            prompt: RuntimeLabPanelText.chooseVitalFilesForUpload,
+            directoryURL: nil
         )
-        guard let selectedFile = selectedFiles.first else {
+        guard !selectedFiles.isEmpty else {
             return
         }
-        labVitalFilePath = selectedFile.path
-        selectedLabVitalFileGuestPath = ""
+        labVitalFileUploadSources = selectedFiles
+        labVitalFileImportMessage = ""
     }
 
     func replayVitalFileWithProductLab() async {
@@ -218,10 +228,10 @@ extension RuntimeViewModel {
             message = RuntimeLabPanelText.labCapabilityUnavailable
             return
         }
-        let guestPath = resolvedLabVitalFileGuestPath()
-        guard !guestPath.isEmpty else {
-            recordLabActionMessage(RuntimeLabPanelText.chooseSharedVitalFileForPlayback, tone: .failure)
-            message = RuntimeLabPanelText.chooseSharedVitalFileForPlayback
+        let relativePath = selectedLabVitalFileRelativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !relativePath.isEmpty else {
+            recordLabActionMessage(RuntimeLabPanelText.chooseUploadedVitalFile, tone: .failure)
+            message = RuntimeLabPanelText.chooseUploadedVitalFile
             return
         }
 
@@ -232,9 +242,14 @@ extension RuntimeViewModel {
         message = RuntimeLabPanelText.replayingLabVitalFile
         do {
             applyLabSessionResponse(try await controlClient.replayLabVitalFile(RuntimeLabVitalFileReplayRequest(
-                vitalFilePath: guestPath,
+                vitalFileRelativePath: relativePath,
                 sessionName: labSessionName.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-                targetURL: labTargetURL.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                targetURL: labTargetURL.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                resourceSelection: replayResourceSelection(),
+                repeatPolicy: RuntimeLabVitalFileReplayPolicy(
+                    mode: labVitalFileReplayRepeatMode,
+                    count: labVitalFileReplayRepeatMode == .count ? labVitalFileReplayCount : nil
+                )
             )))
             if let sessionID = labSessionResponse.session?.sessionId {
                 applyLabSessionResponse(try await controlClient.startLabSession(sessionId: sessionID))
@@ -250,38 +265,28 @@ extension RuntimeViewModel {
     }
 
     func uploadVitalFileToProductLab() async {
-        guard labCanUseProductLab else {
-            recordLabActionMessage(RuntimeLabPanelText.labCapabilityUnavailable, tone: .failure)
-            message = RuntimeLabPanelText.labCapabilityUnavailable
-            return
-        }
-        let guestPath = resolvedLabVitalFileGuestPath()
-        guard !guestPath.isEmpty else {
-            recordLabActionMessage(RuntimeLabPanelText.chooseSharedVitalFileForPlayback, tone: .failure)
-            message = RuntimeLabPanelText.chooseSharedVitalFileForPlayback
-            return
-        }
-        let targetURL = labTargetURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !targetURL.isEmpty else {
-            recordLabActionMessage(RuntimeLabPanelText.labTargetURLRequired, tone: .failure)
-            message = RuntimeLabPanelText.labTargetURLRequired
+        guard !labVitalFileUploadSources.isEmpty else {
+            recordLabActionMessage(RuntimeLabPanelText.chooseVitalFilesForUpload, tone: .failure)
             return
         }
 
         isRunningLabAction = true
         defer { isRunningLabAction = false }
 
-        recordLabActionMessage(RuntimeLabPanelText.uploadingLabVitalFile)
-        message = RuntimeLabPanelText.uploadingLabVitalFile
+        recordLabActionMessage(RuntimeLabPanelText.uploadingLabVitalFiles)
+        message = RuntimeLabPanelText.uploadingLabVitalFiles
         do {
-            labVitalFileUploadResponse = try await controlClient.uploadLabVitalFile(RuntimeLabVitalFileUploadRequest(
-                vitalFilePath: guestPath,
-                targetURL: targetURL,
-                endpoint: "/upload"
-            ))
-            recordLabUploadResult()
+            let imported = try nativeShell.importVitalFiles(
+                labVitalFileUploadSources,
+                into: URL(fileURLWithPath: runtimeSettings.vitalFilesDirectory)
+            )
+            labVitalFileImportMessage = RuntimeLabPanelText.uploadedLabVitalFiles(imported.count)
+            labVitalFileUploadSources = []
+            await refreshProductLabReadModels()
+            recordLabActionMessage(labVitalFileImportMessage)
+            message = labVitalFileImportMessage
         } catch {
-            labVitalFileUploadResponse = RuntimeLabVitalFileUploadResponse.unavailable(readError: error.localizedDescription)
+            labVitalFileImportMessage = error.localizedDescription
             recordLabActionMessage(error.localizedDescription, tone: .failure)
             message = error.localizedDescription
         }
@@ -540,10 +545,10 @@ extension RuntimeViewModel {
 
     private func applyLabVitalFiles(_ vitalFiles: RuntimeLabVitalFileList) {
         labVitalFiles = vitalFiles
-        if selectedLabVitalFileGuestPath.isEmpty
-            || !vitalFiles.vitalFiles.contains(where: { $0.guestPath == selectedLabVitalFileGuestPath })
+        if selectedLabVitalFileRelativePath.isEmpty
+            || !vitalFiles.vitalFiles.contains(where: { $0.relativePath == selectedLabVitalFileRelativePath })
         {
-            selectedLabVitalFileGuestPath = vitalFiles.vitalFiles.first?.guestPath ?? ""
+            selectedLabVitalFileRelativePath = vitalFiles.vitalFiles.first?.relativePath ?? ""
         }
     }
 
@@ -600,27 +605,15 @@ extension RuntimeViewModel {
         message = errorMessage
     }
 
-    private func recordLabUploadResult() {
-        if let upload = labVitalFileUploadResponse.upload, upload.ok {
-            let actionMessage = RuntimeLabPanelText.uploadedLabVitalFile(upload.filename)
-            recordLabActionMessage(actionMessage)
-            message = actionMessage
-            return
+    private func replayResourceSelection() -> RuntimeLabVitalFileReplayResourceSelection {
+        if labVitalFileReplayResourceMode == .quickCreate {
+            return RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate)
         }
-        let errorMessage = labVitalFileUploadResponse.readError ?? RuntimeLabPanelText.uploadFailed
-        recordLabActionMessage(errorMessage, tone: .failure)
-        message = errorMessage
-    }
-
-    private func resolvedLabVitalFileGuestPath() -> String {
-        let selectedGuestPath = selectedLabVitalFileGuestPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !selectedGuestPath.isEmpty {
-            return selectedGuestPath
-        }
-        return RuntimeLabVitalFilePathPolicy().guestPath(
-            hostFilePath: labVitalFilePath,
-            hostRootPath: runtimeSettings.vitalFilesDirectory
-        ) ?? ""
+        return RuntimeLabVitalFileReplayResourceSelection(
+            mode: .existing,
+            bedId: selectedLabBedID,
+            recorderId: selectedLabRecorderID
+        )
     }
 
     private func labSessionBedIDsList() -> [String] {

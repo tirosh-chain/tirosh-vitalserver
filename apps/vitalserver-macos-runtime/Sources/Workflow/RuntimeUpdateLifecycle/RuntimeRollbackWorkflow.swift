@@ -146,7 +146,7 @@ public struct RollbackRuntimeWorkflow {
             },
             publish: { event in
                 operations.log(useCase.rollbackProgressLogMessage(event: event))
-                writeProgressBestEffort(event, operations: operations)
+                try operations.writeProgress(event)
             }
         )
 
@@ -247,20 +247,6 @@ public struct RollbackRuntimeWorkflow {
             return plan
         case .failed(let message):
             throw RollbackRuntimeUseCaseError.operationFailed(message)
-        }
-    }
-
-    private func writeProgressBestEffort(
-        _ event: RuntimeStepExecutionEvent,
-        operations: RollbackRuntimeOperations
-    ) {
-        do {
-            try operations.writeProgress(event)
-        } catch {
-            operations.log(RuntimeOperationReportingUseCase().progressWriteFailedLogMessage(
-                event: event,
-                reason: operations.describeError(error)
-            ))
         }
     }
 

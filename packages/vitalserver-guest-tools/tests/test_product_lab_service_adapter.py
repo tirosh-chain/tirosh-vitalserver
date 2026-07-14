@@ -110,30 +110,16 @@ def test_product_lab_service_adapter_maps_vital_file_replay(
     adapter = ProductLabServiceAdapter(base_url="http://lab")
 
     result = adapter.replay_vital_file(
-        {"vitalFilePath": "/mnt/tirosh-vital-files/sample.vital"}
+        {
+            "vitalFileRelativePath": "sample.vital",
+            "resourceSelection": {"mode": "quickCreate"},
+            "repeatPolicy": {"mode": "once"},
+        }
     )
 
     assert result.session["sessionId"] == "lab-replay-1"
     assert result.session["scenarioId"] == "vital-file-replay"
     assert result.session["name"] == "Vital File Replay"
-    assert result.lab_operation_id == "lab-operation-1"
-
-
-def test_product_lab_service_adapter_maps_vital_file_upload(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(lab_service, "urlopen", fake_urlopen)
-    adapter = ProductLabServiceAdapter(base_url="http://lab")
-
-    result = adapter.upload_vital_file(
-        {
-            "vitalFilePath": "/mnt/tirosh-vital-files/sample.vital",
-            "targetURL": "http://edge/",
-        }
-    )
-
-    assert result.document["upload"]["filename"] == "sample.vital"
-    assert result.document["upload"]["targetURL"] == "http://edge/"
     assert result.lab_operation_id == "lab-operation-1"
 
 
@@ -238,23 +224,6 @@ def fake_urlopen(request: Request, timeout: float) -> FakeResponse:
                 name="Vital File Replay",
                 session_state="accepted",
             )
-        )
-    if method == "POST" and path == "/lab/vital-files/upload":
-        return FakeResponse(
-            {
-                "state": "loaded",
-                "operationId": "lab-operation-1",
-                "upload": {
-                    "filename": "sample.vital",
-                    "endpoint": "/upload",
-                    "targetURL": "http://edge/",
-                    "statusCode": 200,
-                    "bytesSent": 456,
-                    "responseText": "success",
-                    "ok": True,
-                },
-                "readError": None,
-            }
         )
     raise HTTPError(
         request.full_url,

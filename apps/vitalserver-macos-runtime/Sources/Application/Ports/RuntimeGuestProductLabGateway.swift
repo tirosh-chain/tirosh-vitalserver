@@ -23,9 +23,6 @@ public protocol RuntimeGuestProductLabGateway {
     func replayLabVitalFile(
         _ request: RuntimeLabVitalFileReplayRequest
     ) throws -> RuntimeLabSessionResponse
-    func uploadLabVitalFile(
-        _ request: RuntimeLabVitalFileUploadRequest
-    ) throws -> RuntimeLabVitalFileUploadResponse
 }
 
 public extension RuntimeGuestProductLabGateway {

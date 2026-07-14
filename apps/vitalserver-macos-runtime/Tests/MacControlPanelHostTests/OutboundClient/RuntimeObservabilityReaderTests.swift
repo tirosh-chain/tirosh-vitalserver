@@ -1424,9 +1424,6 @@ private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway,
         throw GuestVitalDBObservationGatewayStubError.unexpectedCall("replayLabVitalFile")
     }
 
-    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) throws -> RuntimeLabVitalFileUploadResponse {
-        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("uploadLabVitalFile")
-    }
 }
 
 private enum GuestVitalDBObservationGatewayStubError: Error, CustomStringConvertible {

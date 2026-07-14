@@ -1741,21 +1741,14 @@ export const runtimeLabSessionResponseSchema = z
 
 export const runtimeLabVitalFileUploadResponseSchema = z
   .object({
-    state: runtimeLabReadStateSchema,
-    upload: z
-      .object({
-        filename: z.string(),
-        endpoint: z.string(),
-        targetURL: z.string(),
-        statusCode: z.number(),
-        bytesSent: z.number(),
-        responseText: z.string(),
-        ok: z.boolean()
+    state: z.literal("completed"),
+    files: z.array(
+      z.object({
+        fileName: z.string(),
+        relativePath: z.string(),
+        sizeBytes: z.number().int().nonnegative()
       })
-      .passthrough()
-      .nullable(),
-    operationId: nullableString,
-    labOperationId: nullableString.optional(),
-    readError: nullableString
+      .strict()
+    )
   })
-  .passthrough();
+  .strict();

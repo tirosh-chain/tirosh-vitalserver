@@ -153,8 +153,10 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                 encodeVMConfig: { try JSONEncoder().encode($0) },
                 encodeGuestRuntimeConfig: { try JSONEncoder().encode($0) },
                 encodeGuestRuntimeSettings: { try JSONEncoder().encode($0) },
-                writeData: { data, url, _ in
-                    self.writes.append((data: data, url: url))
+                persistAndMaterialize: { vmData, vmURL, guestConfigData, guestConfigURL, guestSettingsData, guestSettingsURL in
+                    self.writes.append((data: vmData, url: vmURL))
+                    self.writes.append((data: guestConfigData, url: guestConfigURL))
+                    self.writes.append((data: guestSettingsData, url: guestSettingsURL))
                 }
             ),
             effects: ConfigureRuntimeEffects(
@@ -190,7 +192,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     return change
                 }
             }
-            return ConfigureRuntimeRequest(changes: changes, restart: request.restart)
+            return ConfigureRuntimeRequest(changes: changes, activation: request.activation)
         }
 
         func executeEffects(_ effects: [ConfigureRuntimeEffect]) throws {

@@ -106,8 +106,8 @@ extension RuntimeLabControlCommand {
     }
 
     public static func parseVitalReplayCommand(_ arguments: [String]) throws -> RuntimeLabControlCommand {
-        let usage = "usage: vitalserver-vm runtime lab-vital-replay <vital-file-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]"
-        guard let vitalFilePath = arguments.first, !vitalFilePath.isEmpty else {
+        let usage = "usage: vitalserver-vm runtime lab-vital-replay <vital-file-relative-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]"
+        guard let vitalFileRelativePath = arguments.first, !vitalFileRelativePath.isEmpty else {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         var remaining = Array(arguments.dropFirst())
@@ -129,9 +129,11 @@ extension RuntimeLabControlCommand {
         }
         return RuntimeLabControlCommand(
             action: .replayVitalFile(RuntimeLabVitalFileReplayRequest(
-                vitalFilePath: vitalFilePath,
+                vitalFileRelativePath: vitalFileRelativePath,
                 sessionName: sessionName,
-                targetURL: targetURL
+                targetURL: targetURL,
+                resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
+                repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
             )),
             guestControlBaseURL: guestControlBaseURL
         )

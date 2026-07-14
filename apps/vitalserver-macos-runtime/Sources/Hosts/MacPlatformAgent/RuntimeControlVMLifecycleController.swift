@@ -8,16 +8,15 @@ final class RuntimeControlVMLifecycleController: RuntimeVMLifecycleResourceReadi
     RuntimeVMLifecycleResourceWriting,
     @unchecked Sendable
 {
-    private let store: FileRuntimeVMLifecycleResourceStore
+    private let store: SQLiteRuntimeVMLifecycleResourceStore
 
     init(
-        documentURL: URL = InstalledRuntimePaths.defaultInstalled.vmLifecycle,
-        fileStore: any RuntimeFileStore = SystemRuntimeFileStore(),
+        databaseURL: URL = InstalledRuntimePaths.defaultInstalled.runtimeStateDatabase,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
-        self.store = FileRuntimeVMLifecycleResourceStore(
-            documentURL: documentURL,
-            fileStore: fileStore,
+        self.store = SQLiteRuntimeVMLifecycleResourceStore(
+            databaseURL: databaseURL,
+            transitionDecider: RuntimeVMLifecycleTransitionUseCase(),
             now: now
         )
     }

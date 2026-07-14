@@ -96,9 +96,10 @@ PWA는 native Helper와 달리 host OS 권한을 직접 갖지 않습니다. 따
 
 ## Product Lab Boundary
 
-Product Lab은 virtual recorder scenario와 `.vital` replay/upload의 제품 경계입니다. TestKit은 현재 구현 adapter일 수 있지만 PWA는 TestKit container API를 제품 route로 직접 호출하지 않습니다.
+Product Lab은 virtual recorder scenario와 Vital Files replay의 제품 경계입니다. Vital Files upload는 Host에서 선택한 N개 파일을 configured library로 가져오는 별도 storage operation입니다. TestKit은 현재 구현 adapter일 수 있지만 PWA는 TestKit container API를 제품 route로 직접 호출하지 않습니다.
 
 - Lab UI는 `/runtime/lab/scenarios`, `/runtime/lab/sessions`, `/runtime/lab/vital-files/replay`, `/runtime/lab/vital-files/upload` 계약을 사용합니다.
+- Upload는 반복된 multipart `files` field를 사용하며, 하나라도 `.vital`이 아니면 request를 보내지 않습니다. Runtime storage owner도 batch 전체를 다시 검증합니다.
 - TestKit API contract와 Product Lab contract를 혼합하지 않습니다.
 - TestKit 상태는 runtime status/observability의 product state로 승격하지 않습니다.
 - Legacy `/dev/testkit/*` routes are not product routes. If implementation diagnostics are needed, they should be explicit More/Advanced diagnostics and must not drive Product Lab state.

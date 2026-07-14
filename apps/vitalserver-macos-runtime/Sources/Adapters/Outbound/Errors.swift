@@ -391,6 +391,7 @@ public enum RuntimeMigrationRunnerError: Error, CustomStringConvertible {
 public enum RuntimeOperationLeaseOwnerError: Error, Equatable, CustomStringConvertible {
     case existingOperation(operationId: String, operation: String)
     case readFailed(String)
+    case writeFailed(String)
     case createFailed(String)
     case lockFailed(path: String, reason: String)
     case operationIdMismatch(expected: String, actual: String)
@@ -401,12 +402,90 @@ public enum RuntimeOperationLeaseOwnerError: Error, Equatable, CustomStringConve
             return "runtime operation lease already exists operationId=\(operationId) operation=\(operation)"
         case .readFailed(let reason):
             return "runtime operation lease read failed: \(reason)"
+        case .writeFailed(let reason):
+            return "runtime operation lease write failed: \(reason)"
         case .createFailed(let path):
             return "runtime operation lease create failed path=\(path)"
         case .lockFailed(let path, let reason):
             return "runtime operation lease lock failed path=\(path) reason=\(reason)"
         case .operationIdMismatch(let expected, let actual):
             return "runtime operation lease operationId mismatch expected=\(expected) actual=\(actual)"
+        }
+    }
+}
+
+public enum RuntimeOperationLeaseLegacyMigrationError: Error, Equatable, CustomStringConvertible {
+    case sourceInspectionFailed(path: String, reason: String)
+    case unexpectedSourceState(path: String, state: String)
+    case sourceReadFailed(path: String, reason: String)
+    case sourceDecodeFailed(path: String, reason: String)
+    case archiveConflict(path: String)
+    case sourceReappeared(path: String, completedState: String)
+    case databaseFailed(path: String, reason: String)
+    case archiveFailed(source: String, destination: String, reason: String)
+
+    public var description: String {
+        switch self {
+        case .sourceInspectionFailed(let path, let reason):
+            return "operation lease legacy source inspection failed path=\(path) reason=\(reason)"
+        case .unexpectedSourceState(let path, let state):
+            return "operation lease legacy source state is unexpected path=\(path) state=\(state)"
+        case .sourceReadFailed(let path, let reason):
+            return "operation lease legacy source read failed path=\(path) reason=\(reason)"
+        case .sourceDecodeFailed(let path, let reason):
+            return "operation lease legacy source decode failed path=\(path) reason=\(reason)"
+        case .archiveConflict(let path):
+            return "operation lease legacy archive already exists path=\(path)"
+        case .sourceReappeared(let path, let completedState):
+            return "operation lease legacy source reappeared after migration path=\(path) completedState=\(completedState)"
+        case .databaseFailed(let path, let reason):
+            return "operation lease legacy database migration failed path=\(path) reason=\(reason)"
+        case .archiveFailed(let source, let destination, let reason):
+            return "operation lease legacy archive failed source=\(source) destination=\(destination) reason=\(reason)"
+        }
+    }
+}
+
+public enum RuntimeHostStateStoreStartupError: Error, Equatable, CustomStringConvertible {
+    case missing(path: String)
+    case failed(path: String, stage: String, reason: String)
+
+    public var description: String {
+        switch self {
+        case .missing(let path):
+            return "Host runtime state store is missing path=\(path)"
+        case .failed(let path, let stage, let reason):
+            return "Host runtime state store readiness failed path=\(path) stage=\(stage) reason=\(reason)"
+        }
+    }
+}
+
+public enum SQLiteRuntimeWorkflowOperationStateRepositoryError:
+    Error,
+    Equatable,
+    CustomStringConvertible
+{
+    case invalidInput(field: String, value: String)
+    case alreadyExists(operationID: String, revision: Int)
+    case missing(operationID: String)
+    case staleRevision(operationID: String, expected: Int, actual: Int)
+    case operationMismatch(operationID: String, expected: String, actual: String)
+    case writeFailed(path: String, reason: String)
+
+    public var description: String {
+        switch self {
+        case .invalidInput(let field, let value):
+            return "workflow operation state input is invalid field=\(field) value=\(value)"
+        case .alreadyExists(let operationID, let revision):
+            return "workflow operation state already exists operationId=\(operationID) revision=\(revision)"
+        case .missing(let operationID):
+            return "workflow operation state is missing operationId=\(operationID)"
+        case .staleRevision(let operationID, let expected, let actual):
+            return "workflow operation state revision is stale operationId=\(operationID) expected=\(expected) actual=\(actual)"
+        case .operationMismatch(let operationID, let expected, let actual):
+            return "workflow operation type changed operationId=\(operationID) expected=\(expected) actual=\(actual)"
+        case .writeFailed(let path, let reason):
+            return "workflow operation state SQLite write failed path=\(path) reason=\(reason)"
         }
     }
 }
@@ -536,6 +615,60 @@ public enum SQLiteRuntimeObservabilityStoreError: Error, Equatable {
     case unexpectedPathState(path: String, state: String)
     case relationshipProjectionProviderMissing
     case transactionRollbackFailed(original: String, rollback: String)
+}
+
+
+public enum SQLiteHostRuntimeStateDatabaseError: Error, Equatable, CustomStringConvertible {
+    case pathInspectionFailed(path: String, reason: String)
+    case unexpectedPathState(path: String, state: String)
+    case directoryPreparationFailed(path: String, reason: String)
+    case openFailed(path: String, reason: String)
+    case configurationFailed(String)
+    case prepareFailed(String)
+    case bindFailed(String)
+    case stepFailed(String)
+    case schemaObjectMissing(String)
+    case unsupportedSchemaVersion(found: Int, supported: Int)
+    case migrationSequenceInvalid(expected: Int, actual: Int)
+    case integrityCheckFailed(String)
+    case metadataMissing
+    case metadataInvalid(field: String, value: String)
+    case transactionRollbackFailed(original: String, rollback: String)
+
+    public var description: String {
+        switch self {
+        case .pathInspectionFailed(let path, let reason):
+            return "Host runtime state database path inspection failed path=\(path) reason=\(reason)"
+        case .unexpectedPathState(let path, let state):
+            return "Host runtime state database path state is unexpected path=\(path) state=\(state)"
+        case .directoryPreparationFailed(let path, let reason):
+            return "Host runtime state database directory preparation failed path=\(path) reason=\(reason)"
+        case .openFailed(let path, let reason):
+            return "Host runtime state database open failed path=\(path) reason=\(reason)"
+        case .configurationFailed(let reason):
+            return "Host runtime state database configuration failed reason=\(reason)"
+        case .prepareFailed(let reason):
+            return "Host runtime state database statement prepare failed reason=\(reason)"
+        case .bindFailed(let reason):
+            return "Host runtime state database statement bind failed reason=\(reason)"
+        case .stepFailed(let reason):
+            return "Host runtime state database statement step failed reason=\(reason)"
+        case .schemaObjectMissing(let name):
+            return "Host runtime state database schema object is missing name=\(name)"
+        case .unsupportedSchemaVersion(let found, let supported):
+            return "Host runtime state database schema is newer than this runtime found=\(found) supported=\(supported)"
+        case .migrationSequenceInvalid(let expected, let actual):
+            return "Host runtime state database migration sequence is invalid expected=\(expected) actual=\(actual)"
+        case .integrityCheckFailed(let result):
+            return "Host runtime state database integrity check failed result=\(result)"
+        case .metadataMissing:
+            return "Host runtime state database metadata row is missing"
+        case .metadataInvalid(let field, let value):
+            return "Host runtime state database metadata is invalid field=\(field) value=\(value)"
+        case .transactionRollbackFailed(let original, let rollback):
+            return "Host runtime state database rollback failed original=\(original) rollback=\(rollback)"
+        }
+    }
 }
 
 

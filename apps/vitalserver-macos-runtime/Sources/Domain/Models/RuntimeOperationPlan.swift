@@ -39,6 +39,7 @@ public enum RuntimeOperationPlans {
         steps: [
             .loadInstallSettings,
             .prepareInstallDirectories,
+            .prepareHostStateStore,
             .rotateRuntimeLogs,
             .configureGuestRuntimeConfig,
             .prepareInstalledExecutables,
@@ -59,6 +60,7 @@ public enum RuntimeOperationPlans {
         steps: [
             .loadInstallSettings,
             .prepareInstallDirectories,
+            .prepareHostStateStore,
             .rotateRuntimeLogs,
             .configureGuestRuntimeConfig,
             .prepareInstalledExecutables,

@@ -309,10 +309,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Upload a vital file through Runtime Lab
-         * @description Uploads a mounted .vital file through the configured lab upload endpoint.
+         * Upload one or more files to the Vital Files library
+         * @description Atomically imports a multipart batch into the Vital Files library. Every part must use field name files and a .vital filename; one invalid or conflicting file rejects the whole batch.
          */
-        post: operations["uploadRuntimeLabVitalFile"];
+        post: operations["uploadRuntimeLabVitalFiles"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2006,6 +2006,9 @@ export interface components {
             recorderCount: number;
             targetURL: string | null;
             bedIds?: string[];
+            recorderIds?: string[];
+            vitalFileRelativePath?: string | null;
+            replayPolicy?: components["schemas"]["RuntimeLabVitalFileReplayPolicy"] | null;
             createdAt?: string | null;
             updatedAt?: string | null;
         };
@@ -2030,29 +2033,40 @@ export interface components {
             bedIds?: string[];
         };
         RuntimeLabVitalFileReplayRequest: {
-            vitalFilePath: string;
+            vitalFileRelativePath: string;
             sessionName?: string | null;
             targetURL?: string | null;
+            resourceSelection: components["schemas"]["RuntimeLabVitalFileReplayResourceSelection"];
+            repeatPolicy: components["schemas"]["RuntimeLabVitalFileReplayPolicy"];
+        };
+        RuntimeLabVitalFileReplayResourceSelection: {
+            /** @constant */
+            mode: "quickCreate";
+        } | {
+            /** @constant */
+            mode: "existing";
+            bedId: string;
+            recorderId: string;
+        };
+        RuntimeLabVitalFileReplayPolicy: {
+            /** @enum {unknown} */
+            mode: "once" | "continuous";
+        } | {
+            /** @constant */
+            mode: "count";
+            count: number;
         };
         RuntimeLabVitalFileUploadRequest: {
-            vitalFilePath: string;
-            targetURL: string;
-            endpoint?: string | null;
-            vrcode?: string | null;
+            files: string[];
         };
         RuntimeLabVitalFileUploadResponse: {
-            state: components["schemas"]["RuntimeLabReadState"];
-            operationId?: string | null;
-            upload?: {
-                filename: string;
-                endpoint: string;
-                targetURL: string;
-                statusCode: number;
-                bytesSent: number;
-                responseText: string;
-                ok: boolean;
-            } | null;
-            readError?: string | null;
+            /** @constant */
+            state: "completed";
+            files: {
+                fileName: string;
+                relativePath: string;
+                sizeBytes: number;
+            }[];
         };
         RuntimeGuestControlServiceStatus: {
             service: string;
@@ -3308,7 +3322,7 @@ export interface operations {
             409: components["responses"]["OperationInProgress"];
         };
     };
-    uploadRuntimeLabVitalFile: {
+    uploadRuntimeLabVitalFiles: {
         parameters: {
             query?: never;
             header?: never;
@@ -3317,7 +3331,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RuntimeLabVitalFileUploadRequest"];
+                "multipart/form-data": components["schemas"]["RuntimeLabVitalFileUploadRequest"];
             };
         };
         responses: {

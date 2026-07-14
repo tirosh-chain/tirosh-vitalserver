@@ -14,24 +14,19 @@ public actor MacRuntimeControlReadWorker {
     private let fileReader: any RuntimeHostFileReading
     private let settingsReader: any RuntimeSettingsReading
 
-    public init(releaseInfo: RuntimeReleaseInfo) {
-        self.init(
-            releaseInfo: releaseInfo,
-            operationLeaseReader: UnavailableRuntimeOperationLeaseReader(
-                reason: "runtime operation lease owner unavailable for default read worker"
-            )
-        )
-    }
-
     public init(
         releaseInfo: RuntimeReleaseInfo,
         operationLeaseReader: any RuntimeOperationLeaseReading,
+        workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
+            reason: "workflow operation state owner unavailable for default read worker"
+        ),
         guestAddressProvider: any RuntimeGuestAddressProvider = UnavailableRuntimeGuestAddressProvider(
             reason: "runtime Guest address owner unavailable for default read worker"
         ),
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading = UnavailableRuntimeVMLifecycleResourceReader(
             reason: "runtime VM lifecycle owner unavailable for default read worker"
-        )
+        ),
+        hostSettingsReader: any RuntimeHostSettingsReading
     ) {
         let fileReader = SystemRuntimeHostFileReader()
         self.init(
@@ -41,14 +36,20 @@ public actor MacRuntimeControlReadWorker {
                 vmLifecycleResourceReader: vmLifecycleResourceReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
-                operationLeaseReader: operationLeaseReader
+                operationLeaseReader: operationLeaseReader,
+                workflowOperationStateReader: workflowOperationStateReader
             ),
             observabilityReader: SystemRuntimeObservabilityReader.live(
                 paths: RuntimeObservabilityPaths(),
                 guestAddressProvider: guestAddressProvider
             ),
             fileReader: fileReader,
-            settingsReader: SystemRuntimeSettingsReader()
+            settingsReader: SystemRuntimeSettingsReader(
+                paths: RuntimeSettingsPaths(),
+                fileStore: SystemRuntimeFileStore(),
+                runCommand: ProcessRunner.runSync,
+                hostSettingsReader: hostSettingsReader
+            )
         )
     }
 
@@ -165,6 +166,9 @@ struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unche
 
     init(
         operationLeaseReader: any RuntimeOperationLeaseReading,
+        workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
+            reason: "workflow operation state owner unavailable for default operation-state reader"
+        ),
         installStateReader: @escaping @Sendable () -> RuntimeInstallStateRead = {
             RuntimeInstallStateRead.unavailable()
         },
@@ -173,6 +177,7 @@ struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unche
         self.init(
             resourceReader: HostPlatformOperationStateResourceReader(
                 operationLeaseReader: operationLeaseReader,
+                workflowOperationStateReader: workflowOperationStateReader,
                 installStateReader: installStateReader
             ),
             now: now
@@ -196,10 +201,16 @@ struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unche
     }
 
     static func live(
-        operationLeaseReader: any RuntimeOperationLeaseReading
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
+            reason: "workflow operation state owner unavailable for default operation-state reader"
+        )
     ) -> Self {
         return Self(
-            resourceReader: HostPlatformOperationStateResourceReader.live(operationLeaseReader: operationLeaseReader)
+            resourceReader: HostPlatformOperationStateResourceReader.live(
+                operationLeaseReader: operationLeaseReader,
+                workflowOperationStateReader: workflowOperationStateReader
+            )
         )
     }
 
@@ -208,8 +219,34 @@ struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unche
         return PlatformOperationState(
             activeOperation: nil,
             install: RuntimeInstallOperationState.fromInstallStateRead(snapshot.install),
-            lease: leaseState(from: snapshot.lease, now: now())
+            lease: leaseState(from: snapshot.lease, now: now()),
+            workflow: workflowState(from: snapshot.workflow)
         )
+    }
+
+    private func workflowState(
+        from readResult: RuntimeWorkflowOperationStateReadResult
+    ) -> RuntimeWorkflowOperationStateResource {
+        switch readResult {
+        case .missing:
+            return .unavailable()
+        case .failed(let reason):
+            return .failed(readError: reason)
+        case .loaded(let state):
+            return .loaded(RuntimeWorkflowOperationStateDocument(
+                operationID: state.operationID,
+                operation: state.operation,
+                phase: state.phase,
+                currentStep: state.currentStep,
+                stepStatus: state.stepStatus,
+                message: state.message,
+                reasonCodes: state.reasonCodes,
+                startedAt: state.startedAt,
+                updatedAt: state.updatedAt,
+                completedAt: state.completedAt,
+                revision: state.revision
+            ))
+        }
     }
 
     private func leaseState(

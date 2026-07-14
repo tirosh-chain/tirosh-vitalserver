@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 PACKAGE_MAKEFILE = ROOT / "make/vm/package.mk"
+RUNTIME_MAKEFILE = ROOT / "make/vm/runtime.mk"
 ROOT_MAKEFILE = ROOT / "Makefile"
 
 
@@ -56,6 +57,22 @@ def test_rootfs_cache_miss_recreates_the_base_disk() -> None:
     fresh_disk_flag = recipe.index("VM_RECREATE_ROOTFS=true")
 
     assert airgap_rootfs_call < fresh_disk_flag
+
+
+def test_vm_stage_materializes_host_settings_owner_after_guest_deploy() -> None:
+    recipe = target_recipe(
+        RUNTIME_MAKEFILE.read_text(encoding="utf-8"),
+        "internal/vm/stage",
+    )
+
+    assert_in_order(
+        recipe,
+        (
+            "guest-deploy",
+            "macos-runtime-control",
+            "runtime configure",
+        ),
+    )
 
 
 def test_rootfs_contract_ignores_legacy_generated_guest_wheels() -> None:

@@ -35,7 +35,6 @@ import {
   runtimeLabRecorderDeleteRequestSchema,
   runtimeLabSessionIdSchema,
   runtimeLabSessionCreateRequestSchema,
-  runtimeLabVitalFileUploadRequestSchema,
   runtimeLabVitalFileReplayRequestSchema,
   runtimeLogTextRequestSchema,
   vitalDBBedVisibilityRequestSchema,
@@ -384,13 +383,29 @@ export function useReplayLabVitalFile() {
   );
 }
 
-export function useUploadLabVitalFile() {
+export function useUploadLabVitalFiles() {
   const runtimeControlGateway = useRuntimeControlGateway();
-  return useLabMutation((request: RuntimeLabVitalFileUploadRequest) =>
-    runtimeControlGateway.uploadLabVitalFile(
-      parseConsoleRequest(runtimeLabVitalFileUploadRequestSchema, request)
-    )
-  );
+  return useLabMutation((request: RuntimeLabVitalFileUploadRequest) => {
+    validateVitalFileUpload(request.files);
+    return runtimeControlGateway.uploadLabVitalFiles(request);
+  });
+}
+
+function validateVitalFileUpload(files: File[]): void {
+  if (files.length === 0) {
+    throw new Error("Select at least one .vital file.");
+  }
+  const invalid = files.find((file) => !file.name.toLowerCase().endsWith(".vital"));
+  if (invalid) {
+    throw new Error(`Only .vital files can be uploaded: ${invalid.name}`);
+  }
+  const names = new Set<string>();
+  for (const file of files) {
+    if (names.has(file.name)) {
+      throw new Error(`Upload contains duplicate filenames: ${file.name}`);
+    }
+    names.add(file.name);
+  }
 }
 
 export function useVitalDBRecorders() {

@@ -52,7 +52,8 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
                     return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
                 },
                 now: { Date(timeIntervalSince1970: 0) },
-                log: { events.append("log:\($0)") }
+                log: { events.append("log:\($0)") },
+                stateWriter: testUninstallStateWriter()
             )
         )
 
@@ -111,7 +112,8 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
                     return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
                 },
                 now: { Date(timeIntervalSince1970: 0) },
-                log: { events.append("log:\($0)") }
+                log: { events.append("log:\($0)") },
+                stateWriter: testUninstallStateWriter()
             )
         )
 
@@ -201,6 +203,15 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
             )
         }
     }
+}
+
+private func testUninstallStateWriter() -> RuntimeUninstallStateWriter {
+    RuntimeUninstallStateWriter(
+        acquireOperationLease: {},
+        releaseOperationLease: {},
+        writeState: { _, _, _, _ in },
+        relocateProductRoot: { _, _ in }
+    )
 }
 
 private struct CleanUninstallCommandRequest: Equatable {

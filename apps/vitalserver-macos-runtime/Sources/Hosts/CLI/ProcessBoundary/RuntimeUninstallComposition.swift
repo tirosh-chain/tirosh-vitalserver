@@ -35,6 +35,8 @@ public struct RuntimeUninstallCompositionOperations {
     let forgetPackageReceipt: (String) -> RuntimeProcessResult
     let now: () -> Date
     let log: (String) -> Void
+    let operationID: () -> String
+    let stateWriter: RuntimeUninstallStateWriter?
 
     public init(
         fileStore: RuntimeFileStore,
@@ -51,7 +53,9 @@ public struct RuntimeUninstallCompositionOperations {
         openFilesInDirectory: @escaping (URL) -> RuntimeProcessResult,
         forgetPackageReceipt: @escaping (String) -> RuntimeProcessResult,
         now: @escaping () -> Date,
-        log: @escaping (String) -> Void
+        log: @escaping (String) -> Void,
+        operationID: @escaping () -> String = { UUID().uuidString.lowercased() },
+        stateWriter: RuntimeUninstallStateWriter? = nil
     ) {
         self.fileStore = fileStore
         self.configuredExternalVitalFilesDirectory = configuredExternalVitalFilesDirectory
@@ -68,6 +72,8 @@ public struct RuntimeUninstallCompositionOperations {
         self.forgetPackageReceipt = forgetPackageReceipt
         self.now = now
         self.log = log
+        self.operationID = operationID
+        self.stateWriter = stateWriter
     }
 }
 
@@ -96,15 +102,28 @@ public struct RuntimeUninstallRunner {
     }
 
     public func run(_ command: RuntimeUninstallCommand) throws {
-        try RuntimeUninstallWorkflow().run(
-            command,
-            paths: paths,
-            readers: readers,
-            effects: effects,
-            writer: writer,
-            diagnostics: diagnostics,
-            packageReceiptIdentifiers: packageReceiptIdentifiers
-        )
+        try writer.acquireOperationLease()
+        do {
+            try RuntimeUninstallWorkflow().run(
+                command,
+                paths: paths,
+                readers: readers,
+                effects: effects,
+                writer: writer,
+                diagnostics: diagnostics,
+                packageReceiptIdentifiers: packageReceiptIdentifiers
+            )
+        } catch {
+            let operationFailure = RuntimeErrorDescription.describe(error)
+            do {
+                try writer.releaseOperationLease()
+            } catch {
+                throw UninstallRuntimeUseCaseError.operationFailed(
+                    "uninstall failed operationFailure=\(operationFailure) leaseReleaseFailure=\(RuntimeErrorDescription.describe(error))"
+                )
+            }
+            throw error
+        }
     }
 }
 
@@ -116,6 +135,7 @@ public enum RuntimeUninstallComposition {
         let vitalFilesDirectoryRead = operations.configuredExternalVitalFilesDirectory()
         let uninstallPaths = RuntimeUninstallPaths(
             productRoot: context.installedPaths.productRoot,
+            runtimeStateDatabase: context.installedPaths.runtimeStateDatabase,
             managerApp: context.installedPaths.managerApp,
             defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory,
             externalVitalFilesDirectory: vitalFilesDirectoryRead.externalDirectory,
@@ -129,6 +149,20 @@ public enum RuntimeUninstallComposition {
                 context.installedPaths.uninstaller,
             ]
         )
+        let operationID = operations.operationID()
+        let stateWriter = operations.stateWriter ?? RuntimeUninstallWorkflowOperationStateSession(
+            operationID: operationID,
+            databaseURL: context.installedPaths.runtimeStateDatabase,
+            now: operations.now,
+            ownerPID: Int(ProcessInfo.processInfo.processIdentifier),
+            leaseDurationSeconds: Constants.Runtime.runtimeOperationLeaseDurationSeconds,
+            repositoryFactory: { databaseURL in
+                SQLiteRuntimeWorkflowOperationStateRepository(databaseURL: databaseURL)
+            },
+            leaseOwnerFactory: { databaseURL in
+                SQLiteRuntimeOperationLeaseRepository(databaseURL: databaseURL)
+            }
+        ).writer()
         return RuntimeUninstallRunner(
             paths: uninstallPaths,
             readers: RuntimeUninstallStateReaders(
@@ -216,20 +250,7 @@ public enum RuntimeUninstallComposition {
                     operations.forgetPackageReceipt(identifier)
                 }
             ),
-            writer: RuntimeUninstallStateWriter(
-                writeState: { state, clean, message, blockers in
-                    try RuntimeUninstallWorkflowStateArtifactStore(
-                        url: context.installedPaths.runtimeUninstallState,
-                        fileStore: operations.fileStore,
-                        now: operations.now
-                    ).write(
-                        state: state,
-                        clean: clean,
-                        message: message,
-                        blockers: blockers
-                    )
-                }
-            ),
+            writer: stateWriter,
             diagnostics: RuntimeUninstallDiagnostics(log: operations.log),
             packageReceiptIdentifiers: Constants.Product.packageReceiptIdentifiers
         )

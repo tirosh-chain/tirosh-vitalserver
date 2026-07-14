@@ -182,10 +182,6 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         try await client.replayLabVitalFile(request)
     }
 
-    public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
-        try await client.uploadLabVitalFile(request)
-    }
-
     public func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
         try await client.guestStackStatus()
     }

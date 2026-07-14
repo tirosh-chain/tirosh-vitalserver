@@ -102,6 +102,7 @@ enum RuntimeControlClientConstants {
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
         static let optionRestart = "--restart"
+        static let optionRestartVMRuntime = "--restart-vm-runtime"
     }
 
     enum Environment {

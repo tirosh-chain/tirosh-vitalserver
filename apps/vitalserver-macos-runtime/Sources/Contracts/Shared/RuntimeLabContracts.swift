@@ -111,6 +111,9 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
     public let recorderCount: Int
     public let targetURL: String?
     public let bedIds: [String]?
+    public let recorderIds: [String]?
+    public let vitalFileRelativePath: String?
+    public let replayPolicy: RuntimeLabVitalFileReplayPolicy?
     public let createdAt: String?
     public let updatedAt: String?
 
@@ -122,6 +125,9 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
         recorderCount: Int,
         targetURL: String?,
         bedIds: [String]? = nil,
+        recorderIds: [String]? = nil,
+        vitalFileRelativePath: String? = nil,
+        replayPolicy: RuntimeLabVitalFileReplayPolicy? = nil,
         createdAt: String? = nil,
         updatedAt: String? = nil
     ) {
@@ -132,6 +138,9 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
         self.recorderCount = recorderCount
         self.targetURL = targetURL
         self.bedIds = bedIds
+        self.recorderIds = recorderIds
+        self.vitalFileRelativePath = vitalFileRelativePath
+        self.replayPolicy = replayPolicy
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -411,95 +420,92 @@ public struct RuntimeLabSessionCreateRequest: Codable, Equatable, Sendable {
 }
 
 public struct RuntimeLabVitalFileReplayRequest: Codable, Equatable, Sendable {
-    public let vitalFilePath: String
+    public let vitalFileRelativePath: String
     public let sessionName: String?
     public let targetURL: String?
+    public let resourceSelection: RuntimeLabVitalFileReplayResourceSelection
+    public let repeatPolicy: RuntimeLabVitalFileReplayPolicy
 
     public init(
-        vitalFilePath: String,
+        vitalFileRelativePath: String,
         sessionName: String? = nil,
-        targetURL: String? = nil
+        targetURL: String? = nil,
+        resourceSelection: RuntimeLabVitalFileReplayResourceSelection,
+        repeatPolicy: RuntimeLabVitalFileReplayPolicy
     ) {
-        self.vitalFilePath = vitalFilePath
+        self.vitalFileRelativePath = vitalFileRelativePath
         self.sessionName = sessionName
         self.targetURL = targetURL
+        self.resourceSelection = resourceSelection
+        self.repeatPolicy = repeatPolicy
     }
 }
 
-public struct RuntimeLabVitalFileUpload: Codable, Equatable, Sendable {
-    public let filename: String
-    public let endpoint: String
-    public let targetURL: String
-    public let statusCode: Int
-    public let bytesSent: Int
-    public let responseText: String
-    public let ok: Bool
+public enum RuntimeLabVitalFileReplayRepeatMode: String, Codable, CaseIterable, Equatable, Sendable {
+    case once
+    case count
+    case continuous
+}
 
-    public init(
-        filename: String,
-        endpoint: String,
-        targetURL: String,
-        statusCode: Int,
-        bytesSent: Int,
-        responseText: String,
-        ok: Bool
-    ) {
-        self.filename = filename
-        self.endpoint = endpoint
-        self.targetURL = targetURL
-        self.statusCode = statusCode
-        self.bytesSent = bytesSent
-        self.responseText = responseText
-        self.ok = ok
+public struct RuntimeLabVitalFileReplayPolicy: Codable, Equatable, Sendable {
+    public let mode: RuntimeLabVitalFileReplayRepeatMode
+    public let count: Int?
+
+    public init(mode: RuntimeLabVitalFileReplayRepeatMode, count: Int? = nil) {
+        self.mode = mode
+        self.count = count
     }
 }
 
-public struct RuntimeLabVitalFileUploadRequest: Codable, Equatable, Sendable {
-    public let vitalFilePath: String
-    public let targetURL: String
-    public let endpoint: String?
-    public let vrcode: String?
+public enum RuntimeLabVitalFileReplayResourceMode: String, Codable, CaseIterable, Equatable, Sendable {
+    case existing
+    case quickCreate
+}
+
+public struct RuntimeLabVitalFileReplayResourceSelection: Codable, Equatable, Sendable {
+    public let mode: RuntimeLabVitalFileReplayResourceMode
+    public let bedId: String?
+    public let recorderId: String?
 
     public init(
-        vitalFilePath: String,
-        targetURL: String,
-        endpoint: String? = nil,
-        vrcode: String? = nil
+        mode: RuntimeLabVitalFileReplayResourceMode,
+        bedId: String? = nil,
+        recorderId: String? = nil
     ) {
-        self.vitalFilePath = vitalFilePath
-        self.targetURL = targetURL
-        self.endpoint = endpoint
-        self.vrcode = vrcode
+        self.mode = mode
+        self.bedId = bedId
+        self.recorderId = recorderId
     }
 }
 
-public struct RuntimeLabVitalFileUploadResponse: Codable, Equatable, Sendable {
-    public let state: RuntimeLabReadState
-    public let upload: RuntimeLabVitalFileUpload?
-    public let operationId: String?
-    public let labOperationId: String?
-    public let readError: String?
+public struct RuntimeLabVitalFileUploadSource: Equatable, Sendable {
+    public let fileName: String
+    public let content: Data
 
-    public init(
-        state: RuntimeLabReadState,
-        upload: RuntimeLabVitalFileUpload?,
-        operationId: String? = nil,
-        labOperationId: String? = nil,
-        readError: String? = nil
-    ) {
+    public init(fileName: String, content: Data) {
+        self.fileName = fileName
+        self.content = content
+    }
+}
+
+public struct RuntimeLabVitalFileLibraryUploadItem: Codable, Equatable, Sendable {
+    public let fileName: String
+    public let relativePath: String
+    public let sizeBytes: Int
+
+    public init(fileName: String, relativePath: String, sizeBytes: Int) {
+        self.fileName = fileName
+        self.relativePath = relativePath
+        self.sizeBytes = sizeBytes
+    }
+}
+
+public struct RuntimeLabVitalFileLibraryUploadResponse: Codable, Equatable, Sendable {
+    public let state: String
+    public let files: [RuntimeLabVitalFileLibraryUploadItem]
+
+    public init(state: String = "completed", files: [RuntimeLabVitalFileLibraryUploadItem]) {
         self.state = state
-        self.upload = upload
-        self.operationId = operationId
-        self.labOperationId = labOperationId
-        self.readError = readError
-    }
-
-    public static func unavailable(readError: String) -> RuntimeLabVitalFileUploadResponse {
-        RuntimeLabVitalFileUploadResponse(
-            state: .unavailable,
-            upload: nil,
-            operationId: nil,
-            readError: readError
-        )
+        self.files = files
     }
 }

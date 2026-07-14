@@ -3612,6 +3612,11 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             resourceReaderText.contains("any RuntimeOperationLeaseReading"),
             "Operation resource reader should depend on the read-only operation lease owner contract"
         )
+        XCTAssertTrue(
+            resourceReaderText.contains("any RuntimeWorkflowOperationStateReading")
+                && resourceReaderText.contains("workflowOperationStateReader.loadLatestOperationState()"),
+            "Operation resource reader should load workflow detail from the explicit SQLite-backed owner contract"
+        )
         XCTAssertFalse(
             resourceReaderText.contains("RuntimeInstallStateDocumentReader(")
                 || resourceReaderText.contains("paths.runtimeInstallState"),
@@ -3628,11 +3633,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         XCTAssertTrue(
             platformAgentServiceText.contains("let operationLeaseController = RuntimeControlOperationLeaseController(")
-                && platformAgentServiceText.contains("let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(")
-                && platformAgentServiceText.contains("url: installedPaths.runtimeOperationLease")
+                && platformAgentServiceText.contains("let operationLeaseOwner = SQLiteRuntimeOperationLeaseRepository(")
+                && platformAgentServiceText.contains("databaseURL: installedPaths.runtimeStateDatabase")
                 && platformAgentServiceText.contains("owner: operationLeaseOwner")
-                && platformAgentServiceText.contains("operationLeaseReader: operationLeaseController"),
-            "Mac live composition should expose the durable Platform operation owner through one controller"
+                && platformAgentServiceText.contains("operationLeaseReader: operationLeaseController")
+                && platformAgentServiceText.contains("let workflowOperationStateRepository = SQLiteRuntimeWorkflowOperationStateRepository(")
+                && platformAgentServiceText.contains("workflowOperationStateReader: workflowOperationStateRepository"),
+            "Mac live composition should expose durable lease and workflow operation owners"
         )
         for token in [
             "RuntimeInstallStateDocumentReader(",
@@ -3676,7 +3683,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 readModelText.contains(token),
-                "PlatformOperationState active operation must come from explicit operation lease, not install-state artifacts: \(token)"
+                "PlatformOperationState active operation must come from explicit lease/workflow owners, not install-state artifacts: \(token)"
             )
         }
         for token in [
@@ -3699,8 +3706,117 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
+    func testInstallBundleRollbackAndUninstallWorkflowStateUseSQLiteBeforeDiagnosticJSON() throws {
+        let root = packageRoot()
+        let installComposition = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/RuntimeInstallComposition.swift"
+            ),
+            encoding: .utf8
+        )
+        let bundleComposition = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/RuntimeBundleComposition.swift"
+            ),
+            encoding: .utf8
+        )
+        let rollbackComposition = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/RuntimeRollbackComposition.swift"
+            ),
+            encoding: .utf8
+        )
+        let uninstallComposition = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/RuntimeUninstallComposition.swift"
+            ),
+            encoding: .utf8
+        )
+        let uninstallSession = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/RuntimeUninstallWorkflowOperationStateSession.swift"
+            ),
+            encoding: .utf8
+        )
+        let stateMachine = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Domain/Policies/RuntimeWorkflowOperationStateMachine.swift"
+            ),
+            encoding: .utf8
+        )
+        let repositoryPort = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Application/Ports/RuntimeWorkflowOperationStateRepository.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            installComposition.contains("PersistRuntimeWorkflowOperationStateUseCase(")
+                && installComposition.contains("RuntimeInstallWorkflowOperationStateProjectionPolicy.event(")
+                && installComposition.contains("try statePersistence.transition("),
+            "Install state transitions must persist through the typed workflow state use case"
+        )
+        let installSQLiteWrite = try XCTUnwrap(installComposition.range(of: "try statePersistence.transition("))
+        let installDiagnosticWrite = try XCTUnwrap(installComposition.range(of: "RuntimeInstallWorkflowStateArtifactStore("))
+        XCTAssertLessThan(
+            installSQLiteWrite.lowerBound,
+            installDiagnosticWrite.lowerBound,
+            "Install diagnostic JSON may be written only after authoritative SQLite state commits"
+        )
+        XCTAssertTrue(
+            installComposition.contains("runtime install diagnostic snapshot write failed"),
+            "Install JSON failure must be reported explicitly as a diagnostic projection failure"
+        )
+        XCTAssertTrue(
+            bundleComposition.contains("operationID: operationLease.operationId")
+                && bundleComposition.contains("try statePersistence.complete(")
+                && bundleComposition.contains("try statePersistence.fail("),
+            "Bundle workflow state must use the exact acquired lease ID and explicit terminal transitions"
+        )
+        XCTAssertTrue(
+            rollbackComposition.contains("case standalone(operationID: String, startedAt: String)")
+                && rollbackComposition.contains("case applyBundleRecovery(parentOperationID: String)")
+                && rollbackComposition.contains("try persistence.record(")
+                && rollbackComposition.contains("try persistence.complete("),
+            "Rollback must distinguish standalone SQLite ownership from nested apply-bundle recovery"
+        )
+        XCTAssertTrue(
+            uninstallComposition.contains("RuntimeUninstallWorkflowOperationStateSession(")
+                && uninstallComposition.contains("SQLiteRuntimeWorkflowOperationStateRepository(databaseURL: databaseURL)")
+                && uninstallSession.contains("RuntimeUninstallWorkflowOperationStateProjectionPolicy.event(")
+                && uninstallSession.contains("try relocateRepository(from: sourceRoot, to: destinationRoot)"),
+            "Uninstall state must use the SQLite workflow repository and explicitly relocate that owner with productRoot"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: root.appendingPathComponent(
+                    "Sources/Adapters/Outbound/Persistence/RuntimeUninstallWorkflowStateArtifactStore.swift"
+                ).path
+            ),
+            "Uninstall JSON must not return as an authoritative workflow state writer"
+        )
+        XCTAssertTrue(
+            stateMachine.contains("public struct RuntimeWorkflowOperationStateMachine")
+                && stateMachine.contains("public func transition("),
+            "Workflow state transitions must remain pure Domain policy"
+        )
+        XCTAssertFalse(
+            repositoryPort.contains("OutboundAdapters") || repositoryPort.contains("SQLite"),
+            "Application workflow state ports must not depend on the SQLite adapter"
+        )
+    }
+
     func testCLIHostCentralizesOperationLeaseOwnerAdapterSelection() throws {
         let root = packageRoot()
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: root.appendingPathComponent(
+                    "Sources/Adapters/Outbound/Persistence/JSONFileRuntimeOperationLeaseRepository.swift"
+                ).path
+            ),
+            "The file-backed operation lease owner must not return after the SQLite cutover"
+        )
         let operationsCompositionText = try String(
             contentsOf: root.appendingPathComponent(
                 "Sources/Hosts/CLI/ProcessBoundary/Lifecycle/RuntimeLifecycle+OperationsComposition.swift"
@@ -3758,7 +3874,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: root.appendingPathComponent(
-                    "Sources/Adapters/Outbound/Persistence/JSONFileRuntimeOperationLeaseRepository.swift"
+                    "Sources/Adapters/Outbound/Persistence/SQLiteRuntimeOperationLeaseRepository.swift"
                 ).path
             ),
             "Platform operation lease owner must be durable across API and UI process restarts"
@@ -3773,7 +3889,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Host CLI workflow composition should consume the injected operation lease owner factory"
         )
         XCTAssertTrue(
-            runtimeLifecycleText.contains("JSONFileRuntimeOperationLeaseRepository(url: container.installedPaths.runtimeOperationLease)"),
+            runtimeLifecycleText.contains("SQLiteRuntimeOperationLeaseRepository(")
+                && runtimeLifecycleText.contains("databaseURL: container.installedPaths.runtimeStateDatabase"),
             "Host CLI should use the same durable Platform operation lease owner without requiring an API listener"
         )
         XCTAssertFalse(operationsCompositionText.contains("JSONFileRuntimeOperationLeaseRepository("))
@@ -3798,8 +3915,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         XCTAssertTrue(
             macPlatformAgentServiceText.contains("RuntimeControlOperationLeaseController(")
-                && macPlatformAgentServiceText.contains("let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(")
-                && macPlatformAgentServiceText.contains("url: installedPaths.runtimeOperationLease")
+                && macPlatformAgentServiceText.contains("let operationLeaseOwner = SQLiteRuntimeOperationLeaseRepository(")
+                && macPlatformAgentServiceText.contains("databaseURL: installedPaths.runtimeStateDatabase")
                 && macPlatformAgentServiceText.contains("owner: operationLeaseOwner")
                 && macPlatformAgentServiceText.contains("operationLeaseReader: operationLeaseController")
                 && macPlatformAgentServiceText.contains("operationLeaseClient: operationLeaseController"),
@@ -3837,8 +3954,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
         XCTAssertTrue(lifecycleText.contains("let guestAddressProvider: any RuntimeGuestAddressProvider"))
         XCTAssertTrue(lifecycleText.contains("self.guestAddressProvider = container.guestAddressProvider"))
-        XCTAssertTrue(lifecycleCompositionText.contains("guestAddressProvider ?? FileRuntimeGuestAddressResourceStore("))
-        XCTAssertTrue(lifecycleCompositionText.contains("documentURL: installedPaths.runtimeEndpoint"))
+        XCTAssertTrue(lifecycleCompositionText.contains("guestAddressProvider ?? SQLiteRuntimeGuestAddressResourceStore("))
+        XCTAssertTrue(lifecycleCompositionText.contains("databaseURL: installedPaths.runtimeStateDatabase"))
         XCTAssertTrue(serviceSupportText.contains("readGuestAddress()"))
         XCTAssertTrue(serviceSupportText.contains("guestAddressRead.loadedAddress"))
         for token in [
@@ -3861,6 +3978,14 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         XCTAssertFalse(
             lifecycleCompositionText.contains("RuntimeControlAPIGuestAddressProvider()"),
             "RuntimeLifecycleComposition must read the durable Platform endpoint owner without requiring an API listener"
+        )
+        XCTAssertTrue(
+            lifecycleCompositionText.contains("vmLifecycleResourceReader: SQLiteRuntimeVMLifecycleResourceStore("),
+            "RuntimeLifecycleComposition must read the durable VM lifecycle owner without requiring the Platform API listener"
+        )
+        XCTAssertFalse(
+            lifecycleCompositionText.contains("vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()"),
+            "HostCLI health must not depend on the Platform API process to read VM lifecycle state"
         )
     }
 
@@ -4056,6 +4181,39 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 "Workflow must use ports/operations instead of constructing Process directly: \(file.path)"
             )
         }
+    }
+
+    func testSQLiteImplementationRemainsInOutboundAdapters() throws {
+        let sourcesRoot = packageRoot().appendingPathComponent("Sources")
+        for file in try swiftFiles(root: sourcesRoot) {
+            if file.path.contains("/Sources/Adapters/Outbound/") {
+                continue
+            }
+            let text = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("import SQLite3"),
+                "SQLite must remain an outbound persistence detail: \(file.path)"
+            )
+            XCTAssertFalse(
+                text.contains("sqlite3_"),
+                "SQLite calls must remain behind Application ports: \(file.path)"
+            )
+        }
+    }
+
+    func testHostRuntimeStateFoundationDoesNotReuseDiagnosticsDatabase() throws {
+        let pathsFile = packageRoot()
+            .appendingPathComponent("Sources/Adapters/Outbound/FileSystem/InstalledRuntimePaths.swift")
+        let text = try String(contentsOf: pathsFile, encoding: .utf8)
+
+        XCTAssertTrue(text.contains("runtimeStateDatabase"))
+        XCTAssertTrue(text.contains("runtime-state.sqlite"))
+        XCTAssertTrue(text.contains("runtimeObservabilityDB"))
+        XCTAssertTrue(text.contains("RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB"))
+        XCTAssertFalse(
+            text.contains("runtimeStateDatabase: URL {\n        runtimeObservabilityDB"),
+            "Authoritative state and diagnostics projection must use separate databases"
+        )
     }
 
     func testDomainPoliciesDoNotOwnPollingOrEffectClosures() throws {
@@ -4513,13 +4671,43 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         for token in [
             "StopRuntimeVMProcessUseCase().requestStopAndWait",
             "StopRuntimeVMProcessUseCase().waitUntilObservedProcessStopped",
-            "FileRuntimeVMLifecycleResourceStore(",
+            "SQLiteRuntimeVMLifecycleResourceStore(",
         ] {
             XCTAssertTrue(
                 hostText.contains(token),
                 "Runtime service process-boundary execution must stay in HostCLI: \(token)"
             )
         }
+    }
+
+    func testVMLifecycleAndRuntimeEndpointDoNotReturnToAuthoritativeJSONStores() throws {
+        let persistence = packageRoot()
+            .appendingPathComponent("Sources/Adapters/Outbound/Persistence")
+        for name in [
+            "FileRuntimeVMLifecycleResourceStore.swift",
+            "FileRuntimeGuestAddressResourceStore.swift",
+        ] {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: persistence.appendingPathComponent(name).path),
+                "VM lifecycle and runtime endpoint current state must remain SQLite-owned: \(name)"
+            )
+        }
+        let installedPaths = try String(
+            contentsOf: packageRoot().appendingPathComponent(
+                "Sources/Adapters/Outbound/FileSystem/InstalledRuntimePaths.swift"
+            ),
+            encoding: .utf8
+        )
+        XCTAssertFalse(installedPaths.contains("var vmLifecycle:"))
+        XCTAssertFalse(installedPaths.contains("var runtimeEndpoint:"))
+        let legacyNames = try String(
+            contentsOf: packageRoot().appendingPathComponent(
+                "Sources/Contracts/Shared/RuntimeHostOwnerFileNames.swift"
+            ),
+            encoding: .utf8
+        )
+        XCTAssertFalse(legacyNames.contains("vm-lifecycle.json"))
+        XCTAssertFalse(legacyNames.contains("runtime-endpoint.json"))
     }
 
     func testRuntimeVMProcessStopStateInterpretationLivesInContracts() throws {

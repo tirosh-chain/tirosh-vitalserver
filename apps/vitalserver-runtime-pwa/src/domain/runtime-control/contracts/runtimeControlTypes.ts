@@ -88,8 +88,9 @@ export type RuntimeLabVitalFileList = z.infer<typeof runtimeLabVitalFileListSche
 
 export type RuntimeLabVitalFile = RuntimeLabVitalFileList["vitalFiles"][number];
 
-export type RuntimeLabVitalFileUploadRequest =
-  paths["/runtime/lab/vital-files/upload"]["post"]["requestBody"]["content"]["application/json"];
+export type RuntimeLabVitalFileUploadRequest = {
+  files: File[];
+};
 
 export type RuntimeLabVitalFileUploadResponse =
   paths["/runtime/lab/vital-files/upload"]["post"]["responses"]["200"]["content"]["application/json"];

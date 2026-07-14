@@ -37,13 +37,15 @@ public struct RuntimeBundleCompositionOperations {
     let fileStore: RuntimeFileStore
     let runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
     let rotateRuntimeLogs: () throws -> Void
-    let rollback: (URL?) throws -> Void
+    let rollback: (URL?, RuntimeOperationLeaseDocument) throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let stopRuntimeServices: () throws -> Void
     let prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: (UpdateBundleManifest) throws -> Void
     let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     let createBackup: (String) throws -> URL
     let statusReporter: RuntimeWorkflowStatusReporter
+    let workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository
+    let workflowOperationStateTimestamp: () -> String
     let pruneOldRuntimeArtifacts: () throws -> Void
     let materializeBundle: (URL) throws -> RuntimeMaterializedBundle
     let executeMaterializationCleanupPlan: (RuntimeBundleMaterializationCleanupPlan) -> Void
@@ -69,13 +71,15 @@ public struct RuntimeBundleCompositionOperations {
         fileStore: RuntimeFileStore,
         runtimeHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         rotateRuntimeLogs: @escaping () throws -> Void,
-        rollback: @escaping (URL?) throws -> Void,
+        rollback: @escaping (URL?, RuntimeOperationLeaseDocument) throws -> Void,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
         prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: @escaping (UpdateBundleManifest) throws -> Void,
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool,
         createBackup: @escaping (String) throws -> URL,
         statusReporter: RuntimeWorkflowStatusReporter,
+        workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository,
+        workflowOperationStateTimestamp: @escaping () -> String,
         pruneOldRuntimeArtifacts: @escaping () throws -> Void,
         materializeBundle: @escaping (URL) throws -> RuntimeMaterializedBundle,
         executeMaterializationCleanupPlan: @escaping (RuntimeBundleMaterializationCleanupPlan) -> Void,
@@ -107,6 +111,8 @@ public struct RuntimeBundleCompositionOperations {
         self.isLaunchdLoaded = isLaunchdLoaded
         self.createBackup = createBackup
         self.statusReporter = statusReporter
+        self.workflowOperationStateRepository = workflowOperationStateRepository
+        self.workflowOperationStateTimestamp = workflowOperationStateTimestamp
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
         self.materializeBundle = materializeBundle
         self.executeMaterializationCleanupPlan = executeMaterializationCleanupPlan
@@ -169,10 +175,45 @@ public struct RuntimeBundleComposition {
                 operations.log("runtime operation lease release failed operation=\(operationLease.operation.rawValue) operationId=\(operationLease.operationId) error=\(RuntimeErrorDescription.describe(error))")
             }
         }
-        try RuntimeApplyBundleWorkflow().run(
-            input: ApplyRuntimeBundleInput(bundleURL: bundleURL),
-            operations: applyRuntimeBundleOperations(operationLease: operationLease)
+        let statePersistence = PersistRuntimeWorkflowOperationStateUseCase()
+        try statePersistence.start(
+            repository: operations.workflowOperationStateRepository,
+            operationID: operationLease.operationId,
+            operation: operationLease.operation,
+            message: "runtime bundle apply started",
+            occurredAt: operationLease.startedAt
         )
+        do {
+            try RuntimeApplyBundleWorkflow().run(
+                input: ApplyRuntimeBundleInput(bundleURL: bundleURL),
+                operations: applyRuntimeBundleOperations(
+                    operationLease: operationLease,
+                    statePersistence: statePersistence
+                )
+            )
+            try statePersistence.complete(
+                repository: operations.workflowOperationStateRepository,
+                operationID: operationLease.operationId,
+                message: "runtime bundle apply completed",
+                occurredAt: operations.workflowOperationStateTimestamp()
+            )
+        } catch {
+            let operationFailure = RuntimeErrorDescription.describe(error)
+            do {
+                try statePersistence.fail(
+                    repository: operations.workflowOperationStateRepository,
+                    operationID: operationLease.operationId,
+                    message: "runtime bundle apply failed: \(operationFailure)",
+                    reasonCodes: ["apply-bundle-failed"],
+                    occurredAt: operations.workflowOperationStateTimestamp()
+                )
+            } catch {
+                throw ApplyRuntimeBundleCompositionError.operationFailed(
+                    "runtime bundle apply failed operationId=\(operationLease.operationId) operationFailure=\(operationFailure) statePersistenceFailure=\(RuntimeErrorDescription.describe(error))"
+                )
+            }
+            throw error
+        }
         operations.log(ApplyRuntimeBundleUseCase().mutableVMDiskPreservedLogMessage(path: context.vmDisk.path))
     }
 
@@ -261,7 +302,8 @@ public struct RuntimeBundleComposition {
     }
 
     private func applyRuntimeBundleOperations(
-        operationLease: RuntimeOperationLeaseDocument
+        operationLease: RuntimeOperationLeaseDocument,
+        statePersistence: PersistRuntimeWorkflowOperationStateUseCase
     ) -> ApplyRuntimeBundleOperations {
         ApplyRuntimeBundleOperations(
             prepareLogs: {
@@ -323,14 +365,24 @@ public struct RuntimeBundleComposition {
                 try operations.heartbeatOperationLease(operationLease)
                 try operations.waitForHealth(policy)
             },
-            rollback: operations.rollback,
+            rollback: { backup in
+                try operations.rollback(backup, operationLease)
+            },
             writeStatus: { status, operation, message in
                 try operations.statusReporter.write(status, operation: operation, message: message)
             },
             writeBestEffortStatus: { status, operation, message in
                 operations.statusReporter.writeBestEffort(status, operation: operation, message: message)
             },
-            publishProgress: operations.statusReporter.publishProgress,
+            publishProgress: { event in
+                try statePersistence.record(
+                    repository: operations.workflowOperationStateRepository,
+                    operationID: operationLease.operationId,
+                    event: event,
+                    occurredAt: operations.workflowOperationStateTimestamp()
+                )
+                operations.statusReporter.publishProgress(event)
+            },
             pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
             describeError: RuntimeErrorDescription.describe,
             log: operations.statusReporter.log

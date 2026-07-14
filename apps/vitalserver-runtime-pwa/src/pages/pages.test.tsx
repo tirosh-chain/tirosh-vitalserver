@@ -65,7 +65,7 @@ const hooks = vi.hoisted(() => ({
   useSummarizeUpdateBundle: vi.fn(),
   useUnhideVitalDBBeds: vi.fn(),
   useUnhideVitalDBRecorders: vi.fn(),
-  useUploadLabVitalFile: vi.fn(),
+  useUploadLabVitalFiles: vi.fn(),
   useVerifyUpdateBundle: vi.fn(),
   useVitalDBBeds: vi.fn(),
   useVitalDBRecorderActivity: vi.fn(),
@@ -1394,13 +1394,10 @@ describe("runtime console pages", () => {
     hooks.useStopLabSession.mockReturnValue(stopLabSession);
     hooks.useReplayLabVitalFile.mockReturnValue(replayLabVitalFile);
     const uploadLabVitalFile = mutation({
-      state: "loaded",
-      upload: null,
-      operationId: "lab-vital-file-upload",
-      labOperationId: null,
-      readError: null
+      state: "completed",
+      files: []
     });
-    hooks.useUploadLabVitalFile.mockReturnValue(uploadLabVitalFile);
+    hooks.useUploadLabVitalFiles.mockReturnValue(uploadLabVitalFile);
 
     renderPage(<LabPage />);
 
@@ -1416,10 +1413,14 @@ describe("runtime console pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
-    fireEvent.change(screen.getByLabelText("Vital file path"), {
-      target: { value: "/mnt/tirosh-vital-files/case.vital" }
+    const selectedFiles = [
+      new File(["first"], "first.vital"),
+      new File(["second"], "second.vital")
+    ];
+    fireEvent.change(screen.getByLabelText("Vital files to upload"), {
+      target: { files: selectedFiles }
     });
-    fireEvent.click(screen.getByRole("button", { name: "Upload file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload 2 file(s)" }));
     fireEvent.click(screen.getByRole("button", { name: "Replay" }));
 
     expect(createLabSession.mutate).toHaveBeenCalledWith(
@@ -1436,18 +1437,17 @@ describe("runtime console pages", () => {
     expect(stopLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
     expect(replayLabVitalFile.mutate).toHaveBeenCalledWith(
       {
-        vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
+        vitalFileRelativePath: "case.vital",
         sessionName: "Vital file replay",
-        targetURL: "http://edge/"
+        targetURL: "http://edge/",
+        resourceSelection: { mode: "quickCreate" },
+        repeatPolicy: { mode: "once" }
       },
       expect.any(Object)
     );
     expect(uploadLabVitalFile.mutate).toHaveBeenCalledWith(
       {
-        vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
-        targetURL: "http://edge/",
-        endpoint: null,
-        vrcode: null
+        files: selectedFiles
       },
       expect.any(Object)
     );
@@ -1471,9 +1471,6 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Vital file path"), {
-      target: { value: "/mnt/tirosh-vital-files/case.vital" }
-    });
     expect(screen.getByRole("button", { name: "Replay" })).toBeDisabled();
   });
 
@@ -1731,7 +1728,7 @@ function setupDefaultHooks() {
     hooks.useUnhideVitalDBBeds,
     hooks.useUnhideVitalDBRecorders,
     hooks.useUninstallRuntime,
-    hooks.useUploadLabVitalFile,
+    hooks.useUploadLabVitalFiles,
     hooks.useVerifyUpdateBundle
   ]) {
     mock.mockReturnValue(pendingMutation());

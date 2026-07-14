@@ -114,8 +114,8 @@ struct RuntimeControlHTTPCommandRoutes {
             let replayRequest = try request.decodedBody(RuntimeLabVitalFileReplayRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.replayLabVitalFile(replayRequest))
         case .uploadLabVitalFile:
-            let uploadRequest = try request.decodedBody(RuntimeLabVitalFileUploadRequest.self)
-            return try await RuntimeControlHTTPResponseFactory.json(handler.uploadLabVitalFile(uploadRequest))
+            let sources = try request.decodedVitalFileUploads()
+            return try await RuntimeControlHTTPResponseFactory.json(handler.uploadLabVitalFiles(sources))
         case .startGuestService:
             let controlRequest = RuntimeGuestServiceControlRequest(
                 service: try request.runtimeGuestServiceName()

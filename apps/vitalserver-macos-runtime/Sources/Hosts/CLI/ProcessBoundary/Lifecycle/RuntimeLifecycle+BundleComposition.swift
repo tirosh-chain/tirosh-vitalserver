@@ -23,8 +23,13 @@ extension RuntimeLifecycle {
                 fileStore: fileStore,
                 runtimeHealthSnapshot: runtimeHealthSnapshot,
                 rotateRuntimeLogs: rotateRuntimeLogs,
-                rollback: { backup in
-                    try rollback(backup.map(RuntimeRollbackCommand.specificBackup) ?? .latestBackup)
+                rollback: { backup, operationLease in
+                    try runtimeRollbackComposition().rollback(
+                        backup.map(RuntimeRollbackCommand.specificBackup) ?? .latestBackup,
+                        invocation: .applyBundleRecovery(
+                            parentOperationID: operationLease.operationId
+                        )
+                    )
                 },
                 startRuntimeServices: startRuntimeServicesThroughStateControl,
                 stopRuntimeServices: stopRuntimeServicesThroughStateControl,
@@ -32,6 +37,10 @@ extension RuntimeLifecycle {
                 isLaunchdLoaded: isLaunchdLoaded,
                 createBackup: { reason in try backupStore().createBackup(reason: reason) },
                 statusReporter: runtimeWorkflowStatusReporter(),
+                workflowOperationStateRepository: runtimeWorkflowOperationStateRepository(),
+                workflowOperationStateTimestamp: {
+                    ISO8601DateFormatter().string(from: clock.now)
+                },
                 pruneOldRuntimeArtifacts: {
                     try storageMaintenance().pruneOldRuntimeArtifacts(
                         backupsDirectory: backupsDirectory,
@@ -114,5 +123,11 @@ extension RuntimeLifecycle {
 
     private func releaseRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
         try runtimeOperationLeaseOwner().release(operationId: document.operationId)
+    }
+
+    private func runtimeWorkflowOperationStateRepository() -> any RuntimeWorkflowOperationStateRepository {
+        SQLiteRuntimeWorkflowOperationStateRepository(
+            databaseURL: installedPaths.runtimeStateDatabase
+        )
     }
 }

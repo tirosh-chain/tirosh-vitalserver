@@ -21,6 +21,13 @@ enum RuntimeControlHTTPErrorResponseMapper {
                 message: queryError.localizedDescription
             )
         }
+        if let multipartError = error as? RuntimeControlMultipartFormDataError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .badRequest,
+                code: .badRequest,
+                message: multipartError.localizedDescription
+            )
+        }
         if let guestQueryError = error as? RuntimeGuestOperationEventQueryRejectedError {
             return RuntimeControlHTTPResponseFactory.error(
                 status: .badRequest,

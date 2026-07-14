@@ -99,7 +99,9 @@ struct RuntimeLifecycle {
         self.guestAddressProvider = container.guestAddressProvider
         self.guestControlGatewayFactory = guestControlGatewayFactory
         self.runtimeOperationLeaseOwnerFactory = runtimeOperationLeaseOwnerFactory ?? {
-            JSONFileRuntimeOperationLeaseRepository(url: container.installedPaths.runtimeOperationLease)
+            SQLiteRuntimeOperationLeaseRepository(
+                databaseURL: container.installedPaths.runtimeStateDatabase
+            )
         }
         self.healthChecker = container.healthChecker
         self.serviceController = container.serviceController
@@ -519,7 +521,13 @@ struct RuntimeLifecycle {
     }
 
     func rollback(_ command: RuntimeRollbackCommand) throws {
-        try runtimeRollbackComposition().rollback(command)
+        try runtimeRollbackComposition().rollback(
+            command,
+            invocation: .standalone(
+                operationID: UUID().uuidString.lowercased(),
+                startedAt: ISO8601DateFormatter().string(from: clock.now)
+            )
+        )
     }
 
     func refreshCloudInitSeedIfNeeded(_ manifest: UpdateBundleManifest) throws {
@@ -617,9 +625,9 @@ private extension RuntimeLifecycle {
         )
         log("VM process stopped before launchd unload")
         do {
-            let owner = FileRuntimeVMLifecycleResourceStore(
-                documentURL: paths.installed.vmLifecycle,
-                fileStore: fileStore
+            let owner = SQLiteRuntimeVMLifecycleResourceStore(
+                databaseURL: paths.installed.runtimeStateDatabase,
+                transitionDecider: RuntimeVMLifecycleTransitionUseCase()
             )
             let read = owner.loadVMLifecycleResource()
             guard read.state == .loaded, let current = read.document else {

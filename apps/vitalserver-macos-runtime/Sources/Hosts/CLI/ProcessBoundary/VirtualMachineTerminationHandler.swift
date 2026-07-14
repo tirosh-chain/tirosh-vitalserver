@@ -19,7 +19,7 @@ extension VirtualMachineTerminationHandler {
                 try lifecycleWriter.writeVMLifecycleResource(
                     state: state,
                     operation: nil,
-                    terminalReason: nil,
+                    terminalReason: state == .failed ? .stopRequestFailed : nil,
                     message: message,
                     bootWindowSeconds: nil
                 )

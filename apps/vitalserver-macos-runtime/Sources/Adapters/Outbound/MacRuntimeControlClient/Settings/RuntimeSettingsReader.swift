@@ -34,9 +34,15 @@ struct RuntimeSettingsPaths {
 }
 
 struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable {
+    private enum HostSettingsSource: @unchecked Sendable {
+        case materializedFiles
+        case repository(any RuntimeHostSettingsReading)
+    }
+
     var paths = RuntimeSettingsPaths()
     private var fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     private var runCommand: @Sendable (String, [String]) -> RuntimeCommandResult
+    private var hostSettingsSource: HostSettingsSource
 
     init(
         paths: RuntimeSettingsPaths = RuntimeSettingsPaths(),
@@ -46,6 +52,19 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         self.paths = paths
         self.fileStore = fileStore
         self.runCommand = runCommand
+        self.hostSettingsSource = .materializedFiles
+    }
+
+    init(
+        paths: RuntimeSettingsPaths,
+        fileStore: RuntimeFileStore,
+        runCommand: @escaping @Sendable (String, [String]) -> RuntimeCommandResult,
+        hostSettingsReader: any RuntimeHostSettingsReading
+    ) {
+        self.paths = paths
+        self.fileStore = fileStore
+        self.runCommand = runCommand
+        self.hostSettingsSource = .repository(hostSettingsReader)
     }
 
     func load() -> RuntimeSettings {
@@ -53,14 +72,12 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
     }
 
     private func loadSnapshot() -> RuntimeSettingsReadSnapshot {
-        RuntimeSettingsReadSnapshot(
-            vmConfig: VMConfigDocument.loadResult(path: paths.vmConfig, fileStore: fileStore),
-            appliedVMConfig: VMConfigDocument.loadResult(path: paths.appliedVMConfig, fileStore: fileStore),
+        let hostSettings = loadHostSettings()
+        return RuntimeSettingsReadSnapshot(
+            vmConfig: hostSettings.vmConfig,
+            appliedVMConfig: hostSettings.appliedVMConfig,
             diskGiB: diskSizeGiB(path: paths.vmDisk),
-            guestRuntimeSettings: GuestRuntimeSettings.loadResult(
-                path: paths.guestRuntimeSettings,
-                fileStore: fileStore
-            ),
+            guestRuntimeSettings: hostSettings.guestRuntimeSettings,
             logArchiveSettings: RuntimeControlSettingsDocument.loadResult(
                 path: paths.runtimeControlSettings,
                 fileStore: fileStore
@@ -71,6 +88,48 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
             ).loadSettingsResult(),
             startOnBoot: RuntimeSettingsStartOnBootReader(runCommand: runCommand).startOnBootEnabled()
         )
+    }
+
+    private func loadHostSettings() -> RuntimeSettingsHostReadSnapshot {
+        switch hostSettingsSource {
+        case .materializedFiles:
+            return RuntimeSettingsHostReadSnapshot(
+                vmConfig: VMConfigDocument.loadResult(path: paths.vmConfig, fileStore: fileStore),
+                appliedVMConfig: VMConfigDocument.loadResult(
+                    path: paths.appliedVMConfig,
+                    fileStore: fileStore
+                ),
+                guestRuntimeSettings: GuestRuntimeSettings.loadResult(
+                    path: paths.guestRuntimeSettings,
+                    fileStore: fileStore
+                )
+            )
+        case .repository(let repository):
+            switch repository.loadHostSettings() {
+            case .missing:
+                return RuntimeSettingsHostReadSnapshot(
+                    vmConfig: .missing,
+                    appliedVMConfig: .missing,
+                    guestRuntimeSettings: .missing
+                )
+            case .failed(let reason):
+                return RuntimeSettingsHostReadSnapshot(
+                    vmConfig: .failed(reason),
+                    appliedVMConfig: .failed(reason),
+                    guestRuntimeSettings: .failed(reason)
+                )
+            case .loaded(let record):
+                return RuntimeSettingsHostReadSnapshot(
+                    vmConfig: VMConfigDocument.decodeResult(record.payload.vmConfigJSON),
+                    appliedVMConfig: record.appliedPayload.map {
+                        VMConfigDocument.decodeResult($0.vmConfigJSON)
+                    } ?? .missing,
+                    guestRuntimeSettings: GuestRuntimeSettings.decodeResult(
+                        record.payload.guestRuntimeSettingsJSON
+                    )
+                )
+            }
+        }
     }
 
     private func diskSizeGiB(path: String) -> RuntimeSettingsReadResult<Int> {
@@ -92,4 +151,10 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         }
     }
 
+}
+
+private struct RuntimeSettingsHostReadSnapshot {
+    let vmConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput>
+    let appliedVMConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput>
+    let guestRuntimeSettings: RuntimeSettingsReadResult<RuntimeGuestRuntimeSettingsReadInput>
 }

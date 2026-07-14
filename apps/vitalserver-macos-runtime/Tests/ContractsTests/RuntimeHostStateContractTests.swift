@@ -258,19 +258,4 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertEqual(decoded.rawValue, "future-mode")
     }
 
-    func testRuntimeUninstallStateDocumentKeepsBlockedDistinctFromCompleted() throws {
-        let document = RuntimeUninstallStateDocument(
-            state: .serviceStopBlocked,
-            clean: true,
-            updatedAt: "2026-06-02T00:00:00Z",
-            message: "service stop blocked",
-            blockers: ["vm-process-running:pid=123"]
-        )
-
-        let encoded = try JSONEncoder().encode(document)
-        let decoded = try JSONDecoder().decode(RuntimeUninstallStateDocument.self, from: encoded)
-
-        XCTAssertEqual(decoded, document)
-        XCTAssertNotEqual(decoded.state, .completed)
-    }
 }

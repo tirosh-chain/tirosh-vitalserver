@@ -46,6 +46,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
             root / "apps/vitalserver-macos-runtime/Support/Guest/runtime-settings.json"
         ).read_text(encoding="utf-8")
     )
+    guest_runtime_config = json.loads(
+        (
+            root / "apps/vitalserver-macos-runtime/Support/Guest/runtime-config.json"
+        ).read_text(encoding="utf-8")
+    )
     installer_package_source = (
         root
         / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
@@ -133,6 +138,14 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert guest_runtime_settings["recorderIngressSendDataReplayBatchSize"] == 1000
     assert guest_runtime_settings["recorderIngress"]["sendDataReplayIntervalMs"] == 1000
     assert guest_runtime_settings["recorderIngress"]["rawArchiveMaxFiles"] == 24
+    assert guest_runtime_config["publicHost"] == "127.0.0.1"
+    assert guest_runtime_config["publicPort"] == 80
+    assert guest_runtime_config["vitalServerURL"] == "http://127.0.0.1:80/"
+    assert guest_runtime_config["remoteConsoleURL"] == "http://127.0.0.1:18321/"
+    assert guest_runtime_settings["publicHost"] == guest_runtime_config["publicHost"]
+    assert guest_runtime_settings["publicPort"] == guest_runtime_config["publicPort"]
+    assert guest_runtime_settings["vitalServerURL"] == guest_runtime_config["vitalServerURL"]
+    assert guest_runtime_settings["remoteConsoleURL"] == guest_runtime_config["remoteConsoleURL"]
     assert "/Library/Application Support/VitalServerHelper" in rendered
     assert_upload_proxy_streaming(proxy_config_template_text)
     assert_upload_proxy_streaming(guest_edge_config_text)

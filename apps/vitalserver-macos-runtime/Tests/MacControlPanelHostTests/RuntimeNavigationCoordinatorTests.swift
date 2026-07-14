@@ -156,6 +156,10 @@ private final class FakeNavigationNativeShell: RuntimeNativeShell {
         []
     }
 
+    func importVitalFiles(_ sources: [URL], into libraryDirectory: URL) throws -> [URL] {
+        []
+    }
+
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         nil
     }

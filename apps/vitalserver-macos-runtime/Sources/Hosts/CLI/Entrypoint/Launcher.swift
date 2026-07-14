@@ -118,18 +118,60 @@ struct Launcher {
     // Build the VM configuration, start it, then keep the process alive.
     func start(paths: LauncherPaths) throws {
         let fileStore = SystemRuntimeFileStore()
-        let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
-        try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
-        let lifecycleWriter = FileRuntimeVMLifecycleResourceStore(
-            documentURL: paths.installed.vmLifecycle,
-            fileStore: fileStore
+        let settingsRepository = SQLiteRuntimeHostSettingsRepository(
+            databaseURL: paths.installed.runtimeStateDatabase,
+            transitionDecider: RuntimeHostSettingsActivationUseCase()
         )
-        try lifecycleWriter.writeVMLifecycleResource(
+        let settings: RuntimeHostSettingsRecord
+        switch settingsRepository.loadHostSettings() {
+        case .loaded(let record):
+            settings = record
+        case .missing:
+            throw LauncherError.runtimeOperationFailed("Host settings SQLite state is missing")
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
+        guard settings.materializedRevision == settings.revision else {
+            let materializedRevisionText = settings.materializedRevision.map(String.init) ?? "missing"
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings revision is not materialized revision=\(settings.revision) materializedRevision=\(materializedRevisionText)"
+            )
+        }
+        let materializedPayload = RuntimeHostSettingsPayload(
+            vmConfigJSON: try fileStore.readData(paths.config),
+            guestRuntimeConfigJSON: try fileStore.readData(paths.installed.guestRuntimeConfig),
+            guestRuntimeSettingsJSON: try fileStore.readData(paths.installed.guestRuntimeSettings)
+        )
+        guard materializedPayload == settings.payload else {
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings boot materialization does not match SQLite revision=\(settings.revision)"
+            )
+        }
+        let config = try JSONDecoder().decode(VMRuntimeConfig.self, from: settings.payload.vmConfigJSON)
+        try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
+        let lifecycleWriter = SQLiteRuntimeVMLifecycleResourceStore(
+            databaseURL: paths.installed.runtimeStateDatabase,
+            transitionDecider: RuntimeVMLifecycleTransitionUseCase()
+        )
+        let lifecycleState = try lifecycleWriter.writeVMLifecycleResource(
             state: .starting,
             operation: .startServices,
             terminalReason: nil,
             message: "VM process start requested",
             bootWindowSeconds: Constants.Runtime.vmBootLifecycleDeadlineSeconds
+        )
+        guard lifecycleState.state == .loaded,
+              let lifecycle = lifecycleState.document,
+              let runID = lifecycle.bootID,
+              !runID.isEmpty else {
+            throw LauncherError.runtimeOperationFailed(
+                "VM lifecycle start did not return an explicit run ID"
+            )
+        }
+        _ = try settingsRepository.recordHostSettingsBoot(
+            revision: settings.revision,
+            runID: runID,
+            startedAt: lifecycle.startedAt
         )
         try removeStaleGuestBootstrapArtifacts(paths: paths, fileStore: fileStore)
         try ProcessState.writeCurrentPid(pidFile: paths.pidFile, fileStore: fileStore)
@@ -185,7 +227,6 @@ struct Launcher {
             switch result {
             case .success:
                 do {
-                    try writeAppliedVMConfig(config, to: paths.installed.appliedVMConfig, fileStore: fileStore)
                     try lifecycleWriter.writeVMLifecycleResource(
                         state: .bootstrapping,
                         operation: .startServices,
@@ -220,17 +261,6 @@ struct Launcher {
         _ = configurationFactory
         _ = delegate
         _ = terminationHandler
-    }
-
-    private func writeAppliedVMConfig(
-        _ config: VMRuntimeConfig,
-        to url: URL,
-        fileStore: RuntimeFileWriting
-    ) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try fileStore.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try fileStore.writeData(try encoder.encode(config), to: url, options: .atomic)
     }
 
     private func removeStaleGuestBootstrapArtifacts(

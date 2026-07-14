@@ -20,8 +20,10 @@ public struct RuntimeGuestConfigWriter {
 
     public func write(runtimeConfig: GuestRuntimeConfigDocument) throws {
         let runtimeConfigURL = installedPaths.guestRuntimeConfig
+        let runtimeConfigData = try runtimeGuestConfigDocumentEncoder().encode(runtimeConfig)
+        _ = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: runtimeConfigData)
         try fileStore.writeData(
-            try runtimeGuestConfigDocumentEncoder().encode(runtimeConfig),
+            runtimeConfigData,
             to: runtimeConfigURL,
             options: .atomic
         )

@@ -16,6 +16,7 @@ public struct RuntimeConfiguredExternalVitalFilesDirectoryRead: Equatable {
 
 public struct RuntimeUninstallPaths {
     public let productRoot: URL
+    public let runtimeStateDatabase: URL
     public let managerApp: URL
     public let defaultVitalFilesDirectory: URL
     public let externalVitalFilesDirectory: URL?
@@ -25,6 +26,7 @@ public struct RuntimeUninstallPaths {
 
     public init(
         productRoot: URL,
+        runtimeStateDatabase: URL,
         managerApp: URL,
         defaultVitalFilesDirectory: URL,
         externalVitalFilesDirectory: URL?,
@@ -33,6 +35,7 @@ public struct RuntimeUninstallPaths {
         runtimeTools: [URL]
     ) {
         self.productRoot = productRoot
+        self.runtimeStateDatabase = runtimeStateDatabase
         self.managerApp = managerApp
         self.defaultVitalFilesDirectory = defaultVitalFilesDirectory
         self.externalVitalFilesDirectory = externalVitalFilesDirectory
@@ -64,6 +67,11 @@ public struct RuntimeUninstallStateReaders {
 public enum RuntimeUninstallRemoveItemResult: Equatable, Sendable {
     case removed(path: String)
     case alreadyAbsent(path: String)
+}
+
+private struct RuntimeUninstallRemovalResult {
+    let decision: RuntimeUninstallTransitionDecision
+    let relocatedProductRoot: URL?
 }
 
 public struct RuntimeUninstallEffects {
@@ -113,12 +121,21 @@ public struct RuntimeUninstallEffects {
 }
 
 public struct RuntimeUninstallStateWriter {
+    public var acquireOperationLease: () throws -> Void
+    public var releaseOperationLease: () throws -> Void
     public var writeState: (RuntimeUninstallState, Bool, String?, [String]) throws -> Void
+    public var relocateProductRoot: (URL, URL) throws -> Void
 
     public init(
-        writeState: @escaping (RuntimeUninstallState, Bool, String?, [String]) throws -> Void
+        acquireOperationLease: @escaping () throws -> Void,
+        releaseOperationLease: @escaping () throws -> Void,
+        writeState: @escaping (RuntimeUninstallState, Bool, String?, [String]) throws -> Void,
+        relocateProductRoot: @escaping (URL, URL) throws -> Void
     ) {
+        self.acquireOperationLease = acquireOperationLease
+        self.releaseOperationLease = releaseOperationLease
         self.writeState = writeState
+        self.relocateProductRoot = relocateProductRoot
     }
 }
 
@@ -164,7 +181,7 @@ public struct RuntimeUninstallWorkflow {
             effects: effects,
             diagnostics: diagnostics
         )
-        let cleanupDecision = try removeFilesAndVerifyCleanup(
+        let removal = try removeFilesAndVerifyCleanup(
             approvedBy: stoppedDecision,
             command: command,
             paths: paths,
@@ -174,7 +191,7 @@ public struct RuntimeUninstallWorkflow {
             diagnostics: diagnostics
         )
         let receiptDecision = try forgetReceiptsAndVerifyAbsence(
-            approvedBy: cleanupDecision,
+            approvedBy: removal.decision,
             clean: command.clean,
             readers: readers,
             writer: writer,
@@ -187,6 +204,12 @@ public struct RuntimeUninstallWorkflow {
             approvedBy: receiptDecision,
             clean: command.clean,
             writer: writer,
+            diagnostics: diagnostics
+        )
+        try writer.releaseOperationLease()
+        try disposeRelocatedProductRoot(
+            removal.relocatedProductRoot,
+            effects: effects,
             diagnostics: diagnostics
         )
     }
@@ -311,7 +334,7 @@ public struct RuntimeUninstallWorkflow {
         writer: RuntimeUninstallStateWriter,
         effects: RuntimeUninstallEffects,
         diagnostics: RuntimeUninstallDiagnostics
-    ) throws -> RuntimeUninstallTransitionDecision {
+    ) throws -> RuntimeUninstallRemovalResult {
         let fileRemovalDecision: RuntimeUninstallTransitionDecision
         if stoppedDecision.state == .stoppedVerified {
             try requireCommands([.removeFiles], in: stoppedDecision)
@@ -325,20 +348,28 @@ public struct RuntimeUninstallWorkflow {
         } else if stoppedDecision.state == .filesRemovalStarted {
             fileRemovalDecision = stoppedDecision
         } else {
-            return stoppedDecision
+            return RuntimeUninstallRemovalResult(
+                decision: stoppedDecision,
+                relocatedProductRoot: nil
+            )
         }
         do {
-            try executeFileRemoval(
+            let relocatedProductRoot = try executeFileRemoval(
                 paths: paths,
                 clean: command.clean,
+                writer: writer,
                 effects: effects,
                 diagnostics: diagnostics
             )
-            return try verifyCleanupArtifacts(
+            let decision = try verifyCleanupArtifacts(
                 from: fileRemovalDecision.state,
                 clean: command.clean,
                 readers: readers,
                 writer: writer
+            )
+            return RuntimeUninstallRemovalResult(
+                decision: decision,
+                relocatedProductRoot: relocatedProductRoot
             )
         } catch let error as RuntimeUninstallFileRemovalExecutionError {
             try writer.writeState(
@@ -436,15 +467,17 @@ public struct RuntimeUninstallWorkflow {
     private func executeFileRemoval(
         paths: RuntimeUninstallPaths,
         clean: Bool,
+        writer: RuntimeUninstallStateWriter,
         effects: RuntimeUninstallEffects,
         diagnostics: RuntimeUninstallDiagnostics
-    ) throws {
+    ) throws -> URL? {
         var preservedPaths: RuntimeUninstallPreservedPaths?
         do {
-            try removeFiles(
+            return try removeFiles(
                 paths: paths,
                 clean: clean,
                 preservedPaths: &preservedPaths,
+                writer: writer,
                 effects: effects,
                 diagnostics: diagnostics
             )
@@ -466,9 +499,10 @@ public struct RuntimeUninstallWorkflow {
         paths: RuntimeUninstallPaths,
         clean: Bool,
         preservedPaths: inout RuntimeUninstallPreservedPaths?,
+        writer: RuntimeUninstallStateWriter,
         effects: RuntimeUninstallEffects,
         diagnostics: RuntimeUninstallDiagnostics
-    ) throws {
+    ) throws -> URL? {
         log(stepLogMessage(step: .removePlists, status: .started), diagnostics: diagnostics)
         for plist in paths.launchDaemonPlists {
             try removeIfPresent(plist, effects: effects, diagnostics: diagnostics)
@@ -479,10 +513,15 @@ public struct RuntimeUninstallWorkflow {
         preservedPaths = preserved
 
         log(stepLogMessage(step: .removeInstalledFiles, status: .started), diagnostics: diagnostics)
+        let relocatedProductRoot = try relocateProductRoot(
+            paths: paths,
+            writer: writer,
+            effects: effects,
+            diagnostics: diagnostics
+        )
         let removalPlan = uninstallUseCase().removalPlan(
             clean: clean,
             managerApp: paths.managerApp,
-            productRoot: paths.productRoot,
             externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
             configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
         )
@@ -505,6 +544,66 @@ public struct RuntimeUninstallWorkflow {
             try restorePreservedPaths(preserved, effects: effects, diagnostics: diagnostics)
             log(stepLogMessage(step: .restorePreservedUserData, status: .completed), diagnostics: diagnostics)
         }
+        return relocatedProductRoot
+    }
+
+    private func relocateProductRoot(
+        paths: RuntimeUninstallPaths,
+        writer: RuntimeUninstallStateWriter,
+        effects: RuntimeUninstallEffects,
+        diagnostics: RuntimeUninstallDiagnostics
+    ) throws -> URL? {
+        guard try pathIsPresent(paths.productRoot, effects: effects) else {
+            return nil
+        }
+        let relocatedProductRoot = uninstallUseCase().relocatedProductRoot(
+            productRoot: paths.productRoot,
+            uniqueID: effects.uniqueID()
+        )
+        guard try pathIsPresent(relocatedProductRoot, effects: effects) == false else {
+            throw UninstallRuntimeUseCaseError.operationFailed(
+                uninstallUseCase().relocatedProductRootAlreadyPresentMessage(
+                    path: relocatedProductRoot.path
+                )
+            )
+        }
+        do {
+            try effects.moveItem(paths.productRoot, relocatedProductRoot)
+        } catch {
+            logRemovalDiagnostics(paths.productRoot, effects: effects, diagnostics: diagnostics)
+            throw error
+        }
+        try writer.relocateProductRoot(paths.productRoot, relocatedProductRoot)
+        log(
+            uninstallUseCase().relocatedProductRootLogMessage(
+                source: paths.productRoot.path,
+                destination: relocatedProductRoot.path
+            ),
+            diagnostics: diagnostics
+        )
+        return relocatedProductRoot
+    }
+
+    private func disposeRelocatedProductRoot(
+        _ relocatedProductRoot: URL?,
+        effects: RuntimeUninstallEffects,
+        diagnostics: RuntimeUninstallDiagnostics
+    ) throws {
+        guard let relocatedProductRoot else {
+            return
+        }
+        log("step=dispose-uninstall-state-store status=started", diagnostics: diagnostics)
+        do {
+            try safeRemove(relocatedProductRoot, effects: effects, diagnostics: diagnostics)
+        } catch {
+            throw UninstallRuntimeUseCaseError.operationFailed(
+                uninstallUseCase().relocatedProductRootDisposalFailedMessage(
+                    path: relocatedProductRoot.path,
+                    reason: effects.describeError(error)
+                )
+            )
+        }
+        log("step=dispose-uninstall-state-store status=completed", diagnostics: diagnostics)
     }
 
     private func preserveUserData(

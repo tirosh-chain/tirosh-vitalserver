@@ -26,6 +26,14 @@ struct VMConfigDocument: Decodable {
         }
         do {
             let data = try fileStore.readData(url)
+            return decodeResult(data)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    static func decodeResult(_ data: Data) -> RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput> {
+        do {
             return try .loaded(JSONDecoder().decode(VMConfigDocument.self, from: data).runtimeSettingsReadInput)
         } catch {
             return .failed(error.localizedDescription)
@@ -147,6 +155,16 @@ struct GuestRuntimeSettings: Decodable {
         }
         do {
             let data = try fileStore.readData(url)
+            return decodeResult(data)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    static func decodeResult(
+        _ data: Data
+    ) -> RuntimeSettingsReadResult<RuntimeGuestRuntimeSettingsReadInput> {
+        do {
             return try .loaded(JSONDecoder().decode(GuestRuntimeSettings.self, from: data).runtimeSettingsReadInput)
         } catch {
             return .failed(error.localizedDescription)

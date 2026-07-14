@@ -56,7 +56,7 @@ import {
   useUnhideVitalDBBeds,
   useUnhideVitalDBRecorders,
   useUninstallRuntime,
-  useUploadLabVitalFile,
+  useUploadLabVitalFiles,
   useVerifyUpdateBundle,
   useVitalDBBeds,
   useVitalDBRelationships,
@@ -307,34 +307,52 @@ describe("console hooks", () => {
     await mutateHook(
       () => useReplayLabVitalFile(),
       {
-        vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+        vitalFileRelativePath: "sample.vital",
         sessionName: "Replay",
-        targetURL: null
+        targetURL: null,
+        resourceSelection: { mode: "quickCreate" },
+        repeatPolicy: { mode: "once" }
       },
       wrapper
     );
     expect(gateway.replayLabVitalFile).toHaveBeenCalledWith({
-      vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+      vitalFileRelativePath: "sample.vital",
       sessionName: "Replay",
-      targetURL: null
+      targetURL: null,
+      resourceSelection: { mode: "quickCreate" },
+      repeatPolicy: { mode: "once" }
     });
 
     await mutateHook(
-      () => useUploadLabVitalFile(),
+      () => useUploadLabVitalFiles(),
       {
-        vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
-        targetURL: "http://vitalserver:8000",
-        endpoint: null,
-        vrcode: null
+        files: [
+          new File(["first"], "first.vital"),
+          new File(["second"], "second.vital")
+        ]
       },
       wrapper
     );
-    expect(gateway.uploadLabVitalFile).toHaveBeenCalledWith({
-      vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
-      targetURL: "http://vitalserver:8000",
-      endpoint: null,
-      vrcode: null
+    expect(gateway.uploadLabVitalFiles).toHaveBeenCalledWith({
+      files: expect.arrayContaining([
+        expect.objectContaining({ name: "first.vital" }),
+        expect.objectContaining({ name: "second.vital" })
+      ])
     });
+  });
+
+  it("rejects the whole Vital Files upload when one selected file is not .vital", async () => {
+    const gateway = createGateway();
+    const wrapper = createWrapper(gateway);
+    const rendered = renderHook(() => useUploadLabVitalFiles(), { wrapper });
+
+    await expect(rendered.result.current.mutateAsync({
+      files: [
+        new File(["valid"], "valid.vital"),
+        new File(["invalid"], "invalid.txt")
+      ]
+    })).rejects.toThrow("Only .vital files can be uploaded: invalid.txt");
+    expect(gateway.uploadLabVitalFiles).not.toHaveBeenCalled();
   });
 
 });
@@ -604,12 +622,9 @@ function createGateway(): GatewayMock {
     uninstallRuntime: vi.fn().mockResolvedValue(platformWorkflowOperation("uninstall")),
     unhideBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
     unhideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
-    uploadLabVitalFile: vi.fn().mockResolvedValue({
-      state: "loaded",
-      upload: null,
-      operationId: "lab-vital-file-upload",
-      labOperationId: null,
-      readError: null
+    uploadLabVitalFiles: vi.fn().mockResolvedValue({
+      state: "completed",
+      files: []
     }),
     verifyUpdateBundle: vi.fn().mockResolvedValue(commandResult)
   };

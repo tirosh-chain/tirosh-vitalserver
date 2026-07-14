@@ -524,16 +524,16 @@
     },
     "/runtime/lab/vital-files/upload": {
       "post": {
-        "operationId": "uploadRuntimeLabVitalFile",
-        "summary": "Upload a vital file through Runtime Lab",
-        "description": "Uploads a mounted .vital file through the configured lab upload endpoint.",
+        "operationId": "uploadRuntimeLabVitalFiles",
+        "summary": "Upload one or more files to the Vital Files library",
+        "description": "Atomically imports a multipart batch into the Vital Files library. Every part must use field name files and a .vital filename; one invalid or conflicting file rejects the whole batch.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localServerMediated",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/RuntimeLabVitalFileUploadRequest"
               }
@@ -5045,6 +5045,19 @@
               "type": "string"
             }
           },
+          "recorderIds": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "vitalFileRelativePath": {
+            "type": ["string", "null"]
+          },
+          "replayPolicy": {
+            "oneOf": [
+              {"$ref": "#/components/schemas/RuntimeLabVitalFileReplayPolicy"},
+              {"type": "null"}
+            ]
+          },
           "createdAt": {
             "type": [
               "string",
@@ -5163,10 +5176,12 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "vitalFilePath"
+          "vitalFileRelativePath",
+          "resourceSelection",
+          "repeatPolicy"
         ],
         "properties": {
-          "vitalFilePath": {
+          "vitalFileRelativePath": {
             "type": "string"
           },
           "sessionName": {
@@ -5180,97 +5195,89 @@
               "string",
               "null"
             ]
+          },
+          "resourceSelection": {
+            "$ref": "#/components/schemas/RuntimeLabVitalFileReplayResourceSelection"
+          },
+          "repeatPolicy": {
+            "$ref": "#/components/schemas/RuntimeLabVitalFileReplayPolicy"
           }
         }
+      },
+      "RuntimeLabVitalFileReplayResourceSelection": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {"mode": {"const": "quickCreate"}}
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode", "bedId", "recorderId"],
+            "properties": {
+              "mode": {"const": "existing"},
+              "bedId": {"type": "string", "minLength": 1},
+              "recorderId": {"type": "string", "minLength": 1}
+            }
+          }
+        ]
+      },
+      "RuntimeLabVitalFileReplayPolicy": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {"mode": {"enum": ["once", "continuous"]}}
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode", "count"],
+            "properties": {
+              "mode": {"const": "count"},
+              "count": {"type": "integer", "minimum": 2}
+            }
+          }
+        ]
       },
       "RuntimeLabVitalFileUploadRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "vitalFilePath",
-          "targetURL"
-        ],
+        "required": ["files"],
         "properties": {
-          "vitalFilePath": {
-            "type": "string"
-          },
-          "targetURL": {
-            "type": "string"
-          },
-          "endpoint": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "vrcode": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "format": "binary"
+            }
           }
         }
       },
       "RuntimeLabVitalFileUploadResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "state"
-        ],
+        "required": ["state", "files"],
         "properties": {
           "state": {
-            "$ref": "#/components/schemas/RuntimeLabReadState"
+            "const": "completed"
           },
-          "operationId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "upload": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "additionalProperties": false,
-            "required": [
-              "filename",
-              "endpoint",
-              "targetURL",
-              "statusCode",
-              "bytesSent",
-              "responseText",
-              "ok"
-            ],
-            "properties": {
-              "filename": {
-                "type": "string"
-              },
-              "endpoint": {
-                "type": "string"
-              },
-              "targetURL": {
-                "type": "string"
-              },
-              "statusCode": {
-                "type": "integer"
-              },
-              "bytesSent": {
-                "type": "integer"
-              },
-              "responseText": {
-                "type": "string"
-              },
-              "ok": {
-                "type": "boolean"
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fileName", "relativePath", "sizeBytes"],
+              "properties": {
+                "fileName": {"type": "string"},
+                "relativePath": {"type": "string"},
+                "sizeBytes": {"type": "integer", "minimum": 0}
               }
             }
-          },
-          "readError": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },

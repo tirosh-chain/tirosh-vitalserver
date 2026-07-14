@@ -43,6 +43,30 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
         }
     }
 
+    func testParsesExplicitVMRuntimeRestartIntent() throws {
+        let command = try RuntimeLifecycleCommand.parseArguments([
+            "configure",
+            "--restart-vm-runtime",
+        ])
+
+        XCTAssertEqual(command, .configure(RuntimeConfigureCommand(
+            activation: .restartVMRuntime
+        )))
+    }
+
+    func testRejectsConflictingActivationIntents() {
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parseArguments([
+            "configure",
+            "--restart",
+            "--restart-vm-runtime",
+        ])) { error in
+            XCTAssertEqual(
+                error as? RuntimeLifecycleCommandParseError,
+                .missingArgument("--restart and --restart-vm-runtime are mutually exclusive")
+            )
+        }
+    }
+
     func testParsesRuntimeDataBackupCommand() throws {
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parseArguments(["runtime-data-backup"]),

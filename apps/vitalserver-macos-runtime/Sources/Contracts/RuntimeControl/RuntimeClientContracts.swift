@@ -45,6 +45,7 @@ public protocol RuntimeControlClient {
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
+    func restartVMRuntime(applying settings: RuntimeSettings) async throws -> RuntimeCommandResult
     func loadLabScenarios() async throws -> RuntimeLabScenarioList
     func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList
     func loadLabBeds() async throws -> RuntimeLabBedList
@@ -69,7 +70,6 @@ public protocol RuntimeControlClient {
     func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse
     func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse
     func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse
-    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse
     func guestStackStatus() async throws -> RuntimeGuestControlStackStatus
     func runtimeCapabilities() async throws -> RuntimeCapabilities
     func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead
@@ -285,14 +285,17 @@ public extension RuntimeControlClient {
         RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
 
-    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
-        RuntimeLabVitalFileUploadResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
-    }
 }
 
 public enum RuntimeHostTextMissingReason: Equatable, Sendable {
     case noData
     case message(String)
+}
+
+public extension RuntimeControlClient {
+    func restartVMRuntime(applying settings: RuntimeSettings) async throws -> RuntimeCommandResult {
+        throw RuntimeControlClientUnsupportedError.unavailable("restart-vm-runtime-after-settings-apply")
+    }
 }
 
 public enum RuntimeHostTextReadResult: Equatable, Sendable {

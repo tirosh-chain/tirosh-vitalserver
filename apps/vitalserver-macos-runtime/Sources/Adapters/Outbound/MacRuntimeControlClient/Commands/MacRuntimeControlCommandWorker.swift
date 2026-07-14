@@ -82,6 +82,17 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {
+        try await applySettings(settings, forceVMRuntimeRestart: false)
+    }
+
+    public func restartVMRuntime(applying settings: RuntimeSettings) async throws -> RuntimeCommandResult {
+        try await applySettings(settings, forceVMRuntimeRestart: true)
+    }
+
+    private func applySettings(
+        _ settings: RuntimeSettings,
+        forceVMRuntimeRestart: Bool
+    ) async throws -> RuntimeCommandResult {
         try ensureExecutable(.launcher)
         var temporaryFiles: [RuntimeTemporarySettingsFile] = []
         var adminPasswordFile: URL?
@@ -108,7 +119,8 @@ public actor MacRuntimeControlCommandWorker {
                 arguments: RuntimeCommandFactory.configureRuntimeArguments(
                     settings: settings,
                     adminPasswordFile: adminPasswordFile?.path,
-                    recorderIngressSettingsFile: recorderIngressSettingsFile.path
+                    recorderIngressSettingsFile: recorderIngressSettingsFile.path,
+                    forceVMRuntimeRestart: forceVMRuntimeRestart
                 )
             ))
             let cleanupIssues = cleanupTemporarySettingsFiles(temporaryFiles)
@@ -505,12 +517,6 @@ public actor MacRuntimeControlCommandWorker {
         }
     }
 
-    public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
-        return try await runGuestProductLabCommand {
-            try $0.uploadLabVitalFile(request)
-        }
-    }
-
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         try await logExporter.exportLogs(to: destination)
     }
@@ -732,7 +738,6 @@ extension RuntimeLabRecorderList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabSessionList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabSessionResponse: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabRecorderResponse: RuntimeLabResponseUnavailableFactory {}
-extension RuntimeLabVitalFileUploadResponse: RuntimeLabResponseUnavailableFactory {}
 
 extension MacRuntimeControlCommandWorker: RuntimeGuestMaintenanceOperationClient {}
 

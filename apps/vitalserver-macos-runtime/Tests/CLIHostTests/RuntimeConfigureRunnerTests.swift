@@ -105,6 +105,37 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(settings, RuntimeControlSettingsDocument(logArchiveRetentionDays: 21, logArchiveMaximumGiB: 4))
     }
 
+    func testExplicitVMRuntimeRestartRunsWhenSavedConfigurationAlreadyMatches() throws {
+        let harness = try Harness()
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [],
+            activation: .restartVMRuntime
+        ))
+
+        XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .vmRuntime)
+        XCTAssertEqual(harness.restartCount, 1)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 0)
+    }
+
+    func testExplicitVMRuntimeRestartDoesNotCallGuestStackReconcileWhenSavedSettingsAreResubmitted() throws {
+        let harness = try Harness()
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [
+                .memoryGiB(4),
+                .recorderIngressSendDataReplayMaxMiBPerSecond(25),
+            ],
+            activation: .restartVMRuntime
+        ))
+
+        XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .vmRuntime)
+        XCTAssertEqual(harness.restartCount, 1)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 0)
+    }
+
     func testConfigureMergesSingleLogArchiveSettingChangeWithExistingDocument() throws {
         let harness = try Harness()
         harness.fileStore.files[harness.paths.runtimeControlSettings] = try JSONEncoder().encode(
@@ -306,6 +337,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
     final class Harness {
         let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
+        private let hostSettingsRepository = RuntimeHostSettingsRepositorySpy()
         let vmConfigURL: URL
         var resizedDisks: [Int] = []
         var proxyPorts: [Int] = []
@@ -385,6 +417,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 maximumAllowedMemoryGiB: Constants.Defaults.maximumAllowedMemoryGiB(
                     physicalMemoryBytes: 16 * 1_073_741_824
                 ),
+                prepareHostStateStore: {},
+                hostSettingsRepository: hostSettingsRepository,
                 log: { _ in }
             )
         }
@@ -405,5 +439,96 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 swaggerUiPort: Constants.Guest.swaggerUIPort
             )
         }
+    }
+}
+
+private final class RuntimeHostSettingsRepositorySpy: RuntimeHostSettingsRepository, @unchecked Sendable {
+    private var record: RuntimeHostSettingsRecord?
+
+    func loadHostSettings() -> RuntimeHostSettingsReadResult {
+        record.map(RuntimeHostSettingsReadResult.loaded) ?? .missing
+    }
+
+    func importMaterializedHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        importedAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        guard record == nil else {
+            throw RuntimeHostSettingsStateTransitionError.alreadyExists(revision: record!.revision)
+        }
+        let next = RuntimeHostSettingsRecord(
+            payload: payload,
+            revision: 1,
+            desiredAt: importedAt,
+            materializedRevision: 1,
+            materializedAt: importedAt
+        )
+        record = next
+        return next
+    }
+
+    func saveDesiredHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        expectedRevision: Int,
+        desiredAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        guard let current = record else { throw RuntimeHostSettingsStateTransitionError.missingState }
+        guard current.revision == expectedRevision else {
+            throw RuntimeHostSettingsStateTransitionError.staleRevision(
+                expected: expectedRevision,
+                actual: current.revision
+            )
+        }
+        let next = RuntimeHostSettingsRecord(
+            payload: payload,
+            revision: current.revision + 1,
+            desiredAt: desiredAt,
+            appliedRevision: current.appliedRevision,
+            appliedRunID: current.appliedRunID,
+            appliedAt: current.appliedAt
+        )
+        record = next
+        return next
+    }
+
+    func markHostSettingsMaterialized(
+        revision: Int,
+        materializedAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        guard let current = record else { throw RuntimeHostSettingsStateTransitionError.missingState }
+        guard current.revision == revision else {
+            throw RuntimeHostSettingsStateTransitionError.staleRevision(
+                expected: revision,
+                actual: current.revision
+            )
+        }
+        let next = RuntimeHostSettingsRecord(
+            payload: current.payload,
+            revision: current.revision,
+            desiredAt: current.desiredAt,
+            materializedRevision: revision,
+            materializedAt: materializedAt,
+            appliedRevision: current.appliedRevision,
+            appliedRunID: current.appliedRunID,
+            appliedAt: current.appliedAt
+        )
+        record = next
+        return next
+    }
+
+    func recordHostSettingsBoot(
+        revision: Int,
+        runID: String,
+        startedAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        throw RuntimeHostSettingsStateTransitionError.invalidRunID
+    }
+
+    func markHostSettingsApplied(
+        revision: Int,
+        runID: String,
+        appliedAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        throw RuntimeHostSettingsStateTransitionError.invalidRunID
     }
 }

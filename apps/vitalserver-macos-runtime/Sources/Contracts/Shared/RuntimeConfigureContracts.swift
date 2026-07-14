@@ -30,6 +30,7 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case logArchiveRetentionDays
     case logArchiveMaximumGiB
     case restart
+    case restartVMRuntime
     case unknown(String)
 
     public init(rawValue: String) {
@@ -96,6 +97,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .logArchiveMaximumGiB
         case "--restart":
             self = .restart
+        case "--restart-vm-runtime":
+            self = .restartVMRuntime
         default:
             self = .unknown(rawValue)
         }
@@ -165,13 +168,15 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--log-archive-maximum-gib"
         case .restart:
             return "--restart"
+        case .restartVMRuntime:
+            return "--restart-vm-runtime"
         case .unknown(let value):
             return value
         }
     }
 
     public var requiresValue: Bool {
-        self != .restart
+        self != .restart && self != .restartVMRuntime
     }
 }
 

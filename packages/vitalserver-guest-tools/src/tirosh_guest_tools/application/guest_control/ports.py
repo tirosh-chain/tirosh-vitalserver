@@ -10,7 +10,6 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabReadModelResult,
     ProductLabRecorderResult,
     ProductLabSessionResult,
-    ProductLabUploadResult,
     RedisBackupResult,
     RedisRestoreResult,
     ServiceOperation,
@@ -89,9 +88,6 @@ class ProductLabPort(Protocol):
     def replay_vital_file(self, request: dict[str, Any]) -> ProductLabSessionResult:
         raise NotImplementedError
 
-    def upload_vital_file(self, request: dict[str, Any]) -> ProductLabUploadResult:
-        raise NotImplementedError
-
     def create_beds(self, request: dict[str, Any]) -> ProductLabReadModelResult:
         raise NotImplementedError
 
@@ -118,6 +114,12 @@ class ProductLabPort(Protocol):
     def stop_recorder(
         self, session_id: str, recorder_id: str
     ) -> ProductLabRecorderResult:
+        raise NotImplementedError
+
+
+class VitalFileLibraryPort(Protocol):
+    def import_files(self, files: list[tuple[str, bytes]]) -> list[dict[str, object]]:
+        """Atomically add an explicitly provided batch to the Vital Files library."""
         raise NotImplementedError
 
 

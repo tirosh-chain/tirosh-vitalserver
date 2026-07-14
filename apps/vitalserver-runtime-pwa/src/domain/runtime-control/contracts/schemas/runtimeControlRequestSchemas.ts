@@ -8,7 +8,6 @@ import type {
   RuntimeLabRecorderCreateRequest,
   RuntimeLabRecorderDeleteRequest,
   RuntimeLabSessionCreateRequest,
-  RuntimeLabVitalFileUploadRequest,
   RuntimeLabVitalFileReplayRequest,
   RuntimeGuestServiceControlRequest,
   RuntimeLogTextRequest,
@@ -93,17 +92,22 @@ export const runtimeLabRecorderDeleteRequestSchema = z.object({
 }) satisfies z.ZodType<RuntimeLabRecorderDeleteRequest>;
 
 export const runtimeLabVitalFileReplayRequestSchema = z.object({
-  vitalFilePath: nonEmptyString,
+  vitalFileRelativePath: nonEmptyString,
   sessionName: z.string().trim().min(1).nullable().optional(),
-  targetURL: z.string().trim().min(1).nullable().optional()
+  targetURL: z.string().trim().min(1).nullable().optional(),
+  resourceSelection: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("quickCreate") }).strict(),
+    z.object({
+      mode: z.literal("existing"),
+      bedId: nonEmptyString,
+      recorderId: nonEmptyString
+    }).strict()
+  ]),
+  repeatPolicy: z.discriminatedUnion("mode", [
+    z.object({ mode: z.enum(["once", "continuous"]) }).strict(),
+    z.object({ mode: z.literal("count"), count: z.number().int().min(2) }).strict()
+  ])
 }) satisfies z.ZodType<RuntimeLabVitalFileReplayRequest>;
-
-export const runtimeLabVitalFileUploadRequestSchema = z.object({
-  vitalFilePath: nonEmptyString,
-  targetURL: nonEmptyString,
-  endpoint: z.string().trim().min(1).nullable().optional(),
-  vrcode: z.string().trim().min(1).nullable().optional()
-}) satisfies z.ZodType<RuntimeLabVitalFileUploadRequest>;
 
 export const vitalDBRecorderVisibilityRequestSchema = z.object({
   vrcodes: z.array(nonEmptyString).min(1)

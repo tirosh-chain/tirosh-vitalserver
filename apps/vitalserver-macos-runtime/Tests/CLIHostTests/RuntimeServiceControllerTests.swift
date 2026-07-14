@@ -12,6 +12,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
     func testStopsLoadedRuntimeServicesInDependencyOrder() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let loaded = Set([
+            RuntimeManagedService.platformAgent,
             RuntimeManagedService.vm,
             RuntimeManagedService.proxy,
             RuntimeManagedService.guestLogSync,
@@ -63,7 +64,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
-    func testPreparesVMProcessBeforeLaunchdStop() throws {
+    func testUnloadsVMWithoutPreStopSignalSoLaunchdCannotRelaunchIt() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let loaded = Set([RuntimeManagedService.vm])
         var events: [String] = []
@@ -81,7 +82,6 @@ final class RuntimeServiceControllerTests: XCTestCase {
         try controller.stopRuntimeServices()
 
         XCTAssertEqual(events, [
-            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
         ])
@@ -126,19 +126,23 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.stoppedLabels, [])
     }
 
-    func testStopRuntimeServicesPropagatesVMPrepareFailureWithoutLaunchdStop() {
+    func testStopRuntimeServicesDoesNotInvokeVMPrepareHookBeforeLaunchdUnload() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set([RuntimeManagedService.vm])
+        serviceManager.onStop = { loaded.remove($0) }
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            serviceState: { $0 == .vm ? .loaded : .notLoaded },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("VM graceful stop failed") },
+            waitUntilStopped: { _ in },
             launchDaemonPlist: { $0.launchDaemonPlist },
             launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try controller.stopRuntimeServices())
-        XCTAssertEqual(serviceManager.stoppedLabels, [])
+        try controller.stopRuntimeServices()
+
+        XCTAssertEqual(serviceManager.stoppedLabels, [RuntimeManagedService.vm.label])
     }
 
     func testStopRuntimeServicesBlocksWhenLaunchdStateReadFails() {
@@ -582,7 +586,6 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",
-            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
         ])

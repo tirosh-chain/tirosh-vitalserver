@@ -21,9 +21,6 @@ public enum RuntimeGuestAddressResourceReadMapper {
             guard let read = resource.read else {
                 return .readFailed("Guest address resource loaded without read result")
             }
-            guard read.state == .loaded else {
-                return .readFailed("Guest address resource loaded with non-loaded read state=\(read.state.rawValue)")
-            }
             return read
         case .missing:
             return .missing(resource.readError ?? "Guest address resource missing")

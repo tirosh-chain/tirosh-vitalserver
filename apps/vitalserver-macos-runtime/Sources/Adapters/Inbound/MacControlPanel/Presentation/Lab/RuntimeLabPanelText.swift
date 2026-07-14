@@ -10,12 +10,20 @@ enum RuntimeLabPanelText {
     static let selectedLabSession = "Selected session"
     static let sessionRecorders = "Session recorders"
     static let productLabResources = "Advanced resources"
-    static let vitalFileReplay = ".vital replay"
+    static let vitalFiles = "Vital Files"
+    static let uploadToLibrary = "Upload to library"
+    static let replayUploadedFile = "Replay uploaded file"
     static let vitalFileSource = ".vital file"
     static let vitalFileFilter = "Filter .vital files"
-    static let choosingVitalFileForPlayback = "Choose .vital file"
-    static let chooseVitalFileForPlayback = "Choose a .vital file before starting playback."
-    static let chooseSharedVitalFileForPlayback = "Choose a .vital file under the configured vital files directory before starting playback."
+    static let chooseVitalFilesForUpload = "Choose .vital files"
+    static let chooseUploadedVitalFile = "Choose an uploaded .vital file before starting replay."
+    static let replayResources = "Replay resources"
+    static let quickCreateResources = "Quick create"
+    static let useExistingResources = "Use existing"
+    static let repeatMode = "Repeat"
+    static let repeatOnce = "Once"
+    static let repeatCount = "N times"
+    static let repeatContinuous = "Continuous"
     static let loadingLabScenarios = "Loading Product Lab scenarios..."
     static let chooseLabScenario = "Choose a Product Lab scenario."
     static let creatingLabSession = "Creating Product Lab session..."
@@ -24,8 +32,7 @@ enum RuntimeLabPanelText {
     static let startingLabRecorder = "Starting Product Lab recorder..."
     static let stoppingLabRecorder = "Stopping Product Lab recorder..."
     static let replayingLabVitalFile = "Starting .vital replay session..."
-    static let uploadingLabVitalFile = "Uploading .vital file..."
-    static let uploadFailed = ".vital file upload failed."
+    static let uploadingLabVitalFiles = "Uploading .vital files to the library..."
     static let labTargetURLRequired = "Target URL is required."
     static let noLabSession = "No Product Lab session is selected."
     static let runningLabSessionRequired = "Select a running Product Lab session to control its recorders."
@@ -85,8 +92,16 @@ enum RuntimeLabPanelText {
         "Started .vital replay session \(id)."
     }
 
-    static func uploadedLabVitalFile(_ filename: String) -> String {
-        "Uploaded .vital file \(filename)."
+    static func selectedVitalFiles(_ count: Int) -> String {
+        count == 0 ? "No files selected" : "\(count) file(s) selected"
+    }
+
+    static func uploadedLabVitalFiles(_ count: Int) -> String {
+        "Uploaded \(count) .vital file(s) to the Vital Files library."
+    }
+
+    static func repeatTimes(_ count: Int) -> String {
+        "\(count) times"
     }
 }
 

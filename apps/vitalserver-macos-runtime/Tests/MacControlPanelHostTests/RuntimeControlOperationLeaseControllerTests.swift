@@ -10,7 +10,7 @@ import XCTest
 @MainActor
 final class RuntimeControlOperationLeaseControllerTests: XCTestCase {
     func testAcquireLoadHeartbeatAndReleaseOperationLease() async throws {
-        let controller = makeController()
+        let controller = try makeController()
         let document = operationLease(operationId: "lease-1", operation: .applyBundle)
 
         let acquire = try await controller.acquireOperationLease(document)
@@ -42,7 +42,7 @@ final class RuntimeControlOperationLeaseControllerTests: XCTestCase {
     }
 
     func testAcquireFailsWhenOperationAlreadyExists() async throws {
-        let controller = makeController()
+        let controller = try makeController()
         _ = try await controller.acquireOperationLease(operationLease(operationId: "lease-1", operation: .applyBundle))
 
         do {
@@ -57,7 +57,7 @@ final class RuntimeControlOperationLeaseControllerTests: XCTestCase {
     }
 
     func testHeartbeatAndReleasePreserveOperationIDMismatch() async throws {
-        let controller = makeController()
+        let controller = try makeController()
         let document = operationLease(operationId: "lease-1", operation: .applyBundle)
         _ = try await controller.acquireOperationLease(document)
 
@@ -103,12 +103,15 @@ final class RuntimeControlOperationLeaseControllerTests: XCTestCase {
         )
     }
 
-    private func makeController() -> RuntimeControlOperationLeaseController {
-        RuntimeControlOperationLeaseController(
-            owner: JSONFileRuntimeOperationLeaseRepository(
-                url: FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString, isDirectory: true)
-                    .appendingPathComponent("runtime-operation-lease.json")
+    private func makeController() throws -> RuntimeControlOperationLeaseController {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("runtime-state.sqlite")
+        _ = try SQLiteHostRuntimeStateDatabase(url: databaseURL).initialize()
+        return RuntimeControlOperationLeaseController(
+            owner: SQLiteRuntimeOperationLeaseRepository(
+                databaseURL: databaseURL
             )
         )
     }
