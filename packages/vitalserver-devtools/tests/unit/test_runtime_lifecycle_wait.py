@@ -207,6 +207,40 @@ def test_wait_for_runtime_stopped_accepts_stopping_lifecycle_without_process(
     assert result == 0
 
 
+def test_wait_for_runtime_stopped_waits_for_process_after_stopped_lifecycle(
+    monkeypatch,
+    tmp_path,
+):
+    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    process_reads = iter(([1234], []))
+    observed_process_states: list[list[int]] = []
+
+    def running_processes(_vm_home):
+        state = next(process_reads)
+        observed_process_states.append(state)
+        return state
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        running_processes,
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.sleep",
+        lambda _seconds: None,
+    )
+
+    result = wait_for_runtime_stopped(
+        RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
+    )
+
+    assert result == 0
+    assert observed_process_states == [[1234], []]
+
+
 def test_wait_for_runtime_stopped_rejects_failed_lifecycle(tmp_path):
     lifecycle = tmp_path / "run" / "vm-lifecycle.json"
     lifecycle.parent.mkdir(parents=True)

@@ -351,14 +351,16 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
             removed.append(str(path))
 
     runtime_config = load_guest_runtime_config(load_build_toml(config_path))
-    runtime_data = prepare_ephemeral_runtime_data_disk(
-        runtime_data_disk_plan(
-            config_path=config_path,
-            vm_home=vm_home,
-            runtime_config=runtime_config,
-        )
+    runtime_data_plan = runtime_data_disk_plan(
+        config_path=config_path,
+        vm_home=vm_home,
+        runtime_config=runtime_config,
     )
-    write_vm_config_runtime_data_disk_path(vm_home, str(runtime_data["path"]))
+    require_vm_config_runtime_data_disk_path(
+        vm_home,
+        str(runtime_data_plan.disk_image),
+    )
+    runtime_data = prepare_ephemeral_runtime_data_disk(runtime_data_plan)
 
     context = {
         "schemaVersion": 1,
@@ -386,14 +388,16 @@ def prepare_runtime_data_disk(input: RuntimeVmHomeInput) -> int:
     vm_home = resolve_path(root, input.vm_home)
     require_vm_config(vm_home)
     runtime_config = load_guest_runtime_config(load_build_toml(config_path))
-    runtime_data = prepare_ephemeral_runtime_data_disk(
-        runtime_data_disk_plan(
-            config_path=config_path,
-            vm_home=vm_home,
-            runtime_config=runtime_config,
-        )
+    runtime_data_plan = runtime_data_disk_plan(
+        config_path=config_path,
+        vm_home=vm_home,
+        runtime_config=runtime_config,
     )
-    write_vm_config_runtime_data_disk_path(vm_home, str(runtime_data["path"]))
+    require_vm_config_runtime_data_disk_path(
+        vm_home,
+        str(runtime_data_plan.disk_image),
+    )
+    runtime_data = prepare_ephemeral_runtime_data_disk(runtime_data_plan)
     print(f"Runtime data disk is ready: {runtime_data['path']}")
     return 0
 
@@ -763,7 +767,7 @@ def probe_apt_snapshot_url_once(
     )
 
 
-def write_vm_config_runtime_data_disk_path(
+def require_vm_config_runtime_data_disk_path(
     vm_home: Path,
     runtime_data_disk_path: str,
 ) -> None:
@@ -777,11 +781,18 @@ def write_vm_config_runtime_data_disk_path(
         ) from error
     if not isinstance(document, dict):
         raise SystemExit(f"error: VM config is invalid: expected object: {config_path}")
-    document["runtimeDataDiskPath"] = runtime_data_disk_path
-    config_path.write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    configured_path = document.get("runtimeDataDiskPath")
+    if not isinstance(configured_path, str) or not configured_path:
+        raise SystemExit(
+            "error: VM config runtime data disk path is missing: "
+            f"{config_path}"
+        )
+    if configured_path != runtime_data_disk_path:
+        raise SystemExit(
+            "error: VM config runtime data disk path does not match build contract: "
+            f"path={config_path} actual={configured_path} "
+            f"expected={runtime_data_disk_path}"
+        )
 
 
 def require_vm_config(vm_home: Path) -> None:
@@ -1159,12 +1170,10 @@ def wait_for_runtime_stopped(input: RuntimeWaitInput) -> int:
     deadline = time.monotonic() + input.timeout
     last_state = "not-started"
     while time.monotonic() < deadline:
+        state: object = None
         try:
             document = json.loads(lifecycle.read_text(encoding="utf-8"))
             state = document.get("state")
-            if state == "stopped":
-                print("VM lifecycle is stopped")
-                return 0
             if state == "failed":
                 terminal_reason = document.get("terminalReason", "unknown")
                 message = document.get("message", "")
@@ -1176,9 +1185,18 @@ def wait_for_runtime_stopped(input: RuntimeWaitInput) -> int:
             last_state = str(state)
         except (OSError, json.JSONDecodeError) as error:
             last_state = str(error)
-        if not running_vm_processes_for_home(vm_home):
-            print("VM launcher process is not running")
+        running_processes = running_vm_processes_for_home(vm_home)
+        if not running_processes:
+            if state == "stopped":
+                print("VM lifecycle is stopped and launcher process is not running")
+            else:
+                print("VM launcher process is not running")
             return 0
+        if state == "stopped":
+            last_state = (
+                "stopped; launcher process still running pids="
+                + ",".join(str(pid) for pid in running_processes)
+            )
         time.sleep(2)
     raise SystemExit(
         f"error: timed out waiting for VM lifecycle stopped: {lifecycle} "

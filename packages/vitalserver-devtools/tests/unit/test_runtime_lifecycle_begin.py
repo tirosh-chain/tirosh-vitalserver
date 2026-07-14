@@ -129,10 +129,14 @@ def test_begin_golden_rootfs_run_records_runtime_data_disk_contract(
     stale_ready.write_text("stale", encoding="utf-8")
     vm_config = vm_home / "runtime/vm-config.json"
     vm_config.parent.mkdir(parents=True)
-    vm_config.write_text(
-        json.dumps({"kernelPath": "/runtime/Image"}),
-        encoding="utf-8",
+    vm_config_text = json.dumps(
+        {
+            "kernelPath": "/runtime/Image",
+            "runtimeDataDiskPath": str(vm_home / "runtime/runtime-data.img"),
+        },
+        separators=(",", ":"),
     )
+    vm_config.write_text(vm_config_text, encoding="utf-8")
 
     monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -175,10 +179,7 @@ def test_begin_golden_rootfs_run_records_runtime_data_disk_contract(
         "containerdRoot": "/mnt/runtime/containerd",
         "removedStaleDisk": False,
     }
-    updated_vm_config = json.loads(vm_config.read_text(encoding="utf-8"))
-    assert updated_vm_config["runtimeDataDiskPath"] == str(
-        vm_home / "runtime/runtime-data.img"
-    )
+    assert vm_config.read_text(encoding="utf-8") == vm_config_text
 
 
 def test_begin_golden_rootfs_run_requires_initialized_vm_config(
@@ -224,7 +225,7 @@ def test_begin_golden_rootfs_run_requires_initialized_vm_config(
     assert stale_ready.read_text(encoding="utf-8") == "stale"
 
 
-def test_prepare_runtime_data_disk_records_vm_config_path(
+def test_prepare_runtime_data_disk_preserves_materialized_vm_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -232,10 +233,14 @@ def test_prepare_runtime_data_disk_records_vm_config_path(
     vm_home = tmp_path / "vm"
     vm_config = vm_home / "runtime/vm-config.json"
     vm_config.parent.mkdir(parents=True)
-    vm_config.write_text(
-        json.dumps({"kernelPath": "/runtime/Image"}),
-        encoding="utf-8",
+    vm_config_text = json.dumps(
+        {
+            "kernelPath": "/runtime/Image",
+            "runtimeDataDiskPath": str(vm_home / "runtime/runtime-data.img"),
+        },
+        separators=(",", ":"),
     )
+    vm_config.write_text(vm_config_text, encoding="utf-8")
 
     monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -261,11 +266,51 @@ def test_prepare_runtime_data_disk_records_vm_config_path(
     )
 
     assert result == 0
-    updated_vm_config = json.loads(vm_config.read_text(encoding="utf-8"))
-    assert updated_vm_config["runtimeDataDiskPath"] == str(
-        vm_home / "runtime/runtime-data.img"
-    )
+    assert vm_config.read_text(encoding="utf-8") == vm_config_text
     assert not (vm_home / "run/golden-rootfs-run.json").exists()
+
+
+def test_prepare_runtime_data_disk_rejects_vm_config_path_mismatch_before_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_build_config(tmp_path / "config/vm-build.toml")
+    vm_home = tmp_path / "vm"
+    vm_config = vm_home / "runtime/vm-config.json"
+    vm_config.parent.mkdir(parents=True)
+    vm_config_text = json.dumps(
+        {
+            "kernelPath": "/runtime/Image",
+            "runtimeDataDiskPath": "/unexpected/runtime-data.img",
+        },
+        separators=(",", ":"),
+    )
+    vm_config.write_text(vm_config_text, encoding="utf-8")
+    prepared = False
+
+    monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
+
+    def prepare(_plan):
+        nonlocal prepared
+        prepared = True
+        raise AssertionError("runtime data disk must not be prepared after contract mismatch")
+
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "prepare_ephemeral_runtime_data_disk",
+        prepare,
+    )
+
+    with pytest.raises(SystemExit, match="runtime data disk path does not match"):
+        runtime_lifecycle.prepare_runtime_data_disk(
+            RuntimeVmHomeInput(
+                config=Path("config/vm-build.toml"),
+                vm_home=Path("vm"),
+            )
+        )
+
+    assert prepared is False
+    assert vm_config.read_text(encoding="utf-8") == vm_config_text
 
 
 def test_golden_rootfs_preflight_rejects_unavailable_apt_snapshot(
