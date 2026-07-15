@@ -86,6 +86,16 @@ internal/vm/airgap-rootfs: internal/vm/release-contract
 	@$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
 		--vm-home "$(VM_HOME)" \
 		stop >/dev/null 2>&1 || true
+	# `stop` only requests shutdown. Wait for the Host-owned lifecycle and
+	# launcher process proofs before touching mutable runtime files.
+	@set -e; \
+	if ! $(VM_BUILD_RUNNER) macos-runtime-wait-stopped \
+		--vm-home "$(VM_HOME)" \
+		--timeout "$(VM_AIRGAP_CLEANUP_WAIT_TIMEOUT)" >/dev/null 2>&1; then \
+		$(VM_BUILD_RUNNER) macos-runtime-force-stop \
+			--vm-home "$(VM_HOME)" \
+			--timeout "$(VM_AIRGAP_FORCE_STOP_TIMEOUT)"; \
+	fi
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
 		--vm-home "$(VM_HOME)"
 	$(MAKE) internal/vm/download \
@@ -100,6 +110,14 @@ internal/vm/airgap-rootfs: internal/vm/release-contract
 	@$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
 		--vm-home "$(VM_HOME)" \
 		stop >/dev/null 2>&1 || true
+	@set -e; \
+	if ! $(VM_BUILD_RUNNER) macos-runtime-wait-stopped \
+		--vm-home "$(VM_HOME)" \
+		--timeout "$(VM_AIRGAP_CLEANUP_WAIT_TIMEOUT)" >/dev/null 2>&1; then \
+		$(VM_BUILD_RUNNER) macos-runtime-force-stop \
+			--vm-home "$(VM_HOME)" \
+			--timeout "$(VM_AIRGAP_FORCE_STOP_TIMEOUT)"; \
+	fi
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
 		--vm-home "$(VM_HOME)"
 	@if [ -n "$(VM_ROOTFS_RUN_ID)" ]; then \

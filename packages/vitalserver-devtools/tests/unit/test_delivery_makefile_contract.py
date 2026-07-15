@@ -59,6 +59,27 @@ def test_rootfs_cache_miss_recreates_the_base_disk() -> None:
     assert airgap_rootfs_call < fresh_disk_flag
 
 
+def test_airgap_rootfs_waits_for_launcher_exit_before_mutating_runtime_files() -> None:
+    recipe = target_recipe(
+        PACKAGE_MAKEFILE.read_text(encoding="utf-8"),
+        "internal/vm/airgap-rootfs",
+    )
+
+    stop_request = "macos-runtime-control"
+    shutdown_wait = "macos-runtime-wait-stopped"
+    no_running_guard = "macos-runtime-require-no-running"
+
+    first_stop = recipe.index(stop_request)
+    first_wait = recipe.index(shutdown_wait, first_stop)
+    first_guard = recipe.index(no_running_guard, first_wait)
+    second_stop = recipe.index(stop_request, first_guard)
+    second_wait = recipe.index(shutdown_wait, second_stop)
+    second_guard = recipe.index(no_running_guard, second_wait)
+
+    assert first_stop < first_wait < first_guard < second_stop < second_wait < second_guard
+    assert recipe.count("macos-runtime-force-stop") >= 2
+
+
 def test_vm_stage_materializes_host_settings_owner_after_guest_deploy() -> None:
     recipe = target_recipe(
         RUNTIME_MAKEFILE.read_text(encoding="utf-8"),

@@ -34,6 +34,11 @@ already `stopped` but a PID remains, it keeps waiting and reports both states in
 It does not infer process exit from the lifecycle document and does not turn a timeout into
 success.
 
+The air-gapped rootfs workflow uses that same wait before each `require-no-running` guard, both
+when it clears a leftover Golden VM before preparing mutable files and when it finishes the
+Guest proof. If the bounded wait cannot establish the explicit stopped/process-absent proof, it
+uses the existing explicit force-stop recovery command and then rechecks process absence.
+
 ## Checks
 
 ```sh
@@ -51,7 +56,8 @@ Both commands must pass before rootfs compression or package assembly starts.
 
 - Wait contracts that protect mutable runtime files must observe Host process absence explicitly.
 - Lifecycle documents must not be used as a fallback for process state.
-- Package compile tests must cover `lifecycle=stopped` while the launcher PID remains briefly.
+- Package compile tests must cover `lifecycle=stopped` while the launcher PID remains briefly,
+  including the preflight cleanup before mutable runtime files are touched.
 
 ## Related Cases
 
