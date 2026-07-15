@@ -28,7 +28,11 @@ enum RuntimeLabPanelText {
     static let chooseLabScenario = "Choose a Product Lab scenario."
     static let creatingLabSession = "Creating Product Lab session..."
     static let startingLabSession = "Starting Product Lab session..."
-    static let stoppingLabSession = "Stopping Product Lab session..."
+    static let stoppingLabSession = "Pausing Product Lab session..."
+    static let pause = "Pause"
+    static let finishingLabSession = "Finishing Product Lab session and uploading its .vital files..."
+    static let finishAndUpload = "Finish & upload"
+    static let retryUpload = "Retry upload"
     static let startingLabRecorder = "Starting Product Lab recorder..."
     static let stoppingLabRecorder = "Stopping Product Lab recorder..."
     static let replayingLabVitalFile = "Starting .vital replay session..."
@@ -77,7 +81,11 @@ enum RuntimeLabPanelText {
     }
 
     static func stoppedLabSession(_ id: String) -> String {
-        "Stopped Product Lab session \(id)."
+        "Paused Product Lab session \(id)."
+    }
+
+    static func finishedLabSession(_ id: String) -> String {
+        "Finished Product Lab session \(id) and requested .vital file upload."
     }
 
     static func startedLabRecorder(_ vrcode: String) -> String {

@@ -10,6 +10,7 @@ public enum RuntimeLabControlAction: Equatable, Sendable {
     case getSession(String)
     case startSession(String)
     case stopSession(String)
+    case finishSession(String)
     case replayVitalFile(RuntimeLabVitalFileReplayRequest)
 }
 

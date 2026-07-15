@@ -177,7 +177,7 @@ test("raw archive export worker persists explicit Lab finalization before upload
 
   const accepted = await worker.requestFinalization({
     vrcodes: ["VR-1"],
-    reason: "lab_session_stopped",
+    reason: "lab_session_finished",
   });
 
   assert.strictEqual(accepted.state, "accepted");
@@ -187,7 +187,7 @@ test("raw archive export worker persists explicit Lab finalization before upload
   assert.strictEqual(state.history[0].trigger, "explicit");
 });
 
-test("raw archive export worker processes every ready recorder in one Lab stop request", async () => {
+test("raw archive export worker processes every ready recorder in one Lab finish request", async () => {
   const metrics = metricsWithFinalizableArchive();
   metrics.recorders.set("VR-2", recorderMetrics({ lastOffset: 84 }));
   const recovered = [];
@@ -206,7 +206,7 @@ test("raw archive export worker processes every ready recorder in one Lab stop r
 
   const accepted = await worker.requestFinalization({
     vrcodes: ["VR-1", "VR-2"],
-    reason: "lab_session_stopped",
+    reason: "lab_session_finished",
   });
 
   assert.strictEqual(accepted.state, "accepted");

@@ -20,8 +20,8 @@ from tirosh_guest_tools.application.guest_control.ports import (
     ServiceStatusSnapshotRepository,
     UpdateActivationPort,
     UpdateShutdownPort,
-    VitalFileLibraryPort,
     VitalDBReadModelPort,
+    VitalFileLibraryPort,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
     GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
@@ -182,7 +182,6 @@ class GuestControlUseCases:
             capabilities.extend(
                 [
                     "lab:scenarios",
-                    "lab:vital-files",
                     "lab:beds",
                     "lab:beds:create",
                     "lab:beds:delete",
@@ -198,12 +197,18 @@ class GuestControlUseCases:
                     "lab:sessions:get",
                     "lab:sessions:start",
                     "lab:sessions:stop",
+                    "lab:sessions:finish",
                     "lab:vital-files:replay",
                 ]
             )
 
         if self._vital_file_library is not None:
-            capabilities.append("lab:vital-files:upload")
+            capabilities.extend(
+                [
+                    "lab:vital-files",
+                    "lab:vital-files:upload",
+                ]
+            )
 
         if self._redis_backup is not None:
             capabilities.extend(
@@ -726,17 +731,34 @@ class GuestControlUseCases:
             return _lab_failed_document(error)
 
     def list_lab_vital_files(self) -> dict[str, object]:
-        if self._product_lab is None:
+        if self._vital_file_library is None:
             return {
                 "state": "unavailable",
                 "vitalFiles": [],
-                "readError": "Product Lab adapter is unavailable.",
+                "readError": "VitalServer file library adapter is unavailable.",
             }
 
         try:
-            return self._product_lab.list_vital_files()
-        except ProductLabDependencyError as error:
-            return _lab_read_model_failed_document(error, collection="vitalFiles")
+            return {
+                "state": "loaded",
+                "vitalFiles": self._vital_file_library.list_files(),
+                "readError": None,
+            }
+        except GuestControlDependencyError as error:
+            state = (
+                "unavailable"
+                if error.kind
+                in {
+                    "vitalFileLibraryUnavailable",
+                    "vitalFileLibraryAuthenticationUnavailable",
+                }
+                else "failed"
+            )
+            return {
+                "state": state,
+                "vitalFiles": [],
+                "readError": error.message,
+            }
 
     def list_lab_beds(self) -> dict[str, object]:
         if self._product_lab is None:
@@ -805,6 +827,12 @@ class GuestControlUseCases:
         return self._run_lab_session_operation(
             command=ServiceCommand.LAB_STOP_SESSION,
             action=lambda: self._require_product_lab().stop_session(session_id),
+        )
+
+    def finish_lab_session(self, session_id: str) -> dict[str, object]:
+        return self._run_lab_session_operation(
+            command=ServiceCommand.LAB_FINISH_SESSION,
+            action=lambda: self._require_product_lab().finish_session(session_id),
         )
 
     def start_lab_recorder(

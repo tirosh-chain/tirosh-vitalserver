@@ -738,7 +738,41 @@ Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 
 중요한 운영 작업의 owner는 `MacHostRuntimeCommandWorker`입니다. Update, Redis backup, rollback, repair처럼 오래 걸리거나 관리자 권한을 요구하는 작업은 read worker와 섞지 않습니다. UI와 dev Runtime Control API는 같은 `MacHostRuntimeClient` facade를 통해 호출하지만, facade 내부에서는 read worker와 command worker가 분리되어야 합니다. 이 경계가 깨지면 업데이트 중 앱 재시작, UI 끊김, PWA/local UI 상태 차이를 추적하기 어려워집니다.
 
-### 7-1. Naming Rules
+### 7-1. Host/Guest time synchronization
+
+시간 동기화는 두 단계로 나눕니다. 첫 단계는 네트워크가 뜨기 전 Guest boot를 위한 필수 계약이고, 두 번째 단계는 부팅 후 drift와 suspend/resume을 교정하며 외부 장비에도 Host 시간을 제공하는 NTP service입니다.
+
+```text
+VM process start
+  -> Host writes fresh host-time.json atomically
+  -> Guest applies the explicit boot time before Docker
+  -> Guest network becomes ready
+  -> Guest NTP client continuously follows Host NTP service
+  -> external recorders may follow the same Host NTP service
+```
+
+`host-time.json` writer는 service-control command가 아니라 실제 `vitalserver-vm start` entrypoint에 둡니다. launchd `RunAtLoad`/`KeepAlive`, watchdog, settings restart, installer, 수동 start 중 어느 경로도 이 entrypoint를 우회해 VM을 실행하지 않습니다. Guest의 one-shot sync는 missing/invalid/write failure를 실패로 유지하며, Guest 현재 시각이나 NTP를 boot contract fallback으로 사용하지 않습니다.
+
+지속 동기화에는 NTP가 적합합니다. 초기 제품 경계는 macOS system clock을 authoritative Host clock으로 유지하고, 별도 Host NTP daemon은 그 시각을 VM gateway address와 운영자가 명시한 LAN address에 UDP 123으로 제공합니다. Guest는 explicit Host gateway를 단일 local source로 사용합니다. 외부 Vital Recorder도 설정된 Host LAN address를 사용하므로 Host/Guest/Recorder timestamp 기준이 하나가 됩니다.
+
+NTP 구현은 다음 조건을 만족해야 합니다.
+
+| 항목 | 계약 |
+|---|---|
+| clock steering owner | macOS system time owner와 bundled daemon이 동시에 Host clock을 조정하지 않음 |
+| listen address | `0.0.0.0` 추정값이 아니라 VM gateway와 운영자가 저장한 LAN address |
+| client access | VM CIDR와 운영자가 저장한 device CIDR allowlist만 허용 |
+| source state | `synchronized`, `unsynchronized`, `failed`, `unavailable`을 분리해 Runtime Control에 제공 |
+| Guest startup | boot contract 적용 후 NTP client 시작; 초기 큰 offset step은 Docker/Postgres 시작 전에만 허용 |
+| runtime correction | 정상 운영 중에는 slew를 기본으로 하고 임의 backward step을 허용하지 않음 |
+| external service | enable, listen address, allowed CIDR, source mode가 모두 explicit settings이며 missing config를 disabled로 해석하지 않음 |
+| diagnostics | source, stratum, offset, last update, listen endpoints, rejected/failed state를 JSONL history와 current JSON diagnostics로 기록 |
+
+Host daemon 후보는 macOS에서 server socket과 CIDR allowlist를 명시적으로 지원하는 구현을 package에 고정해야 합니다. 예를 들어 ntpd-rs는 macOS 수동 service 구성을 지원하고, interface별 UDP 123 listener와 allowlist를 제공합니다. Guest는 Ubuntu에서 chrony/chronyd를 client로 사용해 초기 제한된 `makestep`과 이후 slew 정책을 분리할 수 있습니다. 선택한 daemon/version/package digest와 설정 schema는 VM/rootfs compile input으로 고정하고, 설치 시 network 접근으로 보정하지 않습니다.
+
+참고: [ntpd-rs server setup](https://docs.ntpd-rs.pendulum-project.org/guide/server-setup/), [ntpd-rs macOS installation](https://docs.ntpd-rs.pendulum-project.org/guide/installation/), [chrony FAQ](https://chrony-project.org/faq.html).
+
+### 7-2. Naming Rules
 
 리팩터링 중 이름은 platform 종속성과 재사용 가능성을 기준으로 정합니다. 이름이 계층 경계를 설명해야 하며, 단순 wrapper가 여러 단계로 겹쳐 호출 깊이를 늘리는 이름은 피합니다.
 
@@ -759,32 +793,34 @@ Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락�
 
 `RuntimeHostClient`는 현재 SwiftUI 전환기에서 필요한 local host affordance 경계입니다. PWA 진입 시 이 계약을 그대로 browser client에 노출한다는 뜻이 아닙니다. PWA는 `RuntimeControlClient`에 해당하는 HTTP/SSE API를 우선 사용하고, local file 선택, log export destination, pairing/native shell 같은 기능은 native shell 또는 Runtime Control API의 별도 endpoint로 재배치합니다.
 
-### 7-2. Vital Files upload와 replay 경계
+### 7-3. Vital Files upload와 replay 경계
 
 `Upload`와 `Replay`는 서로 다른 operation이다.
 
 - Upload는 사용자가 Host 권한으로 읽을 수 있는 위치에서 한 개 이상의 파일을 선택해
-  configured Vital Files library로 가져오는 operation이다. Runtime Control API는
+  VitalServer library로 가져오는 operation이다. Runtime Control API는
   `POST /runtime/lab/vital-files/upload`의 `multipart/form-data` `files` field를 반복해
   N개 파일의 명시적 byte input을 받는다.
-- Upload owner는 파일을 쓰기 전에 전체 batch의 파일명, `.vital` 확장자, batch 내 중복,
-  destination 충돌을 먼저 검증한다. 하나라도 invalid이면 아무 파일도 반영하지 않는다.
-  검증이 끝난 batch만 library 내부 staging directory에 기록하고 commit 중 실패하면 이번
-  batch에서 이동한 destination을 제거한다. Missing library는 새 빈 library로 추정하거나
-  자동 생성하지 않고 unavailable failure로 보고한다.
+- Guest library adapter는 API 호출 전에 전체 선택의 basename, `.vital` 확장자, VitalServer
+  파일명 규칙(`<bed>_YYMMDD_HHMMSS.vital`), batch 내 중복, 현재 VitalServer index 충돌을
+  검증한다. 검증된 파일은 VitalServer `POST /upload`에 하나씩 전달하고 HTTP 상태뿐 아니라
+  응답 본문이 정확히 `success`인지 확인한다. 완료 후 `POST /api/login`과
+  `GET /api/filelist`로 모든 파일이 실제 index에 등록됐는지 다시 검증한다. 두 번째 이후
+  파일에서 실패한 경우 이미 VitalServer가 수락한 파일을 숨기거나 되돌렸다고 추정하지 않고
+  partial-completion failure로 보고한다.
 - macOS native shell은 `NSOpenPanel.allowsMultipleSelection`으로 Host URL들을 받고 같은
   batch import 규칙을 적용한다. PWA는 browser `File[]`을 multipart로 전달한다.
   Linux/Windows Platform Agent는 같은 Runtime Control route와 body를 Runtime Controller에
   전달하므로 PWA contract와 validation 결과가 platform별로 달라지지 않는다.
-- Replay는 library에 이미 등록되어 `GET /runtime/lab/vital-files`가 제공한
+- Replay는 VitalServer index에 이미 등록되어 `GET /runtime/lab/vital-files`가 제공한
   `relativePath` 하나만 받는다. 임의 Host path를 replay input으로 받지 않는다. Replay
   request는 기존 bed/recorder 사용 또는 quick-create와 once/N/continuous repeat policy를
   명시해야 한다.
 
 UI는 이 의미를 `Vital Files > Upload to library`와
 `Vital Files > Replay uploaded file`로 분리한다. Presentation은 file extension을 미리
-검사해 사용자를 안내할 수 있지만, authoritative validation과 atomic commit은 storage
-owner 경계에 남는다.
+검사해 사용자를 안내할 수 있지만, authoritative upload validation과 file index는
+VitalServer API owner 경계에 남는다. Host shared directory 직접 복사는 upload가 아니다.
 
 ## 8. Source 책임
 

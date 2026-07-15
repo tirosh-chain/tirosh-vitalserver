@@ -85,6 +85,7 @@ public extension AppConstants {
         public static let settingsApplyPreparing = "Preparing runtime settings..."
         public static let settingsApplyRunning = "Applying runtime settings..."
         public static let settingsApplied = "Runtime settings applied."
+        public static let runtimeControlReconnecting = "Reconnecting Runtime Control and relaunching VitalServer Helper..."
         public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, reconcile Guest stack when required, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
         public static let restartVMRuntimeConfirmation = "Restart the VM runtime now?\n\nVitalServer may be briefly unavailable. Saved VM settings that are waiting for restart become active after the runtime starts again."
         public static let noRuntimeActivationRequired = "No runtime activation required for these changes."

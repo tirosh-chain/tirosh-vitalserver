@@ -43,6 +43,7 @@ public struct RuntimeInstallCompositionOperations<Settings> {
     let cleanupInstallSettings: () throws -> Void
     let log: (String) -> Void
     let initializeHostStateStore: () throws -> Void
+    let migrateLegacyHostSettings: () throws -> Void
     let prepareHostSettings: (Settings) throws -> Void
     let workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository
     let operationID: () -> String
@@ -70,6 +71,7 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         cleanupInstallSettings: @escaping () throws -> Void,
         log: @escaping (String) -> Void,
         initializeHostStateStore: @escaping () throws -> Void,
+        migrateLegacyHostSettings: @escaping () throws -> Void = {},
         prepareHostSettings: @escaping (Settings) throws -> Void,
         workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository,
         operationID: @escaping () -> String
@@ -96,6 +98,7 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         self.cleanupInstallSettings = cleanupInstallSettings
         self.log = log
         self.initializeHostStateStore = initializeHostStateStore
+        self.migrateLegacyHostSettings = migrateLegacyHostSettings
         self.prepareHostSettings = prepareHostSettings
         self.workflowOperationStateRepository = workflowOperationStateRepository
         self.operationID = operationID
@@ -132,12 +135,15 @@ public struct RuntimeInstallComposition<Settings> {
         )
     }
 
-    public func installProvision() throws {
+    public func installProvision(mode: RuntimePackageInstallMode) throws {
         let plan = installRuntimeUseCase().plan(for: InstallRuntimeRequest(
             mode: .provision
         ))
         let provisionPayload = operations.installProvisionPayload()
         try operations.initializeHostStateStore()
+        if mode == .reinstall {
+            try operations.migrateLegacyHostSettings()
+        }
         let operationID = operations.operationID()
         try RuntimeInstallWorkflow().run(
             plan,

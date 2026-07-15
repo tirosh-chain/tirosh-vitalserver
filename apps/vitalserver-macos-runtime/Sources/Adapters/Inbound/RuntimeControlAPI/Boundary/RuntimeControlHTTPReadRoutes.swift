@@ -34,7 +34,9 @@ struct RuntimeControlHTTPReadRoutes {
             let query = try request.runtimeOperationEventQuery()
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeOperationEvents(query: query))
         case .vitalDBObservation:
-            return try await RuntimeControlHTTPResponseFactory.json(loadVitalDBObservation())
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadVitalDBObservationSnapshot()
+            )
         case .vitalDBObservationStream:
             return try await RuntimeControlHTTPResponseFactory.eventStream(
                 id: "vitaldb-observation",
@@ -141,6 +143,7 @@ struct RuntimeControlHTTPReadRoutes {
              .createLabSession,
              .startLabSession,
              .stopLabSession,
+             .finishLabSession,
              .startLabRecorder,
              .stopLabRecorder,
              .replayLabVitalFile,
@@ -177,10 +180,5 @@ struct RuntimeControlHTTPReadRoutes {
              .restoreRuntimeDataBackup:
             return nil
         }
-    }
-
-    private func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
-        let snapshot = try await handler.loadVitalDBObservationSnapshot()
-        return snapshot.observation
     }
 }

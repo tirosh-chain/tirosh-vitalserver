@@ -61,6 +61,8 @@ public enum RuntimeVMLifecycleState: Codable, Equatable, Sendable {
 public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
     case launchFailed
     case stopRequestFailed
+    case processExitedWithoutTerminalState
+    case serviceStoppedWithoutTerminalState
     case diskAttachmentInvalid
     case guestFilesystemReadOnly
     case guestDiskIO
@@ -73,6 +75,10 @@ public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
             self = .launchFailed
         case "stop-request-failed":
             self = .stopRequestFailed
+        case "process-exited-without-terminal-state":
+            self = .processExitedWithoutTerminalState
+        case "service-stopped-without-terminal-state":
+            self = .serviceStoppedWithoutTerminalState
         case "disk-attachment-invalid":
             self = .diskAttachmentInvalid
         case "guest-filesystem-read-only":
@@ -92,6 +98,10 @@ public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
             return "launch-failed"
         case .stopRequestFailed:
             return "stop-request-failed"
+        case .processExitedWithoutTerminalState:
+            return "process-exited-without-terminal-state"
+        case .serviceStoppedWithoutTerminalState:
+            return "service-stopped-without-terminal-state"
         case .diskAttachmentInvalid:
             return "disk-attachment-invalid"
         case .guestFilesystemReadOnly:
@@ -201,6 +211,10 @@ public extension RuntimeVMLifecycleDocument {
         case .launchFailed:
             return [.launchFailed(terminalReason.rawValue)]
         case .stopRequestFailed:
+            return [.unknown(terminalReason.rawValue)]
+        case .processExitedWithoutTerminalState:
+            return [.unknown(terminalReason.rawValue)]
+        case .serviceStoppedWithoutTerminalState:
             return [.unknown(terminalReason.rawValue)]
         case .diskAttachmentInvalid:
             return [.diskAttachmentInvalid]

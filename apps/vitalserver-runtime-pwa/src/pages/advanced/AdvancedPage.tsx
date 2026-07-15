@@ -339,6 +339,20 @@ export function AdvancedPage() {
         ) : null}
 
         <div className="subsection">
+          <h3>Runtime Control connection</h3>
+          <p className="muted">
+            Reloads this console and requests a new local browser session from
+            the Platform Agent. This does not rotate the automation token or
+            restart VitalServer.
+          </p>
+          <div className="action-row">
+            <button type="button" onClick={() => window.location.reload()}>
+              Reconnect Runtime Control
+            </button>
+          </div>
+        </div>
+
+        <div className="subsection">
           <h3>Update recovery</h3>
           <BackupTable
             rows={canManageBackups ? hostBackups.data ?? [] : []}

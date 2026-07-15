@@ -89,6 +89,8 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .post, path: "/runtime/lab/sessions/{sessionId}/start", scope: .runtimeControl)
         case .stopLabSession:
             return .init(method: .post, path: "/runtime/lab/sessions/{sessionId}/stop", scope: .runtimeControl)
+        case .finishLabSession:
+            return .init(method: .post, path: "/runtime/lab/sessions/{sessionId}/finish", scope: .runtimeControl)
         case .startLabRecorder:
             return .init(method: .post, path: "/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start", scope: .runtimeControl)
         case .stopLabRecorder:
@@ -276,6 +278,14 @@ public extension RuntimeControlAPIEndpoint {
                 && components[2] == "sessions"
                 && !components[3].isEmpty
                 && components[4] == "stop"
+        case .finishLabSession:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 5
+                && components[0] == "runtime"
+                && components[1] == "lab"
+                && components[2] == "sessions"
+                && !components[3].isEmpty
+                && components[4] == "finish"
         case .startLabRecorder, .stopLabRecorder:
             let components = path.split(separator: "/", omittingEmptySubsequences: true)
             let expectedAction: Substring = self == .startLabRecorder ? "start" : "stop"

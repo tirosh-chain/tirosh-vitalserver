@@ -94,7 +94,7 @@ uv run vitalserver-recorder-recovery recover-raw-archive-vital \
 
 Raw archive rotation deletes old rotated archive files when `RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES` is exceeded. That retention is a filesystem policy, not proof that `.vital` recovery/upload has already happened.
 
-Automatic idle and explicit Product Lab stop export/upload are enabled. The operation state document records
+Automatic idle and explicit Product Lab Finish export/upload are enabled. The operation state document records
 recorder-specific checkpoints, pending explicit finalizations, retry state, and upload results. Manual
 `recover-raw-archive-vital` remains the operator-controlled recovery path when an automatic job is terminally failed.
 

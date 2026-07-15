@@ -24,6 +24,7 @@ public struct RuntimeHealthWaitWorkflowActions {
     public let serviceStates: ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState]
     public let healthSnapshot: () -> RuntimeHealthSnapshot
     public let writeStatusBestEffort: (RuntimeStatusLevel, RuntimeOperation, String) -> Void
+    public let now: () -> Date
     public let sleep: (TimeInterval) -> Void
     public let log: (String) -> Void
 
@@ -31,12 +32,14 @@ public struct RuntimeHealthWaitWorkflowActions {
         serviceStates: @escaping ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState],
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         writeStatusBestEffort: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
+        now: @escaping () -> Date = Date.init,
         sleep: @escaping (TimeInterval) -> Void,
         log: @escaping (String) -> Void
     ) {
         self.serviceStates = serviceStates
         self.healthSnapshot = healthSnapshot
         self.writeStatusBestEffort = writeStatusBestEffort
+        self.now = now
         self.sleep = sleep
         self.log = log
     }
@@ -72,9 +75,13 @@ public struct RuntimeHealthWaitWorkflow {
             actions.log(startedMessage)
         }
         let configuration = try waitConfiguration(context)
+        let deadline = actions.now().addingTimeInterval(context.timeoutSeconds)
         var state = RuntimeHealthWaitState()
 
         for attempt in 0..<configuration.maxAttempts {
+            guard attempt == 0 || actions.now() < deadline else {
+                break
+            }
             let observation = useCase.observation(
                 policy: plan.policy,
                 serviceStates: actions.serviceStates(plan.observedServices),
@@ -104,8 +111,9 @@ public struct RuntimeHealthWaitWorkflow {
                         progressPlan.statusMessage
                     )
                 }
-                if attempt < configuration.maxAttempts - 1 {
-                    actions.sleep(context.pollIntervalSeconds)
+                let remainingSeconds = deadline.timeIntervalSince(actions.now())
+                if remainingSeconds > 0 {
+                    actions.sleep(min(context.pollIntervalSeconds, remainingSeconds))
                 }
             }
         }

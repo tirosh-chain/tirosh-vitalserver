@@ -4552,6 +4552,29 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testHostTimeContractIsWrittenByActualVMStartEntrypoint() throws {
+        let root = packageRoot()
+        let launcherText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/Entrypoint/Launcher.swift"
+            ),
+            encoding: .utf8
+        )
+        let lifecycleServiceText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/Support/RuntimeLifecycle+ServiceSupport.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(launcherText.contains("RuntimeHostTimeContractWriter("))
+        XCTAssertTrue(launcherText.contains("destination: paths.installed.hostTime"))
+        XCTAssertFalse(
+            lifecycleServiceText.contains("writeHostTimeContract"),
+            "A service-control wrapper cannot own VM boot time because launchd can invoke the VM entrypoint directly"
+        )
+    }
+
     func testRuntimeDatastoreRepairKeepsStatefulWorkflowOnly() {
         let root = packageRoot()
         XCTAssertTrue(

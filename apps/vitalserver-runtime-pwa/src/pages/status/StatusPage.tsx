@@ -1,5 +1,6 @@
 import {
   usePlatformState,
+  useRuntimePlatformSettings,
   useRuntimeProductSettings,
   useRuntimeStack,
   useVitalDBRecorders
@@ -79,6 +80,8 @@ function StatusOverview({
   const state = status?.platformHealth;
   const stats = status?.dataDirectoryStats;
   const recordersQuery = useVitalDBRecorders();
+  const platformSettingsQuery = useRuntimePlatformSettings();
+  const platformSettingsRead = platformSettingsQuery.data;
   const runtimeSettingsQuery = useRuntimeProductSettings();
   const runtimeSettings =
     runtimeSettingsQuery.data?.state === "loaded"
@@ -92,6 +95,10 @@ function StatusOverview({
   const vitalServerURL = advertisedVitalServerURL(runtimeSettings, browserHostname);
   const remoteConsoleURL = advertisedRemoteConsoleURL(runtimeSettings, browserHostname);
   const recorderIngressDetailRows = recorderIngressDetails(recorderIngressStatus);
+  const dataDirectory = dataDirectoryPresentation(
+    platformSettingsQuery,
+    platformSettingsRead
+  );
 
   return (
     <div className="page-stack">
@@ -99,7 +106,7 @@ function StatusOverview({
         <KeyValueRows
           rows={[
             {
-              label: "Overall health",
+              label: "Platform health",
               value: (
                 <StatusBadge tone={runtimeStateTone(state)}>
                   {formatRuntimeState(state)}
@@ -136,10 +143,13 @@ function StatusOverview({
             },
             {
               label: "Data directory",
-              value: NOT_REPORTED,
-              detail: formatDataDirectoryStats(
-                stats,
-                status?.dataDirectoryStatsError
+              value: dataDirectory.value,
+              detail: joinDetails(
+                dataDirectory.detail,
+                formatDataDirectoryStats(
+                  stats,
+                  status?.dataDirectoryStatsError
+                )
               )
             },
             {
@@ -240,6 +250,36 @@ function StatusOverview({
       </Panel>
     </div>
   );
+}
+
+function dataDirectoryPresentation(
+  query: ReturnType<typeof useRuntimePlatformSettings>,
+  read: ReturnType<typeof useRuntimePlatformSettings>["data"]
+): { value: string; detail?: string } {
+  if (query.isError) {
+    return { value: "Read failed", detail: query.error.message };
+  }
+  if (!read) {
+    return { value: NOT_REPORTED };
+  }
+  if (read.state === "failed") {
+    return { value: "Read failed", detail: read.readError ?? undefined };
+  }
+  if (read.state === "unavailable") {
+    return { value: "Unavailable", detail: read.readError ?? undefined };
+  }
+  if (!read.settings) {
+    return {
+      value: "Invalid settings state",
+      detail: "Platform settings are loaded without a settings document."
+    };
+  }
+  return { value: read.settings.vitalFilesDirectory };
+}
+
+function joinDetails(...details: Array<string | undefined>): string | undefined {
+  const values = details.filter((value): value is string => Boolean(value));
+  return values.length > 0 ? values.join(" · ") : undefined;
 }
 
 function advertisedVitalServerURL(

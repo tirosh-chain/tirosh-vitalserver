@@ -737,7 +737,7 @@ final class RuntimeControlAPITests: XCTestCase {
             from: router.route(.init(method: .get, path: "/runtime/events"))
         )
         let vitalDBObservation = try await decode(
-            VitalDBObservationDocument?.self,
+            RuntimeVitalDBObservationSnapshot.self,
             from: router.route(.init(method: .get, path: "/runtime/vitaldb/observations/latest"))
         )
         let vitalRecorders = try await decode(
@@ -789,7 +789,9 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vmLifecycle.state, .missing)
         XCTAssertNil(vmLifecycle.document)
         XCTAssertEqual(events.events.map(\.id), ["runtime-operation-event-1"])
-        XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(vitalDBObservation.state, .loaded)
+        XCTAssertEqual(vitalDBObservation.observation?.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertNil(vitalDBObservation.readError)
         XCTAssertEqual(vitalRecorders.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline?.first?.messageCount, 3)
         XCTAssertEqual(vitalRecorder.vrcode, "VR_A")

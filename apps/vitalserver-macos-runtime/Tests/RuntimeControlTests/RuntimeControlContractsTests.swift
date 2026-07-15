@@ -4,6 +4,50 @@ import XCTest
 import Errors
 
 final class RuntimeControlContractsTests: XCTestCase {
+    func testBrowserSettingsAndOperationEventWireContractsEncodeRequiredNulls() throws {
+        let platformRead = RuntimePlatformSettingsRead(runtimeSettings: RuntimeSettings())
+        let productRead = RuntimeProductSettingsRead(
+            state: .loaded,
+            settings: GuestRuntimeSettingsDocument(
+                vitalServerURL: "http://vital.example.test/",
+                remoteConsoleURL: "http://console.example.test/",
+                publicHost: "vital.example.test",
+                publicPort: 18080
+            ),
+            readError: nil
+        )
+        let event = RuntimeOperationEventDocument(
+            schemaVersion: 1,
+            id: "event-1",
+            source: "runtime-controller",
+            eventType: .completed,
+            timestamp: "2026-07-15T00:00:00Z",
+            operationId: "operation-1",
+            operationService: "app",
+            operationCommand: "start",
+            operationState: .completed,
+            message: "app start completed",
+            failure: nil
+        )
+
+        let platformJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(platformRead)) as? [String: Any]
+        )
+        let platformSettingsJSON = try XCTUnwrap(platformJSON["settings"] as? [String: Any])
+        let productJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(productRead)) as? [String: Any]
+        )
+        let eventJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(event)) as? [String: Any]
+        )
+
+        XCTAssertTrue(platformSettingsJSON["bridgedInterface"] is NSNull)
+        XCTAssertTrue(platformSettingsJSON["appliedVMSettings"] is NSNull)
+        XCTAssertTrue(platformJSON["readError"] is NSNull)
+        XCTAssertTrue(productJSON["readError"] is NSNull)
+        XCTAssertTrue(eventJSON["failure"] is NSNull)
+    }
+
     func testRuntimeLogArchiveRetentionPolicyPrunesByAgeAndManagedSize() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

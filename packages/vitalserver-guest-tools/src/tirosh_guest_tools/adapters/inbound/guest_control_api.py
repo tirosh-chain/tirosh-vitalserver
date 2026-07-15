@@ -31,6 +31,7 @@ from tirosh_guest_tools.adapters.outbound.recorder_ingress import (
 from tirosh_guest_tools.adapters.outbound.redis_relay_settings import (
     FileRedisRelaySettingsRepository,
 )
+from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
 from tirosh_guest_tools.adapters.outbound.runtime_admin import (
     FileRuntimeAdminRepository,
 )
@@ -38,7 +39,9 @@ from tirosh_guest_tools.adapters.outbound.runtime_settings import (
     FileRuntimeSettingsRepository,
 )
 from tirosh_guest_tools.adapters.outbound.sqlite_control import SQLiteControlRepository
-from tirosh_guest_tools.adapters.outbound.vital_files import FileVitalFileLibrary
+from tirosh_guest_tools.adapters.outbound.vital_files import (
+    VitalServerVitalFileLibrary,
+)
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
     UUIDOperationIdFactory,
@@ -135,7 +138,11 @@ def build_default_usecases() -> GuestControlUseCases:
         guest_service_resources=operations,
         operation_ids=UUIDOperationIdFactory(),
         clock=SystemClock(),
-        vital_file_library=FileVitalFileLibrary(SETTINGS.shares.vital_files_mount),
+        vital_file_library=VitalServerVitalFileLibrary(
+            base_url="http://127.0.0.1:80",
+            guest_mount=SETTINGS.shares.vital_files_mount,
+            runtime_config=lambda: load_config(SETTINGS.paths.runtime_config_file),
+        ),
     )
     usecases.recover_interrupted_operations()
     usecases.initialize_guest_service_specs(DEFAULT_GUEST_SERVICE_SPECS)
@@ -489,6 +496,14 @@ def route_request(
         and parts[4] == "stop"
     ):
         return HTTPStatus.ACCEPTED, usecases.stop_lab_session(parts[3])
+
+    if (
+        method == "POST"
+        and len(parts) == 5
+        and parts[:3] == ["runtime", "lab", "sessions"]
+        and parts[4] == "finish"
+    ):
+        return HTTPStatus.ACCEPTED, usecases.finish_lab_session(parts[3])
 
     if (
         method == "POST"

@@ -1,11 +1,11 @@
-# Vital Recorder is connected but the recorder list and packet graph are empty
+# Vital Recorder is connected but the recorder list or packet graph does not update
 
 ## Metadata
 
 - ID: TS-128
 - Category: Runtime health / Recorder streaming / Observability
-- Owner: Guest VitalDB observation and Postgres read-model pipeline
-- Status: resolved
+- Owner: Guest VitalDB observation pipeline / macOS Helper presentation
+- Status: package verification pending
 
 ## Symptom
 
@@ -21,9 +21,13 @@ At the same time, `GET /runtime/recorder-ingress/status` can report one active
 connection and increasing `sendDataEventsObserved` and `sendDataBytesObserved`.
 Product Lab recorders can still appear because they have a separate read model.
 
+Another form of the same user-visible failure is that the recorder row and graph
+load correctly once, but the graph stops at the first displayed bucket even
+though Web Monitoring continues to receive signals.
+
 ## Cause
 
-Two independent contract defects overlapped:
+Three independent defects have produced this symptom:
 
 1. Packaged macOS Guest Tools and the Linux/Windows Platform Agent guest configs
    requested `http://127.0.0.1:18084/api/runtime/observations`. The Observer owns
@@ -34,6 +38,11 @@ Two independent contract defects overlapped:
    while the Postgres history and chart contract consumes the explicit top-level
    `activityBuckets` collection. Recorder rows could load after fixing the URL,
    but the chart still had no canonical bucket input.
+3. The macOS Helper selected-recorder chart used a query-keyed SwiftUI task that
+   performed only one read. The five-second Recorders section polling refreshed
+   recorder summaries but did not refresh the selected activity window. nginx
+   HTTP 101 responses, recorder-ingress `send_data`, and Postgres activity
+   buckets therefore continued while only the presentation snapshot stayed old.
 
 ## Checks
 
@@ -45,6 +54,19 @@ curl http://127.0.0.1:18084/api/v1/observations
 curl http://127.0.0.1:18330/runtime/vitaldb/recorders
 curl http://127.0.0.1:18330/runtime/recorder-ingress/status
 ```
+
+For an installed macOS runtime, read the same activity window twice and compare
+the explicit owner values instead of treating the chart as ingress evidence:
+
+```sh
+VITALSERVER_VM_HOME='/Library/Application Support/VitalServerHelper/vm' \
+  /usr/local/bin/vitalserver-vm runtime vitaldb-recorder-activity 06311eba \
+  --guest-control-url http://192.168.64.2:18330
+```
+
+If `lastObservedAt` or the latest bucket count advances between reads, the Host
+proxy, recorder-ingress, and Guest read model are live. A frozen chart in that
+case is a presentation refresh defect.
 
 Inside the Guest, verify the installed writer contract and service log:
 
@@ -65,6 +87,9 @@ empty.` It is not a successful observation of zero recorders.
   and canonical packet buckets in top-level `activityBuckets`.
 - Wait for the periodic Guest writer to append a Postgres snapshot, then refresh
   the Recorders view and select the recorder to load its chart window.
+- Install a Helper build whose selected-recorder activity task polls the same
+  explicit query every five seconds and cancels when the recorder/window/bucket
+  query changes or the view disappears.
 - Do not manually synthesize Postgres recorder rows from ingress connection data.
 
 ## Prevention
@@ -82,6 +107,9 @@ empty.` It is not a successful observation of zero recorders.
   identity-based bucket deduplication.
 - Missing Observer snapshots, malformed buckets, and empty loaded collections
   remain separate read states.
+- Presentation tests verify that activity polling performs repeated owner reads
+  and exits on task cancellation. Recorder summary polling is not considered a
+  substitute for activity-window polling.
 
 ## Operational Notes
 

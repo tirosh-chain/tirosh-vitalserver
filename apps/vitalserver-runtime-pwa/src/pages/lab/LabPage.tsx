@@ -4,6 +4,7 @@ import {
   useCreateLabBeds,
   useCreateLabRecorders,
   useCreateLabSession,
+  useFinishLabSession,
   useDeleteLabBeds,
   useDeleteLabRecorders,
   useLabBeds,
@@ -54,6 +55,7 @@ export function LabPage() {
   const createSession = useCreateLabSession();
   const startSession = useStartLabSession();
   const stopSession = useStopLabSession();
+  const finishSession = useFinishLabSession();
   const startRecorder = useStartLabRecorder();
   const stopRecorder = useStopLabRecorder();
   const replayVitalFile = useReplayLabVitalFile();
@@ -149,6 +151,7 @@ export function LabPage() {
     resetRecorders.isPending ||
     startSession.isPending ||
     stopSession.isPending ||
+    finishSession.isPending ||
     startRecorder.isPending ||
     stopRecorder.isPending ||
     replayVitalFile.isPending ||
@@ -170,6 +173,7 @@ export function LabPage() {
     createSession.error ??
     startSession.error ??
     stopSession.error ??
+    finishSession.error ??
     startRecorder.error ??
     stopRecorder.error ??
     replayVitalFile.error ??
@@ -195,6 +199,11 @@ export function LabPage() {
       activeResponse?.session?.state === "stopped");
   const canStopSession =
     canControl && activeResponse?.session?.state === "running";
+  const canFinishSession =
+    canControl &&
+    (activeResponse?.session?.state === "running" ||
+      activeResponse?.session?.state === "stopped" ||
+      activeResponse?.session?.state === "finished");
   const hasTargetURL = targetURL.trim().length > 0;
   const canReplay =
     labCapability === true &&
@@ -249,6 +258,15 @@ export function LabPage() {
 
   const stop = () => {
     stopSession.mutate(activeSessionId, {
+      onSuccess: (response) => {
+        setLastResponse(response);
+        setSelectedSessionId(response.session?.sessionId ?? activeSessionId);
+      }
+    });
+  };
+
+  const finish = () => {
+    finishSession.mutate(activeSessionId, {
       onSuccess: (response) => {
         setLastResponse(response);
         setSelectedSessionId(response.session?.sessionId ?? activeSessionId);
@@ -448,7 +466,12 @@ export function LabPage() {
               Start
             </button>
             <button type="button" disabled={!canStopSession} onClick={stop}>
-              Stop
+              Pause
+            </button>
+            <button type="button" disabled={!canFinishSession} onClick={finish}>
+              {activeResponse?.session?.state === "finished"
+                ? "Retry upload"
+                : "Finish & upload"}
             </button>
           </>
         }
@@ -627,8 +650,9 @@ export function LabPage() {
         <section className="page-stack" aria-label="Upload Vital Files">
           <h3>Upload to library</h3>
           <p>
-            Select one or more <code>.vital</code> files. The complete batch is
-            rejected if any selected file is not a <code>.vital</code> file.
+            Select one or more <code>.vital</code> files. VitalServer validates,
+            stores, and indexes each accepted upload. A partial failure is reported
+            explicitly and is never shown as a completed batch.
           </p>
           <input
             key={vitalUploadFiles.length === 0 ? "empty" : "selected"}
@@ -1028,6 +1052,7 @@ function labSessionStateTone(
     case "failed":
       return "danger";
     case "stopped":
+    case "finished":
     case "unavailable":
       return "neutral";
   }

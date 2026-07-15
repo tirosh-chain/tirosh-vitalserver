@@ -149,7 +149,7 @@
       "get": {
         "operationId": "listRuntimeLabVitalFiles",
         "summary": "List Runtime Lab vital files",
-        "description": "Reads mounted vital files available to Runtime Lab through the Runtime Control boundary. Missing or unavailable Lab storage is reported through the response state and readError, not as an empty success.",
+        "description": "Reads the VitalServer-indexed vital file library available to Runtime Lab through the Runtime Control boundary. Authentication, dependency, decode, and invalid-index failures are reported through response state and readError, not as an empty success.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
@@ -357,8 +357,46 @@
     "/runtime/lab/sessions/{sessionId}/stop": {
       "post": {
         "operationId": "stopRuntimeLabSession",
-        "summary": "Stop a Runtime Lab session",
-        "description": "Stops one product Lab session through the Runtime Control boundary.",
+        "summary": "Pause a Runtime Lab session",
+        "description": "Pauses one Product Lab session without declaring its recorder archives complete.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime Lab session response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabSessionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/OperationInProgress"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/lab/sessions/{sessionId}/finish": {
+      "post": {
+        "operationId": "finishRuntimeLabSession",
+        "summary": "Finish a Runtime Lab session and upload its Vital files",
+        "description": "Terminates one Product Lab session and requests durable recorder archive finalization.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localServerMediated",
         "x-runtime-control-access": "localServerMediated",
@@ -526,7 +564,7 @@
       "post": {
         "operationId": "uploadRuntimeLabVitalFiles",
         "summary": "Upload one or more files to the Vital Files library",
-        "description": "Atomically imports a multipart batch into the Vital Files library. Every part must use field name files and a .vital filename; one invalid or conflicting file rejects the whole batch.",
+        "description": "Prevalidates repeated multipart files, uploads each accepted file through VitalServer POST /upload, and verifies every result through GET /api/filelist. HTTP 200 parser errors and partial completion are explicit failures, not completed batches.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localServerMediated",
         "x-runtime-control-access": "localServerMediated",
@@ -2291,18 +2329,11 @@
         "x-runtime-control-access": "browserSafe",
         "responses": {
           "200": {
-            "description": "Latest VitalDB observation snapshot, or null when unavailable.",
+            "description": "Explicit latest VitalDB observation read state. Unavailable and failed reads preserve their readError instead of becoming a null observation.",
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/VitalDBObservationDocument"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/RuntimeVitalDBObservationSnapshot"
                 }
               }
             }
@@ -4696,6 +4727,7 @@
           "running",
           "stopping",
           "stopped",
+          "finished",
           "failed",
           "unavailable"
         ]
@@ -5512,6 +5544,7 @@
               "lab-create-session",
               "lab-start-session",
               "lab-stop-session",
+              "lab-finish-session",
               "lab-replay-vital-file",
               "lab-upload-vital-file",
               "lab-create-beds",
@@ -8208,6 +8241,41 @@
         "properties": {
           "summary": {
             "type": "string"
+          }
+        }
+      },
+      "RuntimeVitalDBObservationSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "observation",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "loaded",
+              "unavailable",
+              "failed"
+            ]
+          },
+          "observation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/VitalDBObservationDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

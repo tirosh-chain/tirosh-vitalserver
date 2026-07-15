@@ -129,6 +129,61 @@ final class MacPlatformAgentServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testLoginUserClientReestablishesBrowserSessionAfterPlatformAgentRestart() async throws {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("platform-agent-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        _ = try SQLiteHostRuntimeStateDatabase(
+            url: installedPaths.runtimeStateDatabase
+        ).initialize()
+
+        let initialService = try MacPlatformAgentService.live(
+            installedPaths: installedPaths,
+            servesDevConsole: false,
+            port: 0,
+            automationToken: "root-only-token"
+        )
+        try initialService.start()
+        defer { initialService.stop() }
+        let port = try await waitForActivePort(initialService)
+        let httpClient = RuntimeControlAPILocalSessionHTTPClient()
+
+        let initialState = try await Task.detached {
+            let owner = try RuntimeControlAPIVMLifecycleOwner(
+                baseURL: "http://127.0.0.1:\(port)/",
+                token: "not-the-automation-token",
+                httpClient: httpClient
+            )
+            return try owner.loadVMLifecycleResource()
+        }.value
+        XCTAssertEqual(initialState.state, .missing)
+        initialService.stop()
+
+        let restartedService = try MacPlatformAgentService.live(
+            installedPaths: installedPaths,
+            servesDevConsole: false,
+            port: Int(port),
+            automationToken: "root-only-token"
+        )
+        try restartedService.start()
+        defer { restartedService.stop() }
+        _ = try await waitForActivePort(restartedService)
+
+        let restartedState = try await Task.detached {
+            let owner = try RuntimeControlAPIVMLifecycleOwner(
+                baseURL: "http://127.0.0.1:\(port)/",
+                token: "not-the-automation-token",
+                httpClient: httpClient
+            )
+            return try owner.loadVMLifecycleResource()
+        }.value
+
+        XCTAssertEqual(restartedState.state, .missing)
+    }
+
+    @MainActor
     func testHeadlessServiceSynchronizesBootstrapVMIPIntoSQLiteEndpointOwner() async throws {
         let productRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("platform-agent-\(UUID().uuidString)", isDirectory: true)

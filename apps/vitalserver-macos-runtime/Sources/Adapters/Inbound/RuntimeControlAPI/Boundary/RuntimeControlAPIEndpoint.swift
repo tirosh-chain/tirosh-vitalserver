@@ -45,6 +45,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case labSession
     case startLabSession
     case stopLabSession
+    case finishLabSession
     case startLabRecorder
     case stopLabRecorder
     case replayLabVitalFile

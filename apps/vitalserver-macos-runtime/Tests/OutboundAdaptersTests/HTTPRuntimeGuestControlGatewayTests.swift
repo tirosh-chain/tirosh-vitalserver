@@ -1473,6 +1473,48 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(object["targetURL"] as? String, "http://edge/")
     }
 
+    func testUploadLabVitalFilesForwardsMultipartBytesToGuestController() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state": "completed",
+              "files": [
+                {
+                  "fileName": "OR-A_260715_120000.vital",
+                  "relativePath": "OR-A/202607/260715/OR-A_260715_120000.vital",
+                  "sizeBytes": 5
+                }
+              ]
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let result = try gateway.uploadLabVitalFiles([
+            RuntimeLabVitalFileUploadSource(
+                fileName: "OR-A_260715_120000.vital",
+                content: Data("vital".utf8)
+            )
+        ])
+
+        XCTAssertEqual(result.files.first?.relativePath, "OR-A/202607/260715/OR-A_260715_120000.vital")
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/lab/vital-files/upload"
+        )
+        XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
+        let body = try XCTUnwrap(request.httpBody)
+        XCTAssertNotNil(body.range(of: Data("name=\"files\"".utf8)))
+        XCTAssertNotNil(body.range(of: Data("OR-A_260715_120000.vital".utf8)))
+        XCTAssertNotNil(body.range(of: Data("vital".utf8)))
+    }
+
 }
 
 private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPClient, @unchecked Sendable {

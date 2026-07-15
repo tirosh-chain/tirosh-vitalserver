@@ -434,6 +434,16 @@ class FakeProductLab:
             lab_operation_id=f"lab-session-stop-{session_id}",
         )
 
+    def finish_session(self, session_id: str) -> ProductLabSessionResult:
+        return ProductLabSessionResult(
+            session=lab_session(
+                session_id=session_id,
+                scenario_id="normal_monitoring",
+                state="finished",
+            ),
+            lab_operation_id=f"lab-session-finish-{session_id}",
+        )
+
     def delete_session(self, session_id: str) -> ProductLabReadModelResult:
         del session_id
         return ProductLabReadModelResult(
@@ -490,6 +500,7 @@ class FakeProductLab:
             ),
             lab_operation_id="lab-vital-file-replay-lab-replay-1",
         )
+
 
 class FakeVitalDBReadModel:
     def __init__(self) -> None:
@@ -788,9 +799,20 @@ class FakeVitalFileLibrary:
     def __init__(self) -> None:
         self.imported: list[list[tuple[str, bytes]]] = []
 
-    def import_files(
-        self, files: list[tuple[str, bytes]]
-    ) -> list[dict[str, object]]:
+    def list_files(self) -> list[dict[str, object]]:
+        filename = "MORA04_260701_000000.vital"
+        relative_path = f"MORA04/202607/260701/{filename}"
+        return [
+            {
+                "displayName": filename,
+                "relativePath": relative_path,
+                "guestPath": f"/mnt/tirosh-vital-files/{relative_path}",
+                "sizeBytes": 123,
+                "modifiedAt": "2026-07-01T00:00:00Z",
+            }
+        ]
+
+    def import_files(self, files: list[tuple[str, bytes]]) -> list[dict[str, object]]:
         self.imported.append(files)
         return [
             {
@@ -848,6 +870,7 @@ def test_default_usecases_require_migrated_sqlite_without_postgres_startup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     checks: list[str] = []
+    vital_file_library_inputs: list[dict[str, object]] = []
 
     class FakeSQLiteOperations(FakeOperations):
         def __init__(self, database_path: Path) -> None:
@@ -882,10 +905,18 @@ def test_default_usecases_require_migrated_sqlite_without_postgres_startup(
             services=list(guest_control_api.DEFAULT_GUEST_SERVICE_SPECS)
         ),
     )
+    monkeypatch.setattr(
+        guest_control_api,
+        "VitalServerVitalFileLibrary",
+        lambda **inputs: (
+            vital_file_library_inputs.append(inputs) or FakeVitalFileLibrary()
+        ),
+    )
 
     usecases = guest_control_api.build_default_usecases()
 
     assert checks == ["sqlite"]
+    assert vital_file_library_inputs[0]["base_url"] == "http://127.0.0.1:80"
     assert usecases.readiness()["status"] == "ready"
     assert checks == ["sqlite", "sqlite"]
     operation = usecases.restart_service("app")
@@ -1640,7 +1671,7 @@ def test_lab_scenarios_route_returns_product_lab_contract(
     ]
 
 
-def test_lab_vital_files_route_returns_product_lab_catalog(
+def test_lab_vital_files_route_returns_vitalserver_index_catalog(
     usecases: GuestControlUseCases,
 ) -> None:
     status, document = route_request(
@@ -1651,9 +1682,11 @@ def test_lab_vital_files_route_returns_product_lab_catalog(
 
     assert status == HTTPStatus.OK
     assert document["state"] == "loaded"
-    assert document["vitalFiles"][0]["relativePath"] == "MORA04/sample.vital"
+    assert document["vitalFiles"][0]["relativePath"] == (
+        "MORA04/202607/260701/MORA04_260701_000000.vital"
+    )
     assert document["vitalFiles"][0]["guestPath"] == (
-        "/mnt/tirosh-vital-files/MORA04/sample.vital"
+        "/mnt/tirosh-vital-files/MORA04/202607/260701/MORA04_260701_000000.vital"
     )
 
 
@@ -1875,11 +1908,18 @@ def test_lab_session_command_routes_return_explicit_session_state(
         path="/runtime/lab/sessions/lab-session-1/stop",
         usecases=usecases,
     )
+    _, finished = route_request(
+        method="POST",
+        path="/runtime/lab/sessions/lab-session-1/finish",
+        usecases=usecases,
+    )
 
     assert started["session"]["state"] == "running"
     assert started["labOperationId"] == "lab-session-start-lab-session-1"
     assert stopped["session"]["state"] == "stopped"
     assert stopped["labOperationId"] == "lab-session-stop-lab-session-1"
+    assert finished["session"]["state"] == "finished"
+    assert finished["labOperationId"] == "lab-session-finish-lab-session-1"
 
 
 def test_lab_recorder_command_routes_return_explicit_recorder_state(
@@ -1939,14 +1979,20 @@ def test_lab_upload_vital_files_route_accepts_multiple_multipart_files(
 ) -> None:
     boundary = "vital-files-boundary"
     body = (
-        f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="files"; filename="first.vital"\r\n'
-        "Content-Type: application/octet-stream\r\n\r\n"
-    ).encode() + b"first-content\r\n" + (
-        f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="files"; filename="second.vital"\r\n'
-        "Content-Type: application/octet-stream\r\n\r\n"
-    ).encode() + b"second-content\r\n" + f"--{boundary}--\r\n".encode()
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="files"; filename="first.vital"\r\n'
+            "Content-Type: application/octet-stream\r\n\r\n"
+        ).encode()
+        + b"first-content\r\n"
+        + (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="files"; filename="second.vital"\r\n'
+            "Content-Type: application/octet-stream\r\n\r\n"
+        ).encode()
+        + b"second-content\r\n"
+        + f"--{boundary}--\r\n".encode()
+    )
 
     status, document = route_request(
         method="POST",
@@ -1961,7 +2007,11 @@ def test_lab_upload_vital_files_route_accepts_multiple_multipart_files(
         "state": "completed",
         "files": [
             {"fileName": "first.vital", "relativePath": "first.vital", "sizeBytes": 13},
-            {"fileName": "second.vital", "relativePath": "second.vital", "sizeBytes": 14},
+            {
+                "fileName": "second.vital",
+                "relativePath": "second.vital",
+                "sizeBytes": 14,
+            },
         ],
     }
 

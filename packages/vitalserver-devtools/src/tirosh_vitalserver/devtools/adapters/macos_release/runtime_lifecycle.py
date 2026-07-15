@@ -789,8 +789,7 @@ def require_vm_config_runtime_data_disk_path(
     configured_path = document.get("runtimeDataDiskPath")
     if not isinstance(configured_path, str) or not configured_path:
         raise SystemExit(
-            "error: VM config runtime data disk path is missing: "
-            f"{config_path}"
+            f"error: VM config runtime data disk path is missing: {config_path}"
         )
     if configured_path != runtime_data_disk_path:
         raise SystemExit(
@@ -1070,6 +1069,7 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         print(f"Expected golden rootfs runId: {expected_run_id}")
     deadline = time.monotonic() + input.timeout
     last_state = "not-started"
+    last_manifest_progress: str | None = None
     while time.monotonic() < deadline:
         failure_result = inspect_rootfs_failure_marker(
             failure,
@@ -1093,6 +1093,16 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         )
         if manifest_result["terminal"]:
             raise SystemExit(str(manifest_result["message"]))
+        manifest_progress = rootfs_manifest_progress_token(
+            manifest,
+            expected_run_id=expected_run_id,
+        )
+        if (
+            manifest_progress is not None
+            and manifest_progress != last_manifest_progress
+        ):
+            last_manifest_progress = manifest_progress
+            deadline = time.monotonic() + input.timeout
         last_state = str(manifest_result["message"])
         if marker.is_file() and marker.stat().st_size > 0:
             marker_result = inspect_rootfs_ready_marker(
@@ -1107,9 +1117,7 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
                 print(f"  manifest={manifest}")
                 print("  manifestStatus=passed")
                 return 0
-            last_state = (
-                f"{marker_result['message']}; {manifest_result['message']}"
-            )
+            last_state = f"{marker_result['message']}; {manifest_result['message']}"
         fail_if_runtime_lifecycle_failed(input.vm_home)
         fail_if_rootfs_launcher_log_has_terminal_failure(
             input.vm_home,
@@ -1120,6 +1128,30 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         f"error: timed out waiting for {marker}: last={last_state}\n"
         f"Check VM launcher log: {launcher_log(input.vm_home)}"
     )
+
+
+def rootfs_manifest_progress_token(
+    manifest: Path,
+    *,
+    expected_run_id: str | None,
+) -> str | None:
+    if not manifest.is_file():
+        return None
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    run_id = document.get("runId")
+    updated_at = document.get("updatedAt")
+    if not isinstance(run_id, str) or not run_id:
+        return None
+    if expected_run_id is not None and run_id != expected_run_id:
+        return None
+    if not isinstance(updated_at, str) or not updated_at:
+        return None
+    return f"{run_id}:{updated_at}"
 
 
 def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
@@ -1172,8 +1204,7 @@ def wait_for_runtime_stopped(input: RuntimeWaitInput) -> int:
     vm_home = vm_home_path(input.vm_home)
     lifecycle_database = vm_home / "runtime/runtime-state.sqlite"
     print(
-        "Waiting for VM lifecycle and launcher process stopped: "
-        f"{lifecycle_database}"
+        f"Waiting for VM lifecycle and launcher process stopped: {lifecycle_database}"
     )
     deadline = time.monotonic() + input.timeout
     while True:
@@ -1338,8 +1369,7 @@ def running_vm_processes_for_home(vm_home: Path) -> list[int]:
             pids.append(int(pid_text))
         except ValueError:
             raise SystemExit(
-                "error: failed to parse VM process pid before start: "
-                f"line={line}"
+                f"error: failed to parse VM process pid before start: line={line}"
             ) from None
     return pids
 
@@ -1534,15 +1564,64 @@ def inspect_rootfs_manifest(
             "message": "manifest passed",
         }
     if cleanup_status == "cleanup-failed":
+        commands = cleanup.get("commands")
+        failed_command = (
+            next(
+                (
+                    command
+                    for command in commands
+                    if isinstance(command, dict) and command.get("status") == "failed"
+                ),
+                None,
+            )
+            if isinstance(commands, list)
+            else None
+        )
+        command_name = (
+            failed_command.get("name", "unknown")
+            if isinstance(failed_command, dict)
+            else cleanup.get("activeCommand", "unknown")
+        )
+        exit_code = (
+            failed_command.get("exitCode", "unknown")
+            if isinstance(failed_command, dict)
+            else "unknown"
+        )
+        failure_text = ""
+        if isinstance(failed_command, dict):
+            for key in ("stderr", "message"):
+                value = failed_command.get(key)
+                if isinstance(value, str) and value.strip():
+                    failure_text = value
+                    break
+        failure_lines = [
+            line.strip() for line in failure_text.splitlines() if line.strip()
+        ]
+        reason = failure_lines[-1] if failure_lines else "not reported"
         return {
             "ready": False,
             "terminal": True,
-            "message": "error: rootfs cleanup failed while waiting",
+            "message": (
+                "error: rootfs cleanup failed while waiting: "
+                f"command={command_name} exitCode={exit_code} reason={reason} "
+                f"manifest={manifest}"
+            ),
         }
+    active_command = cleanup.get("activeCommand") if isinstance(cleanup, dict) else None
+    active_timeout = (
+        cleanup.get("activeCommandTimeoutSeconds")
+        if isinstance(cleanup, dict)
+        else None
+    )
     return {
         "ready": False,
         "terminal": False,
-        "message": f"waiting for rootfs cleanup: status={cleanup_status}",
+        "message": (
+            f"waiting for rootfs cleanup: status={cleanup_status}"
+            f" activeCommand={active_command or 'none'}"
+            " timeoutSeconds="
+            f"{active_timeout if active_timeout is not None else 'none'}"
+        ),
     }
 
 
@@ -1637,8 +1716,7 @@ def inspect_rootfs_failure_marker(
             "ready": False,
             "terminal": True,
             "message": (
-                f"error: rootfs failure marker is unreadable: "
-                f"{failure}: {error}"
+                f"error: rootfs failure marker is unreadable: {failure}: {error}"
             ),
         }
     if not isinstance(document, dict):
@@ -1754,8 +1832,7 @@ def inspect_runtime_boot_smoke_manifest(
             "ready": False,
             "terminal": True,
             "message": (
-                f"error: runtime boot smoke manifest is unreadable: "
-                f"{manifest}: {error}"
+                f"error: runtime boot smoke manifest is unreadable: {manifest}: {error}"
             ),
         }
     if not isinstance(document, dict):
@@ -1810,8 +1887,7 @@ def inspect_runtime_boot_smoke_manifest(
                 "ready": False,
                 "terminal": True,
                 "message": (
-                    "error: runtime boot smoke manifest stage is invalid: "
-                    f"{manifest}"
+                    f"error: runtime boot smoke manifest stage is invalid: {manifest}"
                 ),
             }
         stage_status = stage.get("status")
@@ -1868,8 +1944,7 @@ def inspect_runtime_boot_smoke_manifest(
             "ready": False,
             "terminal": True,
             "message": (
-                "error: runtime boot smoke failed: "
-                f"runId={run_id} manifest={manifest}"
+                f"error: runtime boot smoke failed: runId={run_id} manifest={manifest}"
             ),
         }
     return {
@@ -1922,9 +1997,8 @@ def inspect_runtime_bootstrap_result(
         }
     if status == "failed":
         reason_codes = document.get("reasonCodes")
-        if (
-            not isinstance(reason_codes, list)
-            or not all(isinstance(code, str) and code for code in reason_codes)
+        if not isinstance(reason_codes, list) or not all(
+            isinstance(code, str) and code for code in reason_codes
         ):
             return {
                 "ready": False,

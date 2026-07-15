@@ -424,6 +424,9 @@ class FakeProductLab:
     def stop_session(self, session_id: str) -> dict[str, object]:
         raise NotImplementedError(session_id)
 
+    def finish_session(self, session_id: str) -> dict[str, object]:
+        raise NotImplementedError(session_id)
+
     def delete_session(self, session_id: str) -> ProductLabReadModelResult:
         if self.fail_delete:
             raise ProductLabDependencyError(
@@ -437,6 +440,7 @@ class FakeProductLab:
 
     def replay_vital_file(self, request: dict[str, object]) -> dict[str, object]:
         raise NotImplementedError(request)
+
 
 class FakeVitalDBReadModel:
     def __init__(self, *, fail: bool = False, lab_owned: bool = False) -> None:
@@ -809,9 +813,10 @@ def build_usecases(
 
 
 class FakeVitalFileLibrary:
-    def import_files(
-        self, files: list[tuple[str, bytes]]
-    ) -> list[dict[str, object]]:
+    def list_files(self) -> list[dict[str, object]]:
+        return []
+
+    def import_files(self, files: list[tuple[str, bytes]]) -> list[dict[str, object]]:
         return [
             {"fileName": name, "relativePath": name, "sizeBytes": len(content)}
             for name, content in files
@@ -851,7 +856,6 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "stack:reconcile",
         "operations:get",
         "lab:scenarios",
-        "lab:vital-files",
         "lab:beds",
         "lab:beds:create",
         "lab:beds:delete",
@@ -867,7 +871,9 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "lab:sessions:get",
         "lab:sessions:start",
         "lab:sessions:stop",
+        "lab:sessions:finish",
         "lab:vital-files:replay",
+        "lab:vital-files",
         "lab:vital-files:upload",
         "maintenance:redis-backup:create",
         "maintenance:redis-restore:create",
@@ -917,6 +923,22 @@ def test_capabilities_omit_unconfigured_adapter_features() -> None:
             "operations:get",
         ],
     }
+
+
+def test_vital_file_list_capability_is_owned_by_vitalserver_library() -> None:
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        vital_file_library=FakeVitalFileLibrary(),
+    )
+
+    capabilities = usecases.capabilities()["capabilities"]
+
+    assert "lab:vital-files" in capabilities
+    assert "lab:vital-files:upload" in capabilities
+    assert "lab:vital-files:replay" not in capabilities
 
 
 def test_readiness_only_probes_required_control_dependencies() -> None:

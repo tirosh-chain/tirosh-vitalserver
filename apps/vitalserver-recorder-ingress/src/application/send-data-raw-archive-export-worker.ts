@@ -73,7 +73,7 @@ function createSendDataRawArchiveExportWorker({
         message: "raw archive finalization requires at least one non-empty vrcode",
       };
     }
-    if (input.reason !== "lab_session_stopped" && input.reason !== "lab_recorder_stopped") {
+    if (input.reason !== "lab_session_finished") {
       return {
         ok: false,
         state: "rejected" as const,

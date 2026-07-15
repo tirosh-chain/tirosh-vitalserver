@@ -69,6 +69,7 @@ public enum RuntimeGuestControlServiceCommand: String, CaseIterable, Codable, Eq
     case labCreateSession = "lab-create-session"
     case labStartSession = "lab-start-session"
     case labStopSession = "lab-stop-session"
+    case labFinishSession = "lab-finish-session"
     case labReplayVitalFile = "lab-replay-vital-file"
     case labUploadVitalFile = "lab-upload-vital-file"
     case labCreateBeds = "lab-create-beds"

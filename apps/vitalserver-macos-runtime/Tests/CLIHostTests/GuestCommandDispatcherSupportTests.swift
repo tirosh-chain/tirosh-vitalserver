@@ -280,6 +280,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         let postinstall = try readRuntimeSupportFile("Packaging/postinstall.template")
 
         XCTAssertTrue(postinstall.contains("\"${vm_bin}\" runtime install-provision"))
+        XCTAssertTrue(postinstall.contains("--package-install-contract \"${package_install_contract}\""))
+        XCTAssertTrue(postinstall.contains("package_install_contract=\"${script_dir}/package-install-contract.json\""))
         XCTAssertFalse(postinstall.contains("\"${vm_bin}\" runtime install &"))
         XCTAssertFalse(postinstall.contains("runtime_status="))
         XCTAssertFalse(postinstall.contains("log_runtime_install_status"))
@@ -289,23 +291,22 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(postinstall.contains("postinstall_timeout_seconds=300"))
         XCTAssertFalse(postinstall.contains("\"${vm_bin}\" runtime uninstall --clean"))
         XCTAssertFalse(postinstall.contains("postinstall failure cleanup blocked"))
-        XCTAssertTrue(postinstall.contains("\"${vm_bin}\" runtime stop-services"))
-        XCTAssertTrue(postinstall.contains("launchctl bootout \"system/${label}\""))
-        XCTAssertTrue(postinstall.contains("rm -rf \"${path}\""))
-        XCTAssertTrue(postinstall.contains("postinstall failure cleanup refused unsafe path"))
+        XCTAssertTrue(postinstall.contains("\"${vm_bin}\" runtime stop-package-services"))
+        XCTAssertTrue(postinstall.contains("persistent runtime data and package artifacts will be preserved"))
+        XCTAssertFalse(postinstall.contains("rm -rf"))
+        XCTAssertFalse(postinstall.contains("safe_remove_path"))
         XCTAssertFalse(postinstall.contains("pkgutil --forget"))
         XCTAssertFalse(postinstall.contains("pgrep -f"))
     }
 
-    func testPreinstallDelegatesFreshInstallStateCheckToCLIHost() throws {
+    func testPreinstallDelegatesFreshOrReinstallStateCheckToCLIHost() throws {
         let preinstall = try readRuntimeSupportFile("Packaging/preinstall")
 
         XCTAssertTrue(preinstall.contains("preflight_bin=\"${script_dir}/vitalserver-vm-preinstall\""))
         XCTAssertTrue(preinstall.contains("\"${preflight_bin}\" runtime preinstall-check"))
-        XCTAssertTrue(preinstall.contains("pkg install supports fresh installs only"))
-        XCTAssertTrue(preinstall.contains("Remove the existing install first, then run the pkg again."))
-        XCTAssertTrue(preinstall.contains("sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean"))
-        XCTAssertTrue(preinstall.contains("make dist/uninstall/dev VM_UNINSTALL_ARGS=--clean"))
+        XCTAssertTrue(preinstall.contains("--package-install-contract \"${package_install_contract}\""))
+        XCTAssertTrue(preinstall.contains("package_install_contract=\"${script_dir}/package-install-contract.json\""))
+        XCTAssertTrue(preinstall.contains("Existing package receipts select the data-preserving reinstall path"))
         XCTAssertTrue(preinstall.contains("printf \"%s\\n\" \"${preflight_output}\" >&2"))
         XCTAssertFalse(preinstall.contains("pkgutil --pkg-info"))
         XCTAssertFalse(preinstall.contains("launchctl print"))

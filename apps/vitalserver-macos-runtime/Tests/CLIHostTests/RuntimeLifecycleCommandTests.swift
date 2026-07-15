@@ -11,8 +11,22 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
     func testParsesCommandsWithoutArguments() throws {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse([]), .help)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["install"]), .install)
-        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["install-provision"]), .installProvision)
-        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["preinstall-check"]), .preinstallCheck)
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "install-provision",
+                "--package-install-contract",
+                "/tmp/package-install-contract.json",
+            ]),
+            .installProvision(URL(fileURLWithPath: "/tmp/package-install-contract.json"))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "preinstall-check",
+                "--package-install-contract",
+                "/tmp/package-install-contract.json",
+            ]),
+            .preinstallCheck(URL(fileURLWithPath: "/tmp/package-install-contract.json"))
+        )
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["status"]), .status)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["health"]), .health)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["guest-log-sync"]), .guestLogSync)
@@ -25,6 +39,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-services"]), .repairServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["start-services"]), .startServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["stop-services"]), .stopServices)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["stop-package-services"]), .stopPackageServices)
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["guest-stack-status"]),
             .guestStackStatus(RuntimeGuestControlReadCommand())
@@ -75,6 +90,15 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         )
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["uninstall"]), .uninstall(RuntimeUninstallCommand(clean: false)))
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["--help"]), .help)
+    }
+
+    func testPackageInstallCommandsRequireExplicitContractPath() {
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse(["install-provision"]))
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse(["preinstall-check"]))
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse([
+            "install-provision",
+            "--package-install-contract",
+        ]))
     }
 
     func testLegacyTestKitAliasesAreNotRuntimeCommands() {
@@ -339,6 +363,10 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["lab-session-stop", "session-1"]),
             .lab(RuntimeLabControlCommand(action: .stopSession("session-1")))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["lab-session-finish", "session-1"]),
+            .lab(RuntimeLabControlCommand(action: .finishSession("session-1")))
         )
     }
 

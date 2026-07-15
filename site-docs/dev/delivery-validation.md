@@ -256,11 +256,12 @@ services force-stop 경로로 빠져나와야 합니다. Settings restart도 upd
 위험을 가지므로, guest shutdown wait 또는 poweroff wait 실패 시 force-stop 후 runtime start/health
 wait로 이어지는 escape hatch가 필요합니다.
 
-Guest time은 Host-owned `host-time.json` contract에서 동기화합니다. Bootstrap에서 한 번만 맞추면
+Guest time은 Host-owned `host-time.json` contract에서 동기화합니다. 실제 `vitalserver-vm start` entrypoint는 새 lifecycle run 직전에 이 계약을 현재 Host clock으로 다시 씁니다. Bootstrap에서 한 번만 맞추면
 rollback, restart, snapshot 기반 VM disk 재사용 뒤 Guest clock이 rootfs/golden 이미지 생성 시점으로
 되돌아갈 수 있습니다. Guest는 매 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로
 `host-time.json`을 읽고 clock을 맞춘 뒤 Docker, runtime-observation, observability, compose 서비스를
 시작해야 합니다. UI나 observer는 timestamp를 현재 시간으로 보정하지 않습니다.
+부팅 후 drift 교정은 별도 NTP 상태 계약으로 검증하되, NTP 성공을 boot contract 성공으로 대체하지 않습니다.
 
 Release package와 DMG build도 expensive host packaging 전에 Host-owned preflight를 통과해야 합니다.
 `release-pkg`와 `release-dmg`는 Swift build, `pkgbuild`, `hdiutil create` 전에 필수 tool, golden runtime

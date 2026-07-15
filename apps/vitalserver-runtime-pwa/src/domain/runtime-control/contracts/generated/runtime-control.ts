@@ -104,7 +104,7 @@ export interface paths {
         };
         /**
          * List Runtime Lab vital files
-         * @description Reads mounted vital files available to Runtime Lab through the Runtime Control boundary. Missing or unavailable Lab storage is reported through the response state and readError, not as an empty success.
+         * @description Reads the VitalServer-indexed vital file library available to Runtime Lab through the Runtime Control boundary. Authentication, dependency, decode, and invalid-index failures are reported through response state and readError, not as an empty success.
          */
         get: operations["listRuntimeLabVitalFiles"];
         put?: never;
@@ -229,10 +229,30 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Stop a Runtime Lab session
-         * @description Stops one product Lab session through the Runtime Control boundary.
+         * Pause a Runtime Lab session
+         * @description Pauses one Product Lab session without declaring its recorder archives complete.
          */
         post: operations["stopRuntimeLabSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/lab/sessions/{sessionId}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish a Runtime Lab session and upload its Vital files
+         * @description Terminates one Product Lab session and requests durable recorder archive finalization.
+         */
+        post: operations["finishRuntimeLabSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -310,7 +330,7 @@ export interface paths {
         put?: never;
         /**
          * Upload one or more files to the Vital Files library
-         * @description Atomically imports a multipart batch into the Vital Files library. Every part must use field name files and a .vital filename; one invalid or conflicting file rejects the whole batch.
+         * @description Prevalidates repeated multipart files, uploads each accepted file through VitalServer POST /upload, and verifies every result through GET /api/filelist. HTTP 200 parser errors and partial completion are explicit failures, not completed batches.
          */
         post: operations["uploadRuntimeLabVitalFiles"];
         delete?: never;
@@ -1934,7 +1954,7 @@ export interface components {
         /** @enum {string} */
         RuntimeLabReadState: "loaded" | "unavailable" | "failed";
         /** @enum {string} */
-        RuntimeLabSessionState: "accepted" | "running" | "stopping" | "stopped" | "failed" | "unavailable";
+        RuntimeLabSessionState: "accepted" | "running" | "stopping" | "stopped" | "finished" | "failed" | "unavailable";
         RuntimeLabScenario: {
             scenarioId: string;
             name: string;
@@ -2116,7 +2136,7 @@ export interface components {
             operationId: string;
             service: string;
             /** @enum {string} */
-            command: "start" | "stop" | "restart" | "reconcile" | "lab-create-session" | "lab-start-session" | "lab-stop-session" | "lab-replay-vital-file" | "lab-upload-vital-file" | "lab-create-beds" | "lab-delete-beds" | "lab-reset-beds" | "lab-create-recorders" | "lab-delete-recorders" | "lab-reset-recorders" | "redis-backup" | "redis-restore" | "repair-datastore" | "activate-update" | "prepare-update-shutdown" | "request-guest-poweroff" | "apply-settings" | "apply-admin-password" | "apply-redis-relay-settings";
+            command: "start" | "stop" | "restart" | "reconcile" | "lab-create-session" | "lab-start-session" | "lab-stop-session" | "lab-finish-session" | "lab-replay-vital-file" | "lab-upload-vital-file" | "lab-create-beds" | "lab-delete-beds" | "lab-reset-beds" | "lab-create-recorders" | "lab-delete-recorders" | "lab-reset-recorders" | "redis-backup" | "redis-restore" | "repair-datastore" | "activate-update" | "prepare-update-shutdown" | "request-guest-poweroff" | "apply-settings" | "apply-admin-password" | "apply-redis-relay-settings";
             /** @enum {string} */
             state: "accepted" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
             createdAt: string;
@@ -2708,6 +2728,12 @@ export interface components {
         RuntimeUpdateBundleSummaryResponse: {
             summary: string;
         };
+        RuntimeVitalDBObservationSnapshot: {
+            /** @enum {string} */
+            state: "loaded" | "unavailable" | "failed";
+            observation: components["schemas"]["VitalDBObservationDocument"] | null;
+            readError: string | null;
+        };
         VitalDBObservationDocument: {
             schemaVersion: number;
             source: string;
@@ -3245,6 +3271,30 @@ export interface operations {
         };
     };
     stopRuntimeLabSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab session response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["OperationInProgress"];
+        };
+    };
+    finishRuntimeLabSession: {
         parameters: {
             query?: never;
             header?: never;
@@ -4614,13 +4664,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Latest VitalDB observation snapshot, or null when unavailable. */
+            /** @description Explicit latest VitalDB observation read state. Unavailable and failed reads preserve their readError instead of becoming a null observation. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VitalDBObservationDocument"] | null;
+                    "application/json": components["schemas"]["RuntimeVitalDBObservationSnapshot"];
                 };
             };
             401: components["responses"]["Unauthorized"];

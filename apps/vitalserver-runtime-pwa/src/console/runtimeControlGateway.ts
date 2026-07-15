@@ -109,6 +109,7 @@ export type RuntimeControlGateway = {
   getLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
   startLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
   stopLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
+  finishLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
   startLabRecorder(
     sessionId: string,
     recorderId: string

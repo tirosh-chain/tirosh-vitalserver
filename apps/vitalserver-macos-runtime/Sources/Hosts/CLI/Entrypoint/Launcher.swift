@@ -149,6 +149,12 @@ struct Launcher {
         }
         let config = try JSONDecoder().decode(VMRuntimeConfig.self, from: settings.payload.vmConfigJSON)
         try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
+        try RuntimeHostTimeContractWriter(
+            destination: paths.installed.hostTime,
+            fileStore: fileStore,
+            now: Date.init,
+            log: { print($0) }
+        ).write()
         let lifecycleWriter = SQLiteRuntimeVMLifecycleResourceStore(
             databaseURL: paths.installed.runtimeStateDatabase,
             transitionDecider: RuntimeVMLifecycleTransitionUseCase()

@@ -123,9 +123,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     proxy_run_text = proxy_run.read_text(encoding="utf-8")
     assert "${PRODUCT_ROOT}" not in rendered
     assert "${NGINX_PREFIX}" not in rendered
-    assert "pkg install supports fresh installs only" in preinstall_text
+    assert "Existing package receipts select the data-preserving reinstall path" in preinstall_text
     assert 'preflight_bin="${script_dir}/vitalserver-vm-preinstall"' in preinstall_text
-    assert '"${preflight_bin}" runtime preinstall-check' in preinstall_text
+    assert '"${preflight_bin}" runtime preinstall-check \\' in preinstall_text
+    assert '--package-install-contract "${package_install_contract}"' in preinstall_text
+    assert 'package_install_contract="${script_dir}/package-install-contract.json"' in preinstall_text
     assert (
         'context.pkg_scripts / "vitalserver-vm-preinstall"'
         in installer_package_source.read_text(encoding="utf-8")
@@ -153,10 +155,13 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert_socketio_proxy_timeout(guest_edge_config_text)
     assert_recorder_ingress_upload_timeout(root_compose_text)
     assert_recorder_ingress_upload_timeout(guest_compose_text)
-    assert '"${vm_bin}" runtime install-provision' in postinstall_text
+    assert '"${vm_bin}" runtime install-provision \\' in postinstall_text
+    assert '--package-install-contract "${package_install_contract}"' in postinstall_text
+    assert 'package_install_contract="${script_dir}/package-install-contract.json"' in postinstall_text
+    assert '"${vm_bin}" runtime stop-package-services' in postinstall_text
     assert "postinstall_timeout_seconds" not in postinstall_text
     assert "runtime install timed out timeoutSeconds=" not in postinstall_text
-    assert "postinstall failure cleanup started" in postinstall_text
+    assert "persistent runtime data and package artifacts will be preserved" in postinstall_text
     assert "tirosh-vitalserver-postinstall-failure.log" in postinstall_text
     assert (
         'vm_home="/Library/Application Support/VitalServerHelper/vm"'
@@ -167,10 +172,6 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert '"${vm_bin}"' in postinstall_text
     assert "VitalServer Helper postinstall started" in postinstall_text
     assert "VitalServer Helper postinstall completed" in postinstall_text
-    assert 'launchctl bootout "system/${label}"' in postinstall_text
-    assert "ai.tirosh.vitalserver.helper.vm" in postinstall_text
-    assert "ai.tirosh.vitalserver.helper.proxy" in postinstall_text
-    assert "ai.tirosh.vitalserver.helper.platform-agent" in postinstall_text
     platform_agent_launchd_text = platform_agent_launchd_template.read_text(
         encoding="utf-8"
     )
@@ -178,7 +179,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "${VITALSERVER_PLATFORM_AGENT_BIN}" in platform_agent_launchd_text
     assert "<key>KeepAlive</key>\n  <true/>" in platform_agent_launchd_text
     assert "pkgutil --forget" not in postinstall_text
-    assert 'rm -rf "${path}"' in postinstall_text
+    assert "rm -rf" not in postinstall_text
     assert "runtime install progress status=" not in postinstall_text
     assert "runtime install progress failureReasons=" not in postinstall_text
     assert "runtime_status=" not in postinstall_text

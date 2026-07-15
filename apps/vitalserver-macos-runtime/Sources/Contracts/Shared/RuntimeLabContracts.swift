@@ -11,6 +11,7 @@ public enum RuntimeLabSessionState: String, Codable, Equatable, Sendable {
     case running
     case stopping
     case stopped
+    case finished
     case failed
     case unavailable
 }

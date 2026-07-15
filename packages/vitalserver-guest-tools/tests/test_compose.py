@@ -1019,3 +1019,20 @@ def test_stop_compose_action_reports_timeout_as_dependency_failure(
         in error.value.message
     )
     assert error.value.details["remainingServices"] == ["app", "redis"]
+
+
+@pytest.mark.parametrize("health", [None, "", "   "])
+def test_compose_service_state_maps_unreported_health_explicitly(
+    health: str | None,
+) -> None:
+    row: dict[str, object] = {
+        "Service": "app",
+        "Name": "vitalserver-app-1",
+        "State": "created",
+    }
+    if health is not None:
+        row["Health"] = health
+
+    state = compose.compose_service_state_from_json(row)
+
+    assert state.health == "not_reported"

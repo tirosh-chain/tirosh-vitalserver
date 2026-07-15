@@ -416,6 +416,10 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         try await commandClient.stopLabSession(sessionId: sessionId)
     }
 
+    public func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandClient.finishLabSession(sessionId: sessionId)
+    }
+
     public func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
         try await commandClient.startLabRecorder(sessionId: sessionId, recorderId: recorderId)
     }
@@ -431,101 +435,23 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     public func uploadLabVitalFiles(
         _ sources: [RuntimeLabVitalFileUploadSource]
     ) async throws -> RuntimeLabVitalFileLibraryUploadResponse {
-        guard !sources.isEmpty else {
-            throw RuntimeControlMultipartFormDataError.filesRequired
-        }
-        let settings = await readWorker.loadSettings()
-        guard settings.readIssues.isEmpty else {
-            throw RuntimeControlAPIReadHandlerError.platformSettingsCurrentStateInvalid(
-                settings.readIssues.map { "\($0.source): \($0.message)" }
-            )
-        }
-        let library = URL(fileURLWithPath: settings.vitalFilesDirectory, isDirectory: true)
-            .standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: library.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [
-                NSFilePathErrorKey: library.path,
-                NSLocalizedDescriptionKey: "Vital Files library is unavailable: \(library.path)",
-            ])
-        }
-
-        var names = Set<String>()
-        for source in sources {
-            let fileName = source.fileName
-            guard !fileName.isEmpty,
-                  !fileName.contains("/"),
-                  !fileName.contains("\\"),
-                  URL(fileURLWithPath: fileName).pathExtension.lowercased() == "vital" else {
-                throw RuntimeControlMultipartFormDataError.nonVitalFile(fileName)
-            }
-            guard names.insert(fileName).inserted else {
-                throw RuntimeControlMultipartFormDataError.duplicateFilename(fileName)
-            }
-            guard !FileManager.default.fileExists(
-                atPath: library.appendingPathComponent(fileName, isDirectory: false).path
-            ) else {
-                throw RuntimeControlMultipartFormDataError.destinationConflict(fileName)
-            }
-        }
-
-        let staging = library.appendingPathComponent(
-            ".vital-import-\(UUID().uuidString.lowercased())",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
-        var committed: [URL] = []
-        do {
-            for source in sources {
-                try source.content.write(
-                    to: staging.appendingPathComponent(source.fileName),
-                    options: .withoutOverwriting
-                )
-            }
-            for source in sources {
-                let destination = library.appendingPathComponent(source.fileName)
-                try FileManager.default.moveItem(
-                    at: staging.appendingPathComponent(source.fileName),
-                    to: destination
-                )
-                committed.append(destination)
-            }
-            try FileManager.default.removeItem(at: staging)
-        } catch {
-            var recoveryErrors: [String] = []
-            for destination in committed {
-                do {
-                    try FileManager.default.removeItem(at: destination)
-                } catch {
-                    recoveryErrors.append("rollback \(destination.lastPathComponent): \(error.localizedDescription)")
-                }
-            }
-            do {
-                try FileManager.default.removeItem(at: staging)
-            } catch {
-                recoveryErrors.append("cleanup \(staging.path): \(error.localizedDescription)")
-            }
-            throw RuntimeLabVitalFileLibraryTransactionError(
-                operationError: error.localizedDescription,
-                recoveryErrors: recoveryErrors
-            )
-        }
-        return RuntimeLabVitalFileLibraryUploadResponse(files: sources.map {
-            RuntimeLabVitalFileLibraryUploadItem(
-                fileName: $0.fileName,
-                relativePath: $0.fileName,
-                sizeBytes: $0.content.count
-            )
-        })
+        try await commandClient.uploadLabVitalFiles(sources)
     }
 
     public func listGuestServices() async throws -> RuntimeGuestControlServiceList {
         try await commandClient.listGuestServices()
     }
 
+    public func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        try await commandClient.guestStackStatus()
+    }
+
     public func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
         try await commandClient.guestServiceStatus(service)
+    }
+
+    public func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        try await commandClient.guestServiceResource(service)
     }
 
     public func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {

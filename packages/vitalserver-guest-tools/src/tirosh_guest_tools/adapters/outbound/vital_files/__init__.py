@@ -1,5 +1,11 @@
 from tirosh_guest_tools.adapters.outbound.vital_files.library import (
-    FileVitalFileLibrary,
+    URLlibVitalServerHTTPTransport,
+    VitalServerHTTPResponse,
+    VitalServerVitalFileLibrary,
 )
 
-__all__ = ["FileVitalFileLibrary"]
+__all__ = [
+    "URLlibVitalServerHTTPTransport",
+    "VitalServerHTTPResponse",
+    "VitalServerVitalFileLibrary",
+]

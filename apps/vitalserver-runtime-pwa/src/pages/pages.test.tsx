@@ -61,6 +61,7 @@ const hooks = vi.hoisted(() => ({
   useStartGuestService: vi.fn(),
   useStopGuestService: vi.fn(),
   useStopLabSession: vi.fn(),
+  useFinishLabSession: vi.fn(),
   useStopLabRecorder: vi.fn(),
   useSummarizeUpdateBundle: vi.fn(),
   useUnhideVitalDBBeds: vi.fn(),
@@ -185,7 +186,7 @@ describe("runtime console pages", () => {
   it("renders status metrics without using container observation as recorder ingress source", () => {
     renderPage(<StatusPage />);
 
-    expect(screen.getByText("Overall health")).toBeInTheDocument();
+    expect(screen.getByText("Platform health")).toBeInTheDocument();
     expect(screen.getByText("Healthy")).toBeInTheDocument();
     expect(screen.getByText("VitalServer")).toBeInTheDocument();
     expect(
@@ -204,6 +205,7 @@ describe("runtime console pages", () => {
     expect(
       screen.getByText("5.0 MiB/s, adaptive 1.0 MiB/s-10.0 MiB/s, guard unavailable, 500 items/tick, concurrency 8")
     ).toBeInTheDocument();
+    expect(screen.getByText("/var/lib/vitalserver/vital-files")).toBeInTheDocument();
     expect(screen.queryByText("VitalServer memory")).not.toBeInTheDocument();
     expect(screen.queryByText("Recorder ingress memory")).not.toBeInTheDocument();
     expect(screen.queryByText("Redis memory")).not.toBeInTheDocument();
@@ -264,6 +266,20 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Incomplete resource usage")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /18080/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /18321/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps a failed Platform settings read distinct from a missing data directory", () => {
+    hooks.useRuntimePlatformSettings.mockReturnValue(query({
+      state: "failed",
+      settings: null,
+      readIssues: [],
+      readError: "host settings database is unreadable"
+    }));
+
+    renderPage(<StatusPage />);
+
+    expect(screen.getByText("Read failed")).toBeInTheDocument();
+    expect(screen.getByText(/host settings database is unreadable/)).toBeInTheDocument();
   });
 
 
@@ -1019,6 +1035,9 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Platform services")).toBeInTheDocument();
     expect(screen.getByText("Runtime product services")).toBeInTheDocument();
     expect(screen.getByText("Access endpoints")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reconnect Runtime Control" })
+    ).toBeInTheDocument();
     expect(screen.queryByText("Redis UI service")).not.toBeInTheDocument();
     expect(screen.queryByText("Swagger UI service")).not.toBeInTheDocument();
     expect(screen.getByText("VitalServer API")).toBeInTheDocument();
@@ -1388,10 +1407,12 @@ describe("runtime console pages", () => {
     const createLabSession = mutation(labSessionResponse("accepted"));
     const startLabSession = mutation(labSessionResponse("running"));
     const stopLabSession = mutation(labSessionResponse("stopped"));
+    const finishLabSession = mutation(labSessionResponse("finished"));
     const replayLabVitalFile = mutation(labSessionResponse("accepted"));
     hooks.useCreateLabSession.mockReturnValue(createLabSession);
     hooks.useStartLabSession.mockReturnValue(startLabSession);
     hooks.useStopLabSession.mockReturnValue(stopLabSession);
+    hooks.useFinishLabSession.mockReturnValue(finishLabSession);
     hooks.useReplayLabVitalFile.mockReturnValue(replayLabVitalFile);
     const uploadLabVitalFile = mutation({
       state: "completed",
@@ -1412,7 +1433,8 @@ describe("runtime console pages", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
-    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "Finish & upload" }));
     const selectedFiles = [
       new File(["first"], "first.vital"),
       new File(["second"], "second.vital")
@@ -1435,6 +1457,7 @@ describe("runtime console pages", () => {
     );
     expect(startLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
     expect(stopLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
+    expect(finishLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
     expect(replayLabVitalFile.mutate).toHaveBeenCalledWith(
       {
         vitalFileRelativePath: "case.vital",
@@ -1469,7 +1492,8 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("button", { name: "Create beds" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Create recorders" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Finish & upload" })).toBeDisabled();
 
     expect(screen.getByRole("button", { name: "Replay" })).toBeDisabled();
   });
@@ -1723,6 +1747,7 @@ function setupDefaultHooks() {
     hooks.useStartGuestService,
     hooks.useStopGuestService,
     hooks.useStopLabSession,
+    hooks.useFinishLabSession,
     hooks.useStopLabRecorder,
     hooks.useSummarizeUpdateBundle,
     hooks.useUnhideVitalDBBeds,
@@ -2340,7 +2365,7 @@ function events() {
 }
 
 function labSessionResponse(
-  state: "accepted" | "running" | "stopping" | "stopped"
+  state: "accepted" | "running" | "stopping" | "stopped" | "finished"
 ) {
   return {
     state: "loaded" as const,

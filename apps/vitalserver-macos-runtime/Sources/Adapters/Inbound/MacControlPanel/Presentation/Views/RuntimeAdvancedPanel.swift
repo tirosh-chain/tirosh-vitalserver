@@ -240,6 +240,19 @@ struct RuntimeAdvancedPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                recoverySubsection(AppConstants.Labels.sectionRuntimeControlRecovery) {
+                    Text(AppConstants.Labels.runtimeControlRecoveryHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(AppConstants.Actions.reconnectRuntimeControl) {
+                        viewModel.reconnectRuntimeControl()
+                    }
+                    .disabled(viewModel.isBusy)
+                }
+
+                Divider()
+
                 recoverySubsection(AppConstants.Labels.sectionUpdateRecovery) {
                     Text(AppConstants.Labels.updateRecoveryHelp)
                         .font(.caption)

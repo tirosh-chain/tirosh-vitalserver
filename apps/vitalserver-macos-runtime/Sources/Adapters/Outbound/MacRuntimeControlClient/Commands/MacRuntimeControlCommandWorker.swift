@@ -499,6 +499,12 @@ public actor MacRuntimeControlCommandWorker {
         }
     }
 
+    public func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        return try await runGuestProductLabCommand {
+            try $0.finishLabSession(sessionId)
+        }
+    }
+
     public func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
         return try await runGuestProductLabCommand {
             try $0.startLabRecorder(sessionId: sessionId, recorderId: recorderId)
@@ -515,6 +521,16 @@ public actor MacRuntimeControlCommandWorker {
         return try await runGuestProductLabCommand {
             try $0.replayLabVitalFile(request)
         }
+    }
+
+    public func uploadLabVitalFiles(
+        _ sources: [RuntimeLabVitalFileUploadSource]
+    ) async throws -> RuntimeLabVitalFileLibraryUploadResponse {
+        let baseURL = try guestControlBaseURL()
+        let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: baseURL
+        )
+        return try gateway.uploadLabVitalFiles(sources)
     }
 
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {

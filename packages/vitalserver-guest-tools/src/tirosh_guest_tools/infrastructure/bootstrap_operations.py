@@ -35,6 +35,9 @@ from tirosh_guest_tools.infrastructure.system_install import (
     migrate_guest_control_store,
 )
 
+DOCKER_IMAGE_LOAD_MAX_ATTEMPTS = 3
+DOCKER_IMAGE_LOAD_RETRY_SECONDS = 1
+
 BOOTSTRAP_RESULT = RUNTIME_DIR / "bootstrap-result.json"
 
 
@@ -294,10 +297,27 @@ def load_bundled_docker_images(context: GuestBootstrapContext) -> None:
     ]
     for image_bundle in bundles:
         print(f"Loading Docker image bundle: {image_bundle}")
-        run(["docker", "load", "-i", str(image_bundle)])
+        load_docker_image_bundle(image_bundle)
         loaded = True
     if loaded:
         print("Bundled Docker images are loaded.")
+
+
+def load_docker_image_bundle(image_bundle: Path) -> None:
+    command = ["docker", "load", "-i", str(image_bundle)]
+    for attempt in range(1, DOCKER_IMAGE_LOAD_MAX_ATTEMPTS + 1):
+        try:
+            run(command)
+            return
+        except subprocess.CalledProcessError as error:
+            if attempt == DOCKER_IMAGE_LOAD_MAX_ATTEMPTS:
+                raise
+            print(
+                "Docker image bundle load failed; retrying "
+                f"attempt={attempt}/{DOCKER_IMAGE_LOAD_MAX_ATTEMPTS} "
+                f"exitCode={error.returncode} bundle={image_bundle}"
+            )
+            time.sleep(DOCKER_IMAGE_LOAD_RETRY_SECONDS)
 
 
 def run_docker_runtime_smoke(docker_smoke_image: str) -> DockerSmokeResult:

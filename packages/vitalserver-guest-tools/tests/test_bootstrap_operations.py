@@ -198,6 +198,56 @@ def test_prepare_shared_directories_creates_recorder_ingress_bind_sources(
     assert (context.runtime_dir.parent / "vr-release").is_dir()
 
 
+def test_load_bundled_docker_images_retries_one_failed_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = bootstrap_context(tmp_path)
+    image_bundle = context.deploy_dir / "docker-images/vitalserver-images.tar.gz"
+    image_bundle.parent.mkdir()
+    image_bundle.write_bytes(b"bundle")
+    commands: list[list[str]] = []
+
+    def fake_run(arguments: list[str]) -> subprocess.CompletedProcess[str]:
+        commands.append(arguments)
+        if len(commands) == 1:
+            raise subprocess.CalledProcessError(1, arguments)
+        return subprocess.CompletedProcess(arguments, 0)
+
+    monkeypatch.setattr(bootstrap_operations, "run", fake_run)
+    monkeypatch.setattr(bootstrap_operations.time, "sleep", lambda _: None)
+
+    bootstrap_operations.load_bundled_docker_images(context)
+
+    assert commands == [
+        ["docker", "load", "-i", str(image_bundle)],
+        ["docker", "load", "-i", str(image_bundle)],
+    ]
+
+
+def test_load_bundled_docker_images_reports_failure_after_bounded_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = bootstrap_context(tmp_path)
+    image_bundle = context.deploy_dir / "docker-images/vitalserver-images.tar.gz"
+    image_bundle.parent.mkdir()
+    image_bundle.write_bytes(b"bundle")
+    commands: list[list[str]] = []
+
+    def failed_run(arguments: list[str]) -> subprocess.CompletedProcess[str]:
+        commands.append(arguments)
+        raise subprocess.CalledProcessError(1, arguments)
+
+    monkeypatch.setattr(bootstrap_operations, "run", failed_run)
+    monkeypatch.setattr(bootstrap_operations.time, "sleep", lambda _: None)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        bootstrap_operations.load_bundled_docker_images(context)
+
+    assert len(commands) == bootstrap_operations.DOCKER_IMAGE_LOAD_MAX_ATTEMPTS
+
+
 def bootstrap_context(tmp_path: Path) -> GuestBootstrapContext:
     deploy_dir = tmp_path / "deploy"
     deploy_dir.mkdir(parents=True)

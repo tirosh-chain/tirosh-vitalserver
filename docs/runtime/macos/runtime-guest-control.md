@@ -301,6 +301,7 @@ POST /runtime/lab/sessions
 GET  /runtime/lab/sessions/{sessionId}
 POST /runtime/lab/sessions/{sessionId}/start
 POST /runtime/lab/sessions/{sessionId}/stop
+POST /runtime/lab/sessions/{sessionId}/finish
 POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start
 POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop
 GET  /runtime/lab/beds
@@ -315,7 +316,7 @@ The Host contract explicitly returns `unavailable` when Guest Control or Product
 
 ### 2-7. Guest Control API mediates Product Lab execution
 
-Runtime v2 routes Product Lab execution through Guest Control API. Host Runtime Control clients call `/runtime/lab/*`, the Host adapter calls Guest Control `/runtime/lab/*`, and the Guest adapter talks to the Product Lab service API as the implementation boundary. Vital Files import is the exception: it is a storage operation owned by the Runtime Control/Guest library adapter and is not forwarded to Product Lab as an execution command.
+Runtime v2 routes Product Lab execution through Guest Control API. Host Runtime Control clients call `/runtime/lab/*`, the Host adapter calls Guest Control `/runtime/lab/*`, and the Guest adapter talks to the Product Lab service API as the implementation boundary. Vital Files import/list is the exception: the Guest library adapter calls the VitalServer upload and indexed file-list APIs directly; it is not a Product Lab execution command and does not copy bytes directly into the shared storage mount.
 
 Guest Product Lab endpoints:
 
@@ -326,6 +327,7 @@ POST /runtime/lab/sessions
 GET  /runtime/lab/sessions/{sessionId}
 POST /runtime/lab/sessions/{sessionId}/start
 POST /runtime/lab/sessions/{sessionId}/stop
+POST /runtime/lab/sessions/{sessionId}/finish
 POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start
 POST /runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop
 GET  /runtime/lab/beds
@@ -340,9 +342,11 @@ Command-style Product Lab requests create persisted Guest Control operations usi
 same SQLite control ledger as service restart. Lab operation failures are saved
 as failed operations and returned through the Lab response `readError` instead
 of being converted into an empty scenario list or a successful stopped session.
-The multipart Vital Files import validates and commits one explicit batch through
-the configured library adapter; it does not create a Product Lab operation or
-send the files to VitalServer `/upload`.
+The multipart Vital Files import validates one explicit selection through the
+configured library adapter, sends every valid file to VitalServer `POST /upload`,
+and verifies the result through VitalServer `GET /api/filelist`. It does not create
+a Product Lab operation. HTTP 200 with a parser error body is a failed upload, and
+a later-file failure after earlier success is an explicit partial-completion failure.
 
 The current Guest adapter maps these Product Lab commands to the `lab` service API:
 
@@ -355,7 +359,8 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 | Create session | `POST http://lab:8080/lab/sessions` |
 | Read session | `GET http://lab:8080/lab/sessions/{sessionId}` |
 | Start session | `POST http://lab:8080/lab/sessions/{sessionId}/start` |
-| Stop session | `POST http://lab:8080/lab/sessions/{sessionId}/stop` |
+| Pause session | `POST http://lab:8080/lab/sessions/{sessionId}/stop` |
+| Finish session and upload archives | `POST http://lab:8080/lab/sessions/{sessionId}/finish` |
 | Delete session aggregate | `POST http://lab:8080/lab/sessions/{sessionId}/delete` |
 | Start recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/start` |
 | Stop recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/stop` |
@@ -363,19 +368,24 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 
 This makes Product Lab the product boundary and removes the TestKit adapter from the Guest Control Lab execution path.
 
-Product Lab stop also owns an explicit recorder archive finalization effect. After closing the selected recorder
-connections, the Lab service sends the stopped recorder vrcodes and the lifecycle reason to recorder ingress
+Product Lab `Stop` is a restartable pause: it closes active sender connections and preserves the session as
+`stopped`, but it does not declare the archive complete. Product Lab `Finish` is terminal. It transitions the
+session to `finished` and sends every session-owned recorder vrcode with reason `lab_session_finished` to recorder ingress
 `POST /recorder-ingress/raw-archive/finalize`. Recorder ingress persists the requests before attempting recovery and
-returns request IDs. The Lab stop response reports `archiveFinalization.state=accepted`; a dependency or contract
-failure is returned as a failed stop response while the Lab session/recorder document still preserves its actual
-stopped state. Recorder ingress, not Product Lab or the UI, owns `.vital` export retry, upload result, and checkpoint
+returns request IDs. The Lab finish response reports `archiveFinalization.state=accepted`; a dependency or contract
+failure is returned as a failed finish response while the Lab session document preserves its actual terminal
+`finished` state. Recorder ingress, not Product Lab or the UI, owns `.vital` export retry, upload result, and checkpoint
 state.
 
+Repeating Finish for an already `finished` session is an explicit finalization retry and never restarts execution.
+Starting a `finished` session is rejected.
+
 `POST /runtime/lab/vital-files/upload` accepts repeated multipart `files` fields.
-Every filename must be a basename ending in `.vital`; an empty batch, duplicate
-name, invalid extension, missing library, or destination conflict fails the whole
-batch. The adapter validates every entry before staging and only then commits all
-files. It never treats a partially imported batch as success.
+Every filename must be a basename ending in `.vital` and follow VitalServer's
+`<bed>_YYMMDD_HHMMSS.vital` indexable naming rule. An empty selection, duplicate
+name, invalid extension/name, unavailable credentials, or existing VitalServer
+index conflict is rejected before upload begins. The adapter never treats a
+partially completed upload as success.
 
 Product Lab session creation does not infer ownership from existing beds,
 recorders, fixture names, or previous command output. A session that should

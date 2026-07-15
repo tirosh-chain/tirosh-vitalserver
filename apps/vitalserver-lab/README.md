@@ -37,6 +37,7 @@ POST /lab/sessions
 GET  /lab/sessions/{sessionId}
 POST /lab/sessions/{sessionId}/start
 POST /lab/sessions/{sessionId}/stop
+POST /lab/sessions/{sessionId}/finish
 POST /lab/sessions/{sessionId}/recorders/{recorderId}/start
 POST /lab/sessions/{sessionId}/recorders/{recorderId}/stop
 POST /lab/vital-files/replay

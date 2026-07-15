@@ -5,26 +5,24 @@ product_root="/Library/Application Support/VitalServerHelper"
 vm_home="${product_root}/vm"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 preflight_bin="${script_dir}/vitalserver-vm-preinstall"
+package_install_contract="${script_dir}/package-install-contract.json"
 
-fail_fresh_install_only() {
-  echo "VitalServer Helper pkg install supports fresh installs only." >&2
-  echo "An existing VitalServer Helper install, launchd service, package receipt, or Host proxy port conflict blocks this install." >&2
-  echo "Remove the existing install first, then run the pkg again." >&2
-  echo "Recommended clean removal:" >&2
-  echo "  sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean" >&2
-  echo "Development make target:" >&2
-  echo "  make dist/uninstall/dev VM_UNINSTALL_ARGS=--clean" >&2
+fail_package_install_preflight() {
+  echo "VitalServer Helper package install preflight failed." >&2
+  echo "Fresh installs require an empty target and a clear configured Host proxy port." >&2
+  echo "Existing package receipts select the data-preserving reinstall path; unreadable state or a service stop failure blocks replacement." >&2
   exit 1
 }
 
 if [ ! -x "${preflight_bin}" ]; then
-  echo "fresh install preflight unavailable: ${preflight_bin}" >&2
-  fail_fresh_install_only
+  echo "package install preflight unavailable: ${preflight_bin}" >&2
+  fail_package_install_preflight
 fi
 
-if ! preflight_output="$(VITALSERVER_VM_HOME="${vm_home}" "${preflight_bin}" runtime preinstall-check 2>&1)"; then
+if ! preflight_output="$(VITALSERVER_VM_HOME="${vm_home}" "${preflight_bin}" runtime preinstall-check \
+  --package-install-contract "${package_install_contract}" 2>&1)"; then
   printf "%s\n" "${preflight_output}" >&2
-  fail_fresh_install_only
+  fail_package_install_preflight
 fi
 
 printf "%s\n" "${preflight_output}"

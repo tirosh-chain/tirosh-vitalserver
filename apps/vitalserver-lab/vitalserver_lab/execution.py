@@ -251,7 +251,7 @@ class LabExecutionEngine:
         result_sink: LabRecorderExecutionResultSink | None = None,
         completion_sink: LabSessionCompletionSink | None = None,
     ) -> tuple[LabRecorderExecutionResult, ...]:
-        self.stop_session(session.session_id)
+        self.pause_session(session.session_id)
         beds_by_id = {bed.bed_id: bed for bed in beds}
         if session.target_url is None:
             return tuple(
@@ -359,11 +359,11 @@ class LabExecutionEngine:
 
     def stop_recorder(
         self, session_id: str, recorder_id: str
-    ) -> LabArchiveFinalizationReceipt | None:
+    ) -> None:
         with self._running_sessions_lock:
             running = self._running_sessions.get(session_id)
         if running is None:
-            return None
+            return
         with running.active_recorder_ids_lock:
             running.active_recorder_ids.discard(recorder_id)
         vrcode = running.recorder_vrcodes.get(recorder_id)
@@ -372,22 +372,16 @@ class LabExecutionEngine:
                 target_url=running.target_url,
                 vrcode=vrcode,
             )
-            return self._request_archive_finalization(
-                vrcodes=(vrcode,),
-                reason="lab_recorder_stopped",
-            )
-        return None
+        return
 
-    def stop_session(
+    def pause_session(
         self,
         session_id: str,
-        *,
-        finalize_archive: bool = True,
-    ) -> LabArchiveFinalizationReceipt | None:
+    ) -> None:
         with self._running_sessions_lock:
             running = self._running_sessions.pop(session_id, None)
         if running is None:
-            return None
+            return
         running.stop_event.set()
         if threading.current_thread() is not running.thread:
             running.thread.join(timeout=2)
@@ -396,18 +390,39 @@ class LabExecutionEngine:
                 target_url=running.target_url,
                 vrcode=vrcode,
             )
-        if finalize_archive:
-            return self._request_archive_finalization(
-                vrcodes=tuple(running.recorder_vrcodes.values()),
-                reason="lab_session_stopped",
+        return
+
+    def finish_session(
+        self,
+        session_id: str,
+        *,
+        vrcodes: tuple[str, ...],
+    ) -> LabArchiveFinalizationReceipt:
+        """Stop execution and explicitly finalize every session-owned archive."""
+        self.pause_session(session_id)
+        if not vrcodes:
+            raise LabArchiveFinalizationError(
+                "Lab session finish requires at least one recorder vrcode."
             )
-        return None
+        if self.archive_finalizer is None:
+            raise LabArchiveFinalizationError(
+                "Lab session finish archive finalizer is unavailable."
+            )
+        receipt = self._request_archive_finalization(
+            vrcodes=vrcodes,
+            reason="lab_session_finished",
+        )
+        if receipt is None:
+            raise LabArchiveFinalizationError(
+                "Lab session finish archive finalization was not accepted."
+            )
+        return receipt
 
     def shutdown(self) -> None:
         with self._running_sessions_lock:
             session_ids = tuple(self._running_sessions)
         for session_id in session_ids:
-            self.stop_session(session_id, finalize_archive=False)
+            self.pause_session(session_id)
         self.sender.close_all()
 
     def _request_archive_finalization(
@@ -461,7 +476,7 @@ class LabExecutionEngine:
                     try:
                         self._request_archive_finalization(
                             vrcodes=completed_vrcodes,
-                            reason="lab_session_stopped",
+                            reason="lab_session_finished",
                         )
                     except LabArchiveFinalizationError as error:
                         print(

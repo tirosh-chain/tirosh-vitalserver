@@ -7,6 +7,30 @@ import OutboundAdapters
 import XCTest
 
 final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
+    func testFreshPackageProvisionInitializesHostStateWithoutLegacyMigration() throws {
+        let events = RuntimeInstallCompositionEventRecorder()
+        let composition = makeProvisionComposition(events: events)
+
+        try composition.installProvision(mode: .fresh)
+
+        XCTAssertTrue(events.values.contains("initialize-state-store"))
+        XCTAssertFalse(events.values.contains("migrate-legacy-settings"))
+        XCTAssertTrue(events.values.contains("prepare-host-settings"))
+    }
+
+    func testReinstallPackageProvisionRunsExplicitLegacyMigrationBeforeLoadingSettings() throws {
+        let events = RuntimeInstallCompositionEventRecorder()
+        let composition = makeProvisionComposition(events: events)
+
+        try composition.installProvision(mode: .reinstall)
+
+        let initializeIndex = try XCTUnwrap(events.values.firstIndex(of: "initialize-state-store"))
+        let migrationIndex = try XCTUnwrap(events.values.firstIndex(of: "migrate-legacy-settings"))
+        let loadIndex = try XCTUnwrap(events.values.firstIndex(of: "load-settings"))
+        XCTAssertLessThan(initializeIndex, migrationIndex)
+        XCTAssertLessThan(migrationIndex, loadIndex)
+    }
+
     func testFullInstallCapturesPreflightBeforePreparingSQLiteAndPersistsTerminalState() throws {
         let fileStore = RuntimeFileStoreSpy()
         let stateRepository = RuntimeWorkflowOperationStateRepositorySpy()
@@ -157,6 +181,64 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
             artifactStates: [.present(path: "/usr/local/bin/vitalserver-vm")]
         )
     }
+
+    private func makeProvisionComposition(
+        events: RuntimeInstallCompositionEventRecorder
+    ) -> RuntimeInstallComposition<String> {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        return RuntimeInstallComposition(
+            context: RuntimeInstallCompositionContext(
+                paths: LauncherPaths(
+                    home: installedPaths.runtimeHome,
+                    installed: installedPaths,
+                    config: installedPaths.vmConfig,
+                    pidFile: installedPaths.pidFile
+                ),
+                installedPaths: installedPaths
+            ),
+            operations: RuntimeInstallCompositionOperations(
+                fileStore: RuntimeFileStoreSpy(),
+                now: { Date(timeIntervalSince1970: 1_789_433_600) },
+                loadInstallSettings: {
+                    events.values.append("load-settings")
+                    return "settings"
+                },
+                freshInstallPreflight: { Self.preflight() },
+                installProvisionPayload: { Self.provisionPayload() },
+                writeRuntimeStatus: { _, _, _ in },
+                writeRuntimeProgress: { _ in },
+                prepareInstallDirectories: { _ in },
+                rotateRuntimeLogs: {},
+                configureDeployEnvironment: { _ in },
+                prepareInstalledExecutables: {},
+                provisionVMDisk: { _ in },
+                configureInstalledVMRuntime: { _ in },
+                createCloudInitSeed: { _ in },
+                writeInstalledRuntimeVersion: {},
+                configureInstalledPermissions: { _ in },
+                startInstalledServices: { _ in },
+                applyStartOnBootPolicy: { _ in },
+                waitInstallRuntimeHealth: { _ in },
+                cleanupInstallSettings: {},
+                log: { _ in },
+                initializeHostStateStore: {
+                    events.values.append("initialize-state-store")
+                },
+                migrateLegacyHostSettings: {
+                    events.values.append("migrate-legacy-settings")
+                },
+                prepareHostSettings: { _ in
+                    events.values.append("prepare-host-settings")
+                },
+                workflowOperationStateRepository: RuntimeWorkflowOperationStateRepositorySpy(),
+                operationID: { UUID().uuidString }
+            )
+        )
+    }
+}
+
+private final class RuntimeInstallCompositionEventRecorder {
+    var values: [String] = []
 }
 
 private enum RuntimeInstallCompositionSQLiteStateTestError: Error, Equatable {

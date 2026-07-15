@@ -73,6 +73,54 @@ public struct RuntimeOperationEventDocument: Codable, Equatable, Sendable {
         self.message = message
         self.failure = failure
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, id, source, eventType, timestamp
+        case operationId, operationService, operationCommand, operationState
+        case message, failure
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard container.contains(.failure) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.failure,
+                .init(codingPath: decoder.codingPath, debugDescription: "Runtime operation event requires explicit failure")
+            )
+        }
+        self.init(
+            schemaVersion: try container.decode(Int.self, forKey: .schemaVersion),
+            id: try container.decode(String.self, forKey: .id),
+            source: try container.decode(String.self, forKey: .source),
+            eventType: try container.decode(RuntimeOperationEventType.self, forKey: .eventType),
+            timestamp: try container.decode(String.self, forKey: .timestamp),
+            operationId: try container.decode(String.self, forKey: .operationId),
+            operationService: try container.decode(String.self, forKey: .operationService),
+            operationCommand: try container.decode(String.self, forKey: .operationCommand),
+            operationState: try container.decode(RuntimeGuestControlOperationState.self, forKey: .operationState),
+            message: try container.decode(String.self, forKey: .message),
+            failure: try container.decodeIfPresent(RuntimeGuestControlOperationFailure.self, forKey: .failure)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(id, forKey: .id)
+        try container.encode(source, forKey: .source)
+        try container.encode(eventType, forKey: .eventType)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(operationId, forKey: .operationId)
+        try container.encode(operationService, forKey: .operationService)
+        try container.encode(operationCommand, forKey: .operationCommand)
+        try container.encode(operationState, forKey: .operationState)
+        try container.encode(message, forKey: .message)
+        if let failure {
+            try container.encode(failure, forKey: .failure)
+        } else {
+            try container.encodeNil(forKey: .failure)
+        }
+    }
 }
 
 public struct RuntimeOperationEventHistory: Codable, Equatable, Sendable {

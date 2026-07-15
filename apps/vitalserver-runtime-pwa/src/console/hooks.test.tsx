@@ -51,6 +51,7 @@ import {
   useStartGuestService,
   useStopGuestService,
   useStopLabSession,
+  useFinishLabSession,
   useStopLabRecorder,
   useSummarizeUpdateBundle,
   useUnhideVitalDBBeds,
@@ -295,8 +296,10 @@ describe("console hooks", () => {
 
     await mutateHook(() => useStartLabSession(), "lab-1", wrapper);
     await mutateHook(() => useStopLabSession(), "lab-1", wrapper);
+    await mutateHook(() => useFinishLabSession(), "lab-1", wrapper);
     expect(gateway.startLabSession).toHaveBeenCalledWith("lab-1");
     expect(gateway.stopLabSession).toHaveBeenCalledWith("lab-1");
+    expect(gateway.finishLabSession).toHaveBeenCalledWith("lab-1");
 
     const recorderCommand = { sessionId: "lab-1", recorderId: "recorder-1" };
     await mutateHook(() => useStartLabRecorder(), recorderCommand, wrapper);
@@ -617,6 +620,7 @@ function createGateway(): GatewayMock {
     startLabRecorder: vi.fn().mockResolvedValue(labRecorderResponse("running")),
     stopGuestService: vi.fn().mockResolvedValue(guestServiceOperation("stop")),
     stopLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
+    finishLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
     stopLabRecorder: vi.fn().mockResolvedValue(labRecorderResponse("stopped")),
     summarizeUpdateBundle: vi.fn().mockResolvedValue({ summary: "ok" }),
     uninstallRuntime: vi.fn().mockResolvedValue(platformWorkflowOperation("uninstall")),

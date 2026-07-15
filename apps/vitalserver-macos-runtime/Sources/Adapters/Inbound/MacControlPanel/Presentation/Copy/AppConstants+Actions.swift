@@ -11,6 +11,7 @@ public extension AppConstants {
         public static let repairDatastore = "Repair Redis Datastore"
         public static let repairVMDisk = "Repair VM Disk"
         public static let repairRuntimeServices = "Repair Runtime"
+        public static let reconnectRuntimeControl = "Reconnect Runtime Control"
         public static let uninstall = "Uninstall"
         public static let standardUninstall = "Uninstall..."
         public static let cleanUninstall = "Clean Uninstall..."

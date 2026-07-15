@@ -1,4 +1,5 @@
 import Contracts
+import Foundation
 
 public protocol RuntimeGuestProductLabGateway {
     func labScenarios() throws -> RuntimeLabScenarioList
@@ -18,14 +19,30 @@ public protocol RuntimeGuestProductLabGateway {
     func labSession(_ sessionId: String) throws -> RuntimeLabSessionResponse
     func startLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse
     func stopLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse
+    func finishLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse
     func startLabRecorder(sessionId: String, recorderId: String) throws -> RuntimeLabRecorderResponse
     func stopLabRecorder(sessionId: String, recorderId: String) throws -> RuntimeLabRecorderResponse
     func replayLabVitalFile(
         _ request: RuntimeLabVitalFileReplayRequest
     ) throws -> RuntimeLabSessionResponse
+    func uploadLabVitalFiles(
+        _ sources: [RuntimeLabVitalFileUploadSource]
+    ) throws -> RuntimeLabVitalFileLibraryUploadResponse
 }
 
 public extension RuntimeGuestProductLabGateway {
+    func uploadLabVitalFiles(
+        _ sources: [RuntimeLabVitalFileUploadSource]
+    ) throws -> RuntimeLabVitalFileLibraryUploadResponse {
+        throw RuntimeGuestProductLabGatewayError.unavailable("VitalServer file upload")
+    }
+
+    func finishLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(
+            readError: "Product Lab session finish is unavailable."
+        )
+    }
+
     func labSessions() throws -> RuntimeLabSessionList {
         RuntimeLabSessionList.unavailable(
             readError: "Product Lab session collection is unavailable."
@@ -48,5 +65,16 @@ public extension RuntimeGuestProductLabGateway {
         RuntimeLabRecorderResponse.unavailable(
             readError: "Product Lab recorder control is unavailable."
         )
+    }
+}
+
+public enum RuntimeGuestProductLabGatewayError: LocalizedError, Equatable {
+    case unavailable(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unavailable(let operation):
+            return "Runtime Guest Product Lab gateway is unavailable: \(operation)"
+        }
     }
 }

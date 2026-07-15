@@ -115,6 +115,14 @@ class ProductLabServiceAdapter:
             )
         )
 
+    def finish_session(self, session_id: str) -> ProductLabSessionResult:
+        return _session_from_response(
+            self._request_json(
+                "POST",
+                f"/lab/sessions/{_path_segment(session_id)}/finish",
+            )
+        )
+
     def delete_session(self, session_id: str) -> ProductLabReadModelResult:
         return _read_model_from_response(
             self._request_json(

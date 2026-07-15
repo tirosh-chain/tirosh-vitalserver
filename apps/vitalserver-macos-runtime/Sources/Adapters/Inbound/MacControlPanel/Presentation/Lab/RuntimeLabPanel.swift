@@ -211,10 +211,18 @@ struct RuntimeLabPanel: View {
                         Task { await viewModel.startProductLabSession() }
                     }
                     .disabled(!viewModel.labCanStartSelectedSession)
-                    Button(AppConstants.Actions.stop) {
+                    Button(RuntimeLabPanelText.pause) {
                         Task { await viewModel.stopProductLabSession() }
                     }
                     .disabled(!viewModel.labCanStopSelectedSession)
+                    Button(
+                        session.state == .finished
+                            ? RuntimeLabPanelText.retryUpload
+                            : RuntimeLabPanelText.finishAndUpload
+                    ) {
+                        Task { await viewModel.finishProductLabSession() }
+                    }
+                    .disabled(!viewModel.labCanFinishSelectedSession)
                 }
             } else {
                 Text(RuntimeLabPanelText.noLabSession)

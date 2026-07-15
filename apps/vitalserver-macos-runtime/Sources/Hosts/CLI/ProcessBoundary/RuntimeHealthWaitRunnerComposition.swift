@@ -10,6 +10,7 @@ public struct RuntimeHealthWaitRunnerCompositionOperations {
     let serviceState: (RuntimeManagedService) -> RuntimeServiceState
     let healthSnapshot: () -> RuntimeHealthSnapshot
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
+    let now: () -> Date
     let sleep: (TimeInterval) -> Void
     let log: (String) -> Void
 
@@ -17,12 +18,14 @@ public struct RuntimeHealthWaitRunnerCompositionOperations {
         serviceState: @escaping (RuntimeManagedService) -> RuntimeServiceState,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
+        now: @escaping () -> Date,
         sleep: @escaping (TimeInterval) -> Void,
         log: @escaping (String) -> Void
     ) {
         self.serviceState = serviceState
         self.healthSnapshot = healthSnapshot
         self.writeStatus = writeStatus
+        self.now = now
         self.sleep = sleep
         self.log = log
     }
@@ -54,6 +57,7 @@ public enum RuntimeHealthWaitRunnerComposition {
                     log: operations.log
                 )
             },
+            now: operations.now,
             sleep: operations.sleep,
             log: operations.log
         )

@@ -355,6 +355,23 @@ public final class RuntimeViewModel: ObservableObject {
         recorderActivityWindows[recorderActivityWindowKey(query)] = window
     }
 
+    func pollVitalRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery,
+        intervalNanoseconds: UInt64 = 5_000_000_000
+    ) async {
+        while !Task.isCancelled {
+            await refreshVitalRecorderActivityWindow(query: query)
+            guard !Task.isCancelled else {
+                return
+            }
+            do {
+                try await Task.sleep(nanoseconds: intervalNanoseconds)
+            } catch {
+                return
+            }
+        }
+    }
+
     func recorderActivityWindow(
         query: RuntimeVitalRecorderActivityWindowQuery
     ) -> RuntimeVitalRecorderActivityWindow? {
@@ -603,6 +620,11 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     public func relaunchHelper() {
+        nativeShell.relaunchHelper()
+    }
+
+    public func reconnectRuntimeControl() {
+        message = AppConstants.StatusText.runtimeControlReconnecting
         nativeShell.relaunchHelper()
     }
 

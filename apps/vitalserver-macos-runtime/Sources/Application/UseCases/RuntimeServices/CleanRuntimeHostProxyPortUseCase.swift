@@ -52,6 +52,27 @@ public struct CleanRuntimeHostProxyPortOperations {
 public struct CleanRuntimeHostProxyPortUseCase {
     public init() {}
 
+    public func requirePackageReinstallPortAvailable(
+        operations: CleanRuntimeHostProxyPortOperations
+    ) throws {
+        let port = try requiredProxyPort(operations: operations)
+        let listeners = try readPortListeners(port: port, operations: operations)
+        guard !listeners.isEmpty else {
+            operations.log("package reinstall proxy port preflight passed; no listeners port=\(port)")
+            return
+        }
+
+        let expectedPID = try readExpectedProxyNginxPID(operations: operations)
+        let classified = try classify(listeners, expectedPID: expectedPID, operations: operations)
+        guard classified.external.isEmpty else {
+            try throwExternalListenerError(port: port, listeners: classified.external, operations: operations)
+        }
+        operations.log(
+            "package reinstall proxy port preflight passed; existing VitalServer nginx owns port=\(port) "
+                + "pids=\(classified.ownedNginx.joined(separator: ","))"
+        )
+    }
+
     public func cleanupBeforeStartingProxy(
         operations: CleanRuntimeHostProxyPortOperations
     ) throws {

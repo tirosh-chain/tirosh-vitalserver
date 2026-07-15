@@ -8,6 +8,11 @@ import Errors
 final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
     private let policy = RuntimeVitalRecorderDisplayPolicy()
 
+    func testRecorderTableLayoutReservesHeaderAndTwoLineIPCellHeight() {
+        XCTAssertGreaterThanOrEqual(RuntimeRecorderTableLayout.headerMinimumHeight, 20)
+        XCTAssertGreaterThanOrEqual(RuntimeRecorderTableLayout.rowMinimumHeight, 40)
+    }
+
     func testRecorderAndBedStatusTextPreservesExplicitStates() {
         XCTAssertEqual(policy.statusText(RuntimeVitalRecorderStatus.online), "Online")
         XCTAssertEqual(policy.statusText(RuntimeVitalRecorderStatus.stale), "Stale")
@@ -47,8 +52,8 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
     }
 
     func testRecorderSourceUsesExplicitReportedVersion() {
-        XCTAssertEqual(policy.recorderSourceText("vitalserver-lab"), "Product Lab")
-        XCTAssertEqual(policy.recorderSourceText("1.2.3"), "Not identified")
+        XCTAssertEqual(policy.recorderSourceText("vitalserver-lab"), "Lab")
+        XCTAssertEqual(policy.recorderSourceText("1.2.3"), "Vital Recorder")
         XCTAssertEqual(policy.recorderSourceText(nil), "Not reported")
         XCTAssertEqual(policy.recorderSourceText("   "), "Not reported")
         XCTAssertTrue(policy.isProductLabRecorder(version: "vitalserver-lab"))

@@ -273,6 +273,10 @@ def test_rootfs_smoke_fails_when_cleanup_fails(tmp_path: Path) -> None:
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert document["cleanup"]["status"] == "cleanup-failed"
     assert "cleanup failed" in document["cleanup"]["message"]
+    failed_command = document["cleanup"]["commands"][0]
+    assert failed_command["name"] == "compose-down"
+    assert failed_command["exitCode"] == 1
+    assert failed_command["stderr"] == "cleanup failed"
 
 
 def test_rootfs_smoke_fails_when_rootfs_docker_store_has_state(tmp_path: Path) -> None:
@@ -297,9 +301,26 @@ def test_rootfs_smoke_prunes_docker_state_before_success(tmp_path: Path) -> None
     write_apt_plan(context.apt_plan_path)
     write_apt_installed(context.apt_installed_path)
     commands: list[list[str]] = []
+    cleanup_states: list[tuple[str, str | None, float | None]] = []
 
     def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         commands.append(arguments)
+        if (
+            arguments[-5:] == ["down", "-v", "--remove-orphans", "--rmi", "all"]
+            or arguments == ["docker", "builder", "prune", "--all", "--force"]
+            or arguments
+            == ["docker", "system", "prune", "--all", "--force", "--volumes"]
+        ):
+            cleanup = json.loads(context.manifest_path.read_text(encoding="utf-8"))[
+                "cleanup"
+            ]
+            cleanup_states.append(
+                (
+                    cleanup["status"],
+                    cleanup["activeCommand"],
+                    cleanup["activeCommandTimeoutSeconds"],
+                )
+            )
         return completed(arguments)
 
     run_rootfs_smoke(
@@ -311,6 +332,11 @@ def test_rootfs_smoke_prunes_docker_state_before_success(tmp_path: Path) -> None
     )
     assert ["docker", "builder", "prune", "--all", "--force"] in commands
     assert ["docker", "system", "prune", "--all", "--force", "--volumes"] in commands
+    assert cleanup_states == [
+        ("running", "compose-down", rootfs_smoke.COMPOSE_CLEANUP_TIMEOUT_SECONDS),
+        ("running", "docker-builder-prune", rootfs_smoke.DOCKER_PRUNE_TIMEOUT_SECONDS),
+        ("running", "docker-system-prune", rootfs_smoke.DOCKER_PRUNE_TIMEOUT_SECONDS),
+    ]
     assert ["docker", "ps", "--all", "--quiet"] in commands
     assert ["docker", "images", "--all", "--quiet"] in commands
     assert ["docker", "volume", "ls", "--quiet"] in commands

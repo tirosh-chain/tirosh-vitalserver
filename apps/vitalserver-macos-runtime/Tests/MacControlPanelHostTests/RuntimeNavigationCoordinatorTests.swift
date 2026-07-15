@@ -156,7 +156,7 @@ private final class FakeNavigationNativeShell: RuntimeNativeShell {
         []
     }
 
-    func importVitalFiles(_ sources: [URL], into libraryDirectory: URL) throws -> [URL] {
+    func readVitalFileUploadSources(_ sources: [URL]) throws -> [RuntimeLabVitalFileUploadSource] {
         []
     }
 

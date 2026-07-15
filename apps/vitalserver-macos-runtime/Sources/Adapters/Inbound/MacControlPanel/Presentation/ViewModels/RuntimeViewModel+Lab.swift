@@ -31,6 +31,13 @@ extension RuntimeViewModel {
         labCanControlSelectedSession && selectedLabSession?.state == .running
     }
 
+    var labCanFinishSelectedSession: Bool {
+        guard labCanControlSelectedSession, let session = selectedLabSession else {
+            return false
+        }
+        return session.state == .running || session.state == .stopped || session.state == .finished
+    }
+
     var selectedLabSession: RuntimeLabSession? {
         if let session = labSessionResponse.session,
            session.sessionId == selectedLabSessionID
@@ -186,6 +193,14 @@ extension RuntimeViewModel {
         )
     }
 
+    func finishProductLabSession() async {
+        await runProductLabSessionCommand(
+            progressMessage: RuntimeLabPanelText.finishingLabSession,
+            action: { try await self.controlClient.finishLabSession(sessionId: $0) },
+            successMessage: RuntimeLabPanelText.finishedLabSession
+        )
+    }
+
     func selectProductLabSession(_ sessionID: String) async {
         selectedLabSessionID = sessionID
         guard !sessionID.isEmpty else {
@@ -276,11 +291,13 @@ extension RuntimeViewModel {
         recordLabActionMessage(RuntimeLabPanelText.uploadingLabVitalFiles)
         message = RuntimeLabPanelText.uploadingLabVitalFiles
         do {
-            let imported = try nativeShell.importVitalFiles(
-                labVitalFileUploadSources,
-                into: URL(fileURLWithPath: runtimeSettings.vitalFilesDirectory)
+            let sources = try nativeShell.readVitalFileUploadSources(
+                labVitalFileUploadSources
             )
-            labVitalFileImportMessage = RuntimeLabPanelText.uploadedLabVitalFiles(imported.count)
+            let response = try await controlClient.uploadLabVitalFiles(sources)
+            labVitalFileImportMessage = RuntimeLabPanelText.uploadedLabVitalFiles(
+                response.files.count
+            )
             labVitalFileUploadSources = []
             await refreshProductLabReadModels()
             recordLabActionMessage(labVitalFileImportMessage)
@@ -321,6 +338,13 @@ extension RuntimeViewModel {
             applyLabRecorders(try await controlClient.loadLabRecorders())
         } catch {
             labRecorders = RuntimeLabRecorderList.unavailable(readError: error.localizedDescription)
+            recordLabActionMessage(error.localizedDescription, tone: .failure)
+        }
+
+        do {
+            applyLabVitalFiles(try await controlClient.loadLabVitalFiles())
+        } catch {
+            labVitalFiles = RuntimeLabVitalFileList.unavailable(readError: error.localizedDescription)
             recordLabActionMessage(error.localizedDescription, tone: .failure)
         }
     }

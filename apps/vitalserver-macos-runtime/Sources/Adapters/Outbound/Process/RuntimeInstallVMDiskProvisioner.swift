@@ -86,9 +86,11 @@ public struct RuntimeInstallVMDiskProvisioner {
         )
         if vmDiskState == .missing {
             try createDiskFromRootfs()
+            try requireExistingFile(context.vmDisk)
+            try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", context.vmDisk.path])
+        } else {
+            operations.log("preserved vm disk path=\(context.vmDisk.path)")
         }
-        try requireExistingFile(context.vmDisk)
-        try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", context.vmDisk.path])
         try provisionRuntimeDataDisk(
             context.runtimeDataDisk,
             state: runtimeDataDiskState,

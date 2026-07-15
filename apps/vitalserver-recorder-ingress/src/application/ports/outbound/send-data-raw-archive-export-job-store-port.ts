@@ -42,7 +42,7 @@ export type SendDataRawArchiveExportObservedCursor = {
 export type SendDataRawArchiveFinalizationRequest = {
   requestId: string;
   vrcode: string;
-  reason: "lab_session_stopped" | "lab_recorder_stopped";
+  reason: "lab_session_finished";
   requestedAt: string;
 };
 

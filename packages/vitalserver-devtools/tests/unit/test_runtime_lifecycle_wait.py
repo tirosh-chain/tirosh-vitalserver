@@ -425,6 +425,100 @@ def test_wait_for_rootfs_ready_rejects_manifest_without_run_id(tmp_path):
         )
 
 
+def test_wait_for_rootfs_ready_extends_inactivity_deadline_on_manifest_progress(
+    monkeypatch,
+    tmp_path,
+):
+    write_rootfs_manifest(
+        tmp_path,
+        run_id="run-test",
+        cleanup_status="running",
+        updated_at="2026-07-15T06:26:09Z",
+    )
+    clock = [0.0]
+    sleep_count = [0]
+
+    def sleep(_seconds):
+        sleep_count[0] += 1
+        clock[0] += 0.75
+        if sleep_count[0] == 1:
+            write_rootfs_manifest(
+                tmp_path,
+                run_id="run-test",
+                cleanup_status="running",
+                updated_at="2026-07-15T06:26:10Z",
+            )
+        elif sleep_count[0] == 2:
+            write_rootfs_manifest(
+                tmp_path,
+                run_id="run-test",
+                cleanup_status="passed",
+                updated_at="2026-07-15T06:26:11Z",
+            )
+            write_rootfs_marker(tmp_path, run_id="run-test")
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.monotonic",
+        lambda: clock[0],
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.sleep",
+        sleep,
+    )
+
+    result = wait_for_rootfs_ready(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="run-test",
+        )
+    )
+
+    assert result == 0
+    assert clock[0] == 1.5
+
+
+def test_wait_for_rootfs_ready_reports_cleanup_command_failure(tmp_path):
+    write_rootfs_manifest(
+        tmp_path,
+        run_id="run-test",
+        cleanup_status="cleanup-failed",
+        updated_at="2026-07-15T06:26:46Z",
+    )
+    manifest = tmp_path / "data/run/rootfs-runtime-manifest.json"
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    document["cleanup"]["commands"] = [
+        {
+            "name": "docker-system-prune",
+            "status": "failed",
+            "exitCode": 1,
+            "message": "Deleted Images\nconnection reset by peer",
+            "stdout": "Deleted Images",
+            "stderr": "connection reset by peer",
+        }
+    ]
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            r"rootfs cleanup failed.*command=docker-system-prune.*"
+            r"exitCode=1.*reason=connection reset by peer.*manifest="
+        ),
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
+            )
+        )
+
+
 def test_wait_for_rootfs_ready_rejects_invalid_run_context(tmp_path):
     write_rootfs_manifest(tmp_path, run_id="stale-run")
     write_rootfs_marker(tmp_path, run_id="stale-run")
@@ -715,9 +809,7 @@ def test_begin_runtime_boot_smoke_run_invalidates_stale_proof(monkeypatch, tmp_p
     assert not bootstrap_result.exists()
     assert not lifecycle.exists()
     context = json.loads(
-        (tmp_path / "vm/run/runtime-boot-smoke-run.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "vm/run/runtime-boot-smoke-run.json").read_text(encoding="utf-8")
     )
     assert context["runId"] == "runtime-run-test"
     assert context["removedStaleProof"] == [
@@ -1036,8 +1128,7 @@ def test_force_stop_runtime_sends_sigkill_when_sigterm_leaves_process(
         lambda vm_home: next(calls),
     )
     monkeypatch.setattr(
-        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
-        ".os.kill",
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle.os.kill",
         lambda pid, signal: signals.append((pid, signal)),
     )
 
@@ -1066,8 +1157,7 @@ def test_force_stop_runtime_accepts_no_process(monkeypatch, tmp_path):
         lambda vm_home: [],
     )
     monkeypatch.setattr(
-        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
-        ".os.kill",
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle.os.kill",
         lambda pid, signal: signals.append((pid, signal)),
     )
 
@@ -1088,9 +1178,11 @@ def write_rootfs_manifest(
     *,
     run_id: str,
     stage_statuses: dict[str, tuple[str, str]] | None = None,
+    cleanup_status: str = "passed",
+    updated_at: str | None = None,
 ) -> None:
     manifest = vm_home / "data/run/rootfs-runtime-manifest.json"
-    manifest.parent.mkdir(parents=True)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
     stage_statuses = stage_statuses or {}
     stages = []
     for name in (
@@ -1121,8 +1213,12 @@ def write_rootfs_manifest(
             {
                 "schemaVersion": 2,
                 "runId": run_id,
+                **({"updatedAt": updated_at} if updated_at is not None else {}),
                 "stages": stages,
-                "cleanup": {"status": "passed", "message": "cleanup passed"},
+                "cleanup": {
+                    "status": cleanup_status,
+                    "message": f"cleanup {cleanup_status}",
+                },
             }
         ),
         encoding="utf-8",

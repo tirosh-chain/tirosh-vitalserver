@@ -122,14 +122,14 @@ test("recorder ingress accepts explicit recorder archive finalization", async ()
   const response = await fetch(`http://127.0.0.1:${address.port}/recorder-ingress/raw-archive/finalize`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ vrcodes: ["LAB-VR-1"], reason: "lab_session_stopped" }),
+    body: JSON.stringify({ vrcodes: ["LAB-VR-1"], reason: "lab_session_finished" }),
   });
   const body = await response.json();
   await new Promise((resolve) => server.close(resolve));
 
   assert.strictEqual(response.status, 202);
   assert.deepStrictEqual(body, { ok: true, state: "accepted", requestIds: ["request-1"] });
-  assert.deepStrictEqual(calls, [{ vrcodes: ["LAB-VR-1"], reason: "lab_session_stopped" }]);
+  assert.deepStrictEqual(calls, [{ vrcodes: ["LAB-VR-1"], reason: "lab_session_finished" }]);
 });
 
 function httpAdapterConfig() {

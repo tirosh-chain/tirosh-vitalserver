@@ -273,6 +273,9 @@ class LabSessionStore(Protocol):
     def stop(self, session_id: str) -> LabSession | None:
         """Transition an existing Lab session to stopped."""
 
+    def finish(self, session_id: str) -> LabSession | None:
+        """Transition an existing Lab session to the terminal finished state."""
+
     def list_beds(self) -> tuple[LabBed, ...]:
         """Return the Lab-owned bed read model."""
 
@@ -321,6 +324,35 @@ class LabSessionStoreUnavailable(Exception):
         super().__init__(message)
         self.message = message
         self.kind = kind
+
+
+class LabSessionTransitionError(Exception):
+    def __init__(self, *, session_id: str, state: str, action: str) -> None:
+        self.session_id = session_id
+        self.state = state
+        self.action = action
+        super().__init__(
+            f"Lab session {session_id} cannot {action} from state {state}."
+        )
+
+
+def lab_session_state_after(*, session_id: str, state: str, action: str) -> str:
+    transitions = {
+        ("accepted", "start"): "running",
+        ("stopped", "start"): "running",
+        ("running", "stop"): "stopped",
+        ("running", "finish"): "finished",
+        ("stopped", "finish"): "finished",
+        ("finished", "finish"): "finished",
+    }
+    next_state = transitions.get((state, action))
+    if next_state is None:
+        raise LabSessionTransitionError(
+            session_id=session_id,
+            state=state,
+            action=action,
+        )
+    return next_state
 
 
 @dataclass
@@ -416,7 +448,11 @@ class InMemoryLabSessionStore:
         session = self.sessions.get(session_id)
         if session is None:
             return None
-        session.state = "running"
+        session.state = lab_session_state_after(
+            session_id=session_id,
+            state=session.state,
+            action="start",
+        )
         session.updated_at = utc_now_iso()
         self._save_session_state_read_model(session, state="running")
         return session
@@ -425,9 +461,26 @@ class InMemoryLabSessionStore:
         session = self.sessions.get(session_id)
         if session is None:
             return None
-        session.state = "stopped"
+        session.state = lab_session_state_after(
+            session_id=session_id,
+            state=session.state,
+            action="stop",
+        )
         session.updated_at = utc_now_iso()
         self._save_session_state_read_model(session, state="stopped")
+        return session
+
+    def finish(self, session_id: str) -> LabSession | None:
+        session = self.sessions.get(session_id)
+        if session is None:
+            return None
+        session.state = lab_session_state_after(
+            session_id=session_id,
+            state=session.state,
+            action="finish",
+        )
+        session.updated_at = utc_now_iso()
+        self._save_session_state_read_model(session, state="finished")
         return session
 
     def list_beds(self) -> tuple[LabBed, ...]:

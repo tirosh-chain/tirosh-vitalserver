@@ -302,6 +302,7 @@ export const runtimeGuestControlServiceOperationSchema = z
       "lab-create-session",
       "lab-start-session",
       "lab-stop-session",
+      "lab-finish-session",
       "lab-replay-vital-file",
       "lab-upload-vital-file",
       "lab-create-beds",
@@ -1631,6 +1632,7 @@ const runtimeLabSessionStateSchema = z.enum([
   "running",
   "stopping",
   "stopped",
+  "finished",
   "failed",
   "unavailable"
 ]);

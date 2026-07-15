@@ -36,7 +36,7 @@ public protocol RuntimeNativeShell {
     func chooseUpdateBundle(prompt: String) -> URL?
     func chooseRedisBackupArchive(prompt: String) -> URL?
     func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL]
-    func importVitalFiles(_ sources: [URL], into libraryDirectory: URL) throws -> [URL]
+    func readVitalFileUploadSources(_ sources: [URL]) throws -> [RuntimeLabVitalFileUploadSource]
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL?
     func logExportDestinationValidationMessage(for url: URL) -> String?
     func pathState(_ url: URL) -> RuntimePathState
@@ -57,7 +57,7 @@ public struct NoopRuntimeNativeShell: RuntimeNativeShell {
     public func chooseUpdateBundle(prompt: String) -> URL? { nil }
     public func chooseRedisBackupArchive(prompt: String) -> URL? { nil }
     public func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL] { [] }
-    public func importVitalFiles(_ sources: [URL], into libraryDirectory: URL) throws -> [URL] {
+    public func readVitalFileUploadSources(_ sources: [URL]) throws -> [RuntimeLabVitalFileUploadSource] {
         throw NSError(
             domain: "NoopRuntimeNativeShell",
             code: 1,

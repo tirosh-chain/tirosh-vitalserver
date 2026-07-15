@@ -349,6 +349,13 @@ export function useStopLabSession() {
   );
 }
 
+export function useFinishLabSession() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((sessionId: string) =>
+    runtimeControlGateway.finishLabSession(parseSessionId(sessionId))
+  );
+}
+
 export type RuntimeLabRecorderCommand = {
   sessionId: string;
   recorderId: string;

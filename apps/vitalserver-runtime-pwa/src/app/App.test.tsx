@@ -11,7 +11,7 @@ describe("App", () => {
     renderApp(createGateway());
 
     expect(screen.getByRole("heading", { name: "VitalServer Helper" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Overall health")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Platform health")).toBeInTheDocument());
 
     fireEvent.click(screen.getByText("More"));
     expect(screen.getByRole("link", { name: "Danger Zone" })).toBeInTheDocument();
@@ -49,6 +49,28 @@ function createGateway() {
       platformAPIHTTP: "HTTP 200",
       dataDirectoryStats: { fileCount: 1, sizeBytes: 1024 },
       dataStorage: { usedBytes: 1024, totalBytes: 2048 }
+    }),
+    getRuntimePlatformSettings: vi.fn().mockResolvedValue({
+      state: "unavailable",
+      settings: null,
+      readIssues: [],
+      readError: "Platform settings are unavailable in this shell test."
+    }),
+    getRuntimeProductSettings: vi.fn().mockResolvedValue({
+      state: "unavailable",
+      settings: null,
+      readError: "Runtime product settings are unavailable in this shell test."
+    }),
+    getRuntimeStack: vi.fn().mockResolvedValue({
+      state: "unavailable",
+      observedAt: null,
+      services: [],
+      probeErrors: ["Runtime stack is unavailable in this shell test."]
+    }),
+    getVitalDBRecorders: vi.fn().mockResolvedValue({
+      state: "unavailable",
+      recorders: [],
+      readError: "Vital Recorder state is unavailable in this shell test."
     }),
     getOverview: vi.fn().mockResolvedValue({
       settings: {

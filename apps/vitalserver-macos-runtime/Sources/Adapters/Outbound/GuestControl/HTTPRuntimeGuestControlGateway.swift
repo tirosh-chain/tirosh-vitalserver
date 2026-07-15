@@ -22,6 +22,7 @@ public enum RuntimeGuestControlHTTPGatewayError: Error, Equatable, CustomStringC
     case invalidRequestURL(baseURL: String, path: String)
     case invalidHTTPResponse(String)
     case transportFailed(url: String, reason: String)
+    case invalidVitalFileUpload(String)
     case requestFailed(statusCode: Int, code: String?, detail: String, availableServices: [String]?)
     case decodeFailed(String)
 
@@ -35,6 +36,8 @@ public enum RuntimeGuestControlHTTPGatewayError: Error, Equatable, CustomStringC
             return message
         case .transportFailed(let url, let reason):
             return "guest control API request failed url=\(url) reason=\(reason)"
+        case .invalidVitalFileUpload(let message):
+            return "guest control API vital file upload is invalid: \(message)"
         case .requestFailed(let statusCode, let code, let detail, let availableServices):
             var message = "guest control API request failed statusCode=\(statusCode)"
             if let code {
@@ -560,6 +563,14 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         )
     }
 
+    public func finishLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse {
+        try decode(
+            RuntimeLabSessionResponse.self,
+            method: "POST",
+            path: "/runtime/lab/sessions/\(pathSegment(sessionId))/finish"
+        )
+    }
+
     public func startLabRecorder(sessionId: String, recorderId: String) throws -> RuntimeLabRecorderResponse {
         try decode(
             RuntimeLabRecorderResponse.self,
@@ -582,6 +593,57 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
             method: "POST",
             path: "/runtime/lab/vital-files/replay",
             body: request
+        )
+    }
+
+    public func uploadLabVitalFiles(
+        _ sources: [RuntimeLabVitalFileUploadSource]
+    ) throws -> RuntimeLabVitalFileLibraryUploadResponse {
+        guard !sources.isEmpty else {
+            throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                "at least one .vital file is required"
+            )
+        }
+        let boundary = "----tirosh-runtime-\(UUID().uuidString.lowercased())"
+        var body = Data()
+        for source in sources {
+            let fileName = source.fileName
+            guard !fileName.isEmpty,
+                  !fileName.contains("/"),
+                  !fileName.contains("\\"),
+                  !fileName.contains("\""),
+                  !fileName.contains("\r"),
+                  !fileName.contains("\n"),
+                  URL(fileURLWithPath: fileName).pathExtension.lowercased() == "vital"
+            else {
+                throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                    "only basename .vital files are accepted: \(fileName)"
+                )
+            }
+            body.append(Data("--\(boundary)\r\n".utf8))
+            body.append(Data(
+                "Content-Disposition: form-data; name=\"files\"; filename=\"\(fileName)\"\r\n".utf8
+            ))
+            body.append(Data("Content-Type: application/octet-stream\r\n\r\n".utf8))
+            body.append(source.content)
+            body.append(Data("\r\n".utf8))
+        }
+        body.append(Data("--\(boundary)--\r\n".utf8))
+
+        var request = try request(
+            method: "POST",
+            path: "/runtime/lab/vital-files/upload",
+            body: nil
+        )
+        request.httpBody = body
+        request.timeoutInterval = max(timeout, 3_600)
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+        return try decode(
+            RuntimeLabVitalFileLibraryUploadResponse.self,
+            from: httpClient.send(request)
         )
     }
 

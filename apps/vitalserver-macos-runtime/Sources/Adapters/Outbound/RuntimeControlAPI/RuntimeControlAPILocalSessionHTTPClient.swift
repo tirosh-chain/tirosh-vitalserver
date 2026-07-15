@@ -38,10 +38,33 @@ public final class RuntimeControlAPILocalSessionHTTPClient:
         if sessionCookiesByOrigin[origin] == nil {
             sessionCookiesByOrigin[origin] = try bootstrap(origin: origin)
         }
+        let initialResponse = try perform(authorizedRequest(
+            request,
+            origin: origin,
+            cookie: sessionCookiesByOrigin[origin]
+        ))
+        guard initialResponse.statusCode == 401 else {
+            return initialResponse
+        }
+
+        let renewedCookie = try bootstrap(origin: origin)
+        sessionCookiesByOrigin[origin] = renewedCookie
+        return try perform(authorizedRequest(
+            request,
+            origin: origin,
+            cookie: renewedCookie
+        ))
+    }
+
+    private func authorizedRequest(
+        _ request: URLRequest,
+        origin: String,
+        cookie: String?
+    ) -> URLRequest {
         var authorized = request
         authorized.setValue(origin, forHTTPHeaderField: "Origin")
-        authorized.setValue(sessionCookiesByOrigin[origin], forHTTPHeaderField: "Cookie")
-        return try perform(authorized)
+        authorized.setValue(cookie, forHTTPHeaderField: "Cookie")
+        return authorized
     }
 
     private func bootstrap(origin: String) throws -> String {

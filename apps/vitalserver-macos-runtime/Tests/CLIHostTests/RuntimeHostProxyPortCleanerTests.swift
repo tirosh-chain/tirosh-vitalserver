@@ -9,6 +9,80 @@ import XCTest
 import Errors
 
 final class RuntimeHostProxyPortCleanerTests: XCTestCase {
+    func testPackageReinstallPreflightAllowsOnlyOwnedProxyListenersWithoutStoppingThem() throws {
+        var killed: [[String]] = []
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceState: { .loaded },
+            expectedProxyNginxPID: { .loaded("123") },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: { executable, arguments in
+                switch executable {
+                case Constants.Commands.lsof:
+                    return RuntimeProcessResult(exitCode: 0, stdout: Self.lsof(["nginx", "123"]), stderr: "")
+                case Constants.Commands.kill:
+                    killed.append(arguments)
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                default:
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                }
+            },
+            sleep: { _ in XCTFail("package reinstall preflight must not wait or stop listeners") },
+            log: { logs.append($0) }
+        )
+
+        try CleanRuntimeHostProxyPortUseCase()
+            .requirePackageReinstallPortAvailable(operations: cleaner.operations)
+
+        XCTAssertTrue(killed.isEmpty)
+        XCTAssertTrue(logs.contains { $0.contains("existing VitalServer nginx owns port=80 pids=123") })
+    }
+
+    func testPackageReinstallPreflightRejectsExternalListenerBeforeStoppingOwnedProxy() {
+        var killed: [[String]] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceState: { .loaded },
+            expectedProxyNginxPID: { .loaded("123") },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: { executable, arguments in
+                switch executable {
+                case Constants.Commands.lsof:
+                    return RuntimeProcessResult(
+                        exitCode: 0,
+                        stdout: Self.lsof([
+                            ["nginx", "123"],
+                            ["OrbStack", "59042"],
+                        ]),
+                        stderr: ""
+                    )
+                case Constants.Commands.kill:
+                    killed.append(arguments)
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                default:
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                }
+            },
+            sleep: { _ in XCTFail("package reinstall preflight must not wait or stop listeners") },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(
+            try CleanRuntimeHostProxyPortUseCase()
+                .requirePackageReinstallPortAvailable(operations: cleaner.operations)
+        ) { error in
+            XCTAssertTrue(String(describing: error).contains("external listener(s): OrbStack-59042"))
+        }
+        XCTAssertTrue(killed.isEmpty)
+    }
+
     func testStopsExpectedProxyNginxBeforeStartingProxy() throws {
         var lsofCalls = 0
         var commands: [(String, [String])] = []

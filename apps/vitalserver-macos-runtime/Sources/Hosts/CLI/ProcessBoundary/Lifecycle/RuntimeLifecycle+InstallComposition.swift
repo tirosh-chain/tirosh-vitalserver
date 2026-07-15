@@ -19,10 +19,7 @@ extension RuntimeLifecycle {
                 fileStore: fileStore,
                 now: { clock.now },
                 loadInstallSettings: {
-                    try RuntimeInstallSettings.load(
-                        defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory.path,
-                        fileStore: fileStore
-                    )
+                    try loadPackageProvisionSettings()
                 },
                 freshInstallPreflight: {
                     runtimeFreshInstallPreflight()
@@ -58,6 +55,7 @@ extension RuntimeLifecycle {
                 cleanupInstallSettings: cleanupInstallSettings,
                 log: log,
                 initializeHostStateStore: initializeHostStateStore,
+                migrateLegacyHostSettings: migrateLegacyHostSettingsIfNeeded,
                 prepareHostSettings: prepareHostSettings,
                 workflowOperationStateRepository: SQLiteRuntimeWorkflowOperationStateRepository(
                     databaseURL: installedPaths.runtimeStateDatabase

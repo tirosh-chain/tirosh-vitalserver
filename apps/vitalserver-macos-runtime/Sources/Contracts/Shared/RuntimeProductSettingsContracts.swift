@@ -20,6 +20,46 @@ public struct RuntimeProductSettingsRead: Codable, Equatable, Sendable {
         self.settings = settings
         self.readError = readError
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case state, settings, readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard container.contains(.settings) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.settings,
+                .init(codingPath: decoder.codingPath, debugDescription: "Runtime product settings read requires explicit settings")
+            )
+        }
+        guard container.contains(.readError) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.readError,
+                .init(codingPath: decoder.codingPath, debugDescription: "Runtime product settings read requires explicit readError")
+            )
+        }
+        self.init(
+            state: try container.decode(RuntimeProductSettingsReadState.self, forKey: .state),
+            settings: try container.decodeIfPresent(GuestRuntimeSettingsDocument.self, forKey: .settings),
+            readError: try container.decodeIfPresent(String.self, forKey: .readError)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let settings {
+            try container.encode(settings, forKey: .settings)
+        } else {
+            try container.encodeNil(forKey: .settings)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
 }
 
 public struct RuntimeApplyProductSettingsRequest: Codable, Equatable, Sendable {

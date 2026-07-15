@@ -126,6 +126,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse
     func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse
     func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse
@@ -392,6 +393,10 @@ public extension RuntimeControlAPIReadHandler {
     }
 
     func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
         RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
 

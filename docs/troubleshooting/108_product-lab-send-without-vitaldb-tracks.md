@@ -135,9 +135,10 @@ session state is inconsistent, so an active stream can be shut down safely.
 
 The standard Beds and Recorders panels identify a Product Lab source from the
 recorder's explicit reported `version` value, `vitalserver-lab`. They present
-that source as `Product Lab` in the shared list and detail views. Lab execution
-and control remain in the Lab tab, so the shared observation panels do not add
-separate duplicate Product Lab bed or recorder sections.
+that source as `Lab` in the selected item details. The list tables omit the
+source column so their primary identity and operational state remain concise.
+Lab execution and control remain in the Lab tab, so the shared observation
+panels do not add separate duplicate Lab bed or recorder sections.
 
 ## Prevention
 
@@ -171,6 +172,7 @@ ingress status.
 
 Do not infer Product Lab origin from a `LAB-` VRecorder name or from a bed name.
 Names are user-visible identity, not source ownership. Preserve missing and
-blank reported versions as `Not reported`; a non-Lab version does not identify
-its source and is shown as `Not identified`. Add any new source identifier to the
-provider-owned observation contract before using it in presentation.
+blank reported versions as `Not reported`. A reported non-Lab product version
+is displayed as `Vital Recorder`; this is a presentation label for the recorder
+product, not a new observed state. Add any new synthetic source identifier to
+the provider-owned observation contract before using it in presentation.

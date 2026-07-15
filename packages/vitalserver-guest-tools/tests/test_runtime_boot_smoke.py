@@ -688,6 +688,7 @@ def default_guest_control_capabilities() -> list[str]:
         "lab:sessions:get",
         "lab:sessions:start",
         "lab:sessions:stop",
+        "lab:sessions:finish",
         "lab:vital-files:replay",
         "recorder-ingress:status:get",
         "operations:get",

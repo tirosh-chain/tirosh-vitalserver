@@ -69,7 +69,7 @@ Host는 runtime/process/filesystem state를 소유하고, Guest는 Host가 제�
 
 ### 3-1. Host time
 
-Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-observation, observability, compose service를 시작합니다.
+Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. 실제 `vitalserver-vm start` entrypoint가 매 VM lifecycle run 직전에 현재 Host clock을 atomic write하므로 설정 restart, watchdog, 수동 start, launchd `RunAtLoad`/`KeepAlive`가 같은 계약을 사용합니다. Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-observation, observability, compose service를 시작합니다.
 
 | 상태                       | 의미                                    |
 | -------------------------- | --------------------------------------- |
@@ -78,6 +78,8 @@ Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. Gu
 | host time sync failed      | Guest가 명시 시각 적용에 실패함         |
 
 UI나 observer는 timestamp를 현재 시간으로 보정하지 않습니다. 시간이 틀리면 Host/Guest time contract 문제로 보고 failure reason과 logs를 확인합니다.
+
+부팅 후 지속 동기화와 외부 Vital Recorder에 같은 시각을 제공하는 책임은 별도 Host NTP service에 둡니다. Boot contract는 pre-network 필수 입력으로 유지하며 NTP를 missing/invalid contract fallback으로 사용하지 않습니다. NTP 상태도 `synchronized`, `unsynchronized`, `failed`, `unavailable`을 구분해 owner contract로 제공합니다.
 
 ### 3-2. Guest Control shutdown operation
 

@@ -79,10 +79,8 @@ public struct RuntimeServiceController {
             try stopAndWaitIfLoaded(service)
         }
 
-        if try unloadAndWaitIfLoaded(.vm) {
-        } else {
-            try waitForVMProcessExitAfterGuestPoweroff(expectedVMProcessID)
-        }
+        _ = try unloadAndWaitIfLoaded(.vm)
+        try waitForVMProcessExitAfterGuestPoweroff(expectedVMProcessID)
         try stopAndWaitIfLoaded(.guestLogSync)
         try stopAndWaitIfLoaded(.sleepPrevention)
     }

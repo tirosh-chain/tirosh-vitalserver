@@ -170,6 +170,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         try await client.stopLabSession(sessionId: sessionId)
     }
 
+    public func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await client.finishLabSession(sessionId: sessionId)
+    }
+
     public func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
         try await client.startLabRecorder(sessionId: sessionId, recorderId: recorderId)
     }

@@ -53,6 +53,14 @@ extension RuntimeLifecycle {
         try serviceController.stopRuntimeServicesForUninstall()
     }
 
+    func stopRuntimeServicesForPackageReplacement() throws {
+        try serviceController.stopRuntimeServicesForUninstall()
+        try RuntimeVMLifecycleProcessExitReconciler.reconcileAfterServiceStop(
+            paths: paths,
+            log: log
+        )
+    }
+
     func stopRuntimeServicesForCleanUninstallRecovery() throws {
         log("force clean uninstall requested; forcing VM process stop before launchd unload")
         let vmProcessStopState = StopRuntimeVMProcessUseCase().forceKillAndWaitState(
@@ -438,25 +446,7 @@ extension RuntimeLifecycle {
     }
 
     func startLaunchdService(_ service: RuntimeManagedService) throws {
-        if service == .vm {
-            try writeHostTimeContract()
-        }
         try serviceController.startLaunchdService(service)
-    }
-
-    func writeHostTimeContract() throws {
-        let document = RuntimeHostTimeDocument(
-            epochSeconds: Int64(Date().timeIntervalSince1970.rounded(.down)),
-            updatedAt: isoTimestamp()
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try fileStore.writeData(
-            try encoder.encode(document),
-            to: installedPaths.hostTime,
-            options: .atomic
-        )
-        log("host time contract written path=\(installedPaths.hostTime.path) epochSeconds=\(document.epochSeconds)")
     }
 
     func startVMServiceForGuestOperation() throws {
@@ -536,6 +526,30 @@ extension RuntimeLifecycle {
             .cleanupBeforeStartingProxy(operations: cleaner.operations)
     }
 
+    func requirePackageReinstallProxyPortAvailable(_ proxyPort: Int) throws {
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { proxyPort },
+            proxyServiceState: {
+                healthChecker.launchdState(.proxy)
+            },
+            expectedProxyNginxPID: {
+                healthChecker.readInstalledProxyNginxPID()
+            },
+            ownedNginxPathFragments: [
+                installedPaths.nginxExecutable.path,
+                installedPaths.nginxDirectory.path,
+                "vitalserver-nginx.conf",
+            ],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: runProcess,
+            log: log
+        )
+        try CleanRuntimeHostProxyPortUseCase()
+            .requirePackageReinstallPortAvailable(operations: cleaner.operations)
+    }
+
     func cleanupHostProxyPortAfterStop() throws {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: healthChecker.installedProxyPort,
@@ -594,6 +608,7 @@ extension RuntimeLifecycle {
                 writeStatus: { status, operation, message in
                     try writeRuntimeStatus(status, operation: operation, message: message)
                 },
+                now: { clock.now },
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
                 },

@@ -682,6 +682,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "wait:\(RuntimeManagedService.proxy.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
+            "wait-vm-process:123",
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",
@@ -691,7 +692,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
-    func testStopRuntimeServicesAfterGuestPoweroffDoesNotWaitForCapturedPIDWhileLaunchdOwnsVM() throws {
+    func testStopRuntimeServicesAfterGuestPoweroffWaitsForCapturedPIDAfterUnloadingLaunchdVM() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var loaded = Set([
             RuntimeManagedService.vm,
@@ -708,8 +709,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
             prepareForStop: { events.append("prepare:\($0.label)") },
             waitUntilStopped: { events.append("wait:\($0.label)") },
             waitForVMProcessExitAfterGuestPoweroff: { pid in
-                XCTFail("VM pid \(pid) must not be waited while launchd VM service is still loaded")
-                throw LauncherError.runtimeOperationFailed("launchd still owns VM process")
+                events.append("wait-vm-process:\(pid)")
             },
             launchDaemonPlist: { $0.launchDaemonPlist },
             launchctlPath: Constants.Commands.launchctl,
@@ -721,6 +721,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(events, [
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
+            "wait-vm-process:123",
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",

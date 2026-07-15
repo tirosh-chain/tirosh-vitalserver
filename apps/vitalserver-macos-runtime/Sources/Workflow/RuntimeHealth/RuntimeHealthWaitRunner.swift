@@ -14,6 +14,7 @@ public struct RuntimeHealthWaitRunner {
         serviceStates: @escaping ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState],
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         writeStatusBestEffort: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
+        now: @escaping () -> Date = Date.init,
         sleep: @escaping (TimeInterval) -> Void,
         log: @escaping (String) -> Void
     ) {
@@ -23,6 +24,7 @@ public struct RuntimeHealthWaitRunner {
             serviceStates: serviceStates,
             healthSnapshot: healthSnapshot,
             writeStatusBestEffort: writeStatusBestEffort,
+            now: now,
             sleep: sleep,
             log: log
         )

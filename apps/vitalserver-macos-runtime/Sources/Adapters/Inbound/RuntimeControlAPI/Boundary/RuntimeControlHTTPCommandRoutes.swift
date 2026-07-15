@@ -96,6 +96,10 @@ struct RuntimeControlHTTPCommandRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.stopLabSession(sessionId: try request.runtimeLabSessionID())
             )
+        case .finishLabSession:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.finishLabSession(sessionId: try request.runtimeLabSessionID())
+            )
         case .startLabRecorder:
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.startLabRecorder(

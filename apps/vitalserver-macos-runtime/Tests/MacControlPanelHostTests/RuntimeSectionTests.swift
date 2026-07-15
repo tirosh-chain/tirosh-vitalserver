@@ -247,6 +247,20 @@ final class RuntimeSectionTests: XCTestCase {
     }
 
     @MainActor
+    func testPlatformAgentDelegatesGuestStackAndServiceResourceReads() async throws {
+        let client = HostFakeRuntimeControlClient()
+        let handler = makeRuntimeControlAPIHandler(client: client)
+
+        let stack = try await handler.guestStackStatus()
+        let resource = try await handler.guestServiceResource("recorder-ingress")
+
+        XCTAssertEqual(stack.state, "loaded")
+        XCTAssertEqual(resource.service, "recorder-ingress")
+        XCTAssertEqual(client.guestStackStatusCount, 1)
+        XCTAssertEqual(client.guestServiceResourceRequests, ["recorder-ingress"])
+    }
+
+    @MainActor
     private func makeRuntimeControlAPIHandler(
         client: HostFakeRuntimeControlClient,
         platformWorkflowDocument: URL = InstalledRuntimePaths.defaultInstalled.hostRunDirectory.appendingPathComponent("platform-workflow.json"),
@@ -304,6 +318,8 @@ private final class HostFakeRuntimeControlClient:
         createdAt: "2026-07-01T00:00:00Z",
         updatedAt: "2026-07-01T00:00:01Z"
     )
+    var guestStackStatusCount = 0
+    var guestServiceResourceRequests: [String] = []
 
     func loadSettings() -> RuntimeSettings { RuntimeSettings() }
     func loadPlatformState(settings: RuntimeSettings) -> PlatformState { platformState() }
@@ -349,6 +365,23 @@ private final class HostFakeRuntimeControlClient:
     func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] { [] }
     func loadRedisBackups() throws -> [RuntimeBackup] { [] }
     func loadRuntimeDataBackups() throws -> [RuntimeBackup] { [] }
+    func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        guestStackStatusCount += 1
+        return RuntimeGuestControlStackStatus(
+            state: "loaded",
+            observedAt: "2026-07-15T00:00:00Z",
+            services: []
+        )
+    }
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        guestServiceResourceRequests.append(service)
+        return RuntimeGuestServiceResource(
+            service: service,
+            spec: RuntimeGuestServiceSpec(state: "configured"),
+            status: RuntimeGuestServiceStatusRead(state: "loaded"),
+            conditions: []
+        )
+    }
     func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult { .loaded("") }
     func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult { .loaded("") }
     func loadLogTextResult(sourceID: RuntimeLogSource, lineLimit: Int) async -> RuntimeHostTextReadResult { .loaded("") }

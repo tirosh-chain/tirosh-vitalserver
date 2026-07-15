@@ -303,6 +303,14 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     );
   }
 
+  finishLabSession(sessionId: string): Promise<RuntimeLabSessionResponse> {
+    return this.post(
+      `${labSessionPath(sessionId)}/finish`,
+      undefined,
+      runtimeLabSessionResponseSchema
+    );
+  }
+
   startLabRecorder(
     sessionId: string,
     recorderId: string
@@ -800,6 +808,16 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
   ): Promise<Response> {
     await this.ensureBrowserSession();
     const url = this.url(path, query);
+    const response = await this.fetch(url, {
+      ...init,
+      credentials: "same-origin"
+    });
+    if (!this.useBrowserSession || response.status !== 401) {
+      return response;
+    }
+
+    this.browserSessionBootstrap = undefined;
+    await this.ensureBrowserSession();
     return this.fetch(url, {
       ...init,
       credentials: "same-origin"

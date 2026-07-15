@@ -28,7 +28,9 @@ The DMG/package compile stops before `rootfs-base.raw.gz` is produced. The rootf
 
 ## Cause
 
-The guest rootfs smoke has explicit timeouts for Docker image load, Compose build, Compose up, edge readiness, and cleanup. The Host wait for `rootfs-ready` had a tighter global default, so a slower but still progressing run could reach `edge-ready` and then be interrupted during cleanup. When the Host cleanup trap stops the VM, Docker inside the guest can shut down while `docker compose down -v --remove-orphans --rmi all` is still running, causing Docker socket reset and a `cleanup-failed` manifest.
+The guest rootfs smoke has explicit timeouts for Docker image load, Compose build, Compose up, edge readiness, and cleanup. The Host wait for `rootfs-ready` treated `VM_ROOTFS_READY_TIMEOUT` as one absolute deadline. A slower but still progressing run could therefore reach `edge-ready` near that deadline and then be interrupted during cleanup. When the Host cleanup trap stops the VM, Docker inside the guest can shut down while `docker compose down` or a Docker prune command is still running, causing Docker socket reset and a `cleanup-failed` manifest.
+
+Increasing the absolute timeout only moved this race. The first correction from 420 to 600 seconds was insufficient after the image and Compose surface grew. The missing contract was explicit cleanup progress: the manifest stayed `cleanup.status=not-run` until cleanup completed, so the Host could not distinguish an active cleanup command from a stalled Guest.
 
 This is not a recorder ingress readiness failure when the manifest shows `edge-ready: passed` and `vitalserver-recorder-ingress` is healthy in `rootfs-smoke-diagnostics/compose-ps.json`.
 
@@ -56,23 +58,25 @@ Look for:
 
 ## Actions
 
-Retry the compile. The default Host wait budget is now `600` seconds:
+Retry the compile after rebuilding Guest Tools and devtools with the progress-aware wait fix:
 
 ```sh
-make dist/dmg/dev/compile
+make dist/pkg/dev/compile
 ```
 
-For a slower diagnostic machine, increase only the Host wait budget for that run:
+`VM_ROOTFS_READY_TIMEOUT` is now an inactivity budget. The Host renews it only when the current runId manifest publishes a new explicit `updatedAt`. A cleanup manifest also publishes `status=running`, `activeCommand`, and `activeCommandTimeoutSeconds` before each command. For a machine that can legitimately spend more than 600 seconds inside one Guest-owned command, increase the inactivity budget for that run:
 
 ```sh
-VM_ROOTFS_READY_TIMEOUT=720 make dist/dmg/dev/compile
+VM_ROOTFS_READY_TIMEOUT=720 make dist/pkg/dev/compile
 ```
 
 Do not mark a rootfs compile as successful when cleanup did not pass. The cleanup proof is part of the product compile contract and prevents packaging a disk with leftover Compose containers, images, volumes, or mutable runtime stores.
 
 ## Prevention
 
-The Host default `VM_ROOTFS_READY_TIMEOUT` was raised from `420` to `600` seconds so the guest has enough budget to complete cleanup after a successful `edge-ready` proof. Guest-owned stage timeouts remain inside `tirosh-vitalserver-rootfs-smoke`; the Host wait should not duplicate or reinterpret those stage contracts.
+The Host default `VM_ROOTFS_READY_TIMEOUT` remains 600 seconds, but it is applied to absence of current-run manifest progress rather than total wall time. Guest-owned stage and cleanup command timeouts remain inside `tirosh-vitalserver-rootfs-smoke`; the Host wait does not turn stale files or another runId into progress.
+
+Cleanup writes a running manifest before work and after every command. On failure, the manifest preserves the failing command, exit code, stdout, stderr, and artifact path. This allows the Host to fail immediately with the actual cleanup reason instead of timing out with the older `not-run` snapshot.
 
 ## Operational Notes
 
@@ -87,3 +91,4 @@ If the run still fails after the larger Host wait budget, treat the manifest as 
 ## Follow-up
 
 - 2026-06-22: Recorder ingress rename increased the rootfs smoke Compose surface. A dev DMG compile reached `edge-ready` with `vitalserver-recorder-ingress` healthy, then failed during cleanup after Docker socket reset. Raised Host rootfs-ready wait budget to 600 seconds.
+- 2026-07-15: A package compile reached `edge-ready` at 564 seconds. The absolute 600-second Host deadline stopped the VM during `docker system prune`; Docker returned `connection reset by peer`, and the final `cleanup-failed` manifest arrived after the Host had already reported stale `not-run`. Replaced the absolute deadline with current-run manifest inactivity tracking and added explicit cleanup command progress.

@@ -81,3 +81,4 @@ installer를 반복 실행하지 말고 uninstall log의 explicit blocker를 먼
 ## Follow-up
 
 - 2026-07-15: `406920c0` 이후 clean uninstall에서 재현. 일반 stop과 uninstall stop의 Platform Agent lifecycle 계약을 분리함.
+- 2026-07-15: 11:21의 installed clean uninstall 로그에서 구 설치본이 `stopping runtime services`를 사용해 같은 blocker를 재현함. 12:19의 새 package payload는 실패 cleanup에서 `stopping runtime services for uninstall`을 사용하고 Platform Agent까지 종료했으므로, source fix와 installed 구버전의 실행 결과를 구분해 진단해야 함.

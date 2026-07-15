@@ -612,7 +612,8 @@ disconnect, `activeConnections = 0`, 또는 `send_data` silence를 `stopped`, `s
 Product Lab은 recorder lifecycle owner이므로 예외가 아니라 별도의 명시 계약을 사용합니다. Lab session 또는
 recorder stop은 연결을 닫은 뒤 내부
 `POST /recorder-ingress/raw-archive/finalize`에 `vrcodes`와
-`lab_session_stopped` 또는 `lab_recorder_stopped` reason을 보냅니다. Recorder ingress는 이 요청을 durable
+terminal session Finish는 `lab_session_finished` reason을 보냅니다. Restartable session/recorder Stop은
+archive completion을 선언하지 않습니다. Recorder ingress는 이 요청을 durable
 finalization job으로 수락하고 `finalizable_by_explicit_request` 정책으로 처리합니다. 이 trigger도 active
 connection과 recorder별 realtime replay drain을 요구하지만 5분 inactivity와 cursor stability를 요구하지
 않습니다. Lab UI가 stop state를 만들거나 `.vital` upload 성공을 추측하지 않으며, ingress job/checkpoint가
@@ -635,7 +636,7 @@ state를 bind mount에 보존합니다. 따라서 종료 시 upload 실패나 �
 
 1. recorder ingress process는 raw archive auto export worker를 소유합니다. Worker는 recorder별 raw archive cursor를
    관측하고, `finalizable_by_inactivity` 또는 종료 path의 `finalizable_by_shutdown`이 참이면 job document를 만든 뒤 제품 `recorder-recovery` API를 호출합니다.
-   Product Lab stop은 `finalizable_by_explicit_request` job을 추가합니다. Job state, retry state, upload result,
+   Product Lab Finish는 `finalizable_by_explicit_request` job을 추가합니다. Job state, retry state, upload result,
    recorder별 checkpoint는
    `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH` JSON 문서에 남깁니다.
 2. 수동 운영 명령도 유지합니다. `recover-raw-archive-vital`은 raw archive JSONL을

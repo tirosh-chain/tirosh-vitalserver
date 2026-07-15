@@ -19,6 +19,7 @@ class ServiceCommand(StrEnum):
     LAB_CREATE_SESSION = "lab-create-session"
     LAB_START_SESSION = "lab-start-session"
     LAB_STOP_SESSION = "lab-stop-session"
+    LAB_FINISH_SESSION = "lab-finish-session"
     LAB_REPLAY_VITAL_FILE = "lab-replay-vital-file"
     LAB_CREATE_BEDS = "lab-create-beds"
     LAB_DELETE_BEDS = "lab-delete-beds"

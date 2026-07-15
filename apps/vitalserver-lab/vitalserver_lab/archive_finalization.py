@@ -7,8 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 LabArchiveFinalizationReason = Literal[
-    "lab_session_stopped",
-    "lab_recorder_stopped",
+    "lab_session_finished",
 ]
 
 

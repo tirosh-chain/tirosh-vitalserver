@@ -72,7 +72,9 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         return panel.urls
     }
 
-    func importVitalFiles(_ sources: [URL], into libraryDirectory: URL) throws -> [URL] {
+    func readVitalFileUploadSources(
+        _ sources: [URL]
+    ) throws -> [RuntimeLabVitalFileUploadSource] {
         guard !sources.isEmpty else {
             throw vitalFileImportError("Select at least one .vital file.")
         }
@@ -91,47 +93,15 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
             }
         }
 
-        let fileManager = FileManager.default
-        let library = libraryDirectory.standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: library.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else {
-            throw vitalFileImportError("Vital Files library is unavailable: \(library.path)")
-        }
-        for source in normalizedSources {
-            let destination = library.appendingPathComponent(source.lastPathComponent, isDirectory: false)
-            guard !fileManager.fileExists(atPath: destination.path) else {
-                throw vitalFileImportError("Vital Files library already contains: \(source.lastPathComponent)")
+        return try normalizedSources.map { source in
+            let accessed = source.startAccessingSecurityScopedResource()
+            defer {
+                if accessed { source.stopAccessingSecurityScopedResource() }
             }
-        }
-
-        let staging = library.appendingPathComponent(".vital-import-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
-        var committed: [URL] = []
-        defer { try? fileManager.removeItem(at: staging) }
-        do {
-            for source in normalizedSources {
-                let accessed = source.startAccessingSecurityScopedResource()
-                defer {
-                    if accessed { source.stopAccessingSecurityScopedResource() }
-                }
-                try fileManager.copyItem(
-                    at: source,
-                    to: staging.appendingPathComponent(source.lastPathComponent, isDirectory: false)
-                )
-            }
-            for source in normalizedSources {
-                let staged = staging.appendingPathComponent(source.lastPathComponent, isDirectory: false)
-                let destination = library.appendingPathComponent(source.lastPathComponent, isDirectory: false)
-                try fileManager.moveItem(at: staged, to: destination)
-                committed.append(destination)
-            }
-            return committed
-        } catch {
-            for destination in committed {
-                try? fileManager.removeItem(at: destination)
-            }
-            throw error
+            return RuntimeLabVitalFileUploadSource(
+                fileName: source.lastPathComponent,
+                content: try Data(contentsOf: source, options: .mappedIfSafe)
+            )
         }
     }
 

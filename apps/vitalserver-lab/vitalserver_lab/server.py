@@ -27,6 +27,7 @@ from .model import (
     LabScenario,
     LabSessionCreateInput,
     LabSessionStore,
+    LabSessionTransitionError,
     LabSessionStoreUnavailable,
     LabVitalFile,
     LabVitalFileReplayPolicy,
@@ -306,7 +307,7 @@ def route_lab_request(
                         beds=beds,
                         recorders=recorders,
                         result_sink=session_store.save_recorder_execution_results,
-                        completion_sink=lambda completed_session_id: session_store.stop(
+                        completion_sink=lambda completed_session_id: session_store.finish(
                             completed_session_id
                         ),
                     )
@@ -315,6 +316,8 @@ def route_lab_request(
                     )
             except LabSessionStoreUnavailable as error:
                 return _store_failure_response(error, operation_id=operation_id)
+            except LabSessionTransitionError as error:
+                return _transition_rejection_response(error, operation_id=operation_id)
             except LabRecorderSendError as error:
                 session_store.stop(session_id)
                 return HTTPStatus.UNPROCESSABLE_ENTITY, {
@@ -325,16 +328,40 @@ def route_lab_request(
                 }
         elif parts[3] == "stop":
             operation_id = f"lab-session-stop-{session_id}"
+            try:
+                session = session_store.stop(session_id)
+                if session is not None:
+                    execution_engine.pause_session(session_id)
+            except LabSessionStoreUnavailable as error:
+                return _store_failure_response(error, operation_id=operation_id)
+            except LabSessionTransitionError as error:
+                return _transition_rejection_response(error, operation_id=operation_id)
+        elif parts[3] == "finish":
+            operation_id = f"lab-session-finish-{session_id}"
             archive_finalization = None
             archive_finalization_error = None
             try:
-                try:
-                    archive_finalization = execution_engine.stop_session(session_id)
-                except LabArchiveFinalizationError as error:
-                    archive_finalization_error = str(error)
-                session = session_store.stop(session_id)
+                existing_session = session_store.get(session_id)
+                if existing_session is None:
+                    session = None
+                else:
+                    vrcodes = tuple(
+                        recorder.vrcode
+                        for recorder in session_store.list_recorders()
+                        if recorder.session_id == session_id
+                    )
+                    session = session_store.finish(session_id)
+                    try:
+                        archive_finalization = execution_engine.finish_session(
+                            session_id,
+                            vrcodes=vrcodes,
+                        )
+                    except LabArchiveFinalizationError as error:
+                        archive_finalization_error = str(error)
             except LabSessionStoreUnavailable as error:
                 return _store_failure_response(error, operation_id=operation_id)
+            except LabSessionTransitionError as error:
+                return _transition_rejection_response(error, operation_id=operation_id)
         elif parts[3] == "delete":
             try:
                 session = session_store.get(session_id)
@@ -343,7 +370,7 @@ def route_lab_request(
                         session_id,
                         operation_id=None,
                     )
-                execution_engine.stop_session(session_id)
+                execution_engine.pause_session(session_id)
                 remaining_sessions = session_store.delete_session(session_id)
             except LabSessionStoreUnavailable as error:
                 return _read_model_failure_response(error, collection="sessions")
@@ -364,9 +391,9 @@ def route_lab_request(
             session.as_json(),
             operation_id=operation_id,
         )
-        if parts[3] == "stop" and archive_finalization is not None:
+        if parts[3] == "finish" and archive_finalization is not None:
             response["archiveFinalization"] = archive_finalization.as_json()
-        if parts[3] == "stop" and archive_finalization_error is not None:
+        if parts[3] == "finish" and archive_finalization_error is not None:
             response["state"] = "failed"
             response["readError"] = archive_finalization_error
             response["archiveFinalization"] = {"state": "failed"}
@@ -438,21 +465,14 @@ def route_lab_request(
                         recorders=session_recorders,
                         recorder_id=recorder_id,
                         result_sink=session_store.save_recorder_execution_results,
-                        completion_sink=lambda completed_session_id: session_store.stop(
+                        completion_sink=lambda completed_session_id: session_store.finish(
                             completed_session_id
                         ),
                     )
             else:
                 recorder = session_store.stop_recorder(session_id, recorder_id)
-                archive_finalization = None
-                archive_finalization_error = None
                 if recorder is not None:
-                    try:
-                        archive_finalization = execution_engine.stop_recorder(
-                            session_id, recorder_id
-                        )
-                    except LabArchiveFinalizationError as error:
-                        archive_finalization_error = str(error)
+                    execution_engine.stop_recorder(session_id, recorder_id)
         except LabSessionStoreUnavailable as error:
             return HTTPStatus.SERVICE_UNAVAILABLE, {
                 "state": "failed",
@@ -492,13 +512,6 @@ def route_lab_request(
             "recorder": refreshed.as_json(),
             "readError": None,
         }
-        if action == "stop" and archive_finalization is not None:
-            response["archiveFinalization"] = archive_finalization.as_json()
-        if action == "stop" and archive_finalization_error is not None:
-            response["state"] = "failed"
-            response["readError"] = archive_finalization_error
-            response["archiveFinalization"] = {"state": "failed"}
-            return HTTPStatus.BAD_GATEWAY, response
         return HTTPStatus.ACCEPTED, response
 
     if method == "POST" and parts == ["lab", "vital-files", "replay"]:
@@ -1042,6 +1055,19 @@ def _store_failure_response(
         "operationId": operation_id,
         "session": None,
         "readError": error.message,
+    }
+
+
+def _transition_rejection_response(
+    error: LabSessionTransitionError,
+    *,
+    operation_id: str,
+) -> tuple[HTTPStatus, dict[str, object]]:
+    return HTTPStatus.CONFLICT, {
+        "state": "failed",
+        "operationId": operation_id,
+        "session": None,
+        "readError": str(error),
     }
 
 

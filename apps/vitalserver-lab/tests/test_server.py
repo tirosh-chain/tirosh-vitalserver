@@ -814,7 +814,32 @@ def test_session_start_streams_until_session_stop() -> None:
     assert ("http://edge/", vrcode) in sender.closed_recorders
 
 
-def test_session_stop_requests_durable_archive_finalization() -> None:
+def test_session_stop_pauses_without_archive_finalization() -> None:
+    finalizer = FakeArchiveFinalizer()
+    with running_server(
+        ["lab_session_1"],
+        archive_finalizer=finalizer,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "recorderCount": 2,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+        stopped = request(address, "POST", "/lab/sessions/lab_session_1/stop")
+
+    assert stopped["status"] == 202
+    assert stopped["body"]["session"]["state"] == "stopped"
+    assert "archiveFinalization" not in stopped["body"]
+    assert finalizer.calls == []
+
+
+def test_session_finish_requests_durable_archive_finalization() -> None:
     finalizer = FakeArchiveFinalizer()
     with running_server(
         ["lab_session_1"],
@@ -835,17 +860,93 @@ def test_session_stop_requests_durable_archive_finalization() -> None:
             recorder.vrcode for recorder in address.store.list_recorders()
         )
 
-        stopped = request(address, "POST", "/lab/sessions/lab_session_1/stop")
+        finished = request(address, "POST", "/lab/sessions/lab_session_1/finish")
 
-    assert stopped["status"] == 202
-    assert stopped["body"]["archiveFinalization"] == {
+    assert finished["status"] == 202
+    assert finished["body"]["session"]["state"] == "finished"
+    assert finished["body"]["archiveFinalization"] == {
         "state": "accepted",
         "requestIds": ["finalization-1"],
     }
-    assert finalizer.calls == [(vrcodes, "lab_session_stopped")]
+    assert finalizer.calls == [(vrcodes, "lab_session_finished")]
 
 
-def test_session_stop_preserves_stopped_state_when_finalization_request_fails() -> None:
+def test_finished_session_is_terminal_and_cannot_restart() -> None:
+    finalizer = FakeArchiveFinalizer()
+    with running_server(
+        ["lab_session_1"],
+        archive_finalizer=finalizer,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+        request(address, "POST", "/lab/sessions/lab_session_1/finish")
+
+        restarted = request(address, "POST", "/lab/sessions/lab_session_1/start")
+
+    assert restarted["status"] == 409
+    assert restarted["body"]["state"] == "failed"
+    assert "cannot start from state finished" in restarted["body"]["readError"]
+
+
+def test_finished_session_accepts_explicit_archive_finalization_retry() -> None:
+    finalizer = FakeArchiveFinalizer()
+    with running_server(
+        ["lab_session_1"],
+        archive_finalizer=finalizer,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+        request(address, "POST", "/lab/sessions/lab_session_1/finish")
+
+        retried = request(address, "POST", "/lab/sessions/lab_session_1/finish")
+
+    assert retried["status"] == 202
+    assert retried["body"]["session"]["state"] == "finished"
+    assert len(finalizer.calls) == 2
+
+
+def test_accepted_session_cannot_finish_or_request_archive_finalization() -> None:
+    finalizer = FakeArchiveFinalizer()
+    with running_server(
+        ["lab_session_1"],
+        archive_finalizer=finalizer,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            },
+        )
+
+        finished = request(address, "POST", "/lab/sessions/lab_session_1/finish")
+
+    assert finished["status"] == 409
+    assert finalizer.calls == []
+
+
+def test_session_finish_preserves_finished_state_when_finalization_request_fails() -> None:
     with running_server(
         ["lab_session_1"],
         archive_finalizer=FailingArchiveFinalizer(),
@@ -863,14 +964,37 @@ def test_session_stop_preserves_stopped_state_when_finalization_request_fails() 
         request(address, "POST", "/lab/sessions/lab_session_1/start")
 
         stopped = request(address, "POST", "/lab/sessions/lab_session_1/stop")
+        assert stopped["status"] == 202
+        finished = request(address, "POST", "/lab/sessions/lab_session_1/finish")
         persisted = address.store.get("lab_session_1")
 
-    assert stopped["status"] == 502
-    assert stopped["body"]["state"] == "failed"
-    assert stopped["body"]["session"]["state"] == "stopped"
-    assert stopped["body"]["archiveFinalization"] == {"state": "failed"}
+    assert finished["status"] == 502
+    assert finished["body"]["state"] == "failed"
+    assert finished["body"]["session"]["state"] == "finished"
+    assert finished["body"]["archiveFinalization"] == {"state": "failed"}
     assert persisted is not None
-    assert persisted.state == "stopped"
+    assert persisted.state == "finished"
+
+
+def test_session_finish_reports_unavailable_archive_finalizer() -> None:
+    with running_server(["lab_session_1"]) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+
+        finished = request(address, "POST", "/lab/sessions/lab_session_1/finish")
+
+    assert finished["status"] == 502
+    assert finished["body"]["session"]["state"] == "finished"
+    assert "archive finalizer is unavailable" in finished["body"]["readError"]
 
 
 def test_session_start_records_recorder_send_failure() -> None:

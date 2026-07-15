@@ -143,10 +143,10 @@ struct RuntimeLifecycle {
         switch try RuntimeLifecycleCommand.parse(arguments) {
         case .install:
             try install()
-        case .installProvision:
-            try installProvision()
-        case .preinstallCheck:
-            try preinstallCheck()
+        case .installProvision(let packageInstallContract):
+            try installProvision(packageInstallContract: packageInstallContract)
+        case .preinstallCheck(let packageInstallContract):
+            try preinstallCheck(packageInstallContract: packageInstallContract)
         case .status:
             printStatus()
         case .health:
@@ -187,6 +187,8 @@ struct RuntimeLifecycle {
             try startServices()
         case .stopServices:
             try stopServices()
+        case .stopPackageServices:
+            try stopRuntimeServicesForUninstall()
         case .guestStackStatus(let command):
             try printGuestStackStatus(command)
         case .guestServiceStart(let command):
@@ -214,19 +216,32 @@ struct RuntimeLifecycle {
         try runtimeInstallComposition().install()
     }
 
-    func installProvision() throws {
-        try runtimeInstallComposition().installProvision()
+    func installProvision(packageInstallContract: URL) throws {
+        let contract = try loadPackageInstallContract(from: packageInstallContract)
+        try runtimeInstallComposition().installProvision(mode: contract.mode)
     }
 
-    func preinstallCheck() throws {
+    func preinstallCheck(packageInstallContract: URL) throws {
         let document = runtimeFreshInstallPreflight()
         let data = try JSONEncoder.pretty.encode(document)
         if let text = String(data: data, encoding: .utf8) {
             print(text)
         }
-        guard document.passed else {
+        switch RuntimePackageInstallPreflightPolicy.disposition(document: document) {
+        case .fresh:
+            try writePackageInstallContract(mode: .fresh, to: packageInstallContract)
+            print("package install disposition=fresh")
+        case .reinstall:
+            try initializeHostStateStore()
+            try migrateLegacyHostSettingsIfNeeded()
+            let settings = try requirePackageReinstallSettings()
+            try requirePackageReinstallProxyPortAvailable(settings.proxyPort)
+            try stopRuntimeServicesForPackageReplacement()
+            try writePackageInstallContract(mode: .reinstall, to: packageInstallContract)
+            print("package install disposition=reinstall Host settings preserved and existing runtime services stopped")
+        case .blocked(let blockers):
             throw LauncherError.runtimeOperationFailed(
-                "fresh install preflight blocked blockers=\(document.blockers.joined(separator: ","))"
+                "package install preflight blocked blockers=\(blockers.joined(separator: ","))"
             )
         }
     }
@@ -479,6 +494,8 @@ struct RuntimeLifecycle {
                 try printJSON(gateway.startLabSession(sessionId))
             case .stopSession(let sessionId):
                 try printJSON(gateway.stopLabSession(sessionId))
+            case .finishSession(let sessionId):
+                try printJSON(gateway.finishLabSession(sessionId))
             case .replayVitalFile(let request):
                 try printJSON(gateway.replayLabVitalFile(request))
             }
@@ -668,5 +685,10 @@ private extension RuntimeLifecycle {
             )
         )
         log("VM process exited after guest poweroff request pid=\(expectedVMProcessID)")
+        try RuntimeVMLifecycleProcessExitReconciler.reconcile(
+            expectedVMProcessID: expectedVMProcessID,
+            paths: paths,
+            log: log
+        )
     }
 }

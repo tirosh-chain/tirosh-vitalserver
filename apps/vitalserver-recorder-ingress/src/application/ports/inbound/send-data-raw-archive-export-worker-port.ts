@@ -13,7 +13,7 @@ export type SendDataRawArchiveExportWorkerRunOptions = {
 
 export type SendDataRawArchiveFinalizationRequestInput = {
   vrcodes: string[];
-  reason: "lab_session_stopped" | "lab_recorder_stopped";
+  reason: "lab_session_finished";
 };
 
 export type SendDataRawArchiveFinalizationRequestResult = {

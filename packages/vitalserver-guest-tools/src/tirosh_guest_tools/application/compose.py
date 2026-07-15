@@ -798,8 +798,13 @@ def compose_service_state_from_json(row: dict[str, Any]) -> ComposeServiceState:
         container=string_value(row, "Name", "name", "Container", "container"),
         state=string_value(row, "State", "state", "Status", "status"),
         exit_code=int_value(row, "ExitCode", "exitCode"),
-        health=string_value(row, "Health", "health"),
+        health=compose_health_value(row),
     )
+
+
+def compose_health_value(row: dict[str, Any]) -> str:
+    value = string_value(row, "Health", "health").strip()
+    return value if value else "not_reported"
 
 
 def string_value(row: dict[str, Any], *keys: str) -> str:

@@ -93,7 +93,7 @@ public struct RuntimeVitalRecorderDisplayPolicy {
         guard let version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "Not reported"
         }
-        return isProductLabRecorder(version: version) ? "Product Lab" : "Not identified"
+        return isProductLabRecorder(version: version) ? "Lab" : "Vital Recorder"
     }
 
     public func isProductLabRecorder(version: String?) -> Bool {

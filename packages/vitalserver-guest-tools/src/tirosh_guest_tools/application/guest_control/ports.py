@@ -82,6 +82,9 @@ class ProductLabPort(Protocol):
     def stop_session(self, session_id: str) -> ProductLabSessionResult:
         raise NotImplementedError
 
+    def finish_session(self, session_id: str) -> ProductLabSessionResult:
+        raise NotImplementedError
+
     def delete_session(self, session_id: str) -> ProductLabReadModelResult:
         raise NotImplementedError
 
@@ -118,8 +121,12 @@ class ProductLabPort(Protocol):
 
 
 class VitalFileLibraryPort(Protocol):
+    def list_files(self) -> list[dict[str, object]]:
+        """Read the authoritative VitalServer indexed file collection."""
+        raise NotImplementedError
+
     def import_files(self, files: list[tuple[str, bytes]]) -> list[dict[str, object]]:
-        """Atomically add an explicitly provided batch to the Vital Files library."""
+        """Send an explicitly provided batch through the VitalServer upload API."""
         raise NotImplementedError
 
 

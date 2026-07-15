@@ -41,7 +41,11 @@ PWA static file 요청은 token 없이 처리합니다. PWA는 같은 origin의
 cookie로 인증된 mutation은 정확히 같은 loopback origin을 다시 확인합니다. root-owned
 automation token은 installer/acceptance처럼 browser 밖의 관리 도구만 사용합니다.
 이것은 LAN 및 다른 browser origin을 막는 local-browser transport boundary이며, same-user
-OS identity authorization을 대신하지는 않습니다.
+OS identity authorization을 대신하지는 않습니다. Platform Agent가 재기동되어 기존
+cookie가 `401`로 거부되면 네이티브 및 PWA local-session client는 같은 loopback
+origin에서 session을 한 번 다시 bootstrap하고 요청을 한 번 재전송합니다. 두 번째
+실패는 숨기지 않고 명시적인 API 실패로 반환합니다. Advanced의 Recovery operations는
+수동 `Reconnect Runtime Control`도 제공하며 automation token 자체는 회전하지 않습니다.
 
 Capability는 owner별로 독립적으로 읽습니다. `GET /platform/capabilities`는 설치, update, Host service와 local file 같은 Platform Agent 기능을 제공하고, `GET /runtime/capabilities`는 Runtime Controller가 직접 보고한 `schemaVersion`과 capability identifier 목록을 그대로 제공합니다. PWA는 두 응답을 버튼 표시를 위해 함께 사용할 수 있지만 한 owner의 응답으로 다시 저장하거나 다른 owner의 상태에서 capability를 추론하지 않습니다.
 
@@ -83,6 +87,7 @@ Runtime capability identifier `services:start`, `services:stop`,
 | `GET` | `/runtime/lab/sessions/{sessionId}` |
 | `POST` | `/runtime/lab/sessions/{sessionId}/start` |
 | `POST` | `/runtime/lab/sessions/{sessionId}/stop` |
+| `POST` | `/runtime/lab/sessions/{sessionId}/finish` |
 | `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start` |
 | `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop` |
 | `GET` | `/runtime/lab/vital-files` |
@@ -165,12 +170,13 @@ Runtime Lab is the product-facing boundary for virtual recorder scenarios and `.
 | `POST` | `/runtime/lab/sessions` | create a Product Lab virtual recorder session |
 | `GET` | `/runtime/lab/sessions/{sessionId}` | read one Product Lab session state |
 | `POST` | `/runtime/lab/sessions/{sessionId}/start` | start one Product Lab session |
-| `POST` | `/runtime/lab/sessions/{sessionId}/stop` | stop one Product Lab session |
+| `POST` | `/runtime/lab/sessions/{sessionId}/stop` | pause one Product Lab session without finalizing archives |
+| `POST` | `/runtime/lab/sessions/{sessionId}/finish` | finish one Product Lab session and request durable `.vital` archive upload |
 | `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start` | start one recorder owned by a running session |
 | `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop` | stop one recorder owned by a running session |
-| `GET` | `/runtime/lab/vital-files` | list configured `.vital` files available for Product Lab replay |
+| `GET` | `/runtime/lab/vital-files` | list VitalServer-indexed `.vital` files available for Product Lab replay |
 | `POST` | `/runtime/lab/vital-files/replay` | create a virtual recorder session from a configured `.vital` file path |
-| `POST` | `/runtime/lab/vital-files/upload` | atomically import N Host-selected `.vital` files into the configured Vital Files library |
+| `POST` | `/runtime/lab/vital-files/upload` | upload N Host-selected `.vital` files through VitalServer API and verify their file-list index entries |
 
 `RuntimeLabScenarioList.state`, `RuntimeLabSessionList.state`, `RuntimeLabSessionResponse.state`, and `RuntimeLabRecorderResponse.state` preserve `loaded`, `failed`, and `unavailable` as different meanings. The API must not convert a missing Lab backend, Product Lab HTTP failure, or invalid Lab response into an empty scenario/session list or a successful stopped session. Recorder commands require an explicitly running session and a recorder whose `sessionId` matches the path session; the UI must not infer either relationship from labels or IDs. Command-style Lab requests also preserve the Guest operation id when Guest Control accepts the command.
 
@@ -238,7 +244,7 @@ PWA는 Platform과 product 상태를 하나의 Host aggregate에서 읽지 않�
 
 `GET /platform/logs/stream`은 long-lived SSE 연결입니다. 서버는 선택한 host log text가 바뀔 때 `runtime-log` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-log-<source>`, `data` 값은 JSON encoded `RuntimeLogTextResponse`입니다. Query는 `source`, `lineLimit`, `helperMessage`를 지원합니다. `source=helperMessage`는 현재 UI message 값을 재전송하지 않고 host의 append-only `tirosh-vitalserver-helper-message.log`를 읽습니다. `/platform/logs/read` body는 `source`, `helperMessage`, `lineLimit`를 모두 보내야 하며 legacy helper message 값이 없으면 `helperMessage: null`을 보냅니다. field absence와 explicit null/empty string은 다른 request state로 보존합니다.
 
-`GET /runtime/vitaldb/observations/latest`는 최신 `VitalDBObservationDocument`를 반환하는 Runtime Control API 표면입니다. v2 TO-BE에서는 이 read가 Host 파일이나 Host SQLite projection에서 오지 않고 Guest/Product API의 `GET /runtime/vitaldb/observations/latest`를 소비해야 합니다. Guest endpoint는 `state`, `observation`, `readError`를 보존하며, default Guest composition은 `PostgresVitalDBReadModelRepository`를 통해 `vitaldb_observation_snapshots` JSONB read model을 읽습니다. Guest `tirosh-runtime-observation` writer는 VitalDB Observer의 explicit observation document를 수집한 뒤 이 Postgres read model에 저장합니다. Read model adapter가 없거나 table이 비어 있으면 빈 성공이나 inferred empty observation 대신 `state=unavailable`, `observation=null`을 반환합니다. Host `runtime-observability.sqlite` projection은 명시 diagnostics/migration mode에서만 읽을 수 있으며, guest `runtime-observation.json`이나 Host `runtime-status.json`의 embedded current observation은 product read source로 사용하지 않습니다.
+`GET /runtime/vitaldb/observations/latest`는 최신 `RuntimeVitalDBObservationSnapshot`을 반환하는 Runtime Control API 표면입니다. 응답은 `state`, `observation`, `readError` 세 필드를 항상 포함하며 nullable 값도 생략하지 않고 JSON `null`로 전달합니다. v2 TO-BE에서는 이 read가 Host 파일이나 Host SQLite projection에서 오지 않고 Guest/Product API의 `GET /runtime/vitaldb/observations/latest`를 소비해야 합니다. Guest endpoint는 `state`, `observation`, `readError`를 보존하며, default Guest composition은 `PostgresVitalDBReadModelRepository`를 통해 `vitaldb_observation_snapshots` JSONB read model을 읽습니다. Guest `tirosh-runtime-observation` writer는 VitalDB Observer의 explicit observation document를 수집한 뒤 이 Postgres read model에 저장합니다. Read model adapter가 없거나 table이 비어 있으면 빈 성공이나 inferred empty observation 대신 `state=unavailable`, `observation=null`을 반환합니다. Host `runtime-observability.sqlite` projection은 명시 diagnostics/migration mode에서만 읽을 수 있으며, guest `runtime-observation.json`이나 Host `runtime-status.json`의 embedded current observation은 product read source로 사용하지 않습니다.
 
 `GET /runtime/vitaldb/observations/stream`은 long-lived SSE 연결입니다. 서버는 최신 VitalDB observation snapshot이 바뀔 때 `vitaldb-observed` frame을 보냅니다. 각 frame은 `RuntimeVitalDBObservationSnapshot.state`, `observation`, `readError`를 그대로 보존하므로 unavailable과 failed를 `null` observation으로 축소하지 않습니다.
 
@@ -308,12 +314,13 @@ Provider `start|stop|restart` command는 Platform effect와 Provider state를 �
 | `POST` | `/runtime/lab/sessions` | create Product Lab virtual recorder session |
 | `GET` | `/runtime/lab/sessions/{sessionId}` | Product Lab session state |
 | `POST` | `/runtime/lab/sessions/{sessionId}/start` | start Product Lab session |
-| `POST` | `/runtime/lab/sessions/{sessionId}/stop` | stop Product Lab session |
+| `POST` | `/runtime/lab/sessions/{sessionId}/stop` | pause Product Lab session without finalizing archives |
+| `POST` | `/runtime/lab/sessions/{sessionId}/finish` | terminally finish Product Lab session and upload finalized archives |
 | `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/start` | start one session-owned recorder |
 | `POST` | `/runtime/lab/sessions/{sessionId}/recorders/{recorderId}/stop` | stop one session-owned recorder |
-| `GET` | `/runtime/lab/vital-files` | configured `.vital` files available for Product Lab replay |
+| `GET` | `/runtime/lab/vital-files` | VitalServer-indexed `.vital` files available for Product Lab replay |
 | `POST` | `/runtime/lab/vital-files/replay` | create Product Lab `.vital` replay session |
-| `POST` | `/runtime/lab/vital-files/upload` | import repeated multipart `files` entries into the Vital Files library; reject the whole batch if any entry is not `.vital` or conflicts |
+| `POST` | `/runtime/lab/vital-files/upload` | prevalidate repeated multipart `files`, upload each through VitalServer `/upload`, and verify `/api/filelist`; report partial completion explicitly |
 | `POST` | `/runtime/health` | active health refresh |
 | `GET` | `/runtime/settings` | current runtime settings |
 | `PUT` | `/runtime/settings` | apply runtime settings |

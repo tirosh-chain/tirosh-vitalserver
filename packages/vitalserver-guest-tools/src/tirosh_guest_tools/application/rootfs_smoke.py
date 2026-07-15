@@ -948,11 +948,15 @@ def edge_ready(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
 
 
 def cleanup_compose(run: RootfsSmokeRun) -> bool:
+    started_at = utc_now()
     if run.context.test_mode and run.context.fail_cleanup:
         run.cleanup = {
             "status": RootfsSmokeStatus.CLEANUP_FAILED.value,
             "message": "test fault injected cleanup failure",
+            "startedAt": started_at,
+            "completedAt": utc_now(),
         }
+        run.write_manifest()
         return False
     commands = [
         (
@@ -972,7 +976,24 @@ def cleanup_compose(run: RootfsSmokeRun) -> bool:
         ),
     ]
     results: list[dict[str, Any]] = []
+    run.cleanup = {
+        "status": RootfsSmokeStatus.RUNNING.value,
+        "message": "rootfs cleanup is running",
+        "startedAt": started_at,
+        "completedAt": None,
+        "activeCommand": None,
+        "activeCommandTimeoutSeconds": None,
+        "commands": results,
+    }
+    run.write_manifest()
     for name, command, timeout_seconds in commands:
+        run.cleanup = {
+            **run.cleanup,
+            "message": f"rootfs cleanup command is running: {name}",
+            "activeCommand": name,
+            "activeCommandTimeoutSeconds": timeout_seconds,
+        }
+        run.write_manifest()
         completed = run.operations.run(
             command,
             check=False,
@@ -983,9 +1004,22 @@ def cleanup_compose(run: RootfsSmokeRun) -> bool:
             run.cleanup = {
                 "status": RootfsSmokeStatus.CLEANUP_FAILED.value,
                 "message": f"{name} failed: {command_output(completed)}",
+                "startedAt": started_at,
+                "completedAt": utc_now(),
+                "activeCommand": name,
+                "activeCommandTimeoutSeconds": timeout_seconds,
                 "commands": results,
             }
+            run.write_manifest()
             return False
+        run.cleanup = {
+            **run.cleanup,
+            "message": f"rootfs cleanup command passed: {name}",
+            "activeCommand": None,
+            "activeCommandTimeoutSeconds": None,
+            "commands": results,
+        }
+        run.write_manifest()
     verification = verify_docker_store_is_empty(run)
     results.extend(verification)
     rootfs_store_verification = verify_rootfs_runtime_stores_are_empty(run)
@@ -1005,14 +1039,24 @@ def cleanup_compose(run: RootfsSmokeRun) -> bool:
                 f"{failed_verification['name']} failed: "
                 f"{failed_verification['message']}"
             ),
+            "startedAt": started_at,
+            "completedAt": utc_now(),
+            "activeCommand": None,
+            "activeCommandTimeoutSeconds": None,
             "commands": results,
         }
+        run.write_manifest()
         return False
     run.cleanup = {
         "status": RootfsSmokeStatus.PASSED.value,
         "message": "compose stack and Docker store cleanup completed",
+        "startedAt": started_at,
+        "completedAt": utc_now(),
+        "activeCommand": None,
+        "activeCommandTimeoutSeconds": None,
         "commands": results,
     }
+    run.write_manifest()
     return True
 
 
@@ -1025,6 +1069,8 @@ def cleanup_command_result(
         "status": "passed" if completed.returncode == 0 else "failed",
         "exitCode": completed.returncode,
         "message": command_output(completed),
+        "stdout": completed.stdout or "",
+        "stderr": completed.stderr or "",
     }
 
 

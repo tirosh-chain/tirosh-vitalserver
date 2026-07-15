@@ -5,8 +5,8 @@ import Errors
 
 public enum RuntimeLifecycleCommand: Equatable {
     case install
-    case installProvision
-    case preinstallCheck
+    case installProvision(URL)
+    case preinstallCheck(URL)
     case status
     case health
     case guestLogSync
@@ -27,6 +27,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case repairServices
     case startServices
     case stopServices
+    case stopPackageServices
     case guestStackStatus(RuntimeGuestControlReadCommand)
     case guestServiceStart(RuntimeGuestServiceControlCommand)
     case guestServiceStop(RuntimeGuestServiceControlCommand)
@@ -48,9 +49,9 @@ extension RuntimeLifecycleCommand {
         case "install":
             return .install
         case "install-provision":
-            return .installProvision
+            return .installProvision(try requiredPackageInstallContractURL(in: remaining))
         case "preinstall-check":
-            return .preinstallCheck
+            return .preinstallCheck(try requiredPackageInstallContractURL(in: remaining))
         case "status":
             return .status
         case "health":
@@ -106,6 +107,8 @@ extension RuntimeLifecycleCommand {
             return .startServices
         case "stop-services":
             return .stopServices
+        case "stop-package-services":
+            return .stopPackageServices
         case "guest-stack-status":
             return .guestStackStatus(try parseGuestControlReadCommand(
                 remaining,
@@ -162,6 +165,12 @@ extension RuntimeLifecycleCommand {
                 action: RuntimeLabControlAction.stopSession,
                 usage: "usage: vitalserver-vm runtime lab-session-stop <session-id> [--guest-control-url <url>]"
             ))
+        case "lab-session-finish":
+            return .lab(try RuntimeLabControlCommand.parseSessionIDCommand(
+                remaining,
+                action: RuntimeLabControlAction.finishSession,
+                usage: "usage: vitalserver-vm runtime lab-session-finish <session-id> [--guest-control-url <url>]"
+            ))
         case "lab-vital-replay":
             return .lab(try RuntimeLabControlCommand.parseVitalReplayCommand(remaining))
         case "uninstall":
@@ -176,8 +185,8 @@ extension RuntimeLifecycleCommand {
     public static let usageText = """
     Usage:
       vitalserver-vm runtime install
-      vitalserver-vm runtime install-provision
-      vitalserver-vm runtime preinstall-check
+      vitalserver-vm runtime install-provision --package-install-contract <path>
+      vitalserver-vm runtime preinstall-check --package-install-contract <path>
       vitalserver-vm runtime status
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
@@ -199,6 +208,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services
+      vitalserver-vm runtime stop-package-services
       vitalserver-vm runtime guest-stack-status [--guest-control-url <url>]
       vitalserver-vm runtime guest-service-start <service> [--guest-control-url <url>]
       vitalserver-vm runtime guest-service-stop <service> [--guest-control-url <url>]
@@ -215,6 +225,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime lab-session-get <session-id> [--guest-control-url <url>]
       vitalserver-vm runtime lab-session-start <session-id> [--guest-control-url <url>]
       vitalserver-vm runtime lab-session-stop <session-id> [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-finish <session-id> [--guest-control-url <url>]
       vitalserver-vm runtime lab-vital-replay <vital-file-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]
       vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]
     """
@@ -224,6 +235,17 @@ extension RuntimeLifecycleCommand {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         return URL(fileURLWithPath: bundlePath)
+    }
+
+    private static func requiredPackageInstallContractURL(in arguments: [String]) throws -> URL {
+        let usage = "usage: vitalserver-vm runtime install-provision|preinstall-check --package-install-contract <path>"
+        guard arguments.count == 2,
+              arguments[0] == "--package-install-contract",
+              !arguments[1].isEmpty
+        else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return URL(fileURLWithPath: arguments[1])
     }
 
     private static func parseRollbackCommand(_ arguments: [String]) -> RuntimeRollbackCommand {

@@ -106,6 +106,44 @@ describe("RuntimeControlApiClient", () => {
     }
   });
 
+  it("reestablishes the browser session once after an unauthorized response", async () => {
+    const requests: RecordedRequest[] = [];
+    let platformRequestCount = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const path = new URL(url).pathname;
+      requests.push({ url, init: init ?? {} });
+      if (path === "/platform/browser-session") {
+        return new Response(null, { status: 204 });
+      }
+      platformRequestCount += 1;
+      if (platformRequestCount === 1) {
+        return new Response(
+          JSON.stringify({ code: "unauthorized", message: "session expired" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(JSON.stringify(platformCapabilities()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }) as typeof fetch;
+    const client = new RuntimeControlApiClient({
+      token: "",
+      useBrowserSession: true,
+      fetchImpl
+    });
+
+    await expect(client.getPlatformCapabilities()).resolves.toEqual(platformCapabilities());
+
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/platform/browser-session",
+      "/platform/capabilities",
+      "/platform/browser-session",
+      "/platform/capabilities"
+    ]);
+  });
+
   it("reads and applies Runtime-owned Redis Relay settings", async () => {
     const read = {
       state: "loaded",
@@ -393,6 +431,7 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/lab/sessions/lab-1": labSessionResponse(),
       "/runtime/lab/sessions/lab-1/start": labSessionResponse(),
       "/runtime/lab/sessions/lab-1/stop": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1/finish": labSessionResponse(),
       "/runtime/lab/sessions/lab-1/recorders/lab-1-recorder-1/start":
         labRecorderResponse("running"),
       "/runtime/lab/sessions/lab-1/recorders/lab-1-recorder-1/stop":
@@ -519,6 +558,7 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getLabSession("lab-1")).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
     await expect(client.startLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
     await expect(client.stopLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
+    await expect(client.finishLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
     await expect(
       client.startLabRecorder("lab-1", "lab-1-recorder-1")
     ).resolves.toMatchObject({ recorder: { state: "running" } });

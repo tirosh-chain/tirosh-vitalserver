@@ -4,6 +4,11 @@ import RuntimeControl
 import SwiftUI
 import Errors
 
+struct RuntimeRecorderTableLayout {
+    static let headerMinimumHeight: CGFloat = 20
+    static let rowMinimumHeight: CGFloat = 40
+}
+
 struct RuntimeRecordersPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
@@ -68,8 +73,8 @@ struct RuntimeRecordersPanel: View {
                     .background(Color(nsColor: .controlBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
-                ScrollView([.horizontal, .vertical]) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                ScrollView(.horizontal) {
+                    VStack(alignment: .leading, spacing: 0) {
                         recorderHeaderRow
                         ForEach(filteredRecorders) { recorder in
                             Divider()
@@ -77,10 +82,10 @@ struct RuntimeRecordersPanel: View {
                         }
                     }
                     .frame(minWidth: 1200, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .frame(minHeight: 220)
             }
         }
     }
@@ -206,7 +211,6 @@ struct RuntimeRecordersPanel: View {
     private var recorderHeaderRow: some View {
         HStack(spacing: 12) {
             tableHeader("VRecorder", minWidth: 120)
-            tableHeader("Source", minWidth: 110)
             tableHeader(AppConstants.Labels.recorderStatus, minWidth: 80)
             tableHeader("IP", minWidth: 150)
             tableHeader(AppConstants.Labels.bed, minWidth: 120)
@@ -215,6 +219,7 @@ struct RuntimeRecordersPanel: View {
             tableHeader(AppConstants.Labels.anomaly, minWidth: 130)
             tableHeader("Actions", minWidth: 160)
         }
+        .frame(minHeight: RuntimeRecorderTableLayout.headerMinimumHeight, alignment: .center)
         .padding(10)
     }
 
@@ -225,8 +230,6 @@ struct RuntimeRecordersPanel: View {
             } label: {
                 HStack(spacing: 12) {
                     tableValue(recorder.vrcode, minWidth: 120, weight: .semibold)
-                    RuntimeRecorderSourceBadge(version: recorder.version)
-                        .frame(minWidth: 110, alignment: .leading)
                     Text(statusLabel(recorder.status))
                         .font(.caption)
                         .fontWeight(.semibold)
@@ -243,6 +246,7 @@ struct RuntimeRecordersPanel: View {
             .buttonStyle(.plain)
             recorderActionButtons(recorder)
         }
+        .frame(minHeight: RuntimeRecorderTableLayout.rowMinimumHeight, alignment: .center)
         .padding(10)
         .background(selectedRecorder?.vrcode == recorder.vrcode ? Color.accentColor.opacity(0.10) : Color.clear)
     }
@@ -435,7 +439,7 @@ struct RuntimeRecordersPanel: View {
             }
         }
         .task(id: recorderActivityWindowTaskID(activityQuery)) {
-            await viewModel.refreshVitalRecorderActivityWindow(query: activityQuery)
+            await viewModel.pollVitalRecorderActivityWindow(query: activityQuery)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -734,6 +738,7 @@ struct RuntimeRecordersPanel: View {
                 .truncationMode(.middle)
         }
         .frame(minWidth: minWidth, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func count(_ status: RuntimeVitalRecorderStatus) -> Int {

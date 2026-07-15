@@ -81,6 +81,11 @@ class SQLAlchemyLabSessionStore(InMemoryLabSessionStore):
             lambda: super(SQLAlchemyLabSessionStore, self).stop(session_id)
         )
 
+    def finish(self, session_id: str) -> LabSession | None:
+        return self._mutate(
+            lambda: super(SQLAlchemyLabSessionStore, self).finish(session_id)
+        )
+
     def list_beds(self) -> tuple[LabBed, ...]:
         return self._read(lambda: super(SQLAlchemyLabSessionStore, self).list_beds())
 
