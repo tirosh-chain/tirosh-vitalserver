@@ -26,7 +26,7 @@ public struct RuntimeUninstallCompositionOperations {
     let createRedisBackup: () throws -> Void
     let disableAutomaticBackupScheduler: () throws -> Void
     let disableRuntimeServicesForUninstall: () throws -> Void
-    let stopRuntimeServices: () throws -> Void
+    let stopRuntimeServicesForUninstall: () throws -> Void
     let forceStopRuntimeServicesForUninstall: () throws -> Void
     let clearLaunchdDisabledOverridesAfterUninstall: () throws -> Void
     let cleanupHostProxyPortAfterStop: (Bool) throws -> Void
@@ -45,7 +45,7 @@ public struct RuntimeUninstallCompositionOperations {
         createRedisBackup: @escaping () throws -> Void,
         disableAutomaticBackupScheduler: @escaping () throws -> Void,
         disableRuntimeServicesForUninstall: @escaping () throws -> Void,
-        stopRuntimeServices: @escaping () throws -> Void,
+        stopRuntimeServicesForUninstall: @escaping () throws -> Void,
         forceStopRuntimeServicesForUninstall: @escaping () throws -> Void,
         clearLaunchdDisabledOverridesAfterUninstall: @escaping () throws -> Void,
         cleanupHostProxyPortAfterStop: @escaping (Bool) throws -> Void,
@@ -63,7 +63,7 @@ public struct RuntimeUninstallCompositionOperations {
         self.createRedisBackup = createRedisBackup
         self.disableAutomaticBackupScheduler = disableAutomaticBackupScheduler
         self.disableRuntimeServicesForUninstall = disableRuntimeServicesForUninstall
-        self.stopRuntimeServices = stopRuntimeServices
+        self.stopRuntimeServicesForUninstall = stopRuntimeServicesForUninstall
         self.forceStopRuntimeServicesForUninstall = forceStopRuntimeServicesForUninstall
         self.clearLaunchdDisabledOverridesAfterUninstall = clearLaunchdDisabledOverridesAfterUninstall
         self.cleanupHostProxyPortAfterStop = cleanupHostProxyPortAfterStop
@@ -193,7 +193,7 @@ public enum RuntimeUninstallComposition {
                         try operations.forceStopRuntimeServicesForUninstall()
                     } else if clean {
                         do {
-                            try operations.stopRuntimeServices()
+                            try operations.stopRuntimeServicesForUninstall()
                         } catch {
                             let reason = RuntimeErrorDescription.describe(error)
                             operations.log(
@@ -202,7 +202,7 @@ public enum RuntimeUninstallComposition {
                             try operations.forceStopRuntimeServicesForUninstall()
                         }
                     } else {
-                        try operations.stopRuntimeServices()
+                        try operations.stopRuntimeServicesForUninstall()
                     }
                     try operations.cleanupHostProxyPortAfterStop(clean)
                 },

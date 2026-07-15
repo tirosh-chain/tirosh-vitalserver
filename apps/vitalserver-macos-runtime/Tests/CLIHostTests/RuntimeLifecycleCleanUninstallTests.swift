@@ -32,7 +32,7 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
                 disableRuntimeServicesForUninstall: {
                     events.append("disable")
                 },
-                stopRuntimeServices: {
+                stopRuntimeServicesForUninstall: {
                     events.append("stop")
                     throw NSError(domain: "test", code: 1)
                 },
@@ -93,7 +93,7 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
                 disableRuntimeServicesForUninstall: {
                     events.append("disable")
                 },
-                stopRuntimeServices: {
+                stopRuntimeServicesForUninstall: {
                     events.append("stop")
                 },
                 forceStopRuntimeServicesForUninstall: {
@@ -129,13 +129,29 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
         let harness = Harness()
         harness.serviceManager.states[.vm] = .loaded
         harness.serviceManager.states[.sleepPrevention] = .loaded
+        harness.serviceManager.states[.platformAgent] = .loaded
 
         try harness.lifecycle.stopRuntimeServicesForCleanUninstallRecovery()
 
         XCTAssertEqual(harness.serviceManager.stoppedLabels, [
             RuntimeManagedService.vm.label,
             RuntimeManagedService.sleepPrevention.label,
+            RuntimeManagedService.platformAgent.label,
         ])
+    }
+
+    func testCleanUninstallServiceStopIncludesPlatformAgentLast() throws {
+        let harness = Harness()
+        for service in RuntimeManagedService.uninstallOrder {
+            harness.serviceManager.states[service] = .loaded
+        }
+
+        try harness.lifecycle.stopRuntimeServicesForUninstall()
+
+        XCTAssertEqual(
+            harness.serviceManager.stoppedLabels,
+            RuntimeManagedService.uninstallOrder.map(\.label)
+        )
     }
 
     func testCleanUninstallSkipsMissingProxyPortCleanupWhenRuntimeArtifactsAreAlreadyAbsent() throws {

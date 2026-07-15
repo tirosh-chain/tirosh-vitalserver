@@ -143,6 +143,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-132 | Golden rootfs가 Host settings SQLite 없이 launcher를 시작해 manifest 생성 전 timeout | Packaging / Guest bootstrap | resolved | [Golden rootfs times out before creating the runtime manifest](132_golden-rootfs-launcher-missing-host-settings-sqlite.md) |
 | TS-133 | Golden rootfs proof 통과 후 lifecycle은 stopped지만 launcher PID가 남아 package 생성 중단 | Packaging / Local development / VM lifecycle | resolved | [Golden rootfs cleanup reports stopped while launcher still runs](133_golden-rootfs-stopped-lifecycle-launcher-process-race.md) |
 | TS-134 | PKG fresh install이 Host settings materialization 전에 `vm-config.json`을 읽어 즉시 실패 | Packaging / Host state persistence | package install verification pending | [PKG fresh install fails before Host settings materialization](134_pkg-fresh-install-host-settings-before-materialization.md) |
+| TS-135 | Helper가 root-owned Host SQLite를 직접 열어 runtime 상태와 설정이 unavailable | Runtime health / macOS Helper UI / Host state persistence | package verification pending | [Helper direct SQLite access after Host state cutover](135_helper-direct-sqlite-access-after-host-state-cutover.md) |
+| TS-136 | Clean uninstall이 Platform Agent를 남겨 재설치가 fresh-install preflight에서 차단됨 | Uninstall / Packaging | package verification pending | [Clean uninstall leaves Platform Agent loaded](136_clean-uninstall-leaves-platform-agent-loaded.md) |
 
 ## Follow-up 규칙
 

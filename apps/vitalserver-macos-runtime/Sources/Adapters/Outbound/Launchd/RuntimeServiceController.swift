@@ -52,6 +52,13 @@ public struct RuntimeServiceController {
         }
     }
 
+    public func stopRuntimeServicesForUninstall() throws {
+        log("stopping runtime services for uninstall")
+        for service in RuntimeManagedService.uninstallOrder {
+            try stopAndWaitIfLoaded(service)
+        }
+    }
+
     public func disableRuntimeServicesForUninstall() throws {
         log("disabling runtime services before uninstall")
         for service in RuntimeManagedService.uninstallOrder {
@@ -135,6 +142,16 @@ public struct RuntimeServiceController {
                 try unloadAfterForcedVMStopIfLoaded(service)
             } catch {
                 log("failed to unload \(service.runtimeServiceDisplayName) service after forced VM stop label=\(service.label) error=\(error)")
+            }
+        }
+    }
+
+    public func unloadRuntimeServicesForUninstallAfterForcedVMStop() {
+        for service in RuntimeManagedService.uninstallOrder {
+            do {
+                try unloadAfterForcedVMStopIfLoaded(service)
+            } catch {
+                log("failed to unload \(service.runtimeServiceDisplayName) service for uninstall after forced VM stop label=\(service.label) error=\(error)")
             }
         }
     }

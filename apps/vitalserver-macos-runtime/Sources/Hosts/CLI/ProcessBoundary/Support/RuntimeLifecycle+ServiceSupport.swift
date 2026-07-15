@@ -49,6 +49,10 @@ extension RuntimeLifecycle {
         try serviceController.stopRuntimeServices()
     }
 
+    func stopRuntimeServicesForUninstall() throws {
+        try serviceController.stopRuntimeServicesForUninstall()
+    }
+
     func stopRuntimeServicesForCleanUninstallRecovery() throws {
         log("force clean uninstall requested; forcing VM process stop before launchd unload")
         let vmProcessStopState = StopRuntimeVMProcessUseCase().forceKillAndWaitState(
@@ -72,7 +76,7 @@ extension RuntimeLifecycle {
         if case .pidFileMissing = vmProcessStopState {
             log("VM process pid file is missing during force clean uninstall; unloading launchd services from explicit launchd state")
         }
-        serviceController.unloadRuntimeServicesAfterForcedVMStop()
+        serviceController.unloadRuntimeServicesForUninstallAfterForcedVMStop()
         log("runtime services force-stopped for clean uninstall recovery")
     }
 

@@ -28,7 +28,7 @@ extension RuntimeLifecycle {
                 disableRuntimeServicesForUninstall: {
                     try serviceController.disableRuntimeServicesForUninstall()
                 },
-                stopRuntimeServices: stopRuntimeServicesThroughStateControl,
+                stopRuntimeServicesForUninstall: stopRuntimeServicesForUninstall,
                 forceStopRuntimeServicesForUninstall: stopRuntimeServicesForCleanUninstallRecovery,
                 clearLaunchdDisabledOverridesAfterUninstall: {
                     try serviceController.clearDisabledOverridesAfterUninstall()

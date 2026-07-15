@@ -36,6 +36,25 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
+    func testStopsLoadedRuntimeServicesForUninstallIncludingPlatformAgentLast() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let loaded = Set(RuntimeManagedService.uninstallOrder)
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        try controller.stopRuntimeServicesForUninstall()
+
+        XCTAssertEqual(
+            serviceManager.stoppedLabels,
+            RuntimeManagedService.uninstallOrder.map(\.label)
+        )
+    }
+
     func testWaitsAfterEachLoadedServiceStops() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let loaded = Set([
