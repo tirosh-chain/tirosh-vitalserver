@@ -28,6 +28,18 @@ public extension RuntimePlatformSettingsDocument {
             proxyPort: settings.proxyPort,
             runtimeControlPort: settings.runtimeControlPort,
             vitalFilesDirectory: settings.vitalFilesDirectory,
+            vitalServerURL: settings.vitalServerURL,
+            remoteConsoleURL: settings.remoteConsoleURL,
+            publicHost: settings.publicHost,
+            publicPort: settings.publicPort,
+            recorderIngressSendDataMode: settings.recorderIngressSendDataMode,
+            recorderIngressSendDataReplayBatchSize: settings.recorderIngressSendDataReplayBatchSize,
+            recorderIngressSendDataReplayMaxMiBPerSecond: settings.recorderIngressSendDataReplayMaxMiBPerSecond,
+            recorderIngress: settings.recorderIngress,
+            containerMemoryLimitsEnabled: settings.containerMemoryLimitsEnabled,
+            vitalServerContainerMemoryLimitMiB: settings.vitalServerContainerMemoryLimitMiB,
+            recorderIngressContainerMemoryLimitMiB: settings.recorderIngressContainerMemoryLimitMiB,
+            redisContainerMemoryLimitMiB: settings.redisContainerMemoryLimitMiB,
             startOnBoot: settings.startOnBoot,
             startOnBootConfigurable: settings.startOnBootConfigurable,
             autoRecoveryEnabled: settings.autoRecoveryEnabled,
@@ -37,7 +49,64 @@ public extension RuntimePlatformSettingsDocument {
             backupRetentionCount: settings.backupRetentionCount,
             logArchiveRetentionDays: settings.logArchiveRetentionDays,
             logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
-            restartAfterSave: settings.restartAfterSave
+            restartAfterSave: settings.restartAfterSave,
+            appliedVMSettings: settings.appliedVMSettings.map {
+                RuntimePlatformAppliedVMSettingsDocument(
+                    cpuCount: $0.cpuCount,
+                    memoryGiB: $0.memoryGiB,
+                    networkMode: $0.networkMode == .shared ? .shared : .bridged,
+                    bridgedInterface: $0.bridgedInterface,
+                    vitalFilesDirectory: $0.vitalFilesDirectory
+                )
+            }
+        )
+    }
+
+    var runtimeSettings: RuntimeSettings {
+        RuntimeSettings(
+            readIssues: [],
+            cpuCount: cpuCount,
+            memoryGiB: memoryGiB,
+            diskGiB: diskGiB,
+            minimumDiskGiB: minimumDiskGiB,
+            networkMode: networkMode == .shared ? .shared : .bridged,
+            bridgedInterface: bridgedInterface,
+            proxyPort: proxyPort,
+            runtimeControlPort: runtimeControlPort,
+            vitalFilesDirectory: vitalFilesDirectory,
+            vitalServerURL: vitalServerURL,
+            remoteConsoleURL: remoteConsoleURL,
+            publicHost: publicHost,
+            publicPort: publicPort,
+            recorderIngressSendDataMode: recorderIngressSendDataMode,
+            recorderIngressSendDataReplayBatchSize: recorderIngressSendDataReplayBatchSize,
+            recorderIngressSendDataReplayMaxMiBPerSecond: recorderIngressSendDataReplayMaxMiBPerSecond,
+            recorderIngress: recorderIngress,
+            containerMemoryLimitsEnabled: containerMemoryLimitsEnabled,
+            vitalServerContainerMemoryLimitMiB: vitalServerContainerMemoryLimitMiB,
+            recorderIngressContainerMemoryLimitMiB: recorderIngressContainerMemoryLimitMiB,
+            redisContainerMemoryLimitMiB: redisContainerMemoryLimitMiB,
+            adminPassword: "",
+            changeAdminPassword: false,
+            startOnBoot: startOnBoot,
+            startOnBootConfigurable: startOnBootConfigurable,
+            autoRecoveryEnabled: autoRecoveryEnabled,
+            preventSystemSleep: preventSystemSleep,
+            automaticBackupEnabled: automaticBackupEnabled,
+            backupScheduleTimes: backupScheduleTimes,
+            backupRetentionCount: backupRetentionCount,
+            logArchiveRetentionDays: logArchiveRetentionDays,
+            logArchiveMaximumGiB: logArchiveMaximumGiB,
+            restartAfterSave: restartAfterSave,
+            appliedVMSettings: appliedVMSettings.map {
+                RuntimeAppliedVMSettings(
+                    cpuCount: $0.cpuCount,
+                    memoryGiB: $0.memoryGiB,
+                    networkMode: $0.networkMode == .shared ? .shared : .bridged,
+                    bridgedInterface: $0.bridgedInterface,
+                    vitalFilesDirectory: $0.vitalFilesDirectory
+                )
+            }
         )
     }
 }

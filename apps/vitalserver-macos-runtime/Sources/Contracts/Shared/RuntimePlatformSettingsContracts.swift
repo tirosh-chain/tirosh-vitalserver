@@ -6,6 +6,28 @@ public enum RuntimePlatformSettingsReadState: String, Codable, Equatable, Sendab
     case failed
 }
 
+public struct RuntimePlatformAppliedVMSettingsDocument: Codable, Equatable, Sendable {
+    public let cpuCount: Int
+    public let memoryGiB: Int
+    public let networkMode: RuntimeNetworkMode
+    public let bridgedInterface: String?
+    public let vitalFilesDirectory: String
+
+    public init(
+        cpuCount: Int,
+        memoryGiB: Int,
+        networkMode: RuntimeNetworkMode,
+        bridgedInterface: String?,
+        vitalFilesDirectory: String
+    ) {
+        self.cpuCount = cpuCount
+        self.memoryGiB = memoryGiB
+        self.networkMode = networkMode
+        self.bridgedInterface = bridgedInterface
+        self.vitalFilesDirectory = vitalFilesDirectory
+    }
+}
+
 /// Platform Agent-owned settings that are safe to expose to browser clients.
 /// Runtime Controller settings and credentials are intentionally excluded.
 public struct RuntimePlatformSettingsDocument: Codable, Equatable, Sendable {
@@ -18,6 +40,18 @@ public struct RuntimePlatformSettingsDocument: Codable, Equatable, Sendable {
     public let proxyPort: Int
     public let runtimeControlPort: Int
     public let vitalFilesDirectory: String
+    public let vitalServerURL: String
+    public let remoteConsoleURL: String
+    public let publicHost: String
+    public let publicPort: Int
+    public let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
+    public let recorderIngressSendDataReplayBatchSize: Int
+    public let recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    public let recorderIngress: RuntimeRecorderIngressSettings
+    public let containerMemoryLimitsEnabled: Bool
+    public let vitalServerContainerMemoryLimitMiB: Int
+    public let recorderIngressContainerMemoryLimitMiB: Int
+    public let redisContainerMemoryLimitMiB: Int
     public let startOnBoot: Bool
     public let startOnBootConfigurable: Bool
     public let autoRecoveryEnabled: Bool
@@ -28,6 +62,7 @@ public struct RuntimePlatformSettingsDocument: Codable, Equatable, Sendable {
     public let logArchiveRetentionDays: Int
     public let logArchiveMaximumGiB: Int
     public let restartAfterSave: Bool
+    public let appliedVMSettings: RuntimePlatformAppliedVMSettingsDocument?
 
     public init(
         cpuCount: Int,
@@ -39,6 +74,18 @@ public struct RuntimePlatformSettingsDocument: Codable, Equatable, Sendable {
         proxyPort: Int,
         runtimeControlPort: Int,
         vitalFilesDirectory: String,
+        vitalServerURL: String,
+        remoteConsoleURL: String,
+        publicHost: String,
+        publicPort: Int,
+        recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode,
+        recorderIngressSendDataReplayBatchSize: Int,
+        recorderIngressSendDataReplayMaxMiBPerSecond: Int,
+        recorderIngress: RuntimeRecorderIngressSettings,
+        containerMemoryLimitsEnabled: Bool,
+        vitalServerContainerMemoryLimitMiB: Int,
+        recorderIngressContainerMemoryLimitMiB: Int,
+        redisContainerMemoryLimitMiB: Int,
         startOnBoot: Bool,
         startOnBootConfigurable: Bool,
         autoRecoveryEnabled: Bool,
@@ -48,7 +95,8 @@ public struct RuntimePlatformSettingsDocument: Codable, Equatable, Sendable {
         backupRetentionCount: Int,
         logArchiveRetentionDays: Int,
         logArchiveMaximumGiB: Int,
-        restartAfterSave: Bool
+        restartAfterSave: Bool,
+        appliedVMSettings: RuntimePlatformAppliedVMSettingsDocument?
     ) {
         self.cpuCount = cpuCount
         self.memoryGiB = memoryGiB
@@ -59,6 +107,18 @@ public struct RuntimePlatformSettingsDocument: Codable, Equatable, Sendable {
         self.proxyPort = proxyPort
         self.runtimeControlPort = runtimeControlPort
         self.vitalFilesDirectory = vitalFilesDirectory
+        self.vitalServerURL = vitalServerURL
+        self.remoteConsoleURL = remoteConsoleURL
+        self.publicHost = publicHost
+        self.publicPort = publicPort
+        self.recorderIngressSendDataMode = recorderIngressSendDataMode
+        self.recorderIngressSendDataReplayBatchSize = recorderIngressSendDataReplayBatchSize
+        self.recorderIngressSendDataReplayMaxMiBPerSecond = recorderIngressSendDataReplayMaxMiBPerSecond
+        self.recorderIngress = recorderIngress
+        self.containerMemoryLimitsEnabled = containerMemoryLimitsEnabled
+        self.vitalServerContainerMemoryLimitMiB = vitalServerContainerMemoryLimitMiB
+        self.recorderIngressContainerMemoryLimitMiB = recorderIngressContainerMemoryLimitMiB
+        self.redisContainerMemoryLimitMiB = redisContainerMemoryLimitMiB
         self.startOnBoot = startOnBoot
         self.startOnBootConfigurable = startOnBootConfigurable
         self.autoRecoveryEnabled = autoRecoveryEnabled
@@ -69,6 +129,7 @@ public struct RuntimePlatformSettingsDocument: Codable, Equatable, Sendable {
         self.logArchiveRetentionDays = logArchiveRetentionDays
         self.logArchiveMaximumGiB = logArchiveMaximumGiB
         self.restartAfterSave = restartAfterSave
+        self.appliedVMSettings = appliedVMSettings
     }
 }
 

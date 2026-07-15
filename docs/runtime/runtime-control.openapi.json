@@ -7154,6 +7154,24 @@
           }
         }
       },
+      "RuntimePlatformAppliedVMSettingsDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cpuCount",
+          "memoryGiB",
+          "networkMode",
+          "bridgedInterface",
+          "vitalFilesDirectory"
+        ],
+        "properties": {
+          "cpuCount": { "type": "integer", "minimum": 1 },
+          "memoryGiB": { "type": "integer", "minimum": 1 },
+          "networkMode": { "type": "string", "enum": ["shared", "bridged"] },
+          "bridgedInterface": { "type": ["string", "null"] },
+          "vitalFilesDirectory": { "type": "string", "minLength": 1 }
+        }
+      },
       "RuntimePlatformSettingsDocument": {
         "type": "object",
         "additionalProperties": false,
@@ -7167,6 +7185,18 @@
           "proxyPort",
           "runtimeControlPort",
           "vitalFilesDirectory",
+          "vitalServerURL",
+          "remoteConsoleURL",
+          "publicHost",
+          "publicPort",
+          "recorderIngressSendDataMode",
+          "recorderIngressSendDataReplayBatchSize",
+          "recorderIngressSendDataReplayMaxMiBPerSecond",
+          "recorderIngress",
+          "containerMemoryLimitsEnabled",
+          "vitalServerContainerMemoryLimitMiB",
+          "recorderIngressContainerMemoryLimitMiB",
+          "redisContainerMemoryLimitMiB",
           "startOnBoot",
           "startOnBootConfigurable",
           "autoRecoveryEnabled",
@@ -7176,7 +7206,8 @@
           "backupRetentionCount",
           "logArchiveRetentionDays",
           "logArchiveMaximumGiB",
-          "restartAfterSave"
+          "restartAfterSave",
+          "appliedVMSettings"
         ],
         "properties": {
           "cpuCount": { "type": "integer", "minimum": 1 },
@@ -7188,6 +7219,21 @@
           "proxyPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
           "runtimeControlPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
           "vitalFilesDirectory": { "type": "string", "minLength": 1 },
+          "vitalServerURL": { "type": "string" },
+          "remoteConsoleURL": { "type": "string" },
+          "publicHost": { "type": "string" },
+          "publicPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "recorderIngressSendDataMode": {
+            "type": "string",
+            "enum": ["passthrough", "mirror_spool", "spool_only", "spool_and_replay"]
+          },
+          "recorderIngressSendDataReplayBatchSize": { "type": "integer", "minimum": 1 },
+          "recorderIngressSendDataReplayMaxMiBPerSecond": { "type": "integer", "minimum": 1 },
+          "recorderIngress": { "$ref": "#/components/schemas/RuntimeRecorderIngressSettings" },
+          "containerMemoryLimitsEnabled": { "type": "boolean" },
+          "vitalServerContainerMemoryLimitMiB": { "type": "integer", "minimum": 1 },
+          "recorderIngressContainerMemoryLimitMiB": { "type": "integer", "minimum": 1 },
+          "redisContainerMemoryLimitMiB": { "type": "integer", "minimum": 1 },
           "startOnBoot": { "type": "boolean" },
           "startOnBootConfigurable": { "type": "boolean" },
           "autoRecoveryEnabled": { "type": "boolean" },
@@ -7197,7 +7243,13 @@
           "backupRetentionCount": { "type": "integer", "minimum": 1 },
           "logArchiveRetentionDays": { "type": "integer", "minimum": 1 },
           "logArchiveMaximumGiB": { "type": "integer", "minimum": 1 },
-          "restartAfterSave": { "type": "boolean" }
+          "restartAfterSave": { "type": "boolean" },
+          "appliedVMSettings": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RuntimePlatformAppliedVMSettingsDocument" },
+              { "type": "null" }
+            ]
+          }
         }
       },
       "RuntimePlatformSettingsApplyDocument": {

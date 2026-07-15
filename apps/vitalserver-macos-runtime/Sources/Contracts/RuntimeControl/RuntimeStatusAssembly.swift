@@ -1,5 +1,14 @@
 import Contracts
 
+public enum PlatformStateReadFailureAssembler {
+    public static func make(source: String, reason: String) -> PlatformState {
+        PlatformState(
+            runtimeInstallationState: .inspectFailed(reason),
+            readIssues: [PlatformStateReadIssue(source: source, message: reason)]
+        )
+    }
+}
+
 public struct RuntimeVMLifecycleRead {
     public let document: RuntimeVMLifecycleDocument?
     public let issue: PlatformStateReadIssue?

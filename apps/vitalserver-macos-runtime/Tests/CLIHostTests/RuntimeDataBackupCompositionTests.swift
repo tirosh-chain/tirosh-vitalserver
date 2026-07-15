@@ -280,7 +280,7 @@ private struct RuntimeDataBackupServiceManager: RuntimeServiceManager {
     }
 }
 
-private final class RuntimeDataBackupOperationLeaseOwner: RuntimeOperationLeaseOwner {
+private final class RuntimeDataBackupOperationLeaseOwner: RuntimeOperationLeaseOwner, @unchecked Sendable {
     private var document: RuntimeOperationLeaseDocument?
 
     func loadOperationLease() -> RuntimeOperationLeaseLoadResult {

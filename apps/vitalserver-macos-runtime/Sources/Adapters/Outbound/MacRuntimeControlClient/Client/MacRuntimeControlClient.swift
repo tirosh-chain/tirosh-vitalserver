@@ -48,6 +48,57 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         )
     }
 
+    public init(
+        releaseInfo: RuntimeReleaseInfo,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        settingsReader: any RuntimeSettingsReading,
+        commandWorker: MacRuntimeControlCommandWorker
+    ) {
+        self.init(
+            releaseInfo: releaseInfo,
+            platformStateReader: SystemPlatformStateReader(
+                guestAddressProvider: guestAddressProvider,
+                vmLifecycleResourceReader: vmLifecycleResourceReader
+            ),
+            operationStateReader: SystemPlatformOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
+            fileReader: SystemRuntimeHostFileReader(),
+            settingsReader: settingsReader,
+            commandWorker: commandWorker
+        )
+    }
+
+    public init(
+        releaseInfo: RuntimeReleaseInfo,
+        platformStateReader: any PlatformStateReading,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        settingsReader: any RuntimeSettingsReading,
+        commandWorker: MacRuntimeControlCommandWorker
+    ) {
+        self.init(
+            releaseInfo: releaseInfo,
+            platformStateReader: platformStateReader,
+            operationStateReader: SystemPlatformOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
+            fileReader: SystemRuntimeHostFileReader(),
+            settingsReader: settingsReader,
+            commandWorker: commandWorker
+        )
+    }
+
     init(
         releaseInfo: RuntimeReleaseInfo,
         platformStateReader: PlatformStateReading = SystemPlatformStateReader(),

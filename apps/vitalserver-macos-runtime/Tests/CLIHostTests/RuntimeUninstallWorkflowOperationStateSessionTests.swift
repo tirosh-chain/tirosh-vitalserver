@@ -166,7 +166,7 @@ final class RuntimeUninstallWorkflowOperationStateSessionTests: XCTestCase {
     }
 }
 
-private final class RuntimeOperationLeaseOwnerSpy: RuntimeOperationLeaseOwner {
+private final class RuntimeOperationLeaseOwnerSpy: RuntimeOperationLeaseOwner, @unchecked Sendable {
     private var lease: RuntimeOperationLeaseDocument?
 
     func loadOperationLease() -> RuntimeOperationLeaseLoadResult {

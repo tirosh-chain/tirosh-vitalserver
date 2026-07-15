@@ -8,16 +8,22 @@ import RuntimeControl
 @MainActor
 public final class MacPlatformAgentService {
     private let server: RuntimeControlLocalHTTPServer
+    private let endpointSynchronizationLoop: RuntimeEndpointSynchronizationLoop
 
-    private init(server: RuntimeControlLocalHTTPServer) {
+    private init(
+        server: RuntimeControlLocalHTTPServer,
+        endpointSynchronizationLoop: RuntimeEndpointSynchronizationLoop
+    ) {
         self.server = server
+        self.endpointSynchronizationLoop = endpointSynchronizationLoop
     }
 
     public static func live(
         installedPaths: InstalledRuntimePaths = .defaultInstalled,
         servesDevConsole: Bool = GeneratedRelease.testEnabled,
         port: Int? = nil,
-        automationToken: String? = nil
+        automationToken: String? = nil,
+        endpointSynchronizationInterval: TimeInterval = 2
     ) throws -> MacPlatformAgentService {
         let hostStateDatabase = SQLiteHostRuntimeStateDatabase(
             url: installedPaths.runtimeStateDatabase
@@ -48,6 +54,20 @@ public final class MacPlatformAgentService {
         let runtimeEndpointStore = SQLiteRuntimeGuestAddressResourceStore(
             databaseURL: installedPaths.runtimeStateDatabase,
             lifecycleTransitionDecider: RuntimeVMLifecycleTransitionUseCase()
+        )
+        let endpointSynchronizationLoop = RuntimeEndpointSynchronizationLoop(
+            bootstrapReader: FileRuntimeGuestAddressBootstrapReader(
+                url: installedPaths.vmIPFile
+            ),
+            lifecycleReader: SQLiteRuntimeVMLifecycleStateRepository(
+                databaseURL: installedPaths.runtimeStateDatabase,
+                transitionDecider: RuntimeVMLifecycleTransitionUseCase()
+            ),
+            endpointRepository: SQLiteRuntimeEndpointStateRepository(
+                databaseURL: installedPaths.runtimeStateDatabase
+            ),
+            useCase: SynchronizeRuntimeEndpointUseCase(),
+            interval: endpointSynchronizationInterval
         )
         let guestAddressController = RuntimeControlGuestAddressController(
             reader: runtimeEndpointStore,
@@ -112,7 +132,10 @@ public final class MacPlatformAgentService {
             servesDevConsole: servesDevConsole,
             staticFileDirectory: pwaDirectory
         )
-        return MacPlatformAgentService(server: server)
+        return MacPlatformAgentService(
+            server: server,
+            endpointSynchronizationLoop: endpointSynchronizationLoop
+        )
     }
 
     public func run() throws -> Never {
@@ -127,9 +150,11 @@ public final class MacPlatformAgentService {
 
     public func start() throws {
         try server.start()
+        endpointSynchronizationLoop.start()
     }
 
     public func stop() {
+        endpointSynchronizationLoop.stop()
         server.stop()
     }
 }

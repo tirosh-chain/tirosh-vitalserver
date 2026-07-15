@@ -186,18 +186,14 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"'
         in proxy_run_text
     )
-    assert 'runtime_endpoint_file="${vm_home}/run/runtime-endpoint.json"' in proxy_run_text
+    assert "runtime-endpoint.json" not in proxy_run_text
     assert 'state_file="${vm_home}/data/run/runtime-observation.json"' not in proxy_run_text
     assert "read_state_value()" not in proxy_run_text
     assert "read_guest_http()" not in proxy_run_text
     assert "waiting for VM runtime observation" not in proxy_run_text
     assert "waiting for VM runtime bootstrap" not in proxy_run_text
-    assert "publish_runtime_endpoint()" in proxy_run_text
-    assert "clear_runtime_endpoint()" in proxy_run_text
-    assert '"source":"platform-agent"' in proxy_run_text
-    assert 'mv -f "${temporary}" "${runtime_endpoint_file}"' in proxy_run_text
-    assert "VITALSERVER_RUNTIME_CONTROL_API_BASE_URL" not in proxy_run_text
-    assert '/platform/runtime-endpoint' not in proxy_run_text
+    assert "publish_runtime_endpoint()" not in proxy_run_text
+    assert "clear_runtime_endpoint()" not in proxy_run_text
     assert '"${runtime_logs}"' in proxy_run_text
     assert '"${nginx_prefix}/temp/client_body"' in proxy_run_text
     assert '"${nginx_prefix}/temp/proxy"' in proxy_run_text
@@ -571,7 +567,7 @@ esac
     assert "waiting for VM upstream readiness: http://192.168.64.8:80/" in stderr
 
 
-def test_proxy_run_publishes_durable_runtime_endpoint_and_routes_from_it(
+def test_proxy_run_routes_from_bootstrap_without_publishing_runtime_endpoint(
     tmp_path: Path,
 ) -> None:
     root = repo_root()
@@ -659,12 +655,10 @@ exit 0
             },
             start_new_session=True,
         )
-        endpoint_document: dict[str, str] | None = None
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
             stdout = stdout_path.read_text(encoding="utf-8")
-            if endpoint_file.exists() and "started proxy:" in stdout:
-                endpoint_document = json.loads(endpoint_file.read_text(encoding="utf-8"))
+            if "started proxy:" in stdout:
                 break
             time.sleep(0.05)
         os.killpg(process.pid, signal.SIGTERM)
@@ -677,11 +671,6 @@ exit 0
     calls = capture_file.read_text(encoding="utf-8")
     stdout = stdout_path.read_text(encoding="utf-8")
     stderr = stderr_path.read_text(encoding="utf-8")
-    assert endpoint_document == {
-        "address": "192.168.64.9",
-        "source": "platform-agent",
-        "state": "loaded",
-    }
     assert not endpoint_file.exists()
     assert "/platform/runtime-endpoint" not in calls
     assert "192.168.64.9:80" in calls

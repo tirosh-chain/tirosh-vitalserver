@@ -2402,6 +2402,14 @@ export interface components {
             readIssues: components["schemas"]["RuntimeSettingsReadIssue"][];
             readError: string | null;
         };
+        RuntimePlatformAppliedVMSettingsDocument: {
+            cpuCount: number;
+            memoryGiB: number;
+            /** @enum {string} */
+            networkMode: "shared" | "bridged";
+            bridgedInterface: string | null;
+            vitalFilesDirectory: string;
+        };
         RuntimePlatformSettingsDocument: {
             cpuCount: number;
             memoryGiB: number;
@@ -2413,6 +2421,19 @@ export interface components {
             proxyPort: number;
             runtimeControlPort: number;
             vitalFilesDirectory: string;
+            vitalServerURL: string;
+            remoteConsoleURL: string;
+            publicHost: string;
+            publicPort: number;
+            /** @enum {string} */
+            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataReplayBatchSize: number;
+            recorderIngressSendDataReplayMaxMiBPerSecond: number;
+            recorderIngress: components["schemas"]["RuntimeRecorderIngressSettings"];
+            containerMemoryLimitsEnabled: boolean;
+            vitalServerContainerMemoryLimitMiB: number;
+            recorderIngressContainerMemoryLimitMiB: number;
+            redisContainerMemoryLimitMiB: number;
             startOnBoot: boolean;
             startOnBootConfigurable: boolean;
             autoRecoveryEnabled: boolean;
@@ -2423,6 +2444,7 @@ export interface components {
             logArchiveRetentionDays: number;
             logArchiveMaximumGiB: number;
             restartAfterSave: boolean;
+            appliedVMSettings: components["schemas"]["RuntimePlatformAppliedVMSettingsDocument"] | null;
         };
         RuntimePlatformSettingsApplyDocument: {
             cpuCount: number;

@@ -4,7 +4,7 @@ import Application
 import Contracts
 import Errors
 
-protocol PlatformStateReading: Sendable {
+public protocol PlatformStateReading: Sendable {
     func loadPlatformState(settings: RuntimeSettings) -> PlatformState
     func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState
 }

@@ -41,6 +41,32 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.runtimeControlPort, 44080)
     }
 
+    func testPlatformSettingsOwnerFailureRemainsAnExplicitFailedPresentationState() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.settings = RuntimeSettings(readIssues: [
+            RuntimeSettingsReadIssue(
+                source: "platformSettings",
+                message: "Platform Agent API unavailable"
+            )
+        ])
+
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(
+            viewModel.platformSettingsReadState,
+            .failed([RuntimeSettingsReadIssue(
+                source: "platformSettings",
+                message: "Platform Agent API unavailable"
+            )])
+        )
+        XCTAssertFalse(viewModel.canDisplayPlatformSettings)
+        XCTAssertEqual(viewModel.platformSettingsReadIssues.map(\.source), ["platformSettings"])
+    }
+
     func testViewModelInitialSettingsUsesExplicitInputWithoutControlSettingsRead() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         var initialSettings = RuntimeSettings()

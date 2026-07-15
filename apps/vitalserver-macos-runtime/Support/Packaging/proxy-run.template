@@ -10,7 +10,6 @@ runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"
 proxy_nginx_access_log="${VITALSERVER_PROXY_NGINX_ACCESS_LOG:-${runtime_logs}/proxy-nginx.access.log}"
 proxy_nginx_error_log="${VITALSERVER_PROXY_NGINX_ERROR_LOG:-${runtime_logs}/proxy-nginx.error.log}"
 vm_ip_file="${vm_home}/data/run/vm-ip"
-runtime_endpoint_file="${vm_home}/run/runtime-endpoint.json"
 template="${vm_home}/Support/Proxy/vitalserver.conf.template"
 config="${nginx_prefix}/vitalserver.conf"
 pid_file="${nginx_prefix}/logs/nginx.pid"
@@ -108,7 +107,6 @@ apply_config() {
 bootstrap_address_state="not-read"
 bootstrap_address_reason=""
 vm_ip=""
-last_published_guest_address=""
 
 read_vm_ip() {
   bootstrap_address_state=""
@@ -144,43 +142,6 @@ read_vm_ip() {
   vm_ip="${value}"
 }
 
-publish_runtime_endpoint() {
-  local address="$1"
-  if [ "${address}" = "${last_published_guest_address}" ]; then
-    return 0
-  fi
-  case "${address}" in
-    *\"* | *\\*)
-      log_err "runtime endpoint publish rejected: address contains invalid JSON string characters"
-      return 1
-      ;;
-  esac
-
-  local endpoint_directory=""
-  local temporary=""
-  endpoint_directory="$(dirname "${runtime_endpoint_file}")"
-  temporary="${runtime_endpoint_file}.tmp.$$"
-  if ! mkdir -p "${endpoint_directory}"; then
-    log_err "runtime endpoint directory create failed: path=${endpoint_directory}"
-    return 1
-  fi
-  if ! (
-    umask 022
-    printf '{"address":"%s","source":"platform-agent","state":"loaded"}\n' "${address}" >"${temporary}"
-  ); then
-    rm -f "${temporary}"
-    log_err "runtime endpoint temporary write failed: path=${temporary}"
-    return 1
-  fi
-  if ! mv -f "${temporary}" "${runtime_endpoint_file}"; then
-    rm -f "${temporary}"
-    log_err "runtime endpoint atomic replace failed: path=${runtime_endpoint_file}"
-    return 1
-  fi
-  last_published_guest_address="${address}"
-  log_out "published Platform runtime endpoint: address=${address} path=${runtime_endpoint_file}"
-}
-
 upstream_ready() {
   local upstream="$1"
 
@@ -195,14 +156,7 @@ proxy_ready() {
     && curl -fsS --max-time 3 "http://127.0.0.1:${proxy_port}/recorder-ingress/health" >/dev/null 2>&1
 }
 
-clear_runtime_endpoint() {
-  if [ -e "${runtime_endpoint_file}" ] && ! rm -f "${runtime_endpoint_file}"; then
-    log_err "runtime endpoint cleanup failed: path=${runtime_endpoint_file}"
-  fi
-}
-
 cleanup() {
-  clear_runtime_endpoint
   stop_nginx
 }
 
@@ -213,20 +167,6 @@ last_wait_message=""
 while true; do
   read_vm_ip
   if [ "${bootstrap_address_state}" = "loaded" ]; then
-    if ! publish_runtime_endpoint "${vm_ip}"; then
-      if nginx_is_running; then
-        log_err "runtime endpoint publish failed; stopping proxy with stale upstream"
-        stop_nginx
-      fi
-      wait_key="runtime-endpoint-publish:${vm_ip}"
-      if [ "${last_wait_message}" != "${wait_key}" ]; then
-        log_err "waiting for Platform runtime endpoint publish: address=${vm_ip}"
-        last_wait_message="${wait_key}"
-      fi
-      last_upstream=""
-      sleep "${VITALSERVER_PROXY_RELOAD_INTERVAL:-2}"
-      continue
-    fi
     upstream="${vm_ip}:80"
 
     if upstream_ready "${upstream}"; then

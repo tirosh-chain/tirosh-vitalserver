@@ -53,6 +53,63 @@ public actor MacRuntimeControlReadWorker {
         )
     }
 
+    public init(
+        releaseInfo: RuntimeReleaseInfo,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
+            reason: "workflow operation state owner unavailable for default read worker"
+        ),
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        settingsReader: any RuntimeSettingsReading
+    ) {
+        let fileReader = SystemRuntimeHostFileReader()
+        self.init(
+            releaseInfo: releaseInfo,
+            platformStateReader: SystemPlatformStateReader(
+                guestAddressProvider: guestAddressProvider,
+                vmLifecycleResourceReader: vmLifecycleResourceReader
+            ),
+            operationStateReader: SystemPlatformOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader,
+                workflowOperationStateReader: workflowOperationStateReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
+            fileReader: fileReader,
+            settingsReader: settingsReader
+        )
+    }
+
+    public init(
+        releaseInfo: RuntimeReleaseInfo,
+        platformStateReader: any PlatformStateReading,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
+            reason: "workflow operation state owner unavailable for default read worker"
+        ),
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        settingsReader: any RuntimeSettingsReading
+    ) {
+        let fileReader = SystemRuntimeHostFileReader()
+        self.init(
+            releaseInfo: releaseInfo,
+            platformStateReader: platformStateReader,
+            operationStateReader: SystemPlatformOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader,
+                workflowOperationStateReader: workflowOperationStateReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
+            fileReader: fileReader,
+            settingsReader: settingsReader
+        )
+    }
+
     init(
         releaseInfo: RuntimeReleaseInfo,
         platformStateReader: any PlatformStateReading,

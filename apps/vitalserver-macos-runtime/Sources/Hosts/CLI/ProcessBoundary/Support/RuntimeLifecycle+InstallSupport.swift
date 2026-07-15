@@ -322,6 +322,7 @@ extension RuntimeLifecycle {
                 runtimeHome: paths.home,
                 nginxDirectory: productRoot.appendingPathComponent("nginx"),
                 runtimeStateDatabase: installedPaths.runtimeStateDatabase,
+                runtimeControlSettings: installedPaths.runtimeControlSettings,
                 proxyLaunchDaemonPlist: RuntimeManagedServicePaths.launchDaemonPlist(.proxy),
                 serviceLaunchDaemonPlists: [
                     RuntimeManagedServicePaths.launchDaemonPlist(.vm),

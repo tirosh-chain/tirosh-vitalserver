@@ -4,7 +4,7 @@ import Application
 import Contracts
 import Errors
 
-protocol RuntimeSettingsReading: Sendable {
+public protocol RuntimeSettingsReading: Sendable {
     func load() -> RuntimeSettings
 }
 

@@ -39,6 +39,27 @@ The Host state database path is:
 
 The installed database is owned by `root:wheel` with mode `0600`. Host settings may include secret-bearing Guest configuration, while diagnostic outbox payloads deliberately contain only revision and run metadata.
 
+## Process access boundary
+
+The root Platform Agent is the installed runtime's SQLite access owner. The login-user Control Panel must not open `runtime-state.sqlite`, relax its permissions, or load the root-only automation token.
+
+- Platform Agent repositories read and mutate Host SQLite state.
+- Control Panel reads explicit Platform Agent HTTP resources through a loopback browser session.
+- The loopback session cookie is scoped to `127.0.0.1`, is created by the Platform Agent, and does not expose the automation token.
+- Platform state comes from `/platform`; the Control Panel must not reconstruct it from settings, files, or missing API data.
+- Platform settings come from `/platform/settings`. A missing, unavailable, failed, or undecodable response remains an unavailable/failed presentation state; initial form presets are not runtime state.
+- `runtime-control-settings.json` is a non-secret connection contract and is installed as `root:wheel` mode `0644`. The SQLite database and automation token remain mode `0600`.
+
+Giving the login user direct database access would merge process roles and expose secret-bearing Host settings. The fix for a Control Panel permission failure is an owner API contract, not broader SQLite permissions.
+
+## Runtime endpoint bootstrap
+
+The VM provider writes `vm-ip` as bootstrap evidence because the Host proxy needs the address before Guest services are available. That file is not the authoritative endpoint state.
+
+The root Platform Agent periodically reads the bootstrap evidence, validates it as an IPv4 address, binds it to the explicit running VM lifecycle run/revision, and commits the runtime endpoint to SQLite. Missing, invalid, unreadable, or lifecycle-unbound evidence does not clear or invent endpoint state.
+
+The proxy consumes `vm-ip` only for nginx routing. It does not publish `runtime-endpoint.json`, write SQLite, or own lifecycle meaning. After the SQLite endpoint cutover there is no production `runtime-endpoint.json` reader or writer.
+
 ## Schema status
 
 Schema version 1 establishes the persistence foundation:
@@ -145,7 +166,7 @@ There is no dual-source period after cutover and no runtime fallback to legacy f
 
 The schema/connection/readiness/outbox foundation and operation lease cutover are complete:
 
-- CLI, Platform Agent, and Control Panel reads use the SQLite lease owner;
+- CLI and Platform Agent use the SQLite lease owner, while the Control Panel consumes the Platform Agent's explicit lease API;
 - the one-time legacy lease import is explicit;
 - install proves database readiness;
 - the JSON lease repository was deleted and an architecture test prevents its return.

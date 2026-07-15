@@ -3,6 +3,12 @@ import RuntimeControl
 import Contracts
 import Errors
 
+enum RuntimePlatformSettingsPresentationState: Equatable {
+    case notRead
+    case loaded
+    case failed([RuntimeSettingsReadIssue])
+}
+
 @MainActor
 public final class RuntimeViewModel: ObservableObject {
     @Published var status: PlatformState
@@ -10,6 +16,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published private(set) var runtimeSettings = RuntimeSettings()
     @Published private(set) var savedSettings = RuntimeSettings()
     @Published var settings = RuntimeSettings()
+    @Published private(set) var platformSettingsReadState: RuntimePlatformSettingsPresentationState = .notRead
     @Published var selectedBundleURL: URL?
     @Published var selectedBundleSummary = ""
     @Published var selectedBundleVerification = ""
@@ -149,6 +156,7 @@ public final class RuntimeViewModel: ObservableObject {
         self.runtimeSettings = displayRuntimeSettings
         self.savedSettings = displaySettings
         self.settings = displaySettings
+        self.platformSettingsReadState = Self.platformSettingsPresentationState(for: loadedSettings)
         self.status = resolvedStatus
         self.operationState = resolvedOperationState
         let snapshots = RuntimePresentationSnapshotLoader(
@@ -169,6 +177,21 @@ public final class RuntimeViewModel: ObservableObject {
 
     var capabilities: RuntimeControlCapabilities {
         controlClient.capabilities
+    }
+
+    var canDisplayPlatformSettings: Bool {
+        platformSettingsReadState == .loaded
+    }
+
+    var platformSettingsReadIssues: [RuntimeSettingsReadIssue] {
+        switch platformSettingsReadState {
+        case .notRead:
+            []
+        case .loaded:
+            settings.readIssues
+        case .failed(let issues):
+            issues
+        }
     }
 
     var selectedBundleConfirmation: String {
@@ -605,6 +628,11 @@ public final class RuntimeViewModel: ObservableObject {
 
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
+        let nextReadState = Self.platformSettingsPresentationState(for: nextSettings)
+        platformSettingsReadState = nextReadState
+        guard nextReadState == .loaded else {
+            return
+        }
         var loadedSettings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
         do {
             let read = try await controlClient.loadRuntimeRedisRelaySettings()
@@ -625,6 +653,16 @@ public final class RuntimeViewModel: ObservableObject {
         runtimeSettings = Self.settingsWithAdvertisedServiceURLPresets(loadedSettings.runtimeAppliedSettings, fillMissing: true)
         savedSettings = loadedSettings
         settings = loadedSettings
+    }
+
+    private static func platformSettingsPresentationState(
+        for settings: RuntimeSettings
+    ) -> RuntimePlatformSettingsPresentationState {
+        let ownerIssues = settings.readIssues.filter { $0.source == "platformSettings" }
+        guard ownerIssues.isEmpty else {
+            return .failed(ownerIssues)
+        }
+        return .loaded
     }
 
     var canEditRuntimeRedisRelaySettings: Bool {

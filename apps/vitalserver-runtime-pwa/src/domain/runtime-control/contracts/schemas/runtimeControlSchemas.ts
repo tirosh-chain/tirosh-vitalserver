@@ -596,6 +596,18 @@ export const runtimePlatformSettingsSchema = z
     proxyPort: z.number().int().min(1).max(65535),
     runtimeControlPort: z.number().int().min(1).max(65535),
     vitalFilesDirectory: z.string().min(1),
+    vitalServerURL: z.string(),
+    remoteConsoleURL: z.string(),
+    publicHost: z.string(),
+    publicPort: z.number().int().min(1).max(65535),
+    recorderIngressSendDataMode: recorderIngressSendDataModeSchema,
+    recorderIngressSendDataReplayBatchSize: z.number().int().positive(),
+    recorderIngressSendDataReplayMaxMiBPerSecond: z.number().int().positive(),
+    recorderIngress: runtimeRecorderIngressSettingsSchema,
+    containerMemoryLimitsEnabled: z.boolean(),
+    vitalServerContainerMemoryLimitMiB: z.number().int().positive(),
+    recorderIngressContainerMemoryLimitMiB: z.number().int().positive(),
+    redisContainerMemoryLimitMiB: z.number().int().positive(),
     startOnBoot: z.boolean(),
     startOnBootConfigurable: z.boolean(),
     autoRecoveryEnabled: z.boolean(),
@@ -605,7 +617,17 @@ export const runtimePlatformSettingsSchema = z
     backupRetentionCount: z.number().int().positive(),
     logArchiveRetentionDays: z.number().int().positive(),
     logArchiveMaximumGiB: z.number().int().positive(),
-    restartAfterSave: z.boolean()
+    restartAfterSave: z.boolean(),
+    appliedVMSettings: z
+      .object({
+        cpuCount: z.number().int().positive(),
+        memoryGiB: z.number().int().positive(),
+        networkMode: networkModeSchema,
+        bridgedInterface: z.string().nullable(),
+        vitalFilesDirectory: z.string().min(1)
+      })
+      .strict()
+      .nullable()
   })
   .strict();
 

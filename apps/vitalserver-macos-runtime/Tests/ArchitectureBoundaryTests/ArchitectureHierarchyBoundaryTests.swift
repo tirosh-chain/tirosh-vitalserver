@@ -3315,10 +3315,14 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "RuntimeControlLocalAPIStatusRead.failed",
             "updateRemoteConsoleStatus(",
             "RuntimeControlLocalHTTPServer",
+            "SQLiteRuntimeOperationLeaseRepository(",
+            "SQLiteRuntimeVMLifecycleResourceStore(",
+            "SQLiteRuntimeGuestAddressResourceStore(",
+            "SQLiteRuntimeHostSettingsRepository(",
         ] {
             XCTAssertFalse(
                 environmentText.contains(token),
-                "The Control Panel is a Platform Agent consumer and must not publish listener state: \(token)"
+                "The Control Panel is a Platform Agent API consumer and must not own listener or SQLite state: \(token)"
             )
         }
     }
@@ -4708,6 +4712,22 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
         XCTAssertFalse(legacyNames.contains("vm-lifecycle.json"))
         XCTAssertFalse(legacyNames.contains("runtime-endpoint.json"))
+
+        let packagingRoot = packageRoot().appendingPathComponent("Support/Packaging")
+        let packagingFiles = try FileManager.default.subpathsOfDirectory(atPath: packagingRoot.path)
+        for relativePath in packagingFiles {
+            let url = packagingRoot.appendingPathComponent(relativePath)
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else {
+                continue
+            }
+            let text = try String(contentsOf: url, encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("runtime-endpoint.json"),
+                "Production packaging must not restore a legacy runtime endpoint state writer: \(relativePath)"
+            )
+        }
     }
 
     func testRuntimeVMProcessStopStateInterpretationLivesInContracts() throws {

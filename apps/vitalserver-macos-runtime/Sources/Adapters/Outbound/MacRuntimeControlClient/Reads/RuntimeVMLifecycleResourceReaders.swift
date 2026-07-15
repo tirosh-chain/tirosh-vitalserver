@@ -3,7 +3,7 @@ import Contracts
 import Foundation
 import RuntimeControl
 
-public protocol RuntimeVMLifecycleResourceReading {
+public protocol RuntimeVMLifecycleResourceReading: Sendable {
     func loadVMLifecycleResource() -> RuntimeVMLifecycleResourceState
 }
 
@@ -43,10 +43,10 @@ public struct MissingRuntimeVMLifecycleResourceReader: RuntimeVMLifecycleResourc
 }
 
 public struct RuntimeControlAPIVMLifecycleResourceReader: RuntimeVMLifecycleResourceReading {
-    private let ownerFactory: () throws -> RuntimeControlAPIVMLifecycleOwner
+    private let ownerFactory: @Sendable () throws -> RuntimeControlAPIVMLifecycleOwner
 
     public init(
-        ownerFactory: @escaping () throws -> RuntimeControlAPIVMLifecycleOwner = {
+        ownerFactory: @escaping @Sendable () throws -> RuntimeControlAPIVMLifecycleOwner = {
             try RuntimeControlAPIVMLifecycleOwner()
         }
     ) {

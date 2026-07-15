@@ -1,9 +1,10 @@
 import CryptoKit
+import Contracts
 import Foundation
 
 public struct RuntimeControlLoopbackBrowserSession: Equatable, Sendable {
-    public static let bootstrapPath = "/platform/browser-session"
-    public static let cookieName = "vitalserver_platform_session"
+    public static let bootstrapPath = RuntimeControlLoopbackSessionContract.bootstrapPath
+    public static let cookieName = RuntimeControlLoopbackSessionContract.cookieName
     private static let lifetimeSeconds = 8 * 60 * 60
 
     public let token: String

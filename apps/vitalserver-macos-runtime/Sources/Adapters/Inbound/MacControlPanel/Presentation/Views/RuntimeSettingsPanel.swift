@@ -21,7 +21,8 @@ struct RuntimeSettingsPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 settingsReadIssuesSection
-                settingsSection(AppConstants.Labels.sectionVM) {
+                if viewModel.canDisplayPlatformSettings {
+                    settingsSection(AppConstants.Labels.sectionVM) {
                     settingSlider(
                         AppConstants.Labels.cpu,
                         value: $viewModel.settings.cpuCount,
@@ -189,12 +190,16 @@ struct RuntimeSettingsPanel: View {
                     }
                 }
                 restartRuntimeSection
-                applyActionRow
+                    applyActionRow
+                }
             }
             .frame(maxWidth: 760, alignment: .leading)
             .padding(16)
         }
         .onAppear {
+            guard viewModel.canDisplayPlatformSettings else {
+                return
+            }
             clampCPUCountToSystemLimit()
             clampMemoryToSystemLimit()
             clampReplayThroughput()
@@ -253,9 +258,9 @@ struct RuntimeSettingsPanel: View {
 
     @ViewBuilder
     private var settingsReadIssuesSection: some View {
-        if !viewModel.settings.readIssues.isEmpty {
+        if !viewModel.platformSettingsReadIssues.isEmpty {
             settingsSection(AppConstants.Labels.settingsReadIssues) {
-                ForEach(viewModel.settings.readIssues, id: \.source) { issue in
+                ForEach(viewModel.platformSettingsReadIssues, id: \.source) { issue in
                     Text("\(issue.source): \(issue.message)")
                         .font(.caption)
                         .foregroundStyle(.red)
