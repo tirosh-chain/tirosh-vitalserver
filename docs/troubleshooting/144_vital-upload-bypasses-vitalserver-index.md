@@ -11,6 +11,9 @@
 - Host shared Vital Files directory에는 파일이 생기지만 VitalServer My Files와
   `GET /api/filelist`에는 나타나지 않는다.
 - 같은 화면을 refresh하거나 VM을 재시작해도 Replay 목록이 채워지지 않는다.
+- API upload 경로로 전환한 설치본에서는 upload와 Replay 목록 조회가 모두
+  `vitalFileLibraryUnavailable` 및 `<urlopen error [Errno 111] Connection refused>`로
+  실패할 수 있다.
 
 ## Cause
 
@@ -19,14 +22,20 @@ Host Platform Agent/native shell이 선택한 파일을 configured shared direct
 목록 read도 Product Lab mount scan에 의존해 upload owner와 replay catalog owner가 달랐다.
 UI의 복사 건수는 VitalServer가 파일을 수락하고 index했다는 증거가 아니었다.
 
+API 전환 후 Guest file-library adapter가 VM 외부 ingress의 Docker publication인
+`127.0.0.1:80`을 Guest host process의 loopback endpoint로 사용한 문제도 있었다.
+설치 VM에서는 VM interface의 `:80`은 reachable이어도 Guest loopback `:80` listener가
+존재하지 않는다. Guest 내부 VitalServer API 경계는 Compose가 명시적으로 publish한
+recorder ingress `127.0.0.1:18083`이다.
+
 ## Checks
 
 VitalServer API 자체의 upload와 index를 확인한다.
 
 ```sh
 curl -sS -X POST --data-urlencode 'id=admin' --data-urlencode 'pw=<password>' \
-  http://127.0.0.1:<VitalServer-port>/api/login
-curl -sS 'http://127.0.0.1:<VitalServer-port>/api/filelist?access_token=<token>&unixtimestamp=1' \
+  http://127.0.0.1:18083/api/login
+curl -sS 'http://127.0.0.1:18083/api/filelist?access_token=<token>&unixtimestamp=1' \
   --output /tmp/vital-filelist.json.gz
 gzip -dc /tmp/vital-filelist.json.gz
 ```
@@ -42,7 +51,8 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
 
 - Host/PWA가 선택한 bytes를 Runtime Control multipart upload로 전달한다.
 - Guest library adapter가 전체 선택을 사전 검증한 뒤 각 파일을 VitalServer
-  `POST /upload`의 `vitalfile` field로 보낸다.
+  `POST /upload`의 `vitalfile` field로 보낸다. Guest adapter는 이를
+  `http://127.0.0.1:18083` recorder ingress를 통해 호출한다.
 - 응답이 HTTP 2xx이면서 본문이 정확히 `success`인지 확인한다.
 - 업로드 후 인증된 `GET /api/filelist`를 다시 읽어 모든 파일의 index entry를 확인한다.
 - Swift/PWA는 성공 뒤 `/runtime/lab/vital-files` query를 다시 읽고, 그 explicit loaded
@@ -56,6 +66,10 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
   검증한다.
 - HTTP 200 error text, authentication failure, invalid gzip/JSON, missing index entry, partial
   multi-file completion을 empty/success로 변환하지 않는다.
+- 연결 실패에는 실패한 VitalServer API URL을 포함해 외부 interface와 Guest loopback
+  endpoint를 바로 구분할 수 있게 한다.
+- VM interface reachability를 Guest loopback reachability로 추정하지 않는다. Guest host
+  process가 사용하는 endpoint는 Compose의 explicit host publication과 같아야 한다.
 - Swift gateway, Guest usecase, VitalServer adapter, PWA query invalidation을 각각 focused test로
   고정한다.
 

@@ -246,17 +246,18 @@ class VitalServerVitalFileLibrary:
         headers: Mapping[str, str] | None = None,
         body: bytes | None = None,
     ) -> VitalServerHTTPResponse:
+        url = urljoin(self._base_url, path.lstrip("/"))
         try:
             return self._transport.request(
                 method=method,
-                url=urljoin(self._base_url, path.lstrip("/")),
+                url=url,
                 headers=headers or {},
                 body=body,
                 timeout=self._timeout_seconds,
             )
         except (OSError, URLError) as error:
             raise GuestControlDependencyError(
-                f"VitalServer request failed: {error}",
+                f"VitalServer request failed url={url}: {error}",
                 kind="vitalFileLibraryUnavailable",
             ) from error
 

@@ -347,6 +347,11 @@ configured library adapter, sends every valid file to VitalServer `POST /upload`
 and verifies the result through VitalServer `GET /api/filelist`. It does not create
 a Product Lab operation. HTTP 200 with a parser error body is a failed upload, and
 a later-file failure after earlier success is an explicit partial-completion failure.
+The Guest adapter reaches those APIs through the Compose-published recorder ingress
+endpoint `http://127.0.0.1:18083`. Guest loopback port `80` is not this contract:
+Docker publishes `edge:80` for traffic arriving on the VM interface, but that
+publication does not prove that a Guest host process can connect through
+`127.0.0.1:80`.
 
 The current Guest adapter maps these Product Lab commands to the `lab` service API:
 

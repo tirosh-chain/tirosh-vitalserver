@@ -71,6 +71,9 @@ from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 18330
+# The Guest Control process runs on the VM host.  Use the Compose-published
+# recorder-ingress loopback API, not the public edge listener at port 80.
+VITALSERVER_FILE_LIBRARY_BASE_URL = "http://127.0.0.1:18083"
 DEFAULT_GUEST_SERVICE_SPECS = dict.fromkeys(
     (
         "postgres",
@@ -139,7 +142,7 @@ def build_default_usecases() -> GuestControlUseCases:
         operation_ids=UUIDOperationIdFactory(),
         clock=SystemClock(),
         vital_file_library=VitalServerVitalFileLibrary(
-            base_url="http://127.0.0.1:80",
+            base_url=VITALSERVER_FILE_LIBRARY_BASE_URL,
             guest_mount=SETTINGS.shares.vital_files_mount,
             runtime_config=lambda: load_config(SETTINGS.paths.runtime_config_file),
         ),

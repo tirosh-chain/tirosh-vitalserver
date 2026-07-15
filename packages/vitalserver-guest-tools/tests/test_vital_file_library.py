@@ -22,6 +22,15 @@ class FakeTransport:
         return self.responses.pop(0)
 
 
+class ConnectionRefusedTransport(FakeTransport):
+    def __init__(self) -> None:
+        super().__init__([])
+
+    def request(self, **request: object) -> VitalServerHTTPResponse:
+        self.requests.append(request)
+        raise ConnectionRefusedError(111, "Connection refused")
+
+
 def response(body: bytes, status: int = 200) -> VitalServerHTTPResponse:
     return VitalServerHTTPResponse(status_code=status, headers={}, body=body)
 
@@ -74,6 +83,16 @@ def test_lists_vitalserver_index_as_replayable_guest_paths() -> None:
     ]
     assert transport.requests[0]["url"] == "http://127.0.0.1:18080/api/login"
     assert "access_token=access-token" in str(transport.requests[1]["url"])
+
+
+def test_unavailable_error_identifies_the_failed_vitalserver_endpoint() -> None:
+    transport = ConnectionRefusedTransport()
+
+    with pytest.raises(GuestControlDependencyError) as raised:
+        library(transport).list_files()
+
+    assert raised.value.kind == "vitalFileLibraryUnavailable"
+    assert "url=http://127.0.0.1:18080/api/login" in raised.value.message
 
 
 def test_uploads_each_selected_file_through_vitalserver_and_verifies_index() -> None:

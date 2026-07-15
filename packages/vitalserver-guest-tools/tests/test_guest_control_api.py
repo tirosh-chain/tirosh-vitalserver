@@ -916,7 +916,10 @@ def test_default_usecases_require_migrated_sqlite_without_postgres_startup(
     usecases = guest_control_api.build_default_usecases()
 
     assert checks == ["sqlite"]
-    assert vital_file_library_inputs[0]["base_url"] == "http://127.0.0.1:80"
+    assert (
+        vital_file_library_inputs[0]["base_url"]
+        == guest_control_api.VITALSERVER_FILE_LIBRARY_BASE_URL
+    )
     assert usecases.readiness()["status"] == "ready"
     assert checks == ["sqlite", "sqlite"]
     operation = usecases.restart_service("app")
