@@ -79,6 +79,11 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 
 ## 4. 사용자 시나리오 지도
 
+제품 전체 사용자 여정의 안정적인 ID, 상태 소유자, acceptance evidence와 Gherkin
+명세는 [제품 사용 시나리오 카탈로그](../../product/user-scenarios.md)를 기준으로 합니다.
+아래 표는 macOS runtime 문서로 들어가기 위한 요약이며 별도의 시나리오 source of
+truth가 아닙니다.
+
 ### 4-1. 시나리오별 입구
 
 | 시나리오 | 사용자가 보는 것 | 개발/운영자가 쓰는 것 | 세부 문서 |

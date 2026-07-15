@@ -7,6 +7,7 @@
 | 목적 | 먼저 볼 문서 |
 |---|---|
 | 제품 전체 맥락을 잡기 | [VitalServer 제품화 전략](product/productization.md) |
+| 제품 사용 여정과 acceptance evidence 보기 | [제품 사용 시나리오 카탈로그](product/user-scenarios.md) |
 | Vital Server Helper 공개/운영 문서 보기 | [Release Overview](../site-docs/release/index.md) |
 | Vital Server Helper 오픈소스 개발 문서 보기 | [Dev Overview](../site-docs/dev/index.md) |
 | Vital Server Helper release/dev 문서 작성 기준 보기 | [Vital Server Helper Release/Dev Documentation Plan](product/release-dev-documentation-plan.md) |
@@ -28,6 +29,7 @@
 | 문서 | 역할 |
 |---|---|
 | [VitalServer 제품화 전략](product/productization.md) | 저장소의 목표, upstream 동작, 제품화 기준, 아직 비어 있는 영역 |
+| [제품 사용 시나리오 카탈로그](product/user-scenarios.md) | 설치, 운영, Recorder, Product Lab, update, recovery, uninstall 사용자 여정과 Gherkin/evidence 연결 |
 | [Vital Server Helper Release Overview](../site-docs/release/index.md) | 공개 배포 독자를 위한 Vital Server Helper 소개, 설치, 운영 문서군 진입점 |
 | [Vital Server Helper Dev Overview](../site-docs/dev/index.md) | 오픈소스 contributor와 repository 유지보수자를 위한 서비스 경계, package 책임, build/release/test 문서군 진입점 |
 | [Vital Server Helper Release/Dev Documentation Plan](product/release-dev-documentation-plan.md) | Vital Server Helper 공개/배포를 위한 release/dev 독자 구분, 작성 대상 문서, MkDocs nav 기준 |

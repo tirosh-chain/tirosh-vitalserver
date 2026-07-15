@@ -16,4 +16,4 @@ dev/test: require-uv
 dev/build-testkit:
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- build --out-dir packages/vitalserver-testkit/dist --clear packages/vitalserver-testkit
 
-dev/check: dev/lint dev/typecheck dev/test
+dev/check: dev/lint dev/typecheck dev/test product/scenarios/check

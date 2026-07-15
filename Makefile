@@ -58,7 +58,7 @@ include make/vm.mk
 	runtime/up runtime/up-bridged runtime/down runtime/status runtime/health \
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
 	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke runtime/conformance runtime/proof/conformance runtime/proof/smoke runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/review runtime/proof/acceptance \
-	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop \
+	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop product/scenarios/check \
 	docs/build docs/serve \
 	devtools/release-contract devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
 	devtools/docker/images devtools/sign devtools/sign/bridged devtools/bridged/preflight \
@@ -153,6 +153,8 @@ runtime/proof/swift-focused:
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --package-path "$(VM_SWIFT_PACKAGE_DIR)" --filter "$(VM_RUNTIME_PROOF_SWIFT_FOCUSED_FILTER)"
 runtime/proof/http-e2e: runtime/e2e/smoke
 runtime/proof/review: runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/conformance platform-agent/proof pwa/check pwa/test pwa/build
+product/scenarios/check:
+	$(PYTHON) scripts/validate_user_scenarios.py
 runtime/proof/acceptance: runtime/proof/review runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/smoke
 runtime/permission/audit:
 	$(PYTHON) scripts/runtime_permission_audit.py $(RUNTIME_PERMISSION_AUDIT_ARGS)
@@ -562,10 +564,12 @@ help/docs:
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make docs/{serve|build} [DOCS_PORT=8000] [DOCS_PORT_MAX=8100]\n"
+	@printf "  make product/scenarios/check\n"
 	@printf "\n"
 	@printf "DOCS TARGETS\n"
 	@printf "  docs/serve                    Serve MkDocs site, choosing the first free port\n"
 	@printf "  docs/build                    Build MkDocs site into site/\n"
+	@printf "  product/scenarios/check       Validate catalog and Gherkin scenario traceability\n"
 	@printf "\n"
 	@printf "VARIABLES\n"
 	@printf "  DOCS_HOST=%s\n" "$(DOCS_HOST)"

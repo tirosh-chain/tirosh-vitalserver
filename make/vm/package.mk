@@ -404,7 +404,7 @@ internal/vm/pkg/dev/compile:
 internal/vm/pkg/dev/runtime-smoke:
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
 
-internal/vm/distribution/review: repo/verify-submodule pwa/check pwa/test
+internal/vm/distribution/review: repo/verify-submodule product/scenarios/check pwa/check pwa/test
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test \
 		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
 		--filter 'RuntimeLogArchiveRetention|RuntimeSettingsReadPolicy|RuntimeLogExporterTests|RuntimeLogCollectorTests|RuntimeSettingsValidatorTests|RuntimeLifecycleCommandTests|RuntimeConfigureRunnerTests|RuntimeFreshInstallHostSettingsTests|GuestCommandDispatcherSupportTests'
