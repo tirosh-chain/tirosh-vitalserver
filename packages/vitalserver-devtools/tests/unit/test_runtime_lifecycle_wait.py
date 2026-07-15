@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import subprocess
 from types import SimpleNamespace
 
@@ -24,10 +25,37 @@ from tirosh_vitalserver.devtools.application.inputs import (
 )
 
 
+def write_vm_lifecycle_owner(
+    vm_home,
+    *,
+    state,
+    terminal_reason=None,
+    message=None,
+):
+    database = vm_home / "runtime/runtime-state.sqlite"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE vm_lifecycle (
+              singleton_id INTEGER PRIMARY KEY,
+              state TEXT NOT NULL,
+              terminal_reason TEXT,
+              message TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO vm_lifecycle(singleton_id, state, terminal_reason, message)
+            VALUES (1, ?, ?, ?)
+            """,
+            (state, terminal_reason, message),
+        )
+
+
 def test_wait_for_runtime_stopped_accepts_stopped_lifecycle(tmp_path):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopped")
 
     result = wait_for_runtime_stopped(
         RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
@@ -168,16 +196,17 @@ def test_wait_for_runtime_stopped_rejects_stopping_lifecycle_with_running_proces
     monkeypatch,
     tmp_path,
 ):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(json.dumps({"state": "stopping"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopping")
     monkeypatch.setattr(
         "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
         ".running_vm_processes_for_home",
         lambda vm_home: [1234],
     )
 
-    with pytest.raises(SystemExit, match="timed out waiting for VM lifecycle stopped"):
+    with pytest.raises(
+        SystemExit,
+        match="timed out waiting for VM lifecycle and launcher process stopped",
+    ):
         wait_for_runtime_stopped(
             RuntimeWaitInput(
                 config=tmp_path / "config.toml",
@@ -187,33 +216,38 @@ def test_wait_for_runtime_stopped_rejects_stopping_lifecycle_with_running_proces
         )
 
 
-def test_wait_for_runtime_stopped_accepts_stopping_lifecycle_without_process(
+def test_wait_for_runtime_stopped_rejects_stopping_lifecycle_without_process(
     monkeypatch,
     tmp_path,
 ):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(json.dumps({"state": "stopping"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopping")
     monkeypatch.setattr(
         "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
         ".running_vm_processes_for_home",
         lambda vm_home: [],
     )
 
-    result = wait_for_runtime_stopped(
-        RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
-    )
-
-    assert result == 0
+    with pytest.raises(
+        SystemExit,
+        match=(
+            r"launcher process exited before VM lifecycle reached "
+            r"stopped.*state=stopping"
+        ),
+    ):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+            )
+        )
 
 
 def test_wait_for_runtime_stopped_waits_for_process_after_stopped_lifecycle(
     monkeypatch,
     tmp_path,
 ):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopped")
     process_reads = iter(([1234], []))
     observed_process_states: list[list[int]] = []
 
@@ -242,17 +276,11 @@ def test_wait_for_runtime_stopped_waits_for_process_after_stopped_lifecycle(
 
 
 def test_wait_for_runtime_stopped_rejects_failed_lifecycle(tmp_path):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(
-        json.dumps(
-            {
-                "state": "failed",
-                "terminalReason": "guest-kernel-panic",
-                "message": "guest kernel panic detected",
-            }
-        ),
-        encoding="utf-8",
+    write_vm_lifecycle_owner(
+        tmp_path,
+        state="failed",
+        terminal_reason="guest-kernel-panic",
+        message="guest kernel panic detected",
     )
 
     with pytest.raises(SystemExit, match="VM lifecycle failed while waiting"):
@@ -261,6 +289,70 @@ def test_wait_for_runtime_stopped_rejects_failed_lifecycle(tmp_path):
                 config=tmp_path / "config.toml",
                 vm_home=tmp_path,
                 timeout=1,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_ignores_stale_json_diagnostic(
+    monkeypatch,
+    tmp_path,
+):
+    diagnostic = tmp_path / "run/vm-lifecycle.json"
+    diagnostic.parent.mkdir(parents=True)
+    diagnostic.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopping")
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        lambda _: [28454],
+    )
+
+    with pytest.raises(SystemExit, match=r"state=stopping.*pids=28454"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_rejects_missing_sqlite_owner(tmp_path):
+    with pytest.raises(SystemExit, match="VM lifecycle SQLite owner is missing"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_rejects_invalid_sqlite_owner(tmp_path):
+    database = tmp_path / "runtime/runtime-state.sqlite"
+    database.parent.mkdir(parents=True)
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE unrelated(value TEXT)")
+
+    with pytest.raises(SystemExit, match="VM lifecycle SQLite owner read failed"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_rejects_invalid_sqlite_state(tmp_path):
+    write_vm_lifecycle_owner(tmp_path, state="unknown")
+
+    with pytest.raises(SystemExit, match="VM lifecycle SQLite state is invalid"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
             )
         )
 

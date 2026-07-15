@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -29,13 +30,32 @@ from tirosh_vitalserver.devtools.application.inputs import RootfsBaseInput
 
 def test_require_stopped_lifecycle_accepts_stopped_vm(tmp_path):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopped")
 
     require_stopped_lifecycle(source)
+
+
+def test_require_stopped_lifecycle_ignores_stale_json_diagnostic(tmp_path):
+    source = tmp_path / "vm" / "runtime" / "vm-disk.img"
+    diagnostic = tmp_path / "vm" / "run" / "vm-lifecycle.json"
+    source.parent.mkdir(parents=True)
+    diagnostic.parent.mkdir(parents=True)
+    source.write_bytes(b"disk")
+    diagnostic.write_text(json.dumps({"state": "failed"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopped")
+
+    require_stopped_lifecycle(source)
+
+
+def test_require_stopped_lifecycle_rejects_missing_sqlite_owner(tmp_path):
+    source = tmp_path / "vm" / "runtime" / "vm-disk.img"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"disk")
+
+    with pytest.raises(SystemExit, match="VM lifecycle SQLite owner is missing"):
+        require_stopped_lifecycle(source)
 
 
 def test_require_runtime_manifest_accepts_passed_rootfs_smoke(tmp_path):
@@ -280,11 +300,9 @@ def test_require_runtime_manifest_rejects_failed_cleanup(tmp_path):
 
 def test_require_stopped_lifecycle_rejects_stopping_vm(tmp_path):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(json.dumps({"state": "stopping"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopping")
 
     with pytest.raises(SystemExit, match="lifecycle is not stopped"):
         require_stopped_lifecycle(source)
@@ -292,16 +310,15 @@ def test_require_stopped_lifecycle_rejects_stopping_vm(tmp_path):
 
 def test_require_stopped_lifecycle_rejects_terminal_failure_reason(tmp_path):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(
-        json.dumps({"state": "stopped", "terminalReason": "guest-kernel-panic"}),
-        encoding="utf-8",
+    write_vm_lifecycle_owner(
+        source,
+        state="failed",
+        terminal_reason="guest-kernel-panic",
     )
 
-    with pytest.raises(SystemExit, match="terminal failure reason"):
+    with pytest.raises(SystemExit, match="lifecycle failed"):
         require_stopped_lifecycle(source)
 
 
@@ -316,11 +333,9 @@ def test_validate_gzip_file_rejects_corrupt_output(tmp_path):
 def test_run_rootfs_base_rejects_corrupt_compressor_output(tmp_path, monkeypatch):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
     output = tmp_path / "rootfs-base.raw.gz"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopped")
     write_runtime_manifest(source)
     write_ready_marker(source)
 
@@ -550,11 +565,9 @@ def test_require_rootfs_artifact_guest_deploy_match_rejects_static_metadata_chan
 
 def rootfs_source_with_lifecycle(tmp_path: Path) -> Path:
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopped")
     deploy = tmp_path / "vm" / "data" / "deploy"
     (deploy / "build-metadata").mkdir(parents=True)
     (deploy / "build-metadata/rootfs-input.json").write_text(
@@ -583,6 +596,34 @@ def rootfs_source_with_lifecycle(tmp_path: Path) -> Path:
     )
     (deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
     return source
+
+
+def write_vm_lifecycle_owner(
+    source: Path,
+    *,
+    state: str,
+    terminal_reason: str | None = None,
+    message: str | None = None,
+) -> None:
+    database = source.parent / "runtime-state.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE vm_lifecycle (
+              singleton_id INTEGER PRIMARY KEY,
+              state TEXT NOT NULL,
+              terminal_reason TEXT,
+              message TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO vm_lifecycle(singleton_id, state, terminal_reason, message)
+            VALUES (1, ?, ?, ?)
+            """,
+            (state, terminal_reason, message),
+        )
 
 
 def write_runtime_manifest(

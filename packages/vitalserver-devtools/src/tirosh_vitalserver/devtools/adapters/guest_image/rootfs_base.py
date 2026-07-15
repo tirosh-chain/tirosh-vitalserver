@@ -11,6 +11,7 @@ from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     guest_deploy_material_sha256,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
+    read_vm_lifecycle_owner,
     running_vm_processes_for_home,
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.gzip_compression import (
@@ -102,30 +103,26 @@ def run_rootfs_base(input: RootfsBaseInput) -> int:
 
 def require_stopped_lifecycle(source: Path) -> None:
     runtime_dir = source.parent
-    vm_home = runtime_dir.parent
-    lifecycle = vm_home / "run" / "vm-lifecycle.json"
-    if not lifecycle.is_file():
+    lifecycle_database = runtime_dir / "runtime-state.sqlite"
+    state, terminal_reason, _message = read_vm_lifecycle_owner(lifecycle_database)
+    if state == "failed":
         raise SystemExit(
-            "error: rootfs source VM lifecycle is missing; stop the golden VM "
-            f"cleanly before compressing rootfs: {lifecycle}"
+            "error: rootfs source VM lifecycle failed; refusing to compress "
+            "failed VM disk: "
+            f"terminalReason={terminal_reason or 'unknown'} "
+            f"database={lifecycle_database}"
         )
-    try:
-        document = json.loads(lifecycle.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise SystemExit(
-            f"error: rootfs source VM lifecycle is unreadable: {lifecycle}: {error}"
-        ) from error
-    state = document.get("state")
     if state != "stopped":
         raise SystemExit(
             "error: rootfs source VM lifecycle is not stopped; refusing to "
-            f"compress a VM disk with unproven shutdown state: state={state}"
+            "compress a VM disk with unproven shutdown state: "
+            f"state={state} database={lifecycle_database}"
         )
-    terminal_reason = document.get("terminalReason")
     if terminal_reason is not None:
         raise SystemExit(
             "error: rootfs source VM lifecycle has terminal failure reason; "
-            f"refusing to compress failed VM disk: terminalReason={terminal_reason}"
+            "refusing to compress failed VM disk: "
+            f"terminalReason={terminal_reason} database={lifecycle_database}"
         )
 
 

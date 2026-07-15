@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 import urllib.error
@@ -53,6 +54,10 @@ from tirosh_vitalserver.devtools.core.preflight import (
 APT_SNAPSHOT_PROBE_ATTEMPTS = 2
 APT_SNAPSHOT_PROBE_RETRY_DELAY_SECONDS = 2
 APT_SNAPSHOT_PROBE_TIMEOUT_SECONDS = 30
+
+VM_LIFECYCLE_STATES = frozenset(
+    {"starting", "bootstrapping", "running", "stopping", "stopped", "failed"}
+)
 
 ROOTFS_REQUIRED_STAGES = (
     "runtime-data-mount",
@@ -1165,43 +1170,78 @@ def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
 
 def wait_for_runtime_stopped(input: RuntimeWaitInput) -> int:
     vm_home = vm_home_path(input.vm_home)
-    lifecycle = vm_home / "run/vm-lifecycle.json"
-    print(f"Waiting for VM lifecycle stopped: {lifecycle}")
+    lifecycle_database = vm_home / "runtime/runtime-state.sqlite"
+    print(
+        "Waiting for VM lifecycle and launcher process stopped: "
+        f"{lifecycle_database}"
+    )
     deadline = time.monotonic() + input.timeout
-    last_state = "not-started"
-    while time.monotonic() < deadline:
-        state: object = None
-        try:
-            document = json.loads(lifecycle.read_text(encoding="utf-8"))
-            state = document.get("state")
-            if state == "failed":
-                terminal_reason = document.get("terminalReason", "unknown")
-                message = document.get("message", "")
-                raise SystemExit(
-                    "error: VM lifecycle failed while waiting for stopped: "
-                    f"terminalReason={terminal_reason} message={message}\n"
-                    f"Check VM launcher log: {launcher_log(input.vm_home)}"
-                )
-            last_state = str(state)
-        except (OSError, json.JSONDecodeError) as error:
-            last_state = str(error)
+    while True:
+        state, terminal_reason, message = read_vm_lifecycle_owner(lifecycle_database)
         running_processes = running_vm_processes_for_home(vm_home)
-        if not running_processes:
-            if state == "stopped":
-                print("VM lifecycle is stopped and launcher process is not running")
-            else:
-                print("VM launcher process is not running")
+        pid_text = ",".join(str(pid) for pid in running_processes) or "none"
+        if state == "failed":
+            raise SystemExit(
+                "error: VM lifecycle failed while waiting for stopped: "
+                f"terminalReason={terminal_reason or 'unknown'} "
+                f"message={message or ''}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
+            )
+        if state == "stopped" and not running_processes:
+            print("VM lifecycle is stopped")
+            print("VM launcher process is not running")
             return 0
-        if state == "stopped":
-            last_state = (
-                "stopped; launcher process still running pids="
-                + ",".join(str(pid) for pid in running_processes)
+        if not running_processes:
+            raise SystemExit(
+                "error: launcher process exited before VM lifecycle reached stopped: "
+                f"state={state} database={lifecycle_database}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
+            )
+        if time.monotonic() >= deadline:
+            raise SystemExit(
+                "error: timed out waiting for VM lifecycle and launcher process "
+                "stopped: "
+                f"database={lifecycle_database} state={state} pids={pid_text}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
             )
         time.sleep(2)
-    raise SystemExit(
-        f"error: timed out waiting for VM lifecycle stopped: {lifecycle} "
-        f"last={last_state}\nCheck VM launcher log: {launcher_log(input.vm_home)}"
-    )
+
+
+def read_vm_lifecycle_owner(database: Path) -> tuple[str, str | None, str | None]:
+    if not database.is_file():
+        raise SystemExit(f"error: VM lifecycle SQLite owner is missing: {database}")
+    try:
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            row = connection.execute(
+                """
+                SELECT state, terminal_reason, message
+                FROM vm_lifecycle
+                WHERE singleton_id = 1
+                """
+            ).fetchone()
+    except sqlite3.Error as error:
+        raise SystemExit(
+            f"error: VM lifecycle SQLite owner read failed: {database}: {error}"
+        ) from error
+    if row is None:
+        raise SystemExit(f"error: VM lifecycle SQLite state is missing: {database}")
+    state, terminal_reason, message = row
+    if not isinstance(state, str) or state not in VM_LIFECYCLE_STATES:
+        raise SystemExit(
+            "error: VM lifecycle SQLite state is invalid: "
+            f"database={database} state={state}"
+        )
+    if terminal_reason is not None and not isinstance(terminal_reason, str):
+        raise SystemExit(
+            "error: VM lifecycle SQLite terminal reason is invalid: "
+            f"database={database} terminalReason={terminal_reason}"
+        )
+    if message is not None and not isinstance(message, str):
+        raise SystemExit(
+            "error: VM lifecycle SQLite message is invalid: "
+            f"database={database} message={message}"
+        )
+    return state, terminal_reason, message
 
 
 def check_runtime_health(input: RuntimeHealthInput) -> int:
