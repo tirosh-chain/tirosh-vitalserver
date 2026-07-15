@@ -24,3 +24,5 @@ class RecoverRawArchiveVitalRequest(RecoverySchema):
     repeat: int = Field(default=1, ge=1)
     max_failure_rate: float = Field(default=0.0, alias="maxFailureRate", ge=0.0)
     skip_filename_check: bool = Field(default=False, alias="skipFilenameCheck")
+    start_offset: int = Field(default=0, alias="startOffset", ge=0)
+    end_offset: int | None = Field(default=None, alias="endOffset", ge=0)

@@ -17,6 +17,7 @@ test("send_data raw archive writer appends source payload JSONL", () => {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.archiveId, "send-data-raw.jsonl");
   assert.strictEqual(result.offset, 0);
+  assert.strictEqual(result.endOffset, fs.statSync(archivePath).size);
   const lines = fs.readFileSync(archivePath, "utf8").trim().split("\n");
   assert.strictEqual(lines.length, 1);
   const record = JSON.parse(lines[0]);

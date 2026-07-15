@@ -44,6 +44,7 @@ function metricsSnapshot(metrics) {
         sendDataEventsObserved: recorder.sendDataEventsObserved || 0,
         sendDataBytesObserved: recorder.sendDataBytesObserved || 0,
         lastSendDataObservedAt: recorder.lastSendDataObservedAt || null,
+        rawArchive: recorderRawArchiveSnapshot(recorder.rawArchive || defaultRecorderRawArchiveStatus()),
         redisIpSync: recorder.redisIpSync || null,
         spool: recorderSpoolSnapshot(recorder.spool || defaultRecorderSpoolStatus()),
         replay: recorderReplaySnapshot(recorder.replay || defaultRecorderReplayStatus()),
@@ -262,8 +263,20 @@ function recordSendDataRawArchived(metrics, item, result) {
   archive.persistedBytes += bytes;
   archive.lastArchivedAt = archivedAt;
   archive.lastArchiveId = result && result.archiveId ? result.archiveId : archive.lastArchiveId;
-  archive.lastOffset = Number.isFinite(result && result.offset) ? result.offset : archive.lastOffset;
+  archive.lastOffset = Number.isFinite(result && result.endOffset) ? result.endOffset : archive.lastOffset;
   metrics.sendDataRawArchive = archive;
+  const vrcode = item && item.vrcode;
+  if (vrcode) {
+    const recorder = metrics.recorders.get(vrcode) || defaultRecorderStatus();
+    const recorderArchive = recorder.rawArchive || defaultRecorderRawArchiveStatus();
+    recorderArchive.persistedEvents += 1;
+    recorderArchive.persistedBytes += bytes;
+    recorderArchive.lastArchivedAt = archivedAt;
+    recorderArchive.lastArchiveId = result && result.archiveId ? result.archiveId : recorderArchive.lastArchiveId;
+    recorderArchive.lastOffset = Number.isFinite(result && result.endOffset) ? result.endOffset : recorderArchive.lastOffset;
+    recorder.rawArchive = recorderArchive;
+    metrics.recorders.set(vrcode, recorder);
+  }
 }
 
 function recordSendDataRawArchiveWriteFailed(metrics, reason, message) {
@@ -604,8 +617,12 @@ function recordSendDataRawArchiveAutoExportFailed(metrics, job, reason, message)
 function rawArchiveAutoExportJobSnapshot(job) {
   return {
     jobId: job.jobId,
+    requestId: job.requestId,
+    trigger: job.trigger,
+    vrcode: job.vrcode,
     archivePath: job.archivePath,
-    archiveCursor: job.archiveCursor,
+    startOffset: job.startOffset,
+    endOffset: job.endOffset,
     state: job.state,
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
@@ -691,6 +708,16 @@ function recorderReplaySnapshot(replay) {
   };
 }
 
+function recorderRawArchiveSnapshot(archive) {
+  return {
+    persistedEvents: archive.persistedEvents,
+    persistedBytes: archive.persistedBytes,
+    lastArchivedAt: archive.lastArchivedAt,
+    lastArchiveId: archive.lastArchiveId,
+    lastOffset: archive.lastOffset,
+  };
+}
+
 function oldestPendingAgeSeconds(oldestPendingAt) {
   if (!oldestPendingAt) return null;
   const oldest = Date.parse(oldestPendingAt);
@@ -723,9 +750,20 @@ function defaultRecorderStatus() {
     sendDataEventsObserved: 0,
     sendDataBytesObserved: 0,
     lastSendDataObservedAt: null,
+    rawArchive: defaultRecorderRawArchiveStatus(),
     redisIpSync: null,
     spool: defaultRecorderSpoolStatus(),
     replay: defaultRecorderReplayStatus(),
+  };
+}
+
+function defaultRecorderRawArchiveStatus() {
+  return {
+    persistedEvents: 0,
+    persistedBytes: 0,
+    lastArchivedAt: null,
+    lastArchiveId: null,
+    lastOffset: null,
   };
 }
 

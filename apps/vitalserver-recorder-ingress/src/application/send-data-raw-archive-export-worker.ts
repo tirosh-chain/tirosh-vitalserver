@@ -4,6 +4,8 @@ import type {
   SendDataRawArchiveExportJob,
   SendDataRawArchiveExportJobStorePort,
   SendDataRawArchiveExportStateDocument,
+  SendDataRawArchiveFinalizationRequest,
+  SendDataRawArchiveFinalizationTrigger,
 } from "./ports/outbound/send-data-raw-archive-export-job-store-port";
 import type { SendDataRawArchiveRecoveryExecutorPort } from "./ports/outbound/send-data-raw-archive-recovery-executor-port";
 
@@ -49,10 +51,93 @@ function createSendDataRawArchiveExportWorker({
 
     running = true;
     try {
-      return await runExportTick({ settings, executor, jobStore, metrics, trigger: options.trigger || "inactivity" });
+      return await runExportTick({
+        settings,
+        executor,
+        jobStore,
+        metrics,
+        trigger: options.trigger || "inactivity",
+      });
     } finally {
       running = false;
     }
+  }
+
+  async function requestFinalization(input) {
+    const vrcodes = normalizedVrcodes(input && input.vrcodes);
+    if (vrcodes.length === 0) {
+      return {
+        ok: false,
+        state: "rejected" as const,
+        reason: "invalid_vrcodes",
+        message: "raw archive finalization requires at least one non-empty vrcode",
+      };
+    }
+    if (input.reason !== "lab_session_stopped" && input.reason !== "lab_recorder_stopped") {
+      return {
+        ok: false,
+        state: "rejected" as const,
+        reason: "invalid_reason",
+        message: "raw archive finalization reason is invalid",
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    let state = jobStore.read();
+    if (state.activeJob && state.activeJob.state === "failed") {
+      return {
+        ok: false,
+        state: "rejected" as const,
+        reason: "job_failed",
+        message: "raw archive finalization is blocked by a terminal failed job",
+      };
+    }
+    const snapshot = metricsSnapshot(metrics);
+    const requestIds: string[] = [];
+    let enqueuedCount = 0;
+    const pending = [...state.pendingFinalizations];
+    for (const vrcode of vrcodes) {
+      const existing = pending.find((request) => request.vrcode === vrcode);
+      if (existing) {
+        requestIds.push(existing.requestId);
+        continue;
+      }
+      const recorder = (snapshot.recorders || []).find((candidate) => candidate.vrcode === vrcode);
+      if (!recorder || !recorder.rawArchive || !Number.isFinite(recorder.rawArchive.lastOffset)) {
+        return {
+          ok: false,
+          state: "rejected" as const,
+          reason: "recorder_archive_not_observed",
+          message: `raw archive finalization requires an observed recorder archive vrcode=${vrcode}`,
+        };
+      }
+      const checkpoint = state.checkpointsByVrcode[vrcode];
+      if (checkpoint
+        && checkpoint.archivePath === snapshot.rawArchive.path
+        && checkpoint.endOffset === recorder.rawArchive.lastOffset) {
+        requestIds.push(checkpoint.jobId);
+        continue;
+      }
+      const request: SendDataRawArchiveFinalizationRequest = {
+        requestId: crypto.randomUUID(),
+        vrcode,
+        reason: input.reason,
+        requestedAt: nowIso,
+      };
+      pending.push(request);
+      requestIds.push(request.requestId);
+      enqueuedCount += 1;
+    }
+    state = writeState(jobStore, {
+      ...state,
+      updatedAt: nowIso,
+      pendingFinalizations: pending,
+    });
+    for (let index = 0; index < enqueuedCount; index += 1) {
+      const result = await runOnce({ trigger: "explicit" });
+      if (result.state !== "uploaded") break;
+    }
+    return { ok: true, state: "accepted" as const, requestIds };
   }
 
   return {
@@ -70,6 +155,7 @@ function createSendDataRawArchiveExportWorker({
       timer = null;
     },
     runOnce,
+    requestFinalization,
   };
 }
 
@@ -77,7 +163,6 @@ async function runExportTick({ settings, executor, jobStore, metrics, trigger })
   const snapshot = metricsSnapshot(metrics);
   const archive = snapshot.rawArchive || {};
   const archivePath = archive.path || "";
-  const archiveCursor = Number.isFinite(archive.lastOffset) ? archive.lastOffset : 0;
   const now = new Date();
   const nowIso = now.toISOString();
   let state = jobStore.read();
@@ -91,76 +176,104 @@ async function runExportTick({ settings, executor, jobStore, metrics, trigger })
     return { ok: true, state: "open" };
   }
 
-  const observedChanged = !state.lastObserved
-    || state.lastObserved.archivePath !== archivePath
-    || state.lastObserved.archiveCursor !== archiveCursor;
-  if (observedChanged) {
-    state = writeState(jobStore, {
-      ...state,
-      updatedAt: nowIso,
-      lastObserved: { archivePath, archiveCursor, observedAt: nowIso },
-    });
-  }
-
-  const stableForMs = state.lastObserved && state.lastObserved.archivePath === archivePath
-    && state.lastObserved.archiveCursor === archiveCursor
-    ? now.getTime() - Date.parse(state.lastObserved.observedAt)
-    : 0;
-  const archiveCursorStable = stableForMs >= settings.cursorStableMs;
-  const alreadyExported = Boolean(
-    state.checkpoint
-      && state.checkpoint.archivePath === archivePath
-      && state.checkpoint.archiveCursor === archiveCursor
-  );
-  const replayDrained = (snapshot.spool.pendingItems || 0) === 0
-    && (snapshot.replay.pendingItems || 0) === 0
-    && (snapshot.replay.inFlightItems || 0) === 0;
-
-  const decision = decideSendDataRawArchiveFinalization({
-    vrcode: "raw_archive",
-    trigger,
-    hasJoined: (snapshot.recorders || []).some((recorder) => (recorder.sendDataEventsObserved || 0) > 0),
-    rawArchiveRecords: archive.persistedEvents || 0,
-    activeConnections: snapshot.activeRecorderConnections || 0,
-    lastRawArchivedAt: archive.lastArchivedAt || null,
-    nowMs: now.getTime(),
-    quietWindowMs: settings.quietWindowMs,
-    archiveCursorStable,
-    realtimeReplayDrained: replayDrained,
-    alreadyExported,
-  });
-  recordSendDataRawArchiveAutoExportDecision(metrics, {
-    ...decision,
-    archivePath,
-    archiveCursor,
-    cursorStableForMs: stableForMs,
-  });
-
   if (state.activeJob && state.activeJob.state === "retryable_failed") {
     const nextAttemptAt = state.activeJob.nextAttemptAt ? Date.parse(state.activeJob.nextAttemptAt) : NaN;
     if (Number.isFinite(nextAttemptAt) && nextAttemptAt > now.getTime()) {
       return { ok: true, state: "retryable_failed", jobId: state.activeJob.jobId };
     }
+    return await executeJob({ settings, executor, jobStore, metrics, state, job: state.activeJob });
   }
-
   if (state.activeJob && state.activeJob.state === "failed") {
     return { ok: false, state: "failed", reason: "job_failed", message: "raw archive export job is terminal", jobId: state.activeJob.jobId };
   }
-
-  if (!decision.finalizable && !state.activeJob) {
-    return { ok: true, state: decision.state };
+  if (state.activeJob) {
+    return await executeJob({ settings, executor, jobStore, metrics, state, job: state.activeJob });
   }
 
-  const job = state.activeJob || createJob({ archivePath, archiveCursor, settings, nowIso });
-  state = writeState(jobStore, { ...state, updatedAt: nowIso, activeJob: job });
-  return await executeJob({ settings, executor, jobStore, metrics, state, job });
+  const candidates = candidateVrcodes(state, snapshot, trigger);
+  let firstDecision: Record<string, unknown> | null = null;
+  for (const candidate of candidates) {
+    const recorder = (snapshot.recorders || []).find((value) => value.vrcode === candidate.vrcode);
+    const recorderArchive = recorder && recorder.rawArchive ? recorder.rawArchive : {};
+    const endOffset = Number.isFinite(recorderArchive.lastOffset) ? recorderArchive.lastOffset : 0;
+    const observed = state.observedByVrcode[candidate.vrcode];
+    const observedChanged = !observed
+      || observed.archivePath !== archivePath
+      || observed.endOffset !== endOffset;
+    if (observedChanged) {
+      state = writeState(jobStore, {
+        ...state,
+        updatedAt: nowIso,
+        observedByVrcode: {
+          ...state.observedByVrcode,
+          [candidate.vrcode]: {
+            vrcode: candidate.vrcode,
+            archivePath,
+            endOffset,
+            observedAt: nowIso,
+          },
+        },
+      });
+    }
+    const currentObserved = state.observedByVrcode[candidate.vrcode];
+    const stableForMs = currentObserved
+      && currentObserved.archivePath === archivePath
+      && currentObserved.endOffset === endOffset
+      ? now.getTime() - Date.parse(currentObserved.observedAt)
+      : 0;
+    const checkpoint = state.checkpointsByVrcode[candidate.vrcode];
+    const startOffset = checkpoint && checkpoint.archivePath === archivePath
+      ? checkpoint.endOffset
+      : 0;
+    const replay = recorder && recorder.replay ? recorder.replay : {};
+    const spool = recorder && recorder.spool ? recorder.spool : {};
+    const decision = decideSendDataRawArchiveFinalization({
+      vrcode: candidate.vrcode,
+      trigger: candidate.trigger,
+      hasJoined: Boolean(recorder && (recorder.sendDataEventsObserved || 0) > 0),
+      rawArchiveRecords: recorderArchive.persistedEvents || 0,
+      activeConnections: recorder ? recorder.activeConnections || 0 : 0,
+      lastRawArchivedAt: recorderArchive.lastArchivedAt || null,
+      nowMs: now.getTime(),
+      quietWindowMs: settings.quietWindowMs,
+      archiveCursorStable: stableForMs >= settings.cursorStableMs,
+      realtimeReplayDrained: (spool.pendingItems || 0) === 0
+        && (replay.pendingItems || 0) === 0
+        && (replay.inFlightItems || 0) === 0,
+      alreadyExported: endOffset > 0 && startOffset === endOffset,
+    });
+    const decisionDocument = {
+      ...decision,
+      archivePath,
+      archiveCursor: endOffset,
+      cursorStableForMs: stableForMs,
+    };
+    recordSendDataRawArchiveAutoExportDecision(metrics, decisionDocument);
+    firstDecision = firstDecision || decisionDocument;
+    if (!decision.finalizable) continue;
+
+    const job = createJob({
+      archivePath,
+      startOffset,
+      endOffset,
+      settings,
+      nowIso,
+      vrcode: candidate.vrcode,
+      trigger: candidate.trigger,
+      requestId: candidate.requestId,
+    });
+    state = writeState(jobStore, { ...state, updatedAt: nowIso, activeJob: job });
+    return await executeJob({ settings, executor, jobStore, metrics, state, job });
+  }
+
+  return { ok: true, state: firstDecision ? String(firstDecision.state) : "not_observed" };
 }
 
 async function executeJob({ settings, executor, jobStore, metrics, state, job }) {
   const startedAt = new Date().toISOString();
   const runningJob = {
     ...job,
-    state: "running",
+    state: "running" as const,
     attempts: job.attempts + 1,
     startedAt,
     updatedAt: startedAt,
@@ -175,26 +288,37 @@ async function executeJob({ settings, executor, jobStore, metrics, state, job })
     vitalserverUrl: settings.vitalserverUrl,
     endpoint: settings.uploadEndpoint,
     timeoutMs: settings.requestTimeoutMs,
+    vrcode: runningJob.vrcode,
+    startOffset: runningJob.startOffset,
+    endOffset: runningJob.endOffset,
   });
   const completedAt = new Date().toISOString();
 
   if (result.ok) {
     const uploadedJob = {
       ...runningJob,
-      state: "uploaded",
+      state: "uploaded" as const,
       completedAt,
       updatedAt: completedAt,
       result: result.response,
     };
+    const pendingFinalizations = state.pendingFinalizations.filter(
+      (request) => request.requestId !== uploadedJob.requestId
+    );
     writeState(jobStore, {
       ...state,
       updatedAt: completedAt,
-      checkpoint: {
-        archivePath: uploadedJob.archivePath,
-        archiveCursor: uploadedJob.archiveCursor,
-        jobId: uploadedJob.jobId,
-        completedAt,
+      checkpointsByVrcode: {
+        ...state.checkpointsByVrcode,
+        [uploadedJob.vrcode]: {
+          vrcode: uploadedJob.vrcode,
+          archivePath: uploadedJob.archivePath,
+          endOffset: uploadedJob.endOffset,
+          jobId: uploadedJob.jobId,
+          completedAt,
+        },
       },
+      pendingFinalizations,
       activeJob: null,
       history: [uploadedJob, ...(state.history || [])].slice(0, settings.historyLimit),
     });
@@ -210,7 +334,7 @@ async function executeJob({ settings, executor, jobStore, metrics, state, job })
   };
   const failedJob = {
     ...runningJob,
-    state: canRetry ? "retryable_failed" : "failed",
+    state: canRetry ? "retryable_failed" as const : "failed" as const,
     updatedAt: completedAt,
     completedAt: canRetry ? null : completedAt,
     nextAttemptAt: canRetry ? new Date(Date.parse(completedAt) + settings.retryDelayMs).toISOString() : null,
@@ -228,12 +352,35 @@ async function executeJob({ settings, executor, jobStore, metrics, state, job })
   };
 }
 
-function createJob({ archivePath, archiveCursor, settings, nowIso }): SendDataRawArchiveExportJob {
+function candidateVrcodes(state, snapshot, trigger) {
+  const pending = state.pendingFinalizations.map((request) => ({
+    vrcode: request.vrcode,
+    trigger: "explicit" as SendDataRawArchiveFinalizationTrigger,
+    requestId: request.requestId,
+  }));
+  const pendingVrcodes = new Set(pending.map((candidate) => candidate.vrcode));
+  return [
+    ...pending,
+    ...(snapshot.recorders || [])
+      .filter((recorder) => !pendingVrcodes.has(recorder.vrcode))
+      .map((recorder) => ({
+        vrcode: recorder.vrcode,
+        trigger: trigger === "shutdown" ? "shutdown" : "inactivity" as SendDataRawArchiveFinalizationTrigger,
+        requestId: null,
+      })),
+  ];
+}
+
+function createJob({ archivePath, startOffset, endOffset, settings, nowIso, vrcode, trigger, requestId }): SendDataRawArchiveExportJob {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     jobId: crypto.randomUUID(),
+    requestId,
+    trigger,
+    vrcode,
     archivePath,
-    archiveCursor,
+    startOffset,
+    endOffset,
     state: "pending",
     attempts: 0,
     maxAttempts: settings.maxAttempts,
@@ -250,6 +397,11 @@ function createJob({ archivePath, archiveCursor, settings, nowIso }): SendDataRa
 function writeState(jobStore, document): SendDataRawArchiveExportStateDocument {
   jobStore.write(document);
   return document;
+}
+
+function normalizedVrcodes(value) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim())));
 }
 
 function normalizeSettings(raw) {

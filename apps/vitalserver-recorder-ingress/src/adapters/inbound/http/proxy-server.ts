@@ -63,7 +63,7 @@ function createRecorderIngressHttpServer({
   sendDataReplayWorker,
   socketIoAudit,
 }: RecorderIngressHttpServerDependencies): RecorderIngressHttpServer {
-  const dependencies = { audit, clientIp, config, metrics, socketIoAudit };
+  const dependencies = { audit, clientIp, config, metrics, sendDataRawArchiveExportWorker, socketIoAudit };
   const activeSockets = new Set<Socket>();
   const server: RecorderIngressHttpServer = http.createServer((req, res) => proxyHttp(req, res, dependencies));
   server.on("connection", (socket) => {
@@ -117,6 +117,10 @@ function proxyHttp(req, res, dependencies) {
     res.end(body);
     return;
   }
+  if (req.method === "POST" && req.url === "/recorder-ingress/raw-archive/finalize") {
+    requestRawArchiveFinalization(req, res, dependencies.sendDataRawArchiveExportWorker);
+    return;
+  }
 
   const context = createRequestContext(req, dependencies.clientIp);
   dependencies.metrics.httpRequests += 1;
@@ -145,6 +149,45 @@ function proxyHttp(req, res, dependencies) {
     });
     upstream.destroy(error);
   });
+}
+
+function requestRawArchiveFinalization(req, res, worker) {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  req.on("data", (chunk) => {
+    bytes += chunk.length;
+    if (bytes <= 65536) chunks.push(chunk);
+  });
+  req.on("end", async () => {
+    if (bytes > 65536) {
+      writeJson(res, 413, { ok: false, state: "rejected", reason: "request_too_large", message: "raw archive finalization request exceeds 65536 bytes" });
+      return;
+    }
+    let input;
+    try {
+      input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    } catch (_error) {
+      writeJson(res, 400, { ok: false, state: "rejected", reason: "invalid_json", message: "raw archive finalization request must be a JSON object" });
+      return;
+    }
+    try {
+      const result = await worker.requestFinalization(input);
+      writeJson(res, result.ok ? 202 : 409, result);
+    } catch (error) {
+      writeJson(res, 503, {
+        ok: false,
+        state: "rejected",
+        reason: "finalization_dependency_failed",
+        message: error && error.message ? error.message : String(error),
+      });
+    }
+  });
+}
+
+function writeJson(res, statusCode, document) {
+  const body = JSON.stringify(document);
+  res.writeHead(statusCode, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+  res.end(body);
 }
 
 function createUpstreamRequest(req, res, context, responseMirror, { audit, config }) {

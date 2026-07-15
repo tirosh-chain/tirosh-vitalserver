@@ -14,6 +14,7 @@ class LabSettings:
     allow_memory_store: bool
     database_url: str | None
     vital_files_mount: Path
+    recorder_archive_finalize_url: str | None = None
 
 
 class LabSettingsConfigurationError(Exception):
@@ -59,5 +60,9 @@ def load_settings() -> LabSettings:
                 "VITALSERVER_LAB_VITAL_FILES_MOUNT",
                 "/mnt/tirosh-vital-files",
             )
+        ),
+        recorder_archive_finalize_url=os.environ.get(
+            "VITALSERVER_LAB_RECORDER_ARCHIVE_FINALIZE_URL",
+            "http://recorder-ingress:8080/recorder-ingress/raw-archive/finalize",
         ),
     )

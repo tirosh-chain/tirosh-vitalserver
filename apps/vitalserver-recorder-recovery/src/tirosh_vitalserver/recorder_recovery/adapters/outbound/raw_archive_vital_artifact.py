@@ -37,6 +37,10 @@ class RawArchiveVitalFileExporter:
         self,
         raw_archive_path: Path,
         output_dir: Path,
+        *,
+        vrcode: str | None = None,
+        start_offset: int = 0,
+        end_offset: int | None = None,
     ) -> tuple[RawArchiveVitalArtifact, ...]:
         """Create `.vital` artifacts from one raw archive JSONL file."""
 
@@ -46,9 +50,23 @@ class RawArchiveVitalFileExporter:
         except ModuleNotFoundError as exc:
             raise RuntimeError("vitaldb package is required for vital export") from exc
 
-        payloads = raw_archive_payloads_from_jsonl_lines(
-            raw_archive_path.read_text(encoding="utf-8").splitlines()
-        )
+        archive_bytes = raw_archive_path.read_bytes()
+        resolved_end = len(archive_bytes) if end_offset is None else end_offset
+        if start_offset < 0 or resolved_end < start_offset:
+            raise ValueError("raw archive byte window is invalid")
+        if resolved_end > len(archive_bytes):
+            raise ValueError("raw archive byte window exceeds the current archive")
+        try:
+            archive_text = archive_bytes[start_offset:resolved_end].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                "raw archive byte window is not aligned to UTF-8 records"
+            ) from exc
+        payloads = raw_archive_payloads_from_jsonl_lines(archive_text.splitlines())
+        if vrcode is not None:
+            payloads = tuple(
+                payload for payload in payloads if payload.vrcode == vrcode
+            )
         grouped_tracks = vital_tracks_by_vrcode_from_raw_archive(payloads)
         if not grouped_tracks:
             raise ValueError("raw archive did not contain exportable payloads")
@@ -156,8 +174,7 @@ def rewrite_vital_header_for_vitalserver_legacy_parser(path: Path) -> None:
         return
     if header_len != 27 or len(payload) < 37:
         raise RuntimeError(
-            "vitaldb wrote an unsupported vital header length "
-            f"{header_len} for {path}"
+            f"vitaldb wrote an unsupported vital header length {header_len} for {path}"
         )
 
     legacy_payload = (

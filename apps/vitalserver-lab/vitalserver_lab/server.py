@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from .archive_finalization import (
+    LabArchiveFinalizationError,
+    RecorderIngressArchiveFinalizer,
+)
 from .execution import (
     LabExecutionEngine,
     LabRecorderSendError,
@@ -321,8 +325,13 @@ def route_lab_request(
                 }
         elif parts[3] == "stop":
             operation_id = f"lab-session-stop-{session_id}"
+            archive_finalization = None
+            archive_finalization_error = None
             try:
-                execution_engine.stop_session(session_id)
+                try:
+                    archive_finalization = execution_engine.stop_session(session_id)
+                except LabArchiveFinalizationError as error:
+                    archive_finalization_error = str(error)
                 session = session_store.stop(session_id)
             except LabSessionStoreUnavailable as error:
                 return _store_failure_response(error, operation_id=operation_id)
@@ -351,10 +360,18 @@ def route_lab_request(
                 session_id,
                 operation_id=operation_id,
             )
-        return HTTPStatus.ACCEPTED, _session_response(
+        response = _session_response(
             session.as_json(),
             operation_id=operation_id,
         )
+        if parts[3] == "stop" and archive_finalization is not None:
+            response["archiveFinalization"] = archive_finalization.as_json()
+        if parts[3] == "stop" and archive_finalization_error is not None:
+            response["state"] = "failed"
+            response["readError"] = archive_finalization_error
+            response["archiveFinalization"] = {"state": "failed"}
+            return HTTPStatus.BAD_GATEWAY, response
+        return HTTPStatus.ACCEPTED, response
 
     if (
         method == "POST"
@@ -427,8 +444,15 @@ def route_lab_request(
                     )
             else:
                 recorder = session_store.stop_recorder(session_id, recorder_id)
+                archive_finalization = None
+                archive_finalization_error = None
                 if recorder is not None:
-                    execution_engine.stop_recorder(session_id, recorder_id)
+                    try:
+                        archive_finalization = execution_engine.stop_recorder(
+                            session_id, recorder_id
+                        )
+                    except LabArchiveFinalizationError as error:
+                        archive_finalization_error = str(error)
         except LabSessionStoreUnavailable as error:
             return HTTPStatus.SERVICE_UNAVAILABLE, {
                 "state": "failed",
@@ -462,12 +486,20 @@ def route_lab_request(
                 "recorder": None,
                 "readError": error.message,
             }
-        return HTTPStatus.ACCEPTED, {
+        response = {
             "state": "loaded",
             "operationId": operation_id,
             "recorder": refreshed.as_json(),
             "readError": None,
         }
+        if action == "stop" and archive_finalization is not None:
+            response["archiveFinalization"] = archive_finalization.as_json()
+        if action == "stop" and archive_finalization_error is not None:
+            response["state"] = "failed"
+            response["readError"] = archive_finalization_error
+            response["archiveFinalization"] = {"state": "failed"}
+            return HTTPStatus.BAD_GATEWAY, response
+        return HTTPStatus.ACCEPTED, response
 
     if method == "POST" and parts == ["lab", "vital-files", "replay"]:
         try:
@@ -1049,8 +1081,15 @@ def build_session_store(settings: LabSettings) -> LabSessionStore:
 
 
 def build_execution_engine(settings: LabSettings | None = None) -> LabExecutionEngine:
-    del settings
-    return LabExecutionEngine(sender=VitalServerRecorderPayloadSender())
+    finalizer = None
+    if settings is not None and settings.recorder_archive_finalize_url is not None:
+        finalizer = RecorderIngressArchiveFinalizer(
+            url=settings.recorder_archive_finalize_url
+        )
+    return LabExecutionEngine(
+        sender=VitalServerRecorderPayloadSender(),
+        archive_finalizer=finalizer,
+    )
 
 
 def main() -> None:

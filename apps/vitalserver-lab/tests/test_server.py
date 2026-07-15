@@ -10,6 +10,10 @@ from typing import Any
 
 import pytest
 
+from vitalserver_lab.archive_finalization import (
+    LabArchiveFinalizationError,
+    LabArchiveFinalizationReceipt,
+)
 from vitalserver_lab.execution import (
     LabExecutionEngine,
     LabRecorderSendError,
@@ -810,6 +814,65 @@ def test_session_start_streams_until_session_stop() -> None:
     assert ("http://edge/", vrcode) in sender.closed_recorders
 
 
+def test_session_stop_requests_durable_archive_finalization() -> None:
+    finalizer = FakeArchiveFinalizer()
+    with running_server(
+        ["lab_session_1"],
+        archive_finalizer=finalizer,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "recorderCount": 2,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+        vrcodes = tuple(
+            recorder.vrcode for recorder in address.store.list_recorders()
+        )
+
+        stopped = request(address, "POST", "/lab/sessions/lab_session_1/stop")
+
+    assert stopped["status"] == 202
+    assert stopped["body"]["archiveFinalization"] == {
+        "state": "accepted",
+        "requestIds": ["finalization-1"],
+    }
+    assert finalizer.calls == [(vrcodes, "lab_session_stopped")]
+
+
+def test_session_stop_preserves_stopped_state_when_finalization_request_fails() -> None:
+    with running_server(
+        ["lab_session_1"],
+        archive_finalizer=FailingArchiveFinalizer(),
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+
+        stopped = request(address, "POST", "/lab/sessions/lab_session_1/stop")
+        persisted = address.store.get("lab_session_1")
+
+    assert stopped["status"] == 502
+    assert stopped["body"]["state"] == "failed"
+    assert stopped["body"]["session"]["state"] == "stopped"
+    assert stopped["body"]["archiveFinalization"] == {"state": "failed"}
+    assert persisted is not None
+    assert persisted.state == "stopped"
+
+
 def test_session_start_records_recorder_send_failure() -> None:
     with running_server(["lab_session_1"], sender=FailingSender()) as address:
         request(
@@ -1029,6 +1092,7 @@ class running_server:
         session_store: LabSessionStore | None = None,
         replay_source_factory: Any | None = None,
         frame_interval_seconds: float = 1.0,
+        archive_finalizer: Any | None = None,
     ) -> None:
         self.ids = ids or ["lab_session_1"]
         self.sender = sender or FakeSender()
@@ -1036,6 +1100,7 @@ class running_server:
         self.session_store = session_store
         self.replay_source_factory = replay_source_factory
         self.frame_interval_seconds = frame_interval_seconds
+        self.archive_finalizer = archive_finalizer
 
     def __enter__(self) -> running_server:
         counter = iter(self.ids)
@@ -1059,6 +1124,7 @@ class running_server:
             sender=self.sender,
             vital_replay_source_factory=self.replay_source_factory,
             frame_interval_seconds=self.frame_interval_seconds,
+            archive_finalizer=self.archive_finalizer,
         )
         return self
 
@@ -1106,6 +1172,35 @@ class FakeSender:
 
     def close_all(self) -> None:
         self.closed_all = True
+
+
+class FakeArchiveFinalizer:
+    def __init__(self) -> None:
+        self.calls: list[tuple[tuple[str, ...], str]] = []
+
+    def request_finalization(
+        self,
+        *,
+        vrcodes: tuple[str, ...],
+        reason: str,
+    ) -> LabArchiveFinalizationReceipt:
+        self.calls.append((vrcodes, reason))
+        return LabArchiveFinalizationReceipt(
+            state="accepted",
+            request_ids=("finalization-1",),
+        )
+
+
+class FailingArchiveFinalizer:
+    def request_finalization(
+        self,
+        *,
+        vrcodes: tuple[str, ...],
+        reason: str,
+    ) -> LabArchiveFinalizationReceipt:
+        del vrcodes
+        del reason
+        raise LabArchiveFinalizationError("recorder ingress unavailable")
 
 
 class FailingSender:

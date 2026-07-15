@@ -38,6 +38,7 @@ function createSendDataRawArchiveWriter(config): SendDataRawArchivePort {
           archiveId: path.basename(archivePath),
           path: archivePath,
           offset,
+          endOffset: offset + bytes,
           bytes,
         };
       } catch (error) {

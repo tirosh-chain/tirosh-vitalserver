@@ -41,6 +41,8 @@ class RawArchiveVitalRecoveryRequest:
     repeat: int = 1
     max_failure_rate: float = 0.0
     skip_filename_check: bool = False
+    start_offset: int = 0
+    end_offset: int | None = None
 
 
 @dataclass(frozen=True)
@@ -60,8 +62,15 @@ def recover_raw_archive_vital(
     artifacts = exporter.export_raw_archive(
         request.raw_archive_path,
         request.output_dir,
+        vrcode=request.vrcode,
+        start_offset=request.start_offset,
+        end_offset=request.end_offset,
     )
-    payloads = iter_vital_files(request.output_dir)
+    payloads = tuple(
+        payload
+        for artifact in artifacts
+        for payload in iter_vital_files(artifact.path)
+    )
     if not request.skip_filename_check:
         assert_vital_filenames(payloads)
 

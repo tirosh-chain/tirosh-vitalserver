@@ -20,6 +20,9 @@ test("raw archive recovery executor reports missing endpoint explicitly", async 
     vitalserverUrl: "http://app:80",
     endpoint: "/upload",
     timeoutMs: 1000,
+    vrcode: "VR-A",
+    startOffset: 0,
+    endOffset: 42,
   });
 
   assert.deepStrictEqual(result, {
@@ -58,6 +61,9 @@ test("raw archive recovery executor posts explicit recovery request", async () =
       vitalserverUrl: "http://app:80",
       endpoint: "/upload",
       timeoutMs: 12345,
+      vrcode: "VR-A",
+      startOffset: 10,
+      endOffset: 42,
     });
 
     assert.strictEqual(result.ok, true);
@@ -71,6 +77,9 @@ test("raw archive recovery executor posts explicit recovery request", async () =
       endpoint: "/upload",
       timeout: 12,
       skipFilenameCheck: true,
+      vrcode: "VR-A",
+      startOffset: 10,
+      endOffset: 42,
     });
   } finally {
     global.fetch = originalFetch;
@@ -95,6 +104,9 @@ test("raw archive recovery executor rejects malformed success response", async (
       vitalserverUrl: "http://app:80",
       endpoint: "/upload",
       timeoutMs: 1000,
+      vrcode: "VR-A",
+      startOffset: 0,
+      endOffset: 42,
     });
 
     assert.deepStrictEqual(result, {
@@ -127,6 +139,9 @@ test("raw archive recovery executor reports HTTP failure body", async () => {
       vitalserverUrl: "http://app:80",
       endpoint: "/upload",
       timeoutMs: 1000,
+      vrcode: "VR-A",
+      startOffset: 0,
+      endOffset: 42,
     });
 
     assert.deepStrictEqual(result, {

@@ -145,6 +145,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-134 | PKG fresh install이 Host settings materialization 전에 `vm-config.json`을 읽어 즉시 실패 | Packaging / Host state persistence | package install verification pending | [PKG fresh install fails before Host settings materialization](134_pkg-fresh-install-host-settings-before-materialization.md) |
 | TS-135 | Helper가 root-owned Host SQLite를 직접 열어 runtime 상태와 설정이 unavailable | Runtime health / macOS Helper UI / Host state persistence | package verification pending | [Helper direct SQLite access after Host state cutover](135_helper-direct-sqlite-access-after-host-state-cutover.md) |
 | TS-136 | Clean uninstall이 Platform Agent를 남겨 재설치가 fresh-install preflight에서 차단됨 | Uninstall / Packaging | package verification pending | [Clean uninstall leaves Platform Agent loaded](136_clean-uninstall-leaves-platform-agent-loaded.md) |
+| TS-137 | Lab stop 및 recorder ingress cold path가 `.vital`을 생성·업로드하지 않음 | Product Lab / Recorder streaming / Cold path | resolved | [Lab stop and recorder ingress cold path do not upload Vital Files](137_lab_stop_and_ingress_cold_path_do_not_upload_vital.md) |
 
 ## Follow-up 규칙
 

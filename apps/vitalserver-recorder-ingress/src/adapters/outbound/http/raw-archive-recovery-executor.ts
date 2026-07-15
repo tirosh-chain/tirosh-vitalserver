@@ -35,6 +35,9 @@ function createRawArchiveRecoveryExecutor(config): SendDataRawArchiveRecoveryExe
               endpoint: request.endpoint,
               timeout: Math.max(1, Math.floor(request.timeoutMs / 1000)),
               skipFilenameCheck: true,
+              vrcode: request.vrcode,
+              startOffset: request.startOffset,
+              endOffset: request.endOffset,
             }),
             signal: controller.signal,
           });

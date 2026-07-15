@@ -93,7 +93,7 @@ test("send_data ingress service archives raw payload before durable spool", asyn
     rawArchive: {
       append(item) {
         archived.push(item);
-        return { ok: true, archiveId: "send-data-raw.jsonl", path: "/tmp/send-data-raw.jsonl", offset: 0, bytes: 321 };
+        return { ok: true, archiveId: "send-data-raw.jsonl", path: "/tmp/send-data-raw.jsonl", offset: 0, endOffset: 321, bytes: 321 };
       },
     },
     spoolStore: {

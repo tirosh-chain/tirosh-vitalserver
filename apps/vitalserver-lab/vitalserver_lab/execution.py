@@ -10,6 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from .archive_finalization import (
+    LabArchiveFinalizationError,
+    LabArchiveFinalizationReason,
+    LabArchiveFinalizationReceipt,
+    LabRecorderArchiveFinalizer,
+)
 from .model import (
     LabBed,
     LabRecorder,
@@ -225,12 +231,14 @@ class LabExecutionEngine:
         sender: LabRecorderPayloadSender,
         vital_replay_source_factory: LabVitalReplaySourceFactory | None = None,
         frame_interval_seconds: float = 1.0,
+        archive_finalizer: LabRecorderArchiveFinalizer | None = None,
     ) -> None:
         self.sender = sender
         self.vital_replay_source_factory = (
             vital_replay_source_factory or VitalDBReplaySourceFactory()
         )
         self.frame_interval_seconds = max(0.0, frame_interval_seconds)
+        self.archive_finalizer = archive_finalizer
         self._running_sessions: dict[str, _RunningLabSession] = {}
         self._running_sessions_lock = threading.Lock()
 
@@ -349,11 +357,13 @@ class LabExecutionEngine:
             result_sink(results)
         return results[0]
 
-    def stop_recorder(self, session_id: str, recorder_id: str) -> None:
+    def stop_recorder(
+        self, session_id: str, recorder_id: str
+    ) -> LabArchiveFinalizationReceipt | None:
         with self._running_sessions_lock:
             running = self._running_sessions.get(session_id)
         if running is None:
-            return
+            return None
         with running.active_recorder_ids_lock:
             running.active_recorder_ids.discard(recorder_id)
         vrcode = running.recorder_vrcodes.get(recorder_id)
@@ -362,12 +372,22 @@ class LabExecutionEngine:
                 target_url=running.target_url,
                 vrcode=vrcode,
             )
+            return self._request_archive_finalization(
+                vrcodes=(vrcode,),
+                reason="lab_recorder_stopped",
+            )
+        return None
 
-    def stop_session(self, session_id: str) -> None:
+    def stop_session(
+        self,
+        session_id: str,
+        *,
+        finalize_archive: bool = True,
+    ) -> LabArchiveFinalizationReceipt | None:
         with self._running_sessions_lock:
             running = self._running_sessions.pop(session_id, None)
         if running is None:
-            return
+            return None
         running.stop_event.set()
         if threading.current_thread() is not running.thread:
             running.thread.join(timeout=2)
@@ -376,13 +396,32 @@ class LabExecutionEngine:
                 target_url=running.target_url,
                 vrcode=vrcode,
             )
+        if finalize_archive:
+            return self._request_archive_finalization(
+                vrcodes=tuple(running.recorder_vrcodes.values()),
+                reason="lab_session_stopped",
+            )
+        return None
 
     def shutdown(self) -> None:
         with self._running_sessions_lock:
             session_ids = tuple(self._running_sessions)
         for session_id in session_ids:
-            self.stop_session(session_id)
+            self.stop_session(session_id, finalize_archive=False)
         self.sender.close_all()
+
+    def _request_archive_finalization(
+        self,
+        *,
+        vrcodes: tuple[str, ...],
+        reason: LabArchiveFinalizationReason,
+    ) -> LabArchiveFinalizationReceipt | None:
+        if self.archive_finalizer is None or not vrcodes:
+            return None
+        return self.archive_finalizer.request_finalization(
+            vrcodes=vrcodes,
+            reason=reason,
+        )
 
     def _start_session_runner(
         self,
@@ -411,15 +450,26 @@ class LabExecutionEngine:
                     replay_source=replay_source,
                     sequence=sequence,
                 ):
-                    if completion_sink is not None:
-                        completion_sink(session.session_id)
-                    for vrcode in (
+                    completed_vrcodes = tuple(
                         recorder.vrcode for recorder in recorders
-                    ):
+                    )
+                    for vrcode in completed_vrcodes:
                         self.sender.close_recorder(
                             target_url=target_url,
                             vrcode=vrcode,
                         )
+                    try:
+                        self._request_archive_finalization(
+                            vrcodes=completed_vrcodes,
+                            reason="lab_session_stopped",
+                        )
+                    except LabArchiveFinalizationError as error:
+                        print(
+                            "[vitalserver-lab] recorder archive finalization failed:",
+                            str(error),
+                        )
+                    if completion_sink is not None:
+                        completion_sink(session.session_id)
                     with self._running_sessions_lock:
                         current = self._running_sessions.get(session.session_id)
                         if (

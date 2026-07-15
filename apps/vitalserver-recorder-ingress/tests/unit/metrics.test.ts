@@ -181,9 +181,11 @@ test("metrics snapshot reports raw archive status distinctly", () => {
 
   recordSendDataRawArchived(metrics, {
     payloadBytes: 7,
+    vrcode: "VR_A",
   }, {
     archiveId: "send-data-raw.jsonl",
     offset: 12,
+    endOffset: 19,
   });
   recordSendDataRawArchiveWriteFailed(metrics, "raw_archive_write_failed", "disk full");
 
@@ -195,6 +197,7 @@ test("metrics snapshot reports raw archive status distinctly", () => {
   assert.strictEqual(snapshot.rawArchive.persistedBytes, 7);
   assert.strictEqual(snapshot.rawArchive.writeFailures, 1);
   assert.strictEqual(snapshot.rawArchive.lastArchiveId, "send-data-raw.jsonl");
-  assert.strictEqual(snapshot.rawArchive.lastOffset, 12);
+  assert.strictEqual(snapshot.rawArchive.lastOffset, 19);
+  assert.strictEqual(snapshot.recorders[0].rawArchive.lastOffset, 19);
   assert.strictEqual(snapshot.rawArchive.lastFailure.reason, "raw_archive_write_failed");
 });

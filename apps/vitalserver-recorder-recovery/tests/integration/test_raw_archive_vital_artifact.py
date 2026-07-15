@@ -59,6 +59,35 @@ def test_raw_archive_exporter_writes_one_vital_file_per_recorder(
     )
 
 
+def test_raw_archive_exporter_filters_one_recorder_and_byte_window(
+    tmp_path: Path,
+) -> None:
+    raw_archive = tmp_path / "send-data-raw.jsonl"
+    output_dir = tmp_path / "exported"
+    first = json.dumps(
+        raw_archive_record("senddata-a-1", "VR_A", 1782620000.0, 72)
+    ) + "\n"
+    skipped = json.dumps(
+        raw_archive_record("senddata-b", "VR_B", 1782620001.0, 83)
+    ) + "\n"
+    selected = json.dumps(
+        raw_archive_record("senddata-a-2", "VR_A", 1782620002.0, 74)
+    ) + "\n"
+    raw_archive.write_text(first + skipped + selected, encoding="utf-8")
+
+    artifacts = RawArchiveVitalFileExporter().export_raw_archive(
+        raw_archive,
+        output_dir,
+        vrcode="VR_A",
+        start_offset=len(first.encode()),
+        end_offset=len((first + skipped + selected).encode()),
+    )
+
+    assert [artifact.vrcode for artifact in artifacts] == ["VR_A"]
+    vital_file = VitalFile(artifacts[0].path, header_only=True)
+    assert vital_file.dtstart == 1782620002.0
+
+
 def raw_archive_record(
     item_id: str,
     vrcode: str,

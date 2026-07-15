@@ -43,6 +43,8 @@ def create_recorder_recovery_app() -> FastAPI:
                     repeat=request.repeat,
                     max_failure_rate=request.max_failure_rate,
                     skip_filename_check=request.skip_filename_check,
+                    start_offset=request.start_offset,
+                    end_offset=request.end_offset,
                 )
             )
         except ValueError as exc:

@@ -39,31 +39,56 @@ function createSendDataRawArchiveExportJobStore(config): SendDataRawArchiveExpor
 
 function emptyDocument(): SendDataRawArchiveExportStateDocument {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: new Date(0).toISOString(),
-    lastObserved: null,
-    checkpoint: null,
+    observedByVrcode: {},
+    checkpointsByVrcode: {},
+    pendingFinalizations: [],
     activeJob: null,
     history: [],
   };
 }
 
 function normalizeDocument(document): SendDataRawArchiveExportStateDocument {
-  if (!document || document.schemaVersion !== 1) {
-    throw new Error("raw archive export state document schemaVersion must be 1");
+  if (document && document.schemaVersion === 1) {
+    if (document.activeJob) {
+      throw new Error("raw archive export state schemaVersion 1 has an active job and cannot be migrated safely");
+    }
+    return emptyDocument();
+  }
+  if (!document || document.schemaVersion !== 2) {
+    throw new Error("raw archive export state document schemaVersion must be 2");
   }
   return {
-    schemaVersion: 1,
-    updatedAt: stringValue(document.updatedAt, new Date(0).toISOString()),
-    lastObserved: document.lastObserved || null,
-    checkpoint: document.checkpoint || null,
+    schemaVersion: 2,
+    updatedAt: requiredString(document.updatedAt, "updatedAt"),
+    observedByVrcode: requiredObject(document.observedByVrcode, "observedByVrcode"),
+    checkpointsByVrcode: requiredObject(document.checkpointsByVrcode, "checkpointsByVrcode"),
+    pendingFinalizations: requiredArray(document.pendingFinalizations, "pendingFinalizations"),
     activeJob: document.activeJob || null,
-    history: Array.isArray(document.history) ? document.history : [],
+    history: requiredArray(document.history, "history"),
   };
 }
 
-function stringValue(value, fallback) {
-  return typeof value === "string" && value ? value : fallback;
+function requiredString(value, field) {
+  if (typeof value !== "string" || !value) {
+    throw new Error(`raw archive export state document requires string ${field}`);
+  }
+  return value;
+}
+
+function requiredObject(value, field) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`raw archive export state document requires object ${field}`);
+  }
+  return value;
+}
+
+function requiredArray(value, field) {
+  if (!Array.isArray(value)) {
+    throw new Error(`raw archive export state document requires array ${field}`);
+  }
+  return value;
 }
 
 module.exports = { createSendDataRawArchiveExportJobStore };

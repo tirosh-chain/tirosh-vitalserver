@@ -128,6 +128,25 @@ test("raw archive shutdown finalization still requires drained realtime replay",
   assert.deepStrictEqual(decision.reasons, ["realtime_replay_not_drained"]);
 });
 
+test("raw archive explicit finalization bypasses inactivity but requires disconnect and replay drain", () => {
+  const decision = decideSendDataRawArchiveFinalization({
+    vrcode: "LAB-VR-1",
+    trigger: "explicit",
+    hasJoined: true,
+    rawArchiveRecords: 1,
+    activeConnections: 0,
+    lastRawArchivedAt: new Date().toISOString(),
+    nowMs: Date.now(),
+    quietWindowMs: 300000,
+    archiveCursorStable: false,
+    realtimeReplayDrained: true,
+    alreadyExported: false,
+  });
+
+  assert.strictEqual(decision.finalizable, true);
+  assert.strictEqual(decision.state, "finalizable_by_explicit_request");
+});
+
 test("raw archive finalization preserves not observed and already exported states", () => {
   const nowMs = Date.parse("2026-06-28T10:05:00.000Z");
 

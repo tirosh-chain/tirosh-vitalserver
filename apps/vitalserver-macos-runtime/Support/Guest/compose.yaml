@@ -330,6 +330,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      recorder-ingress:
+        condition: service_healthy
     ports:
       - "127.0.0.1:18085:8080"
     volumes:
@@ -344,6 +346,7 @@ services:
       VITALSERVER_LAB_SESSION_STORE: "postgres"
       VITALSERVER_LAB_DATABASE_URL: "postgresql://vitalserver@postgres:5432/vitalserver"
       VITALSERVER_LAB_VITAL_FILES_MOUNT: "/mnt/tirosh-vital-files"
+      VITALSERVER_LAB_RECORDER_ARCHIVE_FINALIZE_URL: "http://recorder-ingress:8080/recorder-ingress/raw-archive/finalize"
       PGPASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
     healthcheck:
       test:

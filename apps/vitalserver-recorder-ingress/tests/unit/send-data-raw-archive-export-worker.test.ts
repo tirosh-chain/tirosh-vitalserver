@@ -27,7 +27,10 @@ test("raw archive export worker uploads finalizable archive and checkpoints curs
   assert.strictEqual(result.state, "uploaded");
   assert.strictEqual(requests.length, 1);
   assert.strictEqual(requests[0].rawArchivePath, "/raw/send-data-raw.jsonl");
-  assert.strictEqual(state.checkpoint.archiveCursor, 42);
+  assert.strictEqual(requests[0].vrcode, "VR-1");
+  assert.strictEqual(requests[0].startOffset, 0);
+  assert.strictEqual(requests[0].endOffset, 42);
+  assert.strictEqual(state.checkpointsByVrcode["VR-1"].endOffset, 42);
   assert.strictEqual(state.activeJob, null);
   assert.strictEqual(state.history[0].state, "uploaded");
   assert.strictEqual(metrics.sendDataRawArchive.autoExport.status, "uploaded");
@@ -79,7 +82,7 @@ test("raw archive export worker waits for stable cursor before upload", async ()
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.state, "inactive_candidate");
   assert.strictEqual(calls, 0);
-  assert.strictEqual(state.lastObserved.archiveCursor, 42);
+  assert.strictEqual(state.observedByVrcode["VR-1"].endOffset, 42);
 });
 
 test("raw archive export worker uploads on shutdown without waiting for stable cursor", async () => {
@@ -103,12 +106,12 @@ test("raw archive export worker uploads on shutdown without waiting for stable c
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.state, "uploaded");
   assert.strictEqual(requests.length, 1);
-  assert.strictEqual(state.checkpoint.archiveCursor, 42);
+  assert.strictEqual(state.checkpointsByVrcode["VR-1"].endOffset, 42);
 });
 
 test("raw archive export worker keeps shutdown archive pending when replay is not drained", async () => {
   const metrics = metricsWithFinalizableArchive();
-  metrics.sendDataReplay.pendingItems = 1;
+  metrics.recorders.get("VR-1").replay.pendingItems = 1;
   const state = emptyState();
   let calls = 0;
   const worker = createSendDataRawArchiveExportWorker({
@@ -131,6 +134,88 @@ test("raw archive export worker keeps shutdown archive pending when replay is no
   assert.deepStrictEqual(metrics.sendDataRawArchive.autoExport.reasons, ["realtime_replay_not_drained"]);
 });
 
+test("raw archive export worker finalizes a disconnected recorder while another recorder stays connected", async () => {
+  const metrics = metricsWithFinalizableArchive();
+  metrics.recorders.set("VR-2", recorderMetrics({ activeConnections: 1, lastOffset: 84 }));
+  metrics.activeRecorderConnections = 1;
+  const requests = [];
+  const worker = createSendDataRawArchiveExportWorker({
+    config: workerConfig(),
+    metrics,
+    jobStore: memoryJobStore(stateWithStableCursor()),
+    executor: {
+      async recover(request) {
+        requests.push(request);
+        return { ok: true, statusCode: 200, response: { upload: { successfulRequests: 1 } } };
+      },
+    },
+  });
+
+  const result = await worker.runOnce();
+
+  assert.strictEqual(result.state, "uploaded");
+  assert.strictEqual(requests[0].vrcode, "VR-1");
+});
+
+test("raw archive export worker persists explicit Lab finalization before upload", async () => {
+  const metrics = metricsWithFinalizableArchive();
+  metrics.recorders.get("VR-1").lastSendDataObservedAt = new Date().toISOString();
+  metrics.recorders.get("VR-1").rawArchive.lastArchivedAt = new Date().toISOString();
+  const state = emptyState();
+  const requests = [];
+  const worker = createSendDataRawArchiveExportWorker({
+    config: workerConfig({ quietWindowMs: 300000, cursorStableMs: 60000 }),
+    metrics,
+    jobStore: memoryJobStore(state),
+    executor: {
+      async recover(request) {
+        requests.push(request);
+        return { ok: true, statusCode: 200, response: { upload: { successfulRequests: 1 } } };
+      },
+    },
+  });
+
+  const accepted = await worker.requestFinalization({
+    vrcodes: ["VR-1"],
+    reason: "lab_session_stopped",
+  });
+
+  assert.strictEqual(accepted.state, "accepted");
+  assert.strictEqual(requests.length, 1);
+  assert.strictEqual(requests[0].vrcode, "VR-1");
+  assert.strictEqual(state.pendingFinalizations.length, 0);
+  assert.strictEqual(state.history[0].trigger, "explicit");
+});
+
+test("raw archive export worker processes every ready recorder in one Lab stop request", async () => {
+  const metrics = metricsWithFinalizableArchive();
+  metrics.recorders.set("VR-2", recorderMetrics({ lastOffset: 84 }));
+  const recovered = [];
+  const state = emptyState();
+  const worker = createSendDataRawArchiveExportWorker({
+    config: workerConfig(),
+    metrics,
+    jobStore: memoryJobStore(state),
+    executor: {
+      async recover(request) {
+        recovered.push(request.vrcode);
+        return { ok: true, statusCode: 200, response: { upload: { successfulRequests: 1 } } };
+      },
+    },
+  });
+
+  const accepted = await worker.requestFinalization({
+    vrcodes: ["VR-1", "VR-2"],
+    reason: "lab_session_stopped",
+  });
+
+  assert.strictEqual(accepted.state, "accepted");
+  assert.deepStrictEqual(recovered, ["VR-1", "VR-2"]);
+  assert.deepStrictEqual(state.pendingFinalizations, []);
+  assert.strictEqual(state.checkpointsByVrcode["VR-1"].endOffset, 42);
+  assert.strictEqual(state.checkpointsByVrcode["VR-2"].endOffset, 84);
+});
+
 function metricsWithFinalizableArchive() {
   const metrics = createMetrics();
   configureSendDataRawArchive(metrics, {
@@ -141,8 +226,13 @@ function metricsWithFinalizableArchive() {
   metrics.sendDataRawArchive.persistedEvents = 10;
   metrics.sendDataRawArchive.lastArchivedAt = "2000-01-01T00:00:00.000Z";
   metrics.sendDataRawArchive.lastOffset = 42;
-  metrics.recorders.set("VR-1", {
-    activeConnections: 0,
+  metrics.recorders.set("VR-1", recorderMetrics());
+  return metrics;
+}
+
+function recorderMetrics(overrides: { activeConnections?: number; lastOffset?: number } = {}) {
+  return {
+    activeConnections: overrides.activeConnections || 0,
     selectedIp: "127.0.0.1",
     ipSource: "remoteAddress",
     lastSeenAt: "2000-01-01T00:00:00.000Z",
@@ -150,8 +240,16 @@ function metricsWithFinalizableArchive() {
     sendDataBytesObserved: 1000,
     lastSendDataObservedAt: "2000-01-01T00:00:00.000Z",
     redisIpSync: null,
-  });
-  return metrics;
+    rawArchive: {
+      persistedEvents: 10,
+      persistedBytes: 1000,
+      lastArchivedAt: "2000-01-01T00:00:00.000Z",
+      lastArchiveId: "send-data-raw.jsonl",
+      lastOffset: overrides.lastOffset || 42,
+    },
+    spool: { pendingItems: 0 },
+    replay: { pendingItems: 0, inFlightItems: 0 },
+  };
 }
 
 function workerConfig(overrides = {}) {
@@ -176,14 +274,18 @@ function workerConfig(overrides = {}) {
 
 function stateWithStableCursor() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: "2000-01-01T00:00:00.000Z",
-    lastObserved: {
-      archivePath: "/raw/send-data-raw.jsonl",
-      archiveCursor: 42,
-      observedAt: "2000-01-01T00:00:00.000Z",
+    observedByVrcode: {
+      "VR-1": {
+        vrcode: "VR-1",
+        archivePath: "/raw/send-data-raw.jsonl",
+        endOffset: 42,
+        observedAt: "2000-01-01T00:00:00.000Z",
+      },
     },
-    checkpoint: null,
+    checkpointsByVrcode: {},
+    pendingFinalizations: [],
     activeJob: null,
     history: [],
   };
@@ -191,10 +293,11 @@ function stateWithStableCursor() {
 
 function emptyState() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: "1970-01-01T00:00:00.000Z",
-    lastObserved: null,
-    checkpoint: null,
+    observedByVrcode: {},
+    checkpointsByVrcode: {},
+    pendingFinalizations: [],
     activeJob: null,
     history: [],
   };

@@ -4,6 +4,9 @@ export type SendDataRawArchiveRecoveryRequest = {
   vitalserverUrl: string;
   endpoint: string;
   timeoutMs: number;
+  vrcode: string;
+  startOffset: number;
+  endOffset: number;
 };
 
 export type SendDataRawArchiveRecoveryResult =

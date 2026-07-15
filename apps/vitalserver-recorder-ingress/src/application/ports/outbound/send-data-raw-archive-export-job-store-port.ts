@@ -1,8 +1,17 @@
+export type SendDataRawArchiveFinalizationTrigger =
+  | "inactivity"
+  | "shutdown"
+  | "explicit";
+
 export type SendDataRawArchiveExportJob = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   jobId: string;
+  requestId: string | null;
+  trigger: SendDataRawArchiveFinalizationTrigger;
+  vrcode: string;
   archivePath: string;
-  archiveCursor: number;
+  startOffset: number;
+  endOffset: number;
   state: "pending" | "running" | "uploaded" | "retryable_failed" | "failed";
   attempts: number;
   maxAttempts: number;
@@ -16,23 +25,33 @@ export type SendDataRawArchiveExportJob = {
 };
 
 export type SendDataRawArchiveExportCheckpoint = {
+  vrcode: string;
   archivePath: string;
-  archiveCursor: number;
+  endOffset: number;
   jobId: string;
   completedAt: string;
 };
 
 export type SendDataRawArchiveExportObservedCursor = {
+  vrcode: string;
   archivePath: string;
-  archiveCursor: number;
+  endOffset: number;
   observedAt: string;
 };
 
+export type SendDataRawArchiveFinalizationRequest = {
+  requestId: string;
+  vrcode: string;
+  reason: "lab_session_stopped" | "lab_recorder_stopped";
+  requestedAt: string;
+};
+
 export type SendDataRawArchiveExportStateDocument = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   updatedAt: string;
-  lastObserved: SendDataRawArchiveExportObservedCursor | null;
-  checkpoint: SendDataRawArchiveExportCheckpoint | null;
+  observedByVrcode: Record<string, SendDataRawArchiveExportObservedCursor>;
+  checkpointsByVrcode: Record<string, SendDataRawArchiveExportCheckpoint>;
+  pendingFinalizations: SendDataRawArchiveFinalizationRequest[];
   activeJob: SendDataRawArchiveExportJob | null;
   history: SendDataRawArchiveExportJob[];
 };

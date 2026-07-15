@@ -601,13 +601,28 @@ worker는 testkit 세션 전용이 아니라 raw archive에 기록된 연결 Rec
 `rawArchive.autoExport.status = uploaded`와 checkpoint가 남기 전까지는 운영자가 자동 복구 완료 상태로
 해석하면 안 됩니다.
 
-Recorder가 종료되었음을 뜻하는 명시 event는 현재 recorder ingress 계약에 없습니다. 따라서 socket
+실제 Vital Recorder가 종료되었음을 뜻하는 명시 event는 recorder ingress 계약에 없습니다. 따라서 socket
 disconnect, `activeConnections = 0`, 또는 `send_data` silence를 `stopped`, `sleep`, `idle` 같은 recorder
 상태로 승격하지 않습니다. 자동화 trigger는 recorder lifecycle 추론이 아니라 raw archive 구간의
 `finalizable_by_inactivity` 정책입니다. 기본 정책은 같은 `vrcode`에 대해 join과 raw archive append가
 관측되었고, active connection이 없으며, 마지막 raw archive append 이후 5분(`300000ms`) 동안 archive cursor가
 안정적이고 realtime replay가 drain되었으며 같은 cursor가 아직 export/upload되지 않은 경우에만 export/upload
 후보로 봅니다. 5분이 지나기 전에는 `inactive_candidate`이며, 이 상태도 "종료됨"을 뜻하지 않습니다.
+
+Product Lab은 recorder lifecycle owner이므로 예외가 아니라 별도의 명시 계약을 사용합니다. Lab session 또는
+recorder stop은 연결을 닫은 뒤 내부
+`POST /recorder-ingress/raw-archive/finalize`에 `vrcodes`와
+`lab_session_stopped` 또는 `lab_recorder_stopped` reason을 보냅니다. Recorder ingress는 이 요청을 durable
+finalization job으로 수락하고 `finalizable_by_explicit_request` 정책으로 처리합니다. 이 trigger도 active
+connection과 recorder별 realtime replay drain을 요구하지만 5분 inactivity와 cursor stability를 요구하지
+않습니다. Lab UI가 stop state를 만들거나 `.vital` upload 성공을 추측하지 않으며, ingress job/checkpoint가
+수락·재시도·성공·실패를 소유합니다.
+
+Auto export 판단은 전역 active connection 수가 아니라 recorder별 `activeConnections`, archive cursor,
+마지막 append 시각, spool/replay depth를 사용합니다. 따라서 다른 recorder가 계속 연결되어 있어도 종료된
+recorder의 cold path는 독립적으로 finalizable 상태가 될 수 있습니다. Recovery 요청은 해당 vrcode의 이전
+checkpoint 이후 byte window만 읽고, 현재 job이 생성한 artifact만 `/upload`로 전송합니다. Output directory에
+남아 있는 과거 `.vital` 파일은 현재 job의 upload input이 아닙니다.
 
 recorder ingress process가 `SIGTERM` 또는 `SIGINT`로 종료될 때는 별도 `shutdown` trigger를 사용합니다.
 이 trigger는 recorder lifecycle 추론이 아니라 process 종료 이벤트입니다. 종료 path는 active socket을 닫고
@@ -618,9 +633,10 @@ state를 bind mount에 보존합니다. 따라서 종료 시 upload 실패나 �
 
 제품화 결정은 다음과 같습니다.
 
-1. recorder ingress process는 raw archive auto export worker를 소유합니다. Worker는 raw archive cursor를
+1. recorder ingress process는 raw archive auto export worker를 소유합니다. Worker는 recorder별 raw archive cursor를
    관측하고, `finalizable_by_inactivity` 또는 종료 path의 `finalizable_by_shutdown`이 참이면 job document를 만든 뒤 제품 `recorder-recovery` API를 호출합니다.
-   Job state, retry state, upload result, checkpoint는
+   Product Lab stop은 `finalizable_by_explicit_request` job을 추가합니다. Job state, retry state, upload result,
+   recorder별 checkpoint는
    `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH` JSON 문서에 남깁니다.
 2. 수동 운영 명령도 유지합니다. `recover-raw-archive-vital`은 raw archive JSONL을
    `.vital` 파일로 export한 뒤 VitalServer upload endpoint로 반영합니다. 이 명령은 VitalServer storage를

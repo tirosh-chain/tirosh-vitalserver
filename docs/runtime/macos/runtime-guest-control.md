@@ -363,6 +363,14 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 
 This makes Product Lab the product boundary and removes the TestKit adapter from the Guest Control Lab execution path.
 
+Product Lab stop also owns an explicit recorder archive finalization effect. After closing the selected recorder
+connections, the Lab service sends the stopped recorder vrcodes and the lifecycle reason to recorder ingress
+`POST /recorder-ingress/raw-archive/finalize`. Recorder ingress persists the requests before attempting recovery and
+returns request IDs. The Lab stop response reports `archiveFinalization.state=accepted`; a dependency or contract
+failure is returned as a failed stop response while the Lab session/recorder document still preserves its actual
+stopped state. Recorder ingress, not Product Lab or the UI, owns `.vital` export retry, upload result, and checkpoint
+state.
+
 `POST /runtime/lab/vital-files/upload` accepts repeated multipart `files` fields.
 Every filename must be a basename ending in `.vital`; an empty batch, duplicate
 name, invalid extension, missing library, or destination conflict fails the whole
