@@ -141,6 +141,41 @@ public struct RuntimeRedisRelaySettingsRead: Codable, Equatable, Sendable {
         self.settings = settings
         self.readError = readError
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case state, settings, readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in [CodingKeys.settings, .readError] where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Redis Relay settings read requires explicit nullable field \(key.stringValue)."
+                )
+            )
+        }
+        state = try container.decode(RuntimeProductSettingsReadState.self, forKey: .state)
+        settings = try container.decodeIfPresent(RuntimeRedisRelaySettingsReadDocument.self, forKey: .settings)
+        readError = try container.decodeIfPresent(String.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let settings {
+            try container.encode(settings, forKey: .settings)
+        } else {
+            try container.encodeNil(forKey: .settings)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
 }
 
 public struct RuntimeRedisRelaySettingsApplyRequest: Codable, Equatable, Sendable {

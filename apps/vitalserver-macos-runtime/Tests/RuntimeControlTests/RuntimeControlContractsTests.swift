@@ -4,6 +4,40 @@ import XCTest
 import Errors
 
 final class RuntimeControlContractsTests: XCTestCase {
+    func testPlatformWorkflowAndRedisRelaySettingsWireContractsEncodeRequiredNulls() throws {
+        let workflow = PlatformWorkflowResource(state: .missing, operation: nil, readError: nil)
+        let relaySettings = RuntimeRedisRelaySettingsRead(
+            state: .unavailable,
+            settings: nil,
+            readError: "Redis Relay configuration is unavailable."
+        )
+
+        let workflowJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(workflow)) as? [String: Any]
+        )
+        let relaySettingsJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(relaySettings)) as? [String: Any]
+        )
+
+        XCTAssertTrue(workflowJSON["operation"] is NSNull)
+        XCTAssertTrue(workflowJSON["readError"] is NSNull)
+        XCTAssertTrue(relaySettingsJSON["settings"] is NSNull)
+        XCTAssertEqual(relaySettingsJSON["readError"] as? String, "Redis Relay configuration is unavailable.")
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                PlatformWorkflowResource.self,
+                from: Data("{\"state\":\"missing\",\"readError\":null}".utf8)
+            )
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeRedisRelaySettingsRead.self,
+                from: Data("{\"state\":\"unavailable\",\"settings\":null}".utf8)
+            )
+        )
+    }
+
     func testBrowserSettingsAndOperationEventWireContractsEncodeRequiredNulls() throws {
         let platformRead = RuntimePlatformSettingsRead(runtimeSettings: RuntimeSettings())
         let productRead = RuntimeProductSettingsRead(

@@ -88,6 +88,11 @@ class VitalServerVitalFileLibrary:
             method="GET",
             path=f"/api/filelist?{query}",
         )
+        # VitalServer's file-list endpoint uses this exact 404 document to
+        # declare an authenticated, but empty, indexed library. It is not a
+        # missing route. Other 404 responses remain dependency failures.
+        if self._is_empty_file_list_response(response):
+            return []
         if response.status_code != 200:
             raise GuestControlDependencyError(
                 f"VitalServer file list failed with HTTP {response.status_code}.",
@@ -237,6 +242,16 @@ class VitalServerVitalFileLibrary:
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
             body=body,
         )
+
+    @staticmethod
+    def _is_empty_file_list_response(response: VitalServerHTTPResponse) -> bool:
+        if response.status_code != 404:
+            return False
+        try:
+            document = json.loads(response.body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        return document == {"message": "No result found"}
 
     def _request(
         self,

@@ -132,4 +132,39 @@ public struct PlatformWorkflowResource: Codable, Equatable, Sendable {
         self.operation = operation
         self.readError = readError
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case state, operation, readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in [CodingKeys.operation, .readError] where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Platform workflow resource requires explicit nullable field \(key.stringValue)."
+                )
+            )
+        }
+        state = try container.decode(PlatformWorkflowResourceState.self, forKey: .state)
+        operation = try container.decodeIfPresent(PlatformWorkflowOperation.self, forKey: .operation)
+        readError = try container.decodeIfPresent(String.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let operation {
+            try container.encode(operation, forKey: .operation)
+        } else {
+            try container.encodeNil(forKey: .operation)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
 }

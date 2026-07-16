@@ -14,6 +14,9 @@
 - API upload 경로로 전환한 설치본에서는 upload와 Replay 목록 조회가 모두
   `vitalFileLibraryUnavailable` 및 `<urlopen error [Errno 111] Connection refused>`로
   실패할 수 있다.
+- 아직 한 번도 업로드하지 않은 library에서는 `GET /api/filelist`가 HTTP 404와 정확히
+  `{"message":"No result found"}`를 반환해 첫 upload가 `vitalFileLibraryReadFailed`로
+  막힐 수 있다.
 
 ## Cause
 
@@ -27,6 +30,13 @@ API 전환 후 Guest file-library adapter가 VM 외부 ingress의 Docker publica
 설치 VM에서는 VM interface의 `:80`은 reachable이어도 Guest loopback `:80` listener가
 존재하지 않는다. Guest 내부 VitalServer API 경계는 Compose가 명시적으로 publish한
 recorder ingress `127.0.0.1:18083`이다.
+
+VitalServer의 empty indexed library는 일반적인 REST missing-route 응답과 다르게
+HTTP 404 `{"message":"No result found"}`로 명시된다. Guest adapter가 status code만으로
+이를 dependency failure로 처리하면 import가 upload 전 conflict check를 위해 library를
+읽는 시점에 막힌다. 이 문서는 authenticated exact response만 loaded empty library로
+해석해야 하며, 다른 404, malformed body, authentication failure는 여전히 read failure라는
+경계를 기록한다.
 
 ## Checks
 
@@ -54,6 +64,9 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
   `POST /upload`의 `vitalfile` field로 보낸다. Guest adapter는 이를
   `http://127.0.0.1:18083` recorder ingress를 통해 호출한다.
 - 응답이 HTTP 2xx이면서 본문이 정확히 `success`인지 확인한다.
+- `GET /api/filelist`가 404 `{"message":"No result found"}`이면 authenticated empty
+  library로 확인하고 첫 upload를 진행한다. 이외 404는 endpoint/dependency failure로
+  진단한다.
 - 업로드 후 인증된 `GET /api/filelist`를 다시 읽어 모든 파일의 index entry를 확인한다.
 - Swift/PWA는 성공 뒤 `/runtime/lab/vital-files` query를 다시 읽고, 그 explicit loaded
   목록만 Replay 선택기에 표시한다.
@@ -66,6 +79,9 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
   검증한다.
 - HTTP 200 error text, authentication failure, invalid gzip/JSON, missing index entry, partial
   multi-file completion을 empty/success로 변환하지 않는다.
+- empty library는 VitalServer가 정한 exact 404 JSON document일 때만 empty collection으로
+  변환한다. generic 404, body decode failure, or a different error document를 empty library로
+  바꾸지 않는다.
 - 연결 실패에는 실패한 VitalServer API URL을 포함해 외부 interface와 Guest loopback
   endpoint를 바로 구분할 수 있게 한다.
 - VM interface reachability를 Guest loopback reachability로 추정하지 않는다. Guest host

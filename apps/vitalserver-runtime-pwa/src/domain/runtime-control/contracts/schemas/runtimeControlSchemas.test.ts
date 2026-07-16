@@ -10,7 +10,9 @@ import {
   runtimeLogTextResponseSchema,
   platformOperationStateSchema,
   platformWorkflowOperationSchema,
+  platformWorkflowResourceSchema,
   runtimeProviderCommandResponseSchema,
+  runtimeRedisRelaySettingsReadSchema,
   runtimeRedisRelayStatusReadResultSchema,
   platformStateSchema,
   runtimeSettingsSchema,
@@ -21,6 +23,30 @@ import {
 } from "./runtimeControlSchemas";
 
 describe("runtime control contract schemas", () => {
+  it("requires explicit null fields for missing workflows and unavailable Redis Relay settings", () => {
+    expect(
+      platformWorkflowResourceSchema.parse({
+        state: "missing",
+        operation: null,
+        readError: null
+      })
+    ).toMatchObject({ state: "missing", operation: null, readError: null });
+    expect(() =>
+      platformWorkflowResourceSchema.parse({ state: "missing", readError: null })
+    ).toThrow(/operation/);
+
+    expect(
+      runtimeRedisRelaySettingsReadSchema.parse({
+        state: "unavailable",
+        settings: null,
+        readError: "Redis Relay configuration is unavailable."
+      })
+    ).toMatchObject({ state: "unavailable", settings: null });
+    expect(() =>
+      runtimeRedisRelaySettingsReadSchema.parse({ state: "unavailable", settings: null })
+    ).toThrow(/readError/);
+  });
+
   it("requires artifact evidence only for a completed support export", () => {
     const completed = {
       schemaVersion: 1,

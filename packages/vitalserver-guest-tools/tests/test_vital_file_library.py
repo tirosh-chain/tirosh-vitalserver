@@ -43,6 +43,10 @@ def file_list_response(items: list[dict[str, object]]) -> VitalServerHTTPRespons
     return response(gzip.compress(json.dumps(items).encode()))
 
 
+def empty_file_list_response() -> VitalServerHTTPResponse:
+    return response(b'{"message":"No result found"}', status=404)
+
+
 def library(transport: FakeTransport) -> VitalServerVitalFileLibrary:
     return VitalServerVitalFileLibrary(
         base_url="http://127.0.0.1:18080",
@@ -95,6 +99,21 @@ def test_unavailable_error_identifies_the_failed_vitalserver_endpoint() -> None:
     assert "url=http://127.0.0.1:18080/api/login" in raised.value.message
 
 
+def test_lists_empty_vitalserver_library_from_its_explicit_no_result_response() -> None:
+    transport = FakeTransport([login_response(), empty_file_list_response()])
+
+    assert library(transport).list_files() == []
+
+
+def test_does_not_treat_an_unrelated_file_list_404_as_an_empty_library() -> None:
+    transport = FakeTransport([login_response(), response(b"not found", status=404)])
+
+    with pytest.raises(GuestControlDependencyError) as raised:
+        library(transport).list_files()
+
+    assert raised.value.kind == "vitalFileLibraryReadFailed"
+
+
 def test_uploads_each_selected_file_through_vitalserver_and_verifies_index() -> None:
     first = "OR-A_260715_120000.vital"
     second = "OR-B_260715_120001.vital"
@@ -120,6 +139,36 @@ def test_uploads_each_selected_file_through_vitalserver_and_verifies_index() -> 
     assert len(upload_requests) == 2
     assert b'name="vitalfile"' in upload_requests[0]["body"]
     assert first.encode() in upload_requests[0]["body"]
+
+
+def test_uploads_through_vitalserver_when_its_library_is_initially_empty() -> None:
+    filename = "OR-A_260715_120000.vital"
+    transport = FakeTransport(
+        [
+            login_response(),
+            empty_file_list_response(),
+            response(b"success"),
+            login_response(),
+            file_list_response([indexed_file(filename, 5)]),
+        ]
+    )
+
+    result = library(transport).import_files([(filename, b"first")])
+
+    assert result == [
+        {
+            "fileName": filename,
+            "relativePath": f"OR-A/202607/260715/{filename}",
+            "sizeBytes": 5,
+        }
+    ]
+    assert [request["url"] for request in transport.requests] == [
+        "http://127.0.0.1:18080/api/login",
+        "http://127.0.0.1:18080/api/filelist?access_token=access-token&unixtimestamp=1",
+        "http://127.0.0.1:18080/upload",
+        "http://127.0.0.1:18080/api/login",
+        "http://127.0.0.1:18080/api/filelist?access_token=access-token&unixtimestamp=1",
+    ]
 
 
 def test_rejects_entire_batch_before_api_calls_when_one_file_is_not_vital() -> None:
