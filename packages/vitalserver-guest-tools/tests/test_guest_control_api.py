@@ -32,6 +32,8 @@ from tirosh_guest_tools.domain.guest_control.models import (
     StackStatus,
     UpdateActivationResult,
     UpdateShutdownResult,
+    VitalFileUploadItem,
+    VitalFileUploadResult,
 )
 from tirosh_vitalserver.devtools.runtime_v2_conformance import RuntimeV2ConformanceSuite
 from vitalserver_redis_relay.status_owner import GuestControlStatusOwnerPublisher
@@ -812,16 +814,19 @@ class FakeVitalFileLibrary:
             }
         ]
 
-    def import_files(self, files: list[tuple[str, bytes]]) -> list[dict[str, object]]:
+    def import_files(self, files: list[tuple[str, bytes]]) -> VitalFileUploadResult:
         self.imported.append(files)
-        return [
-            {
-                "fileName": filename,
-                "relativePath": filename,
-                "sizeBytes": len(content),
-            }
-            for filename, content in files
-        ]
+        return VitalFileUploadResult.from_items(
+            [
+                VitalFileUploadItem(
+                    file_name=filename,
+                    relative_path=filename,
+                    size_bytes=len(content),
+                )
+                for filename, content in files
+            ],
+            [],
+        )
 
 
 def build_usecases(
@@ -2016,6 +2021,7 @@ def test_lab_upload_vital_files_route_accepts_multiple_multipart_files(
                 "sizeBytes": 14,
             },
         ],
+        "failedFiles": [],
     }
 
 

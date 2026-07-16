@@ -531,12 +531,34 @@ public struct RuntimeLabVitalFileLibraryUploadItem: Codable, Equatable, Sendable
     }
 }
 
-public struct RuntimeLabVitalFileLibraryUploadResponse: Codable, Equatable, Sendable {
-    public let state: String
-    public let files: [RuntimeLabVitalFileLibraryUploadItem]
+public enum RuntimeLabVitalFileLibraryUploadState: String, Codable, Equatable, Sendable {
+    case completed
+    case partial
+    case failed
+}
 
-    public init(state: String = "completed", files: [RuntimeLabVitalFileLibraryUploadItem]) {
+public struct RuntimeLabVitalFileLibraryUploadFailure: Codable, Equatable, Sendable {
+    public let fileName: String
+    public let reason: String
+
+    public init(fileName: String, reason: String) {
+        self.fileName = fileName
+        self.reason = reason
+    }
+}
+
+public struct RuntimeLabVitalFileLibraryUploadResponse: Codable, Equatable, Sendable {
+    public let state: RuntimeLabVitalFileLibraryUploadState
+    public let files: [RuntimeLabVitalFileLibraryUploadItem]
+    public let failedFiles: [RuntimeLabVitalFileLibraryUploadFailure]
+
+    public init(
+        state: RuntimeLabVitalFileLibraryUploadState = .completed,
+        files: [RuntimeLabVitalFileLibraryUploadItem],
+        failedFiles: [RuntimeLabVitalFileLibraryUploadFailure] = []
+    ) {
         self.state = state
         self.files = files
+        self.failedFiles = failedFiles
     }
 }

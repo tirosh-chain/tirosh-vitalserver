@@ -1429,7 +1429,8 @@ describe("runtime console pages", () => {
     hooks.useReplayLabVitalFile.mockReturnValue(replayLabVitalFile);
     const uploadLabVitalFile = mutation({
       state: "completed",
-      files: []
+      files: [],
+      failedFiles: []
     });
     hooks.useUploadLabVitalFiles.mockReturnValue(uploadLabVitalFile);
 
@@ -1487,6 +1488,35 @@ describe("runtime console pages", () => {
       },
       expect.any(Object)
     );
+  });
+
+  it("shows only failed Vital File uploads after a partial batch", () => {
+    hooks.useUploadLabVitalFiles.mockReturnValue(
+      mutation({
+        state: "partial",
+        files: [
+          {
+            fileName: "valid.vital",
+            relativePath: "valid.vital",
+            sizeBytes: 42
+          }
+        ],
+        failedFiles: [
+          {
+            fileName: "broken.vital",
+            reason: "Vital file gzip stream is invalid."
+          }
+        ]
+      })
+    );
+
+    renderPage(<LabPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Files that could not be uploaded");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "broken.vital: Vital file gzip stream is invalid."
+    );
+    expect(screen.getByRole("alert")).not.toHaveTextContent("valid.vital");
   });
 
   it("keeps Product Lab visible but disables Lab commands when Lab capability is unavailable", () => {

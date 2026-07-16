@@ -1061,7 +1061,7 @@ final class RuntimeControlAPITests: XCTestCase {
         )
         let uploadBoundary = "runtime-vital-files-boundary"
         let uploadBody = Data(
-            "--\(uploadBoundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"first.vital\"\r\nContent-Type: application/octet-stream\r\n\r\nfirst\r\n--\(uploadBoundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"second.vital\"\r\nContent-Type: application/octet-stream\r\n\r\nsecond\r\n--\(uploadBoundary)--\r\n".utf8
+            "--\(uploadBoundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"first.vital\"\r\nContent-Type: application/octet-stream\r\n\r\nfirst\r\n--\(uploadBoundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"not-vital.txt\"\r\nContent-Type: application/octet-stream\r\n\r\nsecond\r\n--\(uploadBoundary)\r\nContent-Disposition: form-data; name=\"files\"; filename=\"first.vital\"\r\nContent-Type: application/octet-stream\r\n\r\nduplicate\r\n--\(uploadBoundary)--\r\n".utf8
         )
 
         let scenarios = try await decode(
@@ -1123,8 +1123,11 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(start.state, .unavailable)
         XCTAssertEqual(stop.state, .unavailable)
         XCTAssertEqual(replay.state, .unavailable)
-        XCTAssertEqual(upload.state, "completed")
-        XCTAssertEqual(upload.files.map(\.fileName), ["first.vital", "second.vital"])
+        XCTAssertEqual(upload.state, .completed)
+        XCTAssertEqual(
+            upload.files.map(\.fileName),
+            ["first.vital", "not-vital.txt", "first.vital"]
+        )
     }
 
     @MainActor

@@ -1,3 +1,5 @@
+import Contracts
+
 enum RuntimeLabPanelText {
     static let summary = "Lab"
     static let description = "Run controlled virtual recorder scenarios and replay local .vital files through the installed VitalServer runtime."
@@ -109,6 +111,12 @@ enum RuntimeLabPanelText {
 
     static func uploadedLabVitalFiles(_ count: Int) -> String {
         "Uploaded \(count) .vital file(s) to the Vital Files library."
+    }
+
+    static func failedLabVitalFiles(
+        _ failures: [RuntimeLabVitalFileLibraryUploadFailure]
+    ) -> String {
+        failures.map { "\($0.fileName): \($0.reason)" }.joined(separator: "\n")
     }
 
     static func repeatTimes(_ count: Int) -> String {

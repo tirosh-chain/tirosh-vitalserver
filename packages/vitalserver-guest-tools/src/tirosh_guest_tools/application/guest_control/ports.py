@@ -18,6 +18,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     UpdateActivationResult,
     UpdateShutdownDependencyError,
     UpdateShutdownResult,
+    VitalFileUploadResult,
 )
 
 
@@ -125,8 +126,8 @@ class VitalFileLibraryPort(Protocol):
         """Read the authoritative VitalServer indexed file collection."""
         raise NotImplementedError
 
-    def import_files(self, files: list[tuple[str, bytes]]) -> list[dict[str, object]]:
-        """Send an explicitly provided batch through the VitalServer upload API."""
+    def import_files(self, files: list[tuple[str, bytes]]) -> VitalFileUploadResult:
+        """Upload every independently valid file and report per-file outcomes."""
         raise NotImplementedError
 
 

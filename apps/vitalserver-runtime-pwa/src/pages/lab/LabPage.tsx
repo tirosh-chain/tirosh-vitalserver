@@ -213,13 +213,9 @@ export function LabPage() {
       (vitalReplayBedId.length > 0 && vitalReplayRecorderId.length > 0)) &&
     (vitalReplayRepeatMode !== "count" || vitalReplayCount >= 2) &&
     !isBusy;
-  const invalidVitalUploadFile = vitalUploadFiles.find(
-    (file) => !file.name.toLowerCase().endsWith(".vital")
-  );
   const canUploadVitalFiles =
     labCapability === true &&
     vitalUploadFiles.length > 0 &&
-    invalidVitalUploadFile === undefined &&
     !isBusy;
   const canCreateBeds = labCapability === true && splitList(bedRoomNames).length > 0 && !isBusy;
   const canDeleteBeds = labCapability === true && splitList(deleteBedTargets).length > 0 && !isBusy;
@@ -650,9 +646,8 @@ export function LabPage() {
         <section className="page-stack" aria-label="Upload Vital Files">
           <h3>Upload to library</h3>
           <p>
-            Select one or more <code>.vital</code> files. VitalServer validates,
-            stores, and indexes each accepted upload. A partial failure is reported
-            explicitly and is never shown as a completed batch.
+            Select one or more <code>.vital</code> files. Each file is evaluated
+            independently; failures do not stop later files from being uploaded.
           </p>
           <input
             key={vitalUploadFiles.length === 0 ? "empty" : "selected"}
@@ -667,12 +662,6 @@ export function LabPage() {
               ? "No files selected"
               : `${vitalUploadFiles.length} file(s): ${vitalUploadFiles.map((file) => file.name).join(", ")}`}
           </div>
-          {invalidVitalUploadFile ? (
-            <ErrorState
-              title="Invalid upload selection"
-              error={new Error(`Only .vital files can be uploaded: ${invalidVitalUploadFile.name}`)}
-            />
-          ) : null}
           <button
             type="button"
             disabled={!canUploadVitalFiles}
@@ -680,6 +669,16 @@ export function LabPage() {
           >
             Upload {vitalUploadFiles.length > 0 ? vitalUploadFiles.length : ""} file(s)
           </button>
+          {uploadVitalFiles.data?.failedFiles.length ? (
+            <ErrorState
+              title="Files that could not be uploaded"
+              error={new Error(
+                uploadVitalFiles.data.failedFiles
+                  .map((failure) => `${failure.fileName}: ${failure.reason}`)
+                  .join("\n")
+              )}
+            />
+          ) : null}
         </section>
         <hr />
         <h3>Replay uploaded file</h3>

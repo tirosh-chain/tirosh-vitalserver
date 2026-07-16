@@ -8,9 +8,6 @@ public enum RuntimeControlMultipartFormDataError: LocalizedError, Equatable {
     case unexpectedField(String?)
     case filenameRequired
     case filesRequired
-    case nonVitalFile(String)
-    case duplicateFilename(String)
-    case destinationConflict(String)
 
     public var errorDescription: String? {
         switch self {
@@ -26,12 +23,6 @@ public enum RuntimeControlMultipartFormDataError: LocalizedError, Equatable {
             return "Every Vital Files upload part requires a filename."
         case .filesRequired:
             return "Select at least one .vital file."
-        case .nonVitalFile(let fileName):
-            return "Only .vital files can be uploaded: \(fileName)"
-        case .duplicateFilename(let fileName):
-            return "Upload contains duplicate filenames: \(fileName)"
-        case .destinationConflict(let fileName):
-            return "Vital Files library already contains: \(fileName)"
         }
     }
 }

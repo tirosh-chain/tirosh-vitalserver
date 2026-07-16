@@ -71,19 +71,19 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
 ## Actions
 
 - Host/PWA가 선택한 bytes를 Runtime Control multipart upload로 전달한다.
-- Guest adapter는 어떤 VitalServer API 호출 전에도 각 입력의 complete gzip stream과
-  `VITA` header를 검증한다. invalid file은 batch 전체를 `vitalFileUploadInvalid`으로
-  거부하므로 유효한 일부만 서버에 upload하는 partial result를 만들지 않는다.
-- Guest library adapter가 전체 선택을 사전 검증한 뒤 각 파일을 VitalServer
+- Guest adapter는 각 입력의 complete gzip stream과 `VITA` header를 독립적으로
+  검증한다. invalid file은 VitalServer로 보내지 않고 그 파일의 `failedFiles` 결과로
+  남기며, 같은 batch의 다른 유효 파일 upload는 계속 시도한다.
+- Guest library adapter가 각 유효 후보를 VitalServer
   `POST /upload`의 `vitalfile` field로 보낸다. Guest adapter는 이를
   `http://127.0.0.1:18083` recorder ingress를 통해 호출한다.
 - 응답이 HTTP 2xx이면서 본문이 정확히 `success`인지 확인한다.
 - `GET /api/filelist`가 404 `{"message":"No result found"}`이면 authenticated empty
   library로 확인하고 첫 upload를 진행한다. 이외 404는 endpoint/dependency failure로
   진단한다.
-- 업로드 후 인증된 `GET /api/filelist`를 즉시 한 번만 읽지 않는다. 모든 파일의 index
+- 업로드 후 인증된 `GET /api/filelist`를 즉시 한 번만 읽지 않는다. 수락된 파일의 index
   entry가 나타날 때까지 1초 간격으로 최대 300초 동안 VitalServer owner를 다시 읽는다.
-  deadline까지 누락된 파일은 `vitalFileUploadNotIndexed`로 명시적으로 실패한다.
+  deadline까지 누락된 파일은 해당 파일의 `failedFiles` 결과로 명시한다.
 - Swift/PWA는 성공 뒤 `/runtime/lab/vital-files` query를 다시 읽고, 그 explicit loaded
   목록만 Replay 선택기에 표시한다.
 
@@ -93,8 +93,9 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
 - Replay catalog의 owner는 filesystem scan이 아니라 VitalServer `/api/filelist`다.
 - `.vital` 확장자뿐 아니라 `<bed>_YYMMDD_HHMMSS.vital` indexable filename을 API 호출 전에
   검증한다.
-- HTTP 200 error text, authentication failure, invalid gzip/JSON, missing index entry, partial
-  multi-file completion을 empty/success로 변환하지 않는다.
+- HTTP 200 error text, authentication failure, invalid gzip/JSON, missing index entry를
+  empty/success로 변환하지 않는다. batch는 모든 파일의 결과를 `completed`, `partial`,
+  또는 `failed`와 `files`/`failedFiles`로 명시한다.
 - upload HTTP success를 index success로 추정하지 않는다. delayed index publication은
   bounded polling test로 검증하고, deadline 이후에는 성공이나 빈 목록으로 fallback하지 않는다.
 - truncated gzip, invalid `VITA` header, 그리고 index publication delay를 각각 별도

@@ -367,7 +367,7 @@ struct RuntimeLabPanel: View {
             if !viewModel.labVitalFileImportMessage.isEmpty {
                 Text(viewModel.labVitalFileImportMessage)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(viewModel.labVitalFileImportFailed ? .red : .secondary)
             }
 
             Divider()

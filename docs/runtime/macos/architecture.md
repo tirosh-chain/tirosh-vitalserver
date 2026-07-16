@@ -801,13 +801,12 @@ Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락�
   VitalServer library로 가져오는 operation이다. Runtime Control API는
   `POST /runtime/lab/vital-files/upload`의 `multipart/form-data` `files` field를 반복해
   N개 파일의 명시적 byte input을 받는다.
-- Guest library adapter는 API 호출 전에 전체 선택의 basename, `.vital` 확장자, VitalServer
-  파일명 규칙(`<bed>_YYMMDD_HHMMSS.vital`), batch 내 중복, 현재 VitalServer index 충돌을
-  검증한다. 검증된 파일은 VitalServer `POST /upload`에 하나씩 전달하고 HTTP 상태뿐 아니라
-  응답 본문이 정확히 `success`인지 확인한다. 완료 후 `POST /api/login`과
-  `GET /api/filelist`로 모든 파일이 실제 index에 등록됐는지 다시 검증한다. 두 번째 이후
-  파일에서 실패한 경우 이미 VitalServer가 수락한 파일을 숨기거나 되돌렸다고 추정하지 않고
-  partial-completion failure로 보고한다.
+- Guest library adapter는 각 선택 파일의 basename, `.vital` 확장자, VitalServer 파일명 규칙
+  (`<bed>_YYMMDD_HHMMSS.vital`), batch 내 중복, 현재 VitalServer index 충돌을 독립적으로
+  검증한다. 유효 후보는 VitalServer `POST /upload`에 하나씩 전달하고 HTTP 상태뿐 아니라
+  응답 본문이 정확히 `success`인지 확인한다. 완료 후 `POST /api/login`과 `GET /api/filelist`로
+  각 수락 파일이 실제 index에 등록됐는지 다시 검증한다. 한 파일의 검증·upload·index 실패는
+  해당 파일의 `failedFiles` 결과로 남기고 다음 파일 시도를 막지 않는다.
 - macOS native shell은 `NSOpenPanel.allowsMultipleSelection`으로 Host URL들을 받고 같은
   batch import 규칙을 적용한다. PWA는 browser `File[]`을 multipart로 전달한다.
   Linux/Windows Platform Agent는 같은 Runtime Control route와 body를 Runtime Controller에

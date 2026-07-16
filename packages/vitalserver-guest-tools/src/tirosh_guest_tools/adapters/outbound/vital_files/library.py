@@ -15,7 +15,12 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from tirosh_guest_tools.domain.errors import GuestContractError
-from tirosh_guest_tools.domain.guest_control.models import GuestControlDependencyError
+from tirosh_guest_tools.domain.guest_control.models import (
+    GuestControlDependencyError,
+    VitalFileUploadFailure,
+    VitalFileUploadItem,
+    VitalFileUploadResult,
+)
 from tirosh_guest_tools.domain.runtime_config import RuntimeConfig
 
 
@@ -152,70 +157,101 @@ class VitalServerVitalFileLibrary:
             )
         return sorted(files, key=lambda item: str(item["relativePath"]).lower())
 
-    def import_files(self, files: list[tuple[str, bytes]]) -> list[dict[str, object]]:
-        self._validate_upload(files)
-        indexed_before = {str(item["displayName"]): item for item in self.list_files()}
-        conflicts = [name for name, _ in files if name in indexed_before]
-        if conflicts:
-            raise GuestControlDependencyError(
-                f"VitalServer already contains: {', '.join(conflicts)}",
-                kind="vitalFileUploadConflict",
-            )
+    def import_files(self, files: list[tuple[str, bytes]]) -> VitalFileUploadResult:
+        candidates, failures = self._upload_candidates(files)
+        if not candidates:
+            return VitalFileUploadResult.from_items([], failures)
 
-        completed: list[str] = []
-        for filename, content in files:
+        indexed_before = {str(item["displayName"]): item for item in self.list_files()}
+        upload_candidates: list[tuple[str, bytes]] = []
+        for filename, content in candidates:
+            if filename in indexed_before:
+                failures.append(
+                    VitalFileUploadFailure(
+                        file_name=filename,
+                        reason="VitalServer already indexes this filename.",
+                    )
+                )
+                continue
+            upload_candidates.append((filename, content))
+
+        accepted: list[tuple[str, bytes]] = []
+        for filename, content in upload_candidates:
             response = self._upload(filename, content)
             response_text = response.body.decode("utf-8", errors="replace").strip()
             upload_succeeded = (
                 response.status_code in range(200, 300) and response_text == "success"
             )
             if not upload_succeeded:
-                detail = (
-                    f"; already uploaded in this request: {', '.join(completed)}"
-                    if completed
-                    else ""
+                failures.append(
+                    VitalFileUploadFailure(
+                        file_name=filename,
+                        reason=(
+                            "VitalServer upload failed: "
+                            f"HTTP {response.status_code} body={response_text!r}"
+                        ),
+                    )
                 )
-                kind = (
-                    "vitalFileUploadPartiallyCompleted"
-                    if completed
-                    else "vitalFileUploadFailed"
-                )
-                raise GuestControlDependencyError(
-                    "VitalServer upload failed for "
-                    f"{filename}: HTTP {response.status_code} "
-                    f"body={response_text!r}{detail}",
-                    kind=kind,
-                )
-            completed.append(filename)
+                continue
+            accepted.append((filename, content))
 
-        indexed_after = self._wait_for_index(completed)
-        return [
-            {
-                "fileName": filename,
-                "relativePath": indexed_after[filename]["relativePath"],
-                "sizeBytes": len(content),
-            }
-            for filename, content in files
-        ]
+        if not accepted:
+            return VitalFileUploadResult.from_items([], failures)
+
+        try:
+            indexed_after, _ = self._wait_for_index(
+                [filename for filename, _ in accepted]
+            )
+        except GuestControlDependencyError as error:
+            failures.extend(
+                VitalFileUploadFailure(
+                    file_name=filename,
+                    reason=(
+                        "VitalServer accepted the upload, but index verification "
+                        f"failed: {error.message}"
+                    ),
+                )
+                for filename, _ in accepted
+            )
+            return VitalFileUploadResult.from_items([], failures)
+
+        uploaded: list[VitalFileUploadItem] = []
+        for filename, content in accepted:
+            indexed = indexed_after.get(filename)
+            if indexed is None:
+                failures.append(
+                    VitalFileUploadFailure(
+                        file_name=filename,
+                        reason=(
+                            "VitalServer accepted the upload but did not report "
+                            "the file in its index within "
+                            f"{self._index_wait_seconds:g}s."
+                        ),
+                    )
+                )
+                continue
+            uploaded.append(
+                VitalFileUploadItem(
+                    file_name=filename,
+                    relative_path=str(indexed["relativePath"]),
+                    size_bytes=len(content),
+                )
+            )
+        return VitalFileUploadResult.from_items(uploaded, failures)
 
     def _wait_for_index(
         self, uploaded_filenames: list[str]
-    ) -> dict[str, dict[str, object]]:
+    ) -> tuple[dict[str, dict[str, object]], tuple[str, ...]]:
         deadline = self._monotonic_clock() + self._index_wait_seconds
         while True:
             indexed = {str(item["displayName"]): item for item in self.list_files()}
-            missing = [
+            missing = tuple(
                 filename for filename in uploaded_filenames if filename not in indexed
-            ]
+            )
             if not missing:
-                return indexed
+                return indexed, missing
             if self._monotonic_clock() >= deadline:
-                raise GuestControlDependencyError(
-                    "VitalServer accepted upload but did not report "
-                    "indexed files within "
-                    f"{self._index_wait_seconds:g}s: {', '.join(missing)}",
-                    kind="vitalFileUploadNotIndexed",
-                )
+                return indexed, missing
             self._sleep(
                 min(
                     self._index_poll_interval_seconds,
@@ -308,35 +344,55 @@ class VitalServerVitalFileLibrary:
                 kind="vitalFileLibraryUnavailable",
             ) from error
 
-    def _validate_upload(self, files: list[tuple[str, bytes]]) -> None:
+    def _upload_candidates(
+        self, files: list[tuple[str, bytes]]
+    ) -> tuple[list[tuple[str, bytes]], list[VitalFileUploadFailure]]:
         if not files:
             raise GuestControlDependencyError(
                 "Select at least one .vital file.",
                 kind="vitalFileUploadInvalid",
             )
         names: set[str] = set()
+        candidates: list[tuple[str, bytes]] = []
+        failures: list[VitalFileUploadFailure] = []
         for filename, content in files:
-            if not self._valid_filename(filename):
-                raise GuestControlDependencyError(
-                    "Only .vital files can be uploaded: "
-                    f"{filename or '<missing filename>'}",
-                    kind="vitalFileUploadInvalid",
-                )
             try:
-                self._storage_relative_path(filename)
+                self._validate_upload_candidate(filename, content, names)
             except GuestControlDependencyError as error:
-                raise GuestControlDependencyError(
-                    "VitalServer upload filename must follow "
-                    f"<bed>_YYMMDD_HHMMSS.vital: {filename}",
-                    kind="vitalFileUploadInvalid",
-                ) from error
-            if filename in names:
-                raise GuestControlDependencyError(
-                    f"Upload contains duplicate filenames: {filename}",
-                    kind="vitalFileUploadInvalid",
+                failures.append(
+                    VitalFileUploadFailure(file_name=filename, reason=error.message)
                 )
+                continue
             names.add(filename)
-            self._validate_vital_file_content(filename, content)
+            candidates.append((filename, content))
+        return candidates, failures
+
+    def _validate_upload_candidate(
+        self,
+        filename: str,
+        content: bytes,
+        names: set[str],
+    ) -> None:
+        if not self._valid_filename(filename):
+            raise GuestControlDependencyError(
+                "Only .vital files can be uploaded: "
+                f"{filename or '<missing filename>'}",
+                kind="vitalFileUploadInvalid",
+            )
+        try:
+            self._storage_relative_path(filename)
+        except GuestControlDependencyError as error:
+            raise GuestControlDependencyError(
+                "VitalServer upload filename must follow "
+                f"<bed>_YYMMDD_HHMMSS.vital: {filename}",
+                kind="vitalFileUploadInvalid",
+            ) from error
+        if filename in names:
+            raise GuestControlDependencyError(
+                f"Upload contains duplicate filenames: {filename}",
+                kind="vitalFileUploadInvalid",
+            )
+        self._validate_vital_file_content(filename, content)
 
     @staticmethod
     def _validate_vital_file_content(filename: str, content: bytes) -> None:

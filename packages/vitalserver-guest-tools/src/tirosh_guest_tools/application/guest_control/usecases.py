@@ -867,11 +867,7 @@ class GuestControlUseCases:
                 "Vital Files library adapter is unavailable.",
                 kind="vitalFileLibraryUnavailable",
             )
-        imported = self._vital_file_library.import_files(files)
-        return {
-            "state": "completed",
-            "files": imported,
-        }
+        return self._vital_file_library.import_files(files).as_json()
 
     def create_lab_beds(self, request: dict[str, object]) -> dict[str, object]:
         return self._run_lab_read_model_operation(

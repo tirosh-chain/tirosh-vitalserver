@@ -564,7 +564,7 @@
       "post": {
         "operationId": "uploadRuntimeLabVitalFiles",
         "summary": "Upload one or more files to the Vital Files library",
-        "description": "Prevalidates repeated multipart files, uploads each accepted file through VitalServer POST /upload, and verifies every result through GET /api/filelist. HTTP 200 parser errors and partial completion are explicit failures, not completed batches.",
+        "description": "Evaluates every multipart file independently, uploads every valid candidate through VitalServer POST /upload, and verifies accepted uploads through GET /api/filelist. Per-file validation, upload, and index failures are returned in failedFiles without stopping later files; an unavailable VitalServer dependency still fails the request.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localServerMediated",
         "x-runtime-control-access": "localServerMediated",
@@ -5338,10 +5338,10 @@
       "RuntimeLabVitalFileUploadResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["state", "files"],
+        "required": ["state", "files", "failedFiles"],
         "properties": {
           "state": {
-            "const": "completed"
+            "enum": ["completed", "partial", "failed"]
           },
           "files": {
             "type": "array",
@@ -5353,6 +5353,18 @@
                 "fileName": {"type": "string"},
                 "relativePath": {"type": "string"},
                 "sizeBytes": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
+          "failedFiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fileName", "reason"],
+              "properties": {
+                "fileName": {"type": "string"},
+                "reason": {"type": "string"}
               }
             }
           }

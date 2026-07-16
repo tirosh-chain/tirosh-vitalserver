@@ -330,7 +330,7 @@ export interface paths {
         put?: never;
         /**
          * Upload one or more files to the Vital Files library
-         * @description Prevalidates repeated multipart files, uploads each accepted file through VitalServer POST /upload, and verifies every result through GET /api/filelist. HTTP 200 parser errors and partial completion are explicit failures, not completed batches.
+         * @description Evaluates every multipart file independently, uploads every valid candidate through VitalServer POST /upload, and verifies accepted uploads through GET /api/filelist. Per-file validation, upload, and index failures are returned in failedFiles without stopping later files; an unavailable VitalServer dependency still fails the request.
          */
         post: operations["uploadRuntimeLabVitalFiles"];
         delete?: never;
@@ -2088,12 +2088,16 @@ export interface components {
             files: string[];
         };
         RuntimeLabVitalFileUploadResponse: {
-            /** @constant */
-            state: "completed";
+            /** @enum {unknown} */
+            state: "completed" | "partial" | "failed";
             files: {
                 fileName: string;
                 relativePath: string;
                 sizeBytes: number;
+            }[];
+            failedFiles: {
+                fileName: string;
+                reason: string;
             }[];
         };
         RuntimeGuestControlServiceStatus: {

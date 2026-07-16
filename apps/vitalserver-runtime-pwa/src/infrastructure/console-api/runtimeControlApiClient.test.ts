@@ -454,7 +454,8 @@ describe("RuntimeControlApiClient", () => {
         files: [
           { fileName: "case.vital", relativePath: "case.vital", sizeBytes: 4 },
           { fileName: "other.vital", relativePath: "other.vital", sizeBytes: 5 }
-        ]
+        ],
+        failedFiles: []
       },
       "/runtime/lab/vital-files/replay": labSessionResponse(),
       "/runtime/stack": {

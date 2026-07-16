@@ -235,6 +235,7 @@ extension RuntimeViewModel {
         }
         labVitalFileUploadSources = selectedFiles
         labVitalFileImportMessage = ""
+        labVitalFileImportFailed = false
     }
 
     func replayVitalFileWithProductLab() async {
@@ -295,14 +296,19 @@ extension RuntimeViewModel {
                 labVitalFileUploadSources
             )
             let response = try await controlClient.uploadLabVitalFiles(sources)
-            labVitalFileImportMessage = RuntimeLabPanelText.uploadedLabVitalFiles(
-                response.files.count
-            )
+            labVitalFileImportFailed = !response.failedFiles.isEmpty
+            labVitalFileImportMessage = response.failedFiles.isEmpty
+                ? RuntimeLabPanelText.uploadedLabVitalFiles(response.files.count)
+                : RuntimeLabPanelText.failedLabVitalFiles(response.failedFiles)
             labVitalFileUploadSources = []
             await refreshProductLabReadModels()
-            recordLabActionMessage(labVitalFileImportMessage)
+            recordLabActionMessage(
+                labVitalFileImportMessage,
+                tone: labVitalFileImportFailed ? .failure : .neutral
+            )
             message = labVitalFileImportMessage
         } catch {
+            labVitalFileImportFailed = true
             labVitalFileImportMessage = error.localizedDescription
             recordLabActionMessage(error.localizedDescription, tone: .failure)
             message = error.localizedDescription

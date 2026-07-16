@@ -106,6 +106,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var labSessionResponse = RuntimeLabSessionResponse.unavailable(readError: "No Product Lab session has been selected.")
     @Published var labVitalFileUploadSources: [URL] = []
     @Published var labVitalFileImportMessage = ""
+    @Published var labVitalFileImportFailed = false
     @Published var labVitalFileReplayResourceMode = RuntimeLabVitalFileReplayResourceMode.quickCreate
     @Published var labVitalFileReplayRepeatMode = RuntimeLabVitalFileReplayRepeatMode.once
     @Published var labVitalFileReplayCount = 2

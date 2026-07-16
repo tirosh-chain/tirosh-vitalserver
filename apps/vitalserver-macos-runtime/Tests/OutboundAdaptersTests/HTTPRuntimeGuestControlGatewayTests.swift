@@ -1485,7 +1485,8 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
                   "relativePath": "OR-A/202607/260715/OR-A_260715_120000.vital",
                   "sizeBytes": 5
                 }
-              ]
+              ],
+              "failedFiles": []
             }
             """
         ))
@@ -1513,6 +1514,34 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertNotNil(body.range(of: Data("name=\"files\"".utf8)))
         XCTAssertNotNil(body.range(of: Data("OR-A_260715_120000.vital".utf8)))
         XCTAssertNotNil(body.range(of: Data("vital".utf8)))
+    }
+
+    func testUploadLabVitalFilesForwardsAllFilesAndDecodesPerFileFailures() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: #"{"state":"partial","files":[{"fileName":"valid.vital","relativePath":"valid.vital","sizeBytes":5}],"failedFiles":[{"fileName":"broken.vital","reason":"Vital file gzip stream is invalid."}]}"#
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let result = try gateway.uploadLabVitalFiles([
+            RuntimeLabVitalFileUploadSource(
+                fileName: "valid.vital",
+                content: Data("valid".utf8)
+            ),
+            RuntimeLabVitalFileUploadSource(
+                fileName: "broken.vital",
+                content: Data("broken".utf8)
+            )
+        ])
+
+        XCTAssertEqual(result.state, .partial)
+        XCTAssertEqual(result.failedFiles.map(\.fileName), ["broken.vital"])
+        let body = try XCTUnwrap(client.requests.first?.httpBody)
+        XCTAssertNotNil(body.range(of: Data("valid.vital".utf8)))
+        XCTAssertNotNil(body.range(of: Data("broken.vital".utf8)))
     }
 
 }

@@ -79,17 +79,10 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
             throw vitalFileImportError("Select at least one .vital file.")
         }
         let normalizedSources = sources.map(\.standardizedFileURL)
-        var filenames = Set<String>()
         for source in normalizedSources {
-            guard source.pathExtension.lowercased() == "vital" else {
-                throw vitalFileImportError("Only .vital files can be uploaded: \(source.lastPathComponent)")
-            }
             let values = try source.resourceValues(forKeys: [.isRegularFileKey])
             guard values.isRegularFile == true else {
                 throw vitalFileImportError("Upload source is not a regular file: \(source.path)")
-            }
-            guard filenames.insert(source.lastPathComponent).inserted else {
-                throw vitalFileImportError("Upload contains duplicate filenames: \(source.lastPathComponent)")
             }
         }
 

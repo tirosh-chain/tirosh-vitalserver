@@ -365,6 +365,80 @@ class GuestControlDependencyError(RuntimeError):
         self.kind = kind
 
 
+class VitalFileUploadState(StrEnum):
+    COMPLETED = "completed"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class VitalFileUploadItem:
+    file_name: str
+    relative_path: str
+    size_bytes: int
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "fileName": self.file_name,
+            "relativePath": self.relative_path,
+            "sizeBytes": self.size_bytes,
+        }
+
+
+@dataclass(frozen=True)
+class VitalFileUploadFailure:
+    file_name: str
+    reason: str
+
+    def as_json(self) -> dict[str, str]:
+        return {"fileName": self.file_name, "reason": self.reason}
+
+
+@dataclass(frozen=True)
+class VitalFileUploadResult:
+    state: VitalFileUploadState
+    files: tuple[VitalFileUploadItem, ...]
+    failed_files: tuple[VitalFileUploadFailure, ...]
+
+    def __post_init__(self) -> None:
+        if self.state is VitalFileUploadState.COMPLETED and self.failed_files:
+            raise ValueError("completed vital file upload must not contain failures")
+        if self.state is VitalFileUploadState.PARTIAL and (
+            not self.files or not self.failed_files
+        ):
+            raise ValueError("partial vital file upload requires successes and failures")
+        if self.state is VitalFileUploadState.FAILED and (
+            self.files or not self.failed_files
+        ):
+            raise ValueError("failed vital file upload requires failures only")
+
+    @staticmethod
+    def from_items(
+        files: list[VitalFileUploadItem],
+        failed_files: list[VitalFileUploadFailure],
+    ) -> VitalFileUploadResult:
+        if failed_files:
+            state = (
+                VitalFileUploadState.PARTIAL
+                if files
+                else VitalFileUploadState.FAILED
+            )
+        else:
+            state = VitalFileUploadState.COMPLETED
+        return VitalFileUploadResult(
+            state=state,
+            files=tuple(files),
+            failed_files=tuple(failed_files),
+        )
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "state": self.state.value,
+            "files": [item.as_json() for item in self.files],
+            "failedFiles": [item.as_json() for item in self.failed_files],
+        }
+
+
 class ServiceNotFoundError(GuestControlDependencyError):
     def __init__(self, service: str, *, available_services: list[str]) -> None:
         super().__init__(

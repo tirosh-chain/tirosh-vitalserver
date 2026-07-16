@@ -342,11 +342,12 @@ Command-style Product Lab requests create persisted Guest Control operations usi
 same SQLite control ledger as service restart. Lab operation failures are saved
 as failed operations and returned through the Lab response `readError` instead
 of being converted into an empty scenario list or a successful stopped session.
-The multipart Vital Files import validates one explicit selection through the
-configured library adapter, sends every valid file to VitalServer `POST /upload`,
-and verifies the result through VitalServer `GET /api/filelist`. It does not create
-a Product Lab operation. HTTP 200 with a parser error body is a failed upload, and
-a later-file failure after earlier success is an explicit partial-completion failure.
+The multipart Vital Files import evaluates each explicit file through the configured
+library adapter, sends every valid candidate to VitalServer `POST /upload`, and
+verifies accepted uploads through VitalServer `GET /api/filelist`. It does not create
+a Product Lab operation. HTTP 200 with a parser error body is that file's failed
+upload result; it does not stop later files. The response is explicitly `completed`,
+`partial`, or `failed` with successful `files` and per-file `failedFiles`.
 The Guest adapter reaches those APIs through the Compose-published recorder ingress
 endpoint `http://127.0.0.1:18083`. Guest loopback port `80` is not this contract:
 Docker publishes `edge:80` for traffic arriving on the VM interface, but that
@@ -396,10 +397,11 @@ Starting a `finished` session is rejected.
 
 `POST /runtime/lab/vital-files/upload` accepts repeated multipart `files` fields.
 Every filename must be a basename ending in `.vital` and follow VitalServer's
-`<bed>_YYMMDD_HHMMSS.vital` indexable naming rule. An empty selection, duplicate
-name, invalid extension/name, unavailable credentials, or existing VitalServer
-index conflict is rejected before upload begins. The adapter never treats a
-partially completed upload as success.
+`<bed>_YYMMDD_HHMMSS.vital` indexable naming rule. An empty selection or unavailable
+credentials prevents the batch from starting. Duplicate name, invalid extension/name,
+gzip/header, existing VitalServer index conflict, upload, and index failures are
+reported for that file while remaining valid files continue. A partial result is never
+formatted as a completed upload.
 
 Product Lab session creation does not infer ownership from existing beds,
 recorders, fixture names, or previous command output. A session that should

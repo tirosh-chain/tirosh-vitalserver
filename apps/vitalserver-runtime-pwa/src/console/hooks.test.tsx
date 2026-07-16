@@ -344,7 +344,7 @@ describe("console hooks", () => {
     });
   });
 
-  it("rejects the whole Vital Files upload when one selected file is not .vital", async () => {
+  it("forwards every selected file so the owner can report per-file failures", async () => {
     const gateway = createGateway();
     const wrapper = createWrapper(gateway);
     const rendered = renderHook(() => useUploadLabVitalFiles(), { wrapper });
@@ -354,8 +354,13 @@ describe("console hooks", () => {
         new File(["valid"], "valid.vital"),
         new File(["invalid"], "invalid.txt")
       ]
-    })).rejects.toThrow("Only .vital files can be uploaded: invalid.txt");
-    expect(gateway.uploadLabVitalFiles).not.toHaveBeenCalled();
+    })).resolves.toEqual(expect.anything());
+    expect(gateway.uploadLabVitalFiles).toHaveBeenCalledWith({
+      files: expect.arrayContaining([
+        expect.objectContaining({ name: "valid.vital" }),
+        expect.objectContaining({ name: "invalid.txt" })
+      ])
+    });
   });
 
 });
@@ -628,7 +633,8 @@ function createGateway(): GatewayMock {
     unhideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     uploadLabVitalFiles: vi.fn().mockResolvedValue({
       state: "completed",
-      files: []
+      files: [],
+      failedFiles: []
     }),
     verifyUpdateBundle: vi.fn().mockResolvedValue(commandResult)
   };

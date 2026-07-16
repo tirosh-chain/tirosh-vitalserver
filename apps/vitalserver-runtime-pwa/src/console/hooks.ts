@@ -402,17 +402,6 @@ function validateVitalFileUpload(files: File[]): void {
   if (files.length === 0) {
     throw new Error("Select at least one .vital file.");
   }
-  const invalid = files.find((file) => !file.name.toLowerCase().endsWith(".vital"));
-  if (invalid) {
-    throw new Error(`Only .vital files can be uploaded: ${invalid.name}`);
-  }
-  const names = new Set<string>();
-  for (const file of files) {
-    if (names.has(file.name)) {
-      throw new Error(`Upload contains duplicate filenames: ${file.name}`);
-    }
-    names.add(file.name);
-  }
 }
 
 export function useVitalDBRecorders() {

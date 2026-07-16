@@ -1576,6 +1576,50 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedLabVitalFileRelativePath, "case.vital")
     }
 
+    func testProductLabVitalFileUploadShowsOnlyFailedFilesForPartialBatch() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labUploadResponse = RuntimeLabVitalFileLibraryUploadResponse(
+            state: .partial,
+            files: [
+                RuntimeLabVitalFileLibraryUploadItem(
+                    fileName: "valid.vital",
+                    relativePath: "valid.vital",
+                    sizeBytes: 5
+                )
+            ],
+            failedFiles: [
+                RuntimeLabVitalFileLibraryUploadFailure(
+                    fileName: "broken.vital",
+                    reason: "Vital file gzip stream is invalid."
+                )
+            ]
+        )
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.vitalFileUploadSources = [
+            RuntimeLabVitalFileUploadSource(fileName: "valid.vital", content: Data()),
+            RuntimeLabVitalFileUploadSource(fileName: "broken.vital", content: Data())
+        ]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+        viewModel.labVitalFileUploadSources = [
+            URL(fileURLWithPath: "/tmp/valid.vital"),
+            URL(fileURLWithPath: "/tmp/broken.vital")
+        ]
+
+        await viewModel.uploadVitalFileToProductLab()
+
+        XCTAssertTrue(viewModel.labVitalFileImportFailed)
+        XCTAssertEqual(
+            viewModel.labVitalFileImportMessage,
+            "broken.vital: Vital file gzip stream is invalid."
+        )
+        XCTAssertFalse(viewModel.labVitalFileImportMessage.contains("valid.vital"))
+    }
+
     func testProductLabFinishUsesTerminalSessionCommand() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.labSessionsToLoad = RuntimeLabSessionList(
@@ -1622,21 +1666,28 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(uploadSources.map(\.content), [Data("first".utf8), Data("second".utf8)])
     }
 
-    func testSystemNativeShellRejectsWholeBatchContainingNonVitalFile() throws {
+    func testSystemNativeShellForwardsEachReadableFileForOwnerSideBatchValidation() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let sources = root.appendingPathComponent("sources", isDirectory: true)
-        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        let firstDirectory = root.appendingPathComponent("first", isDirectory: true)
+        let secondDirectory = root.appendingPathComponent("second", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let valid = sources.appendingPathComponent("valid.vital")
-        let invalid = sources.appendingPathComponent("invalid.txt")
+        let valid = firstDirectory.appendingPathComponent("valid.vital")
+        let invalid = secondDirectory.appendingPathComponent("invalid.txt")
+        let duplicateName = secondDirectory.appendingPathComponent("valid.vital")
         try Data("valid".utf8).write(to: valid)
         try Data("invalid".utf8).write(to: invalid)
+        try Data("duplicate".utf8).write(to: duplicateName)
 
-        XCTAssertThrowsError(
-            try SystemRuntimeNativeShell().readVitalFileUploadSources([valid, invalid])
-        ) { error in
-            XCTAssertTrue(error.localizedDescription.contains("Only .vital files"))
-        }
+        let uploadSources = try SystemRuntimeNativeShell().readVitalFileUploadSources(
+            [valid, invalid, duplicateName]
+        )
+
+        XCTAssertEqual(
+            uploadSources.map(\.fileName),
+            ["valid.vital", "invalid.txt", "valid.vital"]
+        )
     }
 
     func testProductLabBedAndRecorderManagementUseRuntimeControlClient() async {
@@ -2109,6 +2160,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var labCreateRequests: [RuntimeLabSessionCreateRequest] = []
     var labReplayRequests: [RuntimeLabVitalFileReplayRequest] = []
     var labUploadRequests: [[RuntimeLabVitalFileUploadSource]] = []
+    var labUploadResponse: RuntimeLabVitalFileLibraryUploadResponse?
     var labCreateBedRequests: [RuntimeLabBedCreateRequest] = []
     var labDeleteBedRequests: [RuntimeLabBedDeleteRequest] = []
     var labResetBedsCount = 0
@@ -2668,6 +2720,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         _ sources: [RuntimeLabVitalFileUploadSource]
     ) async throws -> RuntimeLabVitalFileLibraryUploadResponse {
         labUploadRequests.append(sources)
+        if let labUploadResponse {
+            return labUploadResponse
+        }
         return RuntimeLabVitalFileLibraryUploadResponse(files: sources.map {
             RuntimeLabVitalFileLibraryUploadItem(
                 fileName: $0.fileName,

@@ -613,11 +613,10 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
                   !fileName.contains("\\"),
                   !fileName.contains("\""),
                   !fileName.contains("\r"),
-                  !fileName.contains("\n"),
-                  URL(fileURLWithPath: fileName).pathExtension.lowercased() == "vital"
+                  !fileName.contains("\n")
             else {
                 throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
-                    "only basename .vital files are accepted: \(fileName)"
+                    "only basename file names are accepted: \(fileName)"
                 )
             }
             body.append(Data("--\(boundary)\r\n".utf8))

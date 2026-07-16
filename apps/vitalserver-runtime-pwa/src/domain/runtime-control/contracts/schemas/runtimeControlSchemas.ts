@@ -1785,12 +1785,19 @@ export const runtimeLabSessionResponseSchema = z
 
 export const runtimeLabVitalFileUploadResponseSchema = z
   .object({
-    state: z.literal("completed"),
+    state: z.enum(["completed", "partial", "failed"]),
     files: z.array(
       z.object({
         fileName: z.string(),
         relativePath: z.string(),
         sizeBytes: z.number().int().nonnegative()
+      })
+      .strict()
+    ),
+    failedFiles: z.array(
+      z.object({
+        fileName: z.string(),
+        reason: z.string()
       })
       .strict()
     )
