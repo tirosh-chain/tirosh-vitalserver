@@ -12,6 +12,7 @@ from typing import Protocol
 
 from .archive_finalization import (
     LabArchiveFinalizationError,
+    LabArchiveFinalizationProgress,
     LabArchiveFinalizationReason,
     LabArchiveFinalizationReceipt,
     LabRecorderArchiveFinalizer,
@@ -417,6 +418,18 @@ class LabExecutionEngine:
                 "Lab session finish archive finalization was not accepted."
             )
         return receipt
+
+    def archive_finalization_progress(
+        self,
+        *,
+        request_ids: tuple[str, ...],
+    ) -> LabArchiveFinalizationProgress:
+        """Read the state owned by recorder-ingress; Lab retains only its reference."""
+        if self.archive_finalizer is None:
+            raise LabArchiveFinalizationError(
+                "Lab archive finalization status reader is unavailable."
+            )
+        return self.archive_finalizer.read_finalization(request_ids=request_ids)
 
     def shutdown(self) -> None:
         with self._running_sessions_lock:

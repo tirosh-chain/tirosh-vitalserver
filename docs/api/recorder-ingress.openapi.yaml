@@ -26,8 +26,175 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RecorderIngressStatus"
+  /recorder-ingress/raw-archive/finalize:
+    post:
+      operationId: requestRecorderArchiveFinalization
+      summary: Persist a terminal recorder archive finalization request
+      description: >
+        Accepts a durable terminal-finalization request. It does not wait for
+        Vital file export or upload; callers must read the owner-side status
+        using the returned request IDs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecorderArchiveFinalizationRequest"
+      responses:
+        "202":
+          description: Request persisted and accepted for asynchronous processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderArchiveFinalizationAccepted"
+        "409":
+          description: Finalization was rejected by the explicit state guard.
+        "503":
+          description: The durable finalization dependency is unavailable.
+  /recorder-ingress/raw-archive/finalizations:
+    get:
+      operationId: getRecorderArchiveFinalizationStatus
+      summary: Read recorder-ingress-owned finalization progress
+      description: >
+        Returns only the progress for explicit requestId values. Product Lab
+        uses this as an internal read and projects a smaller status summary to
+        its session contract.
+      parameters:
+        - name: requestId
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: string
+          description: One or more request IDs returned by finalization acceptance.
+      responses:
+        "200":
+          description: Owner-side finalization progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderArchiveFinalizationStatus"
+        "400":
+          description: No valid requestId was supplied.
+        "503":
+          description: The finalization state dependency is unavailable.
 components:
   schemas:
+    RecorderArchiveFinalizationRequest:
+      type: object
+      additionalProperties: false
+      required: [vrcodes, reason]
+      properties:
+        vrcodes:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+        reason:
+          type: string
+          enum: [lab_session_finished]
+    RecorderArchiveFinalizationAccepted:
+      type: object
+      additionalProperties: false
+      required: [ok, state, requestIds]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        state:
+          type: string
+          enum: [accepted]
+        requestIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    RecorderArchiveFinalizationRequestProgress:
+      type: object
+      additionalProperties: false
+      required:
+        - requestId
+        - vrcode
+        - state
+        - attempts
+        - maxAttempts
+        - requestedAt
+        - updatedAt
+        - startedAt
+        - completedAt
+        - nextAttemptAt
+        - failure
+      properties:
+        requestId:
+          type: string
+        vrcode:
+          type: string
+          nullable: true
+        state:
+          type: string
+          enum: [queued, processing, retrying, uploaded, failed, missing]
+        attempts:
+          type: integer
+          minimum: 0
+        maxAttempts:
+          type: integer
+          nullable: true
+        requestedAt:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          nullable: true
+        nextAttemptAt:
+          type: string
+          nullable: true
+        failure:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required: [reason, message, occurredAt]
+          properties:
+            reason:
+              type: string
+            message:
+              type: string
+            occurredAt:
+              type: string
+    RecorderArchiveFinalizationStatus:
+      type: object
+      additionalProperties: false
+      required: [ok, state, finalization]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        state:
+          type: string
+          enum: [loaded]
+        finalization:
+          type: object
+          additionalProperties: false
+          required: [state, requests, updatedAt]
+          properties:
+            state:
+              type: string
+              enum: [queued, processing, retrying, uploaded, failed, partial, missing]
+            requests:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/RecorderArchiveFinalizationRequestProgress"
+            updatedAt:
+              type: string
+              nullable: true
     RecorderIngressStatus:
       type: object
       additionalProperties: false

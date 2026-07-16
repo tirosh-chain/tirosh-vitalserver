@@ -157,7 +157,7 @@ test("raw archive export worker finalizes a disconnected recorder while another 
   assert.strictEqual(requests[0].vrcode, "VR-1");
 });
 
-test("raw archive export worker persists explicit Lab finalization before upload", async () => {
+test("raw archive export worker persists explicit Lab finalization before asynchronous upload", async () => {
   const metrics = metricsWithFinalizableArchive();
   metrics.recorders.get("VR-1").lastSendDataObservedAt = new Date().toISOString();
   metrics.recorders.get("VR-1").rawArchive.lastArchivedAt = new Date().toISOString();
@@ -181,8 +181,9 @@ test("raw archive export worker persists explicit Lab finalization before upload
   });
 
   assert.strictEqual(accepted.state, "accepted");
-  assert.strictEqual(requests.length, 1);
+  await waitFor(() => requests.length === 1);
   assert.strictEqual(requests[0].vrcode, "VR-1");
+  await waitFor(() => state.history.length === 1);
   assert.strictEqual(state.pendingFinalizations.length, 0);
   assert.strictEqual(state.history[0].trigger, "explicit");
 });
@@ -210,11 +211,65 @@ test("raw archive export worker processes every ready recorder in one Lab finish
   });
 
   assert.strictEqual(accepted.state, "accepted");
+  await waitFor(() => recovered.length === 2);
   assert.deepStrictEqual(recovered, ["VR-1", "VR-2"]);
   assert.deepStrictEqual(state.pendingFinalizations, []);
   assert.strictEqual(state.checkpointsByVrcode["VR-1"].endOffset, 42);
   assert.strictEqual(state.checkpointsByVrcode["VR-2"].endOffset, 84);
 });
+
+test("raw archive export worker reports owner-side progress without waiting for upload", async () => {
+  const metrics = metricsWithFinalizableArchive();
+  const state = emptyState();
+  let completeUpload;
+  const uploadStarted = new Promise((resolve) => {
+    completeUpload = resolve;
+  });
+  const worker = createSendDataRawArchiveExportWorker({
+    config: workerConfig(),
+    metrics,
+    jobStore: memoryJobStore(state),
+    executor: {
+      async recover() {
+        await uploadStarted;
+        return { ok: true, statusCode: 200, response: { upload: { successfulRequests: 1 } } };
+      },
+    },
+  });
+
+  const accepted = await worker.requestFinalization({
+    vrcodes: ["VR-1"],
+    reason: "lab_session_finished",
+  });
+
+  assert.strictEqual(accepted.state, "accepted");
+  const requestId = accepted.requestIds[0];
+  const initial = worker.finalizationStatus([requestId]);
+  assert.strictEqual(initial.state, "loaded");
+  assert.ok(["queued", "processing"].includes(initial.finalization.state));
+  await waitFor(() => state.activeJob && state.activeJob.state === "running");
+  const processing = worker.finalizationStatus([requestId]);
+  assert.strictEqual(processing.finalization.state, "processing");
+  assert.strictEqual(processing.finalization.requests[0].state, "processing");
+
+  completeUpload();
+  await waitFor(() => state.history.length === 1);
+  assert.strictEqual(state.history[0].requestId, requestId);
+  assert.strictEqual(state.checkpointsByVrcode["VR-1"].requestId, requestId);
+
+  const uploaded = worker.finalizationStatus([requestId]);
+  assert.strictEqual(uploaded.finalization.state, "uploaded");
+  assert.strictEqual(uploaded.finalization.requests[0].state, "uploaded");
+  assert.strictEqual(uploaded.finalization.requests[0].attempts, 1);
+});
+
+async function waitFor(predicate) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.fail("timed out waiting for asynchronous worker state");
+}
 
 function metricsWithFinalizableArchive() {
   const metrics = createMetrics();

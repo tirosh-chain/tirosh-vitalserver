@@ -13,6 +13,7 @@ import type { SendDataRawArchiveRecoveryExecutorPort } from "./ports/outbound/se
 
 const crypto = require("crypto");
 const { decideSendDataRawArchiveFinalization } = require("../domain/send-data-raw-archive-finalization-policy");
+const { projectSendDataRawArchiveFinalizationProgress } = require("../domain/send-data-raw-archive-finalization-status");
 const {
   metricsSnapshot,
   recordSendDataRawArchiveAutoExportDecision,
@@ -115,7 +116,7 @@ function createSendDataRawArchiveExportWorker({
       if (checkpoint
         && checkpoint.archivePath === snapshot.rawArchive.path
         && checkpoint.endOffset === recorder.rawArchive.lastOffset) {
-        requestIds.push(checkpoint.jobId);
+        requestIds.push(checkpoint.requestId || checkpoint.jobId);
         continue;
       }
       const request: SendDataRawArchiveFinalizationRequest = {
@@ -133,11 +134,46 @@ function createSendDataRawArchiveExportWorker({
       updatedAt: nowIso,
       pendingFinalizations: pending,
     });
-    for (let index = 0; index < enqueuedCount; index += 1) {
-      const result = await runOnce({ trigger: "explicit" });
-      if (result.state !== "uploaded") break;
-    }
+    // Finishing a Lab session is a durable request, not a synchronous export.
+    // Return after the request is persisted so callers can read its owner-side
+    // progress instead of waiting for Vital file generation and upload.
+    scheduleExplicitFinalizationDrain(Math.max(enqueuedCount, 1));
     return { ok: true, state: "accepted" as const, requestIds };
+  }
+
+  function finalizationStatus(requestIds: string[]) {
+    const normalized = normalizedRequestIds(requestIds);
+    if (normalized.length === 0) {
+      return {
+        ok: false,
+        state: "rejected" as const,
+        reason: "invalid_request_ids",
+        message: "raw archive finalization status requires at least one requestId",
+      };
+    }
+    return {
+      ok: true,
+      state: "loaded" as const,
+      finalization: projectSendDataRawArchiveFinalizationProgress(jobStore.read(), normalized),
+    };
+  }
+
+  function scheduleExplicitFinalizationDrain(maxJobs: number) {
+    void drainExplicitFinalizations(maxJobs).catch((error) => {
+      recordSendDataRawArchiveAutoExportFailed(
+        metrics,
+        null,
+        "explicit_finalization_worker_failed",
+        errorMessage(error),
+      );
+    });
+  }
+
+  async function drainExplicitFinalizations(maxJobs: number) {
+    for (let index = 0; index < maxJobs; index += 1) {
+      const result = await runOnce({ trigger: "explicit" });
+      if (result.state !== "uploaded") return;
+    }
   }
 
   return {
@@ -156,6 +192,7 @@ function createSendDataRawArchiveExportWorker({
     },
     runOnce,
     requestFinalization,
+    finalizationStatus,
   };
 }
 
@@ -315,6 +352,7 @@ async function executeJob({ settings, executor, jobStore, metrics, state, job })
           archivePath: uploadedJob.archivePath,
           endOffset: uploadedJob.endOffset,
           jobId: uploadedJob.jobId,
+          requestId: uploadedJob.requestId,
           completedAt,
         },
       },
@@ -400,6 +438,11 @@ function writeState(jobStore, document): SendDataRawArchiveExportStateDocument {
 }
 
 function normalizedVrcodes(value) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim())));
+}
+
+function normalizedRequestIds(value) {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim())));
 }

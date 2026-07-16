@@ -808,6 +808,10 @@ function LabSessionList({
             rows={[
               { label: "Scenario", value: session.scenarioId },
               { label: "Recorders", value: session.recorderCount },
+              {
+                label: "Archive upload",
+                value: archiveFinalizationSummary(session)
+              },
               { label: "Session ID", value: session.sessionId },
               { label: "Updated", value: session.updatedAt ?? NOT_REPORTED }
             ]}
@@ -1021,10 +1025,55 @@ function LabResponseSummary({
         { label: "Scenario", value: session?.scenarioId ?? NOT_REPORTED },
         { label: "Recorders", value: session?.recorderCount ?? NOT_REPORTED },
         { label: "Target", value: session?.targetURL ?? NOT_REPORTED },
+        {
+          label: "Archive upload",
+          value: archiveFinalizationSummary(session)
+        },
+        {
+          label: "Archive updated",
+          value: session?.archiveFinalization?.updatedAt ?? NOT_REPORTED
+        },
+        {
+          label: "Archive error",
+          value: session?.archiveFinalization?.readError ?? "-"
+        },
         { label: "Updated", value: session?.updatedAt ?? NOT_REPORTED }
       ]}
     />
   );
+}
+
+function archiveFinalizationSummary(
+  session: RuntimeLabSession | null | undefined
+) {
+  const finalization = session?.archiveFinalization;
+  if (!finalization) {
+    return NOT_REPORTED;
+  }
+  return (
+    <StatusBadge tone={archiveFinalizationTone(finalization.state)}>
+      {finalization.state}
+    </StatusBadge>
+  );
+}
+
+function archiveFinalizationTone(
+  state: NonNullable<RuntimeLabSession["archiveFinalization"]>["state"]
+): "success" | "warning" | "danger" | "neutral" {
+  switch (state) {
+    case "uploaded":
+      return "success";
+    case "queued":
+    case "processing":
+    case "retrying":
+      return "warning";
+    case "failed":
+    case "partial":
+    case "missing":
+      return "danger";
+    case "unavailable":
+      return "neutral";
+  }
 }
 
 function labStateTone(

@@ -79,6 +79,34 @@ def test_sqlalchemy_store_deletes_session_and_owned_children_atomically(
     assert reopened.list_recorders() == ()
 
 
+def test_sqlalchemy_store_persists_only_archive_finalization_request_reference(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path / 'lab.sqlite'}"
+    store = SQLAlchemyLabSessionStore(url, id_factory=lambda: "lab_session_1")
+    created = store.create(
+        LabSessionCreateInput(
+            scenario_id="baseline-monitoring",
+            name="Archive reference",
+            recorder_count=1,
+            target_url="http://edge/",
+        )
+    )
+
+    stored = store.save_archive_finalization_request_ids(
+        created.session_id,
+        ("ingress-request-1",),
+    )
+    reopened = SQLAlchemyLabSessionStore(url)
+
+    assert stored is not None
+    assert stored.archive_finalization_request_ids == ("ingress-request-1",)
+    assert reopened.get(created.session_id).archive_finalization_request_ids == (
+        "ingress-request-1",
+    )
+    assert "archiveFinalizationRequestIds" not in stored.as_json()
+
+
 def test_sqlalchemy_store_writes_existing_timestamp_columns(tmp_path: Path) -> None:
     database_path = tmp_path / "legacy-schema.sqlite"
     with sqlite3.connect(database_path) as connection:

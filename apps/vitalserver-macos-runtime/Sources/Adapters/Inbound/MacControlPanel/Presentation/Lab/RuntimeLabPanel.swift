@@ -24,6 +24,9 @@ struct RuntimeLabPanel: View {
         .task {
             await viewModel.refreshProductLabScenarios()
         }
+        .task(id: archiveFinalizationPollKey) {
+            await refreshArchiveFinalizationUntilTerminal()
+        }
     }
 
     private var productLabCard: some View {
@@ -205,6 +208,23 @@ struct RuntimeLabPanel: View {
                         Text(session.targetURL ?? AppConstants.StatusText.notAvailable)
                             .fontWeight(.medium)
                     }
+                    if let finalization = session.archiveFinalization {
+                        statusRow(RuntimeLabPanelText.archiveUpload) {
+                            Text(finalization.state.rawValue).fontWeight(.medium)
+                        }
+                        statusRow(RuntimeLabPanelText.archiveUpdated) {
+                            Text(finalization.updatedAt ?? AppConstants.StatusText.notAvailable)
+                                .fontWeight(.medium)
+                        }
+                        if let readError = finalization.readError {
+                            statusRow(RuntimeLabPanelText.archiveError) {
+                                Text(readError)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.red)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
                 }
                 HStack(spacing: 8) {
                     Button(AppConstants.Actions.start) {
@@ -228,6 +248,44 @@ struct RuntimeLabPanel: View {
                 Text(RuntimeLabPanelText.noLabSession)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var archiveFinalizationPollKey: String {
+        guard let session = viewModel.selectedLabSession,
+              let finalization = session.archiveFinalization
+        else {
+            return "none"
+        }
+        return "\(session.sessionId):\(finalization.state.rawValue)"
+    }
+
+    private func refreshArchiveFinalizationUntilTerminal() async {
+        guard let finalization = viewModel.selectedLabSession?.archiveFinalization,
+              finalizationNeedsPolling(finalization.state)
+        else {
+            return
+        }
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            await viewModel.refreshProductLabReadModels()
+            guard let refreshed = viewModel.selectedLabSession?.archiveFinalization,
+                  finalizationNeedsPolling(refreshed.state)
+            else {
+                return
+            }
+        }
+    }
+
+    private func finalizationNeedsPolling(
+        _ state: RuntimeLabArchiveFinalizationState
+    ) -> Bool {
+        switch state {
+        case .queued, .processing, .retrying:
+            return true
+        case .uploaded, .failed, .partial, .missing, .unavailable:
+            return false
         }
     }
 

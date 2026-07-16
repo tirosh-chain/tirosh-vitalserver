@@ -994,6 +994,19 @@ describe("runtime console pages", () => {
     expect(screen.getByText(/trusted publisher verification policy/)).toBeInTheDocument();
   });
 
+  it("treats an absent Platform workflow as an initial state, not an error", () => {
+    hooks.usePlatformWorkflow.mockReturnValue(query({
+      state: "missing",
+      operation: null,
+      readError: null
+    }));
+
+    renderPage(<UpdatePage />);
+
+    expect(screen.getByText("No Platform workflow has run.")).toBeInTheDocument();
+    expect(screen.queryByText("Platform workflow is unavailable")).not.toBeInTheDocument();
+  });
+
   it("schedules an owner-selected Platform release rollback", () => {
     const rollback = pendingMutation();
     hooks.useRollbackRelease.mockReturnValue(rollback);
@@ -1496,6 +1509,33 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("button", { name: "Finish & upload" })).toBeDisabled();
 
     expect(screen.getByRole("button", { name: "Replay" })).toBeDisabled();
+  });
+
+  it("shows the ingress-owned archive upload projection for the selected Lab session", () => {
+    const finished = labSessionResponse("finished");
+    const response = {
+      ...finished,
+      session: {
+        ...finished.session,
+        archiveFinalization: {
+          state: "processing" as const,
+          updatedAt: "2026-05-31T00:05:00Z",
+          readError: null
+        }
+      }
+    };
+    hooks.useLabSessions.mockReturnValue(query({
+      state: "loaded",
+      sessions: [response.session],
+      readError: null
+    }));
+    hooks.useLabSession.mockReturnValue(query(response));
+
+    renderPage(<LabPage />);
+
+    expect(screen.getAllByText("Archive upload").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("processing").length).toBeGreaterThan(0);
+    expect(screen.getByText("2026-05-31T00:05:00Z")).toBeInTheDocument();
   });
 
   it("selects a running Lab session and controls only its recorders", () => {

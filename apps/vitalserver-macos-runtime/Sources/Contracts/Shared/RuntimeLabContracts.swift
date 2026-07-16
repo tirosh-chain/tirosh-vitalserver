@@ -16,6 +16,33 @@ public enum RuntimeLabSessionState: String, Codable, Equatable, Sendable {
     case unavailable
 }
 
+public enum RuntimeLabArchiveFinalizationState: String, Codable, Equatable, Sendable {
+    case queued
+    case processing
+    case retrying
+    case uploaded
+    case failed
+    case partial
+    case missing
+    case unavailable
+}
+
+public struct RuntimeLabArchiveFinalization: Codable, Equatable, Sendable {
+    public let state: RuntimeLabArchiveFinalizationState
+    public let updatedAt: String?
+    public let readError: String?
+
+    public init(
+        state: RuntimeLabArchiveFinalizationState,
+        updatedAt: String? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.updatedAt = updatedAt
+        self.readError = readError
+    }
+}
+
 public enum RuntimeLabRecorderSendState: String, Codable, Equatable, Sendable {
     case notAttempted
     case skipped
@@ -115,6 +142,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
     public let recorderIds: [String]?
     public let vitalFileRelativePath: String?
     public let replayPolicy: RuntimeLabVitalFileReplayPolicy?
+    public let archiveFinalization: RuntimeLabArchiveFinalization?
     public let createdAt: String?
     public let updatedAt: String?
 
@@ -129,6 +157,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
         recorderIds: [String]? = nil,
         vitalFileRelativePath: String? = nil,
         replayPolicy: RuntimeLabVitalFileReplayPolicy? = nil,
+        archiveFinalization: RuntimeLabArchiveFinalization? = nil,
         createdAt: String? = nil,
         updatedAt: String? = nil
     ) {
@@ -142,6 +171,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
         self.recorderIds = recorderIds
         self.vitalFileRelativePath = vitalFileRelativePath
         self.replayPolicy = replayPolicy
+        self.archiveFinalization = archiveFinalization
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

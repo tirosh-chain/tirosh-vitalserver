@@ -104,7 +104,7 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
             return PlatformWorkflowResource(
                 state: .missing,
                 operation: nil,
-                readError: "Platform workflow owner is missing path=\(platformWorkflowDocument.path)"
+                readError: nil
             )
         } catch {
             return PlatformWorkflowResource(

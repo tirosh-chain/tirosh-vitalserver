@@ -134,7 +134,11 @@ def artifact_filename(vrcode: str, started_at: float) -> str:
 
     prefix = artifact_filename_prefix(vrcode)
     timestamp = time.strftime("%y%m%d_%H%M%S", time.localtime(started_at))
-    return f"{prefix}_{timestamp}_auto_export.vital"
+    # VitalServer derives its storage path from the final 20 characters of a
+    # filename: ``_YYMMDD_HHMMSS.vital``.  Keep export provenance in the
+    # artifact metadata, not in the filename, otherwise VitalServer indexes
+    # the file under a malformed bed/date path and the library cannot read it.
+    return f"{prefix}_{timestamp}.vital"
 
 
 def vital_recs_for_track(track: VitalTrack, *, np: Any) -> list[dict[str, Any]]:

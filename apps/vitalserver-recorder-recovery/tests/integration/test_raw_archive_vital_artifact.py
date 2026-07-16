@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import zlib
 from pathlib import Path
 
@@ -25,7 +26,7 @@ def test_raw_archive_exporter_writes_vital_file(tmp_path: Path) -> None:
 
     assert len(artifacts) == 1
     assert artifacts[0].vrcode == "VR_RAW"
-    assert artifacts[0].filename.endswith("_auto_export.vital")
+    assert re.fullmatch(r"VR_RAW_\d{6}_\d{6}\.vital", artifacts[0].filename)
     assert artifacts[0].size_bytes > 0
 
     vital_file = VitalFile(artifacts[0].path, header_only=True)
@@ -55,7 +56,8 @@ def test_raw_archive_exporter_writes_one_vital_file_per_recorder(
 
     assert [artifact.vrcode for artifact in artifacts] == ["VR_A", "VR_B"]
     assert all(
-        artifact.filename.endswith("_auto_export.vital") for artifact in artifacts
+        re.fullmatch(r"VR_[AB]_\d{6}_\d{6}\.vital", artifact.filename)
+        for artifact in artifacts
     )
 
 

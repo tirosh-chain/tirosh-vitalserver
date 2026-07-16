@@ -24,9 +24,34 @@ export type SendDataRawArchiveFinalizationRequestResult = {
   message?: string;
 };
 
+export type SendDataRawArchiveFinalizationStatusReadResult = {
+  ok: boolean;
+  state: "loaded" | "rejected";
+  finalization?: {
+    state: "queued" | "processing" | "retrying" | "uploaded" | "failed" | "partial" | "missing";
+    requests: Array<{
+      requestId: string;
+      vrcode: string | null;
+      state: "queued" | "processing" | "retrying" | "uploaded" | "failed" | "missing";
+      attempts: number;
+      maxAttempts: number | null;
+      requestedAt: string | null;
+      updatedAt: string | null;
+      startedAt: string | null;
+      completedAt: string | null;
+      nextAttemptAt: string | null;
+      failure: { reason: string; message: string; occurredAt: string } | null;
+    }>;
+    updatedAt: string | null;
+  };
+  reason?: string;
+  message?: string;
+};
+
 export type SendDataRawArchiveExportWorkerPort = {
   start(): void;
   stop(): void;
   runOnce(options?: SendDataRawArchiveExportWorkerRunOptions): Promise<SendDataRawArchiveExportWorkerRunResult>;
   requestFinalization(input: SendDataRawArchiveFinalizationRequestInput): Promise<SendDataRawArchiveFinalizationRequestResult>;
+  finalizationStatus(requestIds: string[]): SendDataRawArchiveFinalizationStatusReadResult;
 };

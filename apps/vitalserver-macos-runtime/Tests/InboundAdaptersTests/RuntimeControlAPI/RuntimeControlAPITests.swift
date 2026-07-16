@@ -152,6 +152,21 @@ final class RuntimeControlAPITests: XCTestCase {
             resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
             repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
         )
+        let archiveFinalization = RuntimeLabArchiveFinalization(
+            state: .processing,
+            updatedAt: "2026-07-16T05:10:00Z"
+        )
+        let response = RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: "lab-1",
+                state: .finished,
+                scenarioId: "post-operative-monitoring",
+                recorderCount: 2,
+                targetURL: "http://edge/",
+                archiveFinalization: archiveFinalization
+            )
+        )
 
         let decodedCreate = try JSONDecoder().decode(
             RuntimeLabSessionCreateRequest.self,
@@ -161,9 +176,14 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeLabVitalFileReplayRequest.self,
             from: try JSONEncoder().encode(replay)
         )
+        let decodedResponse = try JSONDecoder().decode(
+            RuntimeLabSessionResponse.self,
+            from: try JSONEncoder().encode(response)
+        )
 
         XCTAssertEqual(decodedCreate, create)
         XCTAssertEqual(decodedReplay, replay)
+        XCTAssertEqual(decodedResponse, response)
     }
 
     func testErrorResponseEncoderBuildsDeterministicJSONBody() throws {

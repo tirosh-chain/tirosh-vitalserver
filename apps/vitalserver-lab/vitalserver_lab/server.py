@@ -200,7 +200,10 @@ def route_lab_request(
             return _read_model_failure_response(error, collection="sessions")
         return HTTPStatus.OK, {
             "state": "loaded",
-            "sessions": [session.as_json() for session in sessions],
+            "sessions": [
+                _session_document(session, execution_engine=execution_engine)
+                for session in sessions
+            ],
             "readError": None,
         }
 
@@ -283,7 +286,10 @@ def route_lab_request(
                 session_id,
                 operation_id=None,
             )
-        return HTTPStatus.OK, _session_response(session.as_json(), operation_id=None)
+        return HTTPStatus.OK, _session_response(
+            _session_document(session, execution_engine=execution_engine),
+            operation_id=None,
+        )
 
     if method == "POST" and len(parts) == 4 and parts[:2] == ["lab", "sessions"]:
         session_id = parts[2]
@@ -356,6 +362,10 @@ def route_lab_request(
                             session_id,
                             vrcodes=vrcodes,
                         )
+                        session = session_store.save_archive_finalization_request_ids(
+                            session_id,
+                            archive_finalization.request_ids,
+                        )
                     except LabArchiveFinalizationError as error:
                         archive_finalization_error = str(error)
             except LabSessionStoreUnavailable as error:
@@ -379,7 +389,10 @@ def route_lab_request(
                     session_id,
                     operation_id=None,
                 )
-            return HTTPStatus.ACCEPTED, _session_list_response(remaining_sessions)
+            return HTTPStatus.ACCEPTED, _session_list_response(
+                remaining_sessions,
+                execution_engine=execution_engine,
+            )
         else:
             return HTTPStatus.NOT_FOUND, {"error": "not_found"}
         if session is None:
@@ -388,11 +401,13 @@ def route_lab_request(
                 operation_id=operation_id,
             )
         response = _session_response(
-            session.as_json(),
+            _session_document(session, execution_engine=execution_engine),
             operation_id=operation_id,
         )
         if parts[3] == "finish" and archive_finalization is not None:
-            response["archiveFinalization"] = archive_finalization.as_json()
+            response["archiveFinalization"] = response["session"].get(
+                "archiveFinalization"
+            )
         if parts[3] == "finish" and archive_finalization_error is not None:
             response["state"] = "failed"
             response["readError"] = archive_finalization_error
@@ -1024,12 +1039,48 @@ def _recorder_list_response(recorders: tuple[object, ...]) -> dict[str, object]:
     }
 
 
-def _session_list_response(sessions: tuple[object, ...]) -> dict[str, object]:
+def _session_list_response(
+    sessions: tuple[object, ...],
+    *,
+    execution_engine: LabExecutionEngine,
+) -> dict[str, object]:
     return {
         "state": "loaded",
-        "sessions": [session.as_json() for session in sessions],
+        "sessions": [
+            _session_document(session, execution_engine=execution_engine)
+            for session in sessions
+        ],
         "readError": None,
     }
+
+
+def _session_document(
+    session: object,
+    *,
+    execution_engine: LabExecutionEngine,
+) -> dict[str, object]:
+    """Expose the session and one read-only ingress-owned finalization projection."""
+    document = session.as_json()
+    request_ids = session.archive_finalization_request_ids
+    if request_ids is None:
+        if session.state == "finished":
+            document["archiveFinalization"] = {
+                "state": "unavailable",
+                "updatedAt": None,
+                "readError": "Archive finalization reference was not recorded for this session.",
+            }
+        return document
+    try:
+        document["archiveFinalization"] = execution_engine.archive_finalization_progress(
+            request_ids=request_ids
+        ).as_json()
+    except LabArchiveFinalizationError as error:
+        document["archiveFinalization"] = {
+            "state": "unavailable",
+            "updatedAt": None,
+            "readError": str(error),
+        }
+    return document
 
 
 def _missing_session_response(

@@ -377,10 +377,19 @@ Product Lab `Stop` is a restartable pause: it closes active sender connections a
 `stopped`, but it does not declare the archive complete. Product Lab `Finish` is terminal. It transitions the
 session to `finished` and sends every session-owned recorder vrcode with reason `lab_session_finished` to recorder ingress
 `POST /recorder-ingress/raw-archive/finalize`. Recorder ingress persists the requests before attempting recovery and
-returns request IDs. The Lab finish response reports `archiveFinalization.state=accepted`; a dependency or contract
-failure is returned as a failed finish response while the Lab session document preserves its actual terminal
-`finished` state. Recorder ingress, not Product Lab or the UI, owns `.vital` export retry, upload result, and checkpoint
-state.
+returns request IDs. Lab persists those IDs as a **private reference only** and returns without waiting for export/upload
+completion. The public Lab session projection contains only `archiveFinalization.state`, `updatedAt`, and `readError`;
+it never copies ingress jobs, checkpoints, files, or retry policy into the Lab/Guest/Host contracts. On subsequent
+session collection/detail reads, Lab asks recorder ingress for that one reference and projects `queued`, `processing`,
+`retrying`, `uploaded`, `failed`, `partial`, `missing`, or explicit `unavailable`. A dependency or contract failure is
+therefore visible on the archive projection while the Lab session preserves its actual terminal `finished` state.
+Recorder ingress, not Product Lab or the UI, owns `.vital` export retry, upload result, and checkpoint state.
+
+The existing path is intentionally unchanged: `recorder-ingress → Lab session → Guest Control /runtime/lab/sessions
+→ Runtime Control → Swift/PWA`. No UI calls recorder ingress and no new cross-service workflow endpoint is introduced.
+PWA refreshes the existing session query; Swift polls the same selected-session read only while the projected state is
+non-terminal. `uploaded` is the only successful archive-upload state; missing, partial, failed, and unavailable are
+not formatted as success.
 
 Repeating Finish for an already `finished` session is an explicit finalization retry and never restarts execution.
 Starting a `finished` session is rejected.

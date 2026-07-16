@@ -4732,6 +4732,45 @@
           "unavailable"
         ]
       },
+      "RuntimeLabArchiveFinalizationState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "processing",
+          "retrying",
+          "uploaded",
+          "failed",
+          "partial",
+          "missing",
+          "unavailable"
+        ]
+      },
+      "RuntimeLabArchiveFinalization": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "updatedAt",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabArchiveFinalizationState"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "RuntimeLabScenario": {
         "type": "object",
         "additionalProperties": false,
@@ -5087,6 +5126,12 @@
           "replayPolicy": {
             "oneOf": [
               {"$ref": "#/components/schemas/RuntimeLabVitalFileReplayPolicy"},
+              {"type": "null"}
+            ]
+          },
+          "archiveFinalization": {
+            "oneOf": [
+              {"$ref": "#/components/schemas/RuntimeLabArchiveFinalization"},
               {"type": "null"}
             ]
           },

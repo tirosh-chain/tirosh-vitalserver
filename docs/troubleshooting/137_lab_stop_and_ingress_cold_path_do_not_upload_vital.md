@@ -11,6 +11,7 @@
 - Recorder ingress raw archive append succeeds, but `rawArchive.autoExport.status` never reaches `uploaded`.
 - One recorder disconnects while another remains connected, and the disconnected recorder is never exported.
 - A later recovery job uploads old `.vital` files from the recovery output directory again.
+- `Finish & upload`가 끝났지만 UI가 upload가 진행 중인지, 실패했는지, 완료됐는지 표시하지 못한다.
 
 ## Cause
 
@@ -32,6 +33,8 @@ directory. Artifacts from earlier jobs were therefore included again.
 - Product Lab `Finish` transitions to terminal `finished`, closes execution, and sends one explicit
   vrcode-scoped finalization request to recorder ingress.
 - Recorder ingress persists pending finalization requests and owns retry/upload/checkpoint state.
+- Lab persists only the accepted ingress request IDs, then exposes a read-only archive-upload summary on the existing
+  session read. Guest Control, Swift, and PWA do not receive ingress job/checkpoint documents or call ingress directly.
 - Inactivity and explicit decisions use recorder-specific connection, archive, spool, and replay state.
 - Archive checkpoints use append end offsets and recovery reads only the unexported byte window for that vrcode.
 - Recovery uploads only the artifacts returned by the current export operation.
@@ -59,6 +62,8 @@ evidence. Missing or invalid state is not an empty successful job list.
   be promoted to archive completion.
 - Finish must fail visibly when no session recorder vrcode or recorder-ingress finalizer is available; it must not
   return a successful terminal upload request with no durable finalization receipt.
+- A successful finalization acceptance is not upload success. The UI may show only the ingress-owned projected
+  `uploaded` state as success; `failed`, `partial`, `missing`, and `unavailable` remain distinct.
 - Repeating Finish from `finished` is an explicit archive-finalization retry; starting from `finished` remains
   forbidden.
 - Cold-path finalization policy must be recorder-scoped when the archive contains multiple recorders.

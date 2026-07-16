@@ -12,6 +12,7 @@ import pytest
 
 from vitalserver_lab.archive_finalization import (
     LabArchiveFinalizationError,
+    LabArchiveFinalizationProgress,
     LabArchiveFinalizationReceipt,
 )
 from vitalserver_lab.execution import (
@@ -865,10 +866,42 @@ def test_session_finish_requests_durable_archive_finalization() -> None:
     assert finished["status"] == 202
     assert finished["body"]["session"]["state"] == "finished"
     assert finished["body"]["archiveFinalization"] == {
-        "state": "accepted",
-        "requestIds": ["finalization-1"],
+        "state": "queued",
+        "updatedAt": "2026-07-16T00:00:00Z",
+        "readError": None,
     }
     assert finalizer.calls == [(vrcodes, "lab_session_finished")]
+
+
+def test_finished_session_reads_ingress_owned_archive_finalization_progress() -> None:
+    finalizer = FakeArchiveFinalizer()
+    with running_server(
+        ["lab_session_1"],
+        archive_finalizer=finalizer,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_1/start")
+        request(address, "POST", "/lab/sessions/lab_session_1/finish")
+        finalizer.progress_state = "uploaded"
+
+        session = request(address, "GET", "/lab/sessions/lab_session_1")
+        sessions = request(address, "GET", "/lab/sessions")
+
+    assert session["status"] == 200
+    assert session["body"]["session"]["archiveFinalization"]["state"] == "uploaded"
+    assert sessions["body"]["sessions"][0]["archiveFinalization"]["state"] == "uploaded"
+    persisted = address.store.get("lab_session_1")
+    assert persisted is not None
+    assert persisted.archive_finalization_request_ids == ("finalization-1",)
 
 
 def test_finished_session_is_terminal_and_cannot_restart() -> None:
@@ -1301,6 +1334,7 @@ class FakeSender:
 class FakeArchiveFinalizer:
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], str]] = []
+        self.progress_state = "queued"
 
     def request_finalization(
         self,
@@ -1312,6 +1346,24 @@ class FakeArchiveFinalizer:
         return LabArchiveFinalizationReceipt(
             state="accepted",
             request_ids=("finalization-1",),
+        )
+
+    def read_finalization(
+        self,
+        *,
+        request_ids: tuple[str, ...],
+    ) -> LabArchiveFinalizationProgress:
+        assert request_ids == ("finalization-1",)
+        return LabArchiveFinalizationProgress(
+            state=self.progress_state,
+            request_ids=request_ids,
+            requests=(
+                {
+                    "requestId": "finalization-1",
+                    "state": self.progress_state,
+                },
+            ),
+            updated_at="2026-07-16T00:00:00Z",
         )
 
 

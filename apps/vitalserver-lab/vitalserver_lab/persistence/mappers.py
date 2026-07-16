@@ -54,6 +54,9 @@ def session_domain(record: LabSessionRecord) -> LabSession:
         state=_string(d, "state"),
         created_at=_string(d, "createdAt"),
         updated_at=_string(d, "updatedAt"),
+        archive_finalization_request_ids=_optional_strings(
+            d, "archiveFinalizationRequestIds"
+        ),
     )
 
 
@@ -116,6 +119,19 @@ def _integer(document: dict[str, object], field: str) -> int:
 def _strings(document: dict[str, object], field: str) -> tuple[str, ...]:
     value = document.get(field, [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise _invalid(f"Lab document field is invalid: {field}")
+    return tuple(value)
+
+
+def _optional_strings(
+    document: dict[str, object], field: str
+) -> tuple[str, ...] | None:
+    if field not in document:
+        return None
+    value = document[field]
+    if not isinstance(value, list) or not value or not all(
+        isinstance(item, str) and item for item in value
+    ):
         raise _invalid(f"Lab document field is invalid: {field}")
     return tuple(value)
 

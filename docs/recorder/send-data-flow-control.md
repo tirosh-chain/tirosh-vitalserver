@@ -609,15 +609,16 @@ disconnect, `activeConnections = 0`, 또는 `send_data` silence를 `stopped`, `s
 안정적이고 realtime replay가 drain되었으며 같은 cursor가 아직 export/upload되지 않은 경우에만 export/upload
 후보로 봅니다. 5분이 지나기 전에는 `inactive_candidate`이며, 이 상태도 "종료됨"을 뜻하지 않습니다.
 
-Product Lab은 recorder lifecycle owner이므로 예외가 아니라 별도의 명시 계약을 사용합니다. Lab session 또는
-recorder stop은 연결을 닫은 뒤 내부
-`POST /recorder-ingress/raw-archive/finalize`에 `vrcodes`와
-terminal session Finish는 `lab_session_finished` reason을 보냅니다. Restartable session/recorder Stop은
-archive completion을 선언하지 않습니다. Recorder ingress는 이 요청을 durable
-finalization job으로 수락하고 `finalizable_by_explicit_request` 정책으로 처리합니다. 이 trigger도 active
+Product Lab은 recorder lifecycle owner이므로 예외가 아니라 별도의 명시 계약을 사용합니다. Terminal session
+Finish만 연결을 닫은 뒤 내부 `POST /recorder-ingress/raw-archive/finalize`에 `vrcodes`와
+`lab_session_finished` reason을 보냅니다. Restartable session/recorder Stop은 archive completion을 선언하지
+않습니다. Recorder ingress는 이 요청을 durable finalization job으로 수락하고
+`finalizable_by_explicit_request` 정책으로 처리합니다. 이 trigger도 active
 connection과 recorder별 realtime replay drain을 요구하지만 5분 inactivity와 cursor stability를 요구하지
-않습니다. Lab UI가 stop state를 만들거나 `.vital` upload 성공을 추측하지 않으며, ingress job/checkpoint가
-수락·재시도·성공·실패를 소유합니다.
+않습니다. Lab은 수락된 request ID를 private session reference로만 보관하고, ingress가 제공한 한 개의
+read-only progress 요약(`queued`, `processing`, `retrying`, `uploaded`, `failed`, `partial`, `missing`)만
+session read에 투영합니다. Lab UI가 stop state나 `.vital` upload 성공을 추측하지 않으며, ingress
+job/checkpoint가 수락·재시도·성공·실패를 소유합니다.
 
 Auto export 판단은 전역 active connection 수가 아니라 recorder별 `activeConnections`, archive cursor,
 마지막 append 시각, spool/replay depth를 사용합니다. 따라서 다른 recorder가 계속 연결되어 있어도 종료된

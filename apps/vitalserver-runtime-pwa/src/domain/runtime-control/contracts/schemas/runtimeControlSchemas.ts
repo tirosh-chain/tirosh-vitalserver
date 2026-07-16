@@ -1637,6 +1637,25 @@ const runtimeLabSessionStateSchema = z.enum([
   "unavailable"
 ]);
 
+const runtimeLabArchiveFinalizationStateSchema = z.enum([
+  "queued",
+  "processing",
+  "retrying",
+  "uploaded",
+  "failed",
+  "partial",
+  "missing",
+  "unavailable"
+]);
+
+const runtimeLabArchiveFinalizationSchema = z
+  .object({
+    state: runtimeLabArchiveFinalizationStateSchema,
+    updatedAt: requiredNullableString,
+    readError: requiredNullableString
+  })
+  .strict();
+
 const runtimeLabRecorderSendStateSchema = z.enum([
   "notAttempted",
   "skipped",
@@ -1661,6 +1680,7 @@ const runtimeLabSessionSchema = z
     name: nullableString,
     recorderCount: z.number(),
     targetURL: z.string().nullable(),
+    archiveFinalization: runtimeLabArchiveFinalizationSchema.nullable().optional(),
     createdAt: nullableString,
     updatedAt: nullableString
   })

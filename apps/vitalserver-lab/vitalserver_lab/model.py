@@ -163,6 +163,8 @@ class LabSession:
     state: str
     created_at: str
     updated_at: str
+    # Lab owns only the reference. recorder-ingress owns the finalization state.
+    archive_finalization_request_ids: tuple[str, ...] | None = None
 
     def as_json(self) -> dict[str, object]:
         document: dict[str, object] = {
@@ -189,6 +191,10 @@ class LabSession:
         document = self.as_json()
         if self.vital_file_path is not None:
             document["vitalFilePath"] = self.vital_file_path
+        if self.archive_finalization_request_ids is not None:
+            document["archiveFinalizationRequestIds"] = list(
+                self.archive_finalization_request_ids
+            )
         return document
 
 
@@ -275,6 +281,13 @@ class LabSessionStore(Protocol):
 
     def finish(self, session_id: str) -> LabSession | None:
         """Transition an existing Lab session to the terminal finished state."""
+
+    def save_archive_finalization_request_ids(
+        self,
+        session_id: str,
+        request_ids: tuple[str, ...],
+    ) -> LabSession | None:
+        """Persist the latest accepted recorder-ingress finalization reference."""
 
     def list_beds(self) -> tuple[LabBed, ...]:
         """Return the Lab-owned bed read model."""
@@ -481,6 +494,23 @@ class InMemoryLabSessionStore:
         )
         session.updated_at = utc_now_iso()
         self._save_session_state_read_model(session, state="finished")
+        return session
+
+    def save_archive_finalization_request_ids(
+        self,
+        session_id: str,
+        request_ids: tuple[str, ...],
+    ) -> LabSession | None:
+        if not request_ids or any(not request_id for request_id in request_ids):
+            raise LabSessionStoreUnavailable(
+                "Lab archive finalization request IDs are invalid.",
+                kind="labArchiveFinalizationRequestIdsInvalid",
+            )
+        session = self.sessions.get(session_id)
+        if session is None:
+            return None
+        session.archive_finalization_request_ids = request_ids
+        session.updated_at = utc_now_iso()
         return session
 
     def list_beds(self) -> tuple[LabBed, ...]:

@@ -5,7 +5,9 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
+from time import monotonic, sleep
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
@@ -74,12 +76,24 @@ class VitalServerVitalFileLibrary:
         runtime_config: Callable[[], RuntimeConfig],
         transport: VitalServerHTTPTransport | None = None,
         timeout_seconds: float = 300.0,
+        index_wait_seconds: float = 300.0,
+        index_poll_interval_seconds: float = 1.0,
+        monotonic_clock: Callable[[], float] = monotonic,
+        sleep_fn: Callable[[float], None] = sleep,
     ) -> None:
+        if index_wait_seconds < 0:
+            raise ValueError("index_wait_seconds must not be negative")
+        if index_poll_interval_seconds <= 0:
+            raise ValueError("index_poll_interval_seconds must be positive")
         self._base_url = base_url.rstrip("/") + "/"
         self._guest_mount = guest_mount
         self._runtime_config = runtime_config
         self._transport = transport or URLlibVitalServerHTTPTransport()
         self._timeout_seconds = timeout_seconds
+        self._index_wait_seconds = index_wait_seconds
+        self._index_poll_interval_seconds = index_poll_interval_seconds
+        self._monotonic_clock = monotonic_clock
+        self._sleep = sleep_fn
 
     def list_files(self) -> list[dict[str, object]]:
         token = self._login_access_token()
@@ -174,14 +188,7 @@ class VitalServerVitalFileLibrary:
                 )
             completed.append(filename)
 
-        indexed_after = {str(item["displayName"]): item for item in self.list_files()}
-        missing = [filename for filename in completed if filename not in indexed_after]
-        if missing:
-            raise GuestControlDependencyError(
-                "VitalServer accepted upload but did not report indexed files: "
-                + ", ".join(missing),
-                kind="vitalFileUploadNotIndexed",
-            )
+        indexed_after = self._wait_for_index(completed)
         return [
             {
                 "fileName": filename,
@@ -190,6 +197,31 @@ class VitalServerVitalFileLibrary:
             }
             for filename, content in files
         ]
+
+    def _wait_for_index(
+        self, uploaded_filenames: list[str]
+    ) -> dict[str, dict[str, object]]:
+        deadline = self._monotonic_clock() + self._index_wait_seconds
+        while True:
+            indexed = {str(item["displayName"]): item for item in self.list_files()}
+            missing = [
+                filename for filename in uploaded_filenames if filename not in indexed
+            ]
+            if not missing:
+                return indexed
+            if self._monotonic_clock() >= deadline:
+                raise GuestControlDependencyError(
+                    "VitalServer accepted upload but did not report "
+                    "indexed files within "
+                    f"{self._index_wait_seconds:g}s: {', '.join(missing)}",
+                    kind="vitalFileUploadNotIndexed",
+                )
+            self._sleep(
+                min(
+                    self._index_poll_interval_seconds,
+                    deadline - self._monotonic_clock(),
+                )
+            )
 
     def _login_access_token(self) -> str:
         try:
@@ -283,7 +315,7 @@ class VitalServerVitalFileLibrary:
                 kind="vitalFileUploadInvalid",
             )
         names: set[str] = set()
-        for filename, _ in files:
+        for filename, content in files:
             if not self._valid_filename(filename):
                 raise GuestControlDependencyError(
                     "Only .vital files can be uploaded: "
@@ -304,6 +336,24 @@ class VitalServerVitalFileLibrary:
                     kind="vitalFileUploadInvalid",
                 )
             names.add(filename)
+            self._validate_vital_file_content(filename, content)
+
+    @staticmethod
+    def _validate_vital_file_content(filename: str, content: bytes) -> None:
+        try:
+            with gzip.GzipFile(fileobj=BytesIO(content), mode="rb") as archive:
+                if archive.read(4) != b"VITA":
+                    raise GuestControlDependencyError(
+                        f"Vital file is missing its VITA header: {filename}",
+                        kind="vitalFileUploadInvalid",
+                    )
+                while archive.read(1024 * 1024):
+                    pass
+        except (gzip.BadGzipFile, EOFError, OSError) as error:
+            raise GuestControlDependencyError(
+                f"Vital file gzip stream is invalid: {filename}: {error}",
+                kind="vitalFileUploadInvalid",
+            ) from error
 
     @staticmethod
     def _valid_filename(filename: object) -> bool:

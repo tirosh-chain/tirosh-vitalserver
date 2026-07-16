@@ -29,6 +29,7 @@ export type SendDataRawArchiveExportCheckpoint = {
   archivePath: string;
   endOffset: number;
   jobId: string;
+  requestId?: string | null;
   completedAt: string;
 };
 

@@ -25,6 +25,9 @@ test("recorder ingress HTTP adapter starts and stops injected workers on server 
       async requestFinalization() {
         return { ok: true, state: "accepted", requestIds: ["request-1"] };
       },
+      finalizationStatus() {
+        return finalizationStatus();
+      },
     },
     sendDataReplayWorker: {
       start() {
@@ -70,6 +73,9 @@ test("recorder ingress HTTP adapter runs shutdown raw archive export trigger", a
       async requestFinalization() {
         return { ok: true, state: "accepted", requestIds: ["request-1"] };
       },
+      finalizationStatus() {
+        return finalizationStatus();
+      },
     },
     sendDataReplayWorker: {
       start() {
@@ -109,6 +115,9 @@ test("recorder ingress accepts explicit recorder archive finalization", async ()
         calls.push(input);
         return { ok: true, state: "accepted", requestIds: ["request-1"] };
       },
+      finalizationStatus() {
+        return finalizationStatus();
+      },
     },
     sendDataReplayWorker: {
       start() {},
@@ -131,6 +140,65 @@ test("recorder ingress accepts explicit recorder archive finalization", async ()
   assert.deepStrictEqual(body, { ok: true, state: "accepted", requestIds: ["request-1"] });
   assert.deepStrictEqual(calls, [{ vrcodes: ["LAB-VR-1"], reason: "lab_session_finished" }]);
 });
+
+test("recorder ingress exposes finalization progress by explicit request ID", async () => {
+  const server = createRecorderIngressHttpServer({
+    audit: { record() {} },
+    clientIp: { select() { return { selected_ip: "127.0.0.1" }; } },
+    config: httpAdapterConfig(),
+    metrics: createMetrics(),
+    sendDataRawArchiveExportWorker: {
+      start() {},
+      stop() {},
+      async runOnce() { return { ok: true, state: "open" }; },
+      async requestFinalization() { return { ok: true, state: "accepted", requestIds: ["request-1"] }; },
+      finalizationStatus(requestIds) {
+        assert.deepStrictEqual(requestIds, ["request-1"]);
+        return finalizationStatus();
+      },
+    },
+    sendDataReplayWorker: {
+      start() {},
+      stop() {},
+      async runOnce() { return { ok: true, processed: 0 }; },
+    },
+    socketIoAudit: { inspect() {}, inspectBinary() {} },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const response = await fetch(
+    `http://127.0.0.1:${address.port}/recorder-ingress/raw-archive/finalizations?requestId=request-1`,
+  );
+  const body = await response.json();
+  await new Promise((resolve) => server.close(resolve));
+
+  assert.strictEqual(response.status, 200);
+  assert.deepStrictEqual(body, finalizationStatus());
+});
+
+function finalizationStatus() {
+  return {
+    ok: true,
+    state: "loaded",
+    finalization: {
+      state: "processing",
+      requests: [{
+        requestId: "request-1",
+        vrcode: "LAB-VR-1",
+        state: "processing",
+        attempts: 1,
+        maxAttempts: 3,
+        requestedAt: "2026-07-16T05:00:00.000Z",
+        updatedAt: "2026-07-16T05:00:01.000Z",
+        startedAt: "2026-07-16T05:00:01.000Z",
+        completedAt: null,
+        nextAttemptAt: null,
+        failure: null,
+      }],
+      updatedAt: "2026-07-16T05:00:01.000Z",
+    },
+  };
+}
 
 function httpAdapterConfig() {
   return {

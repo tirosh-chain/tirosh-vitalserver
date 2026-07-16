@@ -17,6 +17,8 @@
 - 아직 한 번도 업로드하지 않은 library에서는 `GET /api/filelist`가 HTTP 404와 정확히
   `{"message":"No result found"}`를 반환해 첫 upload가 `vitalFileLibraryReadFailed`로
   막힐 수 있다.
+- VitalServer가 `success`를 반환한 뒤에도 대용량 `.vital`의 parser/index publication이
+  완료되기 전이면 일부 파일만 `vitalFileUploadNotIndexed`로 실패할 수 있다.
 
 ## Cause
 
@@ -37,6 +39,15 @@ HTTP 404 `{"message":"No result found"}`로 명시된다. Guest adapter가 statu
 읽는 시점에 막힌다. 이 문서는 authenticated exact response만 loaded empty library로
 해석해야 하며, 다른 404, malformed body, authentication failure는 여전히 read failure라는
 경계를 기록한다.
+
+VitalServer upload endpoint는 파일 저장 완료 후 `success`를 반환하지만, `.vital` parser가
+Redis file-list index를 publish하는 작업은 별도로 완료된다. 압축 크기와 무관하게 해제 후
+파싱할 데이터가 큰 파일은 이 publication이 첫 `GET /api/filelist`보다 늦을 수 있다.
+또한 gzip stream이 끝나지 않았거나 해제한 첫 4 bytes가 `VITA`가 아닌 파일은 parser가
+index를 만들 수 없는 손상된 입력이다. 예를 들어
+`MORA04_230102_101051.vital`, `MORA04_230102_105105.vital`,
+`MORA04_230102_105707.vital`, `MORA04_230102_110306.vital`,
+`MORA04_230102_110905.vital`은 `gzip -t`에서 `unexpected end of file`로 확인됐다.
 
 ## Checks
 
@@ -60,6 +71,9 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
 ## Actions
 
 - Host/PWA가 선택한 bytes를 Runtime Control multipart upload로 전달한다.
+- Guest adapter는 어떤 VitalServer API 호출 전에도 각 입력의 complete gzip stream과
+  `VITA` header를 검증한다. invalid file은 batch 전체를 `vitalFileUploadInvalid`으로
+  거부하므로 유효한 일부만 서버에 upload하는 partial result를 만들지 않는다.
 - Guest library adapter가 전체 선택을 사전 검증한 뒤 각 파일을 VitalServer
   `POST /upload`의 `vitalfile` field로 보낸다. Guest adapter는 이를
   `http://127.0.0.1:18083` recorder ingress를 통해 호출한다.
@@ -67,7 +81,9 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
 - `GET /api/filelist`가 404 `{"message":"No result found"}`이면 authenticated empty
   library로 확인하고 첫 upload를 진행한다. 이외 404는 endpoint/dependency failure로
   진단한다.
-- 업로드 후 인증된 `GET /api/filelist`를 다시 읽어 모든 파일의 index entry를 확인한다.
+- 업로드 후 인증된 `GET /api/filelist`를 즉시 한 번만 읽지 않는다. 모든 파일의 index
+  entry가 나타날 때까지 1초 간격으로 최대 300초 동안 VitalServer owner를 다시 읽는다.
+  deadline까지 누락된 파일은 `vitalFileUploadNotIndexed`로 명시적으로 실패한다.
 - Swift/PWA는 성공 뒤 `/runtime/lab/vital-files` query를 다시 읽고, 그 explicit loaded
   목록만 Replay 선택기에 표시한다.
 
@@ -79,6 +95,10 @@ curl -sS -H 'X-Runtime-Control-Token: <token>' \
   검증한다.
 - HTTP 200 error text, authentication failure, invalid gzip/JSON, missing index entry, partial
   multi-file completion을 empty/success로 변환하지 않는다.
+- upload HTTP success를 index success로 추정하지 않는다. delayed index publication은
+  bounded polling test로 검증하고, deadline 이후에는 성공이나 빈 목록으로 fallback하지 않는다.
+- truncated gzip, invalid `VITA` header, 그리고 index publication delay를 각각 별도
+  focused test로 고정한다.
 - empty library는 VitalServer가 정한 exact 404 JSON document일 때만 empty collection으로
   변환한다. generic 404, body decode failure, or a different error document를 empty library로
   바꾸지 않는다.

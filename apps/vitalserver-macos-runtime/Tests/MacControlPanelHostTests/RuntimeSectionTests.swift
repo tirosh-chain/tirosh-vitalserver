@@ -247,6 +247,22 @@ final class RuntimeSectionTests: XCTestCase {
     }
 
     @MainActor
+    func testPlatformAgentReportsNoWorkflowAsNormalMissingState() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let handler = makeRuntimeControlAPIHandler(
+            client: HostFakeRuntimeControlClient(),
+            platformWorkflowDocument: root.appendingPathComponent("run/platform-workflow.json")
+        )
+
+        let resource = try await handler.loadPlatformWorkflow()
+
+        XCTAssertEqual(resource.state, .missing)
+        XCTAssertNil(resource.operation)
+        XCTAssertNil(resource.readError)
+    }
+
+    @MainActor
     func testPlatformAgentDelegatesGuestStackAndServiceResourceReads() async throws {
         let client = HostFakeRuntimeControlClient()
         let handler = makeRuntimeControlAPIHandler(client: client)

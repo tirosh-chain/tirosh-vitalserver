@@ -1955,6 +1955,13 @@ export interface components {
         RuntimeLabReadState: "loaded" | "unavailable" | "failed";
         /** @enum {string} */
         RuntimeLabSessionState: "accepted" | "running" | "stopping" | "stopped" | "finished" | "failed" | "unavailable";
+        /** @enum {string} */
+        RuntimeLabArchiveFinalizationState: "queued" | "processing" | "retrying" | "uploaded" | "failed" | "partial" | "missing" | "unavailable";
+        RuntimeLabArchiveFinalization: {
+            state: components["schemas"]["RuntimeLabArchiveFinalizationState"];
+            updatedAt: string | null;
+            readError: string | null;
+        };
         RuntimeLabScenario: {
             scenarioId: string;
             name: string;
@@ -2029,6 +2036,7 @@ export interface components {
             recorderIds?: string[];
             vitalFileRelativePath?: string | null;
             replayPolicy?: components["schemas"]["RuntimeLabVitalFileReplayPolicy"] | null;
+            archiveFinalization?: components["schemas"]["RuntimeLabArchiveFinalization"] | null;
             createdAt?: string | null;
             updatedAt?: string | null;
         };

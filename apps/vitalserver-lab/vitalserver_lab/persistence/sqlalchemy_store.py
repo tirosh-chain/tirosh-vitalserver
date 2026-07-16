@@ -86,6 +86,17 @@ class SQLAlchemyLabSessionStore(InMemoryLabSessionStore):
             lambda: super(SQLAlchemyLabSessionStore, self).finish(session_id)
         )
 
+    def save_archive_finalization_request_ids(
+        self,
+        session_id: str,
+        request_ids: tuple[str, ...],
+    ) -> LabSession | None:
+        return self._mutate(
+            lambda: super(
+                SQLAlchemyLabSessionStore, self
+            ).save_archive_finalization_request_ids(session_id, request_ids)
+        )
+
     def list_beds(self) -> tuple[LabBed, ...]:
         return self._read(lambda: super(SQLAlchemyLabSessionStore, self).list_beds())
 

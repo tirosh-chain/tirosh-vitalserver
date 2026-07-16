@@ -121,6 +121,10 @@ function proxyHttp(req, res, dependencies) {
     requestRawArchiveFinalization(req, res, dependencies.sendDataRawArchiveExportWorker);
     return;
   }
+  if (req.method === "GET" && rawArchiveFinalizationStatusRequest(req.url)) {
+    readRawArchiveFinalizationStatus(req, res, dependencies.sendDataRawArchiveExportWorker);
+    return;
+  }
 
   const context = createRequestContext(req, dependencies.clientIp);
   dependencies.metrics.httpRequests += 1;
@@ -149,6 +153,11 @@ function proxyHttp(req, res, dependencies) {
     });
     upstream.destroy(error);
   });
+}
+
+function rawArchiveFinalizationStatusRequest(requestURL) {
+  return new URL(requestURL || "/", "http://recorder-ingress").pathname
+    === "/recorder-ingress/raw-archive/finalizations";
 }
 
 function requestRawArchiveFinalization(req, res, worker) {
@@ -182,6 +191,21 @@ function requestRawArchiveFinalization(req, res, worker) {
       });
     }
   });
+}
+
+function readRawArchiveFinalizationStatus(req, res, worker) {
+  const requestURL = new URL(req.url || "/", "http://recorder-ingress");
+  try {
+    const result = worker.finalizationStatus(requestURL.searchParams.getAll("requestId"));
+    writeJson(res, result.ok ? 200 : 400, result);
+  } catch (error) {
+    writeJson(res, 503, {
+      ok: false,
+      state: "rejected",
+      reason: "finalization_status_dependency_failed",
+      message: error && error.message ? error.message : String(error),
+    });
+  }
 }
 
 function writeJson(res, statusCode, document) {

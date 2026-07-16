@@ -47,7 +47,28 @@ def empty_file_list_response() -> VitalServerHTTPResponse:
     return response(b'{"message":"No result found"}', status=404)
 
 
-def library(transport: FakeTransport) -> VitalServerVitalFileLibrary:
+def vital_content(payload: bytes = b"") -> bytes:
+    return gzip.compress(b"VITA" + payload)
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+def library(
+    transport: FakeTransport, **overrides: object
+) -> VitalServerVitalFileLibrary:
+    arguments: dict[str, object] = {"index_wait_seconds": 0.0}
+    arguments.update(overrides)
     return VitalServerVitalFileLibrary(
         base_url="http://127.0.0.1:18080",
         guest_mount=Path("/mnt/tirosh-vital-files"),
@@ -61,6 +82,7 @@ def library(transport: FakeTransport) -> VitalServerVitalFileLibrary:
             vital_files_directory="/mnt/tirosh-vital-files",
         ),
         transport=transport,
+        **arguments,
     )
 
 
@@ -117,6 +139,8 @@ def test_does_not_treat_an_unrelated_file_list_404_as_an_empty_library() -> None
 def test_uploads_each_selected_file_through_vitalserver_and_verifies_index() -> None:
     first = "OR-A_260715_120000.vital"
     second = "OR-B_260715_120001.vital"
+    first_content = vital_content(b"first")
+    second_content = vital_content(b"second")
     transport = FakeTransport(
         [
             login_response(),
@@ -128,7 +152,9 @@ def test_uploads_each_selected_file_through_vitalserver_and_verifies_index() -> 
         ]
     )
 
-    result = library(transport).import_files([(first, b"first"), (second, b"second")])
+    result = library(transport).import_files(
+        [(first, first_content), (second, second_content)]
+    )
 
     assert [item["fileName"] for item in result] == [first, second]
     upload_requests = [
@@ -143,6 +169,7 @@ def test_uploads_each_selected_file_through_vitalserver_and_verifies_index() -> 
 
 def test_uploads_through_vitalserver_when_its_library_is_initially_empty() -> None:
     filename = "OR-A_260715_120000.vital"
+    content = vital_content(b"first")
     transport = FakeTransport(
         [
             login_response(),
@@ -153,13 +180,13 @@ def test_uploads_through_vitalserver_when_its_library_is_initially_empty() -> No
         ]
     )
 
-    result = library(transport).import_files([(filename, b"first")])
+    result = library(transport).import_files([(filename, content)])
 
     assert result == [
         {
             "fileName": filename,
             "relativePath": f"OR-A/202607/260715/{filename}",
-            "sizeBytes": 5,
+            "sizeBytes": len(content),
         }
     ]
     assert [request["url"] for request in transport.requests] == [
@@ -176,7 +203,10 @@ def test_rejects_entire_batch_before_api_calls_when_one_file_is_not_vital() -> N
 
     with pytest.raises(GuestControlDependencyError) as raised:
         library(transport).import_files(
-            [("OR-A_260715_120000.vital", b"vital"), ("rejected.txt", b"text")]
+            [
+                ("OR-A_260715_120000.vital", vital_content()),
+                ("rejected.txt", b"text"),
+            ]
         )
 
     assert raised.value.kind == "vitalFileUploadInvalid"
@@ -194,6 +224,19 @@ def test_rejects_unindexable_vitalserver_filename_before_api_calls() -> None:
     assert transport.requests == []
 
 
+def test_rejects_truncated_vital_file_before_any_vitalserver_api_call() -> None:
+    transport = FakeTransport([])
+
+    with pytest.raises(GuestControlDependencyError) as raised:
+        library(transport).import_files(
+            [("OR-A_260715_120000.vital", b"\x1f\x8b\x08\x00truncated")]
+        )
+
+    assert raised.value.kind == "vitalFileUploadInvalid"
+    assert "gzip stream is invalid" in raised.value.message
+    assert transport.requests == []
+
+
 def test_does_not_report_http_200_parser_error_as_upload_success() -> None:
     filename = "OR-A_260715_120000.vital"
     transport = FakeTransport(
@@ -201,7 +244,7 @@ def test_does_not_report_http_200_parser_error_as_upload_success() -> None:
     )
 
     with pytest.raises(GuestControlDependencyError) as raised:
-        library(transport).import_files([(filename, b"invalid")])
+        library(transport).import_files([(filename, vital_content(b"source"))])
 
     assert raised.value.kind == "vitalFileUploadFailed"
     assert "invalid vital header" in raised.value.message
@@ -220,9 +263,43 @@ def test_reports_successful_upload_that_is_missing_from_vitalserver_index() -> N
     )
 
     with pytest.raises(GuestControlDependencyError) as raised:
-        library(transport).import_files([(filename, b"content")])
+        library(transport).import_files([(filename, vital_content(b"content"))])
 
     assert raised.value.kind == "vitalFileUploadNotIndexed"
+
+
+def test_waits_for_vitalserver_to_publish_uploaded_file_indexes() -> None:
+    filename = "OR-A_260715_120000.vital"
+    clock = FakeClock()
+    content = vital_content(b"first")
+    transport = FakeTransport(
+        [
+            login_response(),
+            file_list_response([]),
+            response(b"success"),
+            login_response(),
+            file_list_response([]),
+            login_response(),
+            file_list_response([indexed_file(filename, 5)]),
+        ]
+    )
+
+    result = library(
+        transport,
+        index_wait_seconds=5.0,
+        index_poll_interval_seconds=1.0,
+        monotonic_clock=clock.monotonic,
+        sleep_fn=clock.sleep,
+    ).import_files([(filename, content)])
+
+    assert result == [
+        {
+            "fileName": filename,
+            "relativePath": f"OR-A/202607/260715/{filename}",
+            "sizeBytes": len(content),
+        }
+    ]
+    assert clock.sleeps == [1.0]
 
 
 def test_preserves_partial_batch_completion_when_later_upload_fails() -> None:
@@ -238,7 +315,9 @@ def test_preserves_partial_batch_completion_when_later_upload_fails() -> None:
     )
 
     with pytest.raises(GuestControlDependencyError) as raised:
-        library(transport).import_files([(first, b"first"), (second, b"second")])
+        library(transport).import_files(
+            [(first, vital_content(b"first")), (second, vital_content(b"second"))]
+        )
 
     assert raised.value.kind == "vitalFileUploadPartiallyCompleted"
     assert first in raised.value.message
