@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-service-manager-deployment-configuration",
+  "title": "GuestProductServiceManagerDeploymentConfiguration",
+  "description": "C38 Guest-owned desired service-manager input for starting and supervising one GuestProductProcessSupervisor. It names the Linux service-manager unit, the supervisor executable and C37 configuration paths, explicit restart behavior, and the required diagnostic log sinks. It is not evidence that systemd installed, enabled, started, restarted, or stopped the unit, nor that the Guest Runtime or Recorder Gateway is ready.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "serviceManagerKind", "serviceUnitName", "supervisor", "restart", "logging", "install"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "serviceManagerKind": { "const": "systemd" },
+    "serviceUnitName": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.service$"
+    },
+    "supervisor": { "$ref": "#/$defs/SupervisorInvocation" },
+    "restart": { "$ref": "#/$defs/RestartPolicy" },
+    "logging": { "$ref": "#/$defs/GuestProductSupervisorLogging" },
+    "install": { "$ref": "#/$defs/InstallTarget" }
+  },
+  "$defs": {
+    "AbsoluteGuestPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "SupervisorInvocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executablePath", "deploymentConfigurationPath"],
+      "properties": {
+        "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "deploymentConfigurationPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    },
+    "RestartPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "delayMilliseconds"],
+      "properties": {
+        "mode": { "const": "on-failure" },
+        "delayMilliseconds": { "type": "integer", "minimum": 0, "maximum": 3600000 }
+      }
+    },
+    "GuestProductSupervisorLogging": {
+      "description": "The declared Guest-owned evidence sinks for the process supervisor. journal+console keeps systemd history and C32 serial-console capture aligned without allowing a missing sink to be treated as silent success.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["standardOutput", "standardError"],
+      "properties": {
+        "standardOutput": { "const": "journal+console" },
+        "standardError": { "const": "journal+console" }
+      }
+    },
+    "InstallTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wantedByTarget"],
+      "properties": {
+        "wantedByTarget": { "const": "multi-user.target" }
+      }
+    }
+  }
+}

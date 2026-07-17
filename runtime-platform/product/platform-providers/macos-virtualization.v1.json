@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "v1",
+  "providerKind": "macos-virtualization",
+  "hostPlatform": "macos",
+  "providerProcess": {
+    "protocol": "platform-provider-lifecycle-invocation",
+    "lifecycleResult": "provider-lifecycle-result",
+    "installationEvidence": "provider-installation-evidence",
+    "executable": "macos-virtual-machine-supervisor"
+  },
+  "guestVirtualMachineConfiguration": {
+    "contract": "C32",
+    "schemaVersion": "v1",
+    "owner": "Host deployment configuration",
+    "requiredFields": [
+      "machineId",
+      "cpuCount",
+      "memoryBytes",
+      "boot.kernelPath",
+      "boot.commandLine",
+      "guestBootConsoleCapture.capturePath",
+      "guestBootConsoleCapture.writeMode",
+      "guestRuntimeDiskProvisioning.releaseArtifactManifestPath",
+      "guestRuntimeDiskProvisioning.releaseArtifactPath",
+      "guestRuntimeDiskProvisioning.runtimeDiskImagePath",
+      "guestRuntimeDiskProvisioning.provisioningReceiptPath",
+      "guestRuntimeDiskProvisioning.existingRuntimeDiskPolicy",
+      "guestRuntimeControlHostLocalHTTPBridge.hostLoopbackAddress",
+      "guestRuntimeControlHostLocalHTTPBridge.hostLoopbackPort",
+      "guestRuntimeControlHostLocalHTTPBridge.guestVirtioSocketPort",
+      "guestPublicServiceHostLocalHTTPBridges",
+      "storageDevices",
+      "network.attachment",
+      "network.macAddress"
+    ],
+    "attachment": "nat",
+    "configurationFlag": "--virtual-machine-configuration"
+  },
+  "hostAgentDeploymentConfiguration": {
+    "contract": "C33",
+    "configurationFlag": "--deployment-configuration",
+    "requiresMacOSVirtualMachineConfiguration": true
+  },
+  "hostEdgeProxyDeploymentConfiguration": {
+    "contract": "C36",
+    "configurationFlag": "--deployment-configuration",
+    "requiredBy": "macOS Host package composer and Host Edge Proxy launchd service",
+    "clientIdentityHeaderPolicy": "replace-with-remote-address"
+  },
+  "guestArtifactManifest": {
+    "contract": "C34",
+    "owner": "Guest image compiler",
+    "architecture": "arm64",
+    "requiredBy": "macOS Host package composer"
+  },
+  "serviceManager": "launchd",
+  "requiredCapabilities": [
+    "guest-vm-lifecycle",
+    "host-service-lifecycle"
+  ]
+}

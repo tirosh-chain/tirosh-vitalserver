@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:telemetry-signal-command",
+  "title": "TelemetrySignalEmitCommand",
+  "description": "A diagnostic signal emission request. Attribute values are input to policy only and are never persisted in a TelemetryEmissionReceipt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "pipelineId",
+    "expectedResourceRevision",
+    "signal",
+    "attributes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "pipelineId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedResourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "signal": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:telemetry-correlation"
+    },
+    "attributes": {
+      "type": "object",
+      "maxProperties": 64,
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 4096
+      }
+    }
+  }
+}

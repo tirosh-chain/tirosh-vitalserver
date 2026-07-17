@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:platform-installation",
+  "title": "PlatformInstallation",
+  "description": "A Host Agent-owned installation resource. It describes installed release and host-managed data location; it does not claim Guest liveness or readiness.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "resourceRevision",
+    "release",
+    "dataDirectory",
+    "installedAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "resourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "release": {
+      "$ref": "#/$defs/Release"
+    },
+    "dataDirectory": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "installedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "updatedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "$defs": {
+    "Release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productVersion",
+        "runtimeVersion"
+      ],
+      "properties": {
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "runtimeVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    }
+  }
+}

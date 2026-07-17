@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "v1",
+  "id": "windows-release-plan",
+  "productVersion": "0.1.0",
+  "platform": "windows",
+  "providerKind": "windows-hyperv-scm",
+  "intendedInstallerArtifact": {
+    "kind": "msi",
+    "expectedName": "VitalServerRuntimePlatform-0.1.0.msi"
+  },
+  "requiredHostServiceRegistrations": [
+    {
+      "role": "host-agent",
+      "manager": "windows-scm",
+      "name": "VitalServerHostAgent"
+    },
+    {
+      "role": "host-edge-proxy",
+      "manager": "windows-scm",
+      "name": "VitalServerHostEdgeProxy"
+    }
+  ],
+  "requiredProofStages": [
+    "artifact-integrity",
+    "sbom-and-notices",
+    "clean-install",
+    "service-registration",
+    "reboot",
+    "update",
+    "rollback",
+    "uninstall-reinstall"
+  ]
+}

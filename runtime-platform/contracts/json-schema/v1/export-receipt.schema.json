@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:export-receipt",
+  "title": "ExportReceipt",
+  "description": "An Archive Export-owned receipt. Upload and indexing success remain separate facts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "operationId",
+    "requestId",
+    "artifactManifestReference",
+    "provider",
+    "upload",
+    "indexing",
+    "outcome",
+    "retryable",
+    "completedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "operationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "artifactManifestReference": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+    },
+    "provider": {
+      "$ref": "#/$defs/ProviderReference"
+    },
+    "upload": {
+      "$ref": "#/$defs/ExportStep"
+    },
+    "indexing": {
+      "$ref": "#/$defs/ExportStep"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed",
+        "unsupported"
+      ]
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "completedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    },
+    "evidenceReferences": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "succeeded"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "upload": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            }
+          },
+          "indexing": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            }
+          },
+          "retryable": {
+            "const": false
+          }
+        },
+        "not": {
+          "required": [
+            "issue"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "failed",
+              "unsupported"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "issue"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "ProviderReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "capabilityRevision"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "capabilityRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "ExportStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "not-requested",
+            "succeeded",
+            "failed",
+            "unsupported"
+          ]
+        },
+        "receiptId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "completedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "not-requested"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "receiptId"
+                  ]
+                },
+                {
+                  "required": [
+                    "completedAt"
+                  ]
+                },
+                {
+                  "required": [
+                    "issue"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "receiptId",
+              "completedAt"
+            ],
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "failed",
+                  "unsupported"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "completedAt",
+              "issue"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

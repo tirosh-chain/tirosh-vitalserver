@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "v1",
+  "id": "runtime-topology-main",
+  "resourceRevision": 3,
+  "spec": {
+    "profileKind": "external-upstream",
+    "providerKind": "vitalserver",
+    "endpointReference": {
+      "resourceType": "external-upstream-integration",
+      "resourceId": "external-upstream-primary"
+    },
+    "credentialReference": {
+      "kind": "external-secret",
+      "id": "upstream-access"
+    }
+  },
+  "status": {
+    "readState": "available",
+    "connection": {
+      "state": "not-checked",
+      "observedAt": "2026-07-17T00:00:00Z"
+    },
+    "capabilityDocumentReference": {
+      "resourceType": "capability-document",
+      "resourceId": "capability-external-upstream-primary-r1"
+    },
+    "capabilityRevision": 1,
+    "observedAt": "2026-07-17T00:00:00Z"
+  },
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:00:00Z"
+}

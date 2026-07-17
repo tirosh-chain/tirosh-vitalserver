@@ -1,0 +1,16 @@
+.DS_Store
+.venv/
+.build/
+.swiftpm/
+.coverage
+__pycache__/
+*.py[cod]
+dist/
+build/
+node_modules/
+
+# Direct local Go build outputs. Cross-platform release artifacts are emitted
+# only through declared release assembly outputs, never from service roots.
+services/guest-runtime/guest-runtime
+services/guest-product-process-supervisor/guest-product-process-supervisor
+tooling/guest-product-bootstrap-volume-composer/guest-product-bootstrap-volume-composer

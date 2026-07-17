@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "v1",
+  "proofs": [
+    {
+      "planId": "windows-release-plan",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "clean-install",
+      "status": "verified",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": {
+        "kind": "windows-clean-host",
+        "id": "windows-clean-host-1"
+      },
+      "observedInstallerArtifact": {
+        "kind": "msi",
+        "fileName": "VitalServerRuntimePlatform-0.2.0-dev.msi",
+        "productVersion": "0.2.0-dev",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "observedAt": "2026-07-18T00:00:00Z"
+      }
+    }
+  ]
+}

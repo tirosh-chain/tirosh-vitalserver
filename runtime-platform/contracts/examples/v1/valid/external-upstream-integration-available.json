@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "v1",
+  "id": "external-upstream-primary",
+  "resourceRevision": 1,
+  "spec": {
+    "provider": {
+      "kind": "external-vitalserver",
+      "id": "hospital-vitalserver",
+      "capabilityRevision": 3
+    },
+    "endpointReference": {
+      "resourceType": "upstream-endpoint",
+      "resourceId": "hospital-vitalserver-endpoint"
+    },
+    "credentialReference": {
+      "kind": "credential-reference",
+      "id": "hospital-vitalserver-credential"
+    }
+  },
+  "status": {
+    "state": "available",
+    "connection": {
+      "state": "reachable",
+      "observedAt": "2026-07-17T00:00:00Z"
+    },
+    "capabilityDocumentReference": {
+      "resourceType": "capability-document",
+      "resourceId": "capability-hospital-vitalserver-r3"
+    },
+    "capabilityRevision": 3,
+    "observedAt": "2026-07-17T00:00:00Z"
+  },
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:00:00Z"
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "serviceManagerKind": "systemd",
+  "serviceUnitName": "vitalserver-guest-product.service",
+  "supervisor": {
+    "executablePath": "/opt/vitalserver/bin/guest-product-process-supervisor",
+    "deploymentConfigurationPath": "/etc/vitalserver/guest-product-process-deployment.json"
+  },
+  "install": {
+    "wantedByTarget": "multi-user.target"
+  }
+}

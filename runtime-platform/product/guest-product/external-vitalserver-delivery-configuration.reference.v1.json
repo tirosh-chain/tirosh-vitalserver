@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "configurationId": "external-vitalserver-reference-delivery-configuration",
+  "externalUpstreamIntegrationReference": {
+    "resourceType": "external-upstream-integration",
+    "resourceId": "external-vitalserver-reference"
+  },
+  "vitalServerDeliveryProvider": {
+    "kind": "external-vitalserver",
+    "id": "external-vitalserver-reference",
+    "capabilityRevision": 1
+  },
+  "vitalServerPacketDeliveryEndpoint": {
+    "scheme": "https",
+    "host": "reference-vitalserver.external.example",
+    "port": 443
+  },
+  "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": 1000
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "v1",
+  "providerKind": "linux-kvm-libvirt-systemd",
+  "requestId": "platform-start-1",
+  "lifecycle": {
+    "schemaVersion": "v1",
+    "requestId": "platform-start-1",
+    "providerId": "hospital-vm",
+    "action": "start"
+  }
+}

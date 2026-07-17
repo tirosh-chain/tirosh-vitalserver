@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "v1",
+  "id": "lab-session-0001",
+  "name": "LAB-baseline-monitoring",
+  "origin": "lab",
+  "resourceRevision": 2,
+  "scenario": "baseline-monitoring",
+  "state": "stopped",
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:05:00Z"
+}

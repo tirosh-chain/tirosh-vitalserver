@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "v1",
+  "artifactSetId": "vitalserver-guest-arm64-0.1.0-dev",
+  "architecture": "arm64",
+  "kernel": {
+    "sizeBytes": 6,
+    "sha256": "6923dd1bc0460083a8907a10f9b5cba63f7a6c6fd0f1b2b6f3340a9175a4e340"
+  },
+  "storageDevices": [
+    {
+      "id": "guest-root",
+      "role": "guest-root-storage",
+      "storageImageFormat": "raw",
+      "sizeBytes": 4
+    },
+    {
+      "id": "guest-product-bootstrap",
+      "role": "guest-product-bootstrap-volume",
+      "storageImageFormat": "raw",
+      "guestVolumeFileSystem": "iso9660",
+      "sizeBytes": 4,
+      "sha256": "b2b2f104d84628ef5cb5f42d4f4b7f472d35ccafeb0eb1b99a8c0a10c761d57f"
+    }
+  ]
+}

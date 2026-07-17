@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "export-lab-recorder-0001",
+  "virtualRecorderId": "lab-recorder-0001",
+  "expectedResourceRevision": 3,
+  "provider": {
+    "kind": "file-index",
+    "id": "bundled-archive",
+    "capabilityRevision": 1
+  }
+}

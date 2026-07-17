@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v1",
+  "fixtureKind": "socketio-frame-observation",
+  "protocol": {
+    "family": "socket.io",
+    "eventName": "req_cmd",
+    "dispatchEventName": "restart",
+    "framePrefix": "42",
+    "packetKind": "event"
+  },
+  "sanitizedFrame": {
+    "shape": "42[\"req_cmd\",\"job=<command>&vrcode=<recorder-code>\"]",
+    "rawFrameRetained": false
+  },
+  "expectedFact": {
+    "commandRequestObserved": true,
+    "dispatchCorrelationObserved": true,
+    "commandExecutionClaimed": false
+  }
+}

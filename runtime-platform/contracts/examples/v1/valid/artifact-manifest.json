@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "v1",
+  "id": "artifact-manifest-0001",
+  "operationId": "operation-lab-stop-0001",
+  "source": {
+    "resourceType": "lab-session",
+    "resourceId": "lab-session-0001",
+    "finalizedAt": "2026-07-17T00:00:00Z",
+    "evidenceReference": {
+      "kind": "source-finalization-proof",
+      "id": "finalization-proof-0001"
+    }
+  },
+  "artifact": {
+    "artifactId": "artifact-0001",
+    "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "byteSize": 4096,
+    "mediaType": "application/x-vital",
+    "storageReference": {
+      "resourceType": "archive-storage-object",
+      "resourceId": "archive-object-0001"
+    }
+  },
+  "createdAt": "2026-07-17T00:00:00Z"
+}

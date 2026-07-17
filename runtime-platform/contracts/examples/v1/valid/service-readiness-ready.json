@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v1",
+  "service": {
+    "name": "guest-runtime",
+    "version": "0.1.0",
+    "instanceId": "guest-runtime-0001"
+  },
+  "state": "ready",
+  "observedAt": "2026-07-17T00:00:00Z"
+}

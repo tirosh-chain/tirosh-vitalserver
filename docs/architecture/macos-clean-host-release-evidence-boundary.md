@@ -1,0 +1,159 @@
+# macOS Clean-Host Release Evidence Boundary
+
+> 상태: **runner와 deterministic command-contract test 구현 완료 / 실제 Apple-signed PKG clean-Host evidence는 아직 없음**
+
+## 1. 문제와 책임 분리
+
+PKG가 build 또는 payload verification을 통과했다고 해서 clean macOS Host에 설치되었거나
+재부팅 뒤 launchd service가 살아 있다는 뜻은 아니다. 이 둘은 다른 owner의 사실이다.
+
+| 사실 | owner | durable form | 성공으로 오해하면 안 되는 것 |
+| --- | --- | --- | --- |
+| 어떤 release가 어떤 PKG identifier/name/version을 의도하는가 | Release process | C23 `ReleaseDeliveryPlan` | 실제 PKG 존재·서명·설치 |
+| PKG payload와 C32–C39/C44 provenance 및 external-topology C46 input identity | Package composer/verifier | build result | clean Host installation |
+| 한 clean Host run의 단계/증거 | `MacOSCleanHostReleaseEvidenceJournal` | runner-owned SQLite | Host Agent/Guest Runtime runtime state |
+| PKG receipt와 launchd registration의 실제 현재 사실 | macOS `pkgutil` / `launchctl` | command observation | Guest VM start/readiness |
+| release proof | Release process | C24 `ReleaseDeliveryProofSet` | Host/Guest domain state |
+
+`tooling/macos_clean_host_release_evidence_runner.py`는 위 표의 세 번째 행만
+소유한다. `MacOSCleanHostReleaseEvidenceCommandContract`는 `pkgutil`, `installer`,
+`launchctl`, `sysctl`의 절대 executable path를 한 evidence run에 고정하는 **외부 command
+계약**이며, Host runtime 환경이나 lifecycle state가 아니다. Host Agent SQLite, Guest
+Runtime SQLite, `launchd`, installer receipt를 직접 state로 재구성하지 않는다. 각 external
+command의 raw stdout/stderr와 return code를 evidence document로 보존하고, 검증 가능한
+경우에만 C24 proof fragment를 만든다.
+
+## 2. 용어와 release identity
+
+macOS release identity는 C23에서 다음처럼 명시된다.
+
+```text
+ReleaseDeliveryPlan
+  ├─ productVersion
+  ├─ intendedInstallerArtifact(kind=pkg, expectedName)
+  ├─ macOSInstallerPackageIdentifier
+  └─ requiredHostServiceRegistrations
+       ├─ host-agent / launchd / label
+       └─ host-edge-proxy / launchd / label
+```
+
+`macOSInstallerPackageIdentifier`는 filename이나 data directory에서 추론하지 않는다.
+이 값은 `pkgbuild --identifier`, expanded PKG `PackageInfo.identifier`, 그리고 clean
+Host의 `pkgutil --pkg-info <identifier>` receipt query가 모두 같은 대상을 말하게 하는
+release-process-owned fact다.
+
+C24 clean-install이 `verified`라면 `ObservedInstallerArtifact`뿐 아니라
+`ObservedMacOSInstallerReceipt(packageIdentifier, productVersion,
+receiptState=installed)`도 반드시 가진다. artifact digest는 선택한 bytes의 관측이고,
+receipt는 installer effect 이후 Host가 등록한 package identity의 관측이다. 둘 중 어느
+하나도 다른 하나에서 만들어 내지 않는다.
+
+## 3. Evidence run 상태 기계
+
+```mermaid
+stateDiagram-v2
+    [*] --> created: CreateMacOSCleanHostReleaseEvidenceRun
+    created --> artifact_integrity: signed PKG metadata + signature observed
+    artifact_integrity --> clean_host_preflight: C23 receipt/service absence observed
+    clean_host_preflight --> clean_install: explicit installer effect + receipt observed
+    clean_install --> service_registration: two C23 launchd services observed
+    service_registration --> reboot_checkpoint: pre-reboot boot-session observed
+    reboot_checkpoint --> reboot: changed boot-session + receipt/services observed
+
+    artifact_integrity --> failed
+    clean_host_preflight --> failed
+    clean_install --> failed
+    service_registration --> failed
+    reboot --> failed
+```
+
+각 stage는 journal에서 한 번만 기록된다. 실패한 command를 다른 output으로 재시도해
+같은 run을 성공으로 고쳐 쓰지 않는다. 수정된 artifact, clean하지 않은 machine,
+권한/command 문제를 고친 뒤에는 새 run ID와 새 evidence directory를 사용한다. 이는
+실패 evidence가 사라지는 것을 막고, “어느 bytes와 어느 Host 상태를 확인했는가”를
+재현 가능하게 한다.
+
+`reboot-checkpoint`는 reboot effect가 아니다. runner는 `kern.bootsessionuuid`를
+checkpoint로 persist하고 종료한다. 운영자가 실제 reboot를 수행한 뒤 `record-reboot`를
+실행하면, 값이 바뀌었는지와 receipt/두 service가 남아 있는지를 관측한다. 따라서
+release tooling이 개발자 Mac을 몰래 재부팅하거나, process uptime만 보고 reboot를
+추정하지 않는다.
+
+## 4. command boundary와 failure 의미
+
+| operation | explicit macOS command | verified 조건 | ambiguous/non-zero 처리 |
+| --- | --- | --- | --- |
+| artifact integrity | `pkgutil --expand <PKG> <temporary directory>`로 expanded `PackageInfo`를 읽고, `pkgutil --check-signature <PKG>` 실행 | C23 package identifier/version과 일치하고 `Status: signed` 관측 | C24 `artifact-integrity=failed` |
+| clean preflight | `pkgutil --pkg-info <C23 identifier>`, `launchctl print system/<C23 label>` | receipt와 두 service 모두 명시적으로 absent | unknown command failure는 absent가 아니라 failed |
+| install | `installer -pkg <bound PKG> -target /` | explicit root process에서 installer success 후 exact receipt observed | C24 `clean-install=failed` |
+| service registration | 두 `launchctl print` | 두 C23 label 모두 registered | C24 `service-registration=failed` |
+| reboot | `sysctl -n kern.bootsessionuuid` + receipt/service checks | checkpoint와 다른 boot session, receipt/service retained | C24 `reboot=failed` |
+
+macOS `pkgutil --pkg-info`는 설치된 receipt만 읽는다. 따라서 runner는 설치 전 flat
+PKG의 release identity를 filename에서 추정하지 않고, `pkgutil --expand` 결과의
+`PackageInfo.identifier`와 `PackageInfo.version`으로 관측한다. 이 runner가 서명 없는 dev
+PKG를 `verified`로 만들 수는 없다. `pkgutil` exit code만 보지 않고 signature output의
+accepted status를 확인한다. 또한 launchctl/pkgutil의
+임의 non-zero를 absence로 바꾸지 않는다. macOS가 명시적으로 “receipt/service 없음”을
+보고한 경우에만 clean-host preflight의 absent fact가 된다.
+
+## 5. 운영 절차
+
+다음 예시는 directory와 executable을 모두 명시한다. runner는 data path, package
+identifier, service label, installer path를 default로 선택하지 않는다.
+
+```sh
+mkdir -p /absolute/evidence/macos-020
+
+python3 -m tooling.macos_clean_host_release_evidence_runner create-run \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite \
+  --evidence-directory /absolute/evidence/macos-020 \
+  --installer-artifact /absolute/release/VitalServerRuntimePlatform-0.2.0-dev.pkg \
+  --release-delivery-plans-document /absolute/source/runtime-platform/product/delivery/release-delivery-plans.v1.json \
+  --release-delivery-plan-id macos-runtime-platform-release \
+  --run-id macos-clean-host-020 \
+  --runner-id macos-clean-host-runner-01 \
+  --pkgutil-executable /usr/sbin/pkgutil \
+  --installer-executable /usr/sbin/installer \
+  --launchctl-executable /bin/launchctl \
+  --sysctl-executable /usr/sbin/sysctl
+
+python3 -m tooling.macos_clean_host_release_evidence_runner record-artifact-integrity \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite
+python3 -m tooling.macos_clean_host_release_evidence_runner record-clean-host-preflight \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite
+sudo python3 -m tooling.macos_clean_host_release_evidence_runner execute-clean-install \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite \
+  --authorize-clean-install
+python3 -m tooling.macos_clean_host_release_evidence_runner record-service-registration \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite
+python3 -m tooling.macos_clean_host_release_evidence_runner record-reboot-checkpoint \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite
+# Operator performs the actual reboot here.
+python3 -m tooling.macos_clean_host_release_evidence_runner record-reboot \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite
+```
+
+`print-stage-proof --stage <C24 stage>`는 C24 record fragment를 출력한다. Release
+process는 evidence와 fragment를 review한 뒤에만 canonical
+`release-delivery-proofs.v1.json`에 attach한다. runner가 source tree의 C24 document를
+자동으로 수정하지 않는 이유는 local machine observation과 reviewed release declaration의
+owner가 다르기 때문이다.
+
+SBOM/notices, update, rollback, uninstall/reinstall은 아직 runner가 수행하지 않는다.
+따라서 checked-in C24 record는 계속 `pending`이고 `make release-ready`도 실패해야 한다.
+이것은 미완료 release evidence를 성공처럼 보이지 않게 하는 정상 동작이다.
+
+## 6. 테스트와 실제 proof의 차이
+
+`tooling/tests/test_macos_clean_host_release_evidence_runner.py`는 fake command result로
+다음을 검증한다.
+
+1. signed metadata → explicit absent preflight → root installer effect → exact receipt →
+   two launchd registration → changed boot session의 전체 transition;
+2. 모호한 `launchctl` failure가 service absence가 되지 않는 규칙;
+3. run 생성 후 PKG bytes가 바뀌면 동일 release evidence로 사용하지 않는 규칙;
+4. stage evidence가 overwrite되지 않는 규칙.
+
+이는 runner의 decision/recording contract proof다. 실제 Apple-signed PKG, clean Host,
+launchd, reboot evidence가 C24에 attach되기 전에는 제품 설치 proof가 아니다.

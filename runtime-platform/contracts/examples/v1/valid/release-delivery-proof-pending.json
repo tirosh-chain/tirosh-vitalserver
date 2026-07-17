@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v1",
+  "proofs": [
+    {
+      "planId": "windows-release-plan",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "clean-install",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": {
+        "kind": "not-assigned"
+      },
+      "issue": {
+        "code": "windows-clean-host-runner-not-assigned",
+        "message": "No Windows clean-host evidence has been captured."
+      }
+    }
+  ]
+}

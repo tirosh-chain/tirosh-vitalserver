@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:macos-release-package-assembly-receipt",
+  "title": "MacOSReleasePackageAssemblyReceipt",
+  "description": "C47 immutable release-build evidence that one MacOSReleasePackageAssemblyDeclaration assembled and expanded-package-verified one declared macOS PKG. It records no build-machine source paths and does not prove signing acceptance, clean-host installation, service registration, Guest boot, Guest readiness, update, rollback, or uninstall.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "assemblyId",
+    "assemblyDeclarationSHA256",
+    "release",
+    "guestArtifactCompilationInputAssembly",
+    "guestArtifactCompilation",
+    "macOSHostPackage",
+    "macOSHostPackageVerification",
+    "completedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "assemblyId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "assemblyDeclarationSHA256": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+    },
+    "release": {
+      "$ref": "#/$defs/ReleaseIdentity"
+    },
+    "guestArtifactCompilationInputAssembly": {
+      "$ref": "#/$defs/GuestArtifactCompilationInputAssemblyEvidence"
+    },
+    "guestArtifactCompilation": {
+      "$ref": "#/$defs/GuestArtifactCompilationEvidence"
+    },
+    "macOSHostPackage": {
+      "$ref": "#/$defs/MacOSHostPackageEvidence"
+    },
+    "macOSHostPackageVerification": {
+      "$ref": "#/$defs/MacOSHostPackageVerificationEvidence"
+    },
+    "completedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "$defs": {
+    "FileIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256"
+      ],
+      "properties": {
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        }
+      }
+    },
+    "ReleaseIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deliveryPlanId",
+        "productVersion"
+      ],
+      "properties": {
+        "deliveryPlanId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "GuestArtifactCompilationInputAssemblyEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assemblyId",
+        "receipt"
+      ],
+      "properties": {
+        "assemblyId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "receipt": {
+          "$ref": "#/$defs/FileIdentity"
+        }
+      }
+    },
+    "GuestArtifactCompilationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compilationId",
+        "artifactSetId",
+        "receipt",
+        "macOSGuestArtifactManifest"
+      ],
+      "properties": {
+        "compilationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "artifactSetId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "receipt": {
+          "$ref": "#/$defs/FileIdentity"
+        },
+        "macOSGuestArtifactManifest": {
+          "$ref": "#/$defs/FileIdentity"
+        }
+      }
+    },
+    "MacOSHostPackageEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileName",
+        "sha256"
+      ],
+      "properties": {
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^/\\\\]+$"
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        }
+      }
+    },
+    "MacOSHostPackageVerificationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseDeliveryPlanId",
+        "payloadBasePath",
+        "sha256"
+      ],
+      "properties": {
+        "releaseDeliveryPlanId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "payloadBasePath": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 4096,
+          "pattern": "^/"
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        }
+      }
+    }
+  }
+}

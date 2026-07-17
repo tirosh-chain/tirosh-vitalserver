@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:artifact-manifest",
+  "title": "ArtifactManifest",
+  "description": "An immutable artifact identity created only after source finalization succeeds.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "operationId",
+    "source",
+    "artifact",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "operationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "source": {
+      "$ref": "#/$defs/FinalizedSource"
+    },
+    "artifact": {
+      "$ref": "#/$defs/ImmutableArtifact"
+    },
+    "createdAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "$defs": {
+    "FinalizedSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceType",
+        "resourceId",
+        "finalizedAt",
+        "evidenceReference"
+      ],
+      "properties": {
+        "resourceType": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "resourceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "finalizedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "evidenceReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+        }
+      }
+    },
+    "ImmutableArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "digest",
+        "byteSize",
+        "mediaType",
+        "storageReference"
+      ],
+      "properties": {
+        "artifactId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "digest": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mediaType": {
+          "const": "application/x-vital"
+        },
+        "storageReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        }
+      }
+    }
+  }
+}

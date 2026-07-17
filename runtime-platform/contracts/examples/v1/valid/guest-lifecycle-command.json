@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "request-start-001",
+  "guestRuntimeControlEndpointId": "guest-control",
+  "expectedResourceRevision": 2,
+  "action": "start"
+}

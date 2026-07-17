@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:telemetry-pipeline",
+  "title": "TelemetryPipeline",
+  "description": "A node-local OpenTelemetry/OTLP diagnostic pipeline. Its health is not product domain state or proof of another operation outcome.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "resourceRevision",
+    "node",
+    "spec",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "resourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "node": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:clock-quality#/$defs/NodeReference"
+    },
+    "spec": {
+      "$ref": "#/$defs/TelemetryPipelineSpec"
+    },
+    "status": {
+      "$ref": "#/$defs/TelemetryPipelineStatus"
+    },
+    "createdAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "updatedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "$defs": {
+    "SignalKinds": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "logs",
+          "metrics",
+          "traces"
+        ]
+      },
+      "allOf": [
+        {
+          "contains": {
+            "const": "logs"
+          }
+        },
+        {
+          "contains": {
+            "const": "metrics"
+          }
+        },
+        {
+          "contains": {
+            "const": "traces"
+          }
+        }
+      ]
+    },
+    "TelemetryPipelineSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "collectorReference",
+        "signalKinds",
+        "redaction"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "otlp-http"
+        },
+        "collectorReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "signalKinds": {
+          "$ref": "#/$defs/SignalKinds"
+        },
+        "redaction": {
+          "$ref": "#/$defs/RedactionPolicy"
+        }
+      }
+    },
+    "RedactionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowedAttributeKeys",
+        "maxAttributes",
+        "maxValueLength",
+        "maxDistinctValuesPerKey"
+      ],
+      "properties": {
+        "allowedAttributeKeys": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]*$"
+          }
+        },
+        "maxAttributes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "maxValueLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "maxDistinctValuesPerKey": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "TelemetryPipelineStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "unavailable",
+            "failed",
+            "unsupported"
+          ]
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed",
+                  "unsupported"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

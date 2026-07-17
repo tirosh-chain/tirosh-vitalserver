@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-execution-report",
+  "title": "UpdateExecutionReport",
+  "description": "C28 next-updater-owned execution evidence. Host validates stable bootstrap correlation, declared order, and typed layer/rollback outcomes; it does not reinterpret the product specification.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "updateId", "requestId", "bootstrapEnvelopeId", "updateSpecificationSha256", "state", "startedAt", "finishedAt", "layerEvidence", "rollback"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "bootstrapEnvelopeId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "updateSpecificationSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "state": { "type": "string", "enum": ["succeeded", "failed"] },
+    "startedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "finishedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "layerEvidence": { "type": "array", "minItems": 1, "maxItems": 3, "items": { "$ref": "#/$defs/LayerEvidence" } },
+    "rollback": { "$ref": "#/$defs/RollbackEvidence" },
+    "failure": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
+      "then": { "not": { "required": ["failure"] } },
+      "else": { "required": ["failure"] }
+    }
+  ],
+  "$defs": {
+    "LayerEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer", "state", "artifactSha256", "observedAt", "evidence"],
+      "properties": {
+        "layer": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/UpdateLayer" },
+        "state": { "type": "string", "enum": ["succeeded", "failed", "unavailable", "unsupported"] },
+        "artifactSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "evidence": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference" },
+        "issue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
+          "then": { "not": { "required": ["issue"] } },
+          "else": { "required": ["issue"] }
+        }
+      ]
+    },
+    "RollbackEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "observedAt"],
+      "properties": {
+        "state": { "type": "string", "enum": ["not-required", "succeeded", "failed", "not-attempted"] },
+        "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "evidence": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference" },
+        "issue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["failed", "not-attempted"] } }, "required": ["state"] },
+          "then": { "required": ["issue"] },
+          "else": { "not": { "required": ["issue"] } }
+        }
+      ]
+    }
+  }
+}

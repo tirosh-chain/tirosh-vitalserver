@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-resources",
+  "title": "Lab resources",
+  "description": "Guest Runtime Lab-owned session, bed, and virtual recorder resources. origin=lab is an explicit owner fact, not a name-prefix inference.",
+  "oneOf": [
+    { "$ref": "#/$defs/LabSession" },
+    { "$ref": "#/$defs/LabBed" },
+    { "$ref": "#/$defs/VirtualRecorder" }
+  ],
+  "$defs": {
+    "Name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "LabOrigin": {
+      "const": "lab"
+    },
+    "ResourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "Visibility": {
+      "type": "string",
+      "enum": ["visible", "hidden"]
+    },
+    "LabSessionReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceId"],
+      "properties": {
+        "resourceType": { "const": "lab-session" },
+        "resourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "LabBedReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceId"],
+      "properties": {
+        "resourceType": { "const": "lab-bed" },
+        "resourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "VirtualRecorderReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceId"],
+      "properties": {
+        "resourceType": { "const": "virtual-recorder" },
+        "resourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "LabSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "id", "name", "origin", "resourceRevision", "scenario", "state", "createdAt", "updatedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "name": { "$ref": "#/$defs/Name" },
+        "origin": { "$ref": "#/$defs/LabOrigin" },
+        "resourceRevision": { "$ref": "#/$defs/ResourceRevision" },
+        "scenario": { "$ref": "#/$defs/Name" },
+        "state": { "type": "string", "enum": ["prepared", "running", "stopped", "failed"] },
+        "createdAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "LabBed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "id", "name", "origin", "resourceRevision", "sessionReference", "assignmentState", "visibility", "createdAt", "updatedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "name": { "$ref": "#/$defs/Name" },
+        "origin": { "$ref": "#/$defs/LabOrigin" },
+        "resourceRevision": { "$ref": "#/$defs/ResourceRevision" },
+        "sessionReference": { "$ref": "#/$defs/LabSessionReference" },
+        "assignmentState": { "type": "string", "enum": ["assigned", "detached"] },
+        "recorderReference": { "$ref": "#/$defs/VirtualRecorderReference" },
+        "visibility": { "$ref": "#/$defs/Visibility" },
+        "createdAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "assignmentState": { "const": "assigned" } }, "required": ["assignmentState"] },
+          "then": { "required": ["recorderReference"] }
+        },
+        {
+          "if": { "properties": { "assignmentState": { "const": "detached" } }, "required": ["assignmentState"] },
+          "then": { "not": { "required": ["recorderReference"] } }
+        }
+      ]
+    },
+    "VirtualRecorder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "id", "name", "origin", "resourceRevision", "sessionReference", "executionState", "visibility", "createdAt", "updatedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "name": { "$ref": "#/$defs/Name" },
+        "origin": { "$ref": "#/$defs/LabOrigin" },
+        "resourceRevision": { "$ref": "#/$defs/ResourceRevision" },
+        "sessionReference": { "$ref": "#/$defs/LabSessionReference" },
+        "bedReference": { "$ref": "#/$defs/LabBedReference" },
+        "executionState": { "type": "string", "enum": ["ready", "running", "stopped", "failed"] },
+        "visibility": { "$ref": "#/$defs/Visibility" },
+        "createdAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    }
+  }
+}

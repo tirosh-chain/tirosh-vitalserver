@@ -1,0 +1,222 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "creationInfo": {
+    "created": "2026-07-17T00:00:00Z",
+    "creators": [
+      "Tool: runtime-platform/source-inventory"
+    ]
+  },
+  "dataLicense": "CC0-1.0",
+  "documentComment": "This is a source-input inventory only. It is not release-artifact SBOM or delivery proof.",
+  "documentNamespace": "https://tirosh.github.io/vitalserver/runtime-platform/source-inventory/v1",
+  "name": "VitalServer Runtime Platform source inventory",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-host-agent",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Host Agent",
+      "sourceInfo": "source=services/host-agent/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-guest-runtime",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Guest Runtime",
+      "sourceInfo": "source=services/guest-runtime/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-guest-product-process-supervisor",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Guest Product Process Supervisor",
+      "sourceInfo": "source=services/guest-product-process-supervisor/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-guest-product-bootstrap-volume-composer",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Guest Product Bootstrap Volume Composer",
+      "sourceInfo": "source=tooling/guest-product-bootstrap-volume-composer/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-guest-linux-boot-artifact-extractor",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Guest Linux Boot Artifact Extractor",
+      "sourceInfo": "source=tooling/guest-linux-boot-artifact-extractor/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-guest-root-storage-partition-assembler",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Guest Root Storage Partition Assembler",
+      "sourceInfo": "source=tooling/guest_root_storage_partition_assembler.py; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-recorder-gateway",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Recorder Gateway",
+      "sourceInfo": "source=services/recorder-gateway/package-lock.json; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-macos-provider",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apple-platform-terms",
+      "licenseDeclared": "Apple-platform-terms",
+      "name": "macOS Virtualization Provider",
+      "sourceInfo": "source=providers/macos-virtualization/Package.swift; noticeStatus=platform-terms-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-windows-linux-provider-bridges",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Windows and Linux Provider Bridges",
+      "sourceInfo": "source=providers/os-provider-bridge/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-modernc-sqlite",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseDeclared": "BSD-3-Clause",
+      "name": "modernc.org/sqlite",
+      "sourceInfo": "source=services/host-agent/go.sum; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "v1.38.2"
+    },
+    {
+      "SPDXID": "SPDXRef-go-diskfs",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "github.com/diskfs/go-diskfs",
+      "sourceInfo": "source=tooling/guest-product-bootstrap-volume-composer/go.sum; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "v1.9.3"
+    },
+    {
+      "SPDXID": "SPDXRef-socket-io",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "socket.io",
+      "sourceInfo": "source=services/recorder-gateway/package-lock.json; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "4.8.3"
+    }
+  ],
+  "relationships": [
+    {
+      "relatedSpdxElement": "SPDXRef-host-agent",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-guest-runtime",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-guest-product-process-supervisor",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-guest-product-bootstrap-volume-composer",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-guest-linux-boot-artifact-extractor",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-guest-root-storage-partition-assembler",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-recorder-gateway",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-macos-provider",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-windows-linux-provider-bridges",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-modernc-sqlite",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-go-diskfs",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-socket-io",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    }
+  ],
+  "spdxVersion": "SPDX-2.3"
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v1",
+  "providerKind": "windows-hyperv-scm",
+  "hostPlatform": "windows",
+  "providerProcess": {
+    "protocol": "platform-provider-lifecycle-invocation",
+    "lifecycleResult": "provider-lifecycle-result",
+    "installationEvidence": "provider-installation-evidence",
+    "executable": "windows-hyperv-scm-bridge.exe"
+  },
+  "serviceManager": "windows-scm",
+  "requiredCapabilities": [
+    "guest-vm-lifecycle",
+    "host-service-lifecycle"
+  ],
+  "nativeDependencies": [
+    "Hyper-V PowerShell module",
+    "Windows Service Control Manager"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v1",
+  "profileKind": "external-upstream",
+  "provider": {
+    "kind": "external-capability-profile",
+    "id": "external-upstream",
+    "capabilityRevision": 1
+  },
+  "requiredResourceType": "external-upstream-integration",
+  "capabilityRequirements": {
+    "mustExplicitlyReportUnsupported": [
+      "upstream.lifecycle.start",
+      "upstream.lifecycle.stop",
+      "upstream.update",
+      "upstream.backup"
+    ]
+  }
+}

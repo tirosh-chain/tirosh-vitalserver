@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:telemetry-pipeline-command",
+  "title": "TelemetryPipelineApplyCommand",
+  "description": "A revisioned request to apply a node-local OTLP telemetry pipeline declaration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "pipelineId",
+    "expectedResourceRevision",
+    "node",
+    "spec"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "pipelineId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedResourceRevision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "node": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:clock-quality#/$defs/NodeReference"
+    },
+    "spec": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:telemetry-pipeline#/$defs/TelemetryPipelineSpec"
+    }
+  }
+}

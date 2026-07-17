@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "v1",
+  "id": "recorder-cold-path-finalization-receipt-0001",
+  "requestId": "recorder-cold-path-finalization-request-0001",
+  "captureReference": {
+    "resourceType": "recorder-cold-path-capture",
+    "resourceId": "recorder-cold-path-capture-0001"
+  },
+  "expectedCaptureRevision": 1,
+  "finalizedCaptureRevision": 2,
+  "recorderId": "recorder-lab-0001",
+  "connection": {
+    "sessionId": "socket-session-0001",
+    "protocolVersion": "v2"
+  },
+  "finalizedPacketSequence": {
+    "resourceType": "recorder-cold-path-packet-sequence",
+    "resourceId": "recorder-cold-path-capture-0001",
+    "format": "recorder-gateway-cold-path-packet-sequence-v1",
+    "mediaType": "application/vnd.tirosh.recorder-gateway.cold-path-packet-sequence+jsonl",
+    "packetCount": 48,
+    "payloadByteCount": 2048,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "finalizedAt": "2026-07-17T00:10:00Z"
+}

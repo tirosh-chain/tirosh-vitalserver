@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:delivery-receipt",
+  "title": "DeliveryReceipt",
+  "description": "One Recorder Gateway-owned upstream delivery attempt. It is separate from ingress durability and preserves an uncertain upstream outcome instead of claiming delivery success.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "deliveryRequestId",
+    "ingressReceiptReference",
+    "provider",
+    "attempt",
+    "outcome",
+    "retry",
+    "completedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "deliveryRequestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "ingressReceiptReference": {
+      "$ref": "#/$defs/IngressReceiptReference"
+    },
+    "provider": {
+      "$ref": "#/$defs/Provider"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "retry": {
+      "$ref": "#/$defs/Retry"
+    },
+    "completedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "evidenceReferences": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "retry": {
+            "properties": {
+              "state": {
+                "const": "not-scheduled"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "properties": {
+              "state": {
+                "const": "unsupported"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "retry": {
+            "properties": {
+              "state": {
+                "const": "not-scheduled"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "IngressReceiptReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceType",
+        "resourceId"
+      ],
+      "properties": {
+        "resourceType": {
+          "const": "ingress-receipt"
+        },
+        "resourceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    },
+    "Provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "capabilityRevision"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "capabilityRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "Outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "unavailable",
+            "unsupported",
+            "unknown"
+          ]
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "Retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "not-scheduled",
+            "scheduled",
+            "exhausted"
+          ]
+        },
+        "nextAttemptAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "scheduled"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "nextAttemptAt"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "nextAttemptAt"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

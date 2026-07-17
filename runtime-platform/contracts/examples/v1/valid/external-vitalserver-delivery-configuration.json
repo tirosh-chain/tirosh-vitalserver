@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "configurationId": "hospital-vitalserver-delivery",
+  "externalUpstreamIntegrationReference": {
+    "resourceType": "external-upstream-integration",
+    "resourceId": "hospital-vitalserver"
+  },
+  "vitalServerDeliveryProvider": {
+    "kind": "external-vitalserver",
+    "id": "hospital-vitalserver",
+    "capabilityRevision": 3
+  },
+  "vitalServerPacketDeliveryEndpoint": {
+    "scheme": "https",
+    "host": "vitalserver.hospital.example",
+    "port": 443
+  },
+  "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": 1000
+}

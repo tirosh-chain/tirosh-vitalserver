@@ -153,6 +153,10 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-142 | Settings restart가 `stopping`에 남아 VM 시작을 반복 실패 | Runtime health / VM lifecycle / macOS Helper | package verification pending | [Settings restart leaves VM lifecycle in stopping](142_settings_restart_stuck_stopping.md) |
 | TS-143 | PWA Runtime Control read가 nullable field 계약 검증에 실패하거나 Guest resource에서 501 반환 | Runtime Control PWA / Runtime health | package verification pending | [PWA Runtime Control reads fail contract validation or return 501](143_pwa_runtime_control_contract_fields_and_guest_reads.md) |
 | TS-144 | `.vital` upload 성공 표시 후 Replay 목록이 계속 비어 있음 | Runtime Control PWA / Product Lab | package verification pending | [Vital Files upload reports success but Replay list stays empty](144_vital-upload-bypasses-vitalserver-index.md) |
+| TS-145 | Host ext4 editor가 Ubuntu root에 파일을 쓰지 못함 | Guest artifact compilation | root-editor boundary removed; boot proof pending | [Host ext4 editor가 Ubuntu root에 파일을 쓰지 못함](145_guest-root-filesystem-editor-ext4-extents.md) |
+| TS-146 | Apple Virtualization이 bootstrap ISO를 disk attachment로 열지 못함 | Guest artifact compilation / macOS virtualization | implementation verified; entitlement-signed Guest boot evidence pending | [Apple Virtualization bootstrap storage-image format boundary](146_vz_bootstrap_storage_image_format_boundary.md) |
+| TS-147 | macOS VM supervisor가 Virtualization entitlement 없이 VZ configuration validation에 실패 | Packaging / macOS virtualization | staged-signing verification implemented; signed identity execution evidence pending | [macOS VM supervisor Virtualization entitlement signature](147_macos_virtual_machine_supervisor_virtualization_entitlement_signature.md) |
+| TS-148 | macOS VM start가 VZErrorDomain/code=1로 Guest boot console 이전에 실패 | macOS virtualization / Guest boot diagnostics | diagnostic contract implemented; native start cause pending | [macOS VM start failure before Guest boot console](148_macos_virtual_machine_start_fails_before_guest_boot_console.md) |
 
 ## Follow-up 규칙
 

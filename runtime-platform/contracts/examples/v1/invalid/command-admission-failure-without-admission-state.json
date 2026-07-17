@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v1",
+  "state": "failed",
+  "requestId": "host-start-20260717-01",
+  "observedAt": "2026-07-17T00:00:00Z",
+  "issue": {
+    "code": "host-state-store-write-outcome-unknown"
+  }
+}

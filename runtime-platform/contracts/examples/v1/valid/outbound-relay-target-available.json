@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "v1",
+  "id": "relay-target-audit",
+  "resourceRevision": 1,
+  "spec": {
+    "provider": {
+      "kind": "redis-relay",
+      "id": "audit-relay",
+      "capabilityRevision": 1
+    },
+    "endpointReference": {
+      "resourceType": "relay-endpoint",
+      "resourceId": "audit-relay-endpoint"
+    }
+  },
+  "status": {
+    "state": "available",
+    "acknowledgementReference": {
+      "kind": "relay-probe",
+      "id": "relay-probe-audit-1"
+    },
+    "observedAt": "2026-07-17T00:00:00Z"
+  },
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:00:00Z"
+}

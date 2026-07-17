@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:time-authority-command",
+  "title": "TimeAuthorityApplyCommand",
+  "description": "A revisioned request to apply a node-local NTP profile and obtain an explicit ClockQuality observation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "authorityId",
+    "expectedResourceRevision",
+    "node",
+    "spec"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "authorityId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedResourceRevision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "node": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:clock-quality#/$defs/NodeReference"
+    },
+    "spec": {
+      "$ref": "#/$defs/TimeAuthoritySpec"
+    }
+  },
+  "$defs": {
+    "TimeAuthoritySpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "source"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "enum": [
+            "enterprise-ntp",
+            "helper-ntp"
+          ]
+        },
+        "source": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:clock-quality#/$defs/TimeSource"
+        }
+      }
+    }
+  }
+}

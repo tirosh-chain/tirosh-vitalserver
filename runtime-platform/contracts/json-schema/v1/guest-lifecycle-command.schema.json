@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-lifecycle-command",
+  "title": "GuestLifecycleCommand",
+  "description": "A Host Agent command for an explicitly addressed Guest provider. Revision mismatch is rejected before an operation exists.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "guestRuntimeControlEndpointId",
+    "expectedResourceRevision",
+    "action"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "guestRuntimeControlEndpointId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedResourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "start",
+        "stop",
+        "reboot"
+      ]
+    }
+  }
+}

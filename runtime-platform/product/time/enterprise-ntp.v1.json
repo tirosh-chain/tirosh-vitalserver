@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "v1",
+  "profile": "enterprise-ntp",
+  "description": "An explicit operator-selected NTP source profile. This declaration is not a system-default fallback and contains no endpoint secret.",
+  "source": {
+    "profile": "enterprise-ntp",
+    "sourceId": "ntp-primary"
+  },
+  "requiredClockQualityEvidence": [
+    "source",
+    "stratum",
+    "offsetMs",
+    "uncertaintyMs",
+    "lastSyncAt"
+  ]
+}

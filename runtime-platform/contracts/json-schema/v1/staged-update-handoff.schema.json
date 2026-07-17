@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:staged-update-handoff",
+  "title": "StagedUpdateHandoff",
+  "description": "C31 durable Host-local queue item. The deployment supervisor resolves invocationRelativePath under the Host-owned staging root, then passes the original C30 document to the staged next updater.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "updateId", "invocationRelativePath"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "invocationRelativePath": {
+      "type": "string",
+      "minLength": 25,
+      "maxLength": 1024,
+      "pattern": "^updates/[A-Za-z0-9][A-Za-z0-9._-]*/invocation\\.json$"
+    }
+  },
+  "allOf": [
+    {
+      "not": {
+        "properties": { "invocationRelativePath": { "pattern": "\\.\\." } },
+        "required": ["invocationRelativePath"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope",
+  "title": "UpdateBootstrapEnvelope",
+  "description": "C25 immutable, signed bootstrap contract. The currently installed Host updater verifies and stages only this compact envelope and its next-updater artifact. It deliberately has no minimumUpdaterVersion field: every release carries a compatible bootstrap envelope and a signed next updater that parses the opaque product specification.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "productId",
+    "target",
+    "targetRelease",
+    "layerOrder",
+    "nextUpdaterArtifact",
+    "specification",
+    "signature",
+    "issuedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "productId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "target": { "$ref": "#/$defs/Target" },
+    "targetRelease": { "$ref": "#/$defs/Release" },
+    "layerOrder": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/UpdateLayer" }
+    },
+    "nextUpdaterArtifact": { "$ref": "#/$defs/Artifact" },
+    "specification": { "$ref": "#/$defs/Artifact" },
+    "signature": { "$ref": "#/$defs/Signature" },
+    "issuedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "allOf": [
+    {
+      "not": {
+        "properties": {
+          "layerOrder": {
+            "anyOf": [
+              { "prefixItems": [{ "const": "host-platform" }], "minItems": 2 },
+              { "prefixItems": [{}, { "const": "host-platform" }], "minItems": 3 }
+            ]
+          }
+        },
+        "required": ["layerOrder"]
+      }
+    }
+  ],
+  "$defs": {
+    "Target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "architecture"],
+      "properties": {
+        "platform": { "type": "string", "enum": ["macos", "windows", "linux"] },
+        "architecture": { "type": "string", "enum": ["arm64", "amd64"] }
+      }
+    },
+    "Release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["productVersion", "runtimeVersion"],
+      "properties": {
+        "productVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runtimeVersion": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "UpdateLayer": { "type": "string", "enum": ["container", "guest-runtime", "host-platform"] },
+    "Artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "relativePath", "sha256", "sizeBytes", "mediaType"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "relativePath": { "type": "string", "minLength": 9, "maxLength": 1024, "pattern": "^payload/[^\\\\]*$" },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "mediaType": { "type": "string", "minLength": 1, "maxLength": 255 }
+      },
+      "allOf": [
+        { "not": { "properties": { "relativePath": { "pattern": "\\.\\." } }, "required": ["relativePath"] } }
+      ]
+    },
+    "Signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "signedSha256", "value"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "keyId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "signedSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "value": { "type": "string", "minLength": 1, "maxLength": 16384 }
+      }
+    }
+  }
+}

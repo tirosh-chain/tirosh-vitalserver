@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:platform-provider-lifecycle-invocation",
+  "title": "PlatformProviderLifecycleInvocation",
+  "description": "A Host-owned C21 invocation envelope for the explicitly selected Platform Provider. Host owns durable request-id and endpoint-revision idempotency; the provider receives and validates those values without creating a second lifecycle ledger.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "providerKind",
+    "requestId",
+    "expectedGuestRuntimeControlEndpointRevision",
+    "lifecycle"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "providerKind": {
+      "type": "string",
+      "enum": [
+        "macos-virtualization",
+        "windows-hyperv-scm",
+        "linux-kvm-libvirt-systemd"
+      ]
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedGuestRuntimeControlEndpointRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "lifecycle": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:provider-lifecycle-request"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v1",
+  "id": "capability-external-primary-r7",
+  "provider": {
+    "kind": "vitalserver",
+    "id": "external-upstream-primary"
+  },
+  "capabilityRevision": 7,
+  "observedAt": "2026-07-17T00:00:00Z",
+  "commands": [
+    {
+      "name": "upstream.recorder.deliver",
+      "state": "supported"
+    },
+    {
+      "name": "upstream.artifact.upload",
+      "state": "supported"
+    }
+  ],
+  "reads": [
+    {
+      "name": "upstream.artifact.indexing",
+      "state": "unsupported",
+      "issue": {
+        "code": "indexing-receipt-not-supported"
+      }
+    }
+  ]
+}

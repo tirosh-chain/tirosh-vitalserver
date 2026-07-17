@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-agent-deployment-configuration",
+  "title": "HostAgentDeploymentConfiguration",
+  "description": "C33 Host-owned deployment document for one Host Agent service instance. It supplies every runtime path, configured Guest Runtime Control endpoint, selected provider input, time/telemetry mode, and update-bootstrap mode. The service process must not derive omitted inputs from installation layout or command-line defaults.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "control", "installation", "guestRuntimeControlEndpoint", "provider", "time", "telemetry", "updateBootstrap"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "control": { "$ref": "#/$defs/HostAgentControl" },
+    "installation": { "$ref": "#/$defs/HostInstallationConfiguration" },
+    "guestRuntimeControlEndpoint": { "$ref": "#/$defs/GuestRuntimeControlEndpointConfiguration" },
+    "provider": { "$ref": "#/$defs/SelectedProviderConfiguration" },
+    "time": { "$ref": "#/$defs/HostTimeConfiguration" },
+    "telemetry": { "$ref": "#/$defs/HostTelemetryConfiguration" },
+    "updateBootstrap": { "$ref": "#/$defs/HostUpdateBootstrapConfiguration" }
+  },
+  "$defs": {
+    "DeploymentIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "SafeHostAbsolutePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/[^\\\\]*$",
+      "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+    },
+    "HostAgentControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["listenAddress", "stateDatabasePath", "guestTimeoutMilliseconds"],
+      "properties": {
+        "listenAddress": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "stateDatabasePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "guestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 120000 }
+      }
+    },
+    "HostInstallationConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installationId", "productVersion", "runtimeVersion", "dataDirectory"],
+      "properties": {
+        "installationId": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "productVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runtimeVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "dataDirectory": { "$ref": "#/$defs/SafeHostAbsolutePath" }
+      }
+    },
+    "GuestRuntimeControlEndpointConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scheme", "host", "port"],
+      "properties": {
+        "id": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "scheme": { "type": "string", "enum": ["http", "https"] },
+        "host": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "SelectedProviderConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["macos-virtualization", "windows-hyperv-scm", "linux-kvm-libvirt-systemd"]
+        },
+        "id": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "nativeProviderBridgeExecutablePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "macOSVirtualMachineSupervisorExecutablePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "macOSVirtualMachineConfigurationPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "nativeVirtualMachineName": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "hostServiceName": { "$ref": "#/$defs/DeploymentIdentifier" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "macos-virtualization" } }, "required": ["kind"] },
+          "then": {
+            "required": ["macOSVirtualMachineConfigurationPath", "macOSVirtualMachineSupervisorExecutablePath"],
+            "not": {
+              "anyOf": [
+                { "required": ["nativeProviderBridgeExecutablePath"] },
+                { "required": ["nativeVirtualMachineName"] },
+                { "required": ["hostServiceName"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["windows-hyperv-scm", "linux-kvm-libvirt-systemd"] } }, "required": ["kind"] },
+          "then": {
+            "required": ["nativeProviderBridgeExecutablePath", "nativeVirtualMachineName", "hostServiceName"],
+            "not": {
+              "anyOf": [
+                { "required": ["macOSVirtualMachineConfigurationPath"] },
+                { "required": ["macOSVirtualMachineSupervisorExecutablePath"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "HostTimeConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostNodeId", "timeAuthorityId", "providerMode"],
+      "properties": {
+        "hostNodeId": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "timeAuthorityId": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "providerMode": {
+          "type": "string",
+          "enum": ["synchronized", "synchronizing", "unsynchronized", "stale", "failed", "unsupported", "outcome-unknown"]
+        }
+      }
+    },
+    "HostTelemetryConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pipelineMode", "exportMode"],
+      "properties": {
+        "pipelineMode": { "type": "string", "enum": ["ready", "unavailable", "failed", "unsupported", "outcome-unknown"] },
+        "exportMode": { "type": "string", "enum": ["exported", "dropped", "unavailable", "failed", "outcome-unknown"] }
+      }
+    },
+    "HostUpdateBootstrapConfiguration": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": { "mode": { "const": "unavailable" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "bundleStoreDirectory", "stagingDirectory", "trustStorePath"],
+          "properties": {
+            "mode": { "const": "staged" },
+            "bundleStoreDirectory": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+            "stagingDirectory": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+            "trustStorePath": { "$ref": "#/$defs/SafeHostAbsolutePath" }
+          }
+        }
+      ]
+    }
+  }
+}

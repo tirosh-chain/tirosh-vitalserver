@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "id": "lab-bed-0001",
+  "name": "LAB-baseline-monitoring-bed-1",
+  "origin": "lab",
+  "resourceRevision": 1,
+  "sessionReference": {
+    "resourceType": "lab-session",
+    "resourceId": "lab-session-0001"
+  },
+  "assignmentState": "assigned",
+  "recorderReference": {
+    "resourceType": "virtual-recorder",
+    "resourceId": "lab-recorder-0001"
+  },
+  "visibility": "visible",
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:00:00Z"
+}

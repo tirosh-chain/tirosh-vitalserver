@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-bootstrap-configuration",
+  "title": "GuestProductBootstrapConfiguration",
+  "description": "C39 desired first-Guest-boot installation for the Guest Product. It declares Guest-owned payload destinations, the Guest Runtime's mutable state directory, and the Guest-visible NoCloud filesystem identity only; it never names a Host-selected root partition, Host storage-image container, ext4 implementation, or Host-side filesystem write. Recorder Gateway archive entry-mode and symbolic-link policies are independent declarations so a consumer can distinguish permission preservation from safe link acceptance.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "bootstrapId", "volumeLabel", "guestBootstrapVolumeFileSystem", "instanceId", "localHostName", "guestRuntime", "guestRuntimeStateDirectory", "recorderGatewayBundle", "guestProductProcessSupervisor", "guestProductProcessDeployment", "guestProductServiceManagerDeployment", "guestProductVitalServerTopologyDeployment"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "bootstrapId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "volumeLabel": { "const": "CIDATA" },
+    "guestBootstrapVolumeFileSystem": { "const": "iso9660" },
+    "instanceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "localHostName": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "guestRuntime": { "$ref": "#/$defs/ExecutableBootstrapPayload" },
+    "guestRuntimeStateDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
+    "recorderGatewayBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "archiveFormat", "entryModePolicy", "symbolicLinkPolicy", "destinationDirectory", "requiredArchivePaths"],
+      "properties": {
+        "artifactId": { "const": "recorder-gateway-linux-arm64" },
+        "archiveFormat": { "const": "tar-gzip" },
+        "entryModePolicy": { "const": "preserve-archive-mode" },
+        "symbolicLinkPolicy": { "const": "allow-relative-links-to-declared-regular-files" },
+        "destinationDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "requiredArchivePaths": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/RelativeGuestPath" }
+        }
+      }
+    },
+    "guestProductProcessSupervisor": { "$ref": "#/$defs/ExecutableBootstrapPayload" },
+    "guestProductProcessDeployment": { "$ref": "#/$defs/ConfigurationBootstrapPayload" },
+    "guestProductVitalServerTopologyDeployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "destinationPath", "fileMode"],
+      "properties": {
+        "artifactId": { "const": "guest-product-vitalserver-topology-deployment" },
+        "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "fileMode": { "const": "0644" }
+      }
+    },
+    "externalVitalServerDeliveryConfiguration": {
+      "description": "Optional C46 payload. C44 external-vitalserver selection makes it required during cross-document bootstrap composition; bundled topology must not install it as an unused fallback.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "destinationPath", "fileMode"],
+      "properties": {
+        "artifactId": { "const": "external-vitalserver-delivery-configuration" },
+        "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "fileMode": { "const": "0644" }
+      }
+    },
+    "guestProductServiceManagerDeployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "configurationDestinationPath", "unitDestinationPath", "enabledUnitLinkPath", "enabledUnitLinkTargetPath"],
+      "properties": {
+        "artifactId": { "const": "guest-product-service-manager-deployment-configuration" },
+        "configurationDestinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "unitDestinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "enabledUnitLinkPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "enabledUnitLinkTargetPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    }
+  },
+  "$defs": {
+    "AbsoluteGuestPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "RelativeGuestPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+    },
+    "ExecutableBootstrapPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "destinationPath", "fileMode"],
+      "properties": {
+        "artifactId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "fileMode": { "const": "0755" }
+      }
+    },
+    "ConfigurationBootstrapPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "destinationPath", "fileMode"],
+      "properties": {
+        "artifactId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "fileMode": { "const": "0644" }
+      }
+    },
+    "GuestRuntimeStateDirectory": {
+      "description": "The Guest Runtime-owned mutable state root which C40 provisions before the C38 supervisor may start the stateful Guest Runtime. C40 must verify this directory is the parent of C37 guestRuntime.stateDatabasePath.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directoryPath", "directoryMode"],
+      "properties": {
+        "directoryPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "directoryMode": { "const": "0700" }
+      }
+    }
+  }
+}

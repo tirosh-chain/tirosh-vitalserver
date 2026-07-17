@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-vitalserver-topology-deployment",
+  "title": "GuestProductVitalServerTopologyDeployment",
+  "description": "C44 Guest Product release-author desired topology for Recorder Gateway VitalServer packet delivery and optional browser exposure. It selects bundled or external placement and preserves every required artifact or integration reference. It is not a connection, process, packet-delivery, or clinical-state observation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "topologyDeploymentId", "topologyKind", "vitalServerDeliveryProvider", "publicBrowserExposure"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "topologyDeploymentId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "topologyKind": { "enum": ["bundled-vitalserver", "external-vitalserver"] },
+    "vitalServerDeliveryProvider": { "$ref": "#/$defs/VitalServerDeliveryProvider" },
+    "publicBrowserExposure": { "enum": ["not-exposed", "guest-virtio-route", "host-external-route"] },
+    "bundledVitalServerServiceDeployment": { "$ref": "#/$defs/BundledVitalServerServiceDeployment" },
+    "externalVitalServerDeploymentConfiguration": { "$ref": "#/$defs/ExternalVitalServerDeploymentConfiguration" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "topologyKind": { "const": "bundled-vitalserver" } }, "required": ["topologyKind"] },
+      "then": {
+        "required": ["bundledVitalServerServiceDeployment"],
+        "properties": { "publicBrowserExposure": { "enum": ["not-exposed", "guest-virtio-route"] } },
+        "not": { "required": ["externalVitalServerDeploymentConfiguration"] }
+      }
+    },
+    {
+      "if": { "properties": { "topologyKind": { "const": "external-vitalserver" } }, "required": ["topologyKind"] },
+      "then": {
+        "required": ["externalVitalServerDeploymentConfiguration"],
+        "properties": { "publicBrowserExposure": { "enum": ["not-exposed", "host-external-route"] } },
+        "not": { "required": ["bundledVitalServerServiceDeployment"] }
+      }
+    }
+  ],
+  "$defs": {
+    "AbsoluteGuestPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "GuestLoopbackListener": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bindHost", "port"],
+      "properties": {
+        "bindHost": { "const": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "VitalServerDeliveryProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision"],
+      "properties": {
+        "kind": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "BundledVitalServerServiceDeployment": {
+      "description": "Required desired bundled service facts. The C35/C39 composer must later prove artifact installation and C37 process invocation agreement; this declaration alone never means that the service started.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guestProductProcessName", "serviceArtifactId", "executablePath", "deliveryListener", "stateDirectory"],
+      "properties": {
+        "guestProductProcessName": { "const": "bundled-vitalserver" },
+        "serviceArtifactId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "deliveryListener": { "$ref": "#/$defs/GuestLoopbackListener" },
+        "stateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    },
+    "ExternalVitalServerDeploymentConfiguration": {
+      "description": "References, never endpoint or credential material. The selected external provider configuration resolves delivery material before Gateway activation.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["externalUpstreamIntegrationReference", "externalVitalServerDeliveryConfigurationReference"],
+      "properties": {
+        "externalUpstreamIntegrationReference": {
+          "allOf": [
+            { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+            { "properties": { "resourceType": { "const": "external-upstream-integration" } }, "required": ["resourceType"] }
+          ]
+        },
+        "externalVitalServerDeliveryConfigurationReference": {
+          "allOf": [
+            { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+            { "properties": { "resourceType": { "const": "external-vitalserver-delivery-configuration" } }, "required": ["resourceType"] }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:external-vitalserver-delivery-configuration",
+  "title": "ExternalVitalServerDeliveryConfiguration",
+  "description": "C46 Guest Product deployment-administrator configuration for one C44-selected external VitalServer packet-delivery target. It binds a declared external integration and provider identity to an explicit Socket.IO delivery endpoint. It is desired configuration, not a connection, authentication, packet-delivery, or VitalServer clinical-state observation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "configurationId", "externalUpstreamIntegrationReference", "vitalServerDeliveryProvider", "vitalServerPacketDeliveryEndpoint", "vitalServerDeliveryAcknowledgementTimeoutMilliseconds"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "configurationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "externalUpstreamIntegrationReference": {
+      "allOf": [
+        { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+        { "properties": { "resourceType": { "const": "external-upstream-integration" } }, "required": ["resourceType"] }
+      ]
+    },
+    "vitalServerDeliveryProvider": { "$ref": "#/$defs/VitalServerDeliveryProvider" },
+    "vitalServerPacketDeliveryEndpoint": { "$ref": "#/$defs/VitalServerPacketDeliveryEndpoint" },
+    "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 }
+  },
+  "$defs": {
+    "HostOrAddressLiteral": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9:][A-Za-z0-9._:-]*$"
+    },
+    "Port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "VitalServerDeliveryProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision"],
+      "properties": {
+        "kind": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "VitalServerPacketDeliveryEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port"],
+      "properties": {
+        "scheme": { "enum": ["http", "https"] },
+        "host": { "$ref": "#/$defs/HostOrAddressLiteral" },
+        "port": { "$ref": "#/$defs/Port" }
+      }
+    }
+  }
+}

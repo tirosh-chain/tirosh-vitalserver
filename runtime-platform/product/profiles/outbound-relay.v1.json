@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v1",
+  "profileKind": "outbound-relay",
+  "provider": {
+    "kind": "outbound-relay-profile",
+    "id": "outbound-relay",
+    "capabilityRevision": 1
+  },
+  "requiredResourceType": "outbound-relay-target",
+  "independentFrom": [
+    "runtime-topology",
+    "external-upstream-integration"
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "v1",
+  "generatedAt": "2026-07-17T00:00:00Z",
+  "documentName": "VitalServer Runtime Platform source inventory",
+  "documentNamespace": "https://tirosh.github.io/vitalserver/runtime-platform/source-inventory/v1",
+  "licenseAllowlist": [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "MIT",
+    "ISC",
+    "Apple-platform-terms"
+  ],
+  "components": [
+    {
+      "id": "host-agent",
+      "name": "Host Agent",
+      "version": "0.1.0-dev",
+      "source": "services/host-agent/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-runtime",
+      "name": "Guest Runtime",
+      "version": "0.1.0-dev",
+      "source": "services/guest-runtime/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-product-process-supervisor",
+      "name": "Guest Product Process Supervisor",
+      "version": "0.1.0-dev",
+      "source": "services/guest-product-process-supervisor/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-product-bootstrap-volume-composer",
+      "name": "Guest Product Bootstrap Volume Composer",
+      "version": "0.1.0-dev",
+      "source": "tooling/guest-product-bootstrap-volume-composer/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-linux-boot-artifact-extractor",
+      "name": "Guest Linux Boot Artifact Extractor",
+      "version": "0.1.0-dev",
+      "source": "tooling/guest-linux-boot-artifact-extractor/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-root-storage-partition-assembler",
+      "name": "Guest Root Storage Partition Assembler",
+      "version": "0.1.0-dev",
+      "source": "tooling/guest_root_storage_partition_assembler.py",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "recorder-gateway",
+      "name": "Recorder Gateway",
+      "version": "0.1.0-dev",
+      "source": "services/recorder-gateway/package-lock.json",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "macos-provider",
+      "name": "macOS Virtualization Provider",
+      "version": "0.1.0-dev",
+      "source": "providers/macos-virtualization/Package.swift",
+      "license": "Apple-platform-terms",
+      "noticeStatus": "platform-terms-required"
+    },
+    {
+      "id": "windows-linux-provider-bridges",
+      "name": "Windows and Linux Provider Bridges",
+      "version": "0.1.0-dev",
+      "source": "providers/os-provider-bridge/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "modernc-sqlite",
+      "name": "modernc.org/sqlite",
+      "version": "v1.38.2",
+      "source": "services/host-agent/go.sum",
+      "license": "BSD-3-Clause",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "go-diskfs",
+      "name": "github.com/diskfs/go-diskfs",
+      "version": "v1.9.3",
+      "source": "tooling/guest-product-bootstrap-volume-composer/go.sum",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "socket-io",
+      "name": "socket.io",
+      "version": "4.8.3",
+      "source": "services/recorder-gateway/package-lock.json",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    }
+  ]
+}

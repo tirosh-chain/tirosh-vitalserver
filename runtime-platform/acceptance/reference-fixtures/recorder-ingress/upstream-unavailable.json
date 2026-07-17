@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v1",
+  "fixtureKind": "replay-outcome-observation",
+  "inputShape": {
+    "spoolItemValid": true
+  },
+  "legacyOutcome": {
+    "accepted": false,
+    "reason": "upstream_unavailable"
+  },
+  "expectedFact": {
+    "deliveryWasNotProven": true,
+    "transportFailureRemainedExplicit": true
+  }
+}

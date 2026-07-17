@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-artifact-compilation-input-assembly-receipt",
+  "title": "GuestArtifactCompilationInputAssemblyReceipt",
+  "description": "C41 immutable evidence that one GuestArtifactCompilationInputAssemblyDeclaration produced one complete C35 input root. It proves assembled source identity and C35 command identity, not Guest image compilation, boot, systemd startup, or package installation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "assemblyId", "compilationId", "artifactSetId", "assemblyDeclarationSHA256", "guestArtifactCompilationCommand", "guestProductBootstrapArtifactComposer", "assembledInputArtifacts", "completedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "assemblyId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "compilationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "artifactSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "assemblyDeclarationSHA256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "guestArtifactCompilationCommand": { "$ref": "#/$defs/AssembledFileIdentity" },
+    "guestProductBootstrapArtifactComposer": { "$ref": "#/$defs/AssembledFileIdentity" },
+    "assembledInputArtifacts": {
+      "type": "array",
+      "minItems": 9,
+      "items": { "$ref": "#/$defs/AssembledInputArtifactIdentity" }
+    },
+    "completedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "$defs": {
+    "AssembledFileIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "sizeBytes", "sha256"],
+      "properties": {
+        "relativePath": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "AssembledInputArtifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "inputRelativePath", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "inputRelativePath": { "type": "string", "minLength": 12, "maxLength": 1024, "pattern": "^inputs/(?:[A-Za-z0-9][A-Za-z0-9._-]*/)*[A-Za-z0-9][A-Za-z0-9._-]*$" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    }
+  }
+}

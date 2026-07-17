@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v1",
+  "proofs": [
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "service-registration",
+      "status": "verified",
+      "recordedAt": "2026-07-18T00:00:00Z",
+      "runner": {
+        "kind": "macos-clean-host",
+        "id": "macos-clean-host-01"
+      },
+      "evidence": {
+        "uri": "file:///evidence/macos-service-registration.json",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "observedInstallerArtifact": {
+        "kind": "pkg",
+        "fileName": "VitalServerRuntimePlatform-0.2.0-dev.pkg",
+        "productVersion": "0.2.0-dev",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "observedAt": "2026-07-18T00:00:00Z"
+      }
+    }
+  ]
+}

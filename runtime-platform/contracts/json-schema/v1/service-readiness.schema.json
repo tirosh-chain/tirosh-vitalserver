@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:service-readiness",
+  "title": "ServiceReadiness",
+  "description": "A service-owned readiness observation. It is not synthesized from another service's process or logs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "service",
+    "state",
+    "observedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "service": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ServiceIdentity"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "not-ready",
+        "unavailable",
+        "failed",
+        "stale",
+        "unsupported"
+      ]
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "ready"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "issue"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "not-ready",
+              "unavailable",
+              "failed",
+              "stale",
+              "unsupported"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "issue"
+        ]
+      }
+    }
+  ]
+}

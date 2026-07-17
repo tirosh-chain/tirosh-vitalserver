@@ -7,6 +7,26 @@
 | 목적 | 먼저 볼 문서 |
 |---|---|
 | 제품 전체 맥락을 잡기 | [VitalServer 제품화 전략](product/productization.md) |
+| 다음 세대 재구축의 목표 구조를 검토하기 | [VitalServer Runtime Platform vNext 설계 초안](architecture/vnext-runtime-platform-design.md) |
+| 새 코드의 이름만 보고 owner·경계·역할을 읽는 기준 확인하기 | [도메인 언어와 모듈 명명 기준](architecture/domain-language-and-module-naming.md) |
+| 현재 구현된 Host/Guest control 경계와 proof 한계를 확인하기 | [Host/Guest Control Slice](architecture/host-guest-control-boundary.md) |
+| Guest image compiler·C34·macOS PKG가 나뉘는 이유 확인하기 | [Guest Artifact Build Boundary](architecture/guest-artifact-build-boundary.md) |
+| 명시된 Linux image에서 kernel/initrd/root storage를 추출하는 owner 확인하기 | [Guest Linux Boot Artifact Extraction Boundary](architecture/guest-linux-boot-artifact-extraction-boundary.md) |
+| whole-disk ext4를 explicit `/dev/vda1` C39 base로 조립하는 owner 확인하기 | [Guest Root Storage Partition Assembly Boundary](architecture/guest-root-storage-partition-assembly-boundary.md) |
+| release source가 C35 input root·identity로 조립되는 경계 확인하기 | [Guest Artifact Compilation Input Assembly Boundary](architecture/guest-artifact-compilation-input-assembly-boundary.md) |
+| Host release build와 Guest-owned first-boot installation 경계 확인하기 | [Guest Product Bootstrap Volume Boundary](architecture/guest-product-bootstrap-volume-boundary.md) |
+| Guest Runtime·Recorder Gateway의 Guest-local process owner와 deployment input 확인하기 | [Guest Product Process Supervisor Boundary](architecture/guest-product-process-supervisor-boundary.md) |
+| Linux Guest systemd unit·Supervisor·child process owner가 분리되는 이유 확인하기 | [Guest Product Service Manager Boundary](architecture/guest-product-service-manager-boundary.md) |
+| public listener와 explicit route·client identity 경계 확인하기 | [Host Edge Proxy Boundary](architecture/host-edge-proxy-boundary.md) |
+| macOS VM이 왜 long-lived supervisor를 필요로 하는지 확인하기 | [macOS Virtual Machine Supervisor Boundary](architecture/macos-virtual-machine-supervisor-boundary.md) |
+| Recorder packet·spool·upstream delivery가 분리되는 경계 보기 | [Recorder Gateway Data Path](architecture/recorder-gateway-data-path.md) |
+| Lab stop, `.vital` export, hide/detach/delete의 분리된 owner와 receipt 보기 | [Lab, Artifact Export, and Deletion Lifecycle](architecture/lab-archive-deletion-lifecycle.md) |
+| external upstream, NTP, Recorder self-observation, OpenTelemetry 경계 보기 | [External Upstream, Time, and Observability](architecture/external-time-observability.md) |
+| Windows/Linux provider, service lifecycle, release proof의 실제/미증명 경계 보기 | [Cross-platform Provider and Delivery](architecture/cross-platform-delivery.md) |
+| installer/update compatibility, Host journal, updater handoff의 실제/미증명 경계 보기 | [Installation and Update Foundation](architecture/installation-update-foundation.md) |
+| release composition, signed bootstrap, staged handoff의 현재 책임 경계 보기 | [Product Composition and Staged Update](architecture/product-composition-and-staged-update.md) |
+| vNext에 적용할 외부 레퍼런스 패턴과 변화 관리 기준 보기 | [vNext 참고 패턴과 적용 규칙](architecture/reference-patterns.md) |
+| 새 `runtime-platform/` root의 실제 구현 순서와 완료 기준 보기 | [vNext 구현 계획](architecture/vnext-implementation-plan.md) |
 | 제품 사용 여정과 acceptance evidence 보기 | [제품 사용 시나리오 카탈로그](product/user-scenarios.md) |
 | Vital Server Helper 공개/운영 문서 보기 | [Release Overview](../site-docs/release/index.md) |
 | Vital Server Helper 오픈소스 개발 문서 보기 | [Dev Overview](../site-docs/dev/index.md) |
@@ -29,6 +49,26 @@
 | 문서 | 역할 |
 |---|---|
 | [VitalServer 제품화 전략](product/productization.md) | 저장소의 목표, upstream 동작, 제품화 기준, 아직 비어 있는 영역 |
+| [VitalServer Runtime Platform vNext 설계 초안](architecture/vnext-runtime-platform-design.md) | 현재 구현과 분리한 재구축 목표: cross-platform Host, bundled/external upstream, Recorder/NTP, logs·metrics·traces 경계 |
+| [도메인 언어와 모듈 명명 기준](architecture/domain-language-and-module-naming.md) | owner·boundary·role이 드러나는 DDD 명명 규칙과 신규 코드 체크리스트 |
+| [Host/Guest Control Slice](architecture/host-guest-control-boundary.md) | 실제 구현된 Host/Guest SQLite owner, provider bridge, facade forwarding, recovery semantics와 executable evidence |
+| [Guest Artifact Build Boundary](architecture/guest-artifact-build-boundary.md) | Guest image compiler output, C34 identity, macOS PKG composition, boot/install proof의 분리된 책임 |
+| [Guest Linux Boot Artifact Extraction Boundary](architecture/guest-linux-boot-artifact-extraction-boundary.md) | C42 immutable Linux image source, kernel/initrd/whole-disk ext4 extraction receipt, C39 layout conversion의 분리 |
+| [Guest Root Storage Partition Assembly Boundary](architecture/guest-root-storage-partition-assembly-boundary.md) | C43 C42 receipt correlation, MBR `/dev/vda1` storage assembly receipt, C39 base identity의 분리 |
+| [Guest Artifact Compilation Input Assembly Boundary](architecture/guest-artifact-compilation-input-assembly-boundary.md) | C41 release source selection, immutable C35 input root/receipt, build-machine path 격리 |
+| [Guest Product Bootstrap Volume Boundary](architecture/guest-product-bootstrap-volume-boundary.md) | C39 bootstrap intent, C40 NoCloud delivery volume, Guest-owned cloud-init installation과 boot proof의 분리 |
+| [Guest Product Process Supervisor Boundary](architecture/guest-product-process-supervisor-boundary.md) | C37 Guest process deployment, Guest Runtime/Recorder Gateway process-lifetime owner, explicit upstream/replay input과 artifact/boot proof의 분리 |
+| [Guest Product Service Manager Boundary](architecture/guest-product-service-manager-boundary.md) | C38 systemd service-manager deployment, Supervisor invocation/restart policy, Guest image/systemd proof의 분리 |
+| [Host Edge Proxy Boundary](architecture/host-edge-proxy-boundary.md) | C36 explicit public route, client identity trust boundary, Host proxy package/clean-host proof의 분리 |
+| [macOS Virtual Machine Supervisor Boundary](architecture/macos-virtual-machine-supervisor-boundary.md) | `VZVirtualMachine` process-lifetime owner, Host Agent/supervisor C21-C10 boundary, current invocation CLI의 한계 |
+| [Recorder Gateway Data Path](architecture/recorder-gateway-data-path.md) | Recorder Gateway protocol adapter, durable ingress/spool, delivery receipt, bundled upstream capability의 owner·proof 경계 |
+| [Lab, Artifact Export, and Deletion Lifecycle](architecture/lab-archive-deletion-lifecycle.md) | Lab resource lifecycle, artifact export receipt, explicit deletion/cascade·retention boundary |
+| [External Upstream, Time, and Observability](architecture/external-time-observability.md) | external provider/relay, Host·Guest time quality, Recorder self-observation Catalog, OTel pipeline boundary |
+| [Cross-platform Provider and Delivery](architecture/cross-platform-delivery.md) | selected OS provider bridge, C21–C24 delivery gate, source-inventory SBOM와 clean-host proof boundary |
+| [Installation and Update Foundation](architecture/installation-update-foundation.md) | C25–C31 immutable bootstrap envelope, Host update journal/recovery, next-updater handoff boundary |
+| [Product Composition and Staged Update](architecture/product-composition-and-staged-update.md) | C25–C31 release composition, Host signature/staging, C30/C31 path ownership, next-updater planning boundary |
+| [vNext 참고 패턴과 적용 규칙](architecture/reference-patterns.md) | Kubernetes·Google AIP·Terraform·ACL/Strangler·EdgeX·OpenTelemetry에서 가져올 경계, version, migration, 전환 규칙 |
+| [vNext 구현 계획](architecture/vnext-implementation-plan.md) | `runtime-platform/` 독립 root, 실제 deployable unit, contract-first 단계, acceptance/release gate |
 | [제품 사용 시나리오 카탈로그](product/user-scenarios.md) | 설치, 운영, Recorder, Product Lab, update, recovery, uninstall 사용자 여정과 Gherkin/evidence 연결 |
 | [Vital Server Helper Release Overview](../site-docs/release/index.md) | 공개 배포 독자를 위한 Vital Server Helper 소개, 설치, 운영 문서군 진입점 |
 | [Vital Server Helper Dev Overview](../site-docs/dev/index.md) | 오픈소스 contributor와 repository 유지보수자를 위한 서비스 경계, package 책임, build/release/test 문서군 진입점 |
@@ -100,11 +140,30 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 
 1. root [README](https://github.com/tirosh-chain/tirosh-vitalserver#readme)
 2. [VitalServer 제품화 전략](product/productization.md)
-3. [Vital Recorder integration contract](recorder/vital-recorder-integration.md)
-4. [Testkit 사용법](testkit/usage.md)
-5. [VitalServer recorder Redis key model](recorder/redis-key-model.md)
-6. [VitalServer macOS Runtime](runtime/macos/index.md)
-7. [Branch 운영 기준](repository/branching.md)
+3. [VitalServer Runtime Platform vNext 설계 초안](architecture/vnext-runtime-platform-design.md) (재구축 설계를 검토할 때)
+4. [도메인 언어와 모듈 명명 기준](architecture/domain-language-and-module-naming.md) (owner·context·boundary·role을 이름에서 읽는 기준)
+5. [Host/Guest Control Slice](architecture/host-guest-control-boundary.md) (현재 code와 acceptance가 실제로 증명한 범위)
+6. [Guest Artifact Build Boundary](architecture/guest-artifact-build-boundary.md) (Guest artifact와 PKG의 책임을 구현·검토할 때)
+7. [Guest Linux Boot Artifact Extraction Boundary](architecture/guest-linux-boot-artifact-extraction-boundary.md) (C42 source identity와 kernel/initrd/root source extraction을 구현·검토할 때)
+8. [Guest Root Storage Partition Assembly Boundary](architecture/guest-root-storage-partition-assembly-boundary.md) (C43 MBR `/dev/vda1` layout과 C42 receipt correlation을 구현·검토할 때)
+9. [Guest Artifact Compilation Input Assembly Boundary](architecture/guest-artifact-compilation-input-assembly-boundary.md) (C41 source selection과 C35 identity를 구현·검토할 때)
+10. [Guest Product Bootstrap Volume Boundary](architecture/guest-product-bootstrap-volume-boundary.md) (C39 bootstrap intent와 C40 Guest-owned first-boot installation을 구현·검토할 때)
+11. [Guest Product Process Supervisor Boundary](architecture/guest-product-process-supervisor-boundary.md) (Guest-local product process와 deployment input을 구현·검토할 때)
+12. [Guest Product Service Manager Boundary](architecture/guest-product-service-manager-boundary.md) (systemd unit과 Supervisor boundary를 구현·검토할 때)
+13. [Host Edge Proxy Boundary](architecture/host-edge-proxy-boundary.md) (public route와 trust boundary를 구현·검토할 때)
+14. [Recorder Gateway Data Path](architecture/recorder-gateway-data-path.md) (data plane과 receipt 분리를 구현·검토할 때)
+15. [Lab, Artifact Export, and Deletion Lifecycle](architecture/lab-archive-deletion-lifecycle.md) (Lab stop/export/delete lifecycle을 구현·검토할 때)
+16. [External Upstream, Time, and Observability](architecture/external-time-observability.md) (external dependency, time, telemetry boundary를 구현·검토할 때)
+17. [Cross-platform Provider and Delivery](architecture/cross-platform-delivery.md) (provider selection과 release proof를 검토할 때)
+18. [Installation and Update Foundation](architecture/installation-update-foundation.md) (update compatibility와 Host recovery boundary를 검토할 때)
+19. [Product Composition and Staged Update](architecture/product-composition-and-staged-update.md) (release bundle, Host staging, updater handoff를 구현·검토할 때)
+20. [vNext 참고 패턴과 적용 규칙](architecture/reference-patterns.md) (API/상태/마이그레이션 경계를 설계할 때)
+21. [vNext 구현 계획](architecture/vnext-implementation-plan.md) (새 root의 단계별 구현을 시작할 때)
+22. [Vital Recorder integration contract](recorder/vital-recorder-integration.md)
+23. [Testkit 사용법](testkit/usage.md)
+24. [VitalServer recorder Redis key model](recorder/redis-key-model.md)
+25. [VitalServer macOS Runtime](runtime/macos/index.md)
+26. [Branch 운영 기준](repository/branching.md)
 
 Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니다.
 

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "id": "lab-recorder-0001",
+  "name": "LAB-baseline-monitoring-recorder-1",
+  "origin": "lab",
+  "resourceRevision": 3,
+  "sessionReference": {
+    "resourceType": "lab-session",
+    "resourceId": "lab-session-0001"
+  },
+  "bedReference": {
+    "resourceType": "lab-bed",
+    "resourceId": "lab-bed-0001"
+  },
+  "executionState": "stopped",
+  "visibility": "visible",
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:05:00Z"
+}

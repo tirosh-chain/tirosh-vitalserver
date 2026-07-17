@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "v1",
+  "id": "operation-topology-0001",
+  "kind": "runtime.topology.apply",
+  "requestId": "request-topology-0001",
+  "target": {
+    "resourceType": "runtime-topology",
+    "resourceId": "runtime-topology-main",
+    "requestedResourceRevision": 3
+  },
+  "requestedAt": "2026-07-17T00:00:00Z",
+  "acceptedAt": "2026-07-17T00:00:01Z",
+  "startedAt": "2026-07-17T00:00:02Z",
+  "finishedAt": "2026-07-17T00:00:03Z",
+  "state": "succeeded",
+  "evidenceReferences": [
+    {
+      "kind": "topology-apply-proof",
+      "id": "proof-topology-0001"
+    }
+  ]
+}

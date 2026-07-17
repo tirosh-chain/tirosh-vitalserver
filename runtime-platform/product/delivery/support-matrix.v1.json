@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v1",
+  "id": "runtime-platform-delivery-support-matrix",
+  "firstCleanInstallTarget": {
+    "platform": "macos",
+    "architecture": "arm64",
+    "providerKind": "macos-virtualization",
+    "artifactKind": "pkg",
+    "serviceManager": "launchd",
+    "deliveryState": "planned"
+  },
+  "targets": [
+    {
+      "platform": "macos",
+      "architecture": "arm64",
+      "providerKind": "macos-virtualization",
+      "artifactKind": "pkg",
+      "serviceManager": "launchd",
+      "deliveryState": "planned",
+      "updateContracts": ["C25", "C26", "C27", "C28", "C29", "C30", "C31"]
+    },
+    {
+      "platform": "windows",
+      "architecture": "amd64",
+      "providerKind": "windows-hyperv-scm",
+      "artifactKind": "msi",
+      "serviceManager": "windows-scm",
+      "deliveryState": "planned",
+      "updateContracts": ["C25", "C26", "C27", "C28", "C29", "C30", "C31"]
+    },
+    {
+      "platform": "linux",
+      "architecture": "amd64",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "artifactKind": "deb",
+      "serviceManager": "systemd",
+      "deliveryState": "planned",
+      "updateContracts": ["C25", "C26", "C27", "C28", "C29", "C30", "C31"]
+    }
+  ]
+}

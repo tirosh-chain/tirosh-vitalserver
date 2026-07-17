@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "v1",
+  "assemblyId": "guest-product-input-assembly-0.1.0-dev",
+  "compilationId": "guest-artifact-build-0.1.0-dev",
+  "artifactSetId": "vitalserver-guest-arm64-0.1.0-dev",
+  "assemblyDeclarationSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "guestArtifactCompilationCommand": { "relativePath": "guest-artifact-compilation-command.json", "sizeBytes": 4096, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  "guestProductBootstrapArtifactComposer": { "relativePath": "builders/guest-product-bootstrap-artifact-composer", "sizeBytes": 8192, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+  "assembledInputArtifacts": [
+    { "id": "linux-arm64-kernel", "inputRelativePath": "inputs/boot/Image", "sizeBytes": 1024, "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+    { "id": "linux-arm64-initrd", "inputRelativePath": "inputs/boot/initrd.img", "sizeBytes": 2048, "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+    { "id": "guest-runtime-linux-arm64", "inputRelativePath": "inputs/services/guest-runtime", "sizeBytes": 3072, "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" },
+    { "id": "recorder-gateway-linux-arm64", "inputRelativePath": "inputs/services/recorder-gateway.tar.gz", "sizeBytes": 4096, "sha256": "1111111111111111111111111111111111111111111111111111111111111111" },
+    { "id": "guest-product-process-supervisor-linux-arm64", "inputRelativePath": "inputs/services/guest-product-process-supervisor", "sizeBytes": 3072, "sha256": "3333333333333333333333333333333333333333333333333333333333333333" },
+    { "id": "guest-product-process-deployment-configuration", "inputRelativePath": "inputs/configuration/guest-product-process-deployment.json", "sizeBytes": 512, "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+    { "id": "guest-product-service-manager-deployment-configuration", "inputRelativePath": "inputs/configuration/guest-product-service-manager-deployment.json", "sizeBytes": 512, "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
+    { "id": "guest-product-bootstrap-configuration", "inputRelativePath": "inputs/configuration/guest-product-bootstrap.json", "sizeBytes": 512, "sha256": "6666666666666666666666666666666666666666666666666666666666666666" },
+    { "id": "guest-product-vitalserver-topology-deployment", "inputRelativePath": "inputs/configuration/guest-product-vitalserver-topology-deployment.json", "sizeBytes": 512, "sha256": "7777777777777777777777777777777777777777777777777777777777777777" },
+    { "id": "external-vitalserver-delivery-configuration", "inputRelativePath": "inputs/configuration/external-vitalserver-delivery-configuration.json", "sizeBytes": 512, "sha256": "9999999999999999999999999999999999999999999999999999999999999999" },
+    { "id": "linux-arm64-root-storage-base", "inputRelativePath": "inputs/storage/guest-root.raw", "sizeBytes": 8192, "sha256": "8888888888888888888888888888888888888888888888888888888888888888" }
+  ],
+  "completedAt": "2026-07-17T09:00:00Z"
+}

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "v1",
+  "extractionId": "ubuntu-noble-arm64-boot-artifacts",
+  "architecture": "arm64",
+  "extractionDeclarationSHA256": "8c5c98df36926285e68ed2764f2a0f7f811ad5eec7d30d4fe5e52a9d53a394ce",
+  "sourceImage": {
+    "id": "ubuntu-noble-arm64-cloud-image",
+    "sizeBytes": 2061500416,
+    "sha256": "3fd73a3cde12636b59cf0aa3485f05452ef6a068d91a03268b04f3f614e453ae"
+  },
+  "bootResources": [
+    {
+      "id": "linux-arm64-kernel",
+      "relativePath": "boot/Image",
+      "sizeBytes": 10485760,
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "id": "linux-arm64-initrd",
+      "relativePath": "boot/initrd.img",
+      "sizeBytes": 1048576,
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "rootStorage": {
+    "id": "linux-arm64-root-storage-base",
+    "relativePath": "storage/guest-root.raw",
+    "sizeBytes": 2061500416,
+    "sha256": "3fd73a3cde12636b59cf0aa3485f05452ef6a068d91a03268b04f3f614e453ae"
+  },
+  "completedAt": "2026-07-17T12:00:00Z"
+}

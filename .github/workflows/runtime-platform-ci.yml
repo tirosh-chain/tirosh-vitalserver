@@ -1,0 +1,99 @@
+name: Runtime Platform CI
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/runtime-platform-ci.yml
+      - runtime-platform/**
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/runtime-platform-ci.yml
+      - runtime-platform/**
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-platform:
+    name: Runtime Platform Linux control and acceptance suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.0"
+
+      - name: Set up Recorder Gateway Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.3"
+
+      - name: Bootstrap contract verification tools
+        run: make -C runtime-platform bootstrap-contract-tools
+
+      - name: Verify runtime-platform root
+        run: make -C runtime-platform check
+
+  macos-provider:
+    name: macOS Virtualization provider bridge
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build and test provider bridge
+        run: make -C runtime-platform macos-provider-test
+
+  windows-provider-contract:
+    name: Windows provider bridge contract (no Hyper-V live claim)
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.0"
+
+      - name: Build selected Windows bridge and run portable provider contract tests
+        shell: pwsh
+        run: |
+          Set-Location runtime-platform
+          Push-Location providers/os-provider-bridge
+          go test ./...
+          New-Item -ItemType Directory -Force -Path .build | Out-Null
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -o .build/windows-hyperv-scm-bridge.exe ./cmd/windows-hyperv-scm-bridge
+          Pop-Location
+
+      - name: Verify explicit release-proof pending status
+        shell: pwsh
+        run: |
+          Set-Location runtime-platform
+          python -m venv .venv
+          & .venv/Scripts/python.exe -m pip install --disable-pip-version-check --requirement contracts/requirements-dev.txt
+          & .venv/Scripts/python.exe -m tooling.generate_source_inventory_sbom --root . --check
+          & .venv/Scripts/python.exe -m tooling.verify_delivery_proofs --root .
+
+      - name: Explain live proof boundary
+        shell: pwsh
+        run: |
+          Write-Host "This job verifies bridge contract compilation and simulated command mapping only."
+          Write-Host "It does not mark C24 clean-install/reboot/update/rollback/uninstall evidence as verified."

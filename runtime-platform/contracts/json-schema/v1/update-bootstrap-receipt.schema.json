@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-receipt",
+  "title": "UpdateBootstrapReceipt",
+  "description": "C27 typed Host-native bootstrap verification and staging result. Staged is only a handoff precondition, never update success.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "updateId", "requestId", "bootstrapEnvelopeId", "nextUpdaterSha256", "state", "observedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "bootstrapEnvelopeId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "nextUpdaterSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "state": { "type": "string", "enum": ["staged", "failed", "unavailable"] },
+    "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "issue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "staged" } }, "required": ["state"] },
+      "then": { "not": { "required": ["issue"] } },
+      "else": { "required": ["issue"] }
+    }
+  ]
+}

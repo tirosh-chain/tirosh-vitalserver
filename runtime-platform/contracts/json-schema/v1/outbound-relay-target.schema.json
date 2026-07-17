@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:outbound-relay-target",
+  "title": "OutboundRelayTarget",
+  "description": "A Guest Runtime-owned integration resource for an outbound relay consumer. It is independent from RuntimeTopology and upstream provider state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "resourceRevision",
+    "spec",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "resourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "spec": {
+      "$ref": "#/$defs/RelayTargetSpec"
+    },
+    "status": {
+      "$ref": "#/$defs/RelayTargetStatus"
+    },
+    "createdAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "updatedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "$defs": {
+    "RelayProviderReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "capabilityRevision"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "capabilityRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "RelayTargetSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "endpointReference"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/RelayProviderReference"
+        },
+        "endpointReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "credentialReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SecretReference"
+        }
+      }
+    },
+    "RelayTargetStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "available",
+            "unavailable",
+            "failed",
+            "unsupported"
+          ]
+        },
+        "acknowledgementReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "available"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "acknowledgementReference"
+            ],
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed",
+                  "unsupported"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

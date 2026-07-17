@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "updateId": "host-update-20260717",
+  "expectedJournalRevision": 3,
+  "report": {
+    "schemaVersion": "v1",
+    "updateId": "host-update-20260717",
+    "requestId": "host-update-request-20260717",
+    "bootstrapEnvelopeId": "release-bootstrap-20260717",
+    "updateSpecificationSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "state": "succeeded",
+    "startedAt": "2026-07-17T00:01:00Z",
+    "finishedAt": "2026-07-17T00:02:00Z",
+    "layerEvidence": [
+      { "layer": "guest-runtime", "state": "succeeded", "artifactSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "observedAt": "2026-07-17T00:01:10Z", "evidence": { "kind": "update-layer-proof", "id": "guest-runtime-proof" } }
+    ],
+    "rollback": { "state": "not-required", "observedAt": "2026-07-17T00:02:00Z" }
+  }
+}

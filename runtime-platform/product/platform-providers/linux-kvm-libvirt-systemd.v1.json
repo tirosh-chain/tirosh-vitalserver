@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v1",
+  "providerKind": "linux-kvm-libvirt-systemd",
+  "hostPlatform": "linux",
+  "providerProcess": {
+    "protocol": "platform-provider-lifecycle-invocation",
+    "lifecycleResult": "provider-lifecycle-result",
+    "installationEvidence": "provider-installation-evidence",
+    "executable": "linux-kvm-libvirt-systemd-bridge"
+  },
+  "serviceManager": "systemd",
+  "requiredCapabilities": [
+    "guest-vm-lifecycle",
+    "host-service-lifecycle"
+  ],
+  "nativeDependencies": [
+    "libvirt virsh",
+    "systemd systemctl"
+  ]
+}

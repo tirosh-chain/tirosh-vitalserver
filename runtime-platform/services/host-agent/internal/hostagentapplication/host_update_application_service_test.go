@@ -1,0 +1,235 @@
+package hostagentapplication_test
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/hoststatesqliterepository"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentapplication"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentdomain"
+)
+
+type fakeUpdateBootstrapper struct {
+	clock        hostagentapplication.HostAgentClock
+	state        string
+	calls        int
+	handoffCalls int
+	handoffIssue *hostagentdomain.Issue
+}
+
+func (bootstrapper *fakeUpdateBootstrapper) Stage(_ context.Context, journal hostagentdomain.HostUpdateJournal, _ hostagentdomain.UpdateBootstrapEnvelope) hostagentdomain.UpdateBootstrapReceipt {
+	bootstrapper.calls++
+	receipt := hostagentdomain.UpdateBootstrapReceipt{
+		SchemaVersion:       hostagentdomain.SchemaVersion,
+		UpdateID:            journal.ID,
+		RequestID:           journal.RequestID,
+		BootstrapEnvelopeID: journal.BootstrapEnvelopeID,
+		NextUpdaterSHA256:   journal.NextUpdaterSHA256,
+		State:               bootstrapper.state,
+		ObservedAt:          hostagentdomain.Timestamp(bootstrapper.clock.Now()),
+	}
+	if bootstrapper.state == "failed" || bootstrapper.state == "unavailable" {
+		receipt.Issue = &hostagentdomain.Issue{Code: "test-bootstrap-" + bootstrapper.state, Dependency: "test-bootstrapper"}
+	}
+	return receipt
+}
+
+func (bootstrapper *fakeUpdateBootstrapper) RequestHandoff(context.Context, hostagentdomain.HostUpdateJournal) *hostagentdomain.Issue {
+	bootstrapper.handoffCalls++
+	return bootstrapper.handoffIssue
+}
+
+func updateSHA(character string) string { return strings.Repeat(character, 64) }
+
+func updateCommand(requestID string, revision int) hostagentdomain.HostUpdateCommand {
+	return hostagentdomain.HostUpdateCommand{
+		SchemaVersion:                "v1",
+		RequestID:                    requestID,
+		InstallationID:               "host-installation",
+		ExpectedInstallationRevision: revision,
+		BundleReferenceID:            "offline-bundle",
+		BootstrapEnvelope: hostagentdomain.UpdateBootstrapEnvelope{
+			SchemaVersion:       "v1",
+			ID:                  "release-bootstrap-1",
+			ProductID:           "vitalserver-runtime-platform",
+			Target:              hostagentdomain.UpdateTarget{Platform: "macos", Architecture: "arm64"},
+			TargetRelease:       hostagentdomain.Release{ProductVersion: "0.2.0", RuntimeVersion: "0.2.0"},
+			LayerOrder:          []string{hostagentdomain.UpdateLayerGuestRuntime, hostagentdomain.UpdateLayerContainer, hostagentdomain.UpdateLayerHostPlatform},
+			NextUpdaterArtifact: hostagentdomain.UpdateArtifact{ID: "host-updater", RelativePath: "payload/host-updater", SHA256: updateSHA("a"), SizeBytes: 42, MediaType: "application/octet-stream"},
+			Specification:       hostagentdomain.UpdateArtifact{ID: "update-spec", RelativePath: "payload/update-spec.json", SHA256: updateSHA("b"), SizeBytes: 73, MediaType: "application/json"},
+			Signature:           hostagentdomain.UpdateSignature{Algorithm: "ed25519", KeyID: "release-key-1", SignedSHA256: updateSHA("c"), Value: "test-signature"},
+			IssuedAt:            "2026-07-17T00:00:00Z",
+		},
+	}
+}
+
+func newUpdateService(t *testing.T, bootstrapper *fakeUpdateBootstrapper) (*hostagentapplication.HostUpdateApplicationService, *hoststatesqliterepository.HostAgentStateSQLiteRepository) {
+	t.Helper()
+	repository := configuredRepository(t)
+	provider := &fakeProvider{results: map[string]hostagentdomain.ProviderLifecycleResult{}}
+	guest := &fakeGuestControl{}
+	_ = newServiceWithRepository(t, repository, provider, guest)
+	service, err := hostagentapplication.NewHostUpdateApplicationService(repository, bootstrapper, fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}, &sequentialIdentifiers{})
+	if err != nil {
+		t.Fatalf("new update service: %v", err)
+	}
+	return service, repository
+}
+
+func successReport(journal hostagentdomain.HostUpdateJournal) hostagentdomain.UpdateExecutionReport {
+	evidence := make([]hostagentdomain.UpdateLayerEvidence, 0, len(journal.LayerOrder))
+	for index, layer := range journal.LayerOrder {
+		evidence = append(evidence, hostagentdomain.UpdateLayerEvidence{
+			Layer:          layer,
+			State:          "succeeded",
+			ArtifactSHA256: updateSHA(string(rune('d' + index))),
+			ObservedAt:     "2026-07-17T00:01:00Z",
+			Evidence:       hostagentdomain.EvidenceReference{Kind: "update-layer-proof", ID: "proof-" + layer},
+		})
+	}
+	return hostagentdomain.UpdateExecutionReport{
+		SchemaVersion:             "v1",
+		UpdateID:                  journal.ID,
+		RequestID:                 journal.RequestID,
+		BootstrapEnvelopeID:       journal.BootstrapEnvelopeID,
+		UpdateSpecificationSHA256: journal.UpdateSpecificationSHA256,
+		State:                     "succeeded",
+		StartedAt:                 "2026-07-17T00:00:30Z",
+		FinishedAt:                "2026-07-17T00:01:00Z",
+		LayerEvidence:             evidence,
+		Rollback:                  hostagentdomain.UpdateRollbackEvidence{State: "not-required", ObservedAt: "2026-07-17T00:01:00Z"},
+	}
+}
+
+func TestUpdateStagesExactlyOnceAndOnlyNextUpdaterCanSettleIt(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, repository := newUpdateService(t, bootstrapper)
+	command := updateCommand("update-request-1", 1)
+
+	first, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), command)
+	if rejection != nil || admissionFailure != nil || first.Operation.State != "running" || first.Journal.State != "handoff-pending" {
+		t.Fatalf("first update outcome=%+v rejection=%+v admissionFailure=%+v", first, rejection, admissionFailure)
+	}
+	if bootstrapper.calls != 1 || bootstrapper.handoffCalls != 1 || first.Journal.JournalRevision != 3 {
+		t.Fatalf("bootstrap calls=%d handoffs=%d journal=%+v", bootstrapper.calls, bootstrapper.handoffCalls, first.Journal)
+	}
+
+	replayed, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), command)
+	if rejection != nil || admissionFailure != nil || replayed.Journal.ID != first.Journal.ID || bootstrapper.calls != 1 || bootstrapper.handoffCalls != 1 {
+		t.Fatalf("replayed update outcome=%+v rejection=%+v admissionFailure=%+v calls=%d handoffs=%d", replayed, rejection, admissionFailure, bootstrapper.calls, bootstrapper.handoffCalls)
+	}
+
+	report := successReport(first.Journal)
+	completed, rejection, admissionFailure := service.CompleteHostUpdateExecution(context.Background(), hostagentdomain.UpdateCompletionCommand{SchemaVersion: "v1", UpdateID: first.Journal.ID, ExpectedJournalRevision: first.Journal.JournalRevision, Report: report})
+	if rejection != nil || admissionFailure != nil || completed.Operation.State != "succeeded" || completed.Journal.State != "succeeded" {
+		t.Fatalf("completed update outcome=%+v rejection=%+v admissionFailure=%+v", completed, rejection, admissionFailure)
+	}
+	installation, err := repository.ReadHostPlatformInstallation(context.Background())
+	if err != nil || installation.ResourceRevision != 2 || installation.Release.ProductVersion != "0.2.0" || installation.Release.RuntimeVersion != "0.2.0" {
+		t.Fatalf("installation after update=%+v err=%v", installation, err)
+	}
+
+	replayedCompletion, rejection, admissionFailure := service.CompleteHostUpdateExecution(context.Background(), hostagentdomain.UpdateCompletionCommand{SchemaVersion: "v1", UpdateID: first.Journal.ID, ExpectedJournalRevision: first.Journal.JournalRevision, Report: report})
+	if rejection != nil || admissionFailure != nil || replayedCompletion.Operation.ID != completed.Operation.ID || replayedCompletion.Journal.JournalRevision != completed.Journal.JournalRevision {
+		t.Fatalf("replayed completion=%+v rejection=%+v admissionFailure=%+v", replayedCompletion, rejection, admissionFailure)
+	}
+}
+
+func TestUpdateBootstrapUnavailableIsExplicitTerminalFailure(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "unavailable"}
+	service, repository := newUpdateService(t, bootstrapper)
+	outcome, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-unavailable", 1))
+	if rejection != nil || admissionFailure != nil || outcome.Operation.State != "failed" || outcome.Journal.State != "failed" || outcome.Journal.Failure == nil || outcome.Journal.Failure.Code != "test-bootstrap-unavailable" {
+		t.Fatalf("unavailable update outcome=%+v rejection=%+v admissionFailure=%+v", outcome, rejection, admissionFailure)
+	}
+	if bootstrapper.handoffCalls != 0 {
+		t.Fatalf("Host requested handoff after unavailable bootstrap")
+	}
+	installation, err := repository.ReadHostPlatformInstallation(context.Background())
+	if err != nil || installation.ResourceRevision != 1 || installation.Release.ProductVersion != "test" {
+		t.Fatalf("failed update changed installation=%+v err=%v", installation, err)
+	}
+}
+
+func TestUpdateRejectsInvalidBootstrapBeforeDurableAdmissionOrStage(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, repository := newUpdateService(t, bootstrapper)
+	command := updateCommand("update-request-invalid-bootstrap", 1)
+	command.BootstrapEnvelope.Signature.Value = ""
+	outcome, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), command)
+	if admissionFailure != nil || rejection == nil || rejection.Issue.Code != "invalid-update-bootstrap-envelope" || bootstrapper.calls != 0 || bootstrapper.handoffCalls != 0 {
+		t.Fatalf("invalid bootstrap outcome=%+v rejection=%+v admissionFailure=%+v stageCalls=%d handoffCalls=%d", outcome, rejection, admissionFailure, bootstrapper.calls, bootstrapper.handoffCalls)
+	}
+	if _, err := repository.ReadHostUpdateJournalByRequestID(context.Background(), command.RequestID); !errors.Is(err, hostagentapplication.ErrHostAgentOwnedResourceNotFound) {
+		t.Fatalf("invalid bootstrap unexpectedly admitted a journal: %v", err)
+	}
+}
+
+func TestUpdateRecoveryReissuesOnlyDurablyPersistedHandoff(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	initialBootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, repository := newUpdateService(t, initialBootstrapper)
+	admitted, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-recovery", 1))
+	if rejection != nil || admissionFailure != nil || admitted.Journal.State != "handoff-pending" || initialBootstrapper.handoffCalls != 1 {
+		t.Fatalf("admitted update=%+v rejection=%+v admissionFailure=%+v handoffs=%d", admitted, rejection, admissionFailure, initialBootstrapper.handoffCalls)
+	}
+
+	// A new service instance models the Host process after restart.  Recovery
+	// reads the durable journal and repeats only its idempotent handoff effect.
+	recoveryBootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	restarted, err := hostagentapplication.NewHostUpdateApplicationService(repository, recoveryBootstrapper, clock, &sequentialIdentifiers{})
+	if err != nil {
+		t.Fatalf("new restarted update service: %v", err)
+	}
+	if err := restarted.RecoverDurableHostUpdateHandoffs(context.Background()); err != nil {
+		t.Fatalf("recover pending update handoff: %v", err)
+	}
+	journal, err := repository.ReadHostUpdateJournal(context.Background(), admitted.Journal.ID)
+	if err != nil || journal.State != "handoff-pending" || journal.JournalRevision != admitted.Journal.JournalRevision || recoveryBootstrapper.calls != 0 || recoveryBootstrapper.handoffCalls != 1 {
+		t.Fatalf("recovered journal=%+v err=%v stageCalls=%d handoffCalls=%d", journal, err, recoveryBootstrapper.calls, recoveryBootstrapper.handoffCalls)
+	}
+}
+
+func TestUpdateJournalRejectsDecodedButMismatchedBootstrapCorrelations(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, _ := newUpdateService(t, bootstrapper)
+	admitted, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-corrupt-journal", 1))
+	if rejection != nil || admissionFailure != nil {
+		t.Fatalf("admit update rejection=%+v admissionFailure=%+v", rejection, admissionFailure)
+	}
+	if issue := hostagentdomain.ValidateHostUpdateJournal(admitted.Journal); issue != nil {
+		t.Fatalf("valid journal issue=%+v", issue)
+	}
+	corrupted := admitted.Journal
+	corrupted.NextUpdaterSHA256 = updateSHA("f")
+	if issue := hostagentdomain.ValidateHostUpdateJournal(corrupted); issue == nil || issue.Code != "host-update-journal-invalid" {
+		t.Fatalf("corrupted journal issue=%+v", issue)
+	}
+}
+
+func TestUpdateRejectsOutOfOrderNextUpdaterEvidenceAndDoesNotAdvanceRelease(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, repository := newUpdateService(t, bootstrapper)
+	admitted, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-order", 1))
+	if rejection != nil || admissionFailure != nil {
+		t.Fatalf("admitted update rejection=%+v admissionFailure=%+v", rejection, admissionFailure)
+	}
+	report := successReport(admitted.Journal)
+	report.LayerEvidence[0].Layer = hostagentdomain.UpdateLayerContainer
+	outcome, rejection, admissionFailure := service.CompleteHostUpdateExecution(context.Background(), hostagentdomain.UpdateCompletionCommand{SchemaVersion: "v1", UpdateID: admitted.Journal.ID, ExpectedJournalRevision: admitted.Journal.JournalRevision, Report: report})
+	if rejection != nil || admissionFailure != nil || outcome.Operation.State != "failed" || outcome.Journal.State != "failed" || outcome.Journal.Failure == nil || outcome.Journal.Failure.Code != "update-execution-report-invalid" {
+		t.Fatalf("out-of-order completion outcome=%+v rejection=%+v admissionFailure=%+v", outcome, rejection, admissionFailure)
+	}
+	installation, err := repository.ReadHostPlatformInstallation(context.Background())
+	if err != nil || installation.ResourceRevision != 1 || installation.Release.ProductVersion != "test" {
+		t.Fatalf("invalid report changed installation=%+v err=%v", installation, err)
+	}
+}

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "v1",
+  "control": {
+    "listenAddress": "127.0.0.1:18280",
+    "stateDatabasePath": "/Library/Application Support/VitalServerRuntimePlatform/data/host-agent/host-agent.sqlite",
+    "guestTimeoutMilliseconds": 5000
+  },
+  "installation": {
+    "installationId": "vitalserver-runtime-platform-macos-reference",
+    "productVersion": "0.2.0-dev",
+    "runtimeVersion": "0.2.0-dev",
+    "dataDirectory": "/Library/Application Support/VitalServerRuntimePlatform/data"
+  },
+  "guestRuntimeControlEndpoint": {
+    "id": "vitalserver-guest-runtime-control-endpoint",
+    "scheme": "http",
+    "host": "127.0.0.1",
+    "port": 18443
+  },
+  "provider": {
+    "kind": "macos-virtualization",
+    "id": "vitalserver-macos-virtualization-reference-provider",
+    "macOSVirtualMachineSupervisorExecutablePath": "/Library/Application Support/VitalServerRuntimePlatform/bin/macos-virtual-machine-supervisor",
+    "macOSVirtualMachineConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/config/macos-virtual-machine.json"
+  },
+  "time": {
+    "hostNodeId": "vitalserver-macos-reference-host",
+    "timeAuthorityId": "vitalserver-macos-reference-time-authority",
+    "providerMode": "unsupported"
+  },
+  "telemetry": {
+    "pipelineMode": "unsupported",
+    "exportMode": "unavailable"
+  },
+  "updateBootstrap": {
+    "mode": "unavailable"
+  }
+}

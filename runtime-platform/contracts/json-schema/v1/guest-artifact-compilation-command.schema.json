@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-artifact-compilation-command",
+  "title": "GuestArtifactCompilationCommand",
+  "description": "C35 complete, immutable Release-build input for GuestArtifactCompiler. Every source is addressed below the explicit input root and identified by byte size and SHA-256. The selected builder copies the declared Guest root-storage base and derives one read-only RAW bootstrap storage image containing the Guest-visible NoCloud ISO9660 volume from C37/C38/C39/C44 and, for an external topology, C46 payload intent. It must not discover a Linux base, root partition, source directory, filesystem editor, storage role, topology, or delivery target.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "compilationId", "artifactSetId", "architecture", "buildEnvironment", "boot", "guestRuntimeArtifact", "recorderGatewayArtifact", "guestProductProcessSupervisorArtifact", "guestProductProcessDeploymentConfigurationArtifact", "guestProductServiceManagerDeploymentConfigurationArtifact", "guestProductBootstrapConfigurationArtifact", "guestProductVitalServerTopologyDeploymentArtifact", "storageDevices"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "compilationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "artifactSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "architecture": { "const": "arm64" },
+    "buildEnvironment": { "$ref": "#/$defs/BuildEnvironment" },
+    "boot": { "$ref": "#/$defs/BootOutput" },
+    "guestRuntimeArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "recorderGatewayArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestProductProcessSupervisorArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestProductProcessDeploymentConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestProductServiceManagerDeploymentConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestProductBootstrapConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestProductVitalServerTopologyDeploymentArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "externalVitalServerDeliveryConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "storageDevices": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/StorageDeviceOutput" }
+    }
+  },
+  "$defs": {
+    "BuildEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "builderExecutableSizeBytes", "builderExecutableSHA256"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "builderExecutableSizeBytes": { "type": "integer", "minimum": 1 },
+        "builderExecutableSHA256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "InputArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "inputRelativePath", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "inputRelativePath": { "type": "string", "minLength": 12, "maxLength": 1024, "pattern": "^inputs/(?:[A-Za-z0-9][A-Za-z0-9._-]*/)*[A-Za-z0-9][A-Za-z0-9._-]*$" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "BootArtifactOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "outputRelativePath"],
+      "properties": {
+        "source": { "$ref": "#/$defs/InputArtifact" },
+        "outputRelativePath": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "BootOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kernel"],
+      "properties": {
+        "kernel": { "$ref": "#/$defs/BootArtifactOutput" },
+        "initialRamdisk": { "$ref": "#/$defs/BootArtifactOutput" }
+      }
+    },
+    "StorageDeviceOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "storageImageFormat", "readOnly", "outputRelativePath"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "role": { "enum": ["guest-root-storage", "guest-product-bootstrap-volume"] },
+        "storageImageFormat": { "const": "raw" },
+        "guestVolumeFileSystem": { "enum": ["iso9660"] },
+        "readOnly": { "type": "boolean" },
+        "baseImage": { "$ref": "#/$defs/InputArtifact" },
+        "outputRelativePath": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "id": { "const": "guest-root" },
+            "role": { "const": "guest-root-storage" },
+            "storageImageFormat": { "const": "raw" },
+            "readOnly": { "const": false },
+            "outputRelativePath": { "const": "storage/guest-root.raw" }
+          },
+          "required": ["baseImage"],
+          "not": { "required": ["guestVolumeFileSystem"] }
+        },
+        {
+          "properties": {
+            "id": { "const": "guest-product-bootstrap" },
+            "role": { "const": "guest-product-bootstrap-volume" },
+            "storageImageFormat": { "const": "raw" },
+            "guestVolumeFileSystem": { "const": "iso9660" },
+            "readOnly": { "const": true },
+            "outputRelativePath": { "const": "storage/guest-product-bootstrap.raw" }
+          },
+          "required": ["guestVolumeFileSystem"],
+          "not": { "required": ["baseImage"] }
+        }
+      ]
+    }
+  }
+}

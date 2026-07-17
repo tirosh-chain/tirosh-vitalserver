@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "v1",
+  "id": "product-update-020",
+  "bootstrapEnvelopeId": "release-bootstrap-20260717",
+  "layerPlan": [
+    {
+      "layer": "container",
+      "dependsOn": [],
+      "artifact": { "id": "container-020", "relativePath": "payload/container.tar", "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "sizeBytes": 102, "mediaType": "application/x-tar" },
+      "rollback": { "state": "available" }
+    }
+  ]
+}

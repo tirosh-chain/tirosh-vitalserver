@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:provider-lifecycle-result",
+  "title": "ProviderLifecycleResult",
+  "description": "An adapter-supplied live provider observation after a requested lifecycle effect. It is not Guest Runtime readiness.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "providerId",
+    "observedState",
+    "observedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "providerId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "observedState": {
+      "type": "string",
+      "enum": [
+        "starting",
+        "running",
+        "stopping",
+        "stopped",
+        "unavailable",
+        "failed"
+      ]
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "observedState": {
+            "enum": [
+              "unavailable",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "observedState"
+        ]
+      },
+      "then": {
+        "required": [
+          "issue"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "issue"
+          ]
+        }
+      }
+    }
+  ]
+}

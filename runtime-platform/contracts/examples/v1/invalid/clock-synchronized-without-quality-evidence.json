@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "v1",
+  "node": {
+    "kind": "guest",
+    "id": "guest-runtime-0001"
+  },
+  "state": "synchronized",
+  "source": {
+    "profile": "enterprise-ntp",
+    "sourceId": "ntp-source-primary"
+  },
+  "observedAt": "2026-07-17T00:00:01Z"
+}

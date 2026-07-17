@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "state": "failed",
+  "requestId": "topology-apply-009",
+  "observedAt": "2026-07-17T00:02:00Z",
+  "deliveryDisposition": "unknown",
+  "issue": {
+    "code": "guest-control-forward-failed",
+    "retryable": true,
+    "dependency": "guest-control"
+  }
+}

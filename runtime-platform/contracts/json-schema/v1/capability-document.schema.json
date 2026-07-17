@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:capability-document",
+  "title": "CapabilityDocument",
+  "description": "A Guest Runtime-preserved provider capability observation. Unsupported is explicit, not an omitted field.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "provider",
+    "capabilityRevision",
+    "observedAt",
+    "commands",
+    "reads"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    },
+    "capabilityRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Capability"
+      }
+    },
+    "reads": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Capability"
+      }
+    }
+  },
+  "$defs": {
+    "Capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "state"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "supported",
+            "unsupported"
+          ]
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unsupported"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "supported"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v1",
+  "assemblyId": "guest-product-input-assembly-0.1.0-dev",
+  "compilationId": "guest-artifact-build-0.1.0-dev",
+  "artifactSetId": "vitalserver-guest-arm64-0.1.0-dev",
+  "architecture": "arm64",
+  "guestProductBootstrapArtifactComposer": { "id": "guest-product-bootstrap-artifact-composer", "sourceAbsolutePath": "/release/build/guest-product-bootstrap-artifact-composer", "inputRelativePath": "builders/guest-product-bootstrap-artifact-composer" },
+  "boot": { "kernel": { "source": { "id": "linux-arm64-kernel", "sourceAbsolutePath": "/release/kernel/Image", "inputRelativePath": "inputs/boot/Image" }, "outputRelativePath": "boot/Image" } },
+  "guestRuntimeArtifact": { "id": "guest-runtime-linux-arm64", "sourceAbsolutePath": "/release/services/guest-runtime", "inputRelativePath": "inputs/services/guest-runtime" },
+  "recorderGatewayArtifact": { "id": "recorder-gateway-linux-arm64", "sourceAbsolutePath": "/release/services/recorder-gateway.tar.gz", "inputRelativePath": "inputs/services/recorder-gateway.tar.gz" },
+  "guestProductProcessSupervisorArtifact": { "id": "guest-product-process-supervisor-linux-arm64", "sourceAbsolutePath": "/release/services/guest-product-process-supervisor", "inputRelativePath": "inputs/services/guest-product-process-supervisor" },
+  "guestProductProcessDeploymentConfigurationArtifact": { "id": "guest-product-process-deployment-configuration", "sourceAbsolutePath": "/release/config/guest-product-process-deployment.json", "inputRelativePath": "inputs/configuration/guest-product-process-deployment.json" },
+  "guestProductServiceManagerDeploymentConfigurationArtifact": { "id": "guest-product-service-manager-deployment-configuration", "sourceAbsolutePath": "/release/config/guest-product-service-manager-deployment.json", "inputRelativePath": "inputs/configuration/guest-product-service-manager-deployment.json" },
+  "storageDevices": [
+    { "id": "guest-root", "role": "guest-root-storage", "storageImageFormat": "raw", "readOnly": false, "baseImage": { "id": "linux-arm64-root-storage-base", "sourceAbsolutePath": "/release/storage/guest-root.raw", "inputRelativePath": "inputs/storage/guest-root.raw" }, "outputRelativePath": "storage/guest-root.raw" },
+    { "id": "guest-product-bootstrap", "role": "guest-product-bootstrap-volume", "storageImageFormat": "raw", "guestVolumeFileSystem": "iso9660", "readOnly": true, "outputRelativePath": "storage/guest-product-bootstrap.raw" }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "v1",
+  "id": "ingress-receipt-0002",
+  "requestId": "ingress-request-0002",
+  "recorderId": "recorder-lab-0001",
+  "connection": {
+    "sessionId": "socket-session-0002",
+    "protocolVersion": "v1"
+  },
+  "packet": {
+    "byteCount": 512,
+    "receivedAt": "2026-07-17T00:00:00Z",
+    "parseState": "accepted"
+  },
+  "ingressState": "accepted",
+  "durableIngressStateHandoff": {
+    "state": "failed",
+    "issue": {
+      "code": "durable-ingress-state-write-failed",
+      "retryable": true
+    }
+  },
+  "delivery": {
+    "state": "not-requested"
+  },
+  "recordedAt": "2026-07-17T00:00:00Z"
+}

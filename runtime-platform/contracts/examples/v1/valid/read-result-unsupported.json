@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v1",
+  "state": "unsupported",
+  "observedAt": "2026-07-17T00:00:00Z",
+  "issue": {
+    "code": "capability-not-supported",
+    "dependency": "upstream-provider"
+  }
+}

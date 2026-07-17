@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:common",
+  "title": "Runtime Platform v1 common contract definitions",
+  "type": "object",
+  "$defs": {
+    "Identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "SchemaVersion": {
+      "const": "v1"
+    },
+    "ProtocolVersion": {
+      "type": "string",
+      "pattern": "^v[1-9][0-9]*$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ReadState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "missing",
+        "invalid",
+        "unavailable",
+        "failed",
+        "stale",
+        "empty",
+        "unsupported"
+      ]
+    },
+    "Issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "dependency": {
+          "$ref": "#/$defs/Identifier"
+        }
+      }
+    },
+    "EvidenceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "uri": {
+          "type": "string",
+          "format": "uri-reference",
+          "maxLength": 2048
+        }
+      }
+    },
+    "ResourceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceType",
+        "resourceId"
+      ],
+      "properties": {
+        "resourceType": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "resourceId": {
+          "$ref": "#/$defs/Identifier"
+        }
+      }
+    },
+    "SecretReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "#/$defs/Identifier"
+        }
+      }
+    },
+    "ServiceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "instanceId": {
+          "$ref": "#/$defs/Identifier"
+        }
+      }
+    },
+    "Sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

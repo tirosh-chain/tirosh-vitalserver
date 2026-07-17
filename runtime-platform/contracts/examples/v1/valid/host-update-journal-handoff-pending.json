@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "v1",
+  "id": "host-update-20260717",
+  "journalRevision": 3,
+  "operationId": "host-update-operation-20260717",
+  "requestId": "host-update-request-20260717",
+  "installationId": "host-installation",
+  "expectedInstallationRevision": 1,
+  "bundleReferenceId": "offline-bundle-020",
+  "bootstrapEnvelope": {
+    "schemaVersion": "v1",
+    "id": "release-bootstrap-20260717",
+    "productId": "vitalserver-runtime-platform",
+    "target": { "platform": "macos", "architecture": "arm64" },
+    "targetRelease": { "productVersion": "0.2.0", "runtimeVersion": "0.2.0" },
+    "layerOrder": ["guest-runtime", "container", "host-platform"],
+    "nextUpdaterArtifact": { "id": "host-updater-020", "relativePath": "payload/host-updater", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "sizeBytes": 42, "mediaType": "application/octet-stream" },
+    "specification": { "id": "product-update-spec-020", "relativePath": "payload/product-update.json", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "sizeBytes": 91, "mediaType": "application/json" },
+    "signature": { "algorithm": "ed25519", "keyId": "release-key-2026", "signedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "value": "base64-ed25519-signature" },
+    "issuedAt": "2026-07-17T00:00:00Z"
+  },
+  "bootstrapEnvelopeId": "release-bootstrap-20260717",
+  "bootstrapSignedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "nextUpdaterSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "updateSpecificationSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "targetRelease": { "productVersion": "0.2.0", "runtimeVersion": "0.2.0" },
+  "layerOrder": ["guest-runtime", "container", "host-platform"],
+  "state": "handoff-pending",
+  "bootstrapReceipt": { "schemaVersion": "v1", "updateId": "host-update-20260717", "requestId": "host-update-request-20260717", "bootstrapEnvelopeId": "release-bootstrap-20260717", "nextUpdaterSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "staged", "observedAt": "2026-07-17T00:00:05Z" },
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:00:06Z"
+}

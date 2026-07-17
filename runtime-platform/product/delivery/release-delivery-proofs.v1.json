@@ -1,0 +1,245 @@
+{
+  "schemaVersion": "v1",
+  "proofs": [
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "artifact-integrity",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "release-artifact-not-built", "message": "No macOS release artifact and digest evidence have been captured." }
+    },
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "sbom-and-notices",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "release-sbom-not-generated", "message": "The checked-in source inventory is not per-artifact SBOM and notice evidence." }
+    },
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "clean-install",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "macos-clean-host-runner-not-assigned", "message": "No clean macOS Host install proof has been captured." }
+    },
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "service-registration",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "macos-service-registration-not-proven", "message": "No launchd registration evidence has been captured." }
+    },
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "reboot",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "macos-reboot-not-proven", "message": "No clean macOS Host reboot proof has been captured." }
+    },
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "update",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "macos-update-not-proven", "message": "No macOS update proof has been captured." }
+    },
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "rollback",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "macos-rollback-not-proven", "message": "No macOS rollback proof has been captured." }
+    },
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "stage": "uninstall-reinstall",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "macos-uninstall-reinstall-not-proven", "message": "No macOS clean uninstall and reinstall proof has been captured." }
+    },
+    {
+      "planId": "windows-runtime-platform-release",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "artifact-integrity",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "release-artifact-not-built", "message": "No Windows release artifact and digest evidence have been captured." }
+    },
+    {
+      "planId": "windows-runtime-platform-release",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "sbom-and-notices",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "release-sbom-not-generated", "message": "The checked-in source inventory is not per-artifact SBOM and notice evidence." }
+    },
+    {
+      "planId": "windows-runtime-platform-release",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "clean-install",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "windows-clean-host-runner-not-assigned", "message": "No clean Windows Host install proof has been captured." }
+    },
+    {
+      "planId": "windows-runtime-platform-release",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "service-registration",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "windows-service-registration-not-proven", "message": "No Windows SCM registration evidence has been captured." }
+    },
+    {
+      "planId": "windows-runtime-platform-release",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "reboot",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "windows-reboot-not-proven", "message": "No clean Windows Host reboot proof has been captured." }
+    },
+    {
+      "planId": "windows-runtime-platform-release",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "update",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "windows-update-not-proven", "message": "No Windows update proof has been captured." }
+    },
+    {
+      "planId": "windows-runtime-platform-release",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "rollback",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "windows-rollback-not-proven", "message": "No Windows rollback proof has been captured." }
+    },
+    {
+      "planId": "windows-runtime-platform-release",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "uninstall-reinstall",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "windows-uninstall-reinstall-not-proven", "message": "No Windows clean uninstall and reinstall proof has been captured." }
+    },
+    {
+      "planId": "linux-runtime-platform-release",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "stage": "artifact-integrity",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "release-artifact-not-built", "message": "No Linux release artifact and digest evidence have been captured." }
+    },
+    {
+      "planId": "linux-runtime-platform-release",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "stage": "sbom-and-notices",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "release-sbom-not-generated", "message": "The checked-in source inventory is not per-artifact SBOM and notice evidence." }
+    },
+    {
+      "planId": "linux-runtime-platform-release",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "stage": "clean-install",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "linux-clean-host-runner-not-assigned", "message": "No clean Linux Host install proof has been captured." }
+    },
+    {
+      "planId": "linux-runtime-platform-release",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "stage": "service-registration",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "linux-service-registration-not-proven", "message": "No systemd registration evidence has been captured." }
+    },
+    {
+      "planId": "linux-runtime-platform-release",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "stage": "reboot",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "linux-reboot-not-proven", "message": "No clean Linux Host reboot proof has been captured." }
+    },
+    {
+      "planId": "linux-runtime-platform-release",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "stage": "update",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "linux-update-not-proven", "message": "No Linux update proof has been captured." }
+    },
+    {
+      "planId": "linux-runtime-platform-release",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "stage": "rollback",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "linux-rollback-not-proven", "message": "No Linux rollback proof has been captured." }
+    },
+    {
+      "planId": "linux-runtime-platform-release",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "stage": "uninstall-reinstall",
+      "status": "pending",
+      "recordedAt": "2026-07-17T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "linux-uninstall-reinstall-not-proven", "message": "No Linux clean uninstall and reinstall proof has been captured." }
+    }
+  ]
+}

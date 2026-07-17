@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "fixtureKind": "socketio-frame-observation",
+  "protocol": {
+    "family": "socket.io",
+    "eventName": "send_data",
+    "framePrefix": "42",
+    "packetKind": "event",
+    "contentEncoding": "binary-string"
+  },
+  "sanitizedFrame": {
+    "shape": "42[\"send_data\",<binary-string-content>]",
+    "rawFrameRetained": false
+  },
+  "expectedFact": {
+    "ingressCandidate": true,
+    "contentDigestMayBeComputed": true
+  }
+}

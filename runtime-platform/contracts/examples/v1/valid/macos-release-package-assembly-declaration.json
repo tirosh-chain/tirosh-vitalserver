@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "v1",
+  "assemblyId": "macos-runtime-platform-package-0.2.0-dev",
+  "releaseDeliveryPlan": {
+    "documentAbsolutePath": "/release/product/delivery/release-delivery-plans.v1.json",
+    "id": "macos-runtime-platform-release"
+  },
+  "guestArtifactCompilationInputAssembly": {
+    "declarationAbsolutePath": "/release/input/guest-artifact-compilation-input-assembly.json",
+    "assembledInputRootAbsolutePath": "/release/work/guest-artifact-input"
+  },
+  "guestArtifactCompilation": {
+    "outputDirectoryAbsolutePath": "/release/work/guest-artifacts",
+    "builderTimeoutSeconds": 900
+  },
+  "hostArtifacts": {
+    "hostAgentBinaryAbsolutePath": "/release/artifacts/host-agent",
+    "hostEdgeProxyBinaryAbsolutePath": "/release/artifacts/host-edge-proxy",
+    "macOSVirtualMachineSupervisorBinaryAbsolutePath": "/release/artifacts/macos-virtual-machine-supervisor",
+    "guestProductProcessSupervisorArtifactAbsolutePath": "/release/artifacts/guest-product-process-supervisor"
+  },
+  "deploymentDocuments": {
+    "hostAgentDeploymentConfigurationAbsolutePath": "/release/configuration/host-agent-deployment.json",
+    "hostEdgeProxyDeploymentConfigurationAbsolutePath": "/release/configuration/host-edge-proxy-deployment.json",
+    "macOSVirtualMachineConfigurationAbsolutePath": "/release/configuration/macos-virtual-machine.json",
+    "guestProductProcessDeploymentConfigurationAbsolutePath": "/release/configuration/guest-product-process-deployment.json",
+    "guestProductServiceManagerDeploymentConfigurationAbsolutePath": "/release/configuration/guest-product-service-manager-deployment.json",
+    "guestProductBootstrapConfigurationAbsolutePath": "/release/configuration/guest-product-bootstrap.json",
+    "guestProductVitalServerTopologyDeploymentAbsolutePath": "/release/configuration/guest-product-vitalserver-topology.json",
+    "externalVitalServerDeliveryConfigurationAbsolutePath": "/release/configuration/external-vitalserver-delivery.json"
+  },
+  "macOSPackage": {
+    "payloadBasePath": "/Library/Application Support/VitalServerRuntimePlatform",
+    "outputPackageAbsolutePath": "/release/output/VitalServerRuntimePlatform-0.2.0-dev.pkg",
+    "pkgbuildExecutableAbsolutePath": "/usr/bin/pkgbuild",
+    "installerPackageSigning": {
+      "mode": "signed",
+      "identity": "Developer ID Installer: Tirosh",
+      "productsignExecutableAbsolutePath": "/usr/bin/productsign"
+    },
+    "virtualMachineSupervisorCodeSigning": {
+      "mode": "signed",
+      "identity": "Developer ID Application: Tirosh",
+      "codesignExecutableAbsolutePath": "/usr/bin/codesign",
+      "virtualizationEntitlementsAbsolutePath": "/release/entitlements/macos-virtual-machine-supervisor.entitlements"
+    }
+  },
+  "macOSPackageVerification": {
+    "pkgutilExecutableAbsolutePath": "/usr/sbin/pkgutil"
+  },
+  "assemblyReceipt": {
+    "outputAbsolutePath": "/release/evidence/macos-release-package-assembly-receipt.json"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-cold-path-capture-finalization-command",
+  "title": "RecorderColdPathCaptureFinalizationCommand",
+  "description": "An idempotent command to finalize one explicitly identified Recorder Gateway cold-path capture at one expected resource revision.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "coldPathCaptureId",
+    "expectedCaptureRevision"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "coldPathCaptureId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedCaptureRevision": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

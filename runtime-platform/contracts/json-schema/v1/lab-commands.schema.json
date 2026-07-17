@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-commands",
+  "title": "Lab commands",
+  "description": "Revisioned Guest Runtime Lab commands. hide, detach, and delete are deliberately separate operations.",
+  "oneOf": [
+    { "$ref": "#/$defs/CreateLabSessionCommand" },
+    { "$ref": "#/$defs/LabResourceCommand" }
+  ],
+  "$defs": {
+    "CreateLabSessionCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "requestId", "sessionId", "expectedSessionRevision", "name", "scenario", "recorderCount"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "sessionId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "expectedSessionRevision": { "const": 0 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenario": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "recorderCount": { "type": "integer", "minimum": 1, "maximum": 64 }
+      }
+    },
+    "LabResourceCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "requestId", "resourceType", "resourceId", "expectedResourceRevision", "action"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "resourceType": { "type": "string", "enum": ["lab-session", "lab-bed", "virtual-recorder"] },
+        "resourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "expectedResourceRevision": { "type": "integer", "minimum": 1 },
+        "action": { "type": "string", "enum": ["start", "stop", "hide", "unhide", "detach", "delete"] },
+        "cascade": { "type": "string", "enum": ["none", "owned-resources"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "action": { "enum": ["start", "stop"] } }, "required": ["action"] },
+          "then": { "properties": { "resourceType": { "enum": ["lab-session", "virtual-recorder"] } } }
+        },
+        {
+          "if": { "properties": { "action": { "const": "detach" } }, "required": ["action"] },
+          "then": { "properties": { "resourceType": { "const": "virtual-recorder" } } }
+        },
+        {
+          "if": { "properties": { "action": { "const": "delete" } }, "required": ["action"] },
+          "then": { "required": ["cascade"] },
+          "else": { "not": { "required": ["cascade"] } }
+        },
+        {
+          "if": {
+            "properties": { "action": { "const": "delete" }, "resourceType": { "const": "lab-session" } },
+            "required": ["action", "resourceType"]
+          },
+          "then": { "properties": { "cascade": { "const": "owned-resources" } } }
+        },
+        {
+          "if": {
+            "properties": { "action": { "const": "delete" }, "resourceType": { "enum": ["lab-bed", "virtual-recorder"] } },
+            "required": ["action", "resourceType"]
+          },
+          "then": { "properties": { "cascade": { "const": "none" } } }
+        }
+      ]
+    }
+  }
+}

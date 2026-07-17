@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-bootstrap-volume-composition-plan",
+  "title": "GuestProductBootstrapVolumeCompositionPlan",
+  "description": "C40 explicit plan from the Guest Product release composer to the selected NoCloud bootstrap-volume composer. The Host produces one read-only RAW storage image containing the Guest-visible CIDATA ISO9660 filesystem. Guest cloud-init owns the later root-filesystem installation. Every named bootstrap payload has exactly one declared file or archive installation; the service enable link must target the declared installed service unit. The plan makes source bytes, Guest destinations, archive operation, service-unit link, Guest Runtime state directory, storage-image format, and Guest filesystem explicit; the composer must not mount or edit a Guest root image, discover a source, or select a delivery medium from the Host.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "bootstrapId", "volumeLabel", "storageImageFormat", "guestVolumeFileSystem", "instanceId", "localHostName", "serviceUnitName", "guestRuntimeStateDirectory", "sources", "fileInstallations", "archiveInstallations", "symbolicLinks"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "bootstrapId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "volumeLabel": { "const": "CIDATA" },
+    "storageImageFormat": { "const": "raw" },
+    "guestVolumeFileSystem": { "const": "iso9660" },
+    "instanceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "localHostName": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "serviceUnitName": { "type": "string", "minLength": 9, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,123}\\.service$" },
+    "guestRuntimeStateDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
+    "sources": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/Source" } },
+    "fileInstallations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/FileInstallation" } },
+    "archiveInstallations": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/ArchiveInstallation" } },
+    "symbolicLinks": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/SymbolicLink" } }
+  },
+  "$defs": {
+    "AbsoluteGuestPath": { "type": "string", "minLength": 2, "maxLength": 1024, "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" },
+    "SourceRelativePath": { "type": "string", "minLength": 10, "maxLength": 1024, "pattern": "^(?:sources|generated)/[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "RelativeArchivePath": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$" },
+    "GuestRuntimeStateDirectory": {
+      "description": "C39-declared mutable directory prepared by Guest cloud-init before the Guest Runtime starts. The directory is desired installation input, not runtime readiness evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directoryPath", "directoryMode"],
+      "properties": {
+        "directoryPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "directoryMode": { "const": "0700" }
+      }
+    },
+    "Source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "sourceRelativePath", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "sourceRelativePath": { "$ref": "#/$defs/SourceRelativePath" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "FileInstallation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourceId", "destinationPath", "fileMode"],
+      "properties": {
+        "sourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "fileMode": { "enum": ["0644", "0755"] }
+      }
+    },
+    "ArchiveInstallation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourceId", "archiveFormat", "entryModePolicy", "symbolicLinkPolicy", "destinationDirectory", "requiredArchivePaths"],
+      "properties": {
+        "sourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "archiveFormat": { "const": "tar-gzip" },
+        "entryModePolicy": { "const": "preserve-archive-mode" },
+        "symbolicLinkPolicy": { "const": "allow-relative-links-to-declared-regular-files" },
+        "destinationDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "requiredArchivePaths": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "$ref": "#/$defs/RelativeArchivePath" } }
+      }
+    },
+    "SymbolicLink": {
+      "type": "object", "additionalProperties": false,
+      "required": ["linkPath", "targetPath"],
+      "properties": {
+        "linkPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "targetPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    }
+  }
+}

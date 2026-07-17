@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "guest-telemetry-signal-1",
+  "pipelineId": "guest-telemetry-pipeline",
+  "expectedResourceRevision": 1,
+  "signal": {
+    "schemaVersion": "v1",
+    "service": {
+      "name": "guest-runtime",
+      "version": "0.1.0",
+      "instanceId": "guest-runtime-0001"
+    },
+    "signalKinds": [
+      "logs",
+      "metrics",
+      "traces"
+    ],
+    "signalName": "runtime.operation.observed",
+    "emittedAt": "2026-07-17T00:00:00Z",
+    "requestId": "guest-telemetry-signal-1",
+    "component": "telemetry-pipeline",
+    "outcomeCode": "accepted"
+  },
+  "attributes": {
+    "component": "telemetry-pipeline",
+    "patient.id": "will-be-redacted"
+  }
+}

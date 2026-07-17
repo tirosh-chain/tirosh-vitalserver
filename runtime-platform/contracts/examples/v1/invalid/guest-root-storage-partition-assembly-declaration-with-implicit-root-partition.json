@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v1",
+  "assemblyId": "ubuntu-noble-arm64-root-partition",
+  "architecture": "arm64",
+  "sourceC42Receipt": {
+    "receiptAbsolutePath": "/release-inputs/c42/guest-linux-boot-artifact-extraction-receipt.json",
+    "receiptSHA256": "ee6f5dc69813bb510504b9f96cbb0d89956c1a16a13eac6bba8f29c81f211b8d",
+    "extractionId": "ubuntu-noble-arm64-boot-artifacts"
+  },
+  "sourceRootStorage": {
+    "id": "ubuntu-noble-arm64-root-storage",
+    "sourceAbsolutePath": "/release-inputs/c42/storage/ubuntu-noble-arm64-root.raw",
+    "sizeBytes": 2061500416,
+    "sha256": "92ee679ca9b748759aad9811821c1daef62a62608566331d4fc6f0f35ee48932",
+    "storageLayout": "whole-disk-ext4",
+    "filesystemType": "ext4"
+  },
+  "targetRootStorage": {
+    "id": "vitalserver-guest-root-storage",
+    "outputRelativePath": "storage/vitalserver-guest-root.raw",
+    "guestDiskDevicePath": "/dev/vda",
+    "rootPartitionDevicePath": "/dev/vda1",
+    "partitionTableType": "mbr",
+    "firstPartitionStartSector": 2048,
+    "partitionTypeMbrHex": "83",
+    "filesystemType": "ext4",
+    "logicalSectorSizeBytes": 512
+  }
+}

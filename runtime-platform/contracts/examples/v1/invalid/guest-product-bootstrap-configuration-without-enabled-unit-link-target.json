@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v1",
+  "bootstrapId": "vitalserver-guest-product-bootstrap",
+  "volumeLabel": "CIDATA",
+  "instanceId": "vitalserver-guest-bootstrap-instance",
+  "localHostName": "vitalserver-guest",
+  "guestRuntime": { "artifactId": "guest-runtime-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-runtime", "fileMode": "0755" },
+  "recorderGatewayBundle": { "artifactId": "recorder-gateway-linux-arm64", "archiveFormat": "tar-gzip", "entryModePolicy": "preserve-archive-mode", "symbolicLinkPolicy": "allow-relative-links-to-declared-regular-files", "destinationDirectory": "/opt/vitalserver", "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js"] },
+  "guestProductProcessSupervisor": { "artifactId": "guest-product-process-supervisor-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-product-process-supervisor", "fileMode": "0755" },
+  "guestProductProcessDeployment": { "artifactId": "guest-product-process-deployment-configuration", "destinationPath": "/etc/vitalserver/guest-product-process-deployment.json", "fileMode": "0644" },
+  "guestProductVitalServerTopologyDeployment": { "artifactId": "guest-product-vitalserver-topology-deployment", "destinationPath": "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json", "fileMode": "0644" },
+  "guestProductServiceManagerDeployment": {
+    "artifactId": "guest-product-service-manager-deployment-configuration",
+    "configurationDestinationPath": "/etc/vitalserver/guest-product-service-manager-deployment.json",
+    "unitDestinationPath": "/etc/systemd/system/vitalserver-guest-product.service",
+    "enabledUnitLinkPath": "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-command",
+  "title": "HostUpdateCommand",
+  "description": "C27 revisioned Host-owned command to admit an immutable bootstrap update envelope. The bundle reference is Host-local; it is not a browser or Guest path.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "installationId", "expectedInstallationRevision", "bundleReferenceId", "bootstrapEnvelope"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "installationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "expectedInstallationRevision": { "type": "integer", "minimum": 1 },
+    "bundleReferenceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "bootstrapEnvelope": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope" }
+  }
+}
