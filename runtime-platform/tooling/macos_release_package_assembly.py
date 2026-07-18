@@ -61,6 +61,7 @@ class MacOSReleasePackageAssemblyDeclaration:
     guest_artifact_builder_timeout_seconds: int
     host_agent_binary: Path
     host_edge_proxy_binary: Path
+    host_installation_manager_binary: Path
     macos_virtual_machine_supervisor_binary: Path
     guest_product_process_supervisor_artifact: Path
     host_agent_deployment_configuration: Path
@@ -295,6 +296,10 @@ def validate_host_package_verification_output(
         raise MacOSReleasePackageAssemblyError(
             "PKG verification payload base path must equal the PKG composition payload base path"
         )
+    if verification.release_slot_id != composition.release_slot_id:
+        raise MacOSReleasePackageAssemblyError(
+            "PKG verification immutable release slot must equal the PKG composition release slot"
+        )
 
 
 def assemble_declared_macos_release_package(
@@ -491,6 +496,11 @@ def parse_macos_release_package_assembly_declaration(
         host_edge_proxy_binary=required_absolute_path(
             host_artifacts,
             "hostEdgeProxyBinaryAbsolutePath",
+            "C47 hostArtifacts",
+        ),
+        host_installation_manager_binary=required_absolute_path(
+            host_artifacts,
+            "hostInstallationManagerBinaryAbsolutePath",
             "C47 hostArtifacts",
         ),
         macos_virtual_machine_supervisor_binary=required_absolute_path(
@@ -699,6 +709,10 @@ def validate_macos_release_package_assembly_declaration_execution(
         ("Host Agent binary", declaration.host_agent_binary),
         ("Host Edge Proxy binary", declaration.host_edge_proxy_binary),
         (
+            "Host Installation Manager binary",
+            declaration.host_installation_manager_binary,
+        ),
+        (
             "macOS virtual machine supervisor binary",
             declaration.macos_virtual_machine_supervisor_binary,
         ),
@@ -808,8 +822,10 @@ def macos_release_package_assembly_request_from_declaration(
         release_delivery_plans_document=declaration.release_delivery_plans_document,
         release_delivery_plan_id=declaration.release_delivery_plan_id,
         payload_base_path=declaration.payload_base_path,
+        release_slot_id=declaration.assembly_id,
         host_agent_binary=declaration.host_agent_binary,
         host_edge_proxy_binary=declaration.host_edge_proxy_binary,
+        host_installation_manager_binary=declaration.host_installation_manager_binary,
         macos_virtual_machine_supervisor_binary=(
             declaration.macos_virtual_machine_supervisor_binary
         ),
@@ -865,6 +881,7 @@ def macos_release_package_assembly_request_from_declaration(
         release_delivery_plans_document=declaration.release_delivery_plans_document,
         release_delivery_plan_id=declaration.release_delivery_plan_id,
         payload_base_path=declaration.payload_base_path,
+        release_slot_id=declaration.assembly_id,
     )
     return MacOSReleasePackageAssemblyRequest(
         guest_artifact_input_assembly_execution=(

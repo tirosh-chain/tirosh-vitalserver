@@ -83,8 +83,10 @@ class MacOSHostPackageComposition:
     release_delivery_plans_document: Path
     release_delivery_plan_id: str
     payload_base_path: PurePosixPath
+    release_slot_id: str
     host_agent_binary: Path
     host_edge_proxy_binary: Path
+    host_installation_manager_binary: Path
     macos_virtual_machine_supervisor_binary: Path
     host_agent_deployment_configuration: Path
     host_edge_proxy_deployment_configuration: Path
@@ -105,6 +107,20 @@ class MacOSHostPackageComposition:
     macos_installer_package_signing: MacOSInstallerPackageSigning
     macos_virtual_machine_supervisor_code_signing: MacOSVirtualMachineSupervisorCodeSigning
     replace_output: bool
+
+
+def immutable_release_slot_path(
+    composition: MacOSHostPackageComposition,
+) -> PurePosixPath:
+    """Return C48's immutable release path below the product payload root."""
+
+    return composition.payload_base_path / "releases" / composition.release_slot_id
+
+
+def current_release_path(composition: MacOSHostPackageComposition) -> PurePosixPath:
+    """Return the stable executable/configuration path used by launchd."""
+
+    return composition.payload_base_path / "current"
 
 
 @dataclass(frozen=True)
@@ -214,10 +230,10 @@ def validate_macos_host_package_documents(
     provider = required_object(host_agent_deployment, "provider", "C33")
     if provider.get("kind") != "macos-virtualization":
         raise MacOSHostPackageCompositionError("C33 provider kind must be macos-virtualization for the macOS package composer")
-    expected_c32_path = composition.payload_base_path / "config" / "macos-virtual-machine.json"
+    expected_c32_path = current_release_path(composition) / "config" / "macos-virtual-machine.json"
     if provider.get("macOSVirtualMachineConfigurationPath") != str(expected_c32_path):
         raise MacOSHostPackageCompositionError("C33 must name the packaged C32 path exactly")
-    expected_bridge_path = composition.payload_base_path / "bin" / "macos-virtual-machine-supervisor"
+    expected_bridge_path = current_release_path(composition) / "bin" / "macos-virtual-machine-supervisor"
     if provider.get("macOSVirtualMachineSupervisorExecutablePath") != str(expected_bridge_path):
         raise MacOSHostPackageCompositionError("C33 must name the packaged macOS virtual machine supervisor path exactly")
     control = required_object(host_agent_deployment, "control", "C33")
@@ -268,12 +284,12 @@ def validate_macos_host_package_documents(
 
     boot = required_object(virtual_machine, "boot", "C32")
     kernel_path = boot.get("kernelPath")
-    require_payload_path(composition.payload_base_path, kernel_path, "C32 boot.kernelPath")
+    require_payload_path(current_release_path(composition), kernel_path, "C32 boot.kernelPath")
     initial_ramdisk_path = boot.get("initialRamdiskPath")
     if initial_ramdisk_path is None and composition.guest_initial_ramdisk_source is not None:
         raise MacOSHostPackageCompositionError("C32 has no initialRamdiskPath but an initial RAM disk source was supplied")
     if initial_ramdisk_path is not None:
-        require_payload_path(composition.payload_base_path, initial_ramdisk_path, "C32 boot.initialRamdiskPath")
+        require_payload_path(current_release_path(composition), initial_ramdisk_path, "C32 boot.initialRamdiskPath")
         if composition.guest_initial_ramdisk_source is None:
             raise MacOSHostPackageCompositionError("C32 initialRamdiskPath requires an explicit initial RAM disk source")
     validate_c32_guest_boot_console_capture(virtual_machine, host_agent_deployment)
@@ -297,7 +313,7 @@ def validate_macos_host_package_documents(
         validate_c32_storage_device(device, attachment_index)
         if storage_id != "guest-root":
             require_payload_path(
-                composition.payload_base_path,
+                current_release_path(composition),
                 device.get("diskImagePath"),
                 "C32 storage device " + storage_id,
             )
@@ -398,12 +414,12 @@ def validate_c32_guest_runtime_disk_provisioning(
             "C32 guestRuntimeDiskProvisioning must declare retain-when-receipt-matches-release-artifact"
         )
     if release_manifest_path != str(
-        composition.payload_base_path / "release" / "macos-guest-artifact-manifest.json"
+        current_release_path(composition) / "release" / "macos-guest-artifact-manifest.json"
     ):
         raise MacOSHostPackageCompositionError(
             "C32 guestRuntimeDiskProvisioning releaseArtifactManifestPath must name the packaged C34 path exactly"
         )
-    if release_artifact_path != str(composition.payload_base_path / "release" / "guest-root.raw"):
+    if release_artifact_path != str(current_release_path(composition) / "release" / "guest-root.raw"):
         raise MacOSHostPackageCompositionError(
             "C32 guestRuntimeDiskProvisioning releaseArtifactPath must name the packaged immutable guest-root path exactly"
         )
@@ -442,9 +458,9 @@ def compose_host_agent_launchd_service_definition(
     return {
         "Label": macos_host_package_release_plan.host_agent_launchd_service_label,
         "ProgramArguments": [
-            str(composition.payload_base_path / "bin" / "host-agent"),
+            str(current_release_path(composition) / "bin" / "host-agent"),
             "--deployment-configuration",
-            str(composition.payload_base_path / "config" / "host-agent-deployment.json"),
+            str(current_release_path(composition) / "config" / "host-agent-deployment.json"),
         ],
         "RunAtLoad": True,
         "KeepAlive": True,
@@ -459,9 +475,9 @@ def compose_host_edge_proxy_launchd_service_definition(
     return {
         "Label": macos_host_package_release_plan.host_edge_proxy_launchd_service_label,
         "ProgramArguments": [
-            str(composition.payload_base_path / "bin" / "host-edge-proxy"),
+            str(current_release_path(composition) / "bin" / "host-edge-proxy"),
             "--deployment-configuration",
-            str(composition.payload_base_path / "config" / "host-edge-proxy-deployment.json"),
+            str(current_release_path(composition) / "config" / "host-edge-proxy-deployment.json"),
         ],
         "RunAtLoad": True,
         "KeepAlive": True,
@@ -1185,7 +1201,49 @@ def validate_manifested_artifact(source: Path, artifact_digest: Mapping[str, Any
         raise MacOSHostPackageCompositionError(artifact_name + " SHA-256 does not match C34")
 
 
+def compose_preinstall_script(
+    composition: MacOSHostPackageComposition,
+    documents: MacOSHostPackageDocuments,
+) -> str:
+    """Invoke the Installation Manager before pkgbuild writes any release byte.
+
+    The script transports explicit C48/C50 values only.  It does not classify
+    receipts, old release paths, services, or data: the Installation Manager
+    owns those C49 observations and C50 admission policy.
+    """
+
+    installation = required_object(documents.host_agent_deployment, "installation", "C33")
+    data_directory = PurePosixPath(required_string(installation, "dataDirectory", "C33 installation"))
+    journal_path = data_directory / "installation-manager" / "current-transaction.json"
+    receipt_path = data_directory / "installation-manager" / "latest-installation-receipt.json"
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "set -eu",
+            'script_directory="$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)"',
+            'installation_request_id="$(/usr/bin/uuidgen | /usr/bin/tr \'[:upper:]\' \'[:lower:]\')"',
+            '"$script_directory/host-installation-manager"'
+            + " --mode preflight"
+            + " --manifest \"$script_directory/installation-manifest.json\""
+            + " --journal " + shell_quote(str(journal_path))
+            + " --receipt " + shell_quote(str(receipt_path))
+            + ' --request-id "$installation_request_id"'
+            + " --installation-id " + shell_quote(required_string(installation, "installationId", "C33 installation"))
+            + " --release-id " + shell_quote(composition.release_slot_id)
+            + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl",
+            '"$script_directory/host-installation-manager"'
+            + " --mode quiesce"
+            + " --manifest \"$script_directory/installation-manifest.json\""
+            + " --journal " + shell_quote(str(journal_path))
+            + " --receipt " + shell_quote(str(receipt_path))
+            + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl",
+            "",
+        ]
+    )
+
+
 def compose_postinstall_script(
+    composition: MacOSHostPackageComposition,
     host_agent_deployment: Mapping[str, Any],
     virtual_machine: Mapping[str, Any],
     host_agent_launchd_service_label: str,
@@ -1224,15 +1282,22 @@ def compose_postinstall_script(
         provisioning_receipt_path.parent,
     )
     host_agent_service_path = PurePosixPath("/Library/LaunchDaemons") / (host_agent_launchd_service_label + ".plist")
-    host_agent_service_target = "system/" + host_agent_launchd_service_label
     edge_proxy_service_path = PurePosixPath("/Library/LaunchDaemons") / (edge_proxy_launchd_service_label + ".plist")
-    edge_proxy_service_target = "system/" + edge_proxy_launchd_service_label
+    release_root_path = immutable_release_slot_path(composition)
+    installation_manager_path = release_root_path / "bin" / "host-installation-manager"
+    installation_manifest_path = release_root_path / "installation-manifest.json"
+    installation_journal_path = data_directory / "installation-manager" / "current-transaction.json"
+    installation_receipt_path = data_directory / "installation-manager" / "latest-installation-receipt.json"
     return "\n".join(
         [
             "#!/bin/sh",
             "set -eu",
-            *compose_launchd_bootout_lines(host_agent_service_target, "Host Agent"),
-            *compose_launchd_bootout_lines(edge_proxy_service_target, "Host Edge Proxy"),
+            shell_quote(str(installation_manager_path))
+            + " --mode activate"
+            + " --manifest " + shell_quote(str(installation_manifest_path))
+            + " --journal " + shell_quote(str(installation_journal_path))
+            + " --receipt " + shell_quote(str(installation_receipt_path))
+            + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl",
             "/usr/bin/install -d -m 0750 "
             + " ".join(
                 shell_quote(str(directory)) for directory in host_runtime_directories
@@ -1260,17 +1325,6 @@ def declared_host_runtime_directories(*directories: PurePosixPath) -> list[PureP
     return ordered_directories
 
 
-def compose_launchd_bootout_lines(service_target: str, service_name: str) -> list[str]:
-    return [
-        "/bin/launchctl bootout " + shell_quote(service_target) + " >/dev/null 2>&1 || launchctl_bootout_status=$?",
-        "launchctl_bootout_status=${launchctl_bootout_status:-0}",
-        "if [ \"$launchctl_bootout_status\" -ne 0 ] && [ \"$launchctl_bootout_status\" -ne 3 ]; then",
-        "  echo \"VitalServer " + service_name + " launchd bootout failed: $launchctl_bootout_status\" >&2",
-        "  exit \"$launchctl_bootout_status\"",
-        "fi",
-    ]
-
-
 def compose_macos_host_package(composition: MacOSHostPackageComposition) -> dict[str, str]:
     documents = load_macos_host_package_documents(composition)
     validate_package_artifacts(composition, documents)
@@ -1296,16 +1350,41 @@ def compose_macos_host_package(composition: MacOSHostPackageComposition) -> dict
         copy_package_payload(composition, documents, payload_root)
         staged_virtual_machine_supervisor = payload_destination(
             payload_root,
-            composition.payload_base_path / "bin" / "macos-virtual-machine-supervisor",
+            immutable_release_slot_path(composition) / "bin" / "macos-virtual-machine-supervisor",
         )
         sign_staged_macos_virtual_machine_supervisor(
             composition.macos_virtual_machine_supervisor_code_signing,
             staged_virtual_machine_supervisor,
         )
+        compose_host_product_installation_manifest(
+            composition,
+            documents,
+            payload_root,
+        )
         scripts_root.mkdir(parents=True)
+        copy_declared_regular_file_to_package_payload(
+            composition.host_installation_manager_binary,
+            scripts_root / "host-installation-manager",
+            executable=True,
+        )
+        shutil.copyfile(
+            payload_destination(
+                payload_root,
+                immutable_release_slot_path(composition) / "installation-manifest.json",
+            ),
+            scripts_root / "installation-manifest.json",
+        )
+        (scripts_root / "installation-manifest.json").chmod(0o644)
+        preinstall_path = scripts_root / "preinstall"
+        preinstall_path.write_text(
+            compose_preinstall_script(composition, documents),
+            encoding="utf-8",
+        )
+        preinstall_path.chmod(0o755)
         postinstall_path = scripts_root / "postinstall"
         postinstall_path.write_text(
             compose_postinstall_script(
+                composition,
                 documents.host_agent_deployment,
                 documents.virtual_machine,
                 documents.macos_host_package_release_plan.host_agent_launchd_service_label,
@@ -1343,6 +1422,147 @@ def compose_macos_host_package(composition: MacOSHostPackageComposition) -> dict
         "macOSInstallerPackageSigningMode": composition.macos_installer_package_signing.mode,
         "macOSVirtualMachineSupervisorCodeSigningMode": composition.macos_virtual_machine_supervisor_code_signing.mode,
     }
+
+
+def compose_host_product_installation_manifest(
+    composition: MacOSHostPackageComposition,
+    documents: MacOSHostPackageDocuments,
+    payload_root: Path,
+) -> Mapping[str, Any]:
+    """Materialize C48 after all immutable slot bytes, including signing, exist."""
+
+    release_root_path = immutable_release_slot_path(composition)
+    staged_release_root = payload_destination(payload_root, release_root_path)
+    if not staged_release_root.is_dir():
+        raise MacOSHostPackageCompositionError(
+            "C48 immutable release slot is missing from the staged package payload"
+        )
+    control = required_object(documents.host_agent_deployment, "control", "C33")
+    installation = required_object(documents.host_agent_deployment, "installation", "C33")
+    state_database_path = PurePosixPath(
+        required_string(control, "stateDatabasePath", "C33 control")
+    )
+    data_directory = PurePosixPath(
+        required_string(installation, "dataDirectory", "C33 installation")
+    )
+    guest_runtime_disk_provisioning = required_object(
+        documents.virtual_machine,
+        "guestRuntimeDiskProvisioning",
+        "C32",
+    )
+    runtime_disk_path = PurePosixPath(
+        required_string(
+            guest_runtime_disk_provisioning,
+            "runtimeDiskImagePath",
+            "C32 guestRuntimeDiskProvisioning",
+        )
+    )
+    entries = [
+        {
+            "relativePath": candidate.relative_to(staged_release_root).as_posix(),
+            "sha256": sha256_file(candidate),
+            "executable": bool(candidate.stat().st_mode & 0o111),
+        }
+        for candidate in sorted(staged_release_root.rglob("*"))
+        if candidate.is_file()
+    ]
+    manifest: dict[str, Any] = {
+        "schemaVersion": "v1",
+        "installationId": required_string(installation, "installationId", "C33 installation"),
+        "platform": "macos",
+        "release": {
+            "id": composition.release_slot_id,
+            "productVersion": documents.macos_host_package_release_plan.product_version,
+            "runtimeVersion": required_string(installation, "runtimeVersion", "C33 installation"),
+        },
+        "package": {
+            "identifier": documents.macos_host_package_release_plan.macos_installer_package_identifier,
+            "productVersion": documents.macos_host_package_release_plan.product_version,
+        },
+        "immutablePayload": {
+            "releaseCatalogPath": str(release_root_path.parent),
+            "releaseRootPath": str(release_root_path),
+            "manifestPath": str(release_root_path / "installation-manifest.json"),
+            "entries": entries,
+        },
+        "activation": {
+            "currentReleaseLinkPath": str(current_release_path(composition)),
+            "expectedReleaseRootPath": str(release_root_path),
+        },
+        "requiredServices": [
+            {
+                "role": "host-agent",
+                "manager": "launchd",
+                "name": documents.macos_host_package_release_plan.host_agent_launchd_service_label,
+                "definitionPath": "/Library/LaunchDaemons/"
+                + documents.macos_host_package_release_plan.host_agent_launchd_service_label
+                + ".plist",
+                "definitionSha256": sha256_file(
+                    payload_destination(
+                        payload_root,
+                        PurePosixPath("/Library/LaunchDaemons")
+                        / (
+                            documents.macos_host_package_release_plan.host_agent_launchd_service_label
+                            + ".plist"
+                        ),
+                    )
+                ),
+            },
+            {
+                "role": "host-edge-proxy",
+                "manager": "launchd",
+                "name": documents.macos_host_package_release_plan.host_edge_proxy_launchd_service_label,
+                "definitionPath": "/Library/LaunchDaemons/"
+                + documents.macos_host_package_release_plan.host_edge_proxy_launchd_service_label
+                + ".plist",
+                "definitionSha256": sha256_file(
+                    payload_destination(
+                        payload_root,
+                        PurePosixPath("/Library/LaunchDaemons")
+                        / (
+                            documents.macos_host_package_release_plan.host_edge_proxy_launchd_service_label
+                            + ".plist"
+                        ),
+                    )
+                ),
+            },
+        ],
+        "mutableStores": [
+            {
+                "id": "installation-data-root",
+                "path": str(data_directory),
+                "owner": "host-installation-manager",
+                "retention": "purge-only-by-explicit-command",
+            },
+            {
+                "id": "host-agent-state",
+                "path": str(state_database_path.parent),
+                "owner": "host-agent",
+                "retention": "preserve-by-default",
+            },
+            {
+                "id": "virtual-machine-runtime",
+                "path": str(runtime_disk_path.parent),
+                "owner": "macos-virtual-machine-supervisor",
+                "retention": "preserve-by-default",
+            },
+            {
+                "id": "installation-manager-journal",
+                "path": str(data_directory / "installation-manager"),
+                "owner": "host-installation-manager",
+                "retention": "purge-only-by-explicit-command",
+            },
+        ],
+    }
+    validate_product_contract_document(
+        "host-product-installation-manifest.schema.json", "C48", manifest
+    )
+    manifest_path = staged_release_root / "installation-manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
+    manifest_path.chmod(0o644)
+    return manifest
 
 
 def compose_pkgbuild_component_package_candidate(
@@ -1610,20 +1830,35 @@ def publish_macos_installer_package_with_selected_signature(
 
 
 def copy_package_payload(composition: MacOSHostPackageComposition, documents: MacOSHostPackageDocuments, payload_root: Path) -> None:
-    base_path = composition.payload_base_path
-    copy_declared_regular_file_to_package_payload(composition.host_agent_binary, payload_destination(payload_root, base_path / "bin" / "host-agent"), executable=True)
-    copy_declared_regular_file_to_package_payload(composition.host_edge_proxy_binary, payload_destination(payload_root, base_path / "bin" / "host-edge-proxy"), executable=True)
-    copy_declared_regular_file_to_package_payload(composition.macos_virtual_machine_supervisor_binary, payload_destination(payload_root, base_path / "bin" / "macos-virtual-machine-supervisor"), executable=True)
-    copy_declared_regular_file_to_package_payload(composition.host_agent_deployment_configuration, payload_destination(payload_root, base_path / "config" / "host-agent-deployment.json"))
-    copy_declared_regular_file_to_package_payload(composition.host_edge_proxy_deployment_configuration, payload_destination(payload_root, base_path / "config" / "host-edge-proxy-deployment.json"))
-    copy_declared_regular_file_to_package_payload(composition.macos_virtual_machine_configuration, payload_destination(payload_root, base_path / "config" / "macos-virtual-machine.json"))
-    copy_declared_regular_file_to_package_payload(composition.guest_artifact_manifest, payload_destination(payload_root, base_path / "release" / "macos-guest-artifact-manifest.json"))
-    copy_declared_regular_file_to_package_payload(composition.guest_artifact_compilation_receipt, payload_destination(payload_root, base_path / "release" / "guest-artifact-compilation-receipt.json"))
+    release_path = immutable_release_slot_path(composition)
+    copy_declared_regular_file_to_package_payload(composition.host_agent_binary, payload_destination(payload_root, release_path / "bin" / "host-agent"), executable=True)
+    copy_declared_regular_file_to_package_payload(composition.host_edge_proxy_binary, payload_destination(payload_root, release_path / "bin" / "host-edge-proxy"), executable=True)
+    copy_declared_regular_file_to_package_payload(composition.host_installation_manager_binary, payload_destination(payload_root, release_path / "bin" / "host-installation-manager"), executable=True)
+    copy_declared_regular_file_to_package_payload(composition.macos_virtual_machine_supervisor_binary, payload_destination(payload_root, release_path / "bin" / "macos-virtual-machine-supervisor"), executable=True)
+    copy_declared_regular_file_to_package_payload(composition.host_agent_deployment_configuration, payload_destination(payload_root, release_path / "config" / "host-agent-deployment.json"))
+    copy_declared_regular_file_to_package_payload(composition.host_edge_proxy_deployment_configuration, payload_destination(payload_root, release_path / "config" / "host-edge-proxy-deployment.json"))
+    copy_declared_regular_file_to_package_payload(composition.macos_virtual_machine_configuration, payload_destination(payload_root, release_path / "config" / "macos-virtual-machine.json"))
+    copy_declared_regular_file_to_package_payload(composition.guest_artifact_manifest, payload_destination(payload_root, release_path / "release" / "macos-guest-artifact-manifest.json"))
+    copy_declared_regular_file_to_package_payload(composition.guest_artifact_compilation_receipt, payload_destination(payload_root, release_path / "release" / "guest-artifact-compilation-receipt.json"))
     boot = required_object(documents.virtual_machine, "boot", "C32")
-    copy_declared_regular_file_to_package_payload(composition.guest_kernel_source, payload_destination(payload_root, PurePosixPath(required_string(boot, "kernelPath", "C32 boot"))))
+    copy_declared_regular_file_to_package_payload(
+        composition.guest_kernel_source,
+        payload_destination_for_current_release_path(
+            payload_root,
+            composition,
+            PurePosixPath(required_string(boot, "kernelPath", "C32 boot")),
+        ),
+    )
     initial_ramdisk_path = boot.get("initialRamdiskPath")
     if initial_ramdisk_path is not None and composition.guest_initial_ramdisk_source is not None:
-        copy_declared_regular_file_to_package_payload(composition.guest_initial_ramdisk_source, payload_destination(payload_root, PurePosixPath(initial_ramdisk_path)))
+        copy_declared_regular_file_to_package_payload(
+            composition.guest_initial_ramdisk_source,
+            payload_destination_for_current_release_path(
+                payload_root,
+                composition,
+                PurePosixPath(initial_ramdisk_path),
+            ),
+        )
     guest_runtime_disk_provisioning = required_object(
         documents.virtual_machine,
         "guestRuntimeDiskProvisioning",
@@ -1631,8 +1866,9 @@ def copy_package_payload(composition: MacOSHostPackageComposition, documents: Ma
     )
     copy_declared_regular_file_to_package_payload(
         composition.guest_storage_sources["guest-root"],
-        payload_destination(
+        payload_destination_for_current_release_path(
             payload_root,
+            composition,
             PurePosixPath(
                 required_string(
                     guest_runtime_disk_provisioning,
@@ -1647,7 +1883,11 @@ def copy_package_payload(composition: MacOSHostPackageComposition, documents: Ma
             continue
         copy_declared_regular_file_to_package_payload(
             composition.guest_storage_sources[device["id"]],
-            payload_destination(payload_root, PurePosixPath(device["diskImagePath"])),
+            payload_destination_for_current_release_path(
+                payload_root,
+                composition,
+                PurePosixPath(device["diskImagePath"]),
+            ),
         )
     launchd_directory = payload_root / "Library" / "LaunchDaemons"
     launchd_directory.mkdir(parents=True, exist_ok=True)
@@ -1671,6 +1911,32 @@ def copy_package_payload(composition: MacOSHostPackageComposition, documents: Ma
             plistlib.dump(definition, plist_file, sort_keys=True)
 
 
+def payload_destination_for_current_release_path(
+    payload_root: Path,
+    composition: MacOSHostPackageComposition,
+    declared_current_release_path: PurePosixPath,
+) -> Path:
+    """Map an explicit C32/C33 `current` path into its immutable slot file.
+
+    C32/C33 name the stable Host execution contract. The PKG carries byte
+    content only in C48's release slot; postinstall makes the stable path
+    available through the Installation Manager-owned `current` link.
+    """
+
+    try:
+        relative_path = declared_current_release_path.relative_to(
+            current_release_path(composition)
+        )
+    except ValueError as error:
+        raise MacOSHostPackageCompositionError(
+            "declared current-release payload path does not stay below C48 activation path"
+        ) from error
+    return payload_destination(
+        payload_root,
+        immutable_release_slot_path(composition) / relative_path,
+    )
+
+
 def payload_destination(payload_root: Path, absolute_target_path: PurePosixPath) -> Path:
     if not absolute_target_path.is_absolute():
         raise MacOSHostPackageCompositionError("package target path must be absolute")
@@ -1690,9 +1956,11 @@ def validate_package_artifacts(composition: MacOSHostPackageComposition, documen
     ):
         raise MacOSHostPackageCompositionError("Host Agent and Host Edge Proxy launchd service labels must differ")
     require_safe_absolute_path(str(composition.payload_base_path), "payload base path")
+    require_identifier(composition.release_slot_id, "C48 immutable release slot id")
     for name, path in (
         ("host Agent binary", composition.host_agent_binary),
         ("Host Edge Proxy binary", composition.host_edge_proxy_binary),
+        ("Host Installation Manager binary", composition.host_installation_manager_binary),
         ("C36 HostEdgeProxyDeploymentConfiguration", composition.host_edge_proxy_deployment_configuration),
         ("macOS virtual machine supervisor binary", composition.macos_virtual_machine_supervisor_binary),
         ("C35 GuestArtifactCompilationReceipt", composition.guest_artifact_compilation_receipt),
@@ -1970,6 +2238,19 @@ def require_safe_absolute_path(value: Any, field_name: str) -> None:
         raise MacOSHostPackageCompositionError(field_name + " must be an absolute path without traversal")
 
 
+def require_identifier(value: Any, field_name: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 128
+        or not value[0].isalnum()
+        or any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-" for character in value)
+    ):
+        raise MacOSHostPackageCompositionError(
+            field_name + " must be a C48 identifier"
+        )
+
+
 def require_path_within_directory(path: str, directory: str, field_name: str) -> None:
     candidate = PurePosixPath(path)
     parent = PurePosixPath(directory)
@@ -2073,8 +2354,10 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
     parser.add_argument("--release-delivery-plans-document", required=True)
     parser.add_argument("--release-delivery-plan-id", required=True)
     parser.add_argument("--payload-base-path", required=True)
+    parser.add_argument("--release-slot-id", required=True)
     parser.add_argument("--host-agent-binary", required=True)
     parser.add_argument("--host-edge-proxy-binary", required=True)
+    parser.add_argument("--host-installation-manager-binary", required=True)
     parser.add_argument("--macos-virtual-machine-supervisor-binary", required=True)
     parser.add_argument("--host-agent-deployment-configuration", required=True)
     parser.add_argument("--host-edge-proxy-deployment-configuration", required=True)
@@ -2113,8 +2396,10 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
         release_delivery_plans_document=Path(parsed.release_delivery_plans_document),
         release_delivery_plan_id=parsed.release_delivery_plan_id,
         payload_base_path=PurePosixPath(parsed.payload_base_path),
+        release_slot_id=parsed.release_slot_id,
         host_agent_binary=Path(parsed.host_agent_binary),
         host_edge_proxy_binary=Path(parsed.host_edge_proxy_binary),
+        host_installation_manager_binary=Path(parsed.host_installation_manager_binary),
         macos_virtual_machine_supervisor_binary=Path(parsed.macos_virtual_machine_supervisor_binary),
         host_agent_deployment_configuration=Path(parsed.host_agent_deployment_configuration),
         host_edge_proxy_deployment_configuration=Path(parsed.host_edge_proxy_deployment_configuration),

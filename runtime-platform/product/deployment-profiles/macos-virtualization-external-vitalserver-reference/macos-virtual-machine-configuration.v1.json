@@ -4,8 +4,8 @@
   "cpuCount": 2,
   "memoryBytes": 4294967296,
   "boot": {
-    "kernelPath": "/Library/Application Support/VitalServerRuntimePlatform/vm/assets/Image",
-    "initialRamdiskPath": "/Library/Application Support/VitalServerRuntimePlatform/vm/assets/initrd.img",
+    "kernelPath": "/Library/Application Support/VitalServerRuntimePlatform/current/vm/assets/Image",
+    "initialRamdiskPath": "/Library/Application Support/VitalServerRuntimePlatform/current/vm/assets/initrd.img",
     "guestRootDevicePath": "/dev/vda1",
     "commandLine": "console=hvc0 root=/dev/vda1"
   },
@@ -14,8 +14,8 @@
     "writeMode": "append"
   },
   "guestRuntimeDiskProvisioning": {
-    "releaseArtifactManifestPath": "/Library/Application Support/VitalServerRuntimePlatform/release/macos-guest-artifact-manifest.json",
-    "releaseArtifactPath": "/Library/Application Support/VitalServerRuntimePlatform/release/guest-root.raw",
+    "releaseArtifactManifestPath": "/Library/Application Support/VitalServerRuntimePlatform/current/release/macos-guest-artifact-manifest.json",
+    "releaseArtifactPath": "/Library/Application Support/VitalServerRuntimePlatform/current/release/guest-root.raw",
     "runtimeDiskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/data/virtual-machine/guest-root.raw",
     "provisioningReceiptPath": "/Library/Application Support/VitalServerRuntimePlatform/data/virtual-machine/guest-root-provisioning-receipt.json",
     "existingRuntimeDiskPolicy": "retain-when-receipt-matches-release-artifact"
@@ -47,7 +47,7 @@
       "role": "guest-product-bootstrap-volume",
       "storageImageFormat": "raw",
       "guestVolumeFileSystem": "iso9660",
-      "diskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/vm/disks/guest-product-bootstrap.raw",
+      "diskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/current/vm/disks/guest-product-bootstrap.raw",
       "readOnly": true,
       "attachmentIndex": 1
     }

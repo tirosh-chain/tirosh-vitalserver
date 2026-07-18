@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-product-installation-manifest",
+  "title": "HostProductInstallationManifest",
+  "description": "C48 Release-process-owned declaration of one immutable Host product release slot, its activation link, required service registrations, and separately owned mutable stores. It is desired release content, not proof that an installer wrote, activated, or started it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "installationId",
+    "platform",
+    "release",
+    "package",
+    "immutablePayload",
+    "activation",
+    "requiredServices",
+    "mutableStores"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "installationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "macos",
+        "windows",
+        "linux"
+      ]
+    },
+    "release": {
+      "$ref": "#/$defs/Release"
+    },
+    "package": {
+      "$ref": "#/$defs/PackageIdentity"
+    },
+    "immutablePayload": {
+      "$ref": "#/$defs/ImmutablePayload"
+    },
+    "activation": {
+      "$ref": "#/$defs/Activation"
+    },
+    "requiredServices": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/RequiredService"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-agent"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-edge-proxy"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "mutableStores": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/MutableStore"
+      }
+    }
+  },
+  "$defs": {
+    "HostAbsolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/",
+      "not": {
+        "pattern": "(^|/)\\.\\.(/|$)"
+      }
+    },
+    "RelativePayloadPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          }
+        ]
+      }
+    },
+    "Release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "productVersion",
+        "runtimeVersion"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "runtimeVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "PackageIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identifier",
+        "productVersion"
+      ],
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$"
+        },
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "ImmutablePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseCatalogPath",
+        "releaseRootPath",
+        "manifestPath",
+        "entries"
+      ],
+      "properties": {
+        "releaseCatalogPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "releaseRootPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "manifestPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ImmutablePayloadEntry"
+          }
+        }
+      }
+    },
+    "ImmutablePayloadEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relativePath",
+        "sha256",
+        "executable"
+      ],
+      "properties": {
+        "relativePath": {
+          "$ref": "#/$defs/RelativePayloadPath"
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "executable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currentReleaseLinkPath",
+        "expectedReleaseRootPath"
+      ],
+      "properties": {
+        "currentReleaseLinkPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "expectedReleaseRootPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        }
+      }
+    },
+    "RequiredService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "manager",
+        "name",
+        "definitionPath",
+        "definitionSha256"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "host-agent",
+            "host-edge-proxy"
+          ]
+        },
+        "manager": {
+          "type": "string",
+          "enum": [
+            "launchd",
+            "windows-scm",
+            "systemd"
+          ]
+        },
+        "name": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "definitionPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "definitionSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        }
+      }
+    },
+    "MutableStore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "owner",
+        "retention"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "path": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "owner": {
+          "type": "string",
+          "enum": [
+            "host-agent",
+            "macos-virtual-machine-supervisor",
+            "host-installation-manager"
+          ]
+        },
+        "retention": {
+          "type": "string",
+          "enum": [
+            "preserve-by-default",
+            "purge-only-by-explicit-command"
+          ]
+        }
+      }
+    }
+  }
+}

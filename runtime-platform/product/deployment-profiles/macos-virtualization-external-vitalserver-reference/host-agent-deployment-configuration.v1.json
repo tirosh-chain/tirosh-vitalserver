@@ -20,8 +20,8 @@
   "provider": {
     "kind": "macos-virtualization",
     "id": "vitalserver-macos-virtualization-reference-provider",
-    "macOSVirtualMachineSupervisorExecutablePath": "/Library/Application Support/VitalServerRuntimePlatform/bin/macos-virtual-machine-supervisor",
-    "macOSVirtualMachineConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/config/macos-virtual-machine.json"
+    "macOSVirtualMachineSupervisorExecutablePath": "/Library/Application Support/VitalServerRuntimePlatform/current/bin/macos-virtual-machine-supervisor",
+    "macOSVirtualMachineConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/current/config/macos-virtual-machine.json"
   },
   "time": {
     "hostNodeId": "vitalserver-macos-reference-host",

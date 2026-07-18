@@ -21,8 +21,11 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name).resolve()
         self.payload_base_path = PurePosixPath("/Library/Application Support/VitalServerRuntimePlatform")
+        self.current_release_path = self.payload_base_path / "current"
+        self.release_slot_id = "runtime-platform-0.1.0-dev-build-001"
         self.host_agent_binary = self.write_file("artifacts/host-agent", b"host-agent")
         self.host_edge_proxy_binary = self.write_file("artifacts/host-edge-proxy", b"host-edge-proxy")
+        self.host_installation_manager_binary = self.write_file("artifacts/host-installation-manager", b"host-installation-manager")
         self.macos_virtual_machine_supervisor_binary = self.write_file("artifacts/macos-virtual-machine-supervisor", b"virtual-machine-supervisor")
         self.guest_product_process_supervisor_artifact = self.write_file("artifacts/guest-product-process-supervisor", b"guest-product-process-supervisor")
         self.guest_kernel = self.write_file("artifacts/Image", b"kernel")
@@ -85,8 +88,8 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             "cpuCount": 4,
             "memoryBytes": 8589934592,
             "boot": {
-                "kernelPath": str(self.payload_base_path / "vm" / "assets" / "Image"),
-                "initialRamdiskPath": str(self.payload_base_path / "vm" / "assets" / "initrd.img"),
+                "kernelPath": str(self.current_release_path / "vm" / "assets" / "Image"),
+                "initialRamdiskPath": str(self.current_release_path / "vm" / "assets" / "initrd.img"),
                 "guestRootDevicePath": "/dev/vda1",
                 "commandLine": "console=hvc0 root=/dev/vda1",
             },
@@ -96,12 +99,12 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             },
             "guestRuntimeDiskProvisioning": {
                 "releaseArtifactManifestPath": str(
-                    self.payload_base_path
+                    self.current_release_path
                     / "release"
                     / "macos-guest-artifact-manifest.json"
                 ),
                 "releaseArtifactPath": str(
-                    self.payload_base_path / "release" / "guest-root.raw"
+                    self.current_release_path / "release" / "guest-root.raw"
                 ),
                 "runtimeDiskImagePath": "/var/lib/vitalserver/data/vm/guest-root.raw",
                 "provisioningReceiptPath": "/var/lib/vitalserver/data/vm/guest-root-provisioning-receipt.json",
@@ -134,7 +137,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                     "role": "guest-product-bootstrap-volume",
                     "storageImageFormat": "raw",
                     "guestVolumeFileSystem": "iso9660",
-                    "diskImagePath": str(self.payload_base_path / "vm" / "disks" / "guest-product-bootstrap.raw"),
+                    "diskImagePath": str(self.current_release_path / "vm" / "disks" / "guest-product-bootstrap.raw"),
                     "readOnly": True,
                     "attachmentIndex": 1,
                 },
@@ -160,8 +163,8 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             "provider": {
                 "kind": "macos-virtualization",
                 "id": "vitalserver-macos-provider",
-                "macOSVirtualMachineSupervisorExecutablePath": str(self.payload_base_path / "bin" / "macos-virtual-machine-supervisor"),
-                "macOSVirtualMachineConfigurationPath": str(self.payload_base_path / "config" / "macos-virtual-machine.json"),
+                "macOSVirtualMachineSupervisorExecutablePath": str(self.current_release_path / "bin" / "macos-virtual-machine-supervisor"),
+                "macOSVirtualMachineConfigurationPath": str(self.current_release_path / "config" / "macos-virtual-machine.json"),
             },
             "time": {"hostNodeId": "vitalserver-macos-host", "timeAuthorityId": "vitalserver-host-time", "providerMode": "unsupported"},
             "telemetry": {"pipelineMode": "unsupported", "exportMode": "unavailable"},
@@ -320,8 +323,10 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             release_delivery_plans_document=self.release_delivery_plans_document_path,
             release_delivery_plan_id="macos-runtime-platform-release",
             payload_base_path=self.payload_base_path,
+            release_slot_id=self.release_slot_id,
             host_agent_binary=self.host_agent_binary,
             host_edge_proxy_binary=self.host_edge_proxy_binary,
+            host_installation_manager_binary=self.host_installation_manager_binary,
             macos_virtual_machine_supervisor_binary=self.macos_virtual_machine_supervisor_binary,
             host_agent_deployment_configuration=self.c33_path,
             host_edge_proxy_deployment_configuration=self.c36_path,
@@ -549,16 +554,18 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as payload_directory:
             payload_root = Path(payload_directory)
             composer.copy_package_payload(self.composition(), documents, payload_root)
-            self.assertEqual(b"host-agent", (payload_root / "Library/Application Support/VitalServerRuntimePlatform/bin/host-agent").read_bytes())
-            self.assertEqual(b"host-edge-proxy", (payload_root / "Library/Application Support/VitalServerRuntimePlatform/bin/host-edge-proxy").read_bytes())
-            self.assertEqual(b"virtual-machine-supervisor", (payload_root / "Library/Application Support/VitalServerRuntimePlatform/bin/macos-virtual-machine-supervisor").read_bytes())
-            self.assertEqual(b"kernel", (payload_root / "Library/Application Support/VitalServerRuntimePlatform/vm/assets/Image").read_bytes())
-            self.assertEqual(b"root disk", (payload_root / "Library/Application Support/VitalServerRuntimePlatform/release/guest-root.raw").read_bytes())
+            release_root = payload_root / "Library/Application Support/VitalServerRuntimePlatform/releases" / self.release_slot_id
+            self.assertEqual(b"host-agent", (release_root / "bin/host-agent").read_bytes())
+            self.assertEqual(b"host-edge-proxy", (release_root / "bin/host-edge-proxy").read_bytes())
+            self.assertEqual(b"host-installation-manager", (release_root / "bin/host-installation-manager").read_bytes())
+            self.assertEqual(b"virtual-machine-supervisor", (release_root / "bin/macos-virtual-machine-supervisor").read_bytes())
+            self.assertEqual(b"kernel", (release_root / "vm/assets/Image").read_bytes())
+            self.assertEqual(b"root disk", (release_root / "release/guest-root.raw").read_bytes())
             self.assertFalse((payload_root / "var/lib/vitalserver/data/vm/guest-root.raw").exists())
             self.assertFalse((payload_root / "var/lib/vitalserver/data/vm/guest-root-provisioning-receipt.json").exists())
-            self.assertEqual(b"bootstrap volume", (payload_root / "Library/Application Support/VitalServerRuntimePlatform/vm/disks/guest-product-bootstrap.raw").read_bytes())
-            self.assertTrue((payload_root / "Library/Application Support/VitalServerRuntimePlatform/release/macos-guest-artifact-manifest.json").is_file())
-            self.assertTrue((payload_root / "Library/Application Support/VitalServerRuntimePlatform/release/guest-artifact-compilation-receipt.json").is_file())
+            self.assertEqual(b"bootstrap volume", (release_root / "vm/disks/guest-product-bootstrap.raw").read_bytes())
+            self.assertTrue((release_root / "release/macos-guest-artifact-manifest.json").is_file())
+            self.assertTrue((release_root / "release/guest-artifact-compilation-receipt.json").is_file())
             self.assertTrue((payload_root / "Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist").is_file())
             self.assertTrue((payload_root / "Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist").is_file())
 
@@ -575,13 +582,17 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             composer.copy_package_payload(self.composition(), documents, payload_root)
             staged_host_agent = (
                 payload_root
-                / "Library/Application Support/VitalServerRuntimePlatform/bin/host-agent"
+                / "Library/Application Support/VitalServerRuntimePlatform/releases"
+                / self.release_slot_id
+                / "bin/host-agent"
             )
             self.assertNotIn(attribute_name, os.listxattr(staged_host_agent))
             self.assertEqual(0o755, staged_host_agent.stat().st_mode & 0o777)
             staged_host_agent_configuration = (
                 payload_root
-                / "Library/Application Support/VitalServerRuntimePlatform/config/host-agent-deployment.json"
+                / "Library/Application Support/VitalServerRuntimePlatform/releases"
+                / self.release_slot_id
+                / "config/host-agent-deployment.json"
             )
             self.assertEqual(0o644, staged_host_agent_configuration.stat().st_mode & 0o777)
 
@@ -602,9 +613,11 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         with self.assertRaisesRegex(composer.MacOSHostPackageCompositionError, "exactly one source artifact"):
             composer.load_macos_host_package_documents(composition)
 
-    def test_postinstall_reconciles_the_exact_launchd_service_and_prepares_only_explicit_c32_c33_host_directories(self) -> None:
+    def test_package_scripts_delegate_preflight_and_service_quiescence_to_the_installation_manager(self) -> None:
         documents = composer.load_macos_host_package_documents(self.composition())
+        preinstall = composer.compose_preinstall_script(self.composition(), documents)
         script = composer.compose_postinstall_script(
+            self.composition(),
             documents.host_agent_deployment,
             documents.virtual_machine,
             "com.tirosh.vitalserver.host-agent",
@@ -616,9 +629,11 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.assertIn("/usr/bin/touch '/var/lib/vitalserver/data/guest-boot-console.log'", script)
         self.assertNotIn("/usr/bin/touch '/var/lib/vitalserver/data/vm/guest-root.raw'", script)
         self.assertNotIn("/usr/bin/touch '/var/lib/vitalserver/data/vm/guest-root-provisioning-receipt.json'", script)
-        self.assertIn("launchctl bootout 'system/com.tirosh.vitalserver.host-agent'", script)
-        self.assertIn("launchctl bootout 'system/com.tirosh.vitalserver.host-edge-proxy'", script)
-        self.assertIn('launchctl_bootout_status" -ne 3', script)
+        self.assertIn('"$script_directory/host-installation-manager" --mode preflight', preinstall)
+        self.assertIn('"$script_directory/host-installation-manager" --mode quiesce', preinstall)
+        self.assertIn("--release-id 'runtime-platform-0.1.0-dev-build-001'", preinstall)
+        self.assertNotIn("/bin/launchctl bootout", preinstall)
+        self.assertNotIn("/bin/launchctl bootout", script)
         self.assertIn("launchctl bootstrap system '/Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist'", script)
         self.assertIn("launchctl bootstrap system '/Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist'", script)
         self.assertNotIn("|| true", script)
@@ -1176,15 +1191,52 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 release_delivery_plans_document=self.release_delivery_plans_document_path,
                 release_delivery_plan_id="macos-runtime-platform-release",
                 payload_base_path=self.payload_base_path,
+                release_slot_id=self.release_slot_id,
             )
         )
         self.assertEqual(str(artifact), verification["artifactPath"])
         self.assertEqual(str(self.payload_base_path), verification["payloadBasePath"])
         self.assertEqual("macos-runtime-platform-release", verification["releaseDeliveryPlanId"])
 
+        release_root = (
+            expanded_package
+            / "Payload"
+            / "Library/Application Support/VitalServerRuntimePlatform/releases"
+            / self.release_slot_id
+        )
+        installation_manifest = json.loads(
+            (release_root / "installation-manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            "/Library/Application Support/VitalServerRuntimePlatform/releases",
+            installation_manifest["immutablePayload"]["releaseCatalogPath"],
+        )
+        installation_data_root = next(
+            store
+            for store in installation_manifest["mutableStores"]
+            if store["id"] == "installation-data-root"
+        )
+        self.assertEqual(
+            self.host_agent_deployment_document()["installation"]["dataDirectory"],
+            installation_data_root["path"],
+        )
+        self.assertEqual("host-installation-manager", installation_data_root["owner"])
+        self.assertEqual(
+            "purge-only-by-explicit-command", installation_data_root["retention"]
+        )
+        for service in installation_manifest["requiredServices"]:
+            service_definition = expanded_package / "Payload" / service["definitionPath"].lstrip("/")
+            self.assertEqual(
+                composer.sha256_file(service_definition),
+                service["definitionSha256"],
+            )
+
+        preinstall = (expanded_package / "Scripts" / "preinstall").read_text(encoding="utf-8")
         postinstall = (expanded_package / "Scripts" / "postinstall").read_text(encoding="utf-8")
-        self.assertIn("launchctl bootout 'system/com.tirosh.vitalserver.host-agent'", postinstall)
-        self.assertIn("launchctl bootout 'system/com.tirosh.vitalserver.host-edge-proxy'", postinstall)
+        self.assertIn('"$script_directory/host-installation-manager" --mode preflight', preinstall)
+        self.assertIn('"$script_directory/host-installation-manager" --mode quiesce', preinstall)
+        self.assertIn("--mode activate", postinstall)
+        self.assertNotIn("/bin/launchctl bootout", postinstall)
         self.assertNotIn("|| true", postinstall)
 
     def test_package_verifier_rejects_undeclared_appledouble_payload_sidecar(self) -> None:
@@ -1224,6 +1276,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                     release_delivery_plans_document=self.release_delivery_plans_document_path,
                     release_delivery_plan_id="macos-runtime-platform-release",
                     payload_base_path=self.payload_base_path,
+                    release_slot_id=self.release_slot_id,
                 )
             )
 
@@ -1244,6 +1297,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                     release_delivery_plans_document=self.release_delivery_plans_document_path,
                     release_delivery_plan_id="macos-runtime-platform-release",
                     payload_base_path=PurePosixPath("/Library/Application Support/OtherProduct"),
+                    release_slot_id=self.release_slot_id,
                 )
             )
 

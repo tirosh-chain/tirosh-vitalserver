@@ -14,6 +14,7 @@ REQUIRED_DIRECTORIES: Sequence[Path] = (
     Path("contracts"),
     Path("services/host-agent"),
     Path("services/host-edge-proxy"),
+    Path("services/host-installation-manager"),
     Path("services/host-updater"),
     Path("services/guest-product-process-supervisor"),
     Path("services/guest-runtime"),
@@ -44,6 +45,9 @@ CONTEXTUAL_PRODUCT_PROCESS_LAYER_DIRECTORIES: Sequence[Path] = (
     Path("services/host-edge-proxy/internal/hostedgeproxydomain"),
     Path("services/host-edge-proxy/internal/hostedgeproxyhttpserver"),
     Path("services/host-edge-proxy/internal/hostedgeproxydeployment"),
+    Path("services/host-installation-manager/internal/hostinstallationmanagerdomain"),
+    Path("services/host-installation-manager/internal/hostinstallationmanagerapplication"),
+    Path("services/host-installation-manager/internal/adapters/macoshostinstallationfootprint"),
     Path("services/host-updater/internal/hostupdaterdomain"),
     Path("services/host-updater/internal/hostupdaterstagedupdatecompletionapplication"),
 )
@@ -62,6 +66,8 @@ FORBIDDEN_GENERIC_PRODUCT_PROCESS_LAYER_DIRECTORIES: Sequence[Path] = (
     Path("services/host-edge-proxy/internal/domain"),
     Path("services/host-edge-proxy/internal/edgehttpserver"),
     Path("services/host-edge-proxy/internal/deployment"),
+    Path("services/host-installation-manager/internal/domain"),
+    Path("services/host-installation-manager/internal/application"),
     Path("services/host-updater/internal/domain"),
     Path("services/host-updater/internal/application"),
 )
@@ -71,6 +77,7 @@ PRODUCT_PROCESS_INTERNAL_DIRECTORIES: Sequence[Path] = (
     Path("services/guest-runtime/internal"),
     Path("services/guest-product-process-supervisor/internal"),
     Path("services/host-edge-proxy/internal"),
+    Path("services/host-installation-manager/internal"),
     Path("services/host-updater/internal"),
 )
 
@@ -79,6 +86,7 @@ CONTEXTUAL_PRODUCT_PROCESS_APPLICATION_DIRECTORIES: Sequence[Path] = (
     Path("services/guest-runtime/internal/guestruntimeapplication"),
     Path("services/guest-product-process-supervisor/internal/guestproductprocesssupervisorapplication"),
     Path("services/host-updater/internal/hostupdaterstagedupdatecompletionapplication"),
+    Path("services/host-installation-manager/internal/hostinstallationmanagerapplication"),
 )
 
 # Time Authority, Recorder Observation Catalog, and Telemetry Pipeline are

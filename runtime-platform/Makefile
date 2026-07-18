@@ -63,11 +63,13 @@ NPM ?= npm
 	release-ready \
 	cross-platform-delivery-acceptance \
 	host-updater-test \
+	host-installation-manager-test \
+	host-installation-manager-build \
 	release-composer-test \
 	installation-update-acceptance \
 	check
 
-check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test host-guest-acceptance macos-provider-test guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-bootstrap-artifact-composer-cross-platform-build guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test macos-release-package-assembly-test macos-clean-host-release-evidence-runner-test macos-development-installation-evidence-runner-test recorder-gateway-check recorder-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test release-composer-test installation-update-acceptance
+check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test host-guest-acceptance macos-provider-test guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test macos-release-package-assembly-test macos-clean-host-release-evidence-runner-test macos-development-installation-evidence-runner-test recorder-gateway-check recorder-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test host-installation-manager-test host-installation-manager-build release-composer-test installation-update-acceptance
 
 bootstrap-contract-tools:
 	$(SYSTEM_PYTHON) -m venv $(VENV)
@@ -112,6 +114,7 @@ ensure-go:
 service-go-test: ensure-go
 	cd services/guest-runtime && $(GO) test ./...
 	cd services/host-agent && $(GO) test ./...
+	cd services/host-installation-manager && $(GO) test ./...
 
 host-edge-proxy-test: ensure-go
 	cd services/host-edge-proxy && $(GO) test ./...
@@ -251,6 +254,13 @@ cross-platform-delivery-acceptance: ensure-go ensure-contract-python
 
 host-updater-test: ensure-go
 	cd services/host-updater && $(GO) test ./...
+
+host-installation-manager-test: ensure-go
+	cd services/host-installation-manager && $(GO) test ./...
+
+host-installation-manager-build: ensure-go
+	cd services/host-installation-manager && mkdir -p .build
+	cd services/host-installation-manager && GOOS=darwin GOARCH=arm64 $(GO) build -o .build/darwin-arm64-host-installation-manager ./cmd/host-installation-manager
 
 release-composer-test: ensure-go
 	cd tooling/release-composer && $(GO) test ./...

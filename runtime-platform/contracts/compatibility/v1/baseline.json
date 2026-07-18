@@ -7531,6 +7531,1058 @@
       "title": "HostEdgeProxyDeploymentConfiguration",
       "type": "object"
     },
+    "json-schema/v1/host-installation-footprint.schema.json": {
+      "$defs": {
+        "ActivationObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "points-to-expected-release",
+                      "points-to-other-release"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "observedTargetPath"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "unreadable"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "currentReleaseLinkPath": {
+              "maxLength": 4096,
+              "minLength": 2,
+              "pattern": "^/",
+              "type": "string"
+            },
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "observedTargetPath": {
+              "maxLength": 4096,
+              "minLength": 2,
+              "pattern": "^/",
+              "type": "string"
+            },
+            "state": {
+              "enum": [
+                "absent",
+                "points-to-expected-release",
+                "points-to-other-release",
+                "unreadable"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "currentReleaseLinkPath"
+          ],
+          "type": "object"
+        },
+        "ImmutableReleaseObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "unreadable"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "releaseRootPath": {
+              "maxLength": 4096,
+              "minLength": 2,
+              "pattern": "^/",
+              "type": "string"
+            },
+            "state": {
+              "enum": [
+                "absent",
+                "matching",
+                "diverged",
+                "unreadable"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "releaseRootPath"
+          ],
+          "type": "object"
+        },
+        "InstallationTransactionObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "unreadable"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "journalPath": {
+              "maxLength": 4096,
+              "minLength": 2,
+              "pattern": "^/",
+              "type": "string"
+            },
+            "state": {
+              "enum": [
+                "absent",
+                "active",
+                "completed",
+                "unreadable"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "journalPath"
+          ],
+          "type": "object"
+        },
+        "Issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "MutableStoreObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "unreadable"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "state": {
+              "enum": [
+                "absent",
+                "compatible",
+                "migration-required",
+                "incompatible",
+                "present-unknown",
+                "unreadable"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "state"
+          ],
+          "type": "object"
+        },
+        "PackageReceiptObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "installed"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "not": {
+                  "required": [
+                    "issue"
+                  ]
+                },
+                "required": [
+                  "productVersion"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "unavailable",
+                      "failed"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "identifier": {
+              "maxLength": 255,
+              "minLength": 3,
+              "type": "string"
+            },
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "productVersion": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "enum": [
+                "absent",
+                "installed",
+                "unavailable",
+                "failed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "identifier"
+          ],
+          "type": "object"
+        },
+        "ReleaseCatalogObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "only-expected-release",
+                      "contains-other-releases"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "releaseIds"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "unreadable"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "releaseCatalogPath": {
+              "maxLength": 4096,
+              "minLength": 2,
+              "pattern": "^/",
+              "type": "string"
+            },
+            "releaseIds": {
+              "items": {
+                "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "state": {
+              "enum": [
+                "absent",
+                "empty",
+                "only-expected-release",
+                "contains-other-releases",
+                "contains-unexpected-entry",
+                "unreadable"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "releaseCatalogPath"
+          ],
+          "type": "object"
+        },
+        "RequiredServiceObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "unavailable",
+                      "failed"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "definitionState": {
+                    "const": "unreadable"
+                  }
+                },
+                "required": [
+                  "definitionState"
+                ]
+              },
+              "then": {
+                "required": [
+                  "definitionIssue"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "definitionIssue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "definitionState": {
+              "enum": [
+                "absent",
+                "matching",
+                "diverged",
+                "unreadable"
+              ],
+              "type": "string"
+            },
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "name": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "role": {
+              "enum": [
+                "host-agent",
+                "host-edge-proxy"
+              ],
+              "type": "string"
+            },
+            "state": {
+              "enum": [
+                "absent",
+                "registered",
+                "unavailable",
+                "failed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "role",
+            "name",
+            "state",
+            "definitionState"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-installation-footprint",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "C49 Host Installation Manager-owned observation of the package receipt, immutable release slot, activation link, services, mutable stores, and unfinished installation transaction. It never treats an unreadable or unknown resource as absent.",
+      "properties": {
+        "activation": {
+          "$ref": "#/$defs/ActivationObservation"
+        },
+        "expectedReleaseId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "immutableRelease": {
+          "$ref": "#/$defs/ImmutableReleaseObservation"
+        },
+        "installationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "installationTransaction": {
+          "$ref": "#/$defs/InstallationTransactionObservation"
+        },
+        "mutableStores": {
+          "items": {
+            "$ref": "#/$defs/MutableStoreObservation"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "packageReceipt": {
+          "$ref": "#/$defs/PackageReceiptObservation"
+        },
+        "platform": {
+          "enum": [
+            "macos",
+            "windows",
+            "linux"
+          ],
+          "type": "string"
+        },
+        "releaseCatalog": {
+          "$ref": "#/$defs/ReleaseCatalogObservation"
+        },
+        "requiredServices": {
+          "items": {
+            "$ref": "#/$defs/RequiredServiceObservation"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "installationId",
+        "expectedReleaseId",
+        "platform",
+        "observedAt",
+        "packageReceipt",
+        "releaseCatalog",
+        "immutableRelease",
+        "activation",
+        "requiredServices",
+        "mutableStores",
+        "installationTransaction"
+      ],
+      "title": "HostInstallationFootprint",
+      "type": "object"
+    },
+    "json-schema/v1/host-installation-lifecycle.schema.json": {
+      "$defs": {
+        "Issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "Journal": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "else": {
+                "not": {
+                  "required": [
+                    "failure"
+                  ]
+                }
+              },
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "failure"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "createdAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "documentKind": {
+              "const": "host-installation-journal"
+            },
+            "failure": {
+              "$ref": "#/$defs/Issue"
+            },
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "installationId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "releaseId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "requestId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "state": {
+              "enum": [
+                "preflight-verified",
+                "activation-pending",
+                "activated",
+                "failed"
+              ],
+              "type": "string"
+            },
+            "updatedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "documentKind",
+            "id",
+            "requestId",
+            "installationId",
+            "releaseId",
+            "state",
+            "createdAt",
+            "updatedAt"
+          ],
+          "type": "object"
+        },
+        "Receipt": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "else": {
+                "not": {
+                  "required": [
+                    "issue"
+                  ]
+                }
+              },
+              "if": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "blocked",
+                      "failed"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "documentKind": {
+              "const": "host-installation-receipt"
+            },
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "installationId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "observedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "releaseId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "requestId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "state": {
+              "enum": [
+                "preflight-admitted",
+                "services-quiesced",
+                "activated",
+                "blocked",
+                "failed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "documentKind",
+            "id",
+            "requestId",
+            "installationId",
+            "releaseId",
+            "state",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "Request": {
+          "additionalProperties": false,
+          "properties": {
+            "documentKind": {
+              "const": "host-installation-request"
+            },
+            "expectedReleaseId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "installationId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "operation": {
+              "enum": [
+                "preflight",
+                "quiesce-services",
+                "activate-release"
+              ],
+              "type": "string"
+            },
+            "requestedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "documentKind",
+            "id",
+            "installationId",
+            "operation",
+            "expectedReleaseId",
+            "requestedAt"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-installation-lifecycle",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "C50 Host Installation Manager-owned install command, durable transaction state, and receipt language. It distinguishes preflight admission, service quiescence, and activation, and never makes a direct version-changing package install an implicit update.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Request"
+        },
+        {
+          "$ref": "#/$defs/Journal"
+        },
+        {
+          "$ref": "#/$defs/Receipt"
+        }
+      ],
+      "title": "HostInstallationRequest, HostInstallationJournal, and HostInstallationReceipt"
+    },
+    "json-schema/v1/host-product-installation-manifest.schema.json": {
+      "$defs": {
+        "Activation": {
+          "additionalProperties": false,
+          "properties": {
+            "currentReleaseLinkPath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            },
+            "expectedReleaseRootPath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            }
+          },
+          "required": [
+            "currentReleaseLinkPath",
+            "expectedReleaseRootPath"
+          ],
+          "type": "object"
+        },
+        "HostAbsolutePath": {
+          "maxLength": 4096,
+          "minLength": 2,
+          "not": {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          },
+          "pattern": "^/",
+          "type": "string"
+        },
+        "ImmutablePayload": {
+          "additionalProperties": false,
+          "properties": {
+            "entries": {
+              "items": {
+                "$ref": "#/$defs/ImmutablePayloadEntry"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "manifestPath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            },
+            "releaseCatalogPath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            },
+            "releaseRootPath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            }
+          },
+          "required": [
+            "releaseCatalogPath",
+            "releaseRootPath",
+            "manifestPath",
+            "entries"
+          ],
+          "type": "object"
+        },
+        "ImmutablePayloadEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "executable": {
+              "type": "boolean"
+            },
+            "relativePath": {
+              "$ref": "#/$defs/RelativePayloadPath"
+            },
+            "sha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            }
+          },
+          "required": [
+            "relativePath",
+            "sha256",
+            "executable"
+          ],
+          "type": "object"
+        },
+        "MutableStore": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "owner": {
+              "enum": [
+                "host-agent",
+                "macos-virtual-machine-supervisor",
+                "host-installation-manager"
+              ],
+              "type": "string"
+            },
+            "path": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            },
+            "retention": {
+              "enum": [
+                "preserve-by-default",
+                "purge-only-by-explicit-command"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "path",
+            "owner",
+            "retention"
+          ],
+          "type": "object"
+        },
+        "PackageIdentity": {
+          "additionalProperties": false,
+          "properties": {
+            "identifier": {
+              "maxLength": 255,
+              "minLength": 3,
+              "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$",
+              "type": "string"
+            },
+            "productVersion": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "identifier",
+            "productVersion"
+          ],
+          "type": "object"
+        },
+        "RelativePayloadPath": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "not": {
+            "anyOf": [
+              {
+                "pattern": "^/"
+              },
+              {
+                "pattern": "(^|/)\\.\\.(/|$)"
+              }
+            ]
+          },
+          "type": "string"
+        },
+        "Release": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "productVersion": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "runtimeVersion": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "productVersion",
+            "runtimeVersion"
+          ],
+          "type": "object"
+        },
+        "RequiredService": {
+          "additionalProperties": false,
+          "properties": {
+            "definitionPath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            },
+            "definitionSha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
+            "manager": {
+              "enum": [
+                "launchd",
+                "windows-scm",
+                "systemd"
+              ],
+              "type": "string"
+            },
+            "name": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "role": {
+              "enum": [
+                "host-agent",
+                "host-edge-proxy"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "role",
+            "manager",
+            "name",
+            "definitionPath",
+            "definitionSha256"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-product-installation-manifest",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "C48 Release-process-owned declaration of one immutable Host product release slot, its activation link, required service registrations, and separately owned mutable stores. It is desired release content, not proof that an installer wrote, activated, or started it.",
+      "properties": {
+        "activation": {
+          "$ref": "#/$defs/Activation"
+        },
+        "immutablePayload": {
+          "$ref": "#/$defs/ImmutablePayload"
+        },
+        "installationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "mutableStores": {
+          "items": {
+            "$ref": "#/$defs/MutableStore"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "package": {
+          "$ref": "#/$defs/PackageIdentity"
+        },
+        "platform": {
+          "enum": [
+            "macos",
+            "windows",
+            "linux"
+          ],
+          "type": "string"
+        },
+        "release": {
+          "$ref": "#/$defs/Release"
+        },
+        "requiredServices": {
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "role": {
+                    "const": "host-agent"
+                  }
+                },
+                "required": [
+                  "role"
+                ],
+                "type": "object"
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "role": {
+                    "const": "host-edge-proxy"
+                  }
+                },
+                "required": [
+                  "role"
+                ],
+                "type": "object"
+              },
+              "maxContains": 1,
+              "minContains": 1
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/RequiredService"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "installationId",
+        "platform",
+        "release",
+        "package",
+        "immutablePayload",
+        "activation",
+        "requiredServices",
+        "mutableStores"
+      ],
+      "title": "HostProductInstallationManifest",
+      "type": "object"
+    },
     "json-schema/v1/host-update-command.schema.json": {
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-command",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -9010,6 +10062,9 @@
             "hostEdgeProxyBinaryAbsolutePath": {
               "$ref": "#/$defs/AbsoluteHostPath"
             },
+            "hostInstallationManagerBinaryAbsolutePath": {
+              "$ref": "#/$defs/AbsoluteHostPath"
+            },
             "macOSVirtualMachineSupervisorBinaryAbsolutePath": {
               "$ref": "#/$defs/AbsoluteHostPath"
             }
@@ -9017,6 +10072,7 @@
           "required": [
             "hostAgentBinaryAbsolutePath",
             "hostEdgeProxyBinaryAbsolutePath",
+            "hostInstallationManagerBinaryAbsolutePath",
             "macOSVirtualMachineSupervisorBinaryAbsolutePath",
             "guestProductProcessSupervisorArtifactAbsolutePath"
           ],

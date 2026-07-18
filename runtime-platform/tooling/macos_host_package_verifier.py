@@ -23,6 +23,7 @@ import tempfile
 from typing import Any, Mapping
 import xml.etree.ElementTree as ElementTree
 
+from tooling.contracts import ContractRepository, ContractToolError
 from tooling.product_delivery_release_plan import (
     MacOSHostPackageReleasePlan,
     ProductDeliveryReleasePlanError,
@@ -41,6 +42,17 @@ class MacOSHostPackageVerification:
     release_delivery_plans_document: Path
     release_delivery_plan_id: str
     payload_base_path: PurePosixPath
+    release_slot_id: str
+
+
+def immutable_release_slot_path(
+    verification: MacOSHostPackageVerification,
+) -> PurePosixPath:
+    return verification.payload_base_path / "releases" / verification.release_slot_id
+
+
+def current_release_path(verification: MacOSHostPackageVerification) -> PurePosixPath:
+    return verification.payload_base_path / "current"
 
 
 @dataclass(frozen=True)
@@ -96,6 +108,10 @@ def verify_macos_host_package(verification: MacOSHostPackageVerification) -> dic
             expanded_package,
             host_filesystem_preparation.product_version,
             macos_host_package_release_plan,
+        )
+        verify_preinstall_host_installation_transaction(
+            verification,
+            expanded_package,
         )
         verify_postinstall_service_reconciliation(
             verification,
@@ -181,6 +197,8 @@ def validate_macos_host_package_verification(
         raise MacOSHostPackageVerificationError("pkgutil executable is missing or not a file")
     if not is_safe_absolute_path(str(verification.payload_base_path)):
         raise MacOSHostPackageVerificationError("payload base path must be an absolute path without traversal")
+    if not is_identifier(verification.release_slot_id):
+        raise MacOSHostPackageVerificationError("C48 immutable release slot id is invalid")
     if not verification.release_delivery_plan_id:
         raise MacOSHostPackageVerificationError(
             "C23 release delivery plan id is required"
@@ -206,18 +224,21 @@ def expand_package(verification: MacOSHostPackageVerification, expanded_package:
 def verify_payload_documents(
     verification: MacOSHostPackageVerification, payload_root: Path
 ) -> VerifiedMacOSHostPackageHostFilesystemPreparation:
-    base_path = verification.payload_base_path
-    host_agent_path = payload_destination(payload_root, base_path / "bin" / "host-agent")
-    host_edge_proxy_path = payload_destination(payload_root, base_path / "bin" / "host-edge-proxy")
-    macos_virtual_machine_supervisor_path = payload_destination(payload_root, base_path / "bin" / "macos-virtual-machine-supervisor")
-    c33_path = payload_destination(payload_root, base_path / "config" / "host-agent-deployment.json")
-    c36_path = payload_destination(payload_root, base_path / "config" / "host-edge-proxy-deployment.json")
-    c32_path = payload_destination(payload_root, base_path / "config" / "macos-virtual-machine.json")
-    c34_path = payload_destination(payload_root, base_path / "release" / "macos-guest-artifact-manifest.json")
-    c35_receipt_path = payload_destination(payload_root, base_path / "release" / "guest-artifact-compilation-receipt.json")
+    release_path = immutable_release_slot_path(verification)
+    current_path = current_release_path(verification)
+    host_agent_path = payload_destination(payload_root, release_path / "bin" / "host-agent")
+    host_edge_proxy_path = payload_destination(payload_root, release_path / "bin" / "host-edge-proxy")
+    host_installation_manager_path = payload_destination(payload_root, release_path / "bin" / "host-installation-manager")
+    macos_virtual_machine_supervisor_path = payload_destination(payload_root, release_path / "bin" / "macos-virtual-machine-supervisor")
+    c33_path = payload_destination(payload_root, release_path / "config" / "host-agent-deployment.json")
+    c36_path = payload_destination(payload_root, release_path / "config" / "host-edge-proxy-deployment.json")
+    c32_path = payload_destination(payload_root, release_path / "config" / "macos-virtual-machine.json")
+    c34_path = payload_destination(payload_root, release_path / "release" / "macos-guest-artifact-manifest.json")
+    c35_receipt_path = payload_destination(payload_root, release_path / "release" / "guest-artifact-compilation-receipt.json")
     for artifact_name, artifact_path in (
         ("Host Agent", host_agent_path),
         ("Host Edge Proxy", host_edge_proxy_path),
+        ("Host Installation Manager", host_installation_manager_path),
         ("macOS virtual machine supervisor", macos_virtual_machine_supervisor_path),
         ("C33 HostAgentDeploymentConfiguration", c33_path),
         ("C36 HostEdgeProxyDeploymentConfiguration", c36_path),
@@ -236,9 +257,9 @@ def verify_payload_documents(
     provider = required_object(c33, "provider", "C33")
     if c33.get("schemaVersion") != "v1" or provider.get("kind") != "macos-virtualization":
         raise MacOSHostPackageVerificationError("C33 must be a v1 macos-virtualization deployment configuration")
-    if provider.get("macOSVirtualMachineSupervisorExecutablePath") != str(base_path / "bin" / "macos-virtual-machine-supervisor"):
+    if provider.get("macOSVirtualMachineSupervisorExecutablePath") != str(current_path / "bin" / "macos-virtual-machine-supervisor"):
         raise MacOSHostPackageVerificationError("C33 does not name the packaged macOS virtual machine supervisor")
-    if provider.get("macOSVirtualMachineConfigurationPath") != str(base_path / "config" / "macos-virtual-machine.json"):
+    if provider.get("macOSVirtualMachineConfigurationPath") != str(current_path / "config" / "macos-virtual-machine.json"):
         raise MacOSHostPackageVerificationError("C33 does not name the packaged C32 configuration")
     verify_host_edge_proxy_deployment(c36)
     verify_host_edge_proxy_routes_target_c32_public_service_bridges(c36, c32)
@@ -249,13 +270,13 @@ def verify_payload_documents(
     guest_runtime_disk_provisioning = verify_c32_guest_runtime_disk_provisioning(
         c32,
         c33,
-        base_path,
+        current_path,
     )
     if c34.get("schemaVersion") != "v1" or c34.get("architecture") != "arm64" or not isinstance(c34.get("artifactSetId"), str) or not c34["artifactSetId"]:
         raise MacOSHostPackageVerificationError("C34 must identify one v1 arm64 Guest artifact set")
     verify_guest_artifact_compilation_receipt(c34_path, c34, c35_receipt)
     boot = required_object(c32, "boot", "C32")
-    verify_manifested_payload_artifact(payload_root, base_path, boot.get("kernelPath"), required_object(c34, "kernel", "C34"), "C32 kernel")
+    verify_manifested_payload_artifact(payload_root, verification, boot.get("kernelPath"), required_object(c34, "kernel", "C34"), "C32 kernel")
     initial_ramdisk_path = boot.get("initialRamdiskPath")
     initial_ramdisk_digest = c34.get("initialRamdisk")
     if initial_ramdisk_path is None and initial_ramdisk_digest is not None:
@@ -263,7 +284,7 @@ def verify_payload_documents(
     if initial_ramdisk_path is not None:
         if not isinstance(initial_ramdisk_digest, dict):
             raise MacOSHostPackageVerificationError("C32 initial RAM disk has no C34 digest")
-        verify_manifested_payload_artifact(payload_root, base_path, initial_ramdisk_path, initial_ramdisk_digest, "C32 initial RAM disk")
+        verify_manifested_payload_artifact(payload_root, verification, initial_ramdisk_path, initial_ramdisk_digest, "C32 initial RAM disk")
 
     storage_devices = c32.get("storageDevices")
     storage_digests = c34.get("storageDevices")
@@ -300,7 +321,7 @@ def verify_payload_documents(
                 )
             verify_manifested_payload_artifact(
                 payload_root,
-                base_path,
+                verification,
                 guest_runtime_disk_provisioning["releaseArtifactPath"],
                 digest,
                 "C32 Guest Runtime immutable release root",
@@ -318,13 +339,20 @@ def verify_payload_documents(
         else:
             verify_manifested_payload_artifact(
                 payload_root,
-                base_path,
+                verification,
                 storage_device.get("diskImagePath"),
                 digest,
                 "C32 storage device " + storage_id,
             )
     if storage_ids != set(storage_digest_by_id):
         raise MacOSHostPackageVerificationError("C32 and C34 name different storage devices")
+    verify_host_product_installation_manifest(
+        verification,
+        payload_root,
+        c33,
+        macos_virtual_machine_supervisor_path,
+        host_installation_manager_path,
+    )
     return VerifiedMacOSHostPackageHostFilesystemPreparation(
         guest_boot_console_capture_path=guest_boot_console_capture_path,
         declared_host_runtime_directories=declared_host_runtime_directories(
@@ -741,9 +769,9 @@ def verify_launchd_service_definitions(
         payload_root,
         macos_host_package_release_plan.host_agent_launchd_service_label,
         [
-            str(verification.payload_base_path / "bin" / "host-agent"),
+            str(current_release_path(verification) / "bin" / "host-agent"),
             "--deployment-configuration",
-            str(verification.payload_base_path / "config" / "host-agent-deployment.json"),
+            str(current_release_path(verification) / "config" / "host-agent-deployment.json"),
         ],
         "Host Agent",
     )
@@ -751,9 +779,9 @@ def verify_launchd_service_definitions(
         payload_root,
         macos_host_package_release_plan.host_edge_proxy_launchd_service_label,
         [
-            str(verification.payload_base_path / "bin" / "host-edge-proxy"),
+            str(current_release_path(verification) / "bin" / "host-edge-proxy"),
             "--deployment-configuration",
-            str(verification.payload_base_path / "config" / "host-edge-proxy-deployment.json"),
+            str(current_release_path(verification) / "config" / "host-edge-proxy-deployment.json"),
         ],
         "Host Edge Proxy",
     )
@@ -820,7 +848,8 @@ def verify_postinstall_service_reconciliation(
         raise MacOSHostPackageVerificationError("package postinstall service reconciliation script is missing") from error
     required_lines = [
         "set -eu",
-        "if [ \"$launchctl_bootout_status\" -ne 0 ] && [ \"$launchctl_bootout_status\" -ne 3 ]; then",
+        "--mode activate",
+        "--manifest '" + str(immutable_release_slot_path(verification) / "installation-manifest.json").replace("'", "'\\''") + "'",
         "/usr/bin/install -d -m 0750",
         "/usr/bin/touch '"
         + host_filesystem_preparation.guest_boot_console_capture_path.replace("'", "'\\''")
@@ -834,24 +863,171 @@ def verify_postinstall_service_reconciliation(
         macos_host_package_release_plan.host_agent_launchd_service_label,
         macos_host_package_release_plan.host_edge_proxy_launchd_service_label,
     ):
-        service_target = "system/" + service_label
         required_lines.extend(
             [
-                "/bin/launchctl bootout '" + service_target + "' >/dev/null 2>&1 || launchctl_bootout_status=$?",
                 "/bin/launchctl bootstrap system '" + str(PurePosixPath("/Library/LaunchDaemons") / (service_label + ".plist")) + "'",
             ]
         )
     if any(line not in postinstall for line in required_lines):
         raise MacOSHostPackageVerificationError(
-            "package postinstall does not explicitly prepare the Host filesystem and reconcile launchd services"
+            "package postinstall does not explicitly activate the release, prepare the Host filesystem, and bootstrap declared launchd services"
         )
     if "|| true" in postinstall:
-        raise MacOSHostPackageVerificationError("package postinstall must not hide launchd reconciliation failures")
+        raise MacOSHostPackageVerificationError("package postinstall must not hide activation or launchd bootstrap failures")
+    if "/bin/launchctl bootout" in postinstall:
+        raise MacOSHostPackageVerificationError("package postinstall must not own Host service quiescence")
 
+
+def verify_preinstall_host_installation_transaction(
+    verification: MacOSHostPackageVerification,
+    expanded_package: Path,
+) -> None:
+    """Require the script-only C50 transaction handoff before payload write.
+
+    The PKG script supplies C48/C50 values to the installed manager binary;
+    it must not independently inspect receipts or invoke launchctl. That keeps
+    admission and service-quiescence policy in the Host state owner.
+    """
+
+    scripts_root = expanded_package / "Scripts"
+    preinstall_path = scripts_root / "preinstall"
+    try:
+        preinstall = preinstall_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise MacOSHostPackageVerificationError(
+            "package preinstall Host Installation Manager script is missing"
+        ) from error
+    if not (scripts_root / "host-installation-manager").is_file() or not (
+        scripts_root / "installation-manifest.json"
+    ).is_file():
+        raise MacOSHostPackageVerificationError(
+            "package preinstall Host Installation Manager inputs are missing"
+        )
+    required_lines = (
+        "set -eu",
+        '"$script_directory/host-installation-manager" --mode preflight',
+        '"$script_directory/host-installation-manager" --mode quiesce',
+        "--release-id '" + verification.release_slot_id + "'",
+        '--manifest "$script_directory/installation-manifest.json"',
+    )
+    if any(line not in preinstall for line in required_lines):
+        raise MacOSHostPackageVerificationError(
+            "package preinstall does not execute the C50 preflight and service-quiescence sequence"
+        )
+    if "/bin/launchctl bootout" in preinstall or "|| true" in preinstall:
+        raise MacOSHostPackageVerificationError(
+            "package preinstall must not own Host service quiescence or hide installation failures"
+        )
+
+
+def verify_host_product_installation_manifest(
+    verification: MacOSHostPackageVerification,
+    payload_root: Path,
+    host_agent_deployment: Mapping[str, Any],
+    macos_virtual_machine_supervisor_path: Path,
+    host_installation_manager_path: Path,
+) -> None:
+    """Verify C48 against the exact immutable payload it identifies."""
+
+    release_path = immutable_release_slot_path(verification)
+    manifest_path = payload_destination(
+        payload_root, release_path / "installation-manifest.json"
+    )
+    manifest = load_json_document(manifest_path, "C48 HostProductInstallationManifest")
+    repository = ContractRepository(Path(__file__).resolve().parents[1])
+    try:
+        repository.load()
+        validation_errors = repository.validate_instance(
+            "host-product-installation-manifest.schema.json", manifest
+        )
+    except ContractToolError as error:
+        raise MacOSHostPackageVerificationError(
+            "C48 contract source is unavailable: " + str(error)
+        ) from error
+    if validation_errors:
+        raise MacOSHostPackageVerificationError(
+            "C48 HostProductInstallationManifest is invalid: "
+            + "; ".join(validation_errors)
+        )
+    installation = required_object(host_agent_deployment, "installation", "C33")
+    if (
+        manifest.get("installationId") != installation.get("installationId")
+        or manifest.get("platform") != "macos"
+        or required_object(manifest, "release", "C48").get("id")
+        != verification.release_slot_id
+    ):
+        raise MacOSHostPackageVerificationError(
+            "C48 identity does not match C33 installation and the declared release slot"
+        )
+    immutable_payload = required_object(manifest, "immutablePayload", "C48")
+    if (
+        immutable_payload.get("releaseCatalogPath") != str(release_path.parent)
+        or immutable_payload.get("releaseRootPath") != str(release_path)
+        or immutable_payload.get("manifestPath") != str(release_path / "installation-manifest.json")
+    ):
+        raise MacOSHostPackageVerificationError(
+            "C48 immutable payload paths do not name the declared release slot"
+        )
+    activation = required_object(manifest, "activation", "C48")
+    if (
+        activation.get("currentReleaseLinkPath") != str(current_release_path(verification))
+        or activation.get("expectedReleaseRootPath") != str(release_path)
+    ):
+        raise MacOSHostPackageVerificationError(
+            "C48 activation does not bind current to the declared immutable release slot"
+        )
+    entries = immutable_payload.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise MacOSHostPackageVerificationError("C48 immutable payload entries are missing")
+    declared_paths: set[str] = set()
+    staged_release_root = payload_destination(payload_root, release_path)
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise MacOSHostPackageVerificationError("C48 immutable payload entry is invalid")
+        relative_path = entry.get("relativePath")
+        expected_sha256 = entry.get("sha256")
+        if not isinstance(relative_path, str) or not relative_path or relative_path in declared_paths or relative_path.startswith("/") or ".." in PurePosixPath(relative_path).parts:
+            raise MacOSHostPackageVerificationError("C48 immutable payload entry path is invalid")
+        declared_paths.add(relative_path)
+        candidate = staged_release_root / relative_path
+        if not candidate.is_file() or sha256_file(candidate) != expected_sha256:
+            raise MacOSHostPackageVerificationError(
+                "C48 immutable payload entry does not match packaged bytes: "
+                + relative_path
+            )
+    if "installation-manifest.json" in declared_paths:
+        raise MacOSHostPackageVerificationError(
+            "C48 immutable payload entries must not recursively declare the manifest itself"
+        )
+    required_binaries = {
+        "bin/macos-virtual-machine-supervisor": macos_virtual_machine_supervisor_path,
+        "bin/host-installation-manager": host_installation_manager_path,
+    }
+    for relative_path, binary_path in required_binaries.items():
+        if relative_path not in declared_paths or not binary_path.is_file():
+            raise MacOSHostPackageVerificationError(
+                "C48 does not declare required immutable product binary " + relative_path
+            )
+    required_services = manifest.get("requiredServices")
+    if not isinstance(required_services, list):
+        raise MacOSHostPackageVerificationError("C48 requires requiredServices array")
+    for service in required_services:
+        if not isinstance(service, dict):
+            raise MacOSHostPackageVerificationError("C48 required service is invalid")
+        definition_path = service.get("definitionPath")
+        definition_sha256 = service.get("definitionSha256")
+        if not isinstance(definition_path, str) or not isinstance(definition_sha256, str):
+            raise MacOSHostPackageVerificationError("C48 required service definition identity is invalid")
+        definition = payload_destination(payload_root, PurePosixPath(definition_path))
+        if not definition.is_file() or sha256_file(definition) != definition_sha256:
+            raise MacOSHostPackageVerificationError(
+                "C48 required service definition does not match packaged bytes: "
+                + definition_path
+            )
 
 def verify_manifested_payload_artifact(
     payload_root: Path,
-    payload_base_path: PurePosixPath,
+    verification: MacOSHostPackageVerification,
     declared_path: Any,
     digest: Mapping[str, Any],
     artifact_name: str,
@@ -860,10 +1036,12 @@ def verify_manifested_payload_artifact(
         raise MacOSHostPackageVerificationError(artifact_name + " path must be an absolute path without traversal")
     declared = PurePosixPath(declared_path)
     try:
-        declared.relative_to(payload_base_path)
+        declared.relative_to(current_release_path(verification))
     except ValueError as error:
         raise MacOSHostPackageVerificationError(artifact_name + " path is outside the package payload base") from error
-    artifact = payload_destination(payload_root, declared)
+    artifact = payload_destination_for_current_release_path(
+        payload_root, verification, declared
+    )
     if not artifact.is_file():
         raise MacOSHostPackageVerificationError(artifact_name + " is missing from the package payload")
     expected_size = digest.get("sizeBytes")
@@ -878,6 +1056,25 @@ def payload_destination(payload_root: Path, absolute_target_path: PurePosixPath)
     if not absolute_target_path.is_absolute():
         raise MacOSHostPackageVerificationError("package target path must be absolute")
     return payload_root.joinpath(*absolute_target_path.parts[1:])
+
+
+def payload_destination_for_current_release_path(
+    payload_root: Path,
+    verification: MacOSHostPackageVerification,
+    declared_current_release_path: PurePosixPath,
+) -> Path:
+    try:
+        relative_path = declared_current_release_path.relative_to(
+            current_release_path(verification)
+        )
+    except ValueError as error:
+        raise MacOSHostPackageVerificationError(
+            "declared payload path is outside C48 current release path"
+        ) from error
+    return payload_destination(
+        payload_root,
+        immutable_release_slot_path(verification) / relative_path,
+    )
 
 
 def load_json_document(path: Path, document_name: str) -> Mapping[str, Any]:
@@ -924,6 +1121,16 @@ def is_safe_absolute_path(value: str) -> bool:
     return value.startswith("/") and "\\" not in value and ".." not in PurePosixPath(value).parts
 
 
+def is_identifier(value: str) -> bool:
+    return (
+        bool(value)
+        and len(value) <= 128
+        and value[0].isascii()
+        and value[0].isalnum()
+        and all(character.isascii() and (character.isalnum() or character in "._:-") for character in value)
+    )
+
+
 def sha256_file(source: Path) -> str:
     digest = hashlib.sha256()
     with source.open("rb") as artifact:
@@ -939,6 +1146,7 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageVerification:
     parser.add_argument("--release-delivery-plans-document", required=True)
     parser.add_argument("--release-delivery-plan-id", required=True)
     parser.add_argument("--payload-base-path", required=True)
+    parser.add_argument("--release-slot-id", required=True)
     parsed = parser.parse_args(arguments)
     return MacOSHostPackageVerification(
         package=Path(parsed.package),
@@ -946,6 +1154,7 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageVerification:
         release_delivery_plans_document=Path(parsed.release_delivery_plans_document),
         release_delivery_plan_id=parsed.release_delivery_plan_id,
         payload_base_path=PurePosixPath(parsed.payload_base_path),
+        release_slot_id=parsed.release_slot_id,
     )
 
 

@@ -63,8 +63,8 @@ C47 declaration은 다음을 모두 명시한다.
 - C23 plans document path와 selected release plan ID
 - C41 declaration path and new assembled-input root
 - new C35 output directory and builder timeout
-- Host Agent, Host Edge Proxy, macOS VM Supervisor, Guest Product Process
-  Supervisor artifact paths
+- Host Agent, Host Edge Proxy, **Host Installation Manager**, macOS VM
+  Supervisor, Guest Product Process Supervisor artifact paths
 - C32/C33/C36/C37/C38/C39/C44와 optional C46 source paths
 - payload base path, new PKG output path, `pkgbuild` path, package signing
   input, VM Supervisor code-signing input, `pkgutil` path
@@ -156,6 +156,16 @@ The C47 receipt becomes input to release review and the later C24 evidence
 workflow. The command does not mutate
 `product/delivery/release-delivery-proofs.v1.json`, start a Guest, invoke an
 installer, or infer clean-Host success.
+
+The package composer materializes C48 `HostProductInstallationManifest` only
+after every immutable release-slot byte, launchd plist, and VM Supervisor
+signature is final.
+It packages the Host Installation Manager in both the release slot and the
+Installer script boundary. The script sequence is C50 `preflight` →
+`quiesce-services` before payload write and `activate-release` after it; the
+scripts do not independently infer state or execute launchd bootout policy.
+See [Host Installation Lifecycle](host-installation-lifecycle.md) for the
+owner and recovery semantics.
 
 ## 6. Failure meanings
 

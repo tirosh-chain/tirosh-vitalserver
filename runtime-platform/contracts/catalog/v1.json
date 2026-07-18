@@ -447,6 +447,33 @@
         "json-schema/v1/macos-release-package-assembly-declaration.schema.json",
         "json-schema/v1/macos-release-package-assembly-receipt.schema.json"
       ]
+    },
+    {
+      "id": "C48",
+      "name": "HostProductInstallationManifest",
+      "owner": "Release process",
+      "boundary": "one immutable Host product release catalog and slot, current-release activation identity, hashed Host service definitions, and separately owned mutable stores",
+      "schemas": [
+        "json-schema/v1/host-product-installation-manifest.schema.json"
+      ]
+    },
+    {
+      "id": "C49",
+      "name": "HostInstallationFootprint",
+      "owner": "Host Installation Manager",
+      "boundary": "Host-local observation of a C48 package receipt, release catalog and slot, activation link, service registrations and definition bytes, mutable stores, and unfinished transaction",
+      "schemas": [
+        "json-schema/v1/host-installation-footprint.schema.json"
+      ]
+    },
+    {
+      "id": "C50",
+      "name": "HostInstallationRequest, HostInstallationJournal, and HostInstallationReceipt",
+      "owner": "Host Installation Manager",
+      "boundary": "Host Installation Manager command admission, durable installation transaction state, and explicit preflight or activation outcome",
+      "schemas": [
+        "json-schema/v1/host-installation-lifecycle.schema.json"
+      ]
     }
   ]
 }

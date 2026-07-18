@@ -71,6 +71,9 @@ class ContractKernelTests(unittest.TestCase):
         self.assertEqual("Recorder Gateway", by_id["C45"]["owner"])
         self.assertEqual("Guest Product external delivery deployment administrator", by_id["C46"]["owner"])
         self.assertEqual("Release process", by_id["C47"]["owner"])
+        self.assertEqual("Release process", by_id["C48"]["owner"])
+        self.assertEqual("Host Installation Manager", by_id["C49"]["owner"])
+        self.assertEqual("Host Installation Manager", by_id["C50"]["owner"])
 
     def test_extend_baseline_refuses_a_breaking_existing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

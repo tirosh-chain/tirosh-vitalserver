@@ -115,7 +115,7 @@ python3 -m tooling.macos_development_installation_evidence_runner create-run \
   --journal-path /absolute/evidence/macos-development-001/development-installation.sqlite \
   --evidence-directory /absolute/evidence/macos-development-001 \
   --installer-artifact /absolute/release/VitalServerRuntimePlatform-0.2.0-dev.pkg \
-  --installed-virtual-machine-supervisor "/Library/Application Support/VitalServerRuntimePlatform/bin/macos-virtual-machine-supervisor" \
+  --installed-virtual-machine-supervisor "/Library/Application Support/VitalServerRuntimePlatform/current/bin/macos-virtual-machine-supervisor" \
   --release-delivery-plans-document /absolute/source/runtime-platform/product/delivery/release-delivery-plans.v1.json \
   --release-delivery-plan-id macos-runtime-platform-release \
   --run-id macos-development-installation-001 \

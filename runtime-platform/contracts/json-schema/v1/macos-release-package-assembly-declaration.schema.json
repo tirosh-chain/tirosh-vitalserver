@@ -118,6 +118,7 @@
       "required": [
         "hostAgentBinaryAbsolutePath",
         "hostEdgeProxyBinaryAbsolutePath",
+        "hostInstallationManagerBinaryAbsolutePath",
         "macOSVirtualMachineSupervisorBinaryAbsolutePath",
         "guestProductProcessSupervisorArtifactAbsolutePath"
       ],
@@ -126,6 +127,9 @@
           "$ref": "#/$defs/AbsoluteHostPath"
         },
         "hostEdgeProxyBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostInstallationManagerBinaryAbsolutePath": {
           "$ref": "#/$defs/AbsoluteHostPath"
         },
         "macOSVirtualMachineSupervisorBinaryAbsolutePath": {

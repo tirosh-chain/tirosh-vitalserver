@@ -595,6 +595,36 @@
       "path": "invalid/macos-release-package-assembly-declaration-unsigned-with-identity.json",
       "schema": "macos-release-package-assembly-declaration.schema.json",
       "valid": false
+    },
+    {
+      "path": "valid/host-product-installation-manifest.json",
+      "schema": "host-product-installation-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-installation-footprint-clean.json",
+      "schema": "host-installation-footprint.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-installation-preflight-request.json",
+      "schema": "host-installation-lifecycle.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-installation-preflight-receipt.json",
+      "schema": "host-installation-lifecycle.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-installation-unimplemented-uninstall-request.json",
+      "schema": "host-installation-lifecycle.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/host-installation-receipt-blocked-without-issue.json",
+      "schema": "host-installation-lifecycle.schema.json",
+      "valid": false
     }
   ]
 }

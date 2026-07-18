@@ -39,8 +39,10 @@ class MacOSReleasePackageAssemblyTests(unittest.TestCase):
             release_delivery_plans_document=self.root / "release-delivery-plans.json",
             release_delivery_plan_id="macos-release",
             payload_base_path=PurePosixPath("/Library/Application Support/VitalServerRuntimePlatform"),
+            release_slot_id="macos-release-package-assembly-020",
             host_agent_binary=self.root / "host-agent",
             host_edge_proxy_binary=self.root / "host-edge-proxy",
+            host_installation_manager_binary=self.root / "host-installation-manager",
             macos_virtual_machine_supervisor_binary=self.root / "macos-virtual-machine-supervisor",
             host_agent_deployment_configuration=self.root / "c33.json",
             host_edge_proxy_deployment_configuration=self.root / "c36.json",
@@ -81,6 +83,7 @@ class MacOSReleasePackageAssemblyTests(unittest.TestCase):
             release_delivery_plans_document=composition.release_delivery_plans_document,
             release_delivery_plan_id=composition.release_delivery_plan_id,
             payload_base_path=composition.payload_base_path,
+            release_slot_id=composition.release_slot_id,
         )
         return macos_release_package_assembly.MacOSReleasePackageAssemblyRequest(
             guest_artifact_input_assembly_execution=(
@@ -205,6 +208,23 @@ class MacOSReleasePackageAssemblyTests(unittest.TestCase):
         parse_command.assert_called_once_with(b"declared-c35-command")
         compose_package.assert_called_once_with(request.host_package_composition)
         verify_package.assert_called_once_with(request.host_package_verification)
+
+    def test_rejects_package_verification_release_slot_drift(self) -> None:
+        request = self.request()
+        verification = replace(
+            request.host_package_verification,
+            release_slot_id="different-release-slot",
+        )
+        request = replace(request, host_package_verification=verification)
+
+        with self.assertRaisesRegex(
+            macos_release_package_assembly.MacOSReleasePackageAssemblyError,
+            "immutable release slot",
+        ):
+            macos_release_package_assembly.validate_host_package_verification_output(
+                request.host_package_composition,
+                request.host_package_verification,
+            )
 
     def test_rejects_package_composition_that_names_a_non_c35_manifest_path_before_build(self) -> None:
         request = self.request()
@@ -460,6 +480,9 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
                     "hostArtifacts": {
                         "hostAgentBinaryAbsolutePath": str(host_agent),
                         "hostEdgeProxyBinaryAbsolutePath": str(host_edge_proxy),
+                        "hostInstallationManagerBinaryAbsolutePath": str(
+                            self.write_source_file("artifacts/host-installation-manager")
+                        ),
                         "macOSVirtualMachineSupervisorBinaryAbsolutePath": str(
                             virtual_machine_supervisor
                         ),
@@ -565,6 +588,27 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
         )
         self.assertNotIn(str(self.root), json.dumps(receipt, sort_keys=True))
         self.assertEqual(receipt, result["macOSReleasePackageAssemblyReceipt"])
+
+    def test_declared_assembly_requires_the_host_installation_manager_binary_before_c41_effects(self) -> None:
+        declaration_path = self.declaration_document()
+        declaration = json.loads(declaration_path.read_text(encoding="utf-8"))
+        manager_path = Path(
+            declaration["hostArtifacts"]["hostInstallationManagerBinaryAbsolutePath"]
+        )
+        manager_path.unlink()
+
+        with mock.patch.object(
+            macos_release_package_assembly,
+            "assemble_and_verify_macos_release_package",
+        ) as assemble:
+            with self.assertRaisesRegex(
+                macos_release_package_assembly.MacOSReleasePackageAssemblyError,
+                "Host Installation Manager binary",
+            ):
+                macos_release_package_assembly.assemble_declared_macos_release_package(
+                    declaration_path
+                )
+        assemble.assert_not_called()
 
     def test_declared_developer_id_installer_package_requires_its_productsign_contract_before_c41_effects(self) -> None:
         declaration_path = self.declaration_document()

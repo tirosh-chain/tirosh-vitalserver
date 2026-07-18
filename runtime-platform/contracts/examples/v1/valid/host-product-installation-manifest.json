@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "v1",
+  "installationId": "vitalserver-runtime-platform",
+  "platform": "macos",
+  "release": {
+    "id": "runtime-platform-0.2.0-dev-build-001",
+    "productVersion": "0.2.0-dev",
+    "runtimeVersion": "0.2.0"
+  },
+  "package": {
+    "identifier": "com.tirosh.vitalserver.runtime-platform",
+    "productVersion": "0.2.0-dev"
+  },
+  "immutablePayload": {
+    "releaseCatalogPath": "/Library/Application Support/VitalServerRuntimePlatform/releases",
+    "releaseRootPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-0.2.0-dev-build-001",
+    "manifestPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-0.2.0-dev-build-001/installation-manifest.json",
+    "entries": [
+      {
+        "relativePath": "bin/host-agent",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "executable": true
+      },
+      {
+        "relativePath": "config/host-agent-deployment-configuration.json",
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "executable": false
+      }
+    ]
+  },
+  "activation": {
+    "currentReleaseLinkPath": "/Library/Application Support/VitalServerRuntimePlatform/current",
+    "expectedReleaseRootPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-0.2.0-dev-build-001"
+  },
+  "requiredServices": [
+    {
+      "role": "host-agent",
+      "manager": "launchd",
+      "name": "com.tirosh.vitalserver.host-agent",
+      "definitionPath": "/Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist",
+      "definitionSha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "role": "host-edge-proxy",
+      "manager": "launchd",
+      "name": "com.tirosh.vitalserver.host-edge-proxy",
+      "definitionPath": "/Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist",
+      "definitionSha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  ],
+  "mutableStores": [
+    {
+      "id": "installation-data-root",
+      "path": "/Library/Application Support/VitalServerRuntimePlatform/data",
+      "owner": "host-installation-manager",
+      "retention": "purge-only-by-explicit-command"
+    },
+    {
+      "id": "host-agent-state",
+      "path": "/Library/Application Support/VitalServerRuntimePlatform/data/host-agent",
+      "owner": "host-agent",
+      "retention": "preserve-by-default"
+    },
+    {
+      "id": "virtual-machine-runtime",
+      "path": "/Library/Application Support/VitalServerRuntimePlatform/data/virtual-machine",
+      "owner": "macos-virtual-machine-supervisor",
+      "retention": "preserve-by-default"
+    },
+    {
+      "id": "installation-manager-journal",
+      "path": "/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager",
+      "owner": "host-installation-manager",
+      "retention": "purge-only-by-explicit-command"
+    }
+  ]
+}

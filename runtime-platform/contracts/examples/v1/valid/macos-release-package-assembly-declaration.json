@@ -16,6 +16,7 @@
   "hostArtifacts": {
     "hostAgentBinaryAbsolutePath": "/release/artifacts/host-agent",
     "hostEdgeProxyBinaryAbsolutePath": "/release/artifacts/host-edge-proxy",
+    "hostInstallationManagerBinaryAbsolutePath": "/release/artifacts/host-installation-manager",
     "macOSVirtualMachineSupervisorBinaryAbsolutePath": "/release/artifacts/macos-virtual-machine-supervisor",
     "guestProductProcessSupervisorArtifactAbsolutePath": "/release/artifacts/guest-product-process-supervisor"
   },
