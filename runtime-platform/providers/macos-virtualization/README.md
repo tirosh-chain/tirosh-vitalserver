@@ -53,19 +53,20 @@ Apple Virtualization checks the entitlement of the **process that constructs
 installer. The release artifact therefore has two named, independently
 verified signatures:
 
-| Signed artifact | Release-build responsibility | Required fact |
+| Artifact | Release-build responsibility | Required fact |
 | --- | --- | --- |
-| `macos-virtual-machine-supervisor` | `MacOSVirtualMachineSupervisorCodeSigning` | `com.apple.security.virtualization=true` in the staged executable signature |
-| macOS PKG | package signing configuration | installer identity and integrity |
+| `macos-virtual-machine-supervisor` | `MacOSVirtualMachineSupervisorCodeSigning` | `ad-hoc` for controlled development or `developer-id` for distribution, with `com.apple.security.virtualization=true` in the staged executable signature |
+| macOS PKG | `MacOSInstallerPackageSigning` | `unsigned` for controlled development or `developer-id` for distribution |
 
 `MacOSVirtualMachineSupervisor.entitlements` is the source entitlement
 document for the first responsibility. The package composer copies the
 already-built supervisor into its temporary payload, signs that staged copy,
 then runs both `codesign --verify --strict` and an explicit entitlement read
 before `pkgbuild` can publish the PKG. It never signs the supplied build
-artifact in place. A signed PKG is rejected unless its contained supervisor
-has a signed supervisor contract; an unsigned development PKG can still carry
-a signed supervisor for local Virtualization smoke work.
+artifact in place. A `developer-id` PKG is rejected unless its contained
+Supervisor is also `developer-id` signed. An unsigned development PKG may
+carry only an explicitly selected `ad-hoc` Supervisor for local
+Virtualization work; this does not constitute a distribution signature.
 
 This validates the release-build signature boundary only. It is not evidence
 that the host installed the package, launchd retained the supervisor, a Guest

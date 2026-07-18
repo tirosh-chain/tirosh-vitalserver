@@ -50,6 +50,7 @@ NPM ?= npm
 	macos-release-package-assembly-test \
 	macos-release-package-assembly \
 	macos-clean-host-release-evidence-runner-test \
+	macos-development-installation-evidence-runner-test \
 	ensure-node \
 	recorder-gateway-deps \
 	recorder-gateway-check \
@@ -66,7 +67,7 @@ NPM ?= npm
 	installation-update-acceptance \
 	check
 
-check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test host-guest-acceptance macos-provider-test guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-bootstrap-artifact-composer-cross-platform-build guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test macos-release-package-assembly-test macos-clean-host-release-evidence-runner-test recorder-gateway-check recorder-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test release-composer-test installation-update-acceptance
+check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test host-guest-acceptance macos-provider-test guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-bootstrap-artifact-composer-cross-platform-build guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test macos-release-package-assembly-test macos-clean-host-release-evidence-runner-test macos-development-installation-evidence-runner-test recorder-gateway-check recorder-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test release-composer-test installation-update-acceptance
 
 bootstrap-contract-tools:
 	$(SYSTEM_PYTHON) -m venv $(VENV)
@@ -192,6 +193,9 @@ macos-release-package-assembly: ensure-contract-python
 
 macos-clean-host-release-evidence-runner-test: ensure-contract-python
 	$(PYTHON) -m unittest tooling.tests.test_macos_clean_host_release_evidence_runner
+
+macos-development-installation-evidence-runner-test: ensure-contract-python
+	$(PYTHON) -m unittest tooling.tests.test_macos_development_installation_evidence_runner
 
 ensure-node:
 	@node_path="$$(command -v "$(NODE)")"; \

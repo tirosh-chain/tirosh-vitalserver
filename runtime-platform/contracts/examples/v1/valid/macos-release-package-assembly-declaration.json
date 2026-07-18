@@ -34,12 +34,12 @@
     "outputPackageAbsolutePath": "/release/output/VitalServerRuntimePlatform-0.2.0-dev.pkg",
     "pkgbuildExecutableAbsolutePath": "/usr/bin/pkgbuild",
     "installerPackageSigning": {
-      "mode": "signed",
+      "mode": "developer-id",
       "identity": "Developer ID Installer: Tirosh",
       "productsignExecutableAbsolutePath": "/usr/bin/productsign"
     },
     "virtualMachineSupervisorCodeSigning": {
-      "mode": "signed",
+      "mode": "developer-id",
       "identity": "Developer ID Application: Tirosh",
       "codesignExecutableAbsolutePath": "/usr/bin/codesign",
       "virtualizationEntitlementsAbsolutePath": "/release/entitlements/macos-virtual-machine-supervisor.entitlements"

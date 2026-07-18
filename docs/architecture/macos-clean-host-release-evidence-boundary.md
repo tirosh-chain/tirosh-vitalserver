@@ -23,6 +23,13 @@ Runtime SQLite, `launchd`, installer receipt를 직접 state로 재구성하지 
 command의 raw stdout/stderr와 return code를 evidence document로 보존하고, 검증 가능한
 경우에만 C24 proof fragment를 만든다.
 
+unsigned PKG와 ad-hoc Virtualization-entitled Supervisor의 local development
+installation은 이 runner의 입력이 아니다. 그것은 별도
+`MacOSDevelopmentInstallationEvidenceRunner` journal과 [development evidence
+boundary](macos-development-installation-evidence-boundary.md)를 사용한다. development
+evidence의 verified 상태는 C24 proof, Apple Developer ID identity, 또는 notarization을
+만들지 않는다.
+
 ## 2. 용어와 release identity
 
 macOS release identity는 C23에서 다음처럼 명시된다.

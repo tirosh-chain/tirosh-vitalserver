@@ -213,7 +213,7 @@
         "mode": {
           "enum": [
             "unsigned",
-            "signed"
+            "developer-id"
           ]
         },
         "identity": {
@@ -230,7 +230,7 @@
           "if": {
             "properties": {
               "mode": {
-                "const": "signed"
+                "const": "developer-id"
               }
             },
             "required": [
@@ -241,7 +241,13 @@
             "required": [
               "identity",
               "productsignExecutableAbsolutePath"
-            ]
+            ],
+            "properties": {
+              "identity": {
+                "type": "string",
+                "pattern": "^Developer ID Installer: .+$"
+              }
+            }
           },
           "else": {
             "allOf": [
@@ -274,7 +280,8 @@
         "mode": {
           "enum": [
             "unsigned",
-            "signed"
+            "ad-hoc",
+            "developer-id"
           ]
         },
         "identity": {
@@ -294,7 +301,7 @@
           "if": {
             "properties": {
               "mode": {
-                "const": "signed"
+                "const": "developer-id"
               }
             },
             "required": [
@@ -306,27 +313,56 @@
               "identity",
               "codesignExecutableAbsolutePath",
               "virtualizationEntitlementsAbsolutePath"
-            ]
+            ],
+            "properties": {
+              "identity": {
+                "type": "string",
+                "pattern": "^Developer ID Application: .+$"
+              }
+            }
           },
           "else": {
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "identity"
-                  ]
-                },
-                {
-                  "required": [
-                    "codesignExecutableAbsolutePath"
-                  ]
-                },
-                {
-                  "required": [
-                    "virtualizationEntitlementsAbsolutePath"
-                  ]
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "ad-hoc"
                 }
+              },
+              "required": [
+                "mode"
               ]
+            },
+            "then": {
+              "required": [
+                "codesignExecutableAbsolutePath",
+                "virtualizationEntitlementsAbsolutePath"
+              ],
+              "not": {
+                "required": [
+                  "identity"
+                ]
+              }
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "identity"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "codesignExecutableAbsolutePath"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "virtualizationEntitlementsAbsolutePath"
+                    ]
+                  }
+                ]
+              }
             }
           }
         }

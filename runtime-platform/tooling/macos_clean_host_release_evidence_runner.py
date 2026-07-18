@@ -33,12 +33,11 @@ import os
 from pathlib import Path
 import platform
 import sqlite3
-import subprocess
 import sys
 import tempfile
 from typing import Any, Mapping, Sequence
-import xml.etree.ElementTree as ElementTree
 
+from tooling import macos_host_installation_observation
 from tooling.product_delivery_release_plan import (
     MacOSHostPackageReleasePlan,
     ProductDeliveryReleasePlanError,
@@ -65,16 +64,6 @@ RELEASE_EVIDENCE_STAGES = {
     REBOOT_CHECKPOINT_STAGE,
     REBOOT_STAGE,
 }
-
-EXPLICITLY_ABSENT_PACKAGE_RECEIPT_MARKERS = (
-    "no receipt for",
-    "no receipt found",
-)
-EXPLICITLY_ABSENT_LAUNCHD_SERVICE_MARKERS = (
-    "could not find service",
-    "service not found",
-)
-
 
 @dataclass(frozen=True)
 class MacOSCleanHostReleaseEvidenceCommandContract:
@@ -105,55 +94,26 @@ class MacOSCleanHostReleaseEvidenceRun:
     created_at: str
 
 
-@dataclass(frozen=True)
-class MacOSCleanHostReleaseEvidenceCommandObservation:
-    """Exact external-command evidence; no return-code interpretation is hidden."""
-
-    executable: Path
-    arguments: tuple[str, ...]
-    returncode: int
-    stdout: str
-    stderr: str
-
-
-@dataclass(frozen=True)
-class MacOSPackageReceiptObservation:
-    """A pkgutil observation of one C23 macOS installer receipt."""
-
-    state: str
-    package_identifier: str | None
-    product_version: str | None
-    command: MacOSCleanHostReleaseEvidenceCommandObservation
-    reason: str | None = None
-
-
-@dataclass(frozen=True)
-class MacOSInstallerArtifactReleaseIdentityObservation:
-    """An expanded flat-PKG observation of the selected release identity."""
-
-    state: str
-    package_identifier: str | None
-    product_version: str | None
-    package_expansion_command: MacOSCleanHostReleaseEvidenceCommandObservation
-    reason: str | None = None
-
-
-@dataclass(frozen=True)
-class MacOSLaunchdServiceRegistrationObservation:
-    """A launchctl observation of one C23-required Host service registration."""
-
-    role: str
-    service_label: str
-    state: str
-    command: MacOSCleanHostReleaseEvidenceCommandObservation
-
-
-@dataclass(frozen=True)
-class MacOSHostBootSessionObservation:
-    """A sysctl observation of the macOS boot session boundary."""
-
-    boot_session_identifier: str
-    command: MacOSCleanHostReleaseEvidenceCommandObservation
+# These aliases preserve the release workflow's domain-facing vocabulary while
+# keeping command observation in the adapter that owns parsing external output.
+# The release runner still owns only C24 policy, journal transitions, and proof
+# composition; it supplies its own command executor so its command evidence
+# remains release-run scoped and testable.
+MacOSCleanHostReleaseEvidenceCommandObservation = (
+    macos_host_installation_observation.MacOSHostInstallationCommandObservation
+)
+MacOSPackageReceiptObservation = (
+    macos_host_installation_observation.MacOSPackageReceiptObservation
+)
+MacOSInstallerArtifactReleaseIdentityObservation = (
+    macos_host_installation_observation.MacOSInstallerArtifactIdentityObservation
+)
+MacOSLaunchdServiceRegistrationObservation = (
+    macos_host_installation_observation.MacOSLaunchdServiceRegistrationObservation
+)
+MacOSHostBootSessionObservation = (
+    macos_host_installation_observation.MacOSHostBootSessionObservation
+)
 
 
 @dataclass(frozen=True)
@@ -1008,83 +968,27 @@ def execute_macos_clean_host_command(
     """Execute a declared macOS command and retain its exact output as evidence."""
 
     try:
-        completed = subprocess.run(
-            [str(executable), *arguments],
-            capture_output=True,
-            text=True,
-            check=False,
+        return macos_host_installation_observation.execute_macos_host_installation_command(
+            executable,
+            arguments,
         )
-    except OSError as error:
+    except macos_host_installation_observation.MacOSHostInstallationObservationError as error:
         raise MacOSCleanHostReleaseEvidenceRunError(
-            "macOS clean-Host command execution failed for "
-            + str(executable)
-            + ": "
-            + str(error)
+            "macOS clean-Host command execution failed: " + str(error)
         ) from error
-    return MacOSCleanHostReleaseEvidenceCommandObservation(
-        executable=executable,
-        arguments=tuple(arguments),
-        returncode=completed.returncode,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
-    )
 
 
 def observe_macos_installer_artifact_release_identity(
     pkgutil_executable: Path,
     installer_artifact_path: Path,
 ) -> MacOSInstallerArtifactReleaseIdentityObservation:
-    """Read flat-PKG PackageInfo through the portable macOS pkgutil command.
+    """Observe flat-PKG identity without allowing filename-derived identity."""
 
-    macOS ``pkgutil`` exposes ``--pkg-info`` only for *installed* receipts;
-    there is no ``--pkg-info-pkg`` command for an uninstalled flat PKG. The
-    release runner therefore expands the bound artifact into its own temporary
-    directory and reads PackageInfo. It never substitutes filename metadata.
-    """
-
-    with tempfile.TemporaryDirectory(
-        prefix="vitalserver-macos-installer-artifact-metadata-"
-    ) as temporary_directory:
-        expanded_package_directory = Path(temporary_directory) / "expanded-package"
-        package_expansion_command = execute_macos_clean_host_command(
-            pkgutil_executable,
-            ["--expand", str(installer_artifact_path), str(expanded_package_directory)],
-        )
-        if package_expansion_command.returncode != 0:
-            return MacOSInstallerArtifactReleaseIdentityObservation(
-                state="unavailable",
-                package_identifier=None,
-                product_version=None,
-                package_expansion_command=package_expansion_command,
-                reason="pkgutil package expansion returned a non-zero result",
-            )
-        package_info_path = expanded_package_directory / "PackageInfo"
-        try:
-            package_info = ElementTree.parse(package_info_path).getroot()
-        except (OSError, ElementTree.ParseError) as error:
-            return MacOSInstallerArtifactReleaseIdentityObservation(
-                state="invalid",
-                package_identifier=None,
-                product_version=None,
-                package_expansion_command=package_expansion_command,
-                reason="expanded macOS PackageInfo cannot be decoded: " + str(error),
-            )
-        package_identifier = package_info.get("identifier")
-        product_version = package_info.get("version")
-        if not package_identifier or not product_version:
-            return MacOSInstallerArtifactReleaseIdentityObservation(
-                state="invalid",
-                package_identifier=package_identifier,
-                product_version=product_version,
-                package_expansion_command=package_expansion_command,
-                reason="expanded macOS PackageInfo requires identifier and version",
-            )
-        return MacOSInstallerArtifactReleaseIdentityObservation(
-            state="available",
-            package_identifier=package_identifier,
-            product_version=product_version,
-            package_expansion_command=package_expansion_command,
-        )
+    return macos_host_installation_observation.observe_macos_installer_artifact_identity(
+        pkgutil_executable,
+        installer_artifact_path,
+        execute_command=execute_macos_clean_host_command,
+    )
 
 
 def evaluate_macos_installer_artifact_integrity_issue(
@@ -1129,40 +1033,10 @@ def evaluate_macos_installer_artifact_integrity_issue(
 def observe_macos_package_receipt(
     pkgutil_executable: Path, package_identifier: str
 ) -> MacOSPackageReceiptObservation:
-    command = execute_macos_clean_host_command(
-        pkgutil_executable, ["--pkg-info", package_identifier]
-    )
-    if command.returncode == 0:
-        try:
-            metadata = parse_macos_installed_package_receipt_output(command.stdout)
-        except MacOSCleanHostReleaseEvidenceRunError as error:
-            return MacOSPackageReceiptObservation(
-                state="invalid",
-                package_identifier=None,
-                product_version=None,
-                command=command,
-                reason=str(error),
-            )
-        return MacOSPackageReceiptObservation(
-            state="installed",
-            package_identifier=metadata.get("package-id"),
-            product_version=metadata.get("version"),
-            command=command,
-        )
-    output = (command.stdout + "\n" + command.stderr).lower()
-    if any(marker in output for marker in EXPLICITLY_ABSENT_PACKAGE_RECEIPT_MARKERS):
-        return MacOSPackageReceiptObservation(
-            state="absent",
-            package_identifier=None,
-            product_version=None,
-            command=command,
-        )
-    return MacOSPackageReceiptObservation(
-        state="unavailable",
-        package_identifier=None,
-        product_version=None,
-        command=command,
-        reason="pkgutil did not explicitly report the C23 installer receipt as absent",
+    return macos_host_installation_observation.observe_macos_package_receipt(
+        pkgutil_executable,
+        package_identifier,
+        execute_command=execute_macos_clean_host_command,
     )
 
 
@@ -1187,43 +1061,26 @@ def observe_required_launchd_service_registrations(
 def observe_macos_launchd_service_registration(
     launchctl_executable: Path, role: str, service_label: str
 ) -> MacOSLaunchdServiceRegistrationObservation:
-    command = execute_macos_clean_host_command(
-        launchctl_executable, ["print", "system/" + service_label]
-    )
-    if command.returncode == 0:
-        state = "registered"
-    else:
-        output = (command.stdout + "\n" + command.stderr).lower()
-        if any(
-            marker in output
-            for marker in EXPLICITLY_ABSENT_LAUNCHD_SERVICE_MARKERS
-        ):
-            state = "absent"
-        else:
-            state = "unavailable"
-    return MacOSLaunchdServiceRegistrationObservation(
-        role=role,
-        service_label=service_label,
-        state=state,
-        command=command,
+    return macos_host_installation_observation.observe_macos_launchd_service_registration(
+        launchctl_executable,
+        role,
+        service_label,
+        execute_command=execute_macos_clean_host_command,
     )
 
 
 def observe_macos_host_boot_session(
     sysctl_executable: Path,
 ) -> MacOSHostBootSessionObservation:
-    command = execute_macos_clean_host_command(
-        sysctl_executable, ["-n", "kern.bootsessionuuid"]
-    )
-    boot_session_identifier = command.stdout.strip()
-    if command.returncode != 0 or not boot_session_identifier:
-        raise MacOSCleanHostReleaseEvidenceRunError(
-            "macOS clean-Host boot session identifier is unavailable"
+    try:
+        return macos_host_installation_observation.observe_macos_host_boot_session(
+            sysctl_executable,
+            execute_command=execute_macos_clean_host_command,
         )
-    return MacOSHostBootSessionObservation(
-        boot_session_identifier=boot_session_identifier,
-        command=command,
-    )
+    except macos_host_installation_observation.MacOSHostInstallationObservationError as error:
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            "macOS clean-Host boot session identifier is unavailable: " + str(error)
+        )
 
 
 def clean_host_preflight_issue(
@@ -1429,59 +1286,35 @@ def release_identity_document(
 def command_document(
     command: MacOSCleanHostReleaseEvidenceCommandObservation,
 ) -> Mapping[str, Any]:
-    return {
-        "executable": str(command.executable),
-        "arguments": list(command.arguments),
-        "returnCode": command.returncode,
-        "stdout": command.stdout,
-        "stderr": command.stderr,
-    }
+    return macos_host_installation_observation.command_document(command)
 
 
 def installer_artifact_release_identity_document(
     installer_artifact_release_identity: MacOSInstallerArtifactReleaseIdentityObservation,
 ) -> Mapping[str, Any]:
-    return {
-        "state": installer_artifact_release_identity.state,
-        "packageIdentifier": installer_artifact_release_identity.package_identifier,
-        "productVersion": installer_artifact_release_identity.product_version,
-        "reason": installer_artifact_release_identity.reason,
-        "packageExpansionCommand": command_document(
-            installer_artifact_release_identity.package_expansion_command
-        ),
-    }
+    return macos_host_installation_observation.installer_artifact_identity_document(
+        installer_artifact_release_identity
+    )
 
 
 def package_receipt_document(
     package_receipt: MacOSPackageReceiptObservation,
 ) -> Mapping[str, Any]:
-    return {
-        "state": package_receipt.state,
-        "packageIdentifier": package_receipt.package_identifier,
-        "productVersion": package_receipt.product_version,
-        "reason": package_receipt.reason,
-        "command": command_document(package_receipt.command),
-    }
+    return macos_host_installation_observation.package_receipt_document(package_receipt)
 
 
 def launchd_service_registration_document(
     service_observation: MacOSLaunchdServiceRegistrationObservation,
 ) -> Mapping[str, Any]:
-    return {
-        "role": service_observation.role,
-        "serviceLabel": service_observation.service_label,
-        "state": service_observation.state,
-        "command": command_document(service_observation.command),
-    }
+    return macos_host_installation_observation.launchd_service_registration_document(
+        service_observation
+    )
 
 
 def boot_session_document(
     boot_session: MacOSHostBootSessionObservation,
 ) -> Mapping[str, Any]:
-    return {
-        "bootSessionIdentifier": boot_session.boot_session_identifier,
-        "command": command_document(boot_session.command),
-    }
+    return macos_host_installation_observation.boot_session_document(boot_session)
 
 
 def boot_session_identifier_from_checkpoint(
@@ -1499,16 +1332,14 @@ def boot_session_identifier_from_checkpoint(
 
 
 def parse_macos_installed_package_receipt_output(output: str) -> Mapping[str, str]:
-    metadata: dict[str, str] = {}
-    for line in output.splitlines():
-        key, separator, value = line.partition(":")
-        if separator and key and value.strip():
-            metadata[key.strip()] = value.strip()
-    if not metadata.get("package-id") or not metadata.get("version"):
-        raise MacOSCleanHostReleaseEvidenceRunError(
-            "pkgutil output does not contain package-id and version"
+    try:
+        return macos_host_installation_observation.parse_macos_installed_package_receipt_output(
+            output
         )
-    return metadata
+    except macos_host_installation_observation.MacOSHostInstallationObservationError as error:
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            str(error)
+        ) from error
 
 
 def write_new_evidence_document(

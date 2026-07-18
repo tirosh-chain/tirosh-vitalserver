@@ -566,11 +566,11 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
         self.assertNotIn(str(self.root), json.dumps(receipt, sort_keys=True))
         self.assertEqual(receipt, result["macOSReleasePackageAssemblyReceipt"])
 
-    def test_declared_signed_installer_package_requires_its_productsign_contract_before_c41_effects(self) -> None:
+    def test_declared_developer_id_installer_package_requires_its_productsign_contract_before_c41_effects(self) -> None:
         declaration_path = self.declaration_document()
         declaration = json.loads(declaration_path.read_text(encoding="utf-8"))
         declaration["macOSPackage"]["installerPackageSigning"] = {
-            "mode": "signed",
+            "mode": "developer-id",
             "identity": "Developer ID Installer: Tirosh",
         }
         declaration_path.write_text(json.dumps(declaration), encoding="utf-8")
@@ -582,6 +582,59 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 macos_release_package_assembly.MacOSReleasePackageAssemblyError,
                 "productsignExecutableAbsolutePath",
+            ):
+                macos_release_package_assembly.assemble_declared_macos_release_package(
+                    declaration_path
+                )
+        assemble.assert_not_called()
+
+    def test_declared_ad_hoc_supervisor_requires_entitlements_without_a_named_identity(self) -> None:
+        declaration_path = self.declaration_document()
+        declaration = json.loads(declaration_path.read_text(encoding="utf-8"))
+        declaration["macOSPackage"]["virtualMachineSupervisorCodeSigning"] = {
+            "mode": "ad-hoc",
+            "identity": "Developer ID Application: Tirosh",
+            "codesignExecutableAbsolutePath": "/usr/bin/codesign",
+            "virtualizationEntitlementsAbsolutePath": "/release/entitlements/vm.entitlements",
+        }
+        declaration_path.write_text(json.dumps(declaration), encoding="utf-8")
+
+        with mock.patch.object(
+            macos_release_package_assembly,
+            "assemble_and_verify_macos_release_package",
+        ) as assemble:
+            with self.assertRaisesRegex(
+                macos_release_package_assembly.MacOSReleasePackageAssemblyError,
+                "macOS release package assembly declaration is invalid",
+            ):
+                macos_release_package_assembly.assemble_declared_macos_release_package(
+                    declaration_path
+                )
+        assemble.assert_not_called()
+
+    def test_declared_developer_id_signing_rejects_a_non_developer_id_identity_before_c41_effects(self) -> None:
+        declaration_path = self.declaration_document()
+        declaration = json.loads(declaration_path.read_text(encoding="utf-8"))
+        declaration["macOSPackage"]["installerPackageSigning"] = {
+            "mode": "developer-id",
+            "identity": "Apple Development: Tirosh",
+            "productsignExecutableAbsolutePath": "/usr/bin/productsign",
+        }
+        declaration["macOSPackage"]["virtualMachineSupervisorCodeSigning"] = {
+            "mode": "developer-id",
+            "identity": "Apple Development: Tirosh",
+            "codesignExecutableAbsolutePath": "/usr/bin/codesign",
+            "virtualizationEntitlementsAbsolutePath": "/release/entitlements/vm.entitlements",
+        }
+        declaration_path.write_text(json.dumps(declaration), encoding="utf-8")
+
+        with mock.patch.object(
+            macos_release_package_assembly,
+            "assemble_and_verify_macos_release_package",
+        ) as assemble:
+            with self.assertRaisesRegex(
+                macos_release_package_assembly.MacOSReleasePackageAssemblyError,
+                "macOS release package assembly declaration is invalid",
             ):
                 macos_release_package_assembly.assemble_declared_macos_release_package(
                     declaration_path

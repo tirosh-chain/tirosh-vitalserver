@@ -19,6 +19,7 @@
 | Linux Guest systemd unit·Supervisor·child process owner가 분리되는 이유 확인하기 | [Guest Product Service Manager Boundary](architecture/guest-product-service-manager-boundary.md) |
 | public listener와 explicit route·client identity 경계 확인하기 | [Host Edge Proxy Boundary](architecture/host-edge-proxy-boundary.md) |
 | macOS VM이 왜 long-lived supervisor를 필요로 하는지 확인하기 | [macOS Virtual Machine Supervisor Boundary](architecture/macos-virtual-machine-supervisor-boundary.md) |
+| Apple 배포 서명 전 local PKG 설치와 entitlement를 검증하는 경계 확인하기 | [macOS Development Installation Evidence Boundary](architecture/macos-development-installation-evidence-boundary.md) |
 | Recorder packet·spool·upstream delivery가 분리되는 경계 보기 | [Recorder Gateway Data Path](architecture/recorder-gateway-data-path.md) |
 | Lab stop, `.vital` export, hide/detach/delete의 분리된 owner와 receipt 보기 | [Lab, Artifact Export, and Deletion Lifecycle](architecture/lab-archive-deletion-lifecycle.md) |
 | external upstream, NTP, Recorder self-observation, OpenTelemetry 경계 보기 | [External Upstream, Time, and Observability](architecture/external-time-observability.md) |
@@ -61,6 +62,7 @@
 | [Guest Product Service Manager Boundary](architecture/guest-product-service-manager-boundary.md) | C38 systemd service-manager deployment, Supervisor invocation/restart policy, Guest image/systemd proof의 분리 |
 | [Host Edge Proxy Boundary](architecture/host-edge-proxy-boundary.md) | C36 explicit public route, client identity trust boundary, Host proxy package/clean-host proof의 분리 |
 | [macOS Virtual Machine Supervisor Boundary](architecture/macos-virtual-machine-supervisor-boundary.md) | `VZVirtualMachine` process-lifetime owner, Host Agent/supervisor C21-C10 boundary, current invocation CLI의 한계 |
+| [macOS Development Installation Evidence Boundary](architecture/macos-development-installation-evidence-boundary.md) | unsigned PKG, ad-hoc Virtualization-entitled Supervisor, local install/reboot evidence와 C24 release proof의 분리 |
 | [Recorder Gateway Data Path](architecture/recorder-gateway-data-path.md) | Recorder Gateway protocol adapter, durable ingress/spool, delivery receipt, bundled upstream capability의 owner·proof 경계 |
 | [Lab, Artifact Export, and Deletion Lifecycle](architecture/lab-archive-deletion-lifecycle.md) | Lab resource lifecycle, artifact export receipt, explicit deletion/cascade·retention boundary |
 | [External Upstream, Time, and Observability](architecture/external-time-observability.md) | external provider/relay, Host·Guest time quality, Recorder self-observation Catalog, OTel pipeline boundary |
@@ -151,19 +153,20 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 11. [Guest Product Process Supervisor Boundary](architecture/guest-product-process-supervisor-boundary.md) (Guest-local product process와 deployment input을 구현·검토할 때)
 12. [Guest Product Service Manager Boundary](architecture/guest-product-service-manager-boundary.md) (systemd unit과 Supervisor boundary를 구현·검토할 때)
 13. [Host Edge Proxy Boundary](architecture/host-edge-proxy-boundary.md) (public route와 trust boundary를 구현·검토할 때)
-14. [Recorder Gateway Data Path](architecture/recorder-gateway-data-path.md) (data plane과 receipt 분리를 구현·검토할 때)
-15. [Lab, Artifact Export, and Deletion Lifecycle](architecture/lab-archive-deletion-lifecycle.md) (Lab stop/export/delete lifecycle을 구현·검토할 때)
-16. [External Upstream, Time, and Observability](architecture/external-time-observability.md) (external dependency, time, telemetry boundary를 구현·검토할 때)
-17. [Cross-platform Provider and Delivery](architecture/cross-platform-delivery.md) (provider selection과 release proof를 검토할 때)
-18. [Installation and Update Foundation](architecture/installation-update-foundation.md) (update compatibility와 Host recovery boundary를 검토할 때)
-19. [Product Composition and Staged Update](architecture/product-composition-and-staged-update.md) (release bundle, Host staging, updater handoff를 구현·검토할 때)
-20. [vNext 참고 패턴과 적용 규칙](architecture/reference-patterns.md) (API/상태/마이그레이션 경계를 설계할 때)
-21. [vNext 구현 계획](architecture/vnext-implementation-plan.md) (새 root의 단계별 구현을 시작할 때)
-22. [Vital Recorder integration contract](recorder/vital-recorder-integration.md)
-23. [Testkit 사용법](testkit/usage.md)
-24. [VitalServer recorder Redis key model](recorder/redis-key-model.md)
-25. [VitalServer macOS Runtime](runtime/macos/index.md)
-26. [Branch 운영 기준](repository/branching.md)
+14. [macOS Development Installation Evidence Boundary](architecture/macos-development-installation-evidence-boundary.md) (unsigned PKG/ad-hoc Supervisor local verification과 C24 release proof를 구분할 때)
+15. [Recorder Gateway Data Path](architecture/recorder-gateway-data-path.md) (data plane과 receipt 분리를 구현·검토할 때)
+16. [Lab, Artifact Export, and Deletion Lifecycle](architecture/lab-archive-deletion-lifecycle.md) (Lab stop/export/delete lifecycle을 구현·검토할 때)
+17. [External Upstream, Time, and Observability](architecture/external-time-observability.md) (external dependency, time, telemetry boundary를 구현·검토할 때)
+18. [Cross-platform Provider and Delivery](architecture/cross-platform-delivery.md) (provider selection과 release proof를 검토할 때)
+19. [Installation and Update Foundation](architecture/installation-update-foundation.md) (update compatibility와 Host recovery boundary를 검토할 때)
+20. [Product Composition and Staged Update](architecture/product-composition-and-staged-update.md) (release bundle, Host staging, updater handoff를 구현·검토할 때)
+21. [vNext 참고 패턴과 적용 규칙](architecture/reference-patterns.md) (API/상태/마이그레이션 경계를 설계할 때)
+22. [vNext 구현 계획](architecture/vnext-implementation-plan.md) (새 root의 단계별 구현을 시작할 때)
+23. [Vital Recorder integration contract](recorder/vital-recorder-integration.md)
+24. [Testkit 사용법](testkit/usage.md)
+25. [VitalServer recorder Redis key model](recorder/redis-key-model.md)
+26. [VitalServer macOS Runtime](runtime/macos/index.md)
+27. [Branch 운영 기준](repository/branching.md)
 
 Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니다.
 

@@ -573,45 +573,33 @@ def parse_macos_release_package_assembly_declaration(
     )
 
 
-def parse_package_signing(
-    document: Mapping[str, Any],
-    field_name: str,
-) -> tuple[str, str | None]:
-    mode = required_string(document, "mode", field_name)
-    identity = document.get("identity")
-    if mode == "unsigned":
-        if identity is not None:
-            raise MacOSReleasePackageAssemblyError(
-                field_name + " unsigned mode must not include a signing identity"
-            )
-        return mode, None
-    if mode != "signed":
-        raise MacOSReleasePackageAssemblyError(
-            field_name + " mode must be unsigned or signed"
-        )
-    if not isinstance(identity, str) or not identity.strip():
-        raise MacOSReleasePackageAssemblyError(
-            field_name + " signed mode requires a signing identity"
-        )
-    return mode, identity
-
-
 def parse_macos_installer_package_signing(
     document: Mapping[str, Any],
 ) -> macos_host_package_composer.MacOSInstallerPackageSigning:
     """Map C47's final-installer signature inputs into the package adapter type."""
 
-    mode, identity = parse_package_signing(document, "C47 macOS Installer package signing")
+    mode = required_string(document, "mode", "C47 macOS Installer package signing")
     if mode == "unsigned":
-        if document.get("productsignExecutableAbsolutePath") is not None:
+        if (
+            document.get("identity") is not None
+            or document.get("productsignExecutableAbsolutePath") is not None
+        ):
             raise MacOSReleasePackageAssemblyError(
-                "C47 macOS Installer package signing unsigned mode must not include a productsign executable"
+                "C47 macOS Installer package signing unsigned mode must not include signing inputs"
             )
         return macos_host_package_composer.MacOSInstallerPackageSigning(
             mode=mode,
             signing_identity=None,
             productsign_executable=None,
         )
+    if mode != "developer-id":
+        raise MacOSReleasePackageAssemblyError(
+            "C47 macOS Installer package signing mode must be unsigned or developer-id"
+        )
+    identity = required_non_empty_signing_identity(
+        document,
+        "C47 macOS Installer package signing",
+    )
     return macos_host_package_composer.MacOSInstallerPackageSigning(
         mode=mode,
         signing_identity=identity,
@@ -626,31 +614,75 @@ def parse_macos_installer_package_signing(
 def parse_virtual_machine_supervisor_code_signing(
     document: Mapping[str, Any],
 ) -> macos_host_package_composer.MacOSVirtualMachineSupervisorCodeSigning:
-    mode, identity = parse_package_signing(
-        document,
-        "C47 macOS virtual machine supervisor code signing",
-    )
+    field_name = "C47 macOS virtual machine supervisor code signing"
+    mode = required_string(document, "mode", field_name)
     if mode == "unsigned":
+        if any(
+            document.get(field) is not None
+            for field in (
+                "identity",
+                "codesignExecutableAbsolutePath",
+                "virtualizationEntitlementsAbsolutePath",
+            )
+        ):
+            raise MacOSReleasePackageAssemblyError(
+                field_name + " unsigned mode must not include signing inputs"
+            )
         return macos_host_package_composer.MacOSVirtualMachineSupervisorCodeSigning(
             mode=mode,
             signing_identity=None,
             codesign_executable=None,
             virtualization_entitlements=None,
         )
+    if mode == "ad-hoc":
+        if document.get("identity") is not None:
+            raise MacOSReleasePackageAssemblyError(
+                field_name + " ad-hoc mode must not include a signing identity"
+            )
+        return macos_host_package_composer.MacOSVirtualMachineSupervisorCodeSigning(
+            mode=mode,
+            signing_identity=None,
+            codesign_executable=required_absolute_path(
+                document,
+                "codesignExecutableAbsolutePath",
+                field_name,
+            ),
+            virtualization_entitlements=required_absolute_path(
+                document,
+                "virtualizationEntitlementsAbsolutePath",
+                field_name,
+            ),
+        )
+    if mode != "developer-id":
+        raise MacOSReleasePackageAssemblyError(
+            field_name + " mode must be unsigned, ad-hoc, or developer-id"
+        )
     return macos_host_package_composer.MacOSVirtualMachineSupervisorCodeSigning(
         mode=mode,
-        signing_identity=identity,
+        signing_identity=required_non_empty_signing_identity(document, field_name),
         codesign_executable=required_absolute_path(
             document,
             "codesignExecutableAbsolutePath",
-            "C47 macOS virtual machine supervisor code signing",
+            field_name,
         ),
         virtualization_entitlements=required_absolute_path(
             document,
             "virtualizationEntitlementsAbsolutePath",
-            "C47 macOS virtual machine supervisor code signing",
+            field_name,
         ),
     )
+
+
+def required_non_empty_signing_identity(
+    document: Mapping[str, Any],
+    field_name: str,
+) -> str:
+    identity = document.get("identity")
+    if not isinstance(identity, str) or not identity.strip():
+        raise MacOSReleasePackageAssemblyError(
+            field_name + " developer-id mode requires a signing identity"
+        )
+    return identity
 
 
 def validate_macos_release_package_assembly_declaration_execution(
@@ -726,7 +758,7 @@ def validate_macos_release_package_assembly_declaration_execution(
             "C46 ExternalVitalServerDeliveryConfiguration",
         )
     code_signing = declaration.macos_virtual_machine_supervisor_code_signing
-    if code_signing.mode == "signed":
+    if code_signing.mode in {"ad-hoc", "developer-id"}:
         assert code_signing.codesign_executable is not None
         assert code_signing.virtualization_entitlements is not None
         require_regular_absolute_file(
@@ -738,7 +770,7 @@ def validate_macos_release_package_assembly_declaration_execution(
             "macOS virtual machine supervisor virtualization entitlements",
         )
     package_signing = declaration.macos_installer_package_signing
-    if package_signing.mode == "signed":
+    if package_signing.mode == "developer-id":
         assert package_signing.productsign_executable is not None
         require_regular_absolute_file(
             package_signing.productsign_executable,

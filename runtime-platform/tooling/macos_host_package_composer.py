@@ -43,12 +43,14 @@ MACOS_INSTALLER_MKBOM_EXECUTABLE = Path("/usr/bin/mkbom")
 
 @dataclass(frozen=True)
 class MacOSVirtualMachineSupervisorCodeSigning:
-    """The release-build signature required by the long-lived VM owner process.
+    """The selected signature policy for the long-lived VM owner process.
 
     This is deliberately separate from the PKG signature.  `pkgbuild --sign`
     identifies an installer, whereas this signature gives the installed
     `macos-virtual-machine-supervisor` process its Apple Virtualization
-    entitlement at the point where it creates `VZVirtualMachine`.
+    entitlement at the point where it creates `VZVirtualMachine`.  The
+    ``ad-hoc`` mode is a controlled development-installation policy; it is not
+    a Developer ID or release-distribution claim.
     """
 
     mode: str
@@ -59,13 +61,16 @@ class MacOSVirtualMachineSupervisorCodeSigning:
 
 @dataclass(frozen=True)
 class MacOSInstallerPackageSigning:
-    """The release-build signature applied after payload inventory recomposition.
+    """The selected final Installer package signature policy.
 
     A component package must first be rebuilt from its declared Installer file
     inventory.  Signing the pre-recomposition ``pkgbuild`` candidate would
     make its signature stale, so the final installer signature is owned by
     ``productsign`` and is intentionally distinct from VM Supervisor code
-    signing.
+    signing.  A package may be ``unsigned`` for a controlled development
+    installation, or ``developer-id`` for a release artifact.  It has no
+    ad-hoc package-signing mode because an ad-hoc Mach-O signature and an
+    Installer package signature are different macOS mechanisms.
     """
 
     mode: str
@@ -1577,13 +1582,15 @@ def publish_macos_installer_package_with_selected_signature(
     productsign_executable = signing.productsign_executable
     if productsign_executable is None:
         raise MacOSHostPackageCompositionError(
-            "signed macOS Installer package signing inputs were not validated"
+            "developer-id macOS Installer package signing inputs were not validated"
         )
     completed = subprocess.run(
         [
             str(productsign_executable),
             "--sign",
-            require_macos_installer_package_signing_identity(signing.signing_identity),
+            require_developer_id_installer_package_signing_identity(
+                signing.signing_identity
+            ),
             str(declared_payload_component_package),
             str(output_package),
         ],
@@ -1730,12 +1737,12 @@ def validate_macos_installer_package_signing(
     """Validate the final package signature, not pkgbuild's candidate output."""
 
     signing = composition.macos_installer_package_signing
-    if signing.mode not in {"unsigned", "signed"}:
+    if signing.mode not in {"unsigned", "developer-id"}:
         raise MacOSHostPackageCompositionError(
-            "macOS Installer package signing mode must be unsigned or signed"
+            "macOS Installer package signing mode must be unsigned or developer-id"
         )
-    if signing.mode == "signed":
-        require_macos_installer_package_signing_identity(signing.signing_identity)
+    if signing.mode == "developer-id":
+        require_developer_id_installer_package_signing_identity(signing.signing_identity)
         productsign_executable = signing.productsign_executable
         if (
             productsign_executable is None
@@ -1743,11 +1750,14 @@ def validate_macos_installer_package_signing(
             or not productsign_executable.is_file()
         ):
             raise MacOSHostPackageCompositionError(
-                "signed macOS Installer package productsign executable is missing or not a file"
+                "developer-id macOS Installer package productsign executable is missing or not a file"
             )
-        if composition.macos_virtual_machine_supervisor_code_signing.mode != "signed":
+        if (
+            composition.macos_virtual_machine_supervisor_code_signing.mode
+            != "developer-id"
+        ):
             raise MacOSHostPackageCompositionError(
-                "a signed macOS package requires a signed macOS virtual machine supervisor"
+                "a developer-id macOS Installer package requires a developer-id macOS virtual machine supervisor"
             )
         return
     if signing.signing_identity is not None or signing.productsign_executable is not None:
@@ -1759,9 +1769,9 @@ def validate_macos_installer_package_signing(
 def validate_macos_virtual_machine_supervisor_code_signing(
     code_signing: MacOSVirtualMachineSupervisorCodeSigning,
 ) -> None:
-    if code_signing.mode not in {"unsigned", "signed"}:
+    if code_signing.mode not in {"unsigned", "ad-hoc", "developer-id"}:
         raise MacOSHostPackageCompositionError(
-            "macOS virtual machine supervisor code signing mode must be unsigned or signed"
+            "macOS virtual machine supervisor code signing mode must be unsigned, ad-hoc, or developer-id"
         )
     signing_inputs = (
         code_signing.signing_identity,
@@ -1774,7 +1784,14 @@ def validate_macos_virtual_machine_supervisor_code_signing(
                 "unsigned macOS virtual machine supervisor code signing must not supply signing inputs"
             )
         return
-    require_macos_virtual_machine_supervisor_signing_identity(code_signing.signing_identity)
+    if code_signing.mode == "ad-hoc" and code_signing.signing_identity is not None:
+        raise MacOSHostPackageCompositionError(
+            "ad-hoc macOS virtual machine supervisor code signing must not supply a signing identity"
+        )
+    if code_signing.mode == "developer-id":
+        require_developer_id_virtual_machine_supervisor_signing_identity(
+            code_signing.signing_identity
+        )
     for input_name, path in (
         ("macOS virtual machine supervisor codesign executable", code_signing.codesign_executable),
         ("macOS virtual machine supervisor virtualization entitlements", code_signing.virtualization_entitlements),
@@ -1795,21 +1812,23 @@ def sign_staged_macos_virtual_machine_supervisor(
     virtualization_entitlements = code_signing.virtualization_entitlements
     if codesign_executable is None or virtualization_entitlements is None:
         raise MacOSHostPackageCompositionError(
-            "signed macOS virtual machine supervisor code signing inputs were not validated"
+            "macOS virtual machine supervisor code signing inputs were not validated"
         )
+    signing_arguments = [
+        "--force",
+        "--sign",
+        selected_macos_virtual_machine_supervisor_codesign_identity(code_signing),
+        "--entitlements",
+        str(virtualization_entitlements),
+        "--options",
+        "runtime",
+    ]
+    if code_signing.mode == "developer-id":
+        signing_arguments.append("--timestamp")
+    signing_arguments.append(str(staged_virtual_machine_supervisor))
     execute_macos_virtual_machine_supervisor_codesign(
         codesign_executable,
-        [
-            "--force",
-            "--sign",
-            require_macos_virtual_machine_supervisor_signing_identity(code_signing.signing_identity),
-            "--entitlements",
-            str(virtualization_entitlements),
-            "--options",
-            "runtime",
-            "--timestamp",
-            str(staged_virtual_machine_supervisor),
-        ],
+        signing_arguments,
         "sign",
     )
     execute_macos_virtual_machine_supervisor_codesign(
@@ -1966,20 +1985,48 @@ def require_path_within_directory(path: str, directory: str, field_name: str) ->
         )
 
 
-def require_macos_installer_package_signing_identity(signing_identity: str | None) -> str:
+def require_developer_id_installer_package_signing_identity(
+    signing_identity: str | None,
+) -> str:
     if signing_identity is None or not signing_identity.strip():
         raise MacOSHostPackageCompositionError(
-            "signed macOS Installer package signing requires a signing identity"
+            "developer-id macOS Installer package signing requires a signing identity"
+        )
+    if not signing_identity.strip().startswith("Developer ID Installer: "):
+        raise MacOSHostPackageCompositionError(
+            "developer-id macOS Installer package signing requires a Developer ID Installer identity"
         )
     return signing_identity
 
 
-def require_macos_virtual_machine_supervisor_signing_identity(signing_identity: str | None) -> str:
+def require_developer_id_virtual_machine_supervisor_signing_identity(
+    signing_identity: str | None,
+) -> str:
     if signing_identity is None or not signing_identity.strip():
         raise MacOSHostPackageCompositionError(
-            "signed macOS virtual machine supervisor code signing requires a signing identity"
+            "developer-id macOS virtual machine supervisor code signing requires a signing identity"
+        )
+    if not signing_identity.strip().startswith("Developer ID Application: "):
+        raise MacOSHostPackageCompositionError(
+            "developer-id macOS virtual machine supervisor code signing requires a Developer ID Application identity"
         )
     return signing_identity
+
+
+def selected_macos_virtual_machine_supervisor_codesign_identity(
+    code_signing: MacOSVirtualMachineSupervisorCodeSigning,
+) -> str:
+    """Return only the identity permitted by the declared supervisor policy."""
+
+    if code_signing.mode == "ad-hoc":
+        return "-"
+    if code_signing.mode == "developer-id":
+        return require_developer_id_virtual_machine_supervisor_signing_identity(
+            code_signing.signing_identity
+        )
+    raise MacOSHostPackageCompositionError(
+        "unsigned macOS virtual machine supervisor has no codesign identity"
+    )
 
 
 def copy_declared_regular_file_to_package_payload(
@@ -2048,11 +2095,15 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
     parser.add_argument(
         "--macos-installer-package-signing-mode",
         required=True,
-        choices=("unsigned", "signed"),
+        choices=("unsigned", "developer-id"),
     )
     parser.add_argument("--macos-installer-package-signing-identity")
     parser.add_argument("--macos-installer-package-productsign-executable")
-    parser.add_argument("--macos-virtual-machine-supervisor-code-signing-mode", required=True, choices=("unsigned", "signed"))
+    parser.add_argument(
+        "--macos-virtual-machine-supervisor-code-signing-mode",
+        required=True,
+        choices=("unsigned", "ad-hoc", "developer-id"),
+    )
     parser.add_argument("--macos-virtual-machine-supervisor-signing-identity")
     parser.add_argument("--macos-virtual-machine-supervisor-codesign-executable")
     parser.add_argument("--macos-virtual-machine-supervisor-virtualization-entitlements")

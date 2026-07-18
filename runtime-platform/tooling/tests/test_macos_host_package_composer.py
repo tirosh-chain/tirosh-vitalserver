@@ -823,11 +823,11 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         with self.assertRaisesRegex(composer.MacOSHostPackageCompositionError, "client identity headers"):
             composer.load_macos_host_package_documents(self.composition())
 
-    def test_signed_package_requires_the_virtual_machine_supervisor_to_have_its_own_signature_contract(self) -> None:
+    def test_developer_id_package_requires_a_developer_id_virtual_machine_supervisor(self) -> None:
         composition = replace(
             self.composition(),
             macos_installer_package_signing=composer.MacOSInstallerPackageSigning(
-                mode="signed",
+                mode="developer-id",
                 signing_identity="Developer ID Installer: Tirosh",
                 productsign_executable=Path("/usr/bin/productsign"),
             ),
@@ -835,18 +835,18 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             composer.MacOSHostPackageCompositionError,
-            "requires a signed macOS virtual machine supervisor",
+            "requires a developer-id macOS virtual machine supervisor",
         ):
             composer.validate_package_artifacts(
                 composition,
                 composer.load_macos_host_package_documents(composition),
             )
 
-    def test_signed_installer_package_requires_an_explicit_productsign_executable(self) -> None:
+    def test_developer_id_installer_package_requires_an_explicit_productsign_executable(self) -> None:
         composition = replace(
             self.composition(),
             macos_installer_package_signing=composer.MacOSInstallerPackageSigning(
-                mode="signed",
+                mode="developer-id",
                 signing_identity="Developer ID Installer: Tirosh",
                 productsign_executable=None,
             ),
@@ -855,6 +855,25 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         with self.assertRaisesRegex(
             composer.MacOSHostPackageCompositionError,
             "productsign executable is missing or not a file",
+        ):
+            composer.validate_package_artifacts(
+                composition,
+                composer.load_macos_host_package_documents(composition),
+            )
+
+    def test_developer_id_installer_package_rejects_a_non_developer_id_identity(self) -> None:
+        composition = replace(
+            self.composition(),
+            macos_installer_package_signing=composer.MacOSInstallerPackageSigning(
+                mode="developer-id",
+                signing_identity="Apple Development: Tirosh",
+                productsign_executable=Path("/usr/bin/productsign"),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "requires a Developer ID Installer identity",
         ):
             composer.validate_package_artifacts(
                 composition,
@@ -900,7 +919,55 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 composer.load_macos_host_package_documents(composition),
             )
 
-    def test_signed_virtual_machine_supervisor_is_signed_and_verified_only_in_the_staged_payload(self) -> None:
+    def test_ad_hoc_virtual_machine_supervisor_code_signing_rejects_a_named_identity(self) -> None:
+        composition = replace(
+            self.composition(),
+            macos_virtual_machine_supervisor_code_signing=(
+                composer.MacOSVirtualMachineSupervisorCodeSigning(
+                    mode="ad-hoc",
+                    signing_identity="Developer ID Application: Tirosh",
+                    codesign_executable=Path("/usr/bin/codesign"),
+                    virtualization_entitlements=(
+                        self.virtual_machine_supervisor_virtualization_entitlements
+                    ),
+                )
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "ad-hoc macOS virtual machine supervisor code signing must not supply a signing identity",
+        ):
+            composer.validate_package_artifacts(
+                composition,
+                composer.load_macos_host_package_documents(composition),
+            )
+
+    def test_developer_id_supervisor_rejects_a_non_developer_id_identity(self) -> None:
+        composition = replace(
+            self.composition(),
+            macos_virtual_machine_supervisor_code_signing=(
+                composer.MacOSVirtualMachineSupervisorCodeSigning(
+                    mode="developer-id",
+                    signing_identity="Apple Development: Tirosh",
+                    codesign_executable=Path("/usr/bin/codesign"),
+                    virtualization_entitlements=(
+                        self.virtual_machine_supervisor_virtualization_entitlements
+                    ),
+                )
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "requires a Developer ID Application identity",
+        ):
+            composer.validate_package_artifacts(
+                composition,
+                composer.load_macos_host_package_documents(composition),
+            )
+
+    def test_developer_id_virtual_machine_supervisor_is_signed_and_verified_only_in_the_staged_payload(self) -> None:
         codesign_log = self.root / "codesign.log"
         productsign_log = self.root / "productsign.log"
         fake_codesign = self.write_file(
@@ -946,12 +1013,12 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             output_package=output_directory / "VitalServerRuntimePlatform-0.1.0-dev.pkg",
             pkgbuild_executable=Path("/usr/bin/pkgbuild"),
             macos_installer_package_signing=composer.MacOSInstallerPackageSigning(
-                mode="signed",
+                mode="developer-id",
                 signing_identity="Developer ID Installer: Tirosh",
                 productsign_executable=fake_productsign,
             ),
             macos_virtual_machine_supervisor_code_signing=composer.MacOSVirtualMachineSupervisorCodeSigning(
-                mode="signed",
+                mode="developer-id",
                 signing_identity="Developer ID Application: Tirosh",
                 codesign_executable=fake_codesign,
                 virtualization_entitlements=self.virtual_machine_supervisor_virtualization_entitlements,
@@ -969,8 +1036,10 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             result = composer.compose_macos_host_package(composition)
 
         self.assertTrue(Path(result["artifactPath"]).is_file())
-        self.assertEqual("signed", result["macOSInstallerPackageSigningMode"])
-        self.assertEqual("signed", result["macOSVirtualMachineSupervisorCodeSigningMode"])
+        self.assertEqual("developer-id", result["macOSInstallerPackageSigningMode"])
+        self.assertEqual(
+            "developer-id", result["macOSVirtualMachineSupervisorCodeSigningMode"]
+        )
         self.assertEqual(source_digest_before_signing, composer.sha256_file(self.macos_virtual_machine_supervisor_binary))
         codesign_invocations = codesign_log.read_text(encoding="utf-8")
         self.assertIn("--force --sign Developer ID Application: Tirosh --entitlements", codesign_invocations)
@@ -997,6 +1066,69 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         )
         self.assertEqual(0, payload_listing.returncode, payload_listing.stderr)
         self.assertNotIn("/._", payload_listing.stdout)
+
+    def test_unsigned_development_package_can_carry_an_ad_hoc_entitled_supervisor(self) -> None:
+        codesign_log = self.root / "codesign.log"
+        fake_codesign = self.write_file(
+            "artifacts/fake-codesign",
+            (
+                "#!/bin/sh\n"
+                "set -eu\n"
+                "printf 'arguments=%s\\n' \"$*\" >> \"$CODESIGN_LOG\"\n"
+                "operation=\"$1\"\n"
+                "target=\"\"\n"
+                "entitlements=\"\"\n"
+                "while [ \"$#\" -gt 0 ]; do\n"
+                "  case \"$1\" in\n"
+                "    --entitlements) entitlements=\"$2\"; shift 2 ;;\n"
+                "    *) target=\"$1\"; shift ;;\n"
+                "  esac\n"
+                "done\n"
+                "if [ \"$operation\" = \"--force\" ]; then\n"
+                "  cp \"$entitlements\" \"$CODESIGN_ENTITLEMENT_COPY\"\n"
+                "elif [ \"$operation\" = \"--display\" ]; then\n"
+                "  cat \"$CODESIGN_ENTITLEMENT_COPY\"\n"
+                "fi\n"
+            ).encode("utf-8"),
+        )
+        fake_codesign.chmod(0o755)
+        output_directory = self.root / "output"
+        output_directory.mkdir()
+        codesign_entitlement_copy = self.root / "codesign-entitlements.plist"
+        composition = replace(
+            self.composition(),
+            output_package=output_directory / "VitalServerRuntimePlatform-0.1.0-dev.pkg",
+            pkgbuild_executable=Path("/usr/bin/pkgbuild"),
+            macos_virtual_machine_supervisor_code_signing=(
+                composer.MacOSVirtualMachineSupervisorCodeSigning(
+                    mode="ad-hoc",
+                    signing_identity=None,
+                    codesign_executable=fake_codesign,
+                    virtualization_entitlements=(
+                        self.virtual_machine_supervisor_virtualization_entitlements
+                    ),
+                )
+            ),
+        )
+
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "CODESIGN_LOG": str(codesign_log),
+                "CODESIGN_ENTITLEMENT_COPY": str(codesign_entitlement_copy),
+            },
+        ):
+            result = composer.compose_macos_host_package(composition)
+
+        self.assertTrue(Path(result["artifactPath"]).is_file())
+        self.assertEqual("unsigned", result["macOSInstallerPackageSigningMode"])
+        self.assertEqual(
+            "ad-hoc", result["macOSVirtualMachineSupervisorCodeSigningMode"]
+        )
+        codesign_invocations = codesign_log.read_text(encoding="utf-8")
+        self.assertIn("--force --sign - --entitlements", codesign_invocations)
+        self.assertIn("--options runtime", codesign_invocations)
+        self.assertNotIn("--timestamp", codesign_invocations)
 
     def test_entitlement_display_parser_ignores_codesign_diagnostics_outside_the_plist(self) -> None:
         display_output = (

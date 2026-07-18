@@ -1,6 +1,6 @@
 # macOS Release Package Assembly Boundary
 
-> 상태: **C47 declaration·receipt·CLI와 deterministic test 구현 완료 / signed package의 실제 clean-Host 설치 증거는 C24에서 별도 pending**
+> 상태: **C47 declaration·receipt·CLI와 deterministic test 구현 완료 / Apple Developer ID package의 실제 clean-Host 설치 증거는 C24에서 별도 pending**
 
 ## 1. 왜 별도 경계인가
 
@@ -77,9 +77,16 @@ corrected build therefore uses a new assembly ID/output directory/receipt path;
 it cannot overwrite an earlier receipt and rewrite release history.
 
 The package signing input and VM Supervisor code-signing input remain
-separate because they authorize different macOS artifacts. `signed` requires
-the named identity; `unsigned` must not quietly retain an identity, codesign
-executable, or entitlement path from an earlier command.
+separate because they authorize different macOS artifacts. Installer package
+mode is either `unsigned` or `developer-id`; VM Supervisor mode is `unsigned`,
+`ad-hoc`, or `developer-id`. `developer-id` requires the named identity;
+`ad-hoc` must not contain one and is valid only for a controlled development
+installation. `unsigned` must not quietly retain an identity, codesign
+executable, or entitlement path from an earlier command. A `developer-id` PKG
+requires a `developer-id` Supervisor. The separate [macOS Development
+Installation Evidence](macos-development-installation-evidence-boundary.md)
+boundary owns the valid unsigned-PKG/ad-hoc-Supervisor combination; it is not
+C24 release proof.
 
 ## 4. Receipt meaning
 

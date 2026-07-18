@@ -9047,7 +9047,7 @@
               "if": {
                 "properties": {
                   "mode": {
-                    "const": "signed"
+                    "const": "developer-id"
                   }
                 },
                 "required": [
@@ -9055,6 +9055,12 @@
                 ]
               },
               "then": {
+                "properties": {
+                  "identity": {
+                    "pattern": "^Developer ID Installer: .+$",
+                    "type": "string"
+                  }
+                },
                 "required": [
                   "identity",
                   "productsignExecutableAbsolutePath"
@@ -9071,7 +9077,7 @@
             "mode": {
               "enum": [
                 "unsigned",
-                "signed"
+                "developer-id"
               ]
             },
             "productsignExecutableAbsolutePath": {
@@ -9144,30 +9150,53 @@
           "allOf": [
             {
               "else": {
-                "not": {
-                  "anyOf": [
-                    {
-                      "required": [
-                        "identity"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "codesignExecutableAbsolutePath"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "virtualizationEntitlementsAbsolutePath"
-                      ]
+                "else": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "identity"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "codesignExecutableAbsolutePath"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "virtualizationEntitlementsAbsolutePath"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "if": {
+                  "properties": {
+                    "mode": {
+                      "const": "ad-hoc"
                     }
+                  },
+                  "required": [
+                    "mode"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "identity"
+                    ]
+                  },
+                  "required": [
+                    "codesignExecutableAbsolutePath",
+                    "virtualizationEntitlementsAbsolutePath"
                   ]
                 }
               },
               "if": {
                 "properties": {
                   "mode": {
-                    "const": "signed"
+                    "const": "developer-id"
                   }
                 },
                 "required": [
@@ -9175,6 +9204,12 @@
                 ]
               },
               "then": {
+                "properties": {
+                  "identity": {
+                    "pattern": "^Developer ID Application: .+$",
+                    "type": "string"
+                  }
+                },
                 "required": [
                   "identity",
                   "codesignExecutableAbsolutePath",
@@ -9195,7 +9230,8 @@
             "mode": {
               "enum": [
                 "unsigned",
-                "signed"
+                "ad-hoc",
+                "developer-id"
               ]
             },
             "virtualizationEntitlementsAbsolutePath": {
