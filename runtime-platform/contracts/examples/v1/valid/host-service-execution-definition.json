@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "v1",
+  "documentKind": "host-service-execution-definition",
+  "serviceName": "VitalServerRuntimePlatformHostAgent",
+  "role": "host-agent",
+  "command": {
+    "executablePath": "C:\\ProgramData\\VitalServerRuntimePlatform\\current\\bin\\host-agent.exe",
+    "arguments": [
+      "--deployment-configuration",
+      "C:\\ProgramData\\VitalServerRuntimePlatform\\current\\config\\host-agent-deployment.json"
+    ]
+  }
+}

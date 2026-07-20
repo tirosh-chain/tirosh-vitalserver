@@ -2,25 +2,31 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-artifact-compilation-command",
   "title": "GuestArtifactCompilationCommand",
-  "description": "C35 complete, immutable Release-build input for GuestArtifactCompiler. Every source is addressed below the explicit input root and identified by byte size and SHA-256. The selected builder copies the declared Guest root-storage base and derives one read-only RAW bootstrap storage image containing the Guest-visible NoCloud ISO9660 volume from C37/C38/C39/C44 and, for an external topology, C46 payload intent. It must not discover a Linux base, root partition, source directory, filesystem editor, storage role, topology, or delivery target.",
+  "description": "C35 complete, immutable Release-build input for GuestArtifactCompiler. Every source is addressed below the explicit input root and identified by byte size and SHA-256. The selected builder copies the declared bootable Guest root-storage base and derives one read-only RAW bootstrap storage image containing the Guest-visible NoCloud ISO9660 volume from C37/C38/C39/C44, C46 for an external topology, or the C64 manager executable and configuration for a bundled topology. arm64 additionally names the macOS Virtualization boot artifacts. amd64 intentionally has no Host kernel/initial-ramdisk output because native UEFI firmware boots the declared disk directly. The builder must not discover a Linux base, root partition, source directory, filesystem editor, storage role, topology, or delivery target.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "compilationId", "artifactSetId", "architecture", "buildEnvironment", "boot", "guestRuntimeArtifact", "recorderGatewayArtifact", "guestProductProcessSupervisorArtifact", "guestProductProcessDeploymentConfigurationArtifact", "guestProductServiceManagerDeploymentConfigurationArtifact", "guestProductBootstrapConfigurationArtifact", "guestProductVitalServerTopologyDeploymentArtifact", "storageDevices"],
+  "required": ["schemaVersion", "compilationId", "artifactSetId", "architecture", "buildEnvironment", "guestRuntimeArtifact", "guestNodeServicesArtifact", "guestProductProcessSupervisorArtifact", "guestProductProcessDeploymentConfigurationArtifact", "guestProductReleaseManagerArtifact", "guestProductReleaseManagerConfigurationArtifact", "guestProductServiceManagerDeploymentConfigurationArtifact", "guestProductBootstrapConfigurationArtifact", "guestProductVitalServerTopologyDeploymentArtifact", "storageDevices"],
   "properties": {
     "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
     "compilationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
     "artifactSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
-    "architecture": { "const": "arm64" },
+    "architecture": { "enum": ["arm64", "amd64"] },
     "buildEnvironment": { "$ref": "#/$defs/BuildEnvironment" },
     "boot": { "$ref": "#/$defs/BootOutput" },
     "guestRuntimeArtifact": { "$ref": "#/$defs/InputArtifact" },
-    "recorderGatewayArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestTelemetryCollectorArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestTelemetryCollectorConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestNodeServicesArtifact": { "$ref": "#/$defs/InputArtifact" },
     "guestProductProcessSupervisorArtifact": { "$ref": "#/$defs/InputArtifact" },
     "guestProductProcessDeploymentConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestProductReleaseManagerArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestProductReleaseManagerConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
     "guestProductServiceManagerDeploymentConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
     "guestProductBootstrapConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
     "guestProductVitalServerTopologyDeploymentArtifact": { "$ref": "#/$defs/InputArtifact" },
     "externalVitalServerDeliveryConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestBundledUpstreamImageSetManagerArtifact": { "$ref": "#/$defs/InputArtifact" },
+    "guestBundledUpstreamImageSetManagerConfigurationArtifact": { "$ref": "#/$defs/InputArtifact" },
     "storageDevices": {
       "type": "array",
       "minItems": 2,
@@ -28,6 +34,32 @@
       "items": { "$ref": "#/$defs/StorageDeviceOutput" }
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "architecture": { "const": "arm64" } }, "required": ["architecture"] },
+      "then": { "required": ["boot"] }
+    },
+    {
+      "if": { "properties": { "architecture": { "const": "amd64" } }, "required": ["architecture"] },
+      "then": { "not": { "required": ["boot"] } }
+    },
+    {
+      "if": { "required": ["guestTelemetryCollectorArtifact"] },
+      "then": { "required": ["guestTelemetryCollectorConfigurationArtifact"] }
+    },
+    {
+      "if": { "required": ["guestTelemetryCollectorConfigurationArtifact"] },
+      "then": { "required": ["guestTelemetryCollectorArtifact"] }
+    },
+    {
+      "if": { "required": ["guestBundledUpstreamImageSetManagerArtifact"] },
+      "then": { "required": ["guestBundledUpstreamImageSetManagerConfigurationArtifact"] }
+    },
+    {
+      "if": { "required": ["guestBundledUpstreamImageSetManagerConfigurationArtifact"] },
+      "then": { "required": ["guestBundledUpstreamImageSetManagerArtifact"] }
+    }
+  ],
   "$defs": {
     "BuildEnvironment": {
       "type": "object",

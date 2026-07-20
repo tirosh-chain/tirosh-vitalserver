@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:macos-virtual-machine-configuration",
   "title": "MacOSVirtualMachineConfiguration",
-  "description": "C32 Host-owned deployment configuration passed to the macOS virtual machine supervisor. It declares every Guest asset and resource identity needed to provision one persistent Guest runtime disk, construct one Apple Virtualization VM, expose Guest Runtime control, and expose declared public Guest services through Host-local HTTP-to-virtio-socket bridges. No path, network identity, boot argument, public route target, control transport, or release-to-runtime disk transition is inferred by the supervisor.",
+  "description": "C32 Host-owned deployment configuration passed to the macOS virtual machine supervisor. It declares every Guest asset and resource identity needed to provision one persistent Guest runtime disk, construct one Apple Virtualization VM, expose Guest Runtime and Guest Product release management control, optionally expose separately deployed bundled-Upstream image-set control, and expose declared public Guest services through Host-local HTTP-to-virtio-socket bridges. No path, network identity, boot argument, public route target, control transport, or release-to-runtime disk transition is inferred by the supervisor.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "machineId", "cpuCount", "memoryBytes", "boot", "guestBootConsoleCapture", "guestRuntimeDiskProvisioning", "guestRuntimeControlHostLocalHTTPBridge", "guestPublicServiceHostLocalHTTPBridges", "storageDevices", "network"],
+  "required": ["schemaVersion", "machineId", "cpuCount", "memoryBytes", "boot", "guestBootConsoleCapture", "guestRuntimeDiskProvisioning", "guestRuntimeControlHostLocalHTTPBridge", "guestProductReleaseManagerHostLocalHTTPBridge", "guestPublicServiceHostLocalHTTPBridges", "storageDevices", "network"],
   "properties": {
     "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
     "machineId": { "$ref": "#/$defs/DeploymentIdentifier" },
@@ -15,6 +15,8 @@
     "guestBootConsoleCapture": { "$ref": "#/$defs/GuestBootConsoleCapture" },
     "guestRuntimeDiskProvisioning": { "$ref": "#/$defs/GuestRuntimeDiskProvisioning" },
     "guestRuntimeControlHostLocalHTTPBridge": { "$ref": "#/$defs/GuestRuntimeControlHostLocalHTTPBridge" },
+    "guestProductReleaseManagerHostLocalHTTPBridge": { "$ref": "#/$defs/GuestProductReleaseManagerHostLocalHTTPBridge" },
+    "guestBundledUpstreamImageSetManagerHostLocalHTTPBridge": { "$ref": "#/$defs/GuestBundledUpstreamImageSetManagerHostLocalHTTPBridge" },
     "guestPublicServiceHostLocalHTTPBridges": {
       "type": "array",
       "minItems": 1,
@@ -90,6 +92,28 @@
     },
     "GuestRuntimeControlHostLocalHTTPBridge": {
       "description": "Host-owned bridge declaration that binds the Host Agent's loopback HTTP endpoint to the Guest Runtime's virtio-socket listener. The Host must not use a guessed or NAT-assigned Guest IP address for this control path.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostLoopbackAddress", "hostLoopbackPort", "guestVirtioSocketPort"],
+      "properties": {
+        "hostLoopbackAddress": { "const": "127.0.0.1" },
+        "hostLoopbackPort": { "$ref": "#/$defs/Port" },
+        "guestVirtioSocketPort": { "$ref": "#/$defs/Port" }
+      }
+    },
+    "GuestProductReleaseManagerHostLocalHTTPBridge": {
+      "description": "Host-owned C59 control bridge. It carries release-upload and operation-query HTTP bytes directly to the Guest Product Release Manager AF_VSOCK listener, so a Guest Runtime restart cannot terminate the update control request.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostLoopbackAddress", "hostLoopbackPort", "guestVirtioSocketPort"],
+      "properties": {
+        "hostLoopbackAddress": { "const": "127.0.0.1" },
+        "hostLoopbackPort": { "$ref": "#/$defs/Port" },
+        "guestVirtioSocketPort": { "$ref": "#/$defs/Port" }
+      }
+    },
+    "GuestBundledUpstreamImageSetManagerHostLocalHTTPBridge": {
+      "description": "Optional Host-owned C64 control bridge. It is present only when a bundled-Upstream image-set manager is installed in the selected Guest Product; its independent lifecycle keeps container image activation outside C59 Guest Product current-link activation.",
       "type": "object",
       "additionalProperties": false,
       "required": ["hostLoopbackAddress", "hostLoopbackPort", "guestVirtioSocketPort"],

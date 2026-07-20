@@ -3,8 +3,8 @@
   "serviceManagerKind": "systemd",
   "serviceUnitName": "vitalserver-guest-product.service",
   "supervisor": {
-    "executablePath": "/opt/vitalserver/bin/guest-product-process-supervisor",
-    "deploymentConfigurationPath": "/etc/vitalserver/guest-product-process-deployment.json"
+    "executablePath": "/opt/vitalserver/current/bin/guest-product-process-supervisor",
+    "deploymentConfigurationPath": "/opt/vitalserver/current/config/guest-product-process-deployment.json"
   },
   "restart": {
     "mode": "on-failure",

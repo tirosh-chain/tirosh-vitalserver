@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/macoslaunchctlprotocol"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/hostinstallationmanagerdomain"
 )
 
@@ -68,7 +69,7 @@ func (quiescer *MacOSHostProductServiceQuiescer) QuiesceHostProductServices(cont
 		if err != nil {
 			return fmt.Errorf("bootout declared Host service %s: %w", service.Name, err)
 		}
-		if result.ExitCode != 0 && result.ExitCode != 3 {
+		if result.ExitCode != 0 && !macoslaunchctlprotocol.IsExplicitlyAbsentSystemService(result.ExitCode, result.Stderr, service.Name) {
 			return fmt.Errorf("bootout declared Host service %s exited with status %d: %s", service.Name, result.ExitCode, result.Stderr)
 		}
 	}

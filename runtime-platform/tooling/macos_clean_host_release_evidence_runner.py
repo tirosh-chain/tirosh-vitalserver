@@ -9,7 +9,8 @@ proof fragments.
 
 The runner intentionally separates these operations:
 
-* artifact integrity observes the selected signed PKG;
+* artifact integrity observes the selected PKG identity and exact C23
+  signature policy (unsigned or Developer ID);
 * clean-Host preflight observes that the C23 receipt and launchd registrations
   are absent before installation;
 * clean installation performs ``installer`` only with an explicit CLI grant;
@@ -37,6 +38,7 @@ import sys
 import tempfile
 from typing import Any, Mapping, Sequence
 
+from tooling import host_platform_release_transition_evidence
 from tooling import macos_host_installation_observation
 from tooling.product_delivery_release_plan import (
     MacOSHostPackageReleasePlan,
@@ -55,6 +57,19 @@ CLEAN_INSTALL_STAGE = "clean-install"
 SERVICE_REGISTRATION_STAGE = "service-registration"
 REBOOT_CHECKPOINT_STAGE = "reboot-checkpoint"
 REBOOT_STAGE = "reboot"
+UPDATE_STAGE = "update"
+ROLLBACK_STAGE = "rollback"
+UNINSTALL_REINSTALL_STAGE = "uninstall-reinstall"
+
+C24_PROOF_STAGES = (
+    ARTIFACT_INTEGRITY_STAGE,
+    CLEAN_INSTALL_STAGE,
+    SERVICE_REGISTRATION_STAGE,
+    REBOOT_STAGE,
+    UNINSTALL_REINSTALL_STAGE,
+    UPDATE_STAGE,
+    ROLLBACK_STAGE,
+)
 
 RELEASE_EVIDENCE_STAGES = {
     ARTIFACT_INTEGRITY_STAGE,
@@ -63,6 +78,9 @@ RELEASE_EVIDENCE_STAGES = {
     SERVICE_REGISTRATION_STAGE,
     REBOOT_CHECKPOINT_STAGE,
     REBOOT_STAGE,
+    UPDATE_STAGE,
+    ROLLBACK_STAGE,
+    UNINSTALL_REINSTALL_STAGE,
 }
 
 @dataclass(frozen=True)
@@ -85,8 +103,10 @@ class MacOSCleanHostReleaseEvidenceRun:
     product_version: str
     intended_installer_file_name: str
     macos_installer_package_identifier: str
+    macos_installer_signature_policy: str
     host_agent_launchd_service_label: str
     host_edge_proxy_launchd_service_label: str
+    host_update_handoff_supervisor_launchd_service_label: str
     installer_artifact_path: Path
     bound_installer_artifact_sha256: str
     evidence_directory: Path
@@ -158,8 +178,10 @@ class MacOSCleanHostReleaseEvidenceJournal:
                         product_version TEXT NOT NULL,
                         intended_installer_file_name TEXT NOT NULL,
                         macos_installer_package_identifier TEXT NOT NULL,
+                        macos_installer_signature_policy TEXT NOT NULL,
                         host_agent_launchd_service_label TEXT NOT NULL,
                         host_edge_proxy_launchd_service_label TEXT NOT NULL,
+                        host_update_handoff_supervisor_launchd_service_label TEXT NOT NULL,
                         installer_artifact_path TEXT NOT NULL,
                         bound_installer_artifact_sha256 TEXT NOT NULL,
                         evidence_directory TEXT NOT NULL,
@@ -183,12 +205,14 @@ class MacOSCleanHostReleaseEvidenceJournal:
                         run_id, runner_id, release_delivery_plan_id,
                         product_version, intended_installer_file_name,
                         macos_installer_package_identifier,
+                        macos_installer_signature_policy,
                         host_agent_launchd_service_label,
                         host_edge_proxy_launchd_service_label,
+                        host_update_handoff_supervisor_launchd_service_label,
                         installer_artifact_path,
                         bound_installer_artifact_sha256, evidence_directory,
                         command_contract_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         evidence_run.run_id,
@@ -197,8 +221,10 @@ class MacOSCleanHostReleaseEvidenceJournal:
                         evidence_run.product_version,
                         evidence_run.intended_installer_file_name,
                         evidence_run.macos_installer_package_identifier,
+                        evidence_run.macos_installer_signature_policy,
                         evidence_run.host_agent_launchd_service_label,
                         evidence_run.host_edge_proxy_launchd_service_label,
+                        evidence_run.host_update_handoff_supervisor_launchd_service_label,
                         str(evidence_run.installer_artifact_path),
                         evidence_run.bound_installer_artifact_sha256,
                         str(evidence_run.evidence_directory),
@@ -260,6 +286,10 @@ class MacOSCleanHostReleaseEvidenceJournal:
                 row["macos_installer_package_identifier"],
                 "journal macOS installer package identifier",
             ),
+            macos_installer_signature_policy=required_macos_installer_signature_policy(
+                row["macos_installer_signature_policy"],
+                "journal macOS installer signature policy",
+            ),
             host_agent_launchd_service_label=required_non_empty_string(
                 row["host_agent_launchd_service_label"],
                 "journal Host Agent launchd service label",
@@ -267,6 +297,12 @@ class MacOSCleanHostReleaseEvidenceJournal:
             host_edge_proxy_launchd_service_label=required_non_empty_string(
                 row["host_edge_proxy_launchd_service_label"],
                 "journal Host Edge Proxy launchd service label",
+            ),
+            host_update_handoff_supervisor_launchd_service_label=(
+                required_non_empty_string(
+                    row["host_update_handoff_supervisor_launchd_service_label"],
+                    "journal Host Update Handoff Supervisor launchd service label",
+                )
             ),
             installer_artifact_path=Path(
                 required_non_empty_string(
@@ -419,7 +455,24 @@ class MacOSCleanHostReleaseEvidenceJournal:
         try:
             connection = sqlite3.connect(self.journal_path)
             connection.row_factory = sqlite3.Row
+            column_names = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(evidence_run)")
+            }
+            required_columns = {
+                "host_update_handoff_supervisor_launchd_service_label",
+                "macos_installer_signature_policy",
+            }
+            if not required_columns.issubset(column_names):
+                connection.close()
+                raise MacOSCleanHostReleaseEvidenceRunError(
+                    "macOS clean-Host release evidence journal does not record every "
+                    "required C23 service/signature-policy fact; evidence runs created "
+                    "before those facts must be restarted"
+                )
             return connection
+        except MacOSCleanHostReleaseEvidenceRunError:
+            raise
         except sqlite3.Error as error:
             raise MacOSCleanHostReleaseEvidenceRunError(
                 "macOS clean-Host release evidence journal cannot be opened: "
@@ -699,6 +752,297 @@ class MacOSCleanHostReleaseEvidenceRunner:
             issue,
         )
 
+    def record_host_platform_update(
+        self,
+        release_delivery_plans_document: Path,
+        host_update_journal_path: Path,
+        host_platform_effect_receipt_path: Path,
+        host_installation_manifest_path: Path,
+        host_installation_footprint_path: Path,
+    ) -> MacOSCleanHostReleaseEvidenceStageRecord:
+        return self.record_host_platform_transition(
+            UPDATE_STAGE,
+            REBOOT_STAGE,
+            release_delivery_plans_document,
+            host_update_journal_path,
+            host_platform_effect_receipt_path,
+            host_installation_manifest_path,
+            host_installation_footprint_path,
+        )
+
+    def record_host_platform_rollback(
+        self,
+        release_delivery_plans_document: Path,
+        host_update_journal_path: Path,
+        host_platform_effect_receipt_path: Path,
+        host_installation_manifest_path: Path,
+        host_installation_footprint_path: Path,
+    ) -> MacOSCleanHostReleaseEvidenceStageRecord:
+        return self.record_host_platform_transition(
+            ROLLBACK_STAGE,
+            REBOOT_STAGE,
+            release_delivery_plans_document,
+            host_update_journal_path,
+            host_platform_effect_receipt_path,
+            host_installation_manifest_path,
+            host_installation_footprint_path,
+        )
+
+    def record_host_platform_transition(
+        self,
+        stage: str,
+        predecessor_stage: str,
+        release_delivery_plans_document: Path,
+        host_update_journal_path: Path,
+        host_platform_effect_receipt_path: Path,
+        host_installation_manifest_path: Path,
+        host_installation_footprint_path: Path,
+    ) -> MacOSCleanHostReleaseEvidenceStageRecord:
+        """Join C29/C28/C55/C48/C49 facts with fresh native observations."""
+
+        other_transition_stage = (
+            ROLLBACK_STAGE if stage == UPDATE_STAGE else UPDATE_STAGE
+        )
+        if self.journal.load_stage_record(other_transition_stage) is not None:
+            raise MacOSCleanHostReleaseEvidenceRunError(
+                "macOS clean-Host release evidence run cannot mix update and rollback "
+                "transition scenarios"
+            )
+        evidence_run = self.require_verified_predecessor(predecessor_stage)
+        observed_at = utc_timestamp()
+        transition, issue = observe_host_platform_transition(
+            stage,
+            evidence_run,
+            release_delivery_plans_document,
+            host_update_journal_path,
+            host_platform_effect_receipt_path,
+            host_installation_manifest_path,
+            host_installation_footprint_path,
+        )
+        package_receipt = observe_macos_package_receipt(
+            evidence_run.command_contract.pkgutil_executable,
+            evidence_run.macos_installer_package_identifier,
+        )
+        service_observations = observe_required_launchd_service_registrations(
+            evidence_run.command_contract.launchctl_executable,
+            evidence_run,
+        )
+        if issue is None and transition is not None:
+            issue = host_platform_transition_os_issue(
+                stage, evidence_run, transition, package_receipt, service_observations
+            )
+        observed_artifact = observed_installer_artifact(evidence_run, observed_at)
+        details: dict[str, Any] = {
+            "packageReceiptObservation": package_receipt_document(package_receipt),
+            "launchdServiceRegistrationObservations": [
+                launchd_service_registration_document(observation)
+                for observation in service_observations
+            ],
+            "observedInstallerArtifact": observed_artifact,
+        }
+        if transition is not None:
+            details["hostPlatformReleaseTransition"] = (
+                host_platform_release_transition_evidence.release_transition_evidence_document(
+                    transition
+                )
+            )
+        else:
+            details["hostPlatformReleaseTransitionInput"] = {
+                "releaseDeliveryPlansDocument": str(release_delivery_plans_document),
+                "hostUpdateJournalPath": str(host_update_journal_path),
+                "hostPlatformEffectReceiptPath": str(host_platform_effect_receipt_path),
+                "hostInstallationManifestPath": str(host_installation_manifest_path),
+                "hostInstallationFootprintPath": str(host_installation_footprint_path),
+            }
+        return self.record_stage_with_c24_proof(
+            evidence_run,
+            stage,
+            "verified" if issue is None else "failed",
+            observed_at,
+            details,
+            compose_verified_c24_proof(evidence_run, stage, observed_at, observed_artifact)
+            if issue is None
+            else compose_failed_c24_proof(evidence_run, stage, observed_at, issue),
+            issue,
+        )
+
+    def execute_uninstall_reinstall_preserving_data(
+        self,
+        host_installation_manager_path: Path,
+        installed_manifest_path: Path,
+        installation_journal_path: Path,
+        installation_receipt_path: Path,
+        removal_journal_path: Path,
+        removal_receipt_path: Path,
+        removal_request_id: str,
+        expected_installation_id: str,
+        expected_release_id: str,
+    ) -> MacOSCleanHostReleaseEvidenceStageRecord:
+        """Prove C54 preservation removal and one fresh installation.
+
+        Every lifecycle path and identity is supplied by the release operator.
+        The runner never derives a current release, a mutable-data location, or
+        a removal receipt from the installed package layout.  C54 owns the
+        removal effect and writes the durable receipt; this release workflow
+        only invokes the declared manager and observes the resulting macOS
+        package/service facts before it allows a reinstall.
+        """
+
+        evidence_run = self.require_verified_predecessor(REBOOT_STAGE)
+        if os.geteuid() != 0:
+            raise MacOSCleanHostReleaseEvidenceRunError(
+                "macOS clean-Host uninstall/reinstall requires a root runner process"
+            )
+        validate_macos_preserving_removal_inputs(
+            host_installation_manager_path,
+            installed_manifest_path,
+            installation_journal_path,
+            installation_receipt_path,
+            removal_journal_path,
+            removal_receipt_path,
+            removal_request_id,
+            expected_installation_id,
+            expected_release_id,
+        )
+        observed_at = utc_timestamp()
+        removal_command = execute_macos_clean_host_command(
+            host_installation_manager_path,
+            [
+                "--mode",
+                "remove",
+                "--manifest",
+                str(installed_manifest_path),
+                "--journal",
+                str(installation_journal_path),
+                "--receipt",
+                str(installation_receipt_path),
+                "--request-id",
+                removal_request_id,
+                "--installation-id",
+                expected_installation_id,
+                "--release-id",
+                expected_release_id,
+                "--data-disposition",
+                "preserve-mutable-data",
+                "--removal-journal",
+                str(removal_journal_path),
+                "--removal-receipt",
+                str(removal_receipt_path),
+                "--pkgutil",
+                str(evidence_run.command_contract.pkgutil_executable),
+                "--launchctl",
+                str(evidence_run.command_contract.launchctl_executable),
+            ],
+        )
+        removal_receipt, removal_receipt_sha256, removal_receipt_issue = (
+            observe_completed_macos_preservation_removal_receipt(
+                removal_receipt_path,
+                expected_installation_id,
+                expected_release_id,
+            )
+        )
+        removal_package_receipt = observe_macos_package_receipt(
+            evidence_run.command_contract.pkgutil_executable,
+            evidence_run.macos_installer_package_identifier,
+        )
+        removal_service_observations = observe_required_launchd_service_registrations(
+            evidence_run.command_contract.launchctl_executable,
+            evidence_run,
+        )
+        removal_issue = macos_preserving_removal_issue(
+            removal_command,
+            removal_receipt_issue,
+            removal_package_receipt,
+            removal_service_observations,
+        )
+        observed_artifact = observed_installer_artifact(evidence_run, observed_at)
+        removal_details: dict[str, Any] = {
+            "dataDisposition": "preserve-mutable-data",
+            "hostInstallationManagerCommand": command_document(removal_command),
+            "packageReceiptObservation": package_receipt_document(
+                removal_package_receipt
+            ),
+            "launchdServiceRegistrationObservations": [
+                launchd_service_registration_document(observation)
+                for observation in removal_service_observations
+            ],
+        }
+        if removal_receipt is not None and removal_receipt_sha256 is not None:
+            removal_details["hostProductRemovalReceipt"] = {
+                "uri": removal_receipt_path.as_uri(),
+                "sha256": removal_receipt_sha256,
+                "receipt": removal_receipt,
+            }
+        if removal_issue is not None:
+            return self.record_stage_with_c24_proof(
+                evidence_run,
+                UNINSTALL_REINSTALL_STAGE,
+                "failed",
+                observed_at,
+                removal_details,
+                compose_failed_c24_proof(
+                    evidence_run,
+                    UNINSTALL_REINSTALL_STAGE,
+                    observed_at,
+                    removal_issue,
+                ),
+                removal_issue,
+            )
+
+        reinstall_command = execute_macos_clean_host_command(
+            evidence_run.command_contract.installer_executable,
+            ["-pkg", str(evidence_run.installer_artifact_path), "-target", "/"],
+        )
+        reinstall_package_receipt = observe_macos_package_receipt(
+            evidence_run.command_contract.pkgutil_executable,
+            evidence_run.macos_installer_package_identifier,
+        )
+        reinstall_service_observations = observe_required_launchd_service_registrations(
+            evidence_run.command_contract.launchctl_executable,
+            evidence_run,
+        )
+        reinstall_issue = macos_reinstall_after_preserving_removal_issue(
+            evidence_run,
+            reinstall_command,
+            reinstall_package_receipt,
+            reinstall_service_observations,
+        )
+        details = {
+            **removal_details,
+            "reinstallCommand": command_document(reinstall_command),
+            "postReinstall": {
+                "packageReceiptObservation": package_receipt_document(
+                    reinstall_package_receipt
+                ),
+                "launchdServiceRegistrationObservations": [
+                    launchd_service_registration_document(observation)
+                    for observation in reinstall_service_observations
+                ],
+            },
+            "observedInstallerArtifact": observed_artifact,
+        }
+        return self.record_stage_with_c24_proof(
+            evidence_run,
+            UNINSTALL_REINSTALL_STAGE,
+            "verified" if reinstall_issue is None else "failed",
+            observed_at,
+            details,
+            compose_verified_c24_proof(
+                evidence_run,
+                UNINSTALL_REINSTALL_STAGE,
+                observed_at,
+                observed_artifact,
+            )
+            if reinstall_issue is None
+            else compose_failed_c24_proof(
+                evidence_run,
+                UNINSTALL_REINSTALL_STAGE,
+                observed_at,
+                reinstall_issue,
+            ),
+            reinstall_issue,
+        )
+
     def require_verified_predecessor(
         self, predecessor_stage: str
     ) -> MacOSCleanHostReleaseEvidenceRun:
@@ -829,11 +1173,17 @@ def evidence_run_from_release_plan(
         macos_installer_package_identifier=(
             release_plan.macos_installer_package_identifier
         ),
+        macos_installer_signature_policy=(
+            release_plan.macos_installer_signature_policy
+        ),
         host_agent_launchd_service_label=(
             release_plan.host_agent_launchd_service_label
         ),
         host_edge_proxy_launchd_service_label=(
             release_plan.host_edge_proxy_launchd_service_label
+        ),
+        host_update_handoff_supervisor_launchd_service_label=(
+            release_plan.host_update_handoff_supervisor_launchd_service_label
         ),
         installer_artifact_path=installer_artifact_path,
         bound_installer_artifact_sha256=sha256_file(installer_artifact_path),
@@ -870,6 +1220,15 @@ def validate_evidence_run_input_paths(
             "C23 release delivery plans document is missing or not an absolute file"
         )
     validate_command_contract(command_contract)
+
+
+def required_macos_installer_signature_policy(value: Any, field: str) -> str:
+    policy = required_non_empty_string(value, field)
+    if policy not in {"unsigned", "developer-id"}:
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            field + " must be unsigned or developer-id"
+        )
+    return policy
 
 
 def validate_new_journal_path(journal_path: Path) -> None:
@@ -1014,18 +1373,29 @@ def evaluate_macos_installer_artifact_integrity_issue(
             "code": "macos-package-version-mismatch",
             "message": "Selected macOS installer package metadata version does not match C23.",
         }
+    signature_output = (
+        package_signature_command.stdout + "\n" + package_signature_command.stderr
+    ).lower()
+    if evidence_run.macos_installer_signature_policy == "unsigned":
+        # macOS pkgutil explicitly reports an unsigned flat package as
+        # ``Status: no signature`` and may return non-zero. The reported
+        # status—not the return code—is the external owner fact that C23 asks
+        # this release run to observe. Any other result remains a failure.
+        if "status: no signature" in signature_output:
+            return None
+        return {
+            "code": "macos-package-unsigned-signature-state-not-observed",
+            "message": "The selected macOS installer artifact does not explicitly report the C23 unsigned signature state.",
+        }
     if package_signature_command.returncode != 0:
         return {
             "code": "macos-package-signature-check-failed",
             "message": "pkgutil signature verification failed for the selected macOS installer artifact.",
         }
-    signature_output = (
-        package_signature_command.stdout + "\n" + package_signature_command.stderr
-    ).lower()
     if "status: signed" not in signature_output or "no signature" in signature_output:
         return {
             "code": "macos-package-signature-not-accepted",
-            "message": "The selected macOS installer artifact does not report an accepted package signature.",
+            "message": "The selected macOS installer artifact does not report the C23 accepted Developer ID signature state.",
         }
     return None
 
@@ -1054,6 +1424,11 @@ def observe_required_launchd_service_registrations(
             launchctl_executable,
             "host-edge-proxy",
             evidence_run.host_edge_proxy_launchd_service_label,
+        ),
+        observe_macos_launchd_service_registration(
+            launchctl_executable,
+            "host-update-handoff-supervisor",
+            evidence_run.host_update_handoff_supervisor_launchd_service_label,
         ),
     )
 
@@ -1180,6 +1555,295 @@ def reboot_persistence_issue(
     )
 
 
+def observe_host_platform_transition(
+    stage: str,
+    evidence_run: MacOSCleanHostReleaseEvidenceRun,
+    release_delivery_plans_document: Path,
+    host_update_journal_path: Path,
+    host_platform_effect_receipt_path: Path,
+    host_installation_manifest_path: Path,
+    host_installation_footprint_path: Path,
+) -> tuple[
+    host_platform_release_transition_evidence.HostPlatformReleaseTransitionEvidence | None,
+    Mapping[str, str] | None,
+]:
+    """Read the explicit transition contract without treating it as C24 proof."""
+
+    release_plan_issue = transition_release_plan_issue(
+        evidence_run, release_delivery_plans_document
+    )
+    if release_plan_issue is not None:
+        return None, release_plan_issue
+    try:
+        if stage == UPDATE_STAGE:
+            transition = (
+                host_platform_release_transition_evidence.inspect_host_platform_update_transition(
+                    release_delivery_plans_document,
+                    evidence_run.release_delivery_plan_id,
+                    host_update_journal_path,
+                    host_platform_effect_receipt_path,
+                    host_installation_manifest_path,
+                    host_installation_footprint_path,
+                )
+            )
+        elif stage == ROLLBACK_STAGE:
+            transition = (
+                host_platform_release_transition_evidence.inspect_host_platform_rollback_transition(
+                    release_delivery_plans_document,
+                    evidence_run.release_delivery_plan_id,
+                    host_update_journal_path,
+                    host_platform_effect_receipt_path,
+                    host_installation_manifest_path,
+                    host_installation_footprint_path,
+                )
+            )
+        else:
+            raise MacOSCleanHostReleaseEvidenceRunError(
+                "macOS Host Platform transition stage is unsupported: " + stage
+            )
+    except host_platform_release_transition_evidence.HostPlatformReleaseTransitionEvidenceError as error:
+        return None, {
+            "code": "macos-host-platform-" + stage + "-transition-invalid",
+            "message": "C29/C28/C55/C48/C49 transition evidence is invalid: " + str(error),
+        }
+    if (
+        transition.release_delivery_plan_id != evidence_run.release_delivery_plan_id
+        or transition.platform != "macos"
+        or transition.provider_kind != "macos-virtualization"
+        or transition.target_product_version != evidence_run.product_version
+        or transition.observed_package_identifier
+        != evidence_run.macos_installer_package_identifier
+    ):
+        return None, {
+            "code": "macos-host-platform-" + stage + "-transition-identity-mismatch",
+            "message": "C29/C28/C55/C48/C49 transition evidence does not match this macOS C24 evidence run.",
+        }
+    return transition, None
+
+
+def transition_release_plan_issue(
+    evidence_run: MacOSCleanHostReleaseEvidenceRun,
+    release_delivery_plans_document: Path,
+) -> Mapping[str, str] | None:
+    """Reject a same-ID C23 document that changes the run's named facts."""
+
+    try:
+        release_plan = load_selected_macos_host_package_release_plan(
+            release_delivery_plans_document, evidence_run.release_delivery_plan_id
+        )
+    except ProductDeliveryReleasePlanError as error:
+        return {
+            "code": "macos-host-platform-transition-release-plan-unavailable",
+            "message": "The explicit C23 document cannot be selected for this C24 run: " + str(error),
+        }
+    if (
+        release_plan.product_version != evidence_run.product_version
+        or release_plan.expected_package_file_name != evidence_run.intended_installer_file_name
+        or release_plan.macos_installer_package_identifier
+        != evidence_run.macos_installer_package_identifier
+        or release_plan.macos_installer_signature_policy
+        != evidence_run.macos_installer_signature_policy
+        or release_plan.host_agent_launchd_service_label
+        != evidence_run.host_agent_launchd_service_label
+        or release_plan.host_edge_proxy_launchd_service_label
+        != evidence_run.host_edge_proxy_launchd_service_label
+        or release_plan.host_update_handoff_supervisor_launchd_service_label
+        != evidence_run.host_update_handoff_supervisor_launchd_service_label
+    ):
+        return {
+            "code": "macos-host-platform-transition-release-plan-mismatch",
+            "message": "The explicit C23 document does not preserve this run's PKG, signature, and launchd identities.",
+        }
+    return None
+
+
+def host_platform_transition_os_issue(
+    stage: str,
+    evidence_run: MacOSCleanHostReleaseEvidenceRun,
+    transition: host_platform_release_transition_evidence.HostPlatformReleaseTransitionEvidence,
+    package_receipt: MacOSPackageReceiptObservation,
+    service_observations: Sequence[MacOSLaunchdServiceRegistrationObservation],
+) -> Mapping[str, str] | None:
+    """Compare fresh pkgutil/launchctl facts with the C48/C49 transition."""
+
+    if package_receipt.state != "installed":
+        return {
+            "code": "macos-host-platform-" + stage + "-package-not-installed",
+            "message": "pkgutil did not explicitly report the Host Platform package as installed after the transition.",
+        }
+    if package_receipt.package_identifier != transition.observed_package_identifier:
+        return {
+            "code": "macos-host-platform-" + stage + "-package-identifier-mismatch",
+            "message": "The fresh pkgutil package identifier does not match the C48/C49 transition observation.",
+        }
+    if package_receipt.product_version != transition.observed_product_version:
+        return {
+            "code": "macos-host-platform-" + stage + "-package-version-mismatch",
+            "message": "The fresh pkgutil product version does not match the C48/C49 transition observation.",
+        }
+    if any(observation.state != "registered" for observation in service_observations):
+        return {
+            "code": "macos-host-platform-" + stage + "-service-registration-not-observed",
+            "message": "A required launchd service was not registered after the Host Platform transition.",
+        }
+    if stage == UPDATE_STAGE and package_receipt.product_version != evidence_run.product_version:
+        return {
+            "code": "macos-host-platform-update-target-version-mismatch",
+            "message": "The successful update did not leave the C23 target product version installed.",
+        }
+    return None
+
+
+def validate_macos_preserving_removal_inputs(
+    host_installation_manager_path: Path,
+    installed_manifest_path: Path,
+    installation_journal_path: Path,
+    installation_receipt_path: Path,
+    removal_journal_path: Path,
+    removal_receipt_path: Path,
+    removal_request_id: str,
+    expected_installation_id: str,
+    expected_release_id: str,
+) -> None:
+    """Reject missing C54 inputs before the manager is allowed to mutate Host state."""
+
+    for label, path in (
+        ("Host Installation Manager", host_installation_manager_path),
+        ("installed C48 manifest", installed_manifest_path),
+        ("C50 installation journal", installation_journal_path),
+        ("C50 installation receipt", installation_receipt_path),
+    ):
+        if not path.is_absolute() or path.is_symlink() or not path.is_file():
+            raise MacOSCleanHostReleaseEvidenceRunError(
+                "macOS C54 " + label + " must be one absolute regular non-symlink file"
+            )
+    if not os.access(host_installation_manager_path, os.X_OK):
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            "macOS C54 Host Installation Manager is not executable"
+        )
+    for label, path in (
+        ("C54 removal journal", removal_journal_path),
+        ("C54 removal receipt", removal_receipt_path),
+    ):
+        if not path.is_absolute() or not path.parent.is_dir():
+            raise MacOSCleanHostReleaseEvidenceRunError(
+                "macOS " + label + " path must be absolute with an existing parent directory"
+            )
+        if path.exists() or path.is_symlink():
+            raise MacOSCleanHostReleaseEvidenceRunError(
+                "macOS " + label + " must not already exist for a new C54 transition"
+            )
+    for label, value in (
+        ("C54 removal request ID", removal_request_id),
+        ("C54 expected installation ID", expected_installation_id),
+        ("C54 expected release ID", expected_release_id),
+    ):
+        if not isinstance(value, str) or not value:
+            raise MacOSCleanHostReleaseEvidenceRunError(
+                "macOS " + label + " is required"
+            )
+
+
+def observe_completed_macos_preservation_removal_receipt(
+    receipt_path: Path,
+    expected_installation_id: str,
+    expected_release_id: str,
+) -> tuple[Mapping[str, Any] | None, str | None, Mapping[str, str] | None]:
+    """Read only a completed C54 preservation receipt; absence stays explicit."""
+
+    if not receipt_path.is_absolute() or receipt_path.is_symlink() or not receipt_path.is_file():
+        return None, None, {
+            "code": "macos-removal-receipt-unavailable",
+            "message": "The C54 removal receipt must be one absolute regular non-symlink file.",
+        }
+    try:
+        payload = receipt_path.read_bytes()
+        receipt = json.loads(payload)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return None, None, {
+            "code": "macos-removal-receipt-unreadable",
+            "message": "The C54 removal receipt could not be decoded: " + str(error),
+        }
+    if not isinstance(receipt, dict):
+        return None, None, {
+            "code": "macos-removal-receipt-invalid",
+            "message": "The C54 removal receipt must contain one JSON object.",
+        }
+    expected_facts = {
+        "schemaVersion": "v1",
+        "documentKind": "host-product-removal-receipt",
+        "installationId": expected_installation_id,
+        "releaseId": expected_release_id,
+        "dataDisposition": "preserve-mutable-data",
+        "state": "completed",
+        "packageReceiptRemoval": "removed-by-host-installation-manager",
+    }
+    if any(receipt.get(key) != value for key, value in expected_facts.items()):
+        return None, None, {
+            "code": "macos-removal-receipt-does-not-prove-preserving-completion",
+            "message": "The C54 receipt does not match the declared completed macOS preservation removal.",
+        }
+    for field in ("id", "requestId", "observedAt"):
+        if not isinstance(receipt.get(field), str) or not receipt[field]:
+            return None, None, {
+                "code": "macos-removal-receipt-invalid",
+                "message": "The C54 receipt is missing required field " + field + ".",
+            }
+    retained = receipt.get("retainedMutableStoreIds")
+    if retained is not None and (
+        not isinstance(retained, list)
+        or any(not isinstance(item, str) or not item for item in retained)
+        or len(set(retained)) != len(retained)
+    ):
+        return None, None, {
+            "code": "macos-removal-receipt-invalid",
+            "message": "The C54 receipt retained mutable store IDs are invalid.",
+        }
+    return receipt, hashlib.sha256(payload).hexdigest(), None
+
+
+def macos_preserving_removal_issue(
+    removal_command: MacOSCleanHostReleaseEvidenceCommandObservation,
+    removal_receipt_issue: Mapping[str, str] | None,
+    package_receipt: MacOSPackageReceiptObservation,
+    service_observations: Sequence[MacOSLaunchdServiceRegistrationObservation],
+) -> Mapping[str, str] | None:
+    if removal_command.returncode != 0:
+        return {
+            "code": "macos-uninstall-command-failed",
+            "message": "Host Installation Manager returned a non-zero result for the explicit C54 removal.",
+        }
+    if removal_receipt_issue is not None:
+        return removal_receipt_issue
+    if package_receipt.state != "absent":
+        return {
+            "code": "macos-uninstall-package-receipt-not-absent",
+            "message": "pkgutil did not explicitly report the removed package receipt as absent.",
+        }
+    if any(observation.state != "absent" for observation in service_observations):
+        return {
+            "code": "macos-uninstall-service-registration-remains",
+            "message": "A C23-required launchd service remained registered after C54 removal.",
+        }
+    return None
+
+
+def macos_reinstall_after_preserving_removal_issue(
+    evidence_run: MacOSCleanHostReleaseEvidenceRun,
+    installer_command: MacOSCleanHostReleaseEvidenceCommandObservation,
+    package_receipt: MacOSPackageReceiptObservation,
+    service_observations: Sequence[MacOSLaunchdServiceRegistrationObservation],
+) -> Mapping[str, str] | None:
+    if installer_command.returncode != 0:
+        return {
+            "code": "macos-reinstall-command-failed",
+            "message": "macOS installer returned a non-zero result for explicit reinstallation.",
+        }
+    return installed_receipt_or_service_registration_issue(
+        evidence_run, package_receipt, service_observations
+    )
+
+
 def compose_verified_c24_proof(
     evidence_run: MacOSCleanHostReleaseEvidenceRun,
     stage: str,
@@ -1273,11 +1937,15 @@ def release_identity_document(
         "macOSInstallerPackageIdentifier": (
             evidence_run.macos_installer_package_identifier
         ),
+        "macOSInstallerSignaturePolicy": evidence_run.macos_installer_signature_policy,
         "hostAgentLaunchdServiceLabel": (
             evidence_run.host_agent_launchd_service_label
         ),
         "hostEdgeProxyLaunchdServiceLabel": (
             evidence_run.host_edge_proxy_launchd_service_label
+        ),
+        "hostUpdateHandoffSupervisorLaunchdServiceLabel": (
+            evidence_run.host_update_handoff_supervisor_launchd_service_label
         ),
         "boundInstallerArtifactSHA256": evidence_run.bound_installer_artifact_sha256,
     }
@@ -1372,6 +2040,58 @@ def write_new_evidence_document(
     return evidence_path, sha256_file(evidence_path)
 
 
+def write_new_c24_proof_fragment(
+    output_proof_fragment_path: Path,
+    stage_record: MacOSCleanHostReleaseEvidenceStageRecord,
+) -> tuple[Path, str]:
+    """Publish one runner-owned C24 fragment without changing its journal.
+
+    The runner owns the proof bytes it previously recorded in its SQLite
+    journal.  The Release process owns later C74 review and proof-set
+    attachment.  Requiring one new caller-selected path keeps these two facts
+    separate and prevents a retry from replacing a previously reviewed file.
+    """
+
+    if stage_record.c24_proof is None:
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            "macOS clean-Host release evidence stage has no C24 proof: "
+            + stage_record.stage
+        )
+    if not output_proof_fragment_path.is_absolute():
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            "macOS C24 proof fragment output path must be absolute"
+        )
+    if not output_proof_fragment_path.parent.is_dir():
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            "macOS C24 proof fragment output parent directory is missing: "
+            + str(output_proof_fragment_path.parent)
+        )
+    if output_proof_fragment_path.exists() or output_proof_fragment_path.is_symlink():
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            "macOS C24 proof fragment output already exists: "
+            + str(output_proof_fragment_path)
+        )
+    document_bytes = (
+        canonical_json({"schemaVersion": "v1", "proofs": [stage_record.c24_proof]})
+        + "\n"
+    ).encode("utf-8")
+    try:
+        with output_proof_fragment_path.open("xb") as output_file:
+            output_file.write(document_bytes)
+            output_file.flush()
+            os.fsync(output_file.fileno())
+    except FileExistsError as error:
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            "macOS C24 proof fragment output already exists: "
+            + str(output_proof_fragment_path)
+        ) from error
+    except OSError as error:
+        raise MacOSCleanHostReleaseEvidenceRunError(
+            "macOS C24 proof fragment write failed: " + str(error)
+        ) from error
+    return output_proof_fragment_path, sha256_file(output_proof_fragment_path)
+
+
 def stage_record_document(
     stage_record: MacOSCleanHostReleaseEvidenceStageRecord,
 ) -> Mapping[str, Any]:
@@ -1464,20 +2184,27 @@ def parse_arguments(arguments: Sequence[str]) -> argparse.Namespace:
         "record-reboot-checkpoint",
         "record-reboot",
         "print-stage-proof",
+        "write-stage-proof-fragment",
     ):
         command = subcommands.add_parser(command_name)
         command.add_argument("--journal-path", required=True)
-        if command_name == "print-stage-proof":
+        if command_name in {"print-stage-proof", "write-stage-proof-fragment"}:
             command.add_argument(
                 "--stage",
                 required=True,
-                choices=(
-                    ARTIFACT_INTEGRITY_STAGE,
-                    CLEAN_INSTALL_STAGE,
-                    SERVICE_REGISTRATION_STAGE,
-                    REBOOT_STAGE,
-                ),
+                choices=C24_PROOF_STAGES,
             )
+        if command_name == "write-stage-proof-fragment":
+            command.add_argument("--output-proof-fragment", required=True, type=Path)
+
+    for command_name in ("record-host-platform-update", "record-host-platform-rollback"):
+        command = subcommands.add_parser(command_name)
+        command.add_argument("--journal-path", required=True)
+        command.add_argument("--release-delivery-plans-document", required=True)
+        command.add_argument("--host-update-journal", required=True)
+        command.add_argument("--host-platform-effect-receipt", required=True)
+        command.add_argument("--host-installation-manifest", required=True)
+        command.add_argument("--host-installation-footprint", required=True)
 
     clean_install = subcommands.add_parser("execute-clean-install")
     clean_install.add_argument("--journal-path", required=True)
@@ -1485,6 +2212,26 @@ def parse_arguments(arguments: Sequence[str]) -> argparse.Namespace:
         "--authorize-clean-install",
         action="store_true",
         help="explicitly authorize the irreversible macOS installer effect",
+    )
+
+    uninstall_reinstall = subcommands.add_parser(
+        "execute-uninstall-reinstall-preserving-data",
+        help="run one explicit C54 preservation removal followed by a fresh PKG installation",
+    )
+    uninstall_reinstall.add_argument("--journal-path", required=True)
+    uninstall_reinstall.add_argument("--host-installation-manager", required=True)
+    uninstall_reinstall.add_argument("--installed-manifest", required=True)
+    uninstall_reinstall.add_argument("--installation-journal", required=True)
+    uninstall_reinstall.add_argument("--installation-receipt", required=True)
+    uninstall_reinstall.add_argument("--removal-journal", required=True)
+    uninstall_reinstall.add_argument("--removal-receipt", required=True)
+    uninstall_reinstall.add_argument("--removal-request-id", required=True)
+    uninstall_reinstall.add_argument("--expected-installation-id", required=True)
+    uninstall_reinstall.add_argument("--expected-release-id", required=True)
+    uninstall_reinstall.add_argument(
+        "--authorize-uninstall-reinstall",
+        action="store_true",
+        help="explicitly authorize the irreversible C54 removal and fresh installer effects",
     )
     return parser.parse_args(arguments)
 
@@ -1532,14 +2279,56 @@ def main(arguments: Sequence[str]) -> int:
             stage_record = evidence_runner.record_reboot_checkpoint()
         elif parsed.command == "record-reboot":
             stage_record = evidence_runner.record_reboot()
-        elif parsed.command == "print-stage-proof":
+        elif parsed.command in {"record-host-platform-update", "record-host-platform-rollback"}:
+            record_transition = (
+                evidence_runner.record_host_platform_update
+                if parsed.command == "record-host-platform-update"
+                else evidence_runner.record_host_platform_rollback
+            )
+            stage_record = record_transition(
+                Path(parsed.release_delivery_plans_document),
+                Path(parsed.host_update_journal),
+                Path(parsed.host_platform_effect_receipt),
+                Path(parsed.host_installation_manifest),
+                Path(parsed.host_installation_footprint),
+            )
+        elif parsed.command == "execute-uninstall-reinstall-preserving-data":
+            if not parsed.authorize_uninstall_reinstall:
+                raise MacOSCleanHostReleaseEvidenceRunError(
+                    "macOS clean-Host uninstall/reinstall requires --authorize-uninstall-reinstall"
+                )
+            stage_record = evidence_runner.execute_uninstall_reinstall_preserving_data(
+                Path(parsed.host_installation_manager),
+                Path(parsed.installed_manifest),
+                Path(parsed.installation_journal),
+                Path(parsed.installation_receipt),
+                Path(parsed.removal_journal),
+                Path(parsed.removal_receipt),
+                parsed.removal_request_id,
+                parsed.expected_installation_id,
+                parsed.expected_release_id,
+            )
+        elif parsed.command in {"print-stage-proof", "write-stage-proof-fragment"}:
             stage_record = journal.load_stage_record(parsed.stage)
             if stage_record is None or stage_record.c24_proof is None:
                 raise MacOSCleanHostReleaseEvidenceRunError(
                     "macOS clean-Host release evidence stage has no C24 proof: "
                     + parsed.stage
                 )
-            print(canonical_json(stage_record.c24_proof))
+            if parsed.command == "print-stage-proof":
+                print(canonical_json(stage_record.c24_proof))
+                return 0
+            output_path, output_sha256 = write_new_c24_proof_fragment(
+                parsed.output_proof_fragment, stage_record
+            )
+            print(
+                canonical_json(
+                    {
+                        "proofFragmentPath": str(output_path),
+                        "proofFragmentSHA256": output_sha256,
+                    }
+                )
+            )
             return 0
         else:
             raise MacOSCleanHostReleaseEvidenceRunError(

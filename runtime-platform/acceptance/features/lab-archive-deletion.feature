@@ -12,6 +12,21 @@ Feature: Lab lifecycle, artifact export, and deletion evidence
     Then an immutable ArtifactManifest and a succeeded ExportReceipt are readable
     And upload and indexing have separate succeeded evidence
 
+  Scenario: A Lab recorder run is a real Gateway capture before Archive sees it
+    Given a declared Lab scenario and Guest-loopback Runner and Recorder Gateway processes
+    When the Runner starts the virtual recorder and the exact live run is stopped
+    Then Gateway has accepted the scenario packets and finalized that exact capture
+    And the public packet sequence matches the Gateway finalization receipt digest
+    And the Runner publishes its Recorder-owned observation through the named Guest catalog boundary
+    And neither Runner nor Gateway claims an Archive upload or indexing result
+
+  Scenario: An operator interface requests export without becoming an Archive owner
+    Given a stopped no-export virtual recorder publishes its finalization receipt and revision
+    And Archive Export publishes its selected provider reference
+    When Console or platformctl submits an artifact export request with those exact facts
+    Then Guest Runtime decides admission and owns the resulting Archive operation
+    And neither interface creates a source capture, writes a vital file, or claims upload or indexing success
+
   Scenario: Export failure does not rewrite Lab lifecycle state
     Given a stopped Lab virtual recorder and a provider with a known upload or indexing failure
     When an artifact export is requested

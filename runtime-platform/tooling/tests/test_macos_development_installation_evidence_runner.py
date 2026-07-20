@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 from unittest import mock
@@ -119,11 +120,12 @@ class MacOSDevelopmentInstallationEvidenceRunnerTests(unittest.TestCase):
         if executable == self.command_contract.launchctl_executable:
             if self.launchd_services_registered:
                 return self.result(executable, arguments, 0, "service = registered\n")
+            service_label = arguments[1].removeprefix("system/")
             return self.result(
                 executable,
                 arguments,
                 113,
-                stderr="Could not find service in domain for system\n",
+                stderr='Could not find service "' + service_label + '" in domain for system\n',
             )
         if executable == self.command_contract.codesign_executable:
             if arguments[0] == "--verify":
@@ -196,6 +198,24 @@ class MacOSDevelopmentInstallationEvidenceRunnerTests(unittest.TestCase):
         self.assertEqual(
             1,
             artifact_evidence["details"]["packageSignatureCommand"]["returnCode"],
+        )
+        service_evidence = json.loads(
+            (self.evidence_directory / "service-registration.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            [
+                "host-agent",
+                "host-edge-proxy",
+                "host-update-handoff-supervisor",
+            ],
+            [
+                observation["role"]
+                for observation in service_evidence["details"][
+                    "launchdServiceRegistrationObservations"
+                ]
+            ],
         )
         supervisor_evidence = json.loads(
             (self.evidence_directory / "supervisor-signature.json").read_text(
@@ -285,6 +305,20 @@ class MacOSDevelopmentInstallationEvidenceRunnerTests(unittest.TestCase):
                 self.journal_path
             ).load_stage_record(evidence_runner.ARTIFACT_IDENTITY_STAGE)
         )
+
+    def test_pre_update_handoff_development_evidence_journal_cannot_be_resumed(self) -> None:
+        with sqlite3.connect(self.journal_path) as connection:
+            connection.execute(
+                "CREATE TABLE development_installation_run (run_id TEXT NOT NULL)"
+            )
+
+        with self.assertRaisesRegex(
+            evidence_runner.MacOSDevelopmentInstallationEvidenceRunError,
+            "Host Update Handoff Supervisor service",
+        ):
+            evidence_runner.MacOSDevelopmentInstallationEvidenceJournal(
+                self.journal_path
+            ).load_evidence_run()
 
 
 if __name__ == "__main__":

@@ -23,9 +23,18 @@ class GuestArtifactCompilerTests(unittest.TestCase):
             "kernel": self.write_input("inputs/boot/Image", b"linux-kernel"),
             "initial_ramdisk": self.write_input("inputs/boot/initrd.img", b"linux-initrd"),
             "guest_runtime": self.write_input("inputs/services/guest-runtime", b"guest-runtime"),
-            "recorder_gateway": self.write_input("inputs/services/recorder-gateway.tar", b"recorder-gateway"),
+            "guest_telemetry_collector": self.write_input(
+                "inputs/services/guest-telemetry-collector", b"guest-telemetry-collector"
+            ),
+            "guest_telemetry_collector_configuration": self.write_input(
+                "inputs/configuration/guest-telemetry-collector.yaml",
+                b"receivers: {}\n",
+            ),
+            "guest_node_services": self.write_input("inputs/services/guest-node-services.tar.gz", b"guest-node-services"),
             "guest_product_process_supervisor": self.write_input("inputs/services/guest-product-process-supervisor", b"guest-product-process-supervisor"),
             "guest_product_process_deployment_configuration": self.write_input("inputs/configuration/guest-product-process-deployment.json", b"guest-product-process-deployment"),
+            "guest_product_release_manager": self.write_input("inputs/services/guest-product-release-manager", b"guest-product-release-manager"),
+            "guest_product_release_manager_configuration": self.write_input("inputs/configuration/guest-product-release-manager.json", b"guest-product-release-manager-configuration"),
             "guest_product_service_manager_deployment_configuration": self.write_input("inputs/configuration/guest-product-service-manager-deployment.json", b"guest-product-service-manager-deployment"),
             "guest_product_bootstrap_configuration": self.write_input("inputs/configuration/guest-product-bootstrap.json", b"guest-product-bootstrap"),
             "guest_product_vitalserver_topology_deployment": self.write_input("inputs/configuration/guest-product-vitalserver-topology-deployment.json", b"guest-product-vitalserver-topology-deployment"),
@@ -66,9 +75,10 @@ class GuestArtifactCompilerTests(unittest.TestCase):
             "    target = output_directory / relative\n"
             "    target.parent.mkdir(parents=True, exist_ok=True)\n"
             "    target.write_bytes(content)\n"
-            "write(command['boot']['kernel']['outputRelativePath'], source(command['boot']['kernel']['source']).read_bytes())\n"
-            "if 'initialRamdisk' in command['boot']:\n"
-            "    write(command['boot']['initialRamdisk']['outputRelativePath'], source(command['boot']['initialRamdisk']['source']).read_bytes())\n"
+            "if 'boot' in command:\n"
+            "    write(command['boot']['kernel']['outputRelativePath'], source(command['boot']['kernel']['source']).read_bytes())\n"
+            "    if 'initialRamdisk' in command['boot']:\n"
+            "        write(command['boot']['initialRamdisk']['outputRelativePath'], source(command['boot']['initialRamdisk']['source']).read_bytes())\n"
             "for storage in command['storageDevices']:\n"
             "    payload = source(storage['baseImage']).read_bytes() if 'baseImage' in storage else b'bootstrap-volume'\n"
             "    write(storage['outputRelativePath'], payload)\n"
@@ -107,9 +117,19 @@ class GuestArtifactCompilerTests(unittest.TestCase):
                 "initialRamdisk": {"source": self.artifact("linux-arm64-initrd", self.sources["initial_ramdisk"]), "outputRelativePath": "boot/initrd.img"},
             },
             "guestRuntimeArtifact": self.artifact("guest-runtime-linux-arm64", self.sources["guest_runtime"]),
-            "recorderGatewayArtifact": self.artifact("recorder-gateway-linux-arm64", self.sources["recorder_gateway"]),
+            "guestTelemetryCollectorArtifact": self.artifact(
+                "guest-telemetry-collector-linux-arm64",
+                self.sources["guest_telemetry_collector"],
+            ),
+            "guestTelemetryCollectorConfigurationArtifact": self.artifact(
+                "guest-telemetry-collector-configuration",
+                self.sources["guest_telemetry_collector_configuration"],
+            ),
+            "guestNodeServicesArtifact": self.artifact("guest-node-services-linux-arm64", self.sources["guest_node_services"]),
             "guestProductProcessSupervisorArtifact": self.artifact("guest-product-process-supervisor-linux-arm64", self.sources["guest_product_process_supervisor"]),
             "guestProductProcessDeploymentConfigurationArtifact": self.artifact("guest-product-process-deployment-configuration", self.sources["guest_product_process_deployment_configuration"]),
+            "guestProductReleaseManagerArtifact": self.artifact("guest-product-release-manager-linux-arm64", self.sources["guest_product_release_manager"]),
+            "guestProductReleaseManagerConfigurationArtifact": self.artifact("guest-product-release-manager-configuration", self.sources["guest_product_release_manager_configuration"]),
             "guestProductServiceManagerDeploymentConfigurationArtifact": self.artifact("guest-product-service-manager-deployment-configuration", self.sources["guest_product_service_manager_deployment_configuration"]),
             "guestProductBootstrapConfigurationArtifact": self.artifact("guest-product-bootstrap-configuration", self.sources["guest_product_bootstrap_configuration"]),
             "guestProductVitalServerTopologyDeploymentArtifact": self.artifact("guest-product-vitalserver-topology-deployment", self.sources["guest_product_vitalserver_topology_deployment"]),
@@ -136,6 +156,22 @@ class GuestArtifactCompilerTests(unittest.TestCase):
 
     def write_command(self, document: dict[str, object]) -> None:
         self.command_path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+
+    def amd64_command_document(self) -> dict[str, object]:
+        command = json.loads(json.dumps(self.command_document()))
+        command["architecture"] = "amd64"
+        command["artifactSetId"] = "guest-artifact-test-set-amd64"
+        del command["boot"]
+        for key in (
+            "guestRuntimeArtifact",
+            "guestTelemetryCollectorArtifact",
+            "guestNodeServicesArtifact",
+            "guestProductProcessSupervisorArtifact",
+            "guestProductReleaseManagerArtifact",
+        ):
+            command[key]["id"] = command[key]["id"].replace("linux-arm64", "linux-amd64")
+        command["storageDevices"][0]["baseImage"]["id"] = "linux-amd64-root-storage-base"
+        return command
 
     def execution(self, **changes: object) -> compiler.GuestArtifactCompilationExecution:
         values: dict[str, object] = {
@@ -178,6 +214,62 @@ class GuestArtifactCompilerTests(unittest.TestCase):
             "external-vitalserver-delivery-configuration",
             {artifact["id"] for artifact in receipt["consumedInputArtifacts"]},
         )
+        self.assertEqual(
+            {
+                "guest-telemetry-collector-linux-arm64",
+                "guest-telemetry-collector-configuration",
+            },
+            {
+                artifact["id"]
+                for artifact in receipt["consumedInputArtifacts"]
+                if artifact["id"].startswith("guest-telemetry-collector")
+            },
+        )
+
+    def test_rejects_partial_guest_telemetry_collector_declaration_before_builder_effect(
+        self,
+    ) -> None:
+        command = self.command_document()
+        del command["guestTelemetryCollectorConfigurationArtifact"]
+        self.write_command(command)
+
+        with self.assertRaisesRegex(
+            compiler.GuestArtifactCompilationError,
+            "stage=command-validate.*Collector binary and configuration",
+        ):
+            compiler.compile_guest_artifact_set(self.execution())
+
+        self.assertFalse(self.output_directory.exists())
+
+    def test_compiles_amd64_native_guest_disk_and_bootstrap_volume_without_macos_boot_outputs(self) -> None:
+        self.write_command(self.amd64_command_document())
+        with mock.patch.object(
+            compiler,
+            "record_utc_guest_artifact_compilation_completion_time",
+            return_value=datetime(2026, 7, 17, 10, 0, tzinfo=timezone.utc),
+        ):
+            result = compiler.compile_guest_artifact_set(self.execution())
+
+        self.assertFalse((self.output_directory / "boot").exists())
+        manifest_path = self.output_directory / "native-guest-artifact-manifest.json"
+        receipt_path = self.output_directory / "guest-artifact-compilation-receipt.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual("amd64", manifest["architecture"])
+        self.assertEqual("guest-artifact-test-set-amd64", manifest["artifactSetId"])
+        self.assertEqual("amd64", receipt["architecture"])
+        self.assertEqual(self.sha256(manifest_path), receipt["nativeGuestArtifactManifest"]["sha256"])
+        self.assertEqual(manifest, result["nativeGuestArtifactManifest"])
+
+    def test_rejects_amd64_command_that_claims_macos_boot_outputs(self) -> None:
+        command = self.amd64_command_document()
+        command["boot"] = self.command_document()["boot"]
+        self.write_command(command)
+
+        with self.assertRaisesRegex(compiler.GuestArtifactCompilationError, "stage=command-validate.*amd64.*boot"):
+            compiler.compile_guest_artifact_set(self.execution())
+
+        self.assertFalse(self.output_directory.exists())
 
     def test_rejects_an_unowned_guest_runtime_configuration_artifact(self) -> None:
         command = self.command_document()
@@ -257,6 +349,19 @@ class GuestArtifactCompilerTests(unittest.TestCase):
         self.write_command(command)
 
         with self.assertRaisesRegex(compiler.GuestArtifactCompilationError, "stage=command-validate.*missing or unknown"):
+            compiler.compile_guest_artifact_set(self.execution())
+
+        self.assertFalse(self.output_directory.exists())
+
+    def test_rejects_a_guest_product_release_manager_with_an_unowned_identity(self) -> None:
+        command = self.command_document()
+        command["guestProductReleaseManagerArtifact"]["id"] = "guessed-release-manager"
+        self.write_command(command)
+
+        with self.assertRaisesRegex(
+            compiler.GuestArtifactCompilationError,
+            "stage=command-validate.*guestProductReleaseManagerArtifact ID",
+        ):
             compiler.compile_guest_artifact_set(self.execution())
 
         self.assertFalse(self.output_directory.exists())

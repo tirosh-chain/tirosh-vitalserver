@@ -1,8 +1,11 @@
 # Installation and update foundation
 
-> 상태: **구현 및 portable acceptance 완료.** 실제 macOS package/bootstrap
-> adapter, Guest/Container/Host artifact replacement, clean-host 설치·update
-> platform package activation과 clean-host 증명은 후속 delivery work이며 C24에서는 계속 `pending`이다.
+> 상태: **C25–C31 + C52/C55 실행·portable acceptance 및 C47 macOS PKG
+> composition 완료.** C47은 실제 Guest bootstrap artifact와 Host Agent,
+> Edge Proxy, Update Handoff Supervisor를 하나의 PKG에 조립·검증한다.
+> release-owned Guest/Container/Host artifact replacement executor와 clean-host
+> 설치·update platform package activation은 후속 delivery work이며 C24에서는
+> 계속 `pending`이다.
 
 Installation and update foundation은 update를 “새 파일을 덮어쓴다”가 아니라 서로 다른 호환성 언어를
 가진 두 updater의 명시적 handoff로 만든다. 첫 delivery 목표는 macOS arm64
@@ -24,7 +27,8 @@ clean install이지만, Windows amd64와 Linux amd64도 같은 C25–C31 계약�
   검증·stage할 책임만 가진다. C26 내용을 parse하지 않는다.
 - stage 전/후의 durable operation은 Host SQLite의 **C29**가 소유한다.
 - stage된 **next updater**만 C26을 parse해 명시적인 layer plan을 만들고,
-  C28 evidence로 결과를 Host에 보낸다.
+  declared executor의 C55 receipt를 검증해 C28 evidence를 만든 뒤 C52
+  OS-local transport로 C27 completion을 Host에 보낸다.
 - C25가 없거나 invalid하거나 trust evidence가 없으면 failed/unavailable
   receipt이며, legacy parser, 다른 layer, 성공 상태로 fallback하지 않는다.
 
@@ -41,8 +45,8 @@ clean install이지만, Windows amd64와 Linux amd64도 같은 C25–C31 계약�
 | Release process | release tooling | C25, C26, artifact digests, signature 생성 | Host journal 또는 installed release 변경 |
 | Host Agent | Host OS + Host SQLite | C27 admission, C29 journal, current installation revision, bootstrap receipt 검증, handoff/recovery | C26 parse, Guest/container 내부 상태 추측 |
 | Native bootstrap adapter | macOS/Windows/Linux Host adapter | signature/trust 확인, next updater staging, idempotent handoff effect | update success 판정 |
-| `host-updater` | staged next updater process | C26 plan parse, 순서/의존성 검증, layer adapter orchestration, C28 evidence 생성 | Host SQLite 직접 변경 |
-| layer adapter | selected container/Guest/Host platform boundary | one declared layer effect 및 typed evidence | 다른 layer로 fallback, Host operation 소유 |
+| `host-updater` | staged next updater process | C26 plan parse, 순서/의존성 검증, declared executor byte 재검증, C55→C28, C52→C27 completion | Host SQLite 직접 변경 |
+| layer effect executor | release-owned container/Guest/Host platform boundary | one declared artifact의 apply/rollback과 C55 typed receipt | 다른 layer로 fallback, Host operation 소유 |
 
 `host-updater`는 별도 Go module이다. Host Agent가 그 source를 import하지
 않으므로 C26을 추가·확장해도 현재 Host Agent의 domain policy가 변하지 않는다.
@@ -102,12 +106,14 @@ stale object나 empty state를 반환하지 않는다.
 | 계약 | 주요 내용 |
 | --- | --- |
 | C25 `UpdateBootstrapEnvelope` | target, ordered layer list, signed next updater artifact, opaque C26 artifact digest, Ed25519 trust evidence |
-| C26 `ProductUpdateSpecification` | next updater만 해석하는 per-layer artifact/dependency/rollback plan |
+| C26 `ProductUpdateSpecification` | next updater만 해석하는 per-layer artifact/dependency/rollback plan과 digest·size·media type으로 고정된 `effectExecutor` |
 | C27 | Host update admission command, bootstrap receipt, Host-local completion command |
 | C28 `UpdateExecutionReport` | layer별 `succeeded/failed/unavailable/unsupported`, rollback, typed issue/evidence |
 | C29 `HostUpdateJournal` | Host SQLite durable operation, C25 recovery input/digests, journal revision, receipt/report/failure |
 | C30 `StagedUpdateInvocation` | C29가 `handoff-pending`으로 durable commit된 뒤 Host가 발행하는 next-updater input. `requestId`와 `expectedHandoffJournalRevision`은 C27 completion이 제시해야 할 정확한 Host journal version을 고정한다. Host가 해당 version을 원자적으로 검증한 뒤 `applying` 전이와 C28 정산을 수행하며, C30은 C26 path의 기준 디렉터리도 보존 |
 | C31 `StagedUpdateHandoff` | Host staging queue 안에서 C30의 상대 위치를 가리키는 durable handoff item |
+| C52 `HostLocalAdministrationEndpointDescriptor` | Host Agent가 공개한 OS-local Unix socket/Windows named pipe 주소. next updater는 이 descriptor 이외의 completion target을 선택하지 않음 |
+| C55 `StagedUpdateLayerEffectReceipt` | C26-declared executor가 고정 protocol apply/rollback 뒤 기록하는 typed layer outcome. process exit/log은 C55를 대체하지 못함 |
 
 Host-local routes는 `contracts/openapi/control.v1.json`에 `x-network-scope:
 host-local`로 명시했다.
@@ -126,23 +132,25 @@ Host-local transport로만 배치해야 한다.
 `make -C runtime-platform host-updater-test`은 C26의 order, dependency,
 Host-platform-final policy를 순수 next-updater 모듈에서 검증한다.
 
-`make -C runtime-platform installation-update-acceptance`은 실제 Host Agent HTTP process와
-별도 `host-updater` binary를 실행해 다음을 검증한다. 이 updater는 C30/C26을 읽고,
-명시적으로 제공된 C28 report를 검증한 뒤 Host-local C27 completion endpoint에
-제출한다. 따라서 test harness의 HTTP 직접 호출이 next-updater completion을 대신하지
-않는다.
+`make -C runtime-platform installation-update-acceptance`은 실제 Host Agent composition과
+별도 `host-updater` binary를 실행해 다음을 검증한다. updater는 C30/C26을 읽고,
+C26에 선언된 digest-verified fixture executor만 고정 argument protocol로 실행해 C55를
+읽고 C28을 원자적으로 기록한다. 이어 C52 Unix socket을 통해 C27 completion을
+제출한다. 따라서 harness의 HTTP 직접 호출이 next-updater completion을 대신하지 않는다.
 
 1. C25 envelope → C29 handoff-pending을 durable하게 만들고 request-id replay가
    stage/handoff를 중복하지 않는다.
-2. next updater가 matching C26 plan만 받아들이고 C28 success report로 release
-   revision을 한 번만 전진시킨다.
+2. next updater가 matching C26 plan과 C55 receipt만 받아들이고 C28 success
+   report로 release revision을 한 번만 전진시킨다.
 3. restart가 durable `handoff-pending` journal만 다시 handoff한다.
 4. bootstrap `unavailable`과 out-of-order C28 evidence가 release를 바꾸지 않고
    typed terminal failure가 된다.
 
-Acceptance bootstrapper는 명확히 test-only이다. native signature verification,
-filesystem staging, macOS PKG install, Guest/container replacement, rollback
-artifact execution은 아직 구현/증명되지 않았다. native adapter와 C24 clean-host runner가 이를 package/reboot/update/rollback
+Acceptance bootstrapper는 명확히 test-only이다. signed bundle의 native
+signature verification·filesystem staging과 next-updater execution protocol은
+증명하지만, acceptance fixture의 C55 executor는 실제 Guest/container/Host
+artifact를 교체하지 않는다. macOS PKG install, concrete replacement executor,
+release rollback, C24 clean-host runner가 이를 package/reboot/update/rollback
 evidence로 바꾼다.
 
 ## 7. 구현 중 발견한 운영 규칙

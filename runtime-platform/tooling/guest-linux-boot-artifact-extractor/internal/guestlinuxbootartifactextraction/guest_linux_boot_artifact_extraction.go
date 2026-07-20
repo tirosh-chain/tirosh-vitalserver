@@ -3,6 +3,7 @@
 package guestlinuxbootartifactextraction
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	diskfs "github.com/diskfs/go-diskfs"
+	"github.com/diskfs/go-diskfs/disk"
 	"github.com/diskfs/go-diskfs/filesystem"
 	"github.com/diskfs/go-diskfs/filesystem/ext4"
 	declaration "github.com/tirosh-chain/vitalserver-runtime-platform/guest-linux-boot-artifact-extractor/internal/guestlinuxbootartifactdeclaration"
@@ -36,6 +38,33 @@ type GuestLinuxBootArtifactExtractionError struct {
 	ExtractionID string
 	Stage        string
 	Reason       string
+}
+
+// c73MaterializationReceipt is deliberately local to the C42 adapter. C42
+// consumes only the C73 facts needed to verify the raw input it receives; it
+// does not own C73 conversion policy or source acquisition.
+type c73MaterializationReceipt struct {
+	SchemaVersion                    string `json:"schemaVersion"`
+	DocumentKind                     string `json:"documentKind"`
+	MaterializationID                string `json:"materializationId"`
+	Architecture                     string `json:"architecture"`
+	MaterializationDeclarationSHA256 string `json:"materializationDeclarationSha256"`
+	SourceImage                      struct {
+		ID              string `json:"id"`
+		SourceOriginURI string `json:"sourceOriginUri"`
+		SourceRelease   string `json:"sourceRelease"`
+		SizeBytes       int64  `json:"sizeBytes"`
+		SHA256          string `json:"sha256"`
+	} `json:"sourceImage"`
+	SourceImageFormat string `json:"sourceImageFormat"`
+	RawImage          struct {
+		ID           string `json:"id"`
+		RelativePath string `json:"relativePath"`
+		ImageFormat  string `json:"imageFormat"`
+		SizeBytes    int64  `json:"sizeBytes"`
+		SHA256       string `json:"sha256"`
+	} `json:"rawImage"`
+	CompletedAt string `json:"completedAt"`
 }
 
 func (err GuestLinuxBootArtifactExtractionError) Error() string {
@@ -82,11 +111,11 @@ func executeDeclaredGuestLinuxBootArtifactExtraction(
 	defer os.RemoveAll(temporaryOutputDirectory)
 
 	rootStoragePath := filepath.Join(temporaryOutputDirectory, filepath.FromSlash(parsedDeclaration.RootStorage.OutputRelativePath))
-	rootStorageIdentity, err := copyDeclaredRegularFile(parsedDeclaration.RootStorage.ID, parsedDeclaration.RootStorage.OutputRelativePath, parsedDeclaration.SourceImage.SourceAbsolutePath, rootStoragePath)
+	rootStorageIdentity, err := extractDeclaredGuestRootStorage(parsedDeclaration, rootStoragePath)
 	if err != nil {
 		return declaration.GuestLinuxBootArtifactExtractionReceipt{}, extractionFailure(parsedDeclaration.ExtractionID, "root-storage-copy", err)
 	}
-	if rootStorageIdentity.SizeBytes != sourceImageIdentity.SizeBytes || rootStorageIdentity.SHA256 != sourceImageIdentity.SHA256 {
+	if parsedDeclaration.SourceFilesystem.Layout == "whole-disk-ext4" && (rootStorageIdentity.SizeBytes != sourceImageIdentity.SizeBytes || rootStorageIdentity.SHA256 != sourceImageIdentity.SHA256) {
 		return declaration.GuestLinuxBootArtifactExtractionReceipt{}, extractionFailure(parsedDeclaration.ExtractionID, "root-storage-identity", fmt.Errorf("copied root storage does not match the declared source image"))
 	}
 	bootResourceIdentities, err := extractDeclaredGuestBootResources(parsedDeclaration, temporaryOutputDirectory)
@@ -131,22 +160,89 @@ func verifyDeclaredGuestLinuxSourceImage(source declaration.DeclaredGuestLinuxSo
 	if identity.SizeBytes != source.SizeBytes || identity.SHA256 != source.SHA256 {
 		return declaration.SourceImageIdentity{}, fmt.Errorf("C42 sourceImage immutable identity does not match declaration")
 	}
+	if source.SourceMaterialization != nil {
+		if err := verifyDeclaredC73Materialization(source); err != nil {
+			return declaration.SourceImageIdentity{}, err
+		}
+	}
 	return declaration.SourceImageIdentity{ID: identity.ID, SizeBytes: identity.SizeBytes, SHA256: identity.SHA256}, nil
 }
 
-func extractDeclaredGuestBootResources(parsedDeclaration declaration.GuestLinuxBootArtifactExtractionDeclaration, temporaryOutputDirectory string) ([]declaration.ArtifactIdentity, error) {
+func verifyDeclaredC73Materialization(source declaration.DeclaredGuestLinuxSourceImage) error {
+	materialization := source.SourceMaterialization
+	if materialization == nil {
+		return fmt.Errorf("C42 source materialization is required")
+	}
+	if err := requireAbsoluteRegularNonSymlinkFile(materialization.ReceiptAbsolutePath, "C73 materialization receipt"); err != nil {
+		return err
+	}
+	receiptBytes, err := os.ReadFile(materialization.ReceiptAbsolutePath)
+	if err != nil {
+		return fmt.Errorf("C73 materialization receipt cannot be read: %w", err)
+	}
+	if sha256Hex(receiptBytes) != materialization.ReceiptSHA256 {
+		return fmt.Errorf("C73 materialization receipt SHA-256 does not match declaration")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(receiptBytes))
+	decoder.DisallowUnknownFields()
+	var receipt c73MaterializationReceipt
+	if err := decoder.Decode(&receipt); err != nil {
+		return fmt.Errorf("C73 materialization receipt cannot be decoded: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("C73 materialization receipt has more than one JSON value")
+		}
+		return fmt.Errorf("C73 materialization receipt trailing JSON cannot be decoded: %w", err)
+	}
+	if receipt.SchemaVersion != "v1" || receipt.DocumentKind != "guest-linux-source-disk-materialization-receipt" || receipt.MaterializationID != materialization.MaterializationID || receipt.Architecture != "arm64" || receipt.MaterializationDeclarationSHA256 == "" || receipt.SourceImage.ID == "" || receipt.SourceImage.SourceOriginURI == "" || receipt.SourceImage.SourceRelease == "" || receipt.SourceImage.SizeBytes <= 0 || receipt.SourceImage.SHA256 == "" || receipt.SourceImageFormat != "qcow2" || receipt.CompletedAt == "" {
+		return fmt.Errorf("C73 materialization receipt identity does not match C42 source materialization")
+	}
+	if receipt.RawImage.ID != source.ID || receipt.RawImage.RelativePath == "" || receipt.RawImage.ImageFormat != "raw" || receipt.RawImage.SizeBytes != source.SizeBytes || receipt.RawImage.SHA256 != source.SHA256 {
+		return fmt.Errorf("C73 materialization receipt raw image identity does not match C42 source image")
+	}
+	return nil
+}
+
+func extractDeclaredGuestRootStorage(parsedDeclaration declaration.GuestLinuxBootArtifactExtractionDeclaration, outputPath string) (declaration.ArtifactIdentity, error) {
+	if parsedDeclaration.SourceFilesystem.Layout == "whole-disk-ext4" {
+		return copyDeclaredRegularFile(parsedDeclaration.RootStorage.ID, parsedDeclaration.RootStorage.OutputRelativePath, parsedDeclaration.SourceImage.SourceAbsolutePath, outputPath)
+	}
 	disk, err := diskfs.Open(parsedDeclaration.SourceImage.SourceAbsolutePath, diskfs.WithOpenMode(diskfs.ReadOnly), diskfs.WithSectorSize(diskfs.SectorSize512))
 	if err != nil {
-		return nil, fmt.Errorf("C42 whole-disk ext4 source cannot be opened read-only: %w", err)
+		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 partitioned-disk source cannot be opened read-only: %w", err)
 	}
 	defer disk.Close()
-	selectedFilesystem, err := disk.GetFilesystem(0)
-	if err != nil {
-		return nil, fmt.Errorf("C42 whole-disk ext4 source cannot be read: %w", err)
+	if _, err := disk.GetPartitionTable(); err != nil {
+		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 partitioned-disk source partition table cannot be read: %w", err)
 	}
-	guestFilesystem, ok := selectedFilesystem.(*ext4.FileSystem)
-	if !ok || selectedFilesystem.Type() != filesystem.TypeExt4 {
-		return nil, fmt.Errorf("C42 sourceFilesystem is not whole-disk ext4")
+	return copyDeclaredPartitionContents(disk, parsedDeclaration.SourceFilesystem.PartitionIndex, parsedDeclaration.RootStorage.ID, parsedDeclaration.RootStorage.OutputRelativePath, outputPath)
+}
+
+type openedDeclaredGuestSourceFilesystem struct {
+	disk       *disk.Disk
+	filesystem *ext4.FileSystem
+}
+
+func (opened openedDeclaredGuestSourceFilesystem) Close() error {
+	filesystemError := opened.filesystem.Close()
+	diskError := opened.disk.Close()
+	if filesystemError != nil {
+		return filesystemError
+	}
+	return diskError
+}
+
+func extractDeclaredGuestBootResources(parsedDeclaration declaration.GuestLinuxBootArtifactExtractionDeclaration, temporaryOutputDirectory string) ([]declaration.ArtifactIdentity, error) {
+	var guestFilesystem *ext4.FileSystem
+	if bootResourcesUseSourceImageFilesystem(parsedDeclaration.BootResources) {
+		openedFilesystem, err := openDeclaredGuestSourceFilesystem(parsedDeclaration)
+		if err != nil {
+			return nil, err
+		}
+		defer openedFilesystem.Close()
+		guestFilesystem = openedFilesystem.filesystem
 	}
 	kernelOutputPath := filepath.Join(temporaryOutputDirectory, filepath.FromSlash(parsedDeclaration.BootResources.Kernel.OutputRelativePath))
 	kernelIdentity, err := extractDeclaredGzipCompressedGuestLinuxKernel(
@@ -169,40 +265,111 @@ func extractDeclaredGuestBootResources(parsedDeclaration declaration.GuestLinuxB
 	return []declaration.ArtifactIdentity{kernelIdentity, initialRamdiskIdentity}, nil
 }
 
+func bootResourcesUseSourceImageFilesystem(resources declaration.DeclaredGuestLinuxBootResources) bool {
+	return resources.Kernel.Source.Kind == "source-image-filesystem" || resources.InitialRamdisk.Source.Kind == "source-image-filesystem"
+}
+
+func openDeclaredGuestSourceFilesystem(parsedDeclaration declaration.GuestLinuxBootArtifactExtractionDeclaration) (openedDeclaredGuestSourceFilesystem, error) {
+	disk, err := diskfs.Open(parsedDeclaration.SourceImage.SourceAbsolutePath, diskfs.WithOpenMode(diskfs.ReadOnly), diskfs.WithSectorSize(diskfs.SectorSize512))
+	if err != nil {
+		return openedDeclaredGuestSourceFilesystem{}, fmt.Errorf("C42 declared source disk cannot be opened read-only: %w", err)
+	}
+	// diskfs owns the filesystem handle. The caller closes the resulting
+	// filesystem after extracting every resource that explicitly selected it.
+	if parsedDeclaration.SourceFilesystem.Layout == "partitioned-disk-ext4" {
+		if _, err := disk.GetPartitionTable(); err != nil {
+			disk.Close()
+			return openedDeclaredGuestSourceFilesystem{}, fmt.Errorf("C42 partitioned-disk source partition table cannot be read: %w", err)
+		}
+	}
+	partitionIndex := parsedDeclaration.SourceFilesystem.PartitionIndex
+	selectedFilesystem, err := disk.GetFilesystem(partitionIndex)
+	if err != nil {
+		disk.Close()
+		return openedDeclaredGuestSourceFilesystem{}, fmt.Errorf("C42 declared ext4 source filesystem cannot be read: %w", err)
+	}
+	guestFilesystem, ok := selectedFilesystem.(*ext4.FileSystem)
+	if !ok || selectedFilesystem.Type() != filesystem.TypeExt4 {
+		selectedFilesystem.Close()
+		disk.Close()
+		return openedDeclaredGuestSourceFilesystem{}, fmt.Errorf("C42 declared source filesystem is not ext4")
+	}
+	return openedDeclaredGuestSourceFilesystem{disk: disk, filesystem: guestFilesystem}, nil
+}
+
 // extractDeclaredGzipCompressedGuestLinuxKernel makes the declared source
 // encoding visible. It must not copy compressed vmlinuz bytes into C35 under
 // a boot-loader-looking path and leave Apple Virtualization to fail later.
 func extractDeclaredGzipCompressedGuestLinuxKernel(guestFilesystem *ext4.FileSystem, resource declaration.DeclaredGuestBootResource, outputPath string) (declaration.ArtifactIdentity, error) {
-	guestPath := strings.TrimPrefix(resource.GuestAbsolutePath, "/")
-	guestFile, err := guestFilesystem.OpenFile(guestPath, os.O_RDONLY)
+	source, sourceDescription, err := openDeclaredBootResourceSource(guestFilesystem, resource)
 	if err != nil {
-		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 declared compressed Guest Linux kernel path %s cannot be opened: %w", resource.GuestAbsolutePath, err)
+		return declaration.ArtifactIdentity{}, err
 	}
-	defer guestFile.Close()
-	decompressedKernel, err := gzip.NewReader(guestFile)
+	defer source.Close()
+	decompressedKernel, err := gzip.NewReader(source)
 	if err != nil {
-		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 declared compressed Guest Linux kernel path %s is not valid gzip: %w", resource.GuestAbsolutePath, err)
+		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 declared compressed Guest Linux kernel source %s is not valid gzip: %w", sourceDescription, err)
 	}
 	defer decompressedKernel.Close()
 	identity, err := writeNewReaderOutput(resource.ID, resource.OutputRelativePath, outputPath, decompressedKernel)
 	if err != nil {
-		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 declared compressed Guest Linux kernel path %s cannot be decompressed: %w", resource.GuestAbsolutePath, err)
+		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 declared compressed Guest Linux kernel source %s cannot be decompressed: %w", sourceDescription, err)
 	}
 	return identity, nil
 }
 
 func extractDeclaredGuestRegularFile(guestFilesystem *ext4.FileSystem, resource declaration.DeclaredGuestBootResource, outputPath string) (declaration.ArtifactIdentity, error) {
-	guestPath := strings.TrimPrefix(resource.GuestAbsolutePath, "/")
-	guestFile, err := guestFilesystem.OpenFile(guestPath, os.O_RDONLY)
+	source, sourceDescription, err := openDeclaredBootResourceSource(guestFilesystem, resource)
 	if err != nil {
-		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 declared Guest boot path %s cannot be opened: %w", resource.GuestAbsolutePath, err)
+		return declaration.ArtifactIdentity{}, err
 	}
-	defer guestFile.Close()
-	identity, err := writeNewReaderOutput(resource.ID, resource.OutputRelativePath, outputPath, guestFile)
+	defer source.Close()
+	identity, err := writeNewReaderOutput(resource.ID, resource.OutputRelativePath, outputPath, source)
 	if err != nil {
-		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 declared Guest boot path %s cannot be copied: %w", resource.GuestAbsolutePath, err)
+		return declaration.ArtifactIdentity{}, fmt.Errorf("C42 declared Guest boot source %s cannot be copied: %w", sourceDescription, err)
 	}
 	return identity, nil
+}
+
+func openDeclaredBootResourceSource(guestFilesystem *ext4.FileSystem, resource declaration.DeclaredGuestBootResource) (io.ReadCloser, string, error) {
+	switch resource.Source.Kind {
+	case "source-image-filesystem":
+		if guestFilesystem == nil {
+			return nil, "", fmt.Errorf("C42 declared source-image-filesystem boot source has no selected ext4 filesystem")
+		}
+		guestPath := strings.TrimPrefix(resource.Source.GuestAbsolutePath, "/")
+		guestFile, err := guestFilesystem.OpenFile(guestPath, os.O_RDONLY)
+		if err != nil {
+			return nil, "", fmt.Errorf("C42 declared Guest boot path %s cannot be opened: %w", resource.Source.GuestAbsolutePath, err)
+		}
+		return guestFile, resource.Source.GuestAbsolutePath, nil
+	case "external-artifact":
+		if err := verifyDeclaredExternalBootResource(resource); err != nil {
+			return nil, "", err
+		}
+		externalFile, err := os.Open(resource.Source.SourceAbsolutePath)
+		if err != nil {
+			return nil, "", fmt.Errorf("C42 declared external boot source cannot be opened: %w", err)
+		}
+		return externalFile, resource.Source.SourceAbsolutePath, nil
+	default:
+		return nil, "", fmt.Errorf("C42 declared boot source kind is invalid")
+	}
+}
+
+func verifyDeclaredExternalBootResource(resource declaration.DeclaredGuestBootResource) error {
+	source := resource.Source
+	if err := requireAbsoluteRegularNonSymlinkFile(source.SourceAbsolutePath, "C42 external boot source"); err != nil {
+		return err
+	}
+	identity, err := identifyRegularFile(resource.ID, resource.OutputRelativePath, source.SourceAbsolutePath)
+	if err != nil {
+		return fmt.Errorf("C42 external boot source cannot be identified: %w", err)
+	}
+	if identity.SizeBytes != source.SizeBytes || identity.SHA256 != source.SHA256 {
+		return fmt.Errorf("C42 external boot source immutable identity does not match declaration")
+	}
+	return nil
 }
 
 func copyDeclaredRegularFile(id, relativePath, sourcePath, destinationPath string) (declaration.ArtifactIdentity, error) {
@@ -212,6 +379,30 @@ func copyDeclaredRegularFile(id, relativePath, sourcePath, destinationPath strin
 	}
 	defer sourceFile.Close()
 	return writeNewReaderOutput(id, relativePath, destinationPath, sourceFile)
+}
+
+func copyDeclaredPartitionContents(sourceDisk *disk.Disk, partitionIndex int, id, relativePath, destinationPath string) (declaration.ArtifactIdentity, error) {
+	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o700); err != nil {
+		return declaration.ArtifactIdentity{}, err
+	}
+	destination, err := os.OpenFile(destinationPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return declaration.ArtifactIdentity{}, err
+	}
+	hasher := sha256.New()
+	written, copyErr := sourceDisk.ReadPartitionContents(partitionIndex, io.MultiWriter(destination, hasher))
+	syncErr := destination.Sync()
+	closeErr := destination.Close()
+	if copyErr != nil {
+		return declaration.ArtifactIdentity{}, copyErr
+	}
+	if syncErr != nil || closeErr != nil {
+		return declaration.ArtifactIdentity{}, fmt.Errorf("partition output cannot be synced and closed")
+	}
+	if written <= 0 {
+		return declaration.ArtifactIdentity{}, fmt.Errorf("declared source partition is empty")
+	}
+	return declaration.ArtifactIdentity{ID: id, RelativePath: relativePath, SizeBytes: written, SHA256: hex.EncodeToString(hasher.Sum(nil))}, nil
 }
 
 func writeNewReaderOutput(id, relativePath, destinationPath string, source io.Reader) (declaration.ArtifactIdentity, error) {

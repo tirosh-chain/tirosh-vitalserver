@@ -37,12 +37,22 @@ type GuestLinuxBootArtifactExtractionDeclaration struct {
 
 // DeclaredGuestLinuxSourceImage names one release-owned, whole-disk source.
 type DeclaredGuestLinuxSourceImage struct {
-	ID                 string `json:"id"`
-	SourceAbsolutePath string `json:"sourceAbsolutePath"`
-	SourceOriginURI    string `json:"sourceOriginUri"`
-	SourceRelease      string `json:"sourceRelease"`
-	SizeBytes          int64  `json:"sizeBytes"`
-	SHA256             string `json:"sha256"`
+	ID                    string                                       `json:"id"`
+	SourceAbsolutePath    string                                       `json:"sourceAbsolutePath"`
+	SourceOriginURI       string                                       `json:"sourceOriginUri"`
+	SourceRelease         string                                       `json:"sourceRelease"`
+	SizeBytes             int64                                        `json:"sizeBytes"`
+	SHA256                string                                       `json:"sha256"`
+	SourceMaterialization *DeclaredGuestLinuxSourceDiskMaterialization `json:"sourceMaterialization,omitempty"`
+}
+
+// DeclaredGuestLinuxSourceDiskMaterialization ties a materialized raw C42
+// input to the C73 receipt that owns the QCOW2-to-raw effect. C42 never treats
+// an original QCOW2 origin URL as evidence for different raw bytes.
+type DeclaredGuestLinuxSourceDiskMaterialization struct {
+	ReceiptAbsolutePath string `json:"receiptAbsolutePath"`
+	ReceiptSHA256       string `json:"receiptSHA256"`
+	MaterializationID   string `json:"materializationId"`
 }
 
 // DeclaredGuestSourceFilesystem declares the image layout; it is not inferred
@@ -50,6 +60,7 @@ type DeclaredGuestLinuxSourceImage struct {
 type DeclaredGuestSourceFilesystem struct {
 	Layout         string `json:"layout"`
 	FilesystemType string `json:"filesystemType"`
+	PartitionIndex int    `json:"partitionIndex,omitempty"`
 }
 
 // DeclaredGuestLinuxBootResources names the format expected by the macOS
@@ -62,16 +73,30 @@ type DeclaredGuestLinuxBootResources struct {
 	InitialRamdisk DeclaredGuestBootResource `json:"initialRamdisk"`
 }
 
-// DeclaredGuestBootResource maps one explicit path inside the immutable source
-// image to one identity-only C42 output path. sourceCompression and
-// outputFormat are explicit because copied source bytes and the target boot
-// loader artifact can be different representations of the same kernel.
+// DeclaredGuestBootResource maps exactly one explicit boot source to one
+// identity-only C42 output path. sourceCompression and outputFormat are
+// explicit because source bytes and the target boot-loader artifact can be
+// different representations of the same kernel.
 type DeclaredGuestBootResource struct {
-	ID                 string `json:"id"`
-	GuestAbsolutePath  string `json:"guestAbsolutePath"`
-	SourceCompression  string `json:"sourceCompression"`
-	OutputRelativePath string `json:"outputRelativePath"`
-	OutputFormat       string `json:"outputFormat"`
+	ID                 string                          `json:"id"`
+	Source             DeclaredGuestBootResourceSource `json:"source"`
+	SourceCompression  string                          `json:"sourceCompression"`
+	OutputRelativePath string                          `json:"outputRelativePath"`
+	OutputFormat       string                          `json:"outputFormat"`
+}
+
+// DeclaredGuestBootResourceSource deliberately distinguishes a file in the
+// selected source filesystem from a separately delivered, identity-verified
+// boot artifact. The release declaration must choose one; C42 never guesses
+// a download name or silently falls back from one kind to the other.
+type DeclaredGuestBootResourceSource struct {
+	Kind               string `json:"kind"`
+	GuestAbsolutePath  string `json:"guestAbsolutePath,omitempty"`
+	SourceAbsolutePath string `json:"sourceAbsolutePath,omitempty"`
+	SourceOriginURI    string `json:"sourceOriginUri,omitempty"`
+	SourceRelease      string `json:"sourceRelease,omitempty"`
+	SizeBytes          int64  `json:"sizeBytes,omitempty"`
+	SHA256             string `json:"sha256,omitempty"`
 }
 
 // DeclaredGuestLinuxRootStorage publishes the unchanged source image as a
@@ -146,8 +171,20 @@ func ValidateGuestLinuxBootArtifactExtractionDeclaration(declaration GuestLinuxB
 	if err := validateDeclaredGuestLinuxSourceImage(declaration.SourceImage); err != nil {
 		return err
 	}
-	if declaration.SourceFilesystem.Layout != "whole-disk-ext4" || declaration.SourceFilesystem.FilesystemType != "ext4" {
-		return fmt.Errorf("C42 sourceFilesystem must declare whole-disk-ext4")
+	if declaration.SourceFilesystem.FilesystemType != "ext4" {
+		return fmt.Errorf("C42 sourceFilesystem must declare ext4")
+	}
+	switch declaration.SourceFilesystem.Layout {
+	case "whole-disk-ext4":
+		if declaration.SourceFilesystem.PartitionIndex != 0 {
+			return fmt.Errorf("C42 whole-disk-ext4 sourceFilesystem must not declare partitionIndex")
+		}
+	case "partitioned-disk-ext4":
+		if declaration.SourceFilesystem.PartitionIndex < 1 || declaration.SourceFilesystem.PartitionIndex > 128 {
+			return fmt.Errorf("C42 partitioned-disk-ext4 sourceFilesystem must declare partitionIndex 1 through 128")
+		}
+	default:
+		return fmt.Errorf("C42 sourceFilesystem layout is invalid")
 	}
 	if err := validateDeclaredGuestBootResource(declaration.BootResources.Kernel, "kernel", "gzip", "boot/Image", "uncompressed-linux-arm64-image"); err != nil {
 		return err
@@ -181,6 +218,12 @@ func validateDeclaredGuestLinuxSourceImage(source DeclaredGuestLinuxSourceImage)
 	if source.SizeBytes <= 0 || !sha256Pattern.MatchString(source.SHA256) {
 		return fmt.Errorf("C42 sourceImage immutable identity is invalid")
 	}
+	if source.SourceMaterialization != nil {
+		materialization := source.SourceMaterialization
+		if !filepath.IsAbs(materialization.ReceiptAbsolutePath) || !sha256Pattern.MatchString(materialization.ReceiptSHA256) || !identifierPattern.MatchString(materialization.MaterializationID) {
+			return fmt.Errorf("C42 sourceImage sourceMaterialization is invalid")
+		}
+	}
 	return nil
 }
 
@@ -188,13 +231,34 @@ func validateDeclaredGuestBootResource(resource DeclaredGuestBootResource, name 
 	if !identifierPattern.MatchString(resource.ID) {
 		return fmt.Errorf("C42 bootResources %s id is invalid", name)
 	}
-	if !isSafeAbsoluteGuestPath(resource.GuestAbsolutePath) {
-		return fmt.Errorf("C42 bootResources %s guestAbsolutePath is invalid", name)
-	}
 	if resource.SourceCompression != sourceCompression || resource.OutputRelativePath != outputRelativePath || resource.OutputFormat != outputFormat || !bootOutputPathPattern.MatchString(resource.OutputRelativePath) {
 		return fmt.Errorf("C42 bootResources %s sourceCompression, outputRelativePath, or outputFormat is invalid", name)
 	}
-	return nil
+	return validateDeclaredGuestBootResourceSource(resource.Source, name)
+}
+
+func validateDeclaredGuestBootResourceSource(source DeclaredGuestBootResourceSource, resourceName string) error {
+	switch source.Kind {
+	case "source-image-filesystem":
+		if !isSafeAbsoluteGuestPath(source.GuestAbsolutePath) {
+			return fmt.Errorf("C42 bootResources %s source guestAbsolutePath is invalid", resourceName)
+		}
+		if source.SourceAbsolutePath != "" || source.SourceOriginURI != "" || source.SourceRelease != "" || source.SizeBytes != 0 || source.SHA256 != "" {
+			return fmt.Errorf("C42 bootResources %s source-image-filesystem source must not declare an external artifact", resourceName)
+		}
+		return nil
+	case "external-artifact":
+		if source.GuestAbsolutePath != "" || !filepath.IsAbs(source.SourceAbsolutePath) {
+			return fmt.Errorf("C42 bootResources %s external-artifact paths are invalid", resourceName)
+		}
+		parsedURI, err := url.ParseRequestURI(source.SourceOriginURI)
+		if err != nil || parsedURI.Scheme != "https" || parsedURI.Host == "" || strings.TrimSpace(source.SourceRelease) == "" || source.SizeBytes <= 0 || !sha256Pattern.MatchString(source.SHA256) {
+			return fmt.Errorf("C42 bootResources %s external-artifact identity is invalid", resourceName)
+		}
+		return nil
+	default:
+		return fmt.Errorf("C42 bootResources %s source kind is invalid", resourceName)
+	}
 }
 
 func validateDeclaredGuestLinuxRootStorage(storage DeclaredGuestLinuxRootStorage) error {

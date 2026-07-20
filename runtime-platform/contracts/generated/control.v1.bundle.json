@@ -97,6 +97,14 @@
           "type": "string"
         }
       },
+      "UpdateBundleId": {
+        "in": "path",
+        "name": "bundleId",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
       "UpdateId": {
         "in": "path",
         "name": "updateId",
@@ -7575,6 +7583,626 @@
           }
         ]
       },
+      "HostUpdateBundleReadResult": {
+        "allOf": [
+          {
+            "$id": "urn:tirosh:vitalserver:runtime-platform:v1:read-result",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "state": {
+                      "const": "available"
+                    }
+                  },
+                  "required": [
+                    "state"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "issue"
+                    ]
+                  },
+                  "required": [
+                    "value"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "state": {
+                      "const": "empty"
+                    }
+                  },
+                  "required": [
+                    "state"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "value"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "issue"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "state": {
+                      "enum": [
+                        "missing",
+                        "invalid",
+                        "unavailable",
+                        "failed",
+                        "stale",
+                        "unsupported"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "state"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "value"
+                    ]
+                  },
+                  "required": [
+                    "issue"
+                  ]
+                }
+              }
+            ],
+            "description": "An explicit owner read outcome. Consumers must not infer an available value from any other state.",
+            "properties": {
+              "evidenceReferences": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "uri": {
+                      "format": "uri-reference",
+                      "maxLength": 2048,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "issue": {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "dependency": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "message": {
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "type": "object"
+              },
+              "observedAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "schemaVersion": {
+                "const": "v1"
+              },
+              "sourceRevision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "state": {
+                "enum": [
+                  "available",
+                  "missing",
+                  "invalid",
+                  "unavailable",
+                  "failed",
+                  "stale",
+                  "empty",
+                  "unsupported"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "state",
+              "observedAt"
+            ],
+            "title": "ReadResult",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "value": {
+                "additionalProperties": false,
+                "properties": {
+                  "bootstrapEnvelope": {
+                    "$defs": {
+                      "Artifact": {
+                        "additionalProperties": false,
+                        "allOf": [
+                          {
+                            "not": {
+                              "properties": {
+                                "relativePath": {
+                                  "pattern": "\\.\\."
+                                }
+                              },
+                              "required": [
+                                "relativePath"
+                              ]
+                            }
+                          }
+                        ],
+                        "properties": {
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "mediaType": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "relativePath": {
+                            "maxLength": 1024,
+                            "minLength": 9,
+                            "pattern": "^payload/[^\\\\]*$",
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "pattern": "^[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "sizeBytes": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "relativePath",
+                          "sha256",
+                          "sizeBytes",
+                          "mediaType"
+                        ],
+                        "type": "object"
+                      },
+                      "Release": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "productVersion": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "runtimeVersion": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "productVersion",
+                          "runtimeVersion"
+                        ],
+                        "type": "object"
+                      },
+                      "Signature": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "algorithm": {
+                            "const": "ed25519"
+                          },
+                          "keyId": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "signedSha256": {
+                            "pattern": "^[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "value": {
+                            "maxLength": 16384,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "algorithm",
+                          "keyId",
+                          "signedSha256",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "Target": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "architecture": {
+                            "enum": [
+                              "arm64",
+                              "amd64"
+                            ],
+                            "type": "string"
+                          },
+                          "platform": {
+                            "enum": [
+                              "macos",
+                              "windows",
+                              "linux"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "platform",
+                          "architecture"
+                        ],
+                        "type": "object"
+                      },
+                      "UpdateLayer": {
+                        "enum": [
+                          "container",
+                          "guest-runtime",
+                          "host-platform"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope",
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "not": {
+                          "properties": {
+                            "layerOrder": {
+                              "anyOf": [
+                                {
+                                  "minItems": 2,
+                                  "prefixItems": [
+                                    {
+                                      "const": "host-platform"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "minItems": 3,
+                                  "prefixItems": [
+                                    {},
+                                    {
+                                      "const": "host-platform"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "layerOrder"
+                          ]
+                        }
+                      }
+                    ],
+                    "description": "C25 immutable, signed bootstrap contract. The currently installed Host updater verifies and stages only this compact envelope and its next-updater artifact. It deliberately has no minimumUpdaterVersion field: every release carries a compatible bootstrap envelope and a signed next updater that parses the opaque product specification.",
+                    "properties": {
+                      "id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "issuedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "layerOrder": {
+                        "items": {
+                          "enum": [
+                            "container",
+                            "guest-runtime",
+                            "host-platform"
+                          ],
+                          "type": "string"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "nextUpdaterArtifact": {
+                        "additionalProperties": false,
+                        "allOf": [
+                          {
+                            "not": {
+                              "properties": {
+                                "relativePath": {
+                                  "pattern": "\\.\\."
+                                }
+                              },
+                              "required": [
+                                "relativePath"
+                              ]
+                            }
+                          }
+                        ],
+                        "properties": {
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "mediaType": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "relativePath": {
+                            "maxLength": 1024,
+                            "minLength": 9,
+                            "pattern": "^payload/[^\\\\]*$",
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "pattern": "^[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "sizeBytes": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "relativePath",
+                          "sha256",
+                          "sizeBytes",
+                          "mediaType"
+                        ],
+                        "type": "object"
+                      },
+                      "productId": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "schemaVersion": {
+                        "const": "v1"
+                      },
+                      "signature": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "algorithm": {
+                            "const": "ed25519"
+                          },
+                          "keyId": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "signedSha256": {
+                            "pattern": "^[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "value": {
+                            "maxLength": 16384,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "algorithm",
+                          "keyId",
+                          "signedSha256",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      "specification": {
+                        "additionalProperties": false,
+                        "allOf": [
+                          {
+                            "not": {
+                              "properties": {
+                                "relativePath": {
+                                  "pattern": "\\.\\."
+                                }
+                              },
+                              "required": [
+                                "relativePath"
+                              ]
+                            }
+                          }
+                        ],
+                        "properties": {
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "mediaType": {
+                            "maxLength": 255,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "relativePath": {
+                            "maxLength": 1024,
+                            "minLength": 9,
+                            "pattern": "^payload/[^\\\\]*$",
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "pattern": "^[a-f0-9]{64}$",
+                            "type": "string"
+                          },
+                          "sizeBytes": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "relativePath",
+                          "sha256",
+                          "sizeBytes",
+                          "mediaType"
+                        ],
+                        "type": "object"
+                      },
+                      "target": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "architecture": {
+                            "enum": [
+                              "arm64",
+                              "amd64"
+                            ],
+                            "type": "string"
+                          },
+                          "platform": {
+                            "enum": [
+                              "macos",
+                              "windows",
+                              "linux"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "platform",
+                          "architecture"
+                        ],
+                        "type": "object"
+                      },
+                      "targetRelease": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "productVersion": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "runtimeVersion": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "productVersion",
+                          "runtimeVersion"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "schemaVersion",
+                      "id",
+                      "productId",
+                      "target",
+                      "targetRelease",
+                      "layerOrder",
+                      "nextUpdaterArtifact",
+                      "specification",
+                      "signature",
+                      "issuedAt"
+                    ],
+                    "title": "UpdateBootstrapEnvelope",
+                    "type": "object"
+                  },
+                  "id": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "schemaVersion": {
+                    "const": "v1"
+                  },
+                  "state": {
+                    "const": "declared"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "id",
+                  "state",
+                  "bootstrapEnvelope"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      },
       "HostUpdateJournalReadResult": {
         "allOf": [
           {
@@ -12931,7 +13559,9 @@
                     "state": {
                       "enum": [
                         "prepared",
+                        "starting",
                         "running",
+                        "stopping",
                         "stopped",
                         "failed"
                       ],
@@ -13186,7 +13816,9 @@
                   "state": {
                     "enum": [
                       "prepared",
+                      "starting",
                       "running",
+                      "stopping",
                       "stopped",
                       "failed"
                     ],
@@ -19734,6 +20366,90 @@
               "value": {
                 "items": {
                   "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "executionState": {
+                            "const": "running"
+                          }
+                        },
+                        "required": [
+                          "executionState"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "recorderGatewayRecorderId",
+                          "labRecorderRunnerRunId",
+                          "labRecorderRunnerRunRevision",
+                          "recorderGatewayColdPathCaptureId"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "executionState": {
+                            "const": "stopped"
+                          }
+                        },
+                        "required": [
+                          "executionState"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "recorderGatewayRecorderId",
+                          "labRecorderRunnerRunId",
+                          "labRecorderRunnerRunRevision",
+                          "recorderGatewayColdPathCaptureId",
+                          "recorderGatewayFinalizationReceiptId"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "executionState": {
+                            "const": "stopped"
+                          },
+                          "terminalArchivePolicy": {
+                            "const": "export-on-stop"
+                          }
+                        },
+                        "required": [
+                          "executionState",
+                          "terminalArchivePolicy"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "terminalArchiveIntent"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "executionState": {
+                            "const": "stopping"
+                          }
+                        },
+                        "required": [
+                          "executionState"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "recorderGatewayRecorderId",
+                          "labRecorderRunnerRunId",
+                          "labRecorderRunnerRunRevision",
+                          "recorderGatewayColdPathCaptureId"
+                        ]
+                      }
+                    }
+                  ],
                   "properties": {
                     "bedReference": {
                       "additionalProperties": false,
@@ -19761,7 +20477,9 @@
                     "executionState": {
                       "enum": [
                         "ready",
+                        "starting",
                         "running",
+                        "stopping",
                         "stopped",
                         "failed"
                       ],
@@ -19773,6 +20491,16 @@
                       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
                       "type": "string"
                     },
+                    "labRecorderRunnerRunId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "labRecorderRunnerRunRevision": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
                     "name": {
                       "maxLength": 128,
                       "minLength": 1,
@@ -19780,6 +20508,30 @@
                     },
                     "origin": {
                       "const": "lab"
+                    },
+                    "recorderGatewayColdPathCaptureId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "recorderGatewayFinalizationReceiptId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "recorderGatewayRecorderCode": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "recorderGatewayRecorderId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
                     },
                     "resourceRevision": {
                       "minimum": 1,
@@ -19807,6 +20559,164 @@
                       ],
                       "type": "object"
                     },
+                    "terminalArchiveIntent": {
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "state": {
+                                "const": "submitted"
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ]
+                          },
+                          "then": {
+                            "required": [
+                              "archiveOperationReference",
+                              "lastAttemptAt"
+                            ]
+                          }
+                        },
+                        {
+                          "if": {
+                            "properties": {
+                              "state": {
+                                "enum": [
+                                  "rejected",
+                                  "unavailable"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "state"
+                            ]
+                          },
+                          "then": {
+                            "required": [
+                              "lastAttemptAt",
+                              "lastDispatchIssue"
+                            ]
+                          }
+                        }
+                      ],
+                      "properties": {
+                        "archiveOperationReference": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "resourceId": {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                              "type": "string"
+                            },
+                            "resourceType": {
+                              "const": "operation"
+                            }
+                          },
+                          "required": [
+                            "resourceType",
+                            "resourceId"
+                          ],
+                          "type": "object"
+                        },
+                        "coldPathFinalizationReceiptId": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "labOperationReference": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "resourceId": {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                              "type": "string"
+                            },
+                            "resourceType": {
+                              "const": "operation"
+                            }
+                          },
+                          "required": [
+                            "resourceType",
+                            "resourceId"
+                          ],
+                          "type": "object"
+                        },
+                        "lastAttemptAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "lastDispatchIssue": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                              "type": "string"
+                            },
+                            "dependency": {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                              "type": "string"
+                            },
+                            "message": {
+                              "maxLength": 1024,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        },
+                        "requestId": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "sourceResourceRevision": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "state": {
+                          "enum": [
+                            "pending",
+                            "submitted",
+                            "rejected",
+                            "unavailable"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "requestId",
+                        "sourceResourceRevision",
+                        "coldPathFinalizationReceiptId",
+                        "labOperationReference"
+                      ],
+                      "type": "object"
+                    },
+                    "terminalArchivePolicy": {
+                      "enum": [
+                        "not-selected",
+                        "export-on-stop",
+                        "no-export"
+                      ],
+                      "type": "string"
+                    },
                     "updatedAt": {
                       "format": "date-time",
                       "type": "string"
@@ -19824,6 +20734,8 @@
                     "id",
                     "name",
                     "origin",
+                    "recorderGatewayRecorderCode",
+                    "terminalArchivePolicy",
                     "resourceRevision",
                     "sessionReference",
                     "executionState",
@@ -20030,6 +20942,90 @@
             "properties": {
               "value": {
                 "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "executionState": {
+                          "const": "running"
+                        }
+                      },
+                      "required": [
+                        "executionState"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "recorderGatewayRecorderId",
+                        "labRecorderRunnerRunId",
+                        "labRecorderRunnerRunRevision",
+                        "recorderGatewayColdPathCaptureId"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "executionState": {
+                          "const": "stopped"
+                        }
+                      },
+                      "required": [
+                        "executionState"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "recorderGatewayRecorderId",
+                        "labRecorderRunnerRunId",
+                        "labRecorderRunnerRunRevision",
+                        "recorderGatewayColdPathCaptureId",
+                        "recorderGatewayFinalizationReceiptId"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "executionState": {
+                          "const": "stopped"
+                        },
+                        "terminalArchivePolicy": {
+                          "const": "export-on-stop"
+                        }
+                      },
+                      "required": [
+                        "executionState",
+                        "terminalArchivePolicy"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "terminalArchiveIntent"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "executionState": {
+                          "const": "stopping"
+                        }
+                      },
+                      "required": [
+                        "executionState"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "recorderGatewayRecorderId",
+                        "labRecorderRunnerRunId",
+                        "labRecorderRunnerRunRevision",
+                        "recorderGatewayColdPathCaptureId"
+                      ]
+                    }
+                  }
+                ],
                 "properties": {
                   "bedReference": {
                     "additionalProperties": false,
@@ -20057,7 +21053,9 @@
                   "executionState": {
                     "enum": [
                       "ready",
+                      "starting",
                       "running",
+                      "stopping",
                       "stopped",
                       "failed"
                     ],
@@ -20069,6 +21067,16 @@
                     "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
                     "type": "string"
                   },
+                  "labRecorderRunnerRunId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "labRecorderRunnerRunRevision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
                   "name": {
                     "maxLength": 128,
                     "minLength": 1,
@@ -20076,6 +21084,30 @@
                   },
                   "origin": {
                     "const": "lab"
+                  },
+                  "recorderGatewayColdPathCaptureId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "recorderGatewayFinalizationReceiptId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "recorderGatewayRecorderCode": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "recorderGatewayRecorderId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
                   },
                   "resourceRevision": {
                     "minimum": 1,
@@ -20103,6 +21135,164 @@
                     ],
                     "type": "object"
                   },
+                  "terminalArchiveIntent": {
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "state": {
+                              "const": "submitted"
+                            }
+                          },
+                          "required": [
+                            "state"
+                          ]
+                        },
+                        "then": {
+                          "required": [
+                            "archiveOperationReference",
+                            "lastAttemptAt"
+                          ]
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "state": {
+                              "enum": [
+                                "rejected",
+                                "unavailable"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "state"
+                          ]
+                        },
+                        "then": {
+                          "required": [
+                            "lastAttemptAt",
+                            "lastDispatchIssue"
+                          ]
+                        }
+                      }
+                    ],
+                    "properties": {
+                      "archiveOperationReference": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "resourceId": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "resourceType": {
+                            "const": "operation"
+                          }
+                        },
+                        "required": [
+                          "resourceType",
+                          "resourceId"
+                        ],
+                        "type": "object"
+                      },
+                      "coldPathFinalizationReceiptId": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "labOperationReference": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "resourceId": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "resourceType": {
+                            "const": "operation"
+                          }
+                        },
+                        "required": [
+                          "resourceType",
+                          "resourceId"
+                        ],
+                        "type": "object"
+                      },
+                      "lastAttemptAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "lastDispatchIssue": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "code": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "dependency": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "message": {
+                            "maxLength": 1024,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "code"
+                        ],
+                        "type": "object"
+                      },
+                      "requestId": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "sourceResourceRevision": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "state": {
+                        "enum": [
+                          "pending",
+                          "submitted",
+                          "rejected",
+                          "unavailable"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "requestId",
+                      "sourceResourceRevision",
+                      "coldPathFinalizationReceiptId",
+                      "labOperationReference"
+                    ],
+                    "type": "object"
+                  },
+                  "terminalArchivePolicy": {
+                    "enum": [
+                      "not-selected",
+                      "export-on-stop",
+                      "no-export"
+                    ],
+                    "type": "string"
+                  },
                   "updatedAt": {
                     "format": "date-time",
                     "type": "string"
@@ -20120,6 +21310,8 @@
                   "id",
                   "name",
                   "origin",
+                  "recorderGatewayRecorderCode",
+                  "terminalArchivePolicy",
                   "resourceRevision",
                   "sessionReference",
                   "executionState",
@@ -24272,6 +25464,910 @@
         "x-owner": "host-agent-time-authority"
       }
     },
+    "/v1/platform/update-bundles/{bundleId}": {
+      "get": {
+        "description": "The declared C25 envelope is not a trust-verification result.",
+        "operationId": "getHostUpdateBundle",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UpdateBundleId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostUpdateBundleReadResult"
+                }
+              }
+            },
+            "description": "Explicit imported-bundle read result"
+          }
+        },
+        "summary": "Read one Host-owned imported update-bundle declaration",
+        "x-network-scope": "host-local",
+        "x-owner": "host-update-bundle-store"
+      }
+    },
+    "/v1/platform/update-bundles/{bundleId}:apply": {
+      "post": {
+        "description": "Host reads the stored C25 declaration and performs the normal C27 bootstrap verification and staged handoff. The caller cannot provide a separate envelope.",
+        "operationId": "applyImportedHostUpdateBundle",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UpdateBundleId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "bundleReferenceId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "expectedInstallationRevision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "installationId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "schemaVersion": {
+                    "const": "v1"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "requestId",
+                  "installationId",
+                  "expectedInstallationRevision",
+                  "bundleReferenceId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostUpdateWorkflowOutcome"
+                }
+              }
+            },
+            "description": "Durably admitted Host update operation and journal"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:command-rejection",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "description": "A typed command non-admission result. No Operation exists for this result. It can describe invalid input, revision conflict, or a dependency failure determined before forwarding.",
+                  "properties": {
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "rejectedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "const": "rejected"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "requestId",
+                    "rejectedAt",
+                    "issue"
+                  ],
+                  "title": "CommandRejection",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Command rejected before admission"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:command-admission-failure",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "description": "A typed failure while admitting a command. admissionState=not-admitted proves no Operation was persisted; admissionState=unknown preserves that the caller must retry the exact requestId after the owner recovers.",
+                  "properties": {
+                    "admissionState": {
+                      "enum": [
+                        "not-admitted",
+                        "unknown"
+                      ],
+                      "type": "string"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "const": "failed"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "requestId",
+                    "observedAt",
+                    "admissionState",
+                    "issue"
+                  ],
+                  "title": "CommandAdmissionFailure",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Host update admission outcome is unavailable or unknown"
+          }
+        },
+        "summary": "Bind a Host-owned imported bundle to the existing durable C27 update workflow",
+        "x-network-scope": "host-local",
+        "x-owner": "host-agent-update-journal"
+      }
+    },
+    "/v1/platform/update-bundles:import": {
+      "post": {
+        "description": "The source directory is selected through an OS-authorized local operator interface and is interpreted only by the Host. A successful import means complete immutable bytes were published under the Host bundle store; it does not claim C25 trust verification or update success.",
+        "operationId": "importHostUpdateBundle",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "requestId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "schemaVersion": {
+                    "const": "v1"
+                  },
+                  "sourceDirectory": {
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "requestId",
+                  "sourceDirectory"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bundle": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "bootstrapEnvelope": {
+                          "$defs": {
+                            "Artifact": {
+                              "additionalProperties": false,
+                              "allOf": [
+                                {
+                                  "not": {
+                                    "properties": {
+                                      "relativePath": {
+                                        "pattern": "\\.\\."
+                                      }
+                                    },
+                                    "required": [
+                                      "relativePath"
+                                    ]
+                                  }
+                                }
+                              ],
+                              "properties": {
+                                "id": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                                  "type": "string"
+                                },
+                                "mediaType": {
+                                  "maxLength": 255,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "relativePath": {
+                                  "maxLength": 1024,
+                                  "minLength": 9,
+                                  "pattern": "^payload/[^\\\\]*$",
+                                  "type": "string"
+                                },
+                                "sha256": {
+                                  "pattern": "^[a-f0-9]{64}$",
+                                  "type": "string"
+                                },
+                                "sizeBytes": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "relativePath",
+                                "sha256",
+                                "sizeBytes",
+                                "mediaType"
+                              ],
+                              "type": "object"
+                            },
+                            "Release": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "productVersion": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "runtimeVersion": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "productVersion",
+                                "runtimeVersion"
+                              ],
+                              "type": "object"
+                            },
+                            "Signature": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "algorithm": {
+                                  "const": "ed25519"
+                                },
+                                "keyId": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                                  "type": "string"
+                                },
+                                "signedSha256": {
+                                  "pattern": "^[a-f0-9]{64}$",
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "maxLength": 16384,
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "algorithm",
+                                "keyId",
+                                "signedSha256",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            "Target": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "architecture": {
+                                  "enum": [
+                                    "arm64",
+                                    "amd64"
+                                  ],
+                                  "type": "string"
+                                },
+                                "platform": {
+                                  "enum": [
+                                    "macos",
+                                    "windows",
+                                    "linux"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "platform",
+                                "architecture"
+                              ],
+                              "type": "object"
+                            },
+                            "UpdateLayer": {
+                              "enum": [
+                                "container",
+                                "guest-runtime",
+                                "host-platform"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope",
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "additionalProperties": false,
+                          "allOf": [
+                            {
+                              "not": {
+                                "properties": {
+                                  "layerOrder": {
+                                    "anyOf": [
+                                      {
+                                        "minItems": 2,
+                                        "prefixItems": [
+                                          {
+                                            "const": "host-platform"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "minItems": 3,
+                                        "prefixItems": [
+                                          {},
+                                          {
+                                            "const": "host-platform"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "layerOrder"
+                                ]
+                              }
+                            }
+                          ],
+                          "description": "C25 immutable, signed bootstrap contract. The currently installed Host updater verifies and stages only this compact envelope and its next-updater artifact. It deliberately has no minimumUpdaterVersion field: every release carries a compatible bootstrap envelope and a signed next updater that parses the opaque product specification.",
+                          "properties": {
+                            "id": {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                              "type": "string"
+                            },
+                            "issuedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "layerOrder": {
+                              "items": {
+                                "enum": [
+                                  "container",
+                                  "guest-runtime",
+                                  "host-platform"
+                                ],
+                                "type": "string"
+                              },
+                              "maxItems": 3,
+                              "minItems": 1,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
+                            "nextUpdaterArtifact": {
+                              "additionalProperties": false,
+                              "allOf": [
+                                {
+                                  "not": {
+                                    "properties": {
+                                      "relativePath": {
+                                        "pattern": "\\.\\."
+                                      }
+                                    },
+                                    "required": [
+                                      "relativePath"
+                                    ]
+                                  }
+                                }
+                              ],
+                              "properties": {
+                                "id": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                                  "type": "string"
+                                },
+                                "mediaType": {
+                                  "maxLength": 255,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "relativePath": {
+                                  "maxLength": 1024,
+                                  "minLength": 9,
+                                  "pattern": "^payload/[^\\\\]*$",
+                                  "type": "string"
+                                },
+                                "sha256": {
+                                  "pattern": "^[a-f0-9]{64}$",
+                                  "type": "string"
+                                },
+                                "sizeBytes": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "relativePath",
+                                "sha256",
+                                "sizeBytes",
+                                "mediaType"
+                              ],
+                              "type": "object"
+                            },
+                            "productId": {
+                              "maxLength": 128,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                              "type": "string"
+                            },
+                            "schemaVersion": {
+                              "const": "v1"
+                            },
+                            "signature": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "algorithm": {
+                                  "const": "ed25519"
+                                },
+                                "keyId": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                                  "type": "string"
+                                },
+                                "signedSha256": {
+                                  "pattern": "^[a-f0-9]{64}$",
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "maxLength": 16384,
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "algorithm",
+                                "keyId",
+                                "signedSha256",
+                                "value"
+                              ],
+                              "type": "object"
+                            },
+                            "specification": {
+                              "additionalProperties": false,
+                              "allOf": [
+                                {
+                                  "not": {
+                                    "properties": {
+                                      "relativePath": {
+                                        "pattern": "\\.\\."
+                                      }
+                                    },
+                                    "required": [
+                                      "relativePath"
+                                    ]
+                                  }
+                                }
+                              ],
+                              "properties": {
+                                "id": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                                  "type": "string"
+                                },
+                                "mediaType": {
+                                  "maxLength": 255,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "relativePath": {
+                                  "maxLength": 1024,
+                                  "minLength": 9,
+                                  "pattern": "^payload/[^\\\\]*$",
+                                  "type": "string"
+                                },
+                                "sha256": {
+                                  "pattern": "^[a-f0-9]{64}$",
+                                  "type": "string"
+                                },
+                                "sizeBytes": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "relativePath",
+                                "sha256",
+                                "sizeBytes",
+                                "mediaType"
+                              ],
+                              "type": "object"
+                            },
+                            "target": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "architecture": {
+                                  "enum": [
+                                    "arm64",
+                                    "amd64"
+                                  ],
+                                  "type": "string"
+                                },
+                                "platform": {
+                                  "enum": [
+                                    "macos",
+                                    "windows",
+                                    "linux"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "platform",
+                                "architecture"
+                              ],
+                              "type": "object"
+                            },
+                            "targetRelease": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "productVersion": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "runtimeVersion": {
+                                  "maxLength": 128,
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "productVersion",
+                                "runtimeVersion"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "id",
+                            "productId",
+                            "target",
+                            "targetRelease",
+                            "layerOrder",
+                            "nextUpdaterArtifact",
+                            "specification",
+                            "signature",
+                            "issuedAt"
+                          ],
+                          "title": "UpdateBootstrapEnvelope",
+                          "type": "object"
+                        },
+                        "id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "schemaVersion": {
+                          "const": "v1"
+                        },
+                        "state": {
+                          "const": "declared"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "id",
+                        "state",
+                        "bootstrapEnvelope"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "sourceFingerprint": {
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "imported",
+                        "already-imported"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "requestId",
+                    "observedAt",
+                    "bundle",
+                    "sourceFingerprint"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "New or idempotently existing immutable imported bundle"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:command-rejection",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "description": "A typed command non-admission result. No Operation exists for this result. It can describe invalid input, revision conflict, or a dependency failure determined before forwarding.",
+                  "properties": {
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "rejectedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "const": "rejected"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "requestId",
+                    "rejectedAt",
+                    "issue"
+                  ],
+                  "title": "CommandRejection",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Import command or selected bundle rejected"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:command-admission-failure",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "description": "A typed failure while admitting a command. admissionState=not-admitted proves no Operation was persisted; admissionState=unknown preserves that the caller must retry the exact requestId after the owner recovers.",
+                  "properties": {
+                    "admissionState": {
+                      "enum": [
+                        "not-admitted",
+                        "unknown"
+                      ],
+                      "type": "string"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "const": "failed"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "requestId",
+                    "observedAt",
+                    "admissionState",
+                    "issue"
+                  ],
+                  "title": "CommandAdmissionFailure",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Host bundle-store outcome is unavailable or unknown"
+          }
+        },
+        "summary": "Atomically import one Host-local offline release bundle directory",
+        "x-network-scope": "host-local",
+        "x-owner": "host-update-bundle-store"
+      }
+    },
     "/v1/platform/updates": {
       "post": {
         "description": "Host-local update channel. The browser-facing authentication and maintenance surface is a later product capability; this endpoint must not be exposed beyond its Host-local transport boundary.",
@@ -26307,6 +28403,282 @@
         "x-owner": "recorder-gateway"
       }
     },
+    "/v1/recorder-cold-path/captures/{coldPathCaptureId}:packet-sequence": {
+      "get": {
+        "description": "Guest-loopback-only. A binary success response is raw source evidence, not a .vital artifact, upload receipt, or indexing claim. A non-available owner read is returned as an explicit JSON ReadResult.",
+        "operationId": "getRecorderColdPathPacketSequence",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ColdPathCaptureId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:read-result",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "available"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "issue"
+                          ]
+                        },
+                        "required": [
+                          "value"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "empty"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "value"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "issue"
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "enum": [
+                              "missing",
+                              "invalid",
+                              "unavailable",
+                              "failed",
+                              "stale",
+                              "unsupported"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "value"
+                          ]
+                        },
+                        "required": [
+                          "issue"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "An explicit owner read outcome. Consumers must not infer an available value from any other state.",
+                  "properties": {
+                    "evidenceReferences": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "uri": {
+                            "format": "uri-reference",
+                            "maxLength": 2048,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "sourceRevision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "enum": [
+                        "available",
+                        "missing",
+                        "invalid",
+                        "unavailable",
+                        "failed",
+                        "stale",
+                        "empty",
+                        "unsupported"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "observedAt"
+                  ],
+                  "title": "ReadResult",
+                  "type": "object"
+                }
+              },
+              "application/vnd.tirosh.recorder-gateway.cold-path-packet-sequence+jsonl": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A receipt-finalized raw packet sequence, or an explicit non-available read result"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-cold-path-capture-finalization-rejection",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "description": "A Recorder Gateway-owned non-admission result for a cold-path capture finalization command. requestId is absent when no valid command identity was supplied; the Gateway never invents one.",
+                  "properties": {
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "requestId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "const": "rejected"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "issue"
+                  ],
+                  "title": "RecorderColdPathCaptureFinalizationRejection",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The caller is outside the Guest-loopback control boundary"
+          }
+        },
+        "summary": "Read the immutable raw packet sequence for a finalized Recorder Gateway capture",
+        "x-network-scope": "guest-loopback-only",
+        "x-owner": "recorder-gateway"
+      }
+    },
     "/v1/recorder-cold-path/finalization-receipts/{coldPathCaptureFinalizationReceiptId}": {
       "get": {
         "operationId": "getRecorderColdPathCaptureFinalizationReceipt",
@@ -26443,6 +28815,1096 @@
         "x-owner": "recorder-gateway"
       }
     },
+    "/v1/runtime/archive/credential-material": {
+      "get": {
+        "operationId": "getRuntimeArchiveCredentialMaterialAvailability",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-archive-credential-material-availability",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "else": {
+                        "required": [
+                          "issue"
+                        ]
+                      },
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "available"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "issue"
+                          ]
+                        },
+                        "required": [
+                          "credentialReference"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "enum": [
+                              "missing",
+                              "invalid"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "credentialReference"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "Non-secret C51 availability projection returned only through the OS-authorized Host Agent local-administration facade. It identifies the C46 credential reference but never includes C51 userId, password, material bytes, digest, path, or filesystem detail.",
+                  "properties": {
+                    "credentialReference": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "enum": [
+                        "available",
+                        "missing",
+                        "invalid",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "observedAt"
+                  ],
+                  "title": "GuestArchiveCredentialMaterialAvailability",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Non-secret C51 availability for the C46-selected indexed-library provider"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-archive-credential-material-availability",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "else": {
+                        "required": [
+                          "issue"
+                        ]
+                      },
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "available"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "issue"
+                          ]
+                        },
+                        "required": [
+                          "credentialReference"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "enum": [
+                              "missing",
+                              "invalid"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "credentialReference"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "Non-secret C51 availability projection returned only through the OS-authorized Host Agent local-administration facade. It identifies the C46 credential reference but never includes C51 userId, password, material bytes, digest, path, or filesystem detail.",
+                  "properties": {
+                    "credentialReference": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "enum": [
+                        "available",
+                        "missing",
+                        "invalid",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "observedAt"
+                  ],
+                  "title": "GuestArchiveCredentialMaterialAvailability",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The selected topology has no configurable indexed-library credential-material owner"
+          }
+        },
+        "summary": "Read non-secret indexed-library credential-material availability through local administration only",
+        "x-local-administration-only": true,
+        "x-owner": "guest-secret-material"
+      },
+      "post": {
+        "operationId": "provisionRuntimeArchiveCredentialMaterial",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$id": "urn:tirosh:vitalserver:runtime-platform:v1:vitalserver-indexed-library-credential-material",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "description": "Guest-local secret-owner material consumed only by the VitalServer indexed-library Archive adapter. C46 contains the matching identity reference but never this document or its values. This document must not be emitted in package inputs, state, telemetry, API responses, examples, or receipts.",
+                "properties": {
+                  "credentialReference": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "password": {
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "schemaVersion": {
+                    "const": "v1"
+                  },
+                  "userId": {
+                    "maxLength": 1024,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "credentialReference",
+                  "userId",
+                  "password"
+                ],
+                "title": "VitalServerIndexedLibraryCredentialMaterial",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-archive-credential-material-provisioning-outcome",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "else": {
+                        "required": [
+                          "issue"
+                        ]
+                      },
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "provisioned"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "issue"
+                          ]
+                        },
+                        "required": [
+                          "credentialReference"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "Immediate non-secret result of accepting one C51 document through the OS-authorized Host Agent local-administration facade. It is not a durable operation or receipt and contains no C51 userId, password, bytes, digest, or path.",
+                  "properties": {
+                    "credentialReference": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "enum": [
+                        "provisioned",
+                        "rejected",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "observedAt"
+                  ],
+                  "title": "GuestArchiveCredentialMaterialProvisioningOutcome",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "C51 was atomically provisioned; no credential value is returned"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-archive-credential-material-provisioning-outcome",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "else": {
+                        "required": [
+                          "issue"
+                        ]
+                      },
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "provisioned"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "issue"
+                          ]
+                        },
+                        "required": [
+                          "credentialReference"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "Immediate non-secret result of accepting one C51 document through the OS-authorized Host Agent local-administration facade. It is not a durable operation or receipt and contains no C51 userId, password, bytes, digest, or path.",
+                  "properties": {
+                    "credentialReference": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "enum": [
+                        "provisioned",
+                        "rejected",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "observedAt"
+                  ],
+                  "title": "GuestArchiveCredentialMaterialProvisioningOutcome",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The C51 command was rejected and no private write occurred"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-archive-credential-material-provisioning-outcome",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "else": {
+                        "required": [
+                          "issue"
+                        ]
+                      },
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "provisioned"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "issue"
+                          ]
+                        },
+                        "required": [
+                          "credentialReference"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "Immediate non-secret result of accepting one C51 document through the OS-authorized Host Agent local-administration facade. It is not a durable operation or receipt and contains no C51 userId, password, bytes, digest, or path.",
+                  "properties": {
+                    "credentialReference": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "enum": [
+                        "provisioned",
+                        "rejected",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "observedAt"
+                  ],
+                  "title": "GuestArchiveCredentialMaterialProvisioningOutcome",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The private credential-material write could not be completed"
+          }
+        },
+        "summary": "Provision one C51 document through local administration only",
+        "x-local-administration-only": true,
+        "x-owner": "guest-secret-material"
+      }
+    },
+    "/v1/runtime/archive/export-provider": {
+      "get": {
+        "description": "The Archive Export owner publishes only its configured provider reference. This read is not Recorder finalization evidence, artifact formation, upload, indexing, or provider reachability.",
+        "operationId": "getArchiveExportProviderConfiguration",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:read-result",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "available"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "issue"
+                          ]
+                        },
+                        "required": [
+                          "value"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "empty"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "value"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "issue"
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "enum": [
+                              "missing",
+                              "invalid",
+                              "unavailable",
+                              "failed",
+                              "stale",
+                              "unsupported"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "value"
+                          ]
+                        },
+                        "required": [
+                          "issue"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "An explicit owner read outcome. Consumers must not infer an available value from any other state.",
+                  "properties": {
+                    "evidenceReferences": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "uri": {
+                            "format": "uri-reference",
+                            "maxLength": 2048,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "sourceRevision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "enum": [
+                        "available",
+                        "missing",
+                        "invalid",
+                        "unavailable",
+                        "failed",
+                        "stale",
+                        "empty",
+                        "unsupported"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "observedAt"
+                  ],
+                  "title": "ReadResult",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Archive Export provider configuration read result"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:read-result",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "available"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "issue"
+                          ]
+                        },
+                        "required": [
+                          "value"
+                        ]
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "const": "empty"
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "anyOf": [
+                            {
+                              "required": [
+                                "value"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "issue"
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "state": {
+                            "enum": [
+                              "missing",
+                              "invalid",
+                              "unavailable",
+                              "failed",
+                              "stale",
+                              "unsupported"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "state"
+                        ]
+                      },
+                      "then": {
+                        "not": {
+                          "required": [
+                            "value"
+                          ]
+                        },
+                        "required": [
+                          "issue"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "An explicit owner read outcome. Consumers must not infer an available value from any other state.",
+                  "properties": {
+                    "evidenceReferences": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "uri": {
+                            "format": "uri-reference",
+                            "maxLength": 2048,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "sourceRevision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "enum": [
+                        "available",
+                        "missing",
+                        "invalid",
+                        "unavailable",
+                        "failed",
+                        "stale",
+                        "empty",
+                        "unsupported"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "not": {
+                        "type": "null"
+                      }
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "observedAt"
+                  ],
+                  "title": "ReadResult",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Archive Export is not composed"
+          }
+        },
+        "summary": "Read the non-secret Archive Export provider reference",
+        "x-owner": "archive-export"
+      }
+    },
     "/v1/runtime/archive/export-receipts/{receiptId}": {
       "get": {
         "operationId": "getRuntimeExportReceipt",
@@ -26519,6 +29981,26 @@
                   "schemaVersion": {
                     "const": "v1"
                   },
+                  "source": {
+                    "additionalProperties": false,
+                    "description": "The finalized Recorder Gateway source receipt that Archive Export must verify and form. A stopped virtual recorder alone is not archive source evidence.",
+                    "properties": {
+                      "coldPathFinalizationReceiptId": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "recorder-gateway-cold-path"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "coldPathFinalizationReceiptId"
+                    ],
+                    "type": "object"
+                  },
                   "virtualRecorderId": {
                     "maxLength": 128,
                     "minLength": 1,
@@ -26531,6 +30013,7 @@
                   "requestId",
                   "virtualRecorderId",
                   "expectedResourceRevision",
+                  "source",
                   "provider"
                 ],
                 "title": "ArtifactExportCommand",

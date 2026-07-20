@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v1",
+  "effectExecutorId": "host-platform-release-effect-executor-030",
+  "hostInstallationManager": {
+    "platform": "macos",
+    "executablePath": "/Library/Application Support/VitalServerRuntimePlatform/current/bin/host-installation-manager",
+    "activeReleaseManifestPath": "/Library/Application Support/VitalServerRuntimePlatform/current/installation-manifest.json",
+    "requestTimeoutMilliseconds": 300000
+  },
+  "apply": {
+    "expectedActiveReleaseId": "runtime-platform-020",
+    "targetReleaseId": "runtime-platform-030"
+  },
+  "rollback": {
+    "expectedActiveReleaseId": "runtime-platform-030",
+    "targetReleaseId": "runtime-platform-020"
+  }
+}

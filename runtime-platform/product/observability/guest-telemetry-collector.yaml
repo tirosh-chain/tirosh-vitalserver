@@ -1,0 +1,62 @@
+# Guest-local Apache-2.0 OpenTelemetry Collector distribution configuration.
+#
+# The Collector accepts OTLP/HTTP only on Guest loopback and writes its own
+# bounded diagnostic evidence store. It has no implicit remote backend: a
+# future external-export pipeline must be a separately declared deployment
+# change with its endpoint and credentials. Application C20 redaction remains
+# the authority; the attribute processor is defense in depth.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+  attributes/defense-in-depth-redaction:
+    actions:
+      - key: patient.id
+        action: delete
+      - key: packet.bytes
+        action: delete
+      - key: waveform.bytes
+        action: delete
+      - key: authorization
+        action: delete
+      - key: credential
+        action: delete
+      - key: secret
+        action: delete
+      - key: token
+        action: delete
+      - key: password
+        action: delete
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+exporters:
+  file/guest-diagnostic-evidence:
+    path: /var/lib/vitalserver/telemetry/otlp.jsonl
+    rotation:
+      max_megabytes: 64
+      max_days: 7
+      max_backups: 7
+      localtime: false
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/defense-in-depth-redaction, batch]
+      exporters: [file/guest-diagnostic-evidence]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/defense-in-depth-redaction, batch]
+      exporters: [file/guest-diagnostic-evidence]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/defense-in-depth-redaction, batch]
+      exporters: [file/guest-diagnostic-evidence]

@@ -32,6 +32,10 @@ Runtime readiness or configured-upstream health. Before forwarding, the proxy
 removes client-supplied forwarding headers and establishes the one Host-observed
 remote address according to the explicit C36 client-identity policy.
 
+The C60 `/v1/runtime/archive/credential-material` path is deliberately not an
+unmatched public route: the resolver rejects it even if C36 has a catch-all
+browser prefix. C52 OS-local Host Agent transport is its only control boundary.
+
 ## Naming rules in this module
 
 - `hostedgeproxydomain` identifies the C36 bounded context; bare `domain`

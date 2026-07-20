@@ -33,6 +33,11 @@ private func configuredGuest() -> MacOSVirtualMachineConfigurationDocument {
             hostLoopbackPort: 18443,
             guestVirtioSocketPort: 18443
         ),
+        guestProductReleaseManagerHostLocalHTTPBridge: GuestProductReleaseManagerHostLocalHTTPBridgeConfiguration(
+            hostLoopbackAddress: "127.0.0.1",
+            hostLoopbackPort: 18444,
+            guestVirtioSocketPort: 18444
+        ),
         guestPublicServiceHostLocalHTTPBridges: [
             GuestPublicServiceHostLocalHTTPBridgeConfiguration(
                 routeId: "recorder-gateway",
@@ -88,6 +93,7 @@ func configuredGuestContractRejectsAmbiguousPublicServiceBridge() {
         guestBootConsoleCapture: configured.guestBootConsoleCapture,
         guestRuntimeDiskProvisioning: configured.guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configured.guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: [
             configured.guestPublicServiceHostLocalHTTPBridges[0],
             GuestPublicServiceHostLocalHTTPBridgeConfiguration(
@@ -115,6 +121,7 @@ func configuredGuestContractRejectsAmbiguousPublicServiceBridgeDeclarations() {
         guestBootConsoleCapture: configured.guestBootConsoleCapture,
         guestRuntimeDiskProvisioning: configured.guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configured.guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: [
             GuestPublicServiceHostLocalHTTPBridgeConfiguration(
                 routeId: "recorder-gateway",
@@ -140,6 +147,7 @@ func configuredGuestContractRejectsAmbiguousPublicServiceBridgeDeclarations() {
         guestBootConsoleCapture: configured.guestBootConsoleCapture,
         guestRuntimeDiskProvisioning: configured.guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configured.guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: [],
         storageDevices: configured.storageDevices,
         network: configured.network
@@ -147,6 +155,33 @@ func configuredGuestContractRejectsAmbiguousPublicServiceBridgeDeclarations() {
     #expect(
         missingPublicServiceBridge.validationMessage
             == "at least one Guest public service Host-local HTTP bridge is required"
+    )
+}
+
+@Test("C32 keeps Guest Product release control separate from Guest Runtime control")
+func configuredGuestContractRejectsReleaseManagerControlCollision() {
+    let configured = configuredGuest()
+    let collidingControls = MacOSVirtualMachineConfigurationDocument(
+        schemaVersion: configured.schemaVersion,
+        machineId: configured.machineId,
+        cpuCount: configured.cpuCount,
+        memoryBytes: configured.memoryBytes,
+        boot: configured.boot,
+        guestBootConsoleCapture: configured.guestBootConsoleCapture,
+        guestRuntimeDiskProvisioning: configured.guestRuntimeDiskProvisioning,
+        guestRuntimeControlHostLocalHTTPBridge: configured.guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: GuestProductReleaseManagerHostLocalHTTPBridgeConfiguration(
+            hostLoopbackAddress: "127.0.0.1",
+            hostLoopbackPort: configured.guestRuntimeControlHostLocalHTTPBridge.hostLoopbackPort,
+            guestVirtioSocketPort: configured.guestRuntimeControlHostLocalHTTPBridge.guestVirtioSocketPort
+        ),
+        guestPublicServiceHostLocalHTTPBridges: configured.guestPublicServiceHostLocalHTTPBridges,
+        storageDevices: configured.storageDevices,
+        network: configured.network
+    )
+    #expect(
+        collidingControls.validationMessage
+            == "Guest Product Release Manager control Host-local HTTP bridge hostLoopbackPort cannot reuse Guest Runtime control"
     )
 }
 
@@ -161,6 +196,7 @@ func configuredGuestContractRejectsUnsafeValues() {
         guestBootConsoleCapture: configuredGuest().guestBootConsoleCapture,
         guestRuntimeDiskProvisioning: configuredGuest().guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configuredGuest().guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: configuredGuest().guestPublicServiceHostLocalHTTPBridges,
         storageDevices: configuredGuest().storageDevices,
         network: MacOSVirtualMachineNetworkDevice(attachment: "nat", macAddress: "02:00:00:00:00:01")
@@ -176,6 +212,7 @@ func configuredGuestContractRejectsUnsafeValues() {
         guestBootConsoleCapture: configuredGuest().guestBootConsoleCapture,
         guestRuntimeDiskProvisioning: configuredGuest().guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configuredGuest().guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: configuredGuest().guestPublicServiceHostLocalHTTPBridges,
         storageDevices: configuredGuest().storageDevices,
         network: MacOSVirtualMachineNetworkDevice(attachment: "", macAddress: "02:00:00:00:00:01")
@@ -194,6 +231,7 @@ func configuredGuestContractRejectsValuesOutsideC32() {
         guestBootConsoleCapture: configuredGuest().guestBootConsoleCapture,
         guestRuntimeDiskProvisioning: configuredGuest().guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configuredGuest().guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: configuredGuest().guestPublicServiceHostLocalHTTPBridges,
         storageDevices: configuredGuest().storageDevices,
         network: MacOSVirtualMachineNetworkDevice(attachment: "nat", macAddress: "01:16:3e:00:00:01")
@@ -215,6 +253,7 @@ func configuredGuestContractRejectsValuesOutsideC32() {
         guestBootConsoleCapture: overlongGuest.guestBootConsoleCapture,
         guestRuntimeDiskProvisioning: overlongGuest.guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: overlongGuest.guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: overlongGuest.guestPublicServiceHostLocalHTTPBridges,
         storageDevices: overlongGuest.storageDevices,
         network: overlongGuest.network
@@ -239,6 +278,7 @@ func configuredGuestContractRejectsImplicitOrWrongRootPartition() {
         guestBootConsoleCapture: configured.guestBootConsoleCapture,
         guestRuntimeDiskProvisioning: configured.guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configured.guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: configured.guestPublicServiceHostLocalHTTPBridges,
         storageDevices: configured.storageDevices,
         network: configured.network
@@ -261,6 +301,7 @@ func configuredGuestContractRejectsImplicitOrUnsafeBootConsoleCapture() {
         guestBootConsoleCapture: GuestBootConsoleCapture(capturePath: "", writeMode: "append"),
         guestRuntimeDiskProvisioning: configured.guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configured.guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: configured.guestPublicServiceHostLocalHTTPBridges,
         storageDevices: configured.storageDevices,
         network: configured.network
@@ -279,6 +320,7 @@ func configuredGuestContractRejectsImplicitOrUnsafeBootConsoleCapture() {
         ),
         guestRuntimeDiskProvisioning: configured.guestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: configured.guestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: configuredGuest().guestProductReleaseManagerHostLocalHTTPBridge,
         guestPublicServiceHostLocalHTTPBridges: configured.guestPublicServiceHostLocalHTTPBridges,
         storageDevices: configured.storageDevices,
         network: configured.network

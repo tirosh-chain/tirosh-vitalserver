@@ -24,6 +24,42 @@
       "versionInfo": "0.1.0-dev"
     },
     {
+      "SPDXID": "SPDXRef-host-edge-proxy",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Host Edge Proxy",
+      "sourceInfo": "source=services/host-edge-proxy/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-host-installation-manager",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Host Installation Manager",
+      "sourceInfo": "source=services/host-installation-manager/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-host-update-handoff-supervisor",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Host Update Handoff Supervisor",
+      "sourceInfo": "source=services/host-update-handoff-supervisor/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
       "SPDXID": "SPDXRef-guest-runtime",
       "copyrightText": "NOASSERTION",
       "downloadLocation": "NOASSERTION",
@@ -46,6 +82,30 @@
       "sourceInfo": "source=services/guest-product-process-supervisor/go.mod; noticeStatus=project-notice-required",
       "supplier": "NOASSERTION",
       "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-guest-product-release-manager",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Guest Product Release Manager",
+      "sourceInfo": "source=services/guest-product-release-manager/go.mod; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-guest-telemetry-collector",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "OpenTelemetry Collector",
+      "sourceInfo": "source=product/observability/guest-telemetry-collector-builder.yaml; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.156.0"
     },
     {
       "SPDXID": "SPDXRef-guest-product-bootstrap-volume-composer",
@@ -92,6 +152,78 @@
       "licenseDeclared": "Apache-2.0",
       "name": "Recorder Gateway",
       "sourceInfo": "source=services/recorder-gateway/package-lock.json; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-lab-recorder-runner",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Lab Recorder Runner",
+      "sourceInfo": "source=services/lab-recorder-runner/package-lock.json; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-guest-node-linux-arm64",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "Guest Node.js Linux ARM64 Runtime",
+      "sourceInfo": "source=product/delivery/guest-node-runtime.v1.json; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "20.19.3"
+    },
+    {
+      "SPDXID": "SPDXRef-runtime-console-control-contract",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Runtime Console Control Contract",
+      "sourceInfo": "source=interfaces/runtime-console-control-contract/package.json; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-runtime-console-web",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Runtime Console Web Renderer",
+      "sourceInfo": "source=interfaces/runtime-console-web/package.json; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-runtime-console-desktop",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Runtime Console Desktop Shell",
+      "sourceInfo": "source=interfaces/runtime-console-desktop/package.json; noticeStatus=project-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "0.1.0-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-platformctl",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "Platform Control CLI",
+      "sourceInfo": "source=interfaces/platformctl/go.mod; noticeStatus=project-notice-required",
       "supplier": "NOASSERTION",
       "versionInfo": "0.1.0-dev"
     },
@@ -154,11 +286,98 @@
       "sourceInfo": "source=services/recorder-gateway/package-lock.json; noticeStatus=third-party-notice-required",
       "supplier": "NOASSERTION",
       "versionInfo": "4.8.3"
+    },
+    {
+      "SPDXID": "SPDXRef-socket-io-client",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "socket.io-client",
+      "sourceInfo": "source=services/lab-recorder-runner/package-lock.json; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "4.8.3"
+    },
+    {
+      "SPDXID": "SPDXRef-electron",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "electron",
+      "sourceInfo": "source=interfaces/package-lock.json; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "41.7.1"
+    },
+    {
+      "SPDXID": "SPDXRef-electron-builder",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "electron-builder",
+      "sourceInfo": "source=interfaces/package-lock.json; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "25.1.8"
+    },
+    {
+      "SPDXID": "SPDXRef-app-builder-bin",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "app-builder-bin",
+      "sourceInfo": "source=interfaces/package-lock.json; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "5.0.0-alpha.10"
+    },
+    {
+      "SPDXID": "SPDXRef-react",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "name": "react",
+      "sourceInfo": "source=interfaces/package-lock.json; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "19.1.0"
+    },
+    {
+      "SPDXID": "SPDXRef-typescript",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "typescript",
+      "sourceInfo": "source=interfaces/package-lock.json; noticeStatus=third-party-notice-required",
+      "supplier": "NOASSERTION",
+      "versionInfo": "5.9.3"
     }
   ],
   "relationships": [
     {
       "relatedSpdxElement": "SPDXRef-host-agent",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-host-edge-proxy",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-host-installation-manager",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-host-update-handoff-supervisor",
       "relationshipType": "DESCRIBES",
       "spdxElementId": "SPDXRef-DOCUMENT"
     },
@@ -169,6 +388,16 @@
     },
     {
       "relatedSpdxElement": "SPDXRef-guest-product-process-supervisor",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-guest-product-release-manager",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-guest-telemetry-collector",
       "relationshipType": "DESCRIBES",
       "spdxElementId": "SPDXRef-DOCUMENT"
     },
@@ -189,6 +418,36 @@
     },
     {
       "relatedSpdxElement": "SPDXRef-recorder-gateway",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-lab-recorder-runner",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-guest-node-linux-arm64",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-runtime-console-control-contract",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-runtime-console-web",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-runtime-console-desktop",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-platformctl",
       "relationshipType": "DESCRIBES",
       "spdxElementId": "SPDXRef-DOCUMENT"
     },
@@ -214,6 +473,36 @@
     },
     {
       "relatedSpdxElement": "SPDXRef-socket-io",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-socket-io-client",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-electron",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-electron-builder",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-app-builder-bin",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-react",
+      "relationshipType": "DESCRIBES",
+      "spdxElementId": "SPDXRef-DOCUMENT"
+    },
+    {
+      "relatedSpdxElement": "SPDXRef-typescript",
       "relationshipType": "DESCRIBES",
       "spdxElementId": "SPDXRef-DOCUMENT"
     }

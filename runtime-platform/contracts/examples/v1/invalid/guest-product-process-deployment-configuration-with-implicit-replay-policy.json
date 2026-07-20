@@ -8,7 +8,7 @@
     "stateDatabasePath": "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite",
     "serviceVersion": "0.1.0-dev",
     "instanceId": "guest-runtime-primary",
-    "archiveExportProvider": { "kind": "lab-simulation-archive", "id": "bundled-archive", "capabilityRevision": 1, "outcomeMode": "succeed" },
+    "archiveExportProvider": { "kind": "archive-export-outcome-profile", "id": "bundled-archive", "capabilityRevision": 1, "outcomeMode": "succeed" },
     "externalUpstreamObservationProvider": { "kind": "external-capability-profile", "id": "external-upstream", "capabilityRevision": 1, "outcomeMode": "unsupported" },
     "outboundRelayObservationProvider": { "kind": "outbound-relay-profile", "id": "outbound-relay", "capabilityRevision": 1, "outcomeMode": "unsupported" },
     "timeAuthority": { "guestNodeId": "guest-primary", "timeAuthorityId": "guest-time-authority", "probeOutcomeMode": "unsupported" },

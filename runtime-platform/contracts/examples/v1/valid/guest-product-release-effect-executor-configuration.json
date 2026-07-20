@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "v1",
+  "effectExecutorId": "guest-product-release-effect-executor-020",
+  "guestProductReleaseManagerEndpoint": {
+    "scheme": "http",
+    "host": "127.0.0.1",
+    "port": 18444,
+    "path": "/v1/guest-product-release-updates",
+    "requestTimeoutMilliseconds": 600000
+  },
+  "apply": {
+    "expectedActiveReleaseId": "vitalserver-guest-product-0.2.0",
+    "targetReleaseId": "vitalserver-guest-product-0.3.0",
+    "targetReleaseDirectory": "/opt/vitalserver/releases/vitalserver-guest-product-0.3.0"
+  },
+  "rollback": {
+    "expectedActiveReleaseId": "vitalserver-guest-product-0.3.0",
+    "targetReleaseId": "vitalserver-guest-product-0.2.0",
+    "targetReleaseDirectory": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0"
+  }
+}

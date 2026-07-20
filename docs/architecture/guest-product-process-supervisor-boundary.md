@@ -1,6 +1,6 @@
 # Guest Product Process Supervisor 경계
 
-> 상태: C37/C44/C46 desired configuration·pure delivery resolution·pure launch plan·required-process termination test 구현 완료 / Guest boot·service-manager runtime proof는 pending
+> 상태: C37/C44/C46 external 및 C37/C44/C64 bundled desired configuration·pure delivery resolution·pure launch plan·required-process termination test 구현 완료 / Guest boot·service-manager runtime proof는 pending
 
 Guest 안의 `GuestProductProcessSupervisor`는 **Guest Runtime과 Recorder Gateway라는
 두 required product process의 process lifetime만** 소유한다. Host Agent는 VM lifecycle과
@@ -12,6 +12,7 @@ Host 상태를 소유하며 Guest 내부 child process를 직접 추측하거나
 GuestProductProcessDeploymentConfiguration (C37, process desired configuration)
   + GuestProductVitalServerTopologyDeployment (C44, placement desired configuration)
   + ExternalVitalServerDeliveryConfiguration (C46, external endpoint desired configuration when selected)
+  + Guest Bundled Upstream Image-set Manager configuration (C64, bundled image-set lifecycle when selected)
   └─ GuestProductProcessSupervisor (Guest process-lifetime owner)
       ├─ GuestRuntimeProcessDeployment
       │   └─ Guest Runtime (Guest control and its SQLite-owned state)
@@ -50,9 +51,11 @@ selection이며 provider reachability 또는 delivery success observation이 아
 | time/telemetry adapter selection | Guest Runtime deployment | `timeAuthority`, `telemetryPipeline` | NTP synchronization/OTLP export result가 아님 |
 
 C44 `topologyKind`의 `bundled-vitalserver`와 `external-vitalserver`는 explicit placement
-selection이다. `ResolveRecorderGatewayVitalServerDelivery`는 C44 external integration,
-C46 configuration ID, provider kind/id/revision을 모두 대조한다. C46을 읽지 못하거나
-대조가 실패하면 `127.0.0.1` bundled endpoint로 바꾸지 않고 activation을 거절한다.
+selection이다. `ResolveRecorderGatewayVitalServerDelivery`는 external일 때 C44/C46
+integration, configuration ID, provider kind/id/revision을 모두 대조하고, bundled일 때
+C44가 고른 C64 configuration resource와 declared loopback delivery endpoint를 사용한다.
+C46 또는 C64 agreement를 읽지 못하거나 대조가 실패하면 다른 topology/endpoint로 바꾸지
+않고 activation을 거절한다. C37은 C64 container를 child process로 시작하지 않는다.
 
 ## 실행 흐름
 
@@ -62,7 +65,7 @@ sequenceDiagram
     participant S as GuestProductProcessSupervisor
     participant GR as Guest Runtime
     participant RG as Recorder Gateway
-    participant T as C44 topology / C46 external delivery configuration
+    participant T as C44 topology / C46 external or C64 bundled configuration
     participant U as Explicit VitalServer endpoint
 
     GM->>S: C37 absolute configuration path

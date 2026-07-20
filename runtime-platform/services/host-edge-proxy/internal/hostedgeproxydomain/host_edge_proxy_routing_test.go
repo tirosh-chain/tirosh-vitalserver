@@ -38,6 +38,9 @@ func TestResolveHostEdgeProxyRouteReturnsOnlyExplicitConfiguredRoute(t *testing.
 	if _, found := ResolveHostEdgeProxyRoute(configuration.Routes[:1], "/browser"); found {
 		t.Fatal("unmatched path selected an implicit route")
 	}
+	if _, found := ResolveHostEdgeProxyRoute(configuration.Routes, HostEdgeProxyLocalAdministrationCredentialMaterialPath); found {
+		t.Fatal("C60 local credential-material route crossed the Host public edge")
+	}
 }
 
 func validHostEdgeProxyDeploymentConfiguration() HostEdgeProxyDeploymentConfiguration {

@@ -245,7 +245,8 @@ filename이나 Host data path가 아니라 macOS installer receipt가 어떤 rel
 CLI input으로 두지 않는다. `MacOSHostPackageReleasePlan.macos_installer_package_identifier`가
 `pkgbuild`, `PackageInfo`, clean-host `pkgutil` observation까지 같은 C23 fact를 전달한다.
 `requiredHostServiceRegistrations`는
-generic `service`가 아니라 `host-agent`와 `host-edge-proxy`라는 Host-side managed
+generic `service`가 아니라 `host-agent`, `host-edge-proxy`,
+`host-update-handoff-supervisor`라는 Host-side managed
 process role을 각각 선언한다. 두 launchd label도 C23 projection에서 읽으므로
 package CLI에 duplicate service label이 남지 않는다. 자세한 owner와 failure rule은
 [Product Delivery Release Identity Boundary](product-delivery-release-identity-boundary.md)를
@@ -388,7 +389,7 @@ bounded context에도 존재할 수 있는 이름을 public model에 두지 않�
 | `hostupdaterdomain` | C26/C27/C28/C30의 pure planning·correlation·settlement policy | `ProductUpdateArtifact`, `StagedProductUpdatePlanningInput`, `PlanStagedProductUpdateExecution`, `StagedProductUpdateCompletionCommand` |
 | `hostupdaterstagedupdatecompletionapplication` | verified handoff/evidence read와 Host-local C27 publication 순서 | `StagedProductUpdateCompletionWorkflow`, `PublishStagedProductUpdateCompletion` |
 | `stagedupdateinvocationfile` | Host-staged C30과 digest-bound C26의 strict filesystem read | `StagedProductUpdateInvocationFileReader`, `ReadStagedProductUpdatePlanningInput` |
-| `updateexecutionreportfile` | selected effect executor가 만든 one C28 evidence document read | `StagedProductUpdateExecutionReportFileReader` |
+| `updateexecutionreportfile` | next updater가 C55 receipts에서 만든 one C28 evidence document의 strict read/write | `StagedProductUpdateExecutionReportFileReader`, `WriteStagedProductUpdateExecutionReport` |
 | `hostlocalupdatecompletionpublisher` | explicit Host-local endpoint로 C27 전달 | `HostLocalStagedProductUpdateCompletionHTTPPublisher` |
 
 `ProductUpdateLayerRollbackPlan`은 rollback을 **실행했다는 fact**가 아니라 C26이
@@ -603,10 +604,13 @@ Recorder delivery provider가 바뀌는 것처럼 읽히지 않는다.
 `topologyKind=bundled-vitalserver|external-vitalserver`라는 **placement declaration**만
 소유한다. External target의 address는 C44에 넣지 않고, C46
 `ExternalVitalServerDeliveryConfiguration.vitalServerPacketDeliveryEndpoint`가 C44-selected
-integration/provider에 대해 소유한다. `ResolveRecorderGatewayVitalServerDelivery`는 C37의
-document path와 C44/C46의 full identity를 대조하는 pure function이며, endpoint에 연결하거나
-reachability/delivery success fact를 만들지 않는다. `RecorderGatewayVitalServerDeliveryURL`은
-그 resolved desired endpoint를 command argument 문자열로만 표현한다.
+integration/provider에 대해 소유한다. Bundled target은 C44가 C64 configuration resource ID와
+declared Guest-loopback delivery endpoint를 함께 소유한다. 이는 C64 manager API endpoint나
+container readiness가 아니라 release가 선택한 packet delivery intent다.
+`ResolveRecorderGatewayVitalServerDelivery`는 C37 document path와 C44/C46 또는 C44/C64의
+full identity를 대조하는 pure function이며, endpoint에 연결하거나 reachability/delivery
+success fact를 만들지 않는다. `RecorderGatewayVitalServerDeliveryURL`은 그 resolved desired
+endpoint를 command argument 문자열로만 표현한다.
 
 따라서 `VitalServerDeliveryEndpoint`, `VitalServerDeliveryProvider`, `topologyKind`를
 C37 process deployment의 direct field로 다시 넣지 않는다. C37은

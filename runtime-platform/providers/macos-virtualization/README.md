@@ -29,7 +29,7 @@ receipt as usable state.
 
 Without this explicit flag, the command CLI returns `observedState=unavailable` with `macos-vm-not-configured`. This is deliberate: an unconfigured command CLI must not report a running VM. Host Agent passes the same document only when the selected provider is `macos-virtualization` and C32 is explicit.
 
-For a real controller, start and stop results report the observed VZ state. A successful stop request that only reaches `stopping` remains `stopping`; it does not claim `stopped` or Guest Runtime readiness.
+For a real controller, start and stop results report the observed VZ state. A successful stop request that only reaches `stopping` remains `stopping`; it does not claim `stopped` or Guest Runtime readiness. C32 separately declares Guest Runtime control, Guest Product Release Manager control, and public-service Host-loopback-to-AF_VSOCK bridges. The release-manager bridge remains available across a Guest Product restart, so it must not be folded into the Guest Runtime bridge.
 
 ## Persistent ownership requirement
 
@@ -40,10 +40,13 @@ deployment requires `MacOSVirtualMachineSupervisor`: a long-lived process that
 retains the controller and receives newline-delimited C21/C10 documents over
 its explicit standard-input/standard-output process transport.
 `macos-virtual-machine-supervisor --virtual-machine-configuration <C32>` now
-provides that owner process. Until Host composition and package layout start
-and retain this executable instead of the one-shot CLI, this package must not
-be used as evidence that an installed Guest VM remains running. See [macOS
-Virtual Machine Supervisor Boundary](../../../docs/architecture/macos-virtual-machine-supervisor-boundary.md).
+provides that owner process. The macOS package composition now carries this
+executable and the three long-lived Host services (Host Agent, Edge Proxy, and
+Update Handoff Supervisor) as one explicit C47 package input. That package
+boundary still must not be used as evidence that an installed Guest VM remains
+running: persistent launchd ownership, Guest boot, and Guest Runtime readiness
+remain separate observed facts. See [macOS Virtual Machine Supervisor
+Boundary](../../../docs/architecture/macos-virtual-machine-supervisor-boundary.md).
 
 ## Virtualization entitlement signature boundary
 

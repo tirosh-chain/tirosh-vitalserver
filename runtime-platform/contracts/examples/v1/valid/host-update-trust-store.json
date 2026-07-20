@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v1",
+  "keys": [
+    {
+      "id": "vitalserver-release-key-2026",
+      "algorithm": "ed25519",
+      "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+  ]
+}

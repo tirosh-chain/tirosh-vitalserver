@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-bootstrap-configuration",
   "title": "GuestProductBootstrapConfiguration",
-  "description": "C39 desired first-Guest-boot installation for the Guest Product. It declares Guest-owned payload destinations, the Guest Runtime's mutable state directory, and the Guest-visible NoCloud filesystem identity only; it never names a Host-selected root partition, Host storage-image container, ext4 implementation, or Host-side filesystem write. Recorder Gateway archive entry-mode and symbolic-link policies are independent declarations so a consumer can distinguish permission preservation from safe link acceptance.",
+  "description": "C39 desired first-Guest-boot installation for the Guest Product. It declares one immutable Guest Product release directory, its explicitly activated current-release link, one explicit Linux Guest architecture, Guest-owned payload destinations, independently owned Guest Runtime and telemetry Collector state directories, an optional explicit Guest NTP service installation, and the Guest-visible NoCloud filesystem identity only; it never names a Host-selected root partition, Host storage-image container, ext4 implementation, or Host-side filesystem write. The Guest Node Services bundle contains the declared Node runtime, Recorder Gateway, Lab Recorder Runner, and scenario catalog; its archive entry-mode and symbolic-link policies are independent declarations so a consumer can distinguish permission preservation from safe link acceptance.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "bootstrapId", "volumeLabel", "guestBootstrapVolumeFileSystem", "instanceId", "localHostName", "guestRuntime", "guestRuntimeStateDirectory", "recorderGatewayBundle", "guestProductProcessSupervisor", "guestProductProcessDeployment", "guestProductServiceManagerDeployment", "guestProductVitalServerTopologyDeployment"],
+  "required": ["schemaVersion", "bootstrapId", "volumeLabel", "guestBootstrapVolumeFileSystem", "instanceId", "localHostName", "guestArchitecture", "guestProductRelease", "guestRuntime", "guestRuntimeStateDirectory", "guestNodeServicesBundle", "guestProductProcessSupervisor", "guestProductProcessDeployment", "guestProductReleaseManager", "guestProductServiceManagerDeployment", "guestProductVitalServerTopologyDeployment"],
   "properties": {
     "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
     "bootstrapId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
@@ -13,21 +13,56 @@
     "guestBootstrapVolumeFileSystem": { "const": "iso9660" },
     "instanceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
     "localHostName": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "guestArchitecture": { "enum": ["arm64", "amd64"] },
+    "guestProductRelease": { "$ref": "#/$defs/GuestProductRelease" },
     "guestRuntime": { "$ref": "#/$defs/ExecutableBootstrapPayload" },
     "guestRuntimeStateDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
-    "recorderGatewayBundle": {
+    "guestTelemetryCollector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "destinationPath", "fileMode"],
+      "properties": {
+        "artifactId": { "pattern": "^guest-telemetry-collector-linux-(arm64|amd64)$" },
+        "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "fileMode": { "const": "0755" }
+      }
+    },
+    "guestTelemetryCollectorConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "destinationPath", "fileMode"],
+      "properties": {
+        "artifactId": { "const": "guest-telemetry-collector-configuration" },
+        "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "fileMode": { "const": "0644" }
+      }
+    },
+    "guestTelemetryStateDirectory": { "$ref": "#/$defs/GuestTelemetryStateDirectory" },
+    "guestTimeSynchronization": {
+      "description": "Optional explicit Linux Guest clock-service bootstrap. C40 installs exactly this package and writes only the configuration generated from the C37 chrony-tracking source; it never discovers an NTP daemon or a server from the Guest image.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageManager", "packageName", "serviceName", "configurationDestinationPath"],
+      "properties": {
+        "packageManager": { "const": "apt" },
+        "packageName": { "const": "chrony" },
+        "serviceName": { "const": "chrony.service" },
+        "configurationDestinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    },
+    "guestNodeServicesBundle": {
       "type": "object",
       "additionalProperties": false,
       "required": ["artifactId", "archiveFormat", "entryModePolicy", "symbolicLinkPolicy", "destinationDirectory", "requiredArchivePaths"],
       "properties": {
-        "artifactId": { "const": "recorder-gateway-linux-arm64" },
+        "artifactId": { "pattern": "^guest-node-services-linux-(arm64|amd64)$" },
         "archiveFormat": { "const": "tar-gzip" },
         "entryModePolicy": { "const": "preserve-archive-mode" },
         "symbolicLinkPolicy": { "const": "allow-relative-links-to-declared-regular-files" },
         "destinationDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
         "requiredArchivePaths": {
           "type": "array",
-          "minItems": 2,
+          "minItems": 4,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/RelativeGuestPath" }
         }
@@ -35,6 +70,7 @@
     },
     "guestProductProcessSupervisor": { "$ref": "#/$defs/ExecutableBootstrapPayload" },
     "guestProductProcessDeployment": { "$ref": "#/$defs/ConfigurationBootstrapPayload" },
+    "guestProductReleaseManager": { "$ref": "#/$defs/GuestProductReleaseManager" },
     "guestProductVitalServerTopologyDeployment": {
       "type": "object",
       "additionalProperties": false,
@@ -56,6 +92,74 @@
         "fileMode": { "const": "0644" }
       }
     },
+    "guestBundledUpstreamImageSetManager": {
+      "description": "Optional C64 first-Guest-boot payload. It exists only for a C44 bundled-vitalserver topology. C40 installs its executable, immutable configuration and systemd unit, creates the separately owned C64 state root, and explicitly initializes the active-image-set selection once before starting the service. It never loads images or invokes the container engine during bootstrap.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["managerId", "executable", "configuration", "stateDirectory", "containerEngineBootstrap", "serviceUnit", "initialActiveImageSetState"],
+      "properties": {
+        "managerId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "executable": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifactId", "destinationPath", "fileMode"],
+          "properties": {
+            "artifactId": { "pattern": "^guest-bundled-upstream-image-set-manager-linux-(arm64|amd64)$" },
+            "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "fileMode": { "const": "0755" }
+          }
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifactId", "destinationPath", "fileMode"],
+          "properties": {
+            "artifactId": { "const": "guest-bundled-upstream-image-set-manager-configuration" },
+            "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "fileMode": { "const": "0644" }
+          }
+        },
+        "stateDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
+        "containerEngineBootstrap": {
+          "description": "The one Guest OS package/service selected to provide C64's declared Docker CLI. C40 installs and starts exactly this engine before starting C64; it never discovers an image-provided engine.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["packageManager", "packageName", "serviceName"],
+          "properties": {
+            "packageManager": { "const": "apt" },
+            "packageName": { "const": "docker.io" },
+            "serviceName": { "const": "docker.service" }
+          }
+        },
+        "serviceUnit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["serviceUnitName", "unitDestinationPath", "enabledUnitLinkPath", "enabledUnitLinkTargetPath", "restart", "logging", "install"],
+          "properties": {
+            "serviceUnitName": { "const": "vitalserver-guest-bundled-upstream-image-set-manager.service" },
+            "unitDestinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "enabledUnitLinkPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "enabledUnitLinkTargetPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "restart": {
+              "type": "object", "additionalProperties": false,
+              "required": ["mode", "delayMilliseconds"],
+              "properties": { "mode": { "const": "on-failure" }, "delayMilliseconds": { "type": "integer", "minimum": 0, "maximum": 3600000 } }
+            },
+            "logging": {
+              "type": "object", "additionalProperties": false,
+              "required": ["standardOutput", "standardError"],
+              "properties": { "standardOutput": { "const": "journal+console" }, "standardError": { "const": "journal+console" } }
+            },
+            "install": {
+              "type": "object", "additionalProperties": false,
+              "required": ["wantedByTarget"],
+              "properties": { "wantedByTarget": { "const": "multi-user.target" } }
+            }
+          }
+        },
+        "initialActiveImageSetState": { "const": "unprovisioned" }
+      }
+    },
     "guestProductServiceManagerDeployment": {
       "type": "object",
       "additionalProperties": false,
@@ -69,6 +173,20 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": { "required": ["guestTelemetryCollector"] },
+      "then": { "required": ["guestTelemetryCollectorConfiguration", "guestTelemetryStateDirectory"] }
+    },
+    {
+      "if": { "required": ["guestTelemetryCollectorConfiguration"] },
+      "then": { "required": ["guestTelemetryCollector", "guestTelemetryStateDirectory"] }
+    },
+    {
+      "if": { "required": ["guestTelemetryStateDirectory"] },
+      "then": { "required": ["guestTelemetryCollector", "guestTelemetryCollectorConfiguration"] }
+    }
+  ],
   "$defs": {
     "AbsoluteGuestPath": {
       "type": "string",
@@ -104,6 +222,83 @@
     },
     "GuestRuntimeStateDirectory": {
       "description": "The Guest Runtime-owned mutable state root which C40 provisions before the C38 supervisor may start the stateful Guest Runtime. C40 must verify this directory is the parent of C37 guestRuntime.stateDatabasePath.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directoryPath", "directoryMode"],
+      "properties": {
+        "directoryPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "directoryMode": { "const": "0700" }
+      }
+    },
+    "GuestProductRelease": {
+      "description": "One immutable Guest Product code/configuration directory and the Guest Product Release Manager-owned active link. C40 creates the link only when it is absent or already points to this declared release; it never retargets a previously activated release during bootstrap.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseId", "releaseDirectory", "currentReleaseLinkPath", "releaseStateDirectory", "releaseStateDirectoryMode"],
+      "properties": {
+        "releaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "releaseDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "currentReleaseLinkPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "releaseStateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "releaseStateDirectoryMode": { "const": "0700" }
+      }
+    },
+    "GuestProductReleaseManager": {
+      "description": "C59 Guest Product Release Manager payload and its separately supervised systemd unit. It remains available while it restarts the distinct Guest Product service through the current-release link.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executable", "configuration", "serviceUnit"],
+      "properties": {
+        "executable": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifactId", "destinationPath", "fileMode"],
+          "properties": {
+            "artifactId": { "pattern": "^guest-product-release-manager-linux-(arm64|amd64)$" },
+            "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "fileMode": { "const": "0755" }
+          }
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifactId", "destinationPath", "fileMode"],
+          "properties": {
+            "artifactId": { "const": "guest-product-release-manager-configuration" },
+            "destinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "fileMode": { "const": "0644" }
+          }
+        },
+        "serviceUnit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["serviceUnitName", "unitDestinationPath", "enabledUnitLinkPath", "enabledUnitLinkTargetPath", "restart", "logging", "install"],
+          "properties": {
+            "serviceUnitName": { "const": "vitalserver-guest-product-release-manager.service" },
+            "unitDestinationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "enabledUnitLinkPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "enabledUnitLinkTargetPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "restart": {
+              "type": "object", "additionalProperties": false,
+              "required": ["mode", "delayMilliseconds"],
+              "properties": { "mode": { "const": "on-failure" }, "delayMilliseconds": { "type": "integer", "minimum": 0, "maximum": 3600000 } }
+            },
+            "logging": {
+              "type": "object", "additionalProperties": false,
+              "required": ["standardOutput", "standardError"],
+              "properties": { "standardOutput": { "const": "journal+console" }, "standardError": { "const": "journal+console" } }
+            },
+            "install": {
+              "type": "object", "additionalProperties": false,
+              "required": ["wantedByTarget"],
+              "properties": { "wantedByTarget": { "const": "multi-user.target" } }
+            }
+          }
+        }
+      }
+    },
+    "GuestTelemetryStateDirectory": {
+      "description": "The Guest telemetry Collector-owned mutable storage root that C40 provisions before C38 starts C37. The Collector reports later write failures explicitly; this desired directory is not a readiness observation.",
       "type": "object",
       "additionalProperties": false,
       "required": ["directoryPath", "directoryMode"],

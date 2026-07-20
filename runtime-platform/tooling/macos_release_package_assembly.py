@@ -62,10 +62,15 @@ class MacOSReleasePackageAssemblyDeclaration:
     host_agent_binary: Path
     host_edge_proxy_binary: Path
     host_installation_manager_binary: Path
+    host_update_handoff_supervisor_binary: Path
+    platformctl_binary: Path
     macos_virtual_machine_supervisor_binary: Path
     guest_product_process_supervisor_artifact: Path
     host_agent_deployment_configuration: Path
+    operator_interface_bootstrap_configuration: Path
     host_edge_proxy_deployment_configuration: Path
+    host_update_handoff_supervisor_configuration: Path
+    host_update_trust_store: Path
     macos_virtual_machine_configuration: Path
     guest_product_process_deployment_configuration: Path
     guest_product_service_manager_deployment_configuration: Path
@@ -81,6 +86,7 @@ class MacOSReleasePackageAssemblyDeclaration:
     )
     pkgutil_executable: Path
     assembly_receipt_output: Path
+    guest_bundled_upstream_image_set_manager_configuration: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -503,6 +509,16 @@ def parse_macos_release_package_assembly_declaration(
             "hostInstallationManagerBinaryAbsolutePath",
             "C47 hostArtifacts",
         ),
+        host_update_handoff_supervisor_binary=required_absolute_path(
+            host_artifacts,
+            "hostUpdateHandoffSupervisorBinaryAbsolutePath",
+            "C47 hostArtifacts",
+        ),
+        platformctl_binary=required_absolute_path(
+            host_artifacts,
+            "platformctlBinaryAbsolutePath",
+            "C47 hostArtifacts",
+        ),
         macos_virtual_machine_supervisor_binary=required_absolute_path(
             host_artifacts,
             "macOSVirtualMachineSupervisorBinaryAbsolutePath",
@@ -518,9 +534,24 @@ def parse_macos_release_package_assembly_declaration(
             "hostAgentDeploymentConfigurationAbsolutePath",
             "C47 deploymentDocuments",
         ),
+        operator_interface_bootstrap_configuration=required_absolute_path(
+            deployment_documents,
+            "operatorInterfaceBootstrapConfigurationAbsolutePath",
+            "C47 deploymentDocuments",
+        ),
         host_edge_proxy_deployment_configuration=required_absolute_path(
             deployment_documents,
             "hostEdgeProxyDeploymentConfigurationAbsolutePath",
+            "C47 deploymentDocuments",
+        ),
+        host_update_handoff_supervisor_configuration=required_absolute_path(
+            deployment_documents,
+            "hostUpdateHandoffSupervisorConfigurationAbsolutePath",
+            "C47 deploymentDocuments",
+        ),
+        host_update_trust_store=required_absolute_path(
+            deployment_documents,
+            "hostUpdateTrustStoreAbsolutePath",
             "C47 deploymentDocuments",
         ),
         macos_virtual_machine_configuration=required_absolute_path(
@@ -579,6 +610,11 @@ def parse_macos_release_package_assembly_declaration(
             assembly_receipt,
             "outputAbsolutePath",
             "C47 assemblyReceipt",
+        ),
+        guest_bundled_upstream_image_set_manager_configuration=optional_absolute_path(
+            deployment_documents,
+            "guestBundledUpstreamImageSetManagerConfigurationAbsolutePath",
+            "C47 deploymentDocuments",
         ),
     )
 
@@ -713,6 +749,11 @@ def validate_macos_release_package_assembly_declaration_execution(
             declaration.host_installation_manager_binary,
         ),
         (
+            "Host Update Handoff Supervisor binary",
+            declaration.host_update_handoff_supervisor_binary,
+        ),
+        ("platformctl binary", declaration.platformctl_binary),
+        (
             "macOS virtual machine supervisor binary",
             declaration.macos_virtual_machine_supervisor_binary,
         ),
@@ -725,9 +766,18 @@ def validate_macos_release_package_assembly_declaration_execution(
             declaration.host_agent_deployment_configuration,
         ),
         (
+            "C53 OperatorInterfaceBootstrapConfiguration",
+            declaration.operator_interface_bootstrap_configuration,
+        ),
+        (
             "C36 HostEdgeProxyDeploymentConfiguration",
             declaration.host_edge_proxy_deployment_configuration,
         ),
+        (
+            "C56 HostUpdateHandoffSupervisorConfiguration",
+            declaration.host_update_handoff_supervisor_configuration,
+        ),
+        ("C58 HostUpdateTrustStore", declaration.host_update_trust_store),
         (
             "C32 MacOSVirtualMachineConfiguration",
             declaration.macos_virtual_machine_configuration,
@@ -770,6 +820,11 @@ def validate_macos_release_package_assembly_declaration_execution(
         require_regular_absolute_file(
             declaration.external_vitalserver_delivery_configuration,
             "C46 ExternalVitalServerDeliveryConfiguration",
+        )
+    if declaration.guest_bundled_upstream_image_set_manager_configuration is not None:
+        require_regular_absolute_file(
+            declaration.guest_bundled_upstream_image_set_manager_configuration,
+            "C64 GuestBundledUpstreamImageSetManagerConfiguration",
         )
     code_signing = declaration.macos_virtual_machine_supervisor_code_signing
     if code_signing.mode in {"ad-hoc", "developer-id"}:
@@ -826,15 +881,26 @@ def macos_release_package_assembly_request_from_declaration(
         host_agent_binary=declaration.host_agent_binary,
         host_edge_proxy_binary=declaration.host_edge_proxy_binary,
         host_installation_manager_binary=declaration.host_installation_manager_binary,
+        host_update_handoff_supervisor_binary=(
+            declaration.host_update_handoff_supervisor_binary
+        ),
+        platformctl_binary=declaration.platformctl_binary,
         macos_virtual_machine_supervisor_binary=(
             declaration.macos_virtual_machine_supervisor_binary
         ),
         host_agent_deployment_configuration=(
             declaration.host_agent_deployment_configuration
         ),
+        operator_interface_bootstrap_configuration=(
+            declaration.operator_interface_bootstrap_configuration
+        ),
         host_edge_proxy_deployment_configuration=(
             declaration.host_edge_proxy_deployment_configuration
         ),
+        host_update_handoff_supervisor_configuration=(
+            declaration.host_update_handoff_supervisor_configuration
+        ),
+        host_update_trust_store=declaration.host_update_trust_store,
         macos_virtual_machine_configuration=(
             declaration.macos_virtual_machine_configuration
         ),
@@ -874,6 +940,9 @@ def macos_release_package_assembly_request_from_declaration(
             declaration.macos_virtual_machine_supervisor_code_signing
         ),
         replace_output=False,
+        guest_bundled_upstream_image_set_manager_configuration=(
+            declaration.guest_bundled_upstream_image_set_manager_configuration
+        ),
     )
     verification = macos_host_package_verifier.MacOSHostPackageVerification(
         package=declaration.output_package,

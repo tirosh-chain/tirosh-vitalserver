@@ -12,6 +12,9 @@ import (
 // application-service internals or Lab persistence.
 type GuestRuntimeLabResourceCommandWorkflow interface {
 	ExecuteLabResourceCommand(context.Context, guestruntimedomain.LabResourceCommand, []guestruntimedomain.ResourceReference) (guestruntimedomain.Operation, *guestruntimedomain.CommandRejection, *guestruntimedomain.CommandAdmissionFailure)
+	ListPendingTerminalArchiveExportCandidates(context.Context, guestruntimedomain.ResourceReference) ([]guestruntimedomain.TerminalArchiveExportCandidate, error)
+	ListAllPendingTerminalArchiveExportCandidates(context.Context) ([]guestruntimedomain.TerminalArchiveExportCandidate, error)
+	RecordTerminalArchiveDispatch(context.Context, guestruntimedomain.TerminalArchiveExportCandidate, string, *guestruntimedomain.ResourceReference, *guestruntimedomain.Issue) error
 }
 
 // GuestRuntimeArchiveRetentionAndExportWorkflow is the Archive Export boundary
@@ -20,6 +23,7 @@ type GuestRuntimeLabResourceCommandWorkflow interface {
 type GuestRuntimeArchiveRetentionAndExportWorkflow interface {
 	ListArtifactsRetainedForResource(context.Context, guestruntimedomain.ResourceReference) ([]guestruntimedomain.ResourceReference, error)
 	ExecuteArtifactExportCommand(context.Context, guestruntimedomain.ArtifactExportCommand) (guestruntimedomain.Operation, *guestruntimedomain.CommandRejection, *guestruntimedomain.CommandAdmissionFailure)
+	ExecuteTerminalLabArtifactExport(context.Context, guestruntimedomain.TerminalArchiveExportCandidate) (guestruntimedomain.Operation, *guestruntimedomain.CommandRejection, *guestruntimedomain.CommandAdmissionFailure)
 }
 
 // GuestRuntimeLabArchiveLifecycleCoordinator owns only cross-aggregate ordering. It does not own Lab
@@ -73,11 +77,68 @@ func (coordinator *GuestRuntimeLabArchiveLifecycleCoordinator) ExecuteLabResourc
 			}
 		}
 	}
-	return coordinator.labResourceCommandWorkflow.ExecuteLabResourceCommand(ctx, command, retained)
+	operation, rejection, admissionFailure := coordinator.labResourceCommandWorkflow.ExecuteLabResourceCommand(ctx, command, retained)
+	if rejection != nil || admissionFailure != nil || command.Action != "stop" || operation.State != "succeeded" {
+		return operation, rejection, admissionFailure
+	}
+	// Archive dispatch is deliberately after a durable Lab stop. Its result is
+	// recorded on each recorder's terminal intent; it never changes a Lab stop
+	// into an upload success or failure.
+	coordinator.dispatchTerminalArchiveIntents(ctx, guestruntimedomain.ResourceReference{ResourceType: command.ResourceType, ResourceID: command.ResourceID})
+	return operation, nil, nil
 }
 
 func (coordinator *GuestRuntimeLabArchiveLifecycleCoordinator) ExecuteArtifactExportCommand(ctx context.Context, command guestruntimedomain.ArtifactExportCommand) (guestruntimedomain.Operation, *guestruntimedomain.CommandRejection, *guestruntimedomain.CommandAdmissionFailure) {
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
 	return coordinator.archiveRetentionAndExportWorkflow.ExecuteArtifactExportCommand(ctx, command)
+}
+
+// ReconcilePendingTerminalArchiveExports repeats only durable, still
+// dispatchable Lab archive intents. It is safe after a process restart: every
+// candidate supplies its original deterministic Archive request ID and the
+// exact completed Lab stop operation that owns the dispatch observation.
+//
+// A reconciliation error is not translated into a stopped-session success.
+// The caller must report the error and leave the persisted intent visible for
+// another explicit reconciliation attempt.
+func (coordinator *GuestRuntimeLabArchiveLifecycleCoordinator) ReconcilePendingTerminalArchiveExports(ctx context.Context) error {
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	candidates, err := coordinator.labResourceCommandWorkflow.ListAllPendingTerminalArchiveExportCandidates(ctx)
+	if err != nil {
+		return err
+	}
+	for _, candidate := range candidates {
+		if err := coordinator.dispatchTerminalArchiveCandidate(ctx, candidate); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (coordinator *GuestRuntimeLabArchiveLifecycleCoordinator) dispatchTerminalArchiveIntents(ctx context.Context, target guestruntimedomain.ResourceReference) {
+	candidates, err := coordinator.labResourceCommandWorkflow.ListPendingTerminalArchiveExportCandidates(ctx, target)
+	if err != nil {
+		// The durable intent remains pending and is visible on the recorder.
+		// Do not fabricate a dispatch outcome when candidate selection failed.
+		return
+	}
+	for _, candidate := range candidates {
+		// A normal stop has already completed. Keep its result distinct from a
+		// later Archive dispatch persistence failure; the durable pending intent
+		// will be retried by explicit reconciliation.
+		_ = coordinator.dispatchTerminalArchiveCandidate(ctx, candidate)
+	}
+}
+
+func (coordinator *GuestRuntimeLabArchiveLifecycleCoordinator) dispatchTerminalArchiveCandidate(ctx context.Context, candidate guestruntimedomain.TerminalArchiveExportCandidate) error {
+	archiveOperation, rejection, admissionFailure := coordinator.archiveRetentionAndExportWorkflow.ExecuteTerminalLabArtifactExport(ctx, candidate)
+	if rejection != nil {
+		return coordinator.labResourceCommandWorkflow.RecordTerminalArchiveDispatch(ctx, candidate, "rejected", nil, &rejection.Issue)
+	}
+	if admissionFailure != nil {
+		return coordinator.labResourceCommandWorkflow.RecordTerminalArchiveDispatch(ctx, candidate, "unavailable", nil, &admissionFailure.Issue)
+	}
+	return coordinator.labResourceCommandWorkflow.RecordTerminalArchiveDispatch(ctx, candidate, "submitted", &guestruntimedomain.ResourceReference{ResourceType: "operation", ResourceID: archiveOperation.ID}, nil)
 }

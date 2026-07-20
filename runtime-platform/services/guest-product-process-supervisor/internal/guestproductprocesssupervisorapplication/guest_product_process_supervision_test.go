@@ -12,41 +12,45 @@ import (
 func TestRunGuestProductProcessDeploymentTerminatesOtherRequiredProcessAfterObservedExit(t *testing.T) {
 	runtime := newFakeGuestProductProcessLifecycleHandle()
 	gateway := newFakeGuestProductProcessLifecycleHandle()
-	launcher := newFakeGuestProductProcessLauncher(map[string]*fakeGuestProductProcessLifecycleHandle{"guest-runtime": runtime, "recorder-gateway": gateway}, nil)
+	runner := newFakeGuestProductProcessLifecycleHandle()
+	launcher := newFakeGuestProductProcessLauncher(map[string]*fakeGuestProductProcessLifecycleHandle{"guest-runtime": runtime, "recorder-gateway": gateway, "lab-recorder-runner": runner}, nil)
 	finished := make(chan error, 1)
 	go func() {
 		finished <- RunGuestProductProcessDeployment(context.Background(), validDeploymentConfiguration(), validExternalVitalServerTopologyDeployment(), validExternalVitalServerDeliveryConfiguration(), launcher)
 	}()
 	waitForStartedGuestProductProcess(t, launcher, "guest-runtime")
 	waitForStartedGuestProductProcess(t, launcher, "recorder-gateway")
+	waitForStartedGuestProductProcess(t, launcher, "lab-recorder-runner")
 	gateway.exits <- errors.New("upstream process terminated")
 	err := <-finished
 	var terminated RequiredGuestProductProcessExitedError
 	if !errors.As(err, &terminated) || terminated.ProcessName != "recorder-gateway" {
 		t.Fatalf("termination error = %T %v", err, err)
 	}
-	if runtime.terminationCount != 1 || gateway.terminationCount != 0 {
-		t.Fatalf("termination counts runtime=%d gateway=%d", runtime.terminationCount, gateway.terminationCount)
+	if runtime.terminationCount != 1 || gateway.terminationCount != 0 || runner.terminationCount != 1 {
+		t.Fatalf("termination counts runtime=%d gateway=%d runner=%d", runtime.terminationCount, gateway.terminationCount, runner.terminationCount)
 	}
 }
 
 func TestRunGuestProductProcessDeploymentTerminatesStartedProcessWhenLaterStartFails(t *testing.T) {
 	runtime := newFakeGuestProductProcessLifecycleHandle()
-	launcher := newFakeGuestProductProcessLauncher(map[string]*fakeGuestProductProcessLifecycleHandle{"guest-runtime": runtime}, map[string]error{"recorder-gateway": errors.New("node executable missing")})
+	gateway := newFakeGuestProductProcessLifecycleHandle()
+	launcher := newFakeGuestProductProcessLauncher(map[string]*fakeGuestProductProcessLifecycleHandle{"guest-runtime": runtime, "recorder-gateway": gateway}, map[string]error{"lab-recorder-runner": errors.New("node executable missing")})
 	err := RunGuestProductProcessDeployment(context.Background(), validDeploymentConfiguration(), validExternalVitalServerTopologyDeployment(), validExternalVitalServerDeliveryConfiguration(), launcher)
 	var startFailure GuestProductProcessStartError
-	if !errors.As(err, &startFailure) || startFailure.ProcessName != "recorder-gateway" {
+	if !errors.As(err, &startFailure) || startFailure.ProcessName != "lab-recorder-runner" {
 		t.Fatalf("start error = %T %v", err, err)
 	}
-	if runtime.terminationCount != 1 {
-		t.Fatalf("Guest Runtime was not terminated after Gateway startup failure: %d", runtime.terminationCount)
+	if runtime.terminationCount != 1 || gateway.terminationCount != 1 {
+		t.Fatalf("Guest Runtime and Recorder Gateway were not terminated after Runner startup failure: runtime=%d gateway=%d", runtime.terminationCount, gateway.terminationCount)
 	}
 }
 
 func TestRunGuestProductProcessDeploymentTreatsContextCancellationAsExplicitShutdown(t *testing.T) {
 	runtime := newFakeGuestProductProcessLifecycleHandle()
 	gateway := newFakeGuestProductProcessLifecycleHandle()
-	launcher := newFakeGuestProductProcessLauncher(map[string]*fakeGuestProductProcessLifecycleHandle{"guest-runtime": runtime, "recorder-gateway": gateway}, nil)
+	runner := newFakeGuestProductProcessLifecycleHandle()
+	launcher := newFakeGuestProductProcessLauncher(map[string]*fakeGuestProductProcessLifecycleHandle{"guest-runtime": runtime, "recorder-gateway": gateway, "lab-recorder-runner": runner}, nil)
 	context, cancel := context.WithCancel(context.Background())
 	finished := make(chan error, 1)
 	go func() {
@@ -54,12 +58,13 @@ func TestRunGuestProductProcessDeploymentTreatsContextCancellationAsExplicitShut
 	}()
 	waitForStartedGuestProductProcess(t, launcher, "guest-runtime")
 	waitForStartedGuestProductProcess(t, launcher, "recorder-gateway")
+	waitForStartedGuestProductProcess(t, launcher, "lab-recorder-runner")
 	cancel()
 	if err := <-finished; err != nil {
 		t.Fatalf("explicit supervisor shutdown error = %v", err)
 	}
-	if runtime.terminationCount != 1 || gateway.terminationCount != 1 {
-		t.Fatalf("shutdown termination counts runtime=%d gateway=%d", runtime.terminationCount, gateway.terminationCount)
+	if runtime.terminationCount != 1 || gateway.terminationCount != 1 || runner.terminationCount != 1 {
+		t.Fatalf("shutdown termination counts runtime=%d gateway=%d runner=%d", runtime.terminationCount, gateway.terminationCount, runner.terminationCount)
 	}
 }
 
@@ -70,7 +75,7 @@ type fakeGuestProductProcessLauncher struct {
 }
 
 func newFakeGuestProductProcessLauncher(processes map[string]*fakeGuestProductProcessLifecycleHandle, startErrors map[string]error) *fakeGuestProductProcessLauncher {
-	return &fakeGuestProductProcessLauncher{processes: processes, startErrors: startErrors, started: make(chan string, 2)}
+	return &fakeGuestProductProcessLauncher{processes: processes, startErrors: startErrors, started: make(chan string, 3)}
 }
 
 func (launcher *fakeGuestProductProcessLauncher) StartGuestProductProcess(invocation guestproductprocesssupervisordomain.GuestProductProcessInvocation) (GuestProductProcessLifecycleHandle, error) {
@@ -130,19 +135,21 @@ func validDeploymentConfiguration() guestproductprocesssupervisordomain.GuestPro
 			ServiceVersion:    "0.1.0-dev",
 			InstanceID:        "guest-runtime",
 			ArchiveExportProvider: guestproductprocesssupervisordomain.ArchiveExportProvider{
-				GuestProductProviderCapabilityReference: guestproductprocesssupervisordomain.GuestProductProviderCapabilityReference{Kind: "archive", ID: "archive", CapabilityRevision: 1},
+				GuestProductProviderCapabilityReference: guestproductprocesssupervisordomain.GuestProductProviderCapabilityReference{Kind: "archive-export-outcome-profile", ID: "archive", CapabilityRevision: 1},
 				OutcomeMode:                             "succeed",
 			},
+			RecorderGatewayColdPathSourceEndpoint: "http://127.0.0.1:8090",
+			LabRecorderRunnerEndpoint:             "http://127.0.0.1:8091",
 			ExternalUpstreamObservationProvider: guestproductprocesssupervisordomain.ExternalUpstreamObservationProvider{
-				GuestProductProviderCapabilityReference: guestproductprocesssupervisordomain.GuestProductProviderCapabilityReference{Kind: "external", ID: "external", CapabilityRevision: 1},
+				GuestProductProviderCapabilityReference: guestproductprocesssupervisordomain.GuestProductProviderCapabilityReference{Kind: "external-capability-profile", ID: "external", CapabilityRevision: 1},
 				OutcomeMode:                             "unsupported",
 			},
 			OutboundRelayObservationProvider: guestproductprocesssupervisordomain.OutboundRelayObservationProvider{
 				GuestProductProviderCapabilityReference: guestproductprocesssupervisordomain.GuestProductProviderCapabilityReference{Kind: "relay", ID: "relay", CapabilityRevision: 1},
 				OutcomeMode:                             "unsupported",
 			},
-			TimeAuthority:     guestproductprocesssupervisordomain.GuestTimeAuthority{GuestNodeID: "guest", TimeAuthorityID: "time", ProbeOutcomeMode: "unsupported"},
-			TelemetryPipeline: guestproductprocesssupervisordomain.GuestTelemetryPipeline{CollectorProbeOutcomeMode: "unsupported", ExportOutcomeMode: "unavailable"},
+			TimeAuthority:     guestproductprocesssupervisordomain.GuestTimeAuthority{GuestNodeID: "guest", TimeAuthorityID: "time", Kind: "time-authority-outcome-profile", ProbeOutcomeMode: "unsupported"},
+			TelemetryPipeline: guestproductprocesssupervisordomain.GuestTelemetryPipeline{Kind: "telemetry-export-outcome-profile", CollectorProbeOutcomeMode: "unsupported", ExportOutcomeMode: "unavailable"},
 		},
 		RecorderGateway: guestproductprocesssupervisordomain.RecorderGatewayProcessDeployment{
 			NodeExecutablePath:                "/opt/vitalserver/node/bin/node",
@@ -154,6 +161,9 @@ func validDeploymentConfiguration() guestproductprocesssupervisordomain.GuestPro
 			DeliveryReplayAdmissionPolicy:                guestproductprocesssupervisordomain.RecorderGatewayDeliveryReplayAdmissionPolicy{MaximumPendingItems: 1, MaximumPendingBytes: 1},
 			ColdPathCapturePolicy:                        guestproductprocesssupervisordomain.RecorderGatewayColdPathCapturePolicy{MaximumRetainedPackets: 1, MaximumRetainedPayloadBytes: 1},
 			ReplayPolicy:                                 guestproductprocesssupervisordomain.RecorderGatewayReplayPolicy{IntervalMilliseconds: 1, MaximumAttempts: 1, RetryDelayMilliseconds: 1, LeaseDurationMilliseconds: 1},
+		},
+		LabRecorderRunner: guestproductprocesssupervisordomain.LabRecorderRunnerProcessDeployment{
+			NodeExecutablePath: "/opt/vitalserver/node/bin/node", ProgramPath: "/opt/vitalserver/lab-recorder-runner.js", Listener: guestproductprocesssupervisordomain.GuestProductProcessListener{BindHost: "127.0.0.1", Port: 8091}, RecorderGatewayEndpoint: "http://127.0.0.1:8090", GuestRuntimeObservationCatalogEndpoint: "http://127.0.0.1:18443", ScenarioCatalogPath: "/etc/vitalserver/lab-scenario-catalog.json",
 		},
 	}
 }
@@ -177,5 +187,10 @@ func validExternalVitalServerDeliveryConfiguration() *guestproductprocesssupervi
 		VitalServerDeliveryProvider:                           guestproductprocesssupervisordomain.GuestProductProviderCapabilityReference{Kind: "external-vitalserver", ID: "external-vitalserver-primary", CapabilityRevision: 1},
 		VitalServerPacketDeliveryEndpoint:                     guestproductprocesssupervisordomain.VitalServerPacketDeliveryEndpoint{Scheme: "https", Host: "external-vitalserver.example.test", Port: 8443},
 		VitalServerDeliveryAcknowledgementTimeoutMilliseconds: 1000,
+		VitalServerObservationEndpoint:                        guestproductprocesssupervisordomain.VitalServerHTTPObservationEndpoint{Scheme: "https", Host: "external-vitalserver.example.test", Port: 8443, Path: "/healthz", AcceptedStatusCodes: []int{200}},
+		VitalServerArchiveProvider:                            guestproductprocesssupervisordomain.GuestProductProviderCapabilityReference{Kind: "vitalserver-indexed-library", ID: "external-vitalserver-primary-library", CapabilityRevision: 1},
+		VitalServerIndexedLibraryEndpoint:                     guestproductprocesssupervisordomain.VitalServerPacketDeliveryEndpoint{Scheme: "https", Host: "external-vitalserver.example.test", Port: 8443},
+		VitalServerArchiveCredentialReference:                 guestproductprocesssupervisordomain.GuestProductSecretReference{Kind: "vitalserver-library-credential", ID: "external-vitalserver-primary-library"},
+		VitalServerArchiveRequestTimeoutMilliseconds:          10000,
 	}
 }

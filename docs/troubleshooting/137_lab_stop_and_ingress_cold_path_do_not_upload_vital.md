@@ -80,3 +80,10 @@ evidence. Missing or invalid state is not an empty successful job list.
 
 - 2026-07-15: Split restartable Stop from terminal Finish, added explicit Product Lab finalization,
   recorder-scoped cold-path jobs, byte-window recovery, and current-job-only uploads.
+- 2026-07-19 Runtime Platform mapping: the Lab Runner exposes one terminal
+  `stop` effect. Guest Runtime persists the Runner-selected
+  `terminalArchivePolicy` and a receipt-bound `terminalArchiveIntent` before
+  dispatching Archive Export. The intent's `submitted` state means only that
+  an Archive operation exists; the separate `ExportReceipt` remains the sole
+  upload/index success evidence. A missing Runner policy is a decode failure,
+  never an implicit `no-export` choice.

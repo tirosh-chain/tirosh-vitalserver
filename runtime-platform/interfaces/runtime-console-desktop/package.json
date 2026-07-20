@@ -1,0 +1,28 @@
+{
+  "name": "@tirosh-chain/runtime-console-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "author": {
+    "name": "Tirosh Chain",
+    "email": "seungbae.ji@gmail.com"
+  },
+  "homepage": "https://github.com/tirosh-chain/vitalserver-runtime-platform",
+  "description": "Electron desktop shell for the VitalServer Runtime Console",
+  "main": "dist/runtime-console-main.cjs",
+  "dependencies": {
+    "@tirosh-chain/runtime-console-control-contract": "file:../runtime-console-control-contract",
+    "@tirosh-chain/runtime-console-web": "file:../runtime-console-web"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "start": "electron dist/runtime-console-main.cjs",
+    "package": "npm run build && node scripts/package.mjs --target all",
+    "package:macos": "npm run build && node scripts/package.mjs --target macos",
+    "package:windows": "npm run build && node scripts/package.mjs --target windows",
+    "package:linux": "npm run build && node scripts/package.mjs --target linux",
+    "package:linux-deb": "npm run build && node scripts/package.mjs --target linux-deb"
+  }
+}

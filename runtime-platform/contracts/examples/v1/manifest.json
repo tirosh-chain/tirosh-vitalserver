@@ -87,6 +87,11 @@
       "valid": true
     },
     {
+      "path": "valid/archive-export-provider.json",
+      "schema": "archive-export-provider.schema.json",
+      "valid": true
+    },
+    {
       "path": "valid/lab-session.json",
       "schema": "lab-resources.schema.json",
       "valid": true
@@ -237,6 +242,11 @@
       "valid": true
     },
     {
+      "path": "valid/release-delivery-plan-macos-unsigned.json",
+      "schema": "release-delivery-plan.schema.json",
+      "valid": true
+    },
+    {
       "path": "valid/release-delivery-proof-pending.json",
       "schema": "release-delivery-proof.schema.json",
       "valid": true
@@ -264,6 +274,11 @@
     {
       "path": "valid/product-update-specification.json",
       "schema": "product-update-specification.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/staged-update-layer-effect-receipt-succeeded.json",
+      "schema": "staged-update-layer-effect-receipt.schema.json",
       "valid": true
     },
     {
@@ -312,6 +327,31 @@
       "valid": true
     },
     {
+      "path": "valid/native-guest-machine-provisioning-configuration-linux.json",
+      "schema": "native-guest-machine-provisioning-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/native-guest-machine-provisioning-receipt-linux.json",
+      "schema": "native-guest-machine-provisioning-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/native-guest-artifact-manifest.json",
+      "schema": "native-guest-artifact-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-local-administration-endpoint-descriptor-unix.json",
+      "schema": "host-local-administration-endpoint-descriptor.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-local-administration-endpoint-descriptor-windows.json",
+      "schema": "host-local-administration-endpoint-descriptor.schema.json",
+      "valid": true
+    },
+    {
       "path": "valid/macos-guest-artifact-manifest.json",
       "schema": "macos-guest-artifact-manifest.schema.json",
       "valid": true
@@ -333,6 +373,11 @@
     },
     {
       "path": "valid/guest-product-vitalserver-topology-deployment-external.json",
+      "schema": "guest-product-vitalserver-topology-deployment.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-vitalserver-topology-deployment-bundled.json",
       "schema": "guest-product-vitalserver-topology-deployment.schema.json",
       "valid": true
     },
@@ -364,6 +409,16 @@
     {
       "path": "valid/guest-linux-boot-artifact-extraction-receipt.json",
       "schema": "guest-linux-boot-artifact-extraction-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-linux-source-disk-materialization-declaration.json",
+      "schema": "guest-linux-source-disk-materialization.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-linux-source-disk-materialization-receipt.json",
+      "schema": "guest-linux-source-disk-materialization.schema.json",
       "valid": true
     },
     {
@@ -492,6 +547,11 @@
       "valid": false
     },
     {
+      "path": "invalid/release-delivery-plan-macos-without-signature-policy.json",
+      "schema": "release-delivery-plan.schema.json",
+      "valid": false
+    },
+    {
       "path": "invalid/command-admission-failure-without-admission-state.json",
       "schema": "command-admission-failure.schema.json",
       "valid": false
@@ -504,6 +564,11 @@
     {
       "path": "invalid/product-update-specification-available-rollback-without-artifact.json",
       "schema": "product-update-specification.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/staged-update-layer-effect-receipt-failed-without-issue.json",
+      "schema": "staged-update-layer-effect-receipt.schema.json",
       "valid": false
     },
     {
@@ -542,6 +607,26 @@
       "valid": false
     },
     {
+      "path": "invalid/host-local-administration-endpoint-descriptor-remote.json",
+      "schema": "host-local-administration-endpoint-descriptor.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/operator-interface-bootstrap-configuration-unix.json",
+      "schema": "operator-interface-bootstrap-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/operator-interface-bootstrap-configuration-windows.json",
+      "schema": "operator-interface-bootstrap-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/operator-interface-bootstrap-configuration-with-remote-endpoint.json",
+      "schema": "operator-interface-bootstrap-configuration.schema.json",
+      "valid": false
+    },
+    {
       "path": "invalid/macos-guest-artifact-manifest-without-storage-digest.json",
       "schema": "macos-guest-artifact-manifest.schema.json",
       "valid": false
@@ -559,6 +644,11 @@
     {
       "path": "invalid/guest-linux-boot-artifact-extraction-declaration-with-partitioned-root.json",
       "schema": "guest-linux-boot-artifact-extraction-declaration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-linux-source-disk-materialization-declaration-with-raw-source.json",
+      "schema": "guest-linux-source-disk-materialization.schema.json",
       "valid": false
     },
     {
@@ -602,6 +692,11 @@
       "valid": true
     },
     {
+      "path": "invalid/host-product-installation-manifest-without-transaction-store.json",
+      "schema": "host-product-installation-manifest.schema.json",
+      "valid": false
+    },
+    {
       "path": "valid/host-installation-footprint-clean.json",
       "schema": "host-installation-footprint.schema.json",
       "valid": true
@@ -617,6 +712,11 @@
       "valid": true
     },
     {
+      "path": "valid/host-product-removal-receipt-purged.json",
+      "schema": "host-product-removal-lifecycle.schema.json",
+      "valid": true
+    },
+    {
       "path": "invalid/host-installation-unimplemented-uninstall-request.json",
       "schema": "host-installation-lifecycle.schema.json",
       "valid": false
@@ -624,6 +724,131 @@
     {
       "path": "invalid/host-installation-receipt-blocked-without-issue.json",
       "schema": "host-installation-lifecycle.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/host-update-handoff-supervisor-configuration.json",
+      "schema": "host-update-handoff-supervisor-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-update-handoff-dispatch-receipt-completion-submitted.json",
+      "schema": "host-update-handoff-dispatch-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-update-handoff-dispatch-receipt-submitted-with-issue.json",
+      "schema": "host-update-handoff-dispatch-receipt.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/host-update-trust-store.json",
+      "schema": "host-update-trust-store.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-update-trust-store-without-keys.json",
+      "schema": "host-update-trust-store.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/guest-product-release-manager-configuration.json",
+      "schema": "guest-product-release-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-release-update-command.json",
+      "schema": "guest-product-release-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-release-operation-succeeded.json",
+      "schema": "guest-product-release-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-release-effect-executor-configuration.json",
+      "schema": "guest-product-release-effect-executor-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-bundled-upstream-image-set-manager-configuration.json",
+      "schema": "guest-bundled-upstream-image-set-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-bundled-upstream-image-set-update-command.json",
+      "schema": "guest-bundled-upstream-image-set-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-bundled-upstream-image-set-operation-succeeded.json",
+      "schema": "guest-bundled-upstream-image-set-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-bundled-upstream-image-set-effect-executor-configuration.json",
+      "schema": "guest-bundled-upstream-image-set-effect-executor-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-platform-release-effect-executor-configuration.json",
+      "schema": "host-platform-release-effect-executor-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-platform-staged-release-update-succeeded.json",
+      "schema": "host-platform-staged-release-update.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-platform-staged-release-recovery-succeeded.json",
+      "schema": "host-platform-staged-release-update.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-archive-credential-material-availability-missing.json",
+      "schema": "guest-archive-credential-material-availability.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-archive-credential-material-provisioning-outcome.json",
+      "schema": "guest-archive-credential-material-provisioning-outcome.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/guest-product-release-update-command-without-artifact-digest.json",
+      "schema": "guest-product-release-management.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/host-service-execution-definition.json",
+      "schema": "host-service-execution-definition.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-service-execution-definition-with-relative-command.json",
+      "schema": "host-service-execution-definition.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/runtime-console-desktop-artifact-receipt-linux.json",
+      "schema": "runtime-console-desktop-artifact-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/operator-delivery-kit-manifest-linux.json",
+      "schema": "operator-delivery-kit-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/release-delivery-proof-attachment-review.json",
+      "schema": "release-delivery-proof-attachment-review.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/release-delivery-proof-attachment-review-verified-without-evidence.json",
+      "schema": "release-delivery-proof-attachment-review.schema.json",
       "valid": false
     }
   ]

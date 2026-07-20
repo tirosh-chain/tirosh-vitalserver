@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "effectExecutorId": "guest-bundled-upstream-image-set-effect-executor-030",
+  "imageSetManagerEndpoint": {
+    "scheme": "http",
+    "host": "127.0.0.1",
+    "port": 18445,
+    "path": "/v1/bundled-upstream-image-set-updates",
+    "requestTimeoutMilliseconds": 600000
+  },
+  "apply": {
+    "expectedActiveImageSet": { "state": "active", "imageSetId": "bundled-upstream-020" },
+    "targetImageSetId": "bundled-upstream-030"
+  },
+  "rollback": {
+    "expectedActiveImageSet": { "state": "active", "imageSetId": "bundled-upstream-030" },
+    "targetImageSetId": "bundled-upstream-020"
+  }
+}

@@ -37,6 +37,13 @@
           "name": "com.tirosh.vitalserver.host-edge-proxy",
           "registrationState": "registered",
           "observedAt": "2026-07-18T00:00:00Z"
+        },
+        {
+          "role": "host-update-handoff-supervisor",
+          "manager": "launchd",
+          "name": "com.tirosh.vitalserver.host-update-handoff-supervisor",
+          "registrationState": "registered",
+          "observedAt": "2026-07-18T00:00:00Z"
         }
       ]
     }

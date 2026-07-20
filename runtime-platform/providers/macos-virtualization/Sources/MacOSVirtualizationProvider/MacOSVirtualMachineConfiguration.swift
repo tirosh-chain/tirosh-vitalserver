@@ -14,6 +14,8 @@ public struct MacOSVirtualMachineConfigurationDocument: Codable, Equatable, Send
     public let guestBootConsoleCapture: GuestBootConsoleCapture
     public let guestRuntimeDiskProvisioning: GuestRuntimeDiskProvisioning
     public let guestRuntimeControlHostLocalHTTPBridge: GuestRuntimeControlHostLocalHTTPBridgeConfiguration
+    public let guestProductReleaseManagerHostLocalHTTPBridge: GuestProductReleaseManagerHostLocalHTTPBridgeConfiguration
+    public let guestBundledUpstreamImageSetManagerHostLocalHTTPBridge: GuestBundledUpstreamImageSetManagerHostLocalHTTPBridgeConfiguration?
     public let guestPublicServiceHostLocalHTTPBridges: [GuestPublicServiceHostLocalHTTPBridgeConfiguration]
     public let storageDevices: [MacOSVirtualMachineStorageDevice]
     public let network: MacOSVirtualMachineNetworkDevice
@@ -27,6 +29,8 @@ public struct MacOSVirtualMachineConfigurationDocument: Codable, Equatable, Send
         guestBootConsoleCapture: GuestBootConsoleCapture,
         guestRuntimeDiskProvisioning: GuestRuntimeDiskProvisioning,
         guestRuntimeControlHostLocalHTTPBridge: GuestRuntimeControlHostLocalHTTPBridgeConfiguration,
+        guestProductReleaseManagerHostLocalHTTPBridge: GuestProductReleaseManagerHostLocalHTTPBridgeConfiguration,
+        guestBundledUpstreamImageSetManagerHostLocalHTTPBridge: GuestBundledUpstreamImageSetManagerHostLocalHTTPBridgeConfiguration? = nil,
         guestPublicServiceHostLocalHTTPBridges: [GuestPublicServiceHostLocalHTTPBridgeConfiguration],
         storageDevices: [MacOSVirtualMachineStorageDevice],
         network: MacOSVirtualMachineNetworkDevice
@@ -39,6 +43,8 @@ public struct MacOSVirtualMachineConfigurationDocument: Codable, Equatable, Send
         self.guestBootConsoleCapture = guestBootConsoleCapture
         self.guestRuntimeDiskProvisioning = guestRuntimeDiskProvisioning
         self.guestRuntimeControlHostLocalHTTPBridge = guestRuntimeControlHostLocalHTTPBridge
+        self.guestProductReleaseManagerHostLocalHTTPBridge = guestProductReleaseManagerHostLocalHTTPBridge
+        self.guestBundledUpstreamImageSetManagerHostLocalHTTPBridge = guestBundledUpstreamImageSetManagerHostLocalHTTPBridge
         self.guestPublicServiceHostLocalHTTPBridges = guestPublicServiceHostLocalHTTPBridges
         self.storageDevices = storageDevices
         self.network = network
@@ -62,6 +68,13 @@ public struct MacOSVirtualMachineConfigurationDocument: Codable, Equatable, Send
         }
         guard guestRuntimeControlHostLocalHTTPBridge.validationMessage == nil else {
             return guestRuntimeControlHostLocalHTTPBridge.validationMessage
+        }
+        guard guestProductReleaseManagerHostLocalHTTPBridge.validationMessage == nil else {
+            return guestProductReleaseManagerHostLocalHTTPBridge.validationMessage
+        }
+        if let guestBundledUpstreamImageSetManagerHostLocalHTTPBridge,
+           let message = guestBundledUpstreamImageSetManagerHostLocalHTTPBridge.validationMessage {
+            return message
         }
         if let message = guestPublicServiceHostLocalHTTPBridgeValidationMessage {
             return message
@@ -95,8 +108,30 @@ public struct MacOSVirtualMachineConfigurationDocument: Codable, Equatable, Send
             return "at least one Guest public service Host-local HTTP bridge is required"
         }
         var routeIDs = Set<String>()
-        var hostLoopbackPorts = Set<UInt16>([guestRuntimeControlHostLocalHTTPBridge.hostLoopbackPort])
-        var guestVirtioSocketPorts = Set<UInt32>([guestRuntimeControlHostLocalHTTPBridge.guestVirtioSocketPort])
+        var hostLoopbackPorts = Set<UInt16>([
+            guestRuntimeControlHostLocalHTTPBridge.hostLoopbackPort,
+            guestProductReleaseManagerHostLocalHTTPBridge.hostLoopbackPort,
+        ])
+        guard hostLoopbackPorts.count == 2 else {
+            return "Guest Product Release Manager control Host-local HTTP bridge hostLoopbackPort cannot reuse Guest Runtime control"
+        }
+        if let bundledUpstreamBridge = guestBundledUpstreamImageSetManagerHostLocalHTTPBridge {
+            guard hostLoopbackPorts.insert(bundledUpstreamBridge.hostLoopbackPort).inserted else {
+                return "Guest Bundled Upstream Image-set Manager control Host-local HTTP bridge hostLoopbackPort cannot reuse another Host listener"
+            }
+        }
+        var guestVirtioSocketPorts = Set<UInt32>([
+            guestRuntimeControlHostLocalHTTPBridge.guestVirtioSocketPort,
+            guestProductReleaseManagerHostLocalHTTPBridge.guestVirtioSocketPort,
+        ])
+        guard guestVirtioSocketPorts.count == 2 else {
+            return "Guest Product Release Manager control Host-local HTTP bridge guestVirtioSocketPort cannot reuse Guest Runtime control"
+        }
+        if let bundledUpstreamBridge = guestBundledUpstreamImageSetManagerHostLocalHTTPBridge {
+            guard guestVirtioSocketPorts.insert(bundledUpstreamBridge.guestVirtioSocketPort).inserted else {
+                return "Guest Bundled Upstream Image-set Manager control Host-local HTTP bridge guestVirtioSocketPort cannot reuse another Guest listener"
+            }
+        }
         for bridge in guestPublicServiceHostLocalHTTPBridges {
             guard bridge.validationMessage == nil else {
                 return bridge.validationMessage
@@ -208,6 +243,61 @@ public struct GuestRuntimeControlHostLocalHTTPBridgeConfiguration: Codable, Equa
         guard guestVirtioSocketPort > 0, guestVirtioSocketPort <= UInt32(UInt16.max) else {
             return "Guest Runtime control Host-local HTTP bridge guestVirtioSocketPort must be between 1 and 65535"
         }
+        return nil
+    }
+}
+
+// GuestProductReleaseManagerHostLocalHTTPBridgeConfiguration names C59's
+// delivery boundary independently from C37 Guest Runtime control. Its HTTP
+// transport shape is identical, but its lifecycle is deliberately not: C59
+// remains reachable while a release restart replaces Guest Runtime.
+public struct GuestProductReleaseManagerHostLocalHTTPBridgeConfiguration: Codable, Equatable, Sendable {
+    public let hostLoopbackAddress: String
+    public let hostLoopbackPort: UInt16
+    public let guestVirtioSocketPort: UInt32
+
+    public init(
+        hostLoopbackAddress: String,
+        hostLoopbackPort: UInt16,
+        guestVirtioSocketPort: UInt32
+    ) {
+        self.hostLoopbackAddress = hostLoopbackAddress
+        self.hostLoopbackPort = hostLoopbackPort
+        self.guestVirtioSocketPort = guestVirtioSocketPort
+    }
+
+    fileprivate var validationMessage: String? {
+        guard hostLoopbackAddress == "127.0.0.1" else {
+            return "Guest Product Release Manager control Host-local HTTP bridge must bind 127.0.0.1"
+        }
+        guard hostLoopbackPort > 0 else {
+            return "Guest Product Release Manager control Host-local HTTP bridge hostLoopbackPort must be positive"
+        }
+        guard guestVirtioSocketPort > 0, guestVirtioSocketPort <= UInt32(UInt16.max) else {
+            return "Guest Product Release Manager control Host-local HTTP bridge guestVirtioSocketPort must be between 1 and 65535"
+        }
+        return nil
+    }
+}
+
+// GuestBundledUpstreamImageSetManagerHostLocalHTTPBridgeConfiguration names
+// C64's optional Host-local control transport. It remains separate from C59:
+// a Guest Product code restart must not own or disguise container image state.
+public struct GuestBundledUpstreamImageSetManagerHostLocalHTTPBridgeConfiguration: Codable, Equatable, Sendable {
+    public let hostLoopbackAddress: String
+    public let hostLoopbackPort: UInt16
+    public let guestVirtioSocketPort: UInt32
+
+    public init(hostLoopbackAddress: String, hostLoopbackPort: UInt16, guestVirtioSocketPort: UInt32) {
+        self.hostLoopbackAddress = hostLoopbackAddress
+        self.hostLoopbackPort = hostLoopbackPort
+        self.guestVirtioSocketPort = guestVirtioSocketPort
+    }
+
+    fileprivate var validationMessage: String? {
+        guard hostLoopbackAddress == "127.0.0.1" else { return "Guest Bundled Upstream Image-set Manager control Host-local HTTP bridge must bind 127.0.0.1" }
+        guard hostLoopbackPort > 0 else { return "Guest Bundled Upstream Image-set Manager control Host-local HTTP bridge hostLoopbackPort must be positive" }
+        guard guestVirtioSocketPort > 0, guestVirtioSocketPort <= UInt32(UInt16.max) else { return "Guest Bundled Upstream Image-set Manager control Host-local HTTP bridge guestVirtioSocketPort must be between 1 and 65535" }
         return nil
     }
 }
@@ -474,6 +564,18 @@ public enum MacOSVirtualMachineFactory {
                     guestRuntimeVirtualMachineOperationQueue: guestRuntimeVirtualMachineOperationQueue
                 )
             }
+            let guestProductReleaseManagerHostLocalHTTPBridge = GuestProductReleaseManagerHostLocalHTTPBridge(
+                configuration: document.guestProductReleaseManagerHostLocalHTTPBridge,
+                guestVirtioSocketDevice: guestRuntimeControlVirtioSocketDevice,
+                guestRuntimeVirtualMachineOperationQueue: guestRuntimeVirtualMachineOperationQueue
+            )
+            let guestBundledUpstreamImageSetManagerHostLocalHTTPBridge = document.guestBundledUpstreamImageSetManagerHostLocalHTTPBridge.map {
+                GuestBundledUpstreamImageSetManagerHostLocalHTTPBridge(
+                    configuration: $0,
+                    guestVirtioSocketDevice: guestRuntimeControlVirtioSocketDevice,
+                    guestRuntimeVirtualMachineOperationQueue: guestRuntimeVirtualMachineOperationQueue
+                )
+            }
             return AppleVirtualMachineController(
                 virtualMachine: virtualMachine,
                 guestRuntimeVirtualMachineOperationQueue: guestRuntimeVirtualMachineOperationQueue,
@@ -482,6 +584,8 @@ public enum MacOSVirtualMachineFactory {
                     guestRuntimeControlVirtioSocketDevice: guestRuntimeControlVirtioSocketDevice,
                     guestRuntimeVirtualMachineOperationQueue: guestRuntimeVirtualMachineOperationQueue
                 ),
+                guestProductReleaseManagerHostLocalHTTPBridge: guestProductReleaseManagerHostLocalHTTPBridge,
+                guestBundledUpstreamImageSetManagerHostLocalHTTPBridge: guestBundledUpstreamImageSetManagerHostLocalHTTPBridge,
                 guestPublicServiceHostLocalHTTPBridges: guestPublicServiceHostLocalHTTPBridges,
                 guestBootConsoleCaptureFileHandle: guestBootConsoleCaptureFileHandle
             )

@@ -2,6 +2,7 @@
   "schemaVersion": "v1",
   "compilationId": "guest-artifact-build-0.1.0-dev",
   "artifactSetId": "vitalserver-guest-arm64-0.1.0-dev",
+  "architecture": "arm64",
   "compilationCommandSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
   "buildEnvironment": {
     "id": "vitalserver-guest-rootfs-builder",
@@ -12,7 +13,7 @@
     { "id": "linux-arm64-kernel", "sizeBytes": 1024, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
     { "id": "linux-arm64-initrd", "sizeBytes": 2048, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
     { "id": "guest-runtime-linux-arm64", "sizeBytes": 3072, "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
-    { "id": "recorder-gateway-linux-arm64", "sizeBytes": 4096, "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+    { "id": "guest-node-services-linux-arm64", "sizeBytes": 4096, "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
     { "id": "guest-product-process-supervisor-linux-arm64", "sizeBytes": 3072, "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" },
     { "id": "guest-product-process-deployment-configuration", "sizeBytes": 512, "sha256": "1111111111111111111111111111111111111111111111111111111111111111" },
     { "id": "guest-product-service-manager-deployment-configuration", "sizeBytes": 512, "sha256": "2222222222222222222222222222222222222222222222222222222222222222" },

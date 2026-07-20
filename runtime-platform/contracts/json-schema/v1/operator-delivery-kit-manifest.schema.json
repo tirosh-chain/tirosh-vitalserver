@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:operator-delivery-kit-manifest",
+  "title": "OperatorDeliveryKitManifest",
+  "description": "C72 Release-process-owned immutable delivery-set manifest for exactly one Host installer and one separately installed Runtime Console desktop artifact. It records byte identity and the only supported installation order, but it is not installation, update, or clean-host proof.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseSetId",
+    "releaseDeliveryPlan",
+    "hostInstallerArtifact",
+    "runtimeConsoleArtifactReceipt",
+    "operatorInterfaceBootstrap",
+    "installationOrder"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "releaseSetId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "releaseDeliveryPlan": {
+      "$ref": "#/$defs/ReleaseDeliveryPlanReference"
+    },
+    "hostInstallerArtifact": {
+      "$ref": "#/$defs/HostInstallerArtifact"
+    },
+    "runtimeConsoleArtifactReceipt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:runtime-console-desktop-artifact-receipt"
+    },
+    "operatorInterfaceBootstrap": {
+      "$ref": "#/$defs/OperatorInterfaceBootstrapIdentity"
+    },
+    "installationOrder": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        { "const": "host-installer" },
+        { "const": "runtime-console" }
+      ],
+      "items": false
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "releaseDeliveryPlan": { "properties": { "platform": { "const": "macos" } }, "required": ["platform"] } }, "required": ["releaseDeliveryPlan"] },
+      "then": {
+        "properties": {
+          "hostInstallerArtifact": { "properties": { "kind": { "const": "pkg" } }, "required": ["kind"] },
+          "runtimeConsoleArtifactReceipt": { "properties": { "artifact": { "properties": { "platform": { "const": "macos" }, "kind": { "const": "dmg" } }, "required": ["platform", "kind"] } }, "required": ["artifact"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "releaseDeliveryPlan": { "properties": { "platform": { "const": "windows" } }, "required": ["platform"] } }, "required": ["releaseDeliveryPlan"] },
+      "then": {
+        "properties": {
+          "hostInstallerArtifact": { "properties": { "kind": { "const": "msi" } }, "required": ["kind"] },
+          "runtimeConsoleArtifactReceipt": { "properties": { "artifact": { "properties": { "platform": { "const": "windows" }, "kind": { "const": "nsis-exe" } }, "required": ["platform", "kind"] } }, "required": ["artifact"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "releaseDeliveryPlan": { "properties": { "platform": { "const": "linux" } }, "required": ["platform"] } }, "required": ["releaseDeliveryPlan"] },
+      "then": {
+        "properties": {
+          "hostInstallerArtifact": { "properties": { "kind": { "const": "deb" } }, "required": ["kind"] },
+          "runtimeConsoleArtifactReceipt": { "properties": { "artifact": { "properties": { "platform": { "const": "linux" }, "kind": { "enum": ["appimage", "deb"] } }, "required": ["platform", "kind"] } }, "required": ["artifact"] }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "SafeArtifactFileName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[^/\\\\\u0000]+$",
+      "not": { "enum": [".", ".."] }
+    },
+    "ReleaseDeliveryPlanReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planId", "productVersion", "platform", "providerKind"],
+      "properties": {
+        "planId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "productVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "platform": { "type": "string", "enum": ["macos", "windows", "linux"] },
+        "providerKind": { "type": "string", "enum": ["macos-virtualization", "windows-hyperv-scm", "linux-kvm-libvirt-systemd"] }
+      }
+    },
+    "HostInstallerArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "fileName", "sha256", "sizeBytes"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["pkg", "msi", "deb"] },
+        "fileName": { "$ref": "#/$defs/SafeArtifactFileName" },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "OperatorInterfaceBootstrapIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractId", "schemaVersion", "sha256"],
+      "properties": {
+        "contractId": { "const": "C53" },
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    }
+  }
+}

@@ -38,3 +38,10 @@ Feature: Installable product update foundation
     When the next updater instead returns explicit unsupported evidence with rollback evidence
     Then the Host preserves it as a typed terminal failure
     And the installed release revision is unchanged
+
+  Scenario: A Guest Product update bundle has one explicit activation boundary
+    Given the release process selects immutable macOS arm64 next-updater, Guest Product archive, C55 executor, and reverse rollback archive bytes
+    When it composes C61 and C26 before the generic release signer creates C25
+    Then C26 names only payload-relative bytes with calculated immutable identities
+    And C61 names only the Host-loopback C32 bridge and the C59 compare-and-swap release transitions
+    And neither release composition nor C25 signing activates Guest state

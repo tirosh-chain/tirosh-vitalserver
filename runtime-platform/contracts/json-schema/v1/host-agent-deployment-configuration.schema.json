@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-agent-deployment-configuration",
   "title": "HostAgentDeploymentConfiguration",
-  "description": "C33 Host-owned deployment document for one Host Agent service instance. It supplies every runtime path, configured Guest Runtime Control endpoint, selected provider input, time/telemetry mode, and update-bootstrap mode. The service process must not derive omitted inputs from installation layout or command-line defaults.",
+  "description": "C33 Host-owned deployment document for one Host Agent service instance. It supplies every runtime path, OS-local administration listener and authorization policy, configured Guest Runtime Control endpoint, selected provider input, time/telemetry mode, and update-bootstrap mode. The service process must not derive omitted inputs from installation layout, environment, or command-line defaults.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "control", "installation", "guestRuntimeControlEndpoint", "provider", "time", "telemetry", "updateBootstrap"],
@@ -26,18 +26,83 @@
     "SafeHostAbsolutePath": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^/[^\\\\]*$",
-      "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+      "anyOf": [
+        {
+          "pattern": "^/[^\\\\]*$",
+          "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+        },
+        {
+          "pattern": "^[A-Za-z]:[\\\\/][^\\u0000]*$",
+          "not": { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" }
+        }
+      ]
     },
     "HostAgentControl": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["listenAddress", "stateDatabasePath", "guestTimeoutMilliseconds"],
+      "required": ["localAdministration", "loopbackHTTP", "stateDatabasePath", "guestTimeoutMilliseconds"],
       "properties": {
-        "listenAddress": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "localAdministration": { "$ref": "#/$defs/HostLocalAdministrationConfiguration" },
+        "loopbackHTTP": { "$ref": "#/$defs/HostAgentLoopbackHTTPConfiguration" },
         "stateDatabasePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
         "guestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 120000 }
       }
+    },
+    "HostLocalAdministrationConfiguration": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["transport", "endpointAddress", "descriptorPath", "authorizedUserId"],
+          "properties": {
+            "transport": { "const": "unix-domain-socket" },
+            "endpointAddress": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 104,
+              "pattern": "^/[^\\\\]*$",
+              "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+            },
+            "descriptorPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+            "authorizedUserId": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["transport", "endpointAddress", "descriptorPath", "securityDescriptor"],
+          "properties": {
+            "transport": { "const": "windows-named-pipe" },
+            "endpointAddress": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 256,
+              "pattern": "^\\\\\\\\\\.\\\\pipe\\\\[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "descriptorPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+            "securityDescriptor": { "type": "string", "minLength": 3, "maxLength": 4096, "pattern": "^D:" }
+          }
+        }
+      ]
+    },
+    "HostAgentLoopbackHTTPConfiguration": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": { "mode": { "const": "disabled" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "listenAddress"],
+          "properties": {
+            "mode": { "const": "development-loopback" },
+            "listenAddress": { "type": "string", "minLength": 1, "maxLength": 255 }
+          }
+        }
+      ]
     },
     "HostInstallationConfiguration": {
       "type": "object",
@@ -75,7 +140,9 @@
         "macOSVirtualMachineSupervisorExecutablePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
         "macOSVirtualMachineConfigurationPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
         "nativeVirtualMachineName": { "$ref": "#/$defs/DeploymentIdentifier" },
-        "hostServiceName": { "$ref": "#/$defs/DeploymentIdentifier" }
+        "hostServiceName": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "nativeGuestMachineOwnership": { "type": "string", "enum": ["runtime-platform-provisioned", "externally-provisioned"] },
+        "nativeGuestMachineProvisioningConfigurationPath": { "$ref": "#/$defs/SafeHostAbsolutePath" }
       },
       "allOf": [
         {
@@ -86,7 +153,9 @@
               "anyOf": [
                 { "required": ["nativeProviderBridgeExecutablePath"] },
                 { "required": ["nativeVirtualMachineName"] },
-                { "required": ["hostServiceName"] }
+                { "required": ["hostServiceName"] },
+                { "required": ["nativeGuestMachineOwnership"] },
+                { "required": ["nativeGuestMachineProvisioningConfigurationPath"] }
               ]
             }
           }
@@ -94,38 +163,82 @@
         {
           "if": { "properties": { "kind": { "enum": ["windows-hyperv-scm", "linux-kvm-libvirt-systemd"] } }, "required": ["kind"] },
           "then": {
-            "required": ["nativeProviderBridgeExecutablePath", "nativeVirtualMachineName", "hostServiceName"],
+            "required": ["nativeProviderBridgeExecutablePath", "nativeVirtualMachineName", "hostServiceName", "nativeGuestMachineOwnership"],
             "not": {
               "anyOf": [
                 { "required": ["macOSVirtualMachineConfigurationPath"] },
                 { "required": ["macOSVirtualMachineSupervisorExecutablePath"] }
               ]
-            }
+            },
+            "oneOf": [
+              {
+                "properties": { "nativeGuestMachineOwnership": { "const": "runtime-platform-provisioned" } },
+                "required": ["nativeGuestMachineOwnership", "nativeGuestMachineProvisioningConfigurationPath"]
+              },
+              {
+                "properties": { "nativeGuestMachineOwnership": { "const": "externally-provisioned" } },
+                "required": ["nativeGuestMachineOwnership"],
+                "not": { "required": ["nativeGuestMachineProvisioningConfigurationPath"] }
+              }
+            ]
           }
         }
       ]
     },
     "HostTimeConfiguration": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["hostNodeId", "timeAuthorityId", "providerMode"],
-      "properties": {
-        "hostNodeId": { "$ref": "#/$defs/DeploymentIdentifier" },
-        "timeAuthorityId": { "$ref": "#/$defs/DeploymentIdentifier" },
-        "providerMode": {
-          "type": "string",
-          "enum": ["synchronized", "synchronizing", "unsynchronized", "stale", "failed", "unsupported", "outcome-unknown"]
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hostNodeId", "timeAuthorityId", "kind", "providerMode"],
+          "properties": {
+            "hostNodeId": { "$ref": "#/$defs/DeploymentIdentifier" },
+            "timeAuthorityId": { "$ref": "#/$defs/DeploymentIdentifier" },
+            "kind": { "const": "time-authority-outcome-profile" },
+            "providerMode": { "type": "string", "enum": ["synchronized", "synchronizing", "unsynchronized", "stale", "failed", "unsupported", "outcome-unknown"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hostNodeId", "timeAuthorityId", "kind", "ntpServerAddress", "sourceProfile", "sourceId", "requestTimeoutMilliseconds", "maximumOffsetMilliseconds", "maximumUncertaintyMilliseconds"],
+          "properties": {
+            "hostNodeId": { "$ref": "#/$defs/DeploymentIdentifier" },
+            "timeAuthorityId": { "$ref": "#/$defs/DeploymentIdentifier" },
+            "kind": { "const": "ntp-udp-quality-probe" },
+            "ntpServerAddress": { "type": "string", "minLength": 3, "maxLength": 255, "pattern": "^.+:[0-9]{1,5}$" },
+            "sourceProfile": { "type": "string", "enum": ["enterprise-ntp", "helper-ntp"] },
+            "sourceId": { "$ref": "#/$defs/DeploymentIdentifier" },
+            "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 60000 },
+            "maximumOffsetMilliseconds": { "type": "number", "minimum": 0 },
+            "maximumUncertaintyMilliseconds": { "type": "number", "minimum": 0 }
+          }
         }
-      }
+      ]
     },
     "HostTelemetryConfiguration": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["pipelineMode", "exportMode"],
-      "properties": {
-        "pipelineMode": { "type": "string", "enum": ["ready", "unavailable", "failed", "unsupported", "outcome-unknown"] },
-        "exportMode": { "type": "string", "enum": ["exported", "dropped", "unavailable", "failed", "outcome-unknown"] }
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "pipelineMode", "exportMode"],
+          "properties": {
+            "kind": { "const": "telemetry-export-outcome-profile" },
+            "pipelineMode": { "type": "string", "enum": ["ready", "unavailable", "failed", "unsupported", "outcome-unknown"] },
+            "exportMode": { "type": "string", "enum": ["exported", "dropped", "unavailable", "failed", "outcome-unknown"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "collectorBaseEndpoint", "requestTimeoutMilliseconds"],
+          "properties": {
+            "kind": { "const": "otlp-http" },
+            "collectorBaseEndpoint": { "type": "string", "minLength": 1, "pattern": "^https?://[^/?#]+/?$" },
+            "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 60000 }
+          }
+        }
+      ]
     },
     "HostUpdateBootstrapConfiguration": {
       "oneOf": [

@@ -5,7 +5,7 @@
   "instanceId": "vitalserver-guest-bootstrap-instance",
   "localHostName": "vitalserver-guest",
   "guestRuntime": { "artifactId": "guest-runtime-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-runtime", "fileMode": "0755" },
-  "recorderGatewayBundle": { "artifactId": "recorder-gateway-linux-arm64", "archiveFormat": "tar-gzip", "entryModePolicy": "preserve-archive-mode", "symbolicLinkPolicy": "allow-relative-links-to-declared-regular-files", "destinationDirectory": "/opt/vitalserver", "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js"] },
+  "guestNodeServicesBundle": { "artifactId": "guest-node-services-linux-arm64", "archiveFormat": "tar-gzip", "entryModePolicy": "preserve-archive-mode", "symbolicLinkPolicy": "allow-relative-links-to-declared-regular-files", "destinationDirectory": "/opt/vitalserver", "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js", "lab-recorder-runner/dist/cmd/lab-recorder-runner.js", "lab-recorder-runner/lab-scenario-catalog.json"] },
   "guestProductProcessSupervisor": { "artifactId": "guest-product-process-supervisor-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-product-process-supervisor", "fileMode": "0755" },
   "guestProductProcessDeployment": { "artifactId": "guest-product-process-deployment-configuration", "destinationPath": "/etc/vitalserver/guest-product-process-deployment.json", "fileMode": "0644" },
   "guestProductVitalServerTopologyDeployment": { "artifactId": "guest-product-vitalserver-topology-deployment", "destinationPath": "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json", "fileMode": "0644" },

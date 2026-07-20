@@ -22,7 +22,11 @@ class RecorderGatewayAcceptance(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.contracts = ContractRepository(ROOT)
         cls.contracts.load()
-        for command in ([NPM, "ci"], [NPM, "run", "build"]):
+        # The acceptance fixture builds TypeScript before it starts the public
+        # Recorder protocol scenario. It therefore declares development tools
+        # as an input rather than inheriting an ambient npm production/omit
+        # policy that would make the same command unavailable.
+        for command in ([NPM, "ci", "--include=dev"], [NPM, "run", "build"]):
             completed = subprocess.run(command, cwd=GATEWAY, capture_output=True, text=True, check=False)
             if completed.returncode != 0:
                 raise AssertionError("Gateway command failed: {0}\n{1}\n{2}".format(" ".join(command), completed.stdout, completed.stderr))

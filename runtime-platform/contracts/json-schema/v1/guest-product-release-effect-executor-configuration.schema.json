@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-release-effect-executor-configuration",
+  "title": "GuestProductReleaseEffectExecutorConfiguration",
+  "description": "C61 immutable release-owned desired input for the C26 Guest Product release effect executor. It declares the exact Host-local C32 bridge and the apply/rollback C59 current-release compare-and-swap commands. The staged Host updater verifies this document as a C26 effect-executor configuration artifact but does not decode it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "effectExecutorId", "guestProductReleaseManagerEndpoint", "apply"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "effectExecutorId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "guestProductReleaseManagerEndpoint": { "$ref": "#/$defs/GuestProductReleaseManagerEndpoint" },
+    "apply": { "$ref": "#/$defs/ReleaseOperationIntent" },
+    "rollback": { "$ref": "#/$defs/ReleaseOperationIntent" }
+  },
+  "$defs": {
+    "AbsoluteGuestReleasePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/opt/vitalserver/releases/[A-Za-z0-9._-]+$"
+    },
+    "GuestProductReleaseManagerEndpoint": {
+      "description": "The C32 Host-loopback-to-C59 AF_VSOCK endpoint. It is local-only and has no guest-IP or public-network fallback.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port", "path", "requestTimeoutMilliseconds"],
+      "properties": {
+        "scheme": { "const": "http" },
+        "host": { "const": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "path": { "const": "/v1/guest-product-release-updates" },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 900000 }
+      }
+    },
+    "ReleaseOperationIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedActiveReleaseId", "targetReleaseId", "targetReleaseDirectory"],
+      "properties": {
+        "expectedActiveReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "targetReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "targetReleaseDirectory": { "$ref": "#/$defs/AbsoluteGuestReleasePath" }
+      }
+    }
+  }
+}

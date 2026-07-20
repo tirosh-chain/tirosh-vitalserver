@@ -53,10 +53,18 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$"
     },
+    "macOSInstallerSignaturePolicy": {
+      "description": "The release-process-owned macOS Installer signature state that C23 requires C24 to observe. unsigned permits a deliberately unsigned PKG only when pkgutil explicitly reports Status: no signature; developer-id requires an accepted Apple Developer ID Installer signature. Neither policy is inferred from a build host or installer exit code.",
+      "type": "string",
+      "enum": [
+        "unsigned",
+        "developer-id"
+      ]
+    },
     "requiredHostServiceRegistrations": {
       "type": "array",
-      "minItems": 2,
-      "maxItems": 2,
+      "minItems": 3,
+      "maxItems": 3,
       "items": {
         "$ref": "#/$defs/RequiredHostServiceRegistration"
       },
@@ -82,6 +90,21 @@
             "properties": {
               "role": {
                 "const": "host-edge-proxy"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-update-handoff-supervisor"
               }
             },
             "required": [
@@ -116,13 +139,23 @@
       },
       "then": {
         "required": [
-          "macOSInstallerPackageIdentifier"
+          "macOSInstallerPackageIdentifier",
+          "macOSInstallerSignaturePolicy"
         ]
       },
       "else": {
         "not": {
-          "required": [
-            "macOSInstallerPackageIdentifier"
+          "anyOf": [
+            {
+              "required": [
+                "macOSInstallerPackageIdentifier"
+              ]
+            },
+            {
+              "required": [
+                "macOSInstallerSignaturePolicy"
+              ]
+            }
           ]
         }
       }
@@ -169,7 +202,8 @@
           "type": "string",
           "enum": [
             "host-agent",
-            "host-edge-proxy"
+            "host-edge-proxy",
+            "host-update-handoff-supervisor"
           ]
         },
         "manager": {

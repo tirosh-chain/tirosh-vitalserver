@@ -26,8 +26,30 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.host_agent_binary = self.write_file("artifacts/host-agent", b"host-agent")
         self.host_edge_proxy_binary = self.write_file("artifacts/host-edge-proxy", b"host-edge-proxy")
         self.host_installation_manager_binary = self.write_file("artifacts/host-installation-manager", b"host-installation-manager")
+        self.host_update_handoff_supervisor_binary = self.write_file(
+            "artifacts/host-update-handoff-supervisor",
+            b"host-update-handoff-supervisor",
+        )
+        self.platformctl_binary = self.write_file("artifacts/platformctl", b"platformctl")
         self.macos_virtual_machine_supervisor_binary = self.write_file("artifacts/macos-virtual-machine-supervisor", b"virtual-machine-supervisor")
         self.guest_product_process_supervisor_artifact = self.write_file("artifacts/guest-product-process-supervisor", b"guest-product-process-supervisor")
+        self.guest_bundled_upstream_image_set_manager_artifact = self.write_file(
+            "artifacts/guest-bundled-upstream-image-set-manager",
+            b"guest-bundled-upstream-image-set-manager",
+        )
+        self.guest_product_release_manager_artifact = self.write_file(
+            "artifacts/guest-product-release-manager", b"guest-product-release-manager"
+        )
+        self.guest_product_release_manager_configuration_artifact = self.write_file(
+            "artifacts/guest-product-release-manager.json",
+            b'{"schemaVersion":"v1"}',
+        )
+        self.guest_telemetry_collector_artifact = self.write_file(
+            "artifacts/guest-telemetry-collector", b"guest-telemetry-collector"
+        )
+        self.guest_telemetry_collector_configuration_artifact = self.write_file(
+            "artifacts/guest-telemetry-collector.yaml", b"receivers: {}\n"
+        )
         self.guest_kernel = self.write_file("artifacts/Image", b"kernel")
         self.guest_initial_ramdisk = self.write_file("artifacts/initrd.img", b"initrd")
         self.guest_root_storage = self.write_file("artifacts/guest-root.raw", b"root disk")
@@ -42,7 +64,10 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         )
         self.c32_path = self.root / "configuration" / "macos-virtual-machine.json"
         self.c33_path = self.root / "configuration" / "host-agent-deployment.json"
+        self.c53_path = self.root / "configuration" / "operator-interface-bootstrap.json"
         self.c36_path = self.root / "configuration" / "host-edge-proxy-deployment.json"
+        self.c56_path = self.root / "configuration" / "host-update-handoff-supervisor-configuration.json"
+        self.c58_path = self.root / "configuration" / "update-trust-store.json"
         self.c34_path = self.root / "configuration" / "macos-guest-artifact-manifest.json"
         self.c35_receipt_path = self.root / "configuration" / "guest-artifact-compilation-receipt.json"
         self.c37_path = self.root / "configuration" / "guest-product-process-deployment.json"
@@ -50,12 +75,23 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.c39_path = self.root / "configuration" / "guest-product-bootstrap-configuration.json"
         self.c44_path = self.root / "configuration" / "guest-product-vitalserver-topology-deployment.json"
         self.c46_path = self.root / "configuration" / "external-vitalserver-delivery-configuration.json"
+        self.c64_path = (
+            self.root
+            / "configuration"
+            / "guest-bundled-upstream-image-set-manager-configuration.json"
+        )
         self.release_delivery_plans_document_path = (
             self.root / "configuration" / "release-delivery-plans.json"
         )
         self.write_json(self.c32_path, self.virtual_machine_document())
         self.write_json(self.c33_path, self.host_agent_deployment_document())
+        self.write_json(self.c53_path, self.operator_interface_bootstrap_configuration_document())
         self.write_json(self.c36_path, self.host_edge_proxy_deployment_document())
+        self.write_json(
+            self.c56_path,
+            self.host_update_handoff_supervisor_configuration_document(),
+        )
+        self.write_json(self.c58_path, self.host_update_trust_store_document())
         self.write_json(self.c34_path, self.guest_artifact_manifest_document())
         self.write_json(self.c37_path, self.guest_product_process_deployment_document())
         self.write_json(self.c38_path, self.guest_product_service_manager_deployment_document())
@@ -115,6 +151,11 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 "hostLoopbackPort": 18443,
                 "guestVirtioSocketPort": 18443,
             },
+            "guestProductReleaseManagerHostLocalHTTPBridge": {
+                "hostLoopbackAddress": "127.0.0.1",
+                "hostLoopbackPort": 18444,
+                "guestVirtioSocketPort": 18444,
+            },
             "guestPublicServiceHostLocalHTTPBridges": [
                 {
                     "routeId": "recorder-gateway",
@@ -149,7 +190,13 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         return {
             "schemaVersion": "v1",
             "control": {
-                "listenAddress": "127.0.0.1:18280",
+                "localAdministration": {
+                    "transport": "unix-domain-socket",
+                    "endpointAddress": "/var/lib/vitalserver/control/host-agent.sock",
+                    "descriptorPath": "/var/lib/vitalserver/control/host-agent.local.json",
+                    "authorizedUserId": 501,
+                },
+                "loopbackHTTP": {"mode": "disabled"},
                 "stateDatabasePath": "/var/lib/vitalserver/host-agent/host-agent.sqlite",
                 "guestTimeoutMilliseconds": 5000,
             },
@@ -167,8 +214,48 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 "macOSVirtualMachineConfigurationPath": str(self.current_release_path / "config" / "macos-virtual-machine.json"),
             },
             "time": {"hostNodeId": "vitalserver-macos-host", "timeAuthorityId": "vitalserver-host-time", "providerMode": "unsupported"},
-            "telemetry": {"pipelineMode": "unsupported", "exportMode": "unavailable"},
-            "updateBootstrap": {"mode": "unavailable"},
+            "telemetry": {"kind": "telemetry-export-outcome-profile", "pipelineMode": "unsupported", "exportMode": "unavailable"},
+            "updateBootstrap": {
+                "mode": "staged",
+                "bundleStoreDirectory": "/var/lib/vitalserver/data/update-bundles",
+                "stagingDirectory": "/var/lib/vitalserver/data/update-staging",
+                "trustStorePath": str(
+                    self.current_release_path / "config" / "update-trust-store.json"
+                ),
+            },
+        }
+
+    def operator_interface_bootstrap_configuration_document(self) -> dict:
+        return {
+            "schemaVersion": "v1",
+            "bootstrapConfigurationPath": "/var/lib/vitalserver/control/runtime-console-bootstrap.json",
+            "localAdministrationDescriptorPath": "/var/lib/vitalserver/control/host-agent.local.json",
+        }
+
+    def host_update_handoff_supervisor_configuration_document(self) -> dict:
+        return {
+            "schemaVersion": "v1",
+            "id": "vitalserver-macos-update-handoff-supervisor",
+            "stagingDirectory": "/var/lib/vitalserver/data/update-staging",
+            "handoffQueueDirectory": "/var/lib/vitalserver/data/update-staging/handoff-queue",
+            "executionEvidenceDirectory": "/var/lib/vitalserver/data/update-execution",
+            "layerEffectReceiptDirectory": "/var/lib/vitalserver/data/update-layer-effects",
+            "hostLocalAdministrationDescriptorPath": "/var/lib/vitalserver/control/host-agent.local.json",
+            "layerEffectTimeoutMilliseconds": 300000,
+            "completionTimeoutMilliseconds": 30000,
+            "servicePollIntervalMilliseconds": 1000,
+        }
+
+    def host_update_trust_store_document(self) -> dict:
+        return {
+            "schemaVersion": "v1",
+            "keys": [
+                {
+                    "id": "vitalserver-test-update-key",
+                    "algorithm": "ed25519",
+                    "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                }
+            ],
         }
 
     def release_delivery_plans_document(self) -> dict:
@@ -186,6 +273,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                         "expectedName": "VitalServerRuntimePlatform-0.1.0-dev.pkg",
                     },
                     "macOSInstallerPackageIdentifier": "com.tirosh.vitalserver.runtime-platform",
+                    "macOSInstallerSignaturePolicy": "unsigned",
                     "requiredHostServiceRegistrations": [
                         {
                             "role": "host-agent",
@@ -196,6 +284,11 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                             "role": "host-edge-proxy",
                             "manager": "launchd",
                             "name": "com.tirosh.vitalserver.host-edge-proxy",
+                        },
+                        {
+                            "role": "host-update-handoff-supervisor",
+                            "manager": "launchd",
+                            "name": "com.tirosh.vitalserver.host-update-handoff-supervisor",
                         },
                     ],
                     "requiredProofStages": [
@@ -268,6 +361,15 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         product_document_path = Path(__file__).resolve().parents[2] / "product" / "guest-product" / "external-vitalserver-delivery-configuration.reference.v1.json"
         return json.loads(product_document_path.read_text(encoding="utf-8"))
 
+    def bundled_vitalserver_product_document(self, file_name: str) -> dict:
+        product_document_path = (
+            Path(__file__).resolve().parents[2]
+            / "product"
+            / "guest-product"
+            / file_name
+        )
+        return json.loads(product_document_path.read_text(encoding="utf-8"))
+
     def macos_virtualization_external_vitalserver_reference_deployment_document(
         self,
         file_name: str,
@@ -301,9 +403,25 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 consumed("linux-arm64-kernel", self.guest_kernel),
                 consumed("linux-arm64-initrd", self.guest_initial_ramdisk),
                 consumed("guest-runtime-linux-arm64", self.host_agent_binary),
-                consumed("recorder-gateway-linux-arm64", self.macos_virtual_machine_supervisor_binary),
+                consumed(
+                    "guest-telemetry-collector-linux-arm64",
+                    self.guest_telemetry_collector_artifact,
+                ),
+                consumed(
+                    "guest-telemetry-collector-configuration",
+                    self.guest_telemetry_collector_configuration_artifact,
+                ),
+                consumed("guest-node-services-linux-arm64", self.macos_virtual_machine_supervisor_binary),
                 consumed("guest-product-process-supervisor-linux-arm64", self.guest_product_process_supervisor_artifact),
                 consumed("guest-product-process-deployment-configuration", self.c37_path),
+                consumed(
+                    "guest-product-release-manager-linux-arm64",
+                    self.guest_product_release_manager_artifact,
+                ),
+                consumed(
+                    "guest-product-release-manager-configuration",
+                    self.guest_product_release_manager_configuration_artifact,
+                ),
                 consumed("guest-product-service-manager-deployment-configuration", self.c38_path),
                 consumed("guest-product-bootstrap-configuration", self.c39_path),
                 consumed("guest-product-vitalserver-topology-deployment", self.c44_path),
@@ -327,9 +445,16 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             host_agent_binary=self.host_agent_binary,
             host_edge_proxy_binary=self.host_edge_proxy_binary,
             host_installation_manager_binary=self.host_installation_manager_binary,
+            host_update_handoff_supervisor_binary=(
+                self.host_update_handoff_supervisor_binary
+            ),
+            platformctl_binary=self.platformctl_binary,
             macos_virtual_machine_supervisor_binary=self.macos_virtual_machine_supervisor_binary,
             host_agent_deployment_configuration=self.c33_path,
+            operator_interface_bootstrap_configuration=self.c53_path,
             host_edge_proxy_deployment_configuration=self.c36_path,
+            host_update_handoff_supervisor_configuration=self.c56_path,
+            host_update_trust_store=self.c58_path,
             macos_virtual_machine_configuration=self.c32_path,
             guest_artifact_manifest=self.c34_path,
             guest_artifact_compilation_receipt=self.c35_receipt_path,
@@ -372,7 +497,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             composer.load_macos_host_package_documents(self.composition())
 
     def test_macos_virtualization_external_vitalserver_reference_deployment_profile_preserves_cross_boundary_contracts(self) -> None:
-        """The named reference profile must be usable as one complete C32/C33/C36 input set."""
+        """The reference profile must be usable as one complete Host package input set."""
 
         self.write_json(
             self.c32_path,
@@ -387,9 +512,27 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             ),
         )
         self.write_json(
+            self.c53_path,
+            self.macos_virtualization_external_vitalserver_reference_deployment_document(
+                "operator-interface-bootstrap-configuration.v1.json"
+            ),
+        )
+        self.write_json(
             self.c36_path,
             self.macos_virtualization_external_vitalserver_reference_deployment_document(
                 "host-edge-proxy-deployment-configuration.v1.json"
+            ),
+        )
+        self.write_json(
+            self.c56_path,
+            self.macos_virtualization_external_vitalserver_reference_deployment_document(
+                "host-update-handoff-supervisor-configuration.v1.json"
+            ),
+        )
+        self.write_json(
+            self.c58_path,
+            self.macos_virtualization_external_vitalserver_reference_deployment_document(
+                "update-trust-store.v1.json"
             ),
         )
         release_delivery_plans = self.release_delivery_plans_document()
@@ -471,6 +614,31 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         with self.assertRaisesRegex(
             composer.MacOSHostPackageCompositionError,
             "guestVirtioSocketPort must match C37 Guest Runtime controlVirtioSocketListener port",
+        ):
+            composer.load_macos_host_package_documents(self.composition())
+
+    def test_load_requires_c37_external_topology_and_observation_paths_to_use_the_declared_c39_current_release_link(self) -> None:
+        deployment = self.guest_product_process_deployment_document()
+        deployment["recorderGateway"]["vitalServerTopologyDeploymentPath"] = (
+            "/opt/vitalserver/releases/another-release/config/guest-product-vitalserver-topology-deployment.json"
+        )
+        self.write_json(self.c37_path, deployment)
+
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "C37 Recorder Gateway topology path must match C39 C44 installation destination through C39 guestProductRelease.currentReleaseLinkPath",
+        ):
+            composer.load_macos_host_package_documents(self.composition())
+
+        deployment = self.guest_product_process_deployment_document()
+        deployment["guestRuntime"]["externalUpstreamObservationProvider"][
+            "externalVitalServerDeliveryConfigurationPath"
+        ] = "/opt/vitalserver/current/config/wrong-external-vitalserver-delivery-configuration.json"
+        self.write_json(self.c37_path, deployment)
+
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "C37 Guest Runtime external VitalServer observation configuration path must match C39 C46 installation destination through C39 guestProductRelease.currentReleaseLinkPath",
         ):
             composer.load_macos_host_package_documents(self.composition())
 
@@ -558,6 +726,11 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             self.assertEqual(b"host-agent", (release_root / "bin/host-agent").read_bytes())
             self.assertEqual(b"host-edge-proxy", (release_root / "bin/host-edge-proxy").read_bytes())
             self.assertEqual(b"host-installation-manager", (release_root / "bin/host-installation-manager").read_bytes())
+            self.assertEqual(
+                b"host-update-handoff-supervisor",
+                (release_root / "bin/host-update-handoff-supervisor").read_bytes(),
+            )
+            self.assertEqual(b"platformctl", (release_root / "bin/platformctl").read_bytes())
             self.assertEqual(b"virtual-machine-supervisor", (release_root / "bin/macos-virtual-machine-supervisor").read_bytes())
             self.assertEqual(b"kernel", (release_root / "vm/assets/Image").read_bytes())
             self.assertEqual(b"root disk", (release_root / "release/guest-root.raw").read_bytes())
@@ -568,6 +741,18 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             self.assertTrue((release_root / "release/guest-artifact-compilation-receipt.json").is_file())
             self.assertTrue((payload_root / "Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist").is_file())
             self.assertTrue((payload_root / "Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist").is_file())
+            self.assertTrue((payload_root / "Library/LaunchDaemons/com.tirosh.vitalserver.host-update-handoff-supervisor.plist").is_file())
+
+    def test_handoff_supervisor_launchd_definition_uses_the_persistent_c56_service_mode(self) -> None:
+        documents = composer.load_macos_host_package_documents(self.composition())
+        definition = composer.compose_host_update_handoff_supervisor_launchd_service_definition(
+            self.composition(),
+            documents.macos_host_package_release_plan,
+        )
+        self.assertEqual("service", definition["ProgramArguments"][-1])
+        self.assertIs(True, definition["RunAtLoad"])
+        self.assertIs(True, definition["KeepAlive"])
+        self.assertNotIn("StartInterval", definition)
 
     def test_payload_copy_does_not_preserve_build_host_extended_attributes(self) -> None:
         attribute_name = "user.vitalserver.package-composer-test"
@@ -619,9 +804,8 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         script = composer.compose_postinstall_script(
             self.composition(),
             documents.host_agent_deployment,
+            documents.host_update_handoff_supervisor_configuration,
             documents.virtual_machine,
-            "com.tirosh.vitalserver.host-agent",
-            "com.tirosh.vitalserver.host-edge-proxy",
         )
         self.assertIn("'/var/lib/vitalserver/host-agent'", script)
         self.assertIn("'/var/lib/vitalserver/data'", script)
@@ -630,15 +814,80 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.assertNotIn("/usr/bin/touch '/var/lib/vitalserver/data/vm/guest-root.raw'", script)
         self.assertNotIn("/usr/bin/touch '/var/lib/vitalserver/data/vm/guest-root-provisioning-receipt.json'", script)
         self.assertIn('"$script_directory/host-installation-manager" --mode preflight', preinstall)
-        self.assertIn('"$script_directory/host-installation-manager" --mode quiesce', preinstall)
+        self.assertNotIn('"$script_directory/host-installation-manager" --mode quiesce', preinstall)
         self.assertIn("--release-id 'runtime-platform-0.1.0-dev-build-001'", preinstall)
         self.assertNotIn("/bin/launchctl bootout", preinstall)
         self.assertNotIn("/bin/launchctl bootout", script)
-        self.assertIn("launchctl bootstrap system '/Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist'", script)
-        self.assertIn("launchctl bootstrap system '/Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist'", script)
+        self.assertNotIn("/bin/launchctl bootstrap", script)
+        self.assertIn("--mode quiesce", script)
+        self.assertIn("--mode activate", script)
+        self.assertIn("--mode finalize", script)
+        self.assertIn("--mode recover", script)
+        self.assertIn("trap recover_installation 0", script)
         self.assertNotIn("|| true", script)
         self.assertNotIn("guest:start", script)
         self.assertNotIn("curl", script)
+
+    def test_package_verifier_rejects_script_inputs_not_bound_to_immutable_payload(self) -> None:
+        verification = verifier.MacOSHostPackageVerification(
+            package=self.root / "artifact.pkg",
+            pkgutil_executable=Path("/usr/sbin/pkgutil"),
+            release_delivery_plans_document=self.release_delivery_plans_document_path,
+            release_delivery_plan_id="macos-runtime-platform-release",
+            payload_base_path=self.payload_base_path,
+            release_slot_id=self.release_slot_id,
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            expanded_package = Path(temporary_directory)
+            scripts_root = expanded_package / "Scripts"
+            payload_release_root = (
+                expanded_package
+                / "Payload"
+                / str(self.payload_base_path).lstrip("/")
+                / "releases"
+                / self.release_slot_id
+            )
+            scripts_root.mkdir(parents=True)
+            (payload_release_root / "bin").mkdir(parents=True)
+            payload_manager = payload_release_root / "bin" / "host-installation-manager"
+            payload_manager.write_bytes(b"immutable-manager")
+            payload_manager.chmod(0o755)
+            payload_manifest = payload_release_root / "installation-manifest.json"
+            payload_manifest.write_bytes(b'{"immutable":true}\n')
+            script_manager = scripts_root / "host-installation-manager"
+            script_manager.write_bytes(b"different-manager")
+            script_manager.chmod(0o755)
+            script_manifest = scripts_root / "installation-manifest.json"
+            script_manifest.write_bytes(payload_manifest.read_bytes())
+            (scripts_root / "preinstall").write_text(
+                "\n".join(
+                    [
+                        "#!/bin/sh",
+                        "set -eu",
+                        '"$script_directory/host-installation-manager" --mode preflight',
+                        "--release-id '" + self.release_slot_id + "'",
+                        '--manifest "$script_directory/installation-manifest.json"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                verifier.MacOSHostPackageVerificationError,
+                "Manager bytes do not match",
+            ):
+                verifier.verify_preinstall_host_installation_transaction(
+                    verification, expanded_package
+                )
+            script_manager.write_bytes(payload_manager.read_bytes())
+            script_manifest.write_bytes(b'{"different":true}\n')
+            with self.assertRaisesRegex(
+                verifier.MacOSHostPackageVerificationError,
+                "manifest bytes do not match",
+            ):
+                verifier.verify_preinstall_host_installation_transaction(
+                    verification, expanded_package
+                )
 
     def test_package_verifier_rejects_a_pre_materialized_guest_runtime_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as payload_directory:
@@ -712,6 +961,23 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         with self.assertRaisesRegex(composer.MacOSHostPackageCompositionError, "Guest Product process deployment configuration SHA-256"):
             composer.load_macos_host_package_documents(self.composition())
 
+    def test_package_composition_rejects_c35_receipt_without_guest_node_services_bundle_input(self) -> None:
+        receipt = self.guest_artifact_compilation_receipt_document()
+        receipt["consumedInputArtifacts"] = [
+            artifact
+            for artifact in receipt["consumedInputArtifacts"]
+            if artifact["id"] != "guest-node-services-linux-arm64"
+        ]
+        with self.assertRaisesRegex(
+            verifier.MacOSHostPackageVerificationError,
+            "missing Guest Product process inputs: guest-node-services-linux-arm64",
+        ):
+            verifier.verify_guest_artifact_compilation_receipt(
+                self.c34_path,
+                self.guest_artifact_manifest_document(),
+                receipt,
+            )
+
     def test_package_composition_rejects_c37_that_violates_the_canonical_contract(self) -> None:
         deployment = self.guest_product_process_deployment_document()
         del deployment["recorderGateway"]["replayPolicy"]
@@ -740,6 +1006,21 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         with self.assertRaisesRegex(composer.MacOSHostPackageCompositionError, "Guest Product bootstrap configuration SHA-256"):
             composer.load_macos_host_package_documents(self.composition())
 
+    def test_package_composition_rejects_c35_receipt_without_declared_telemetry_collector_input(self) -> None:
+        receipt = self.guest_artifact_compilation_receipt_document()
+        receipt["consumedInputArtifacts"] = [
+            artifact
+            for artifact in receipt["consumedInputArtifacts"]
+            if artifact["id"] != "guest-telemetry-collector-linux-arm64"
+        ]
+        self.write_json(self.c35_receipt_path, receipt)
+
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "Guest telemetry Collector binary",
+        ):
+            composer.load_macos_host_package_documents(self.composition())
+
     def test_package_composition_rejects_c35_receipt_that_does_not_name_the_supplied_c44_input(self) -> None:
         receipt = self.guest_artifact_compilation_receipt_document()
         for input_artifact in receipt["consumedInputArtifacts"]:
@@ -762,27 +1043,51 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         ):
             composer.load_macos_host_package_documents(composition)
 
-    def test_package_composition_rejects_bundled_topology_without_an_explicit_c37_process_launch_plan(self) -> None:
+    def test_package_composition_rejects_c37_archive_provider_that_does_not_match_c46(self) -> None:
         process_deployment = self.guest_product_process_deployment_document()
-        del process_deployment["recorderGateway"]["externalVitalServerDeliveryConfigurationPath"]
+        process_deployment["guestRuntime"]["archiveExportProvider"][
+            "id"
+        ] = "other-indexed-library"
         self.write_json(self.c37_path, process_deployment)
 
-        bootstrap_configuration = self.guest_product_bootstrap_configuration_document()
-        del bootstrap_configuration["externalVitalServerDeliveryConfiguration"]
-        self.write_json(self.c39_path, bootstrap_configuration)
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "C37 Archive Export provider must match C46 VitalServer archive provider",
+        ):
+            composer.load_macos_host_package_documents(self.composition())
 
-        topology_deployment = self.guest_product_vitalserver_topology_deployment_document()
-        topology_deployment["topologyKind"] = "bundled-vitalserver"
-        topology_deployment["publicBrowserExposure"] = "not-exposed"
-        del topology_deployment["externalVitalServerDeploymentConfiguration"]
-        topology_deployment["bundledVitalServerServiceDeployment"] = {
-            "guestProductProcessName": "bundled-vitalserver",
-            "serviceArtifactId": "bundled-vitalserver-linux-arm64",
-            "executablePath": "/opt/vitalserver/bin/bundled-vitalserver",
-            "deliveryListener": {"bindHost": "127.0.0.1", "port": 18088},
-            "stateDirectory": "/var/lib/vitalserver/bundled-vitalserver",
+    def test_package_composition_accepts_bundled_topology_owned_by_c64_image_set_manager(self) -> None:
+        self.write_json(
+            self.c37_path,
+            self.bundled_vitalserver_product_document(
+                "guest-product-process-deployment-bundled-vitalserver.v1.json"
+            ),
+        )
+        self.write_json(
+            self.c39_path,
+            self.bundled_vitalserver_product_document(
+                "guest-product-bootstrap-configuration-bundled-vitalserver.v1.json"
+            ),
+        )
+        self.write_json(
+            self.c44_path,
+            self.bundled_vitalserver_product_document(
+                "guest-product-vitalserver-topology-deployment-bundled.v1.json"
+            ),
+        )
+        self.write_json(
+            self.c64_path,
+            self.bundled_vitalserver_product_document(
+                "guest-bundled-upstream-image-set-manager-configuration.v1.json"
+            ),
+        )
+        virtual_machine = self.virtual_machine_document()
+        virtual_machine["guestBundledUpstreamImageSetManagerHostLocalHTTPBridge"] = {
+            "hostLoopbackAddress": "127.0.0.1",
+            "hostLoopbackPort": 18445,
+            "guestVirtioSocketPort": 18445,
         }
-        self.write_json(self.c44_path, topology_deployment)
+        self.write_json(self.c32_path, virtual_machine)
 
         receipt = self.guest_artifact_compilation_receipt_document()
         receipt["consumedInputArtifacts"] = [
@@ -790,16 +1095,85 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             for artifact in receipt["consumedInputArtifacts"]
             if artifact["id"] != "external-vitalserver-delivery-configuration"
         ]
+        receipt["consumedInputArtifacts"].extend(
+            [
+                {
+                    "id": "guest-bundled-upstream-image-set-manager-linux-arm64",
+                    "sizeBytes": self.guest_bundled_upstream_image_set_manager_artifact.stat().st_size,
+                    "sha256": composer.sha256_file(
+                        self.guest_bundled_upstream_image_set_manager_artifact
+                    ),
+                },
+                {
+                    "id": "guest-bundled-upstream-image-set-manager-configuration",
+                    "sizeBytes": self.c64_path.stat().st_size,
+                    "sha256": composer.sha256_file(self.c64_path),
+                },
+            ]
+        )
         self.write_json(self.c35_receipt_path, receipt)
+
+        documents = composer.load_macos_host_package_documents(
+            replace(
+                self.composition(),
+                external_vitalserver_delivery_configuration=None,
+                guest_bundled_upstream_image_set_manager_configuration=self.c64_path,
+            )
+        )
+
+        self.assertEqual(
+            "bundled-vitalserver",
+            documents.guest_product_vitalserver_topology_deployment["topologyKind"],
+        )
+        self.assertEqual(
+            "bundled-upstream-image-set-manager",
+            documents.guest_bundled_upstream_image_set_manager_configuration[
+                "managerId"
+            ],
+        )
+
+    def test_package_composition_rejects_bundled_c64_bridge_port_mismatch(self) -> None:
+        self.write_json(
+            self.c37_path,
+            self.bundled_vitalserver_product_document(
+                "guest-product-process-deployment-bundled-vitalserver.v1.json"
+            ),
+        )
+        self.write_json(
+            self.c39_path,
+            self.bundled_vitalserver_product_document(
+                "guest-product-bootstrap-configuration-bundled-vitalserver.v1.json"
+            ),
+        )
+        self.write_json(
+            self.c44_path,
+            self.bundled_vitalserver_product_document(
+                "guest-product-vitalserver-topology-deployment-bundled.v1.json"
+            ),
+        )
+        self.write_json(
+            self.c64_path,
+            self.bundled_vitalserver_product_document(
+                "guest-bundled-upstream-image-set-manager-configuration.v1.json"
+            ),
+        )
+        virtual_machine = self.virtual_machine_document()
+        virtual_machine["guestBundledUpstreamImageSetManagerHostLocalHTTPBridge"] = {
+            "hostLoopbackAddress": "127.0.0.1",
+            "hostLoopbackPort": 18445,
+            "guestVirtioSocketPort": 18446,
+        }
+        self.write_json(self.c32_path, virtual_machine)
 
         with self.assertRaisesRegex(
             composer.MacOSHostPackageCompositionError,
-            "C44 bundled topology requires an explicit C37 bundled VitalServer process launch plan",
+            "bundled Upstream image-set manager Host-local HTTP bridge guestVirtioSocketPort",
         ):
             composer.load_macos_host_package_documents(
                 replace(
                     self.composition(),
                     external_vitalserver_delivery_configuration=None,
+                    guest_bundled_upstream_image_set_manager_configuration=self.c64_path,
                 )
             )
 
@@ -908,6 +1282,21 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         with self.assertRaisesRegex(
             composer.MacOSHostPackageCompositionError,
             "unsigned macOS Installer package signing must not supply signing inputs",
+        ):
+            composer.validate_package_artifacts(
+                composition,
+                composer.load_macos_host_package_documents(composition),
+            )
+
+    def test_package_composition_rejects_a_signing_mode_that_disagrees_with_c23_policy(self) -> None:
+        release_delivery_plans = self.release_delivery_plans_document()
+        release_delivery_plans["plans"][0]["macOSInstallerSignaturePolicy"] = "developer-id"
+        self.write_json(self.release_delivery_plans_document_path, release_delivery_plans)
+        composition = self.composition()
+
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "C23 macOS installer signature policy must match",
         ):
             composer.validate_package_artifacts(
                 composition,
@@ -1023,6 +1412,9 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         output_directory.mkdir()
         codesign_entitlement_copy = self.root / "codesign-entitlements.plist"
         source_digest_before_signing = composer.sha256_file(self.macos_virtual_machine_supervisor_binary)
+        release_delivery_plans = self.release_delivery_plans_document()
+        release_delivery_plans["plans"][0]["macOSInstallerSignaturePolicy"] = "developer-id"
+        self.write_json(self.release_delivery_plans_document_path, release_delivery_plans)
         composition = replace(
             self.composition(),
             output_package=output_directory / "VitalServerRuntimePlatform-0.1.0-dev.pkg",
@@ -1204,6 +1596,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             / "Library/Application Support/VitalServerRuntimePlatform/releases"
             / self.release_slot_id
         )
+        self.assertEqual(b"platformctl", (release_root / "bin/platformctl").read_bytes())
         installation_manifest = json.loads(
             (release_root / "installation-manifest.json").read_text(encoding="utf-8")
         )
@@ -1221,6 +1614,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             installation_data_root["path"],
         )
         self.assertEqual("host-installation-manager", installation_data_root["owner"])
+        self.assertEqual("directory", installation_data_root["kind"])
         self.assertEqual(
             "purge-only-by-explicit-command", installation_data_root["retention"]
         )
@@ -1234,8 +1628,11 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         preinstall = (expanded_package / "Scripts" / "preinstall").read_text(encoding="utf-8")
         postinstall = (expanded_package / "Scripts" / "postinstall").read_text(encoding="utf-8")
         self.assertIn('"$script_directory/host-installation-manager" --mode preflight', preinstall)
-        self.assertIn('"$script_directory/host-installation-manager" --mode quiesce', preinstall)
+        self.assertNotIn('"$script_directory/host-installation-manager" --mode quiesce', preinstall)
+        self.assertIn("--mode quiesce", postinstall)
         self.assertIn("--mode activate", postinstall)
+        self.assertIn("--mode finalize", postinstall)
+        self.assertIn("--mode recover", postinstall)
         self.assertNotIn("/bin/launchctl bootout", postinstall)
         self.assertNotIn("|| true", postinstall)
 

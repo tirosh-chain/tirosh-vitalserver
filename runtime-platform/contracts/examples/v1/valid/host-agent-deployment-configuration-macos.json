@@ -1,7 +1,16 @@
 {
   "schemaVersion": "v1",
   "control": {
-    "listenAddress": "127.0.0.1:18280",
+    "localAdministration": {
+      "transport": "unix-domain-socket",
+      "endpointAddress": "/Library/Application Support/VitalServerRuntimePlatform/control/host-agent.sock",
+      "descriptorPath": "/Library/Application Support/VitalServerRuntimePlatform/control/host-agent-administration.json",
+      "authorizedUserId": 501
+    },
+    "loopbackHTTP": {
+      "mode": "development-loopback",
+      "listenAddress": "127.0.0.1:18280"
+    },
     "stateDatabasePath": "/Library/Application Support/VitalServerRuntimePlatform/state/host-agent.sqlite",
     "guestTimeoutMilliseconds": 5000
   },
@@ -26,9 +35,11 @@
   "time": {
     "hostNodeId": "vitalserver-macos-host",
     "timeAuthorityId": "vitalserver-host-time",
+    "kind": "time-authority-outcome-profile",
     "providerMode": "unsupported"
   },
   "telemetry": {
+    "kind": "telemetry-export-outcome-profile",
     "pipelineMode": "unsupported",
     "exportMode": "unavailable"
   },

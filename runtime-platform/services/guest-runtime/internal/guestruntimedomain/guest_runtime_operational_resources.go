@@ -571,7 +571,7 @@ func validateTelemetryExportResult(result TelemetryExportResult) *Issue {
 		if result.Issue != nil {
 			return &Issue{Code: "invalid-telemetry-export-result", Message: "exported telemetry result must not carry an issue"}
 		}
-	case "dropped", "unavailable", "failed":
+	case "dropped", "unavailable", "failed", "unknown":
 		if result.Issue == nil {
 			return &Issue{Code: "invalid-telemetry-export-result", Message: "non-exported telemetry result requires a typed issue"}
 		}

@@ -13,12 +13,14 @@ import {
 import { RecorderGatewayIngressDurableStateOperationMutex } from "./recorder-gateway-ingress-durable-state-operation-mutex.js";
 import {
   failedRecorderGatewayRead,
+  encodeRecorderColdPathPacketSequence,
   finalizeRecorderColdPathCapturePacketSequence,
   invalidRecorderGatewayRead,
   isRecorderGatewayIdentifier,
   missingRecorderGatewayRead,
   recorderGatewaySchemaVersion,
   recorderGatewayTimestamp,
+  unavailableRecorderGatewayRead,
   type RecorderColdPathCapture,
   type RecorderColdPathCaptureFinalizationCommand,
   type RecorderColdPathCaptureFinalizationReceipt,
@@ -411,6 +413,58 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
         return failedRecorderGatewayRead(at, {
           code: "recorder-cold-path-finalization-receipt-read-failed",
           message: "Recorder Gateway could not read the requested cold-path finalization receipt",
+          retryable: true,
+          dependency: "gateway-ingress-durable-state",
+        });
+      }
+    });
+  }
+
+  // ReadRecorderColdPathPacketSequence is the one explicit raw-source handoff
+  // from Recorder Gateway to the Guest-local Artifact Formation adapter.  It
+  // is intentionally not a general ingress-record listing API: callers can
+  // read only a capture that has already been finalized, and must compare the
+  // returned bytes with the SHA-256 in that capture's finalization receipt.
+  //
+  // The HTTP adapter additionally enforces the Guest-loopback boundary.  The
+  // service itself stays transport-free and returns the owner-provided bytes
+  // or a typed read result; it never reconstructs a source from logs or an
+  // ingress receipt name.
+  public async readRecorderColdPathPacketSequence(captureId: string): Promise<RecorderGatewayReadResult<Uint8Array>> {
+    return this.durableStateOperationMutex.runExclusiveRecorderGatewayIngressDurableStateOperation(async () => {
+      const at = recorderGatewayTimestamp(this.clock.now());
+      if (!isRecorderGatewayIdentifier(captureId)) {
+        return invalidRecorderGatewayRead(at, { code: "invalid-recorder-cold-path-capture-id", message: "coldPathCaptureId must be a v1 identifier" });
+      }
+      try {
+        const capture = await this.durableStateStore.readRecorderColdPathCapture(captureId);
+        if (capture.state !== "finalized" || capture.finalizationReceipt === undefined) {
+          return unavailableRecorderGatewayRead(at, {
+            code: "recorder-cold-path-packet-sequence-not-finalized",
+            message: "the Recorder Cold-Path Capture has not produced finalized packet-sequence evidence",
+            retryable: false,
+            dependency: "recorder-gateway",
+          });
+        }
+        const packets = await this.durableStateStore.readRecorderColdPathCapturedPackets(captureId);
+        const sequence = encodeRecorderColdPathPacketSequence(packets);
+        const digest = createHash("sha256").update(sequence).digest("hex");
+        if (digest !== capture.finalizationReceipt.finalizedPacketSequence.sha256) {
+          return failedRecorderGatewayRead(at, {
+            code: "recorder-cold-path-packet-sequence-digest-mismatch",
+            message: "Recorder Gateway durable packet-sequence bytes do not match finalized evidence",
+            retryable: false,
+            dependency: "gateway-ingress-durable-state",
+          });
+        }
+        return { schemaVersion: recorderGatewaySchemaVersion, state: "available", observedAt: at, value: sequence };
+      } catch (error) {
+        if (error instanceof RecorderGatewayIngressDurableStateResourceNotFoundError) {
+          return missingRecorderGatewayRead(at, { code: "recorder-cold-path-capture-missing", message: "the requested Recorder Cold-Path Capture does not exist" });
+        }
+        return failedRecorderGatewayRead(at, {
+          code: "recorder-cold-path-packet-sequence-read-failed",
+          message: "Recorder Gateway could not read the finalized cold-path packet sequence",
           retryable: true,
           dependency: "gateway-ingress-durable-state",
         });

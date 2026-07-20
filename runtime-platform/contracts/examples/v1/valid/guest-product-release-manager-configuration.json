@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v1",
+  "managerId": "guest-product-release-manager-primary",
+  "listener": { "bindHost": "127.0.0.1", "port": 18444 },
+  "controlVirtioSocketListener": { "port": 18444 },
+  "releaseDirectoryRoot": "/opt/vitalserver/releases",
+  "currentReleaseLinkPath": "/opt/vitalserver/current",
+  "stagingDirectory": "/var/lib/vitalserver/guest-product-releases/staging",
+  "stateDirectory": "/var/lib/vitalserver/guest-product-releases",
+  "stateDirectoryMode": "0700",
+  "maximumReleaseArtifactBytes": 1073741824,
+  "serviceManagement": { "systemctlExecutablePath": "/usr/bin/systemctl", "managedServiceUnitName": "vitalserver-guest-product.service", "restartTimeoutMilliseconds": 60000 },
+  "healthCheck": { "scheme": "http", "host": "127.0.0.1", "port": 18443, "path": "/v1/runtime/readiness", "acceptedStatusCodes": [200], "timeoutMilliseconds": 30000 }
+}

@@ -69,3 +69,16 @@ func TestResolveSelectedPlatformProviderProcessCommandPassesNativeResourceIdenti
 		t.Fatalf("bridge arguments = %#v, want %#v", command.Arguments, wantArguments)
 	}
 }
+
+func TestResolveSelectedPlatformProviderProcessCommandPassesC62OnlyWhenConfiguredForNativeBridge(t *testing.T) {
+	command, err := hostdeployment.ResolveSelectedPlatformProviderProcessCommand(hostdeployment.SelectedPlatformProviderProcessDeployment{
+		ProviderKind: hostagentdomain.LinuxKVMlibvirtSystemdProviderKind, ProviderID: "vitalserver-linux-provider", NativeProviderBridgeExecutablePath: "/opt/vitalserver/linux-provider-bridge", NativeVirtualMachineName: "vitalserver-guest", HostServiceName: "vitalserver-host-agent.service", NativeGuestMachineProvisioningConfigurationPath: "/etc/vitalserver/native-guest-machine.json",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArguments := []string{"--provider-id", "vitalserver-linux-provider", "--vm-name", "vitalserver-guest", "--service-name", "vitalserver-host-agent.service", "--native-guest-machine-provisioning-configuration", "/etc/vitalserver/native-guest-machine.json"}
+	if !reflect.DeepEqual(wantArguments, command.Arguments) {
+		t.Fatalf("bridge arguments = %#v, want %#v", command.Arguments, wantArguments)
+	}
+}

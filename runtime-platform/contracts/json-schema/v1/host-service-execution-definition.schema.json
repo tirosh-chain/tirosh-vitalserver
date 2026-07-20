@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-service-execution-definition",
+  "title": "HostServiceExecutionDefinition",
+  "description": "C70 immutable C48 payload declaring exactly one Host process command for the Host Service Runner. It is desired launch input, not SCM registration, process liveness, or Host domain state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "documentKind",
+    "serviceName",
+    "role",
+    "command"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "documentKind": {
+      "const": "host-service-execution-definition"
+    },
+    "serviceName": {
+      "$ref": "#/$defs/ServiceName"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "host-agent",
+        "host-edge-proxy",
+        "host-update-handoff-supervisor"
+      ]
+    },
+    "command": {
+      "$ref": "#/$defs/DeclaredHostCommand"
+    }
+  },
+  "$defs": {
+    "ServiceName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "HostAbsolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "pattern": "^/"
+            },
+            {
+              "pattern": "^[A-Za-z]:[\\\\/]"
+            }
+          ]
+        },
+        {
+          "not": {
+            "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)"
+          }
+        },
+        {
+          "not": {
+            "pattern": "\\u0000"
+          }
+        }
+      ]
+    },
+    "DeclaredHostCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executablePath",
+        "arguments"
+      ],
+      "properties": {
+        "executablePath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "arguments": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "not": {
+              "pattern": "\\u0000"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v1",
+  "attemptId": "dispatch-attempt-001",
+  "updateId": "host-update-20260717",
+  "invocationRelativePath": "updates/host-update-20260717/invocation.json",
+  "nextUpdaterSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "executionMode": "execute",
+  "state": "completion-submitted",
+  "startedAt": "2026-07-20T00:01:00Z",
+  "finishedAt": "2026-07-20T00:01:02Z",
+  "evidence": { "kind": "host-update-handoff-dispatch", "id": "dispatch-attempt-001" },
+  "completionCommandSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "issue": { "code": "must-not-exist", "dependency": "fixture" }
+}

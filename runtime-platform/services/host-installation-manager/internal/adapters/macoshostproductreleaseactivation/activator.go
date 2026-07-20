@@ -20,6 +20,9 @@ func (MacOSHostProductReleaseActivator) ActivateHostProductRelease(_ context.Con
 	if manifest.Platform != "macos" {
 		return fmt.Errorf("macOS release activator cannot activate platform %q", manifest.Platform)
 	}
+	if manifest.Activation.ReferenceKind != "symbolic-link" {
+		return fmt.Errorf("macOS release activator requires symbolic-link activation, got %q", manifest.Activation.ReferenceKind)
+	}
 	currentPath := manifest.Activation.CurrentReleaseLinkPath
 	expectedReleaseRootPath := manifest.Activation.ExpectedReleaseRootPath
 	if info, err := os.Lstat(currentPath); err == nil {

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 from unittest import mock
@@ -37,7 +39,19 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
         )
         self.package_receipt_installed = False
         self.launchd_services_registered = False
+        self.installer_invocation_count = 0
         self.boot_session_identifiers = iter(("boot-session-before", "boot-session-after"))
+        self.host_installation_manager = self.root / "host-installation-manager"
+        self.host_installation_manager.write_text("fixture", encoding="utf-8")
+        self.host_installation_manager.chmod(0o755)
+        self.installed_manifest = self.root / "installation-manifest.json"
+        self.installed_manifest.write_text("{}", encoding="utf-8")
+        self.installation_journal = self.root / "current-installation.json"
+        self.installation_journal.write_text("{}", encoding="utf-8")
+        self.installation_receipt = self.root / "latest-installation.json"
+        self.installation_receipt.write_text("{}", encoding="utf-8")
+        self.removal_journal = self.root / "current-removal.json"
+        self.removal_receipt = self.root / "latest-removal.json"
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -62,8 +76,8 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
                 return self.result(
                     executable,
                     arguments,
-                    0,
-                    "Package \"VitalServerRuntimePlatform\":\n   Status: signed by a developer certificate issued by Apple for distribution\n",
+                    1,
+                    "Package \"VitalServerRuntimePlatform\":\n   Status: no signature\n",
                 )
             if arguments[0] == "--pkg-info":
                 if self.package_receipt_installed:
@@ -81,17 +95,44 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
                     "No receipt for 'com.tirosh.vitalserver.runtime-platform' found at '/'.\n",
                 )
         if executable == self.command_contract.installer_executable:
+            self.installer_invocation_count += 1
             self.package_receipt_installed = True
+            if self.installer_invocation_count > 1:
+                self.launchd_services_registered = True
             return self.result(executable, arguments, 0, "installer: completed\n")
+        if executable == self.host_installation_manager:
+            self.package_receipt_installed = False
+            self.launchd_services_registered = False
+            self.removal_journal.write_text("{}", encoding="utf-8")
+            self.removal_receipt.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": "v1",
+                        "documentKind": "host-product-removal-receipt",
+                        "id": "remove-020-receipt",
+                        "requestId": "remove-020",
+                        "installationId": "vitalserver-runtime-platform-macos-reference",
+                        "releaseId": "runtime-platform-020",
+                        "dataDisposition": "preserve-mutable-data",
+                        "state": "completed",
+                        "packageReceiptRemoval": "removed-by-host-installation-manager",
+                        "retainedMutableStoreIds": ["virtual-machine-runtime"],
+                        "observedAt": "2026-07-20T00:03:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return self.result(executable, arguments, 0, "C54 completed\n")
         if executable == self.command_contract.launchctl_executable:
             if self.launchd_services_registered:
                 return self.result(executable, arguments, 0, "service = registered\n")
+            service_label = arguments[1].removeprefix("system/")
             return self.result(
                 executable,
                 arguments,
                 113,
                 "",
-                "Could not find service \"" + arguments[1] + "\" in domain for system\n",
+                "Could not find service \"" + service_label + "\" in domain for system\n",
             )
         if executable == self.command_contract.sysctl_executable:
             return self.result(executable, arguments, 0, next(self.boot_session_identifiers) + "\n")
@@ -134,6 +175,11 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             "com.tirosh.vitalserver.runtime-platform",
             evidence_run.macos_installer_package_identifier,
         )
+        self.assertEqual(
+            "com.tirosh.vitalserver.host-update-handoff-supervisor",
+            evidence_run.host_update_handoff_supervisor_launchd_service_label,
+        )
+        self.assertEqual("unsigned", evidence_run.macos_installer_signature_policy)
 
         journal = evidence_runner.MacOSCleanHostReleaseEvidenceJournal(
             self.journal_path
@@ -173,7 +219,11 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            ["host-agent", "host-edge-proxy"],
+            [
+                "host-agent",
+                "host-edge-proxy",
+                "host-update-handoff-supervisor",
+            ],
             [
                 registration["role"]
                 for registration in service_registration.c24_proof[
@@ -199,6 +249,23 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
                     {"schemaVersion": "v1", "proofs": [stage_record.c24_proof]},
                 ),
             )
+        proof_fragment_path = self.root / "artifact-integrity-proof.json"
+        published_path, published_sha256 = evidence_runner.write_new_c24_proof_fragment(
+            proof_fragment_path, artifact_integrity
+        )
+        self.assertEqual(proof_fragment_path, published_path)
+        self.assertEqual(published_sha256, evidence_runner.sha256_file(proof_fragment_path))
+        self.assertEqual(
+            {"schemaVersion": "v1", "proofs": [artifact_integrity.c24_proof]},
+            json.loads(proof_fragment_path.read_text(encoding="utf-8")),
+        )
+        with self.assertRaisesRegex(
+            evidence_runner.MacOSCleanHostReleaseEvidenceRunError,
+            "output already exists",
+        ):
+            evidence_runner.write_new_c24_proof_fragment(
+                proof_fragment_path, artifact_integrity
+            )
         self.assertNotEqual(
             json.loads(
                 reboot_checkpoint.evidence_path.read_text(encoding="utf-8")
@@ -206,6 +273,140 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             json.loads(reboot.evidence_path.read_text(encoding="utf-8"))["details"][
                 "postRebootBootSessionObservation"
             ]["bootSessionIdentifier"],
+        )
+
+    def test_missing_required_update_handoff_supervisor_registration_fails_service_evidence(self) -> None:
+        self.create_evidence_run()
+        runner = evidence_runner.MacOSCleanHostReleaseEvidenceRunner(
+            evidence_runner.MacOSCleanHostReleaseEvidenceJournal(self.journal_path)
+        )
+
+        def command_with_missing_update_handoff_supervisor(
+            executable: Path,
+            arguments: list[str],
+        ) -> evidence_runner.MacOSCleanHostReleaseEvidenceCommandObservation:
+            if (
+                executable == self.command_contract.launchctl_executable
+                and arguments[1]
+                == "system/com.tirosh.vitalserver.host-update-handoff-supervisor"
+                and self.launchd_services_registered
+            ):
+                return self.result(
+                    executable,
+                    arguments,
+                    113,
+                    "",
+                    "Could not find service \"com.tirosh.vitalserver.host-update-handoff-supervisor\" in domain for system\n",
+                )
+            return self.command_result(executable, arguments)
+
+        with mock.patch.object(
+            evidence_runner,
+            "execute_macos_clean_host_command",
+            side_effect=command_with_missing_update_handoff_supervisor,
+        ), mock.patch.object(
+            evidence_runner,
+            "observe_macos_installer_artifact_release_identity",
+            return_value=self.available_installer_artifact_package_metadata_observation(),
+        ), mock.patch.object(evidence_runner.os, "geteuid", return_value=0):
+            self.assertEqual("verified", runner.record_artifact_integrity().status)
+            self.assertEqual("verified", runner.record_clean_host_preflight().status)
+            self.assertEqual("verified", runner.execute_clean_install().status)
+            self.launchd_services_registered = True
+            registration = runner.record_service_registration()
+
+        self.assertEqual("failed", registration.status)
+        self.assertEqual(
+            "macos-launchd-service-registration-not-observed",
+            registration.c24_proof["issue"]["code"],
+        )
+
+    def test_records_host_platform_update_only_after_fresh_pkgutil_and_launchctl_observations(self) -> None:
+        self.create_evidence_run()
+        runner = evidence_runner.MacOSCleanHostReleaseEvidenceRunner(
+            evidence_runner.MacOSCleanHostReleaseEvidenceJournal(self.journal_path)
+        )
+        transition = evidence_runner.host_platform_release_transition_evidence.HostPlatformReleaseTransitionEvidence(
+            stage="update",
+            release_delivery_plan_id="macos-runtime-platform-release",
+            platform="macos",
+            provider_kind="macos-virtualization",
+            target_product_version="0.2.0-dev",
+            update_id="update-020",
+            request_id="request-020",
+            bootstrap_envelope_id="bootstrap-020",
+            update_specification_sha256="b" * 64,
+            host_platform_artifact_sha256="a" * 64,
+            inputs=(),
+            rollback_evidence=None,
+            observed_installation_id="vitalserver-runtime-platform-macos",
+            observed_release_id="runtime-platform-020",
+            observed_product_version="0.2.0-dev",
+            observed_package_identifier="com.tirosh.vitalserver.runtime-platform",
+            observed_at="2026-07-20T00:02:00Z",
+        )
+        with mock.patch.object(
+            evidence_runner,
+            "execute_macos_clean_host_command",
+            side_effect=self.command_result,
+        ), mock.patch.object(
+            evidence_runner,
+            "observe_macos_installer_artifact_release_identity",
+            return_value=self.available_installer_artifact_package_metadata_observation(),
+        ), mock.patch.object(evidence_runner.os, "geteuid", return_value=0), mock.patch.object(
+            evidence_runner.host_platform_release_transition_evidence,
+            "inspect_host_platform_update_transition",
+            return_value=transition,
+        ):
+            self.assertEqual("verified", runner.record_artifact_integrity().status)
+            self.assertEqual("verified", runner.record_clean_host_preflight().status)
+            self.assertEqual("verified", runner.execute_clean_install().status)
+            self.launchd_services_registered = True
+            self.assertEqual("verified", runner.record_service_registration().status)
+            self.assertEqual("verified", runner.record_reboot_checkpoint().status)
+            self.assertEqual("verified", runner.record_reboot().status)
+            update = runner.record_host_platform_update(
+                self.release_delivery_plans_document,
+                self.artifact.resolve(),
+                self.artifact.resolve(),
+                self.artifact.resolve(),
+                self.artifact.resolve(),
+            )
+
+        self.assertEqual("verified", update.status)
+        self.assertEqual("update", update.c24_proof["stage"])
+        self.assertEqual(
+            "0.2.0-dev",
+            json.loads(update.evidence_path.read_text(encoding="utf-8"))["details"]
+            ["hostPlatformReleaseTransition"]["observedHostInstallation"]["productVersion"],
+        )
+
+    def test_pre_update_handoff_evidence_journal_cannot_be_resumed(self) -> None:
+        with sqlite3.connect(self.journal_path) as connection:
+            connection.execute("CREATE TABLE evidence_run (run_id TEXT NOT NULL)")
+
+        with self.assertRaisesRegex(
+            evidence_runner.MacOSCleanHostReleaseEvidenceRunError,
+            "required C23 service/signature-policy fact",
+        ):
+            evidence_runner.MacOSCleanHostReleaseEvidenceJournal(
+                self.journal_path
+            ).load_evidence_run()
+
+    def test_transition_rejects_c23_document_that_changes_the_bound_launchd_identity(self) -> None:
+        evidence_run = self.create_evidence_run()
+        plans = json.loads(self.release_delivery_plans_document.read_text(encoding="utf-8"))
+        selected = next(plan for plan in plans["plans"] if plan["id"] == "macos-runtime-platform-release")
+        selected["requiredHostServiceRegistrations"][0]["name"] = "com.tirosh.other-host-agent"
+        changed_document = (self.root / "changed-release-delivery-plans.json").resolve()
+        changed_document.write_text(json.dumps(plans), encoding="utf-8")
+
+        issue = evidence_runner.transition_release_plan_issue(
+            evidence_run, changed_document
+        )
+
+        self.assertEqual(
+            "macos-host-platform-transition-release-plan-mismatch", issue["code"]
         )
 
     def test_preflight_does_not_treat_unknown_launchctl_failure_as_absence(self) -> None:
@@ -272,49 +473,122 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             ).load_stage_record(evidence_runner.ARTIFACT_INTEGRITY_STAGE)
         )
 
-    def test_unsigned_pkgutil_observation_records_a_failed_artifact_integrity_proof(self) -> None:
+    def test_developer_id_policy_rejects_an_explicit_unsigned_pkgutil_observation(self) -> None:
+        evidence_run = replace(
+            self.create_evidence_run(),
+            macos_installer_signature_policy="developer-id",
+        )
+        issue = evidence_runner.evaluate_macos_installer_artifact_integrity_issue(
+            evidence_run,
+            self.available_installer_artifact_package_metadata_observation(),
+            self.result(
+                self.command_contract.pkgutil_executable,
+                ["--check-signature", str(self.artifact)],
+                1,
+                "Package \"VitalServerRuntimePlatform\":\n   Status: no signature\n",
+            ),
+        )
+
+        self.assertEqual("macos-package-signature-check-failed", issue["code"])
+
+    def test_uninstall_reinstall_proves_explicit_c54_preservation_and_fresh_pkg_state(self) -> None:
+        self.create_evidence_run()
+        runner = evidence_runner.MacOSCleanHostReleaseEvidenceRunner(
+            evidence_runner.MacOSCleanHostReleaseEvidenceJournal(self.journal_path)
+        )
+        with mock.patch.object(
+            evidence_runner,
+            "execute_macos_clean_host_command",
+            side_effect=self.command_result,
+        ), mock.patch.object(
+            evidence_runner,
+            "observe_macos_installer_artifact_release_identity",
+            return_value=self.available_installer_artifact_package_metadata_observation(),
+        ), mock.patch.object(evidence_runner.os, "geteuid", return_value=0):
+            self.assertEqual("verified", runner.record_artifact_integrity().status)
+            self.assertEqual("verified", runner.record_clean_host_preflight().status)
+            self.assertEqual("verified", runner.execute_clean_install().status)
+            self.launchd_services_registered = True
+            self.assertEqual("verified", runner.record_service_registration().status)
+            self.assertEqual("verified", runner.record_reboot_checkpoint().status)
+            self.assertEqual("verified", runner.record_reboot().status)
+            lifecycle = runner.execute_uninstall_reinstall_preserving_data(
+                self.host_installation_manager,
+                self.installed_manifest,
+                self.installation_journal,
+                self.installation_receipt,
+                self.removal_journal,
+                self.removal_receipt,
+                "remove-020",
+                "vitalserver-runtime-platform-macos-reference",
+                "runtime-platform-020",
+            )
+
+        self.assertEqual("verified", lifecycle.status)
+        details = json.loads(lifecycle.evidence_path.read_text(encoding="utf-8"))["details"]
+        self.assertEqual("preserve-mutable-data", details["dataDisposition"])
+        self.assertEqual(
+            "removed-by-host-installation-manager",
+            details["hostProductRemovalReceipt"]["receipt"]["packageReceiptRemoval"],
+        )
+        contract_repository = ContractRepository(Path(__file__).resolve().parents[2])
+        contract_repository.load()
+        self.assertEqual(
+            [],
+            contract_repository.validate_instance(
+                "release-delivery-proof.schema.json",
+                {"schemaVersion": "v1", "proofs": [lifecycle.c24_proof]},
+            ),
+        )
+
+    def test_uninstall_does_not_reinstall_without_a_matching_c54_receipt(self) -> None:
         self.create_evidence_run()
         runner = evidence_runner.MacOSCleanHostReleaseEvidenceRunner(
             evidence_runner.MacOSCleanHostReleaseEvidenceJournal(self.journal_path)
         )
 
-        def command_with_unsigned_package(
+        def manager_with_invalid_removal_receipt(
             executable: Path, arguments: list[str]
         ) -> evidence_runner.MacOSCleanHostReleaseEvidenceCommandObservation:
-            if (
-                executable == self.command_contract.pkgutil_executable
-                and arguments[0] == "--check-signature"
-            ):
-                return self.result(
-                    executable,
-                    arguments,
-                    0,
-                    "Package \"VitalServerRuntimePlatform\":\n   Status: no signature\n",
-                )
+            if executable == self.host_installation_manager:
+                self.package_receipt_installed = False
+                self.launchd_services_registered = False
+                self.removal_journal.write_text("{}", encoding="utf-8")
+                self.removal_receipt.write_text("{}", encoding="utf-8")
+                return self.result(executable, arguments, 0, "C54 completed\n")
             return self.command_result(executable, arguments)
 
         with mock.patch.object(
             evidence_runner,
             "execute_macos_clean_host_command",
-            side_effect=command_with_unsigned_package,
+            side_effect=manager_with_invalid_removal_receipt,
         ), mock.patch.object(
             evidence_runner,
             "observe_macos_installer_artifact_release_identity",
             return_value=self.available_installer_artifact_package_metadata_observation(),
-        ):
-            artifact_integrity = runner.record_artifact_integrity()
+        ), mock.patch.object(evidence_runner.os, "geteuid", return_value=0):
+            self.assertEqual("verified", runner.record_artifact_integrity().status)
+            self.assertEqual("verified", runner.record_clean_host_preflight().status)
+            self.assertEqual("verified", runner.execute_clean_install().status)
+            self.launchd_services_registered = True
+            self.assertEqual("verified", runner.record_service_registration().status)
+            self.assertEqual("verified", runner.record_reboot_checkpoint().status)
+            self.assertEqual("verified", runner.record_reboot().status)
+            lifecycle = runner.execute_uninstall_reinstall_preserving_data(
+                self.host_installation_manager,
+                self.installed_manifest,
+                self.installation_journal,
+                self.installation_receipt,
+                self.removal_journal,
+                self.removal_receipt,
+                "remove-020",
+                "vitalserver-runtime-platform-macos-reference",
+                "runtime-platform-020",
+            )
 
-        self.assertEqual("failed", artifact_integrity.status)
-        self.assertEqual(
-            "macos-package-signature-not-accepted",
-            artifact_integrity.c24_proof["issue"]["code"],
-        )
-        self.assertEqual(
-            "macos-package-signature-not-accepted",
-            json.loads(artifact_integrity.evidence_path.read_text(encoding="utf-8"))["issue"][
-                "code"
-            ],
-        )
+        self.assertEqual("failed", lifecycle.status)
+        self.assertFalse(self.package_receipt_installed)
+        self.assertEqual(1, self.installer_invocation_count)
 
     def test_stage_cannot_be_overwritten_by_a_second_collection_attempt(self) -> None:
         self.create_evidence_run()

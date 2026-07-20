@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "v1",
+  "reviewId": "macos-020-c24-review",
+  "reviewerId": "release-operator-01",
+  "reviewedAt": "2026-07-20T08:00:00Z",
+  "sourceProofSet": {
+    "uri": "file:///release-input/release-delivery-proofs.v1.json",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "attachedProofs": [
+    {
+      "planId": "macos-runtime-platform-release",
+      "stage": "sbom-and-notices",
+      "status": "verified",
+      "proofFragment": {
+        "uri": "file:///evidence/release-delivery-proof-fragment.json",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    }
+  ],
+  "outputProofSet": {
+    "fileName": "release-delivery-proofs.v1.json",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}

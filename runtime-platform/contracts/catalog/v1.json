@@ -48,11 +48,12 @@
     },
     {
       "id": "C6",
-      "name": "ArtifactExportCommand, ArtifactManifest, and ExportReceipt",
+      "name": "ArtifactExportCommand, ArchiveExportProviderConfiguration, ArtifactManifest, and ExportReceipt",
       "owner": "Archive Export",
       "boundary": "artifact finalization and export receipt",
       "schemas": [
         "json-schema/v1/artifact-export-command.schema.json",
+        "json-schema/v1/archive-export-provider.schema.json",
         "json-schema/v1/artifact-manifest.schema.json",
         "json-schema/v1/export-receipt.schema.json"
       ]
@@ -433,7 +434,7 @@
       "id": "C46",
       "name": "ExternalVitalServerDeliveryConfiguration",
       "owner": "Guest Product external delivery deployment administrator",
-      "boundary": "C44-selected external VitalServer integration and provider identity to one explicit Recorder Gateway Socket.IO packet-delivery endpoint configuration",
+      "boundary": "C44-selected external VitalServer integration to explicit Recorder Gateway Socket.IO packet-delivery and indexed-library archive endpoint configuration, with an identity-only archive credential reference",
       "schemas": [
         "json-schema/v1/external-vitalserver-delivery-configuration.schema.json"
       ]
@@ -473,6 +474,223 @@
       "boundary": "Host Installation Manager command admission, durable installation transaction state, and explicit preflight or activation outcome",
       "schemas": [
         "json-schema/v1/host-installation-lifecycle.schema.json"
+      ]
+    },
+    {
+      "id": "C51",
+      "name": "VitalServerIndexedLibraryCredentialMaterial",
+      "owner": "Guest secret-material owner",
+      "boundary": "Guest-local private VitalServer indexed-library authentication material matched to the identity-only C46 secret reference",
+      "schemas": [
+        "json-schema/v1/vitalserver-indexed-library-credential-material.schema.json"
+      ]
+    },
+    {
+      "id": "C52",
+      "name": "HostLocalAdministrationEndpointDescriptor",
+      "owner": "Host Agent",
+      "boundary": "Host Agent OS-local administration listener readiness to desktop console and platformctl exact local transport selection",
+      "schemas": [
+        "json-schema/v1/host-local-administration-endpoint-descriptor.schema.json"
+      ]
+    },
+    {
+      "id": "C53",
+      "name": "OperatorInterfaceBootstrapConfiguration",
+      "owner": "Host installation configuration",
+      "boundary": "installer-owned Runtime Console launcher input to the Host Agent-published C52 descriptor path",
+      "schemas": [
+        "json-schema/v1/operator-interface-bootstrap-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C54",
+      "name": "HostProductRemovalRequest, HostProductRemovalJournal, and HostProductRemovalReceipt",
+      "owner": "Host Installation Manager",
+      "boundary": "explicit Host product removal admission, durable destructive-operation state, chosen mutable-data disposition, and removal outcome",
+      "schemas": [
+        "json-schema/v1/host-product-removal-lifecycle.schema.json"
+      ]
+    },
+    {
+      "id": "C55",
+      "name": "StagedUpdateLayerEffectReceipt",
+      "owner": "C26-declared layer effect executor",
+      "boundary": "one fixed-protocol, staged layer effect outcome consumed by the next updater before it creates C28 execution evidence",
+      "schemas": [
+        "json-schema/v1/staged-update-layer-effect-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C56",
+      "name": "HostUpdateHandoffSupervisorConfiguration",
+      "owner": "Host update handoff supervisor deployment",
+      "boundary": "deployment-owned C31 queue, C28/C55 evidence, and C52 local-control inputs for one selected next-updater dispatcher",
+      "schemas": [
+        "json-schema/v1/host-update-handoff-supervisor-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C57",
+      "name": "HostUpdateHandoffDispatchReceipt",
+      "owner": "Host update handoff supervisor",
+      "boundary": "immutable C31 dispatch-attempt result distinct from Host-owned C29 update settlement",
+      "schemas": [
+        "json-schema/v1/host-update-handoff-dispatch-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C58",
+      "name": "HostUpdateTrustStore",
+      "owner": "Release process",
+      "boundary": "immutable public update-envelope verification keys deployed to the Host Agent; no private signing material",
+      "schemas": [
+        "json-schema/v1/host-update-trust-store.schema.json"
+      ]
+    },
+    {
+      "id": "C59",
+      "name": "GuestProductReleaseManagerConfiguration, GuestProductReleaseUpdateCommand, and GuestProductReleaseOperation",
+      "owner": "Guest Product Release Manager",
+      "boundary": "Guest-local immutable release staging, current-release activation, health-gated rollback, and durable update outcome; Host code never writes Guest runtime state directly",
+      "schemas": [
+        "json-schema/v1/guest-product-release-management.schema.json"
+      ]
+    },
+    {
+      "id": "C60",
+      "name": "GuestArchiveCredentialMaterialAvailability and GuestArchiveCredentialMaterialProvisioningOutcome",
+      "owner": "Guest secret-material owner",
+      "boundary": "non-secret C51 availability and immediate provisioning outcome through the OS-authorized C52 Host Agent local-administration facade; C51 values are request-only and never become state, receipt, telemetry, package content, or response data",
+      "schemas": [
+        "json-schema/v1/guest-archive-credential-material-availability.schema.json",
+        "json-schema/v1/guest-archive-credential-material-provisioning-outcome.schema.json"
+      ]
+    },
+    {
+      "id": "C61",
+      "name": "GuestProductReleaseEffectExecutorConfiguration",
+      "owner": "Guest Product release delivery",
+      "boundary": "immutable C26 layer-effect desired input for the Host-local C32-to-C59 Guest Product release update operation",
+      "schemas": [
+        "json-schema/v1/guest-product-release-effect-executor-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C62",
+      "name": "NativeGuestMachineProvisioningConfiguration",
+      "owner": "Host deployment configuration",
+      "boundary": "Host deployment to the selected Windows Hyper-V or Linux KVM/libvirt native Guest machine provisioner, binding verified C65 immutable artifact identities to separate mutable runtime storage",
+      "schemas": [
+        "json-schema/v1/native-guest-machine-provisioning-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C63",
+      "name": "NativeGuestMachineProvisioningReceipt",
+      "owner": "Selected native Platform Provider",
+      "boundary": "durable native Guest machine and runtime-storage provisioning evidence, including the verified C65 artifact-set identity, used only for explicit retained-storage reuse",
+      "schemas": [
+        "json-schema/v1/native-guest-machine-provisioning-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C64",
+      "name": "GuestBundledUpstreamImageSetManagerConfiguration, GuestBundledUpstreamImageSetUpdateCommand, and GuestBundledUpstreamImageSetOperation",
+      "owner": "Guest Bundled Upstream Image-set Manager",
+      "boundary": "Guest-local staging, container-engine activation, explicit active image-set state, and durable bundled-upstream update outcome; Host code reaches it only through a declared C32 bridge and never writes its state or invokes its container engine",
+      "schemas": [
+        "json-schema/v1/guest-bundled-upstream-image-set-management.schema.json"
+      ]
+    },
+    {
+      "id": "C65",
+      "name": "NativeGuestArtifactManifest",
+      "owner": "Guest image compiler",
+      "boundary": "Guest image compiler to Windows Hyper-V and Linux KVM/libvirt Host package composition and native Guest provisioning immutable amd64 artifact identity",
+      "schemas": [
+        "json-schema/v1/native-guest-artifact-manifest.schema.json"
+      ]
+    },
+    {
+      "id": "C66",
+      "name": "GuestBundledUpstreamImageSetEffectExecutorConfiguration",
+      "owner": "Guest Bundled Upstream release delivery",
+      "boundary": "immutable C26 layer-effect desired input for the Host-local C32-to-C64 Guest bundled-Upstream image-set update operation",
+      "schemas": [
+        "json-schema/v1/guest-bundled-upstream-image-set-effect-executor-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C67",
+      "name": "HostPlatformReleaseEffectExecutorConfiguration",
+      "owner": "Host Platform release delivery",
+      "boundary": "immutable C26 layer-effect desired input for one fixed, installed Host Installation Manager staged Host Platform release transition",
+      "schemas": [
+        "json-schema/v1/host-platform-release-effect-executor-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C68",
+      "name": "HostPlatformStagedReleaseUpdate and ExplicitRecovery",
+      "owner": "Host Installation Manager",
+      "boundary": "Host-local verified Host Platform release archive staging, current-release transition, durable operation state, and explicit failure or recovery boundary",
+      "schemas": [
+        "json-schema/v1/host-platform-staged-release-update.schema.json"
+      ]
+    },
+    {
+      "id": "C69",
+      "name": "HostUpdateBundleImportCommand, HostUpdateBundleDeclaration, HostUpdateBundleImportReceipt, and HostUpdateBundleApplyCommand",
+      "owner": "Host update bundle store and Host Agent",
+      "boundary": "OS-local operator-selected offline release bundle to Host-owned immutable store and existing C27 update admission; import does not claim C25 trust verification or update success",
+      "schemas": [
+        "json-schema/v1/host-update-bundle-control.schema.json"
+      ]
+    },
+    {
+      "id": "C70",
+      "name": "HostServiceExecutionDefinition",
+      "owner": "Release process",
+      "boundary": "C48 immutable service command from release composition to the Host Service Runner; it does not register an OS service, observe process health, or select a fallback command",
+      "schemas": [
+        "json-schema/v1/host-service-execution-definition.schema.json"
+      ]
+    },
+    {
+      "id": "C71",
+      "name": "RuntimeConsoleDesktopArtifactReceipt",
+      "owner": "Runtime Console packager",
+      "boundary": "one platform-specific desktop installer artifact to release composition, including exact bytes and the C53 bootstrap contract it consumes; it is not product-installation evidence",
+      "schemas": [
+        "json-schema/v1/runtime-console-desktop-artifact-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C72",
+      "name": "OperatorDeliveryKitManifest",
+      "owner": "Release process",
+      "boundary": "one C23-selected Host installer plus one verified C71 desktop Console artifact and exact C53 bootstrap identity, in the only supported installation order",
+      "schemas": [
+        "json-schema/v1/operator-delivery-kit-manifest.schema.json"
+      ]
+    },
+    {
+      "id": "C73",
+      "name": "GuestLinuxSourceDiskMaterializationDeclaration and GuestLinuxSourceDiskMaterializationReceipt",
+      "owner": "Guest Linux source disk materializer",
+      "boundary": "one declared ARM64 QCOW2 source image to one immutable raw source disk and materialization evidence before C42 boot-resource extraction",
+      "schemas": [
+        "json-schema/v1/guest-linux-source-disk-materialization.schema.json"
+      ]
+    },
+    {
+      "id": "C74",
+      "name": "ReleaseDeliveryProofAttachmentReview",
+      "owner": "Release process",
+      "boundary": "explicit review of C24 proof fragments and exact evidence material into one new immutable proof-set candidate; it never mutates a source proof set or creates Host installation state",
+      "schemas": [
+        "json-schema/v1/release-delivery-proof-attachment-review.schema.json"
       ]
     }
   ]

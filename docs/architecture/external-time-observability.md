@@ -1,6 +1,6 @@
 # External upstream, time, and observability profile
 
-> 상태: **구현 및 public-contract acceptance 완료**
+> 상태: **External VitalServer HTTP observation, Host/Guest time·OTLP adapter, public-contract acceptance 구현됨. OS별 실제 설치·reboot·backend 운영 증명은 delivery gate에서 계속한다.**
 >
 > 범위: external VitalServer upstream, independent outbound relay, Host/Guest time authority, Recorder self-observation Catalog, vendor-neutral OpenTelemetry pipeline. 이 문서는 이 사실들을 topology, packet delivery, Lab lifecycle, Archive Export 성공과 섞지 않는 경계를 고정한다.
 
@@ -40,6 +40,16 @@ flowchart LR
 - `status`: adapter가 반환한 `available`, `unavailable`, `failed`, `unsupported` observation, connection fact, C4 capability reference/revision, typed issue.
 
 `apply external integration` command는 requested spec을 persist하는 operation이다. provider가 `unavailable`이라고 명시해도 configuration operation 자체는 성공할 수 있으며 resource status가 `unavailable`으로 남는다. 반대로 adapter call의 outcome 자체를 알 수 없으면 operation은 durable `running`으로 남고 resource status나 capability를 추정하지 않는다.
+
+Production `external-vitalserver-http` provider는 C46
+`ExternalVitalServerDeliveryConfiguration`을 strict decode한다. C46에는 packet
+delivery/archive endpoint와 별도로 `vitalServerObservationEndpoint`가 있으며,
+operator가 `scheme`, `host`, `port`, exact `path`, `acceptedStatusCodes`를 모두
+선언한다. adapter는 이 exact URL로만 redirect 없는 `GET`을 보내며, 선언된 status
+code만 `available/reachable` capability로 만든다. C46이 없거나, provider identity가
+다르거나, endpoint가 Guest loopback이거나, HTTP status가 허용되지 않으면 success나
+empty state로 바꾸지 않는다. 후자는 typed `unavailable` observation이고 전자는
+deployment composition failure다.
 
 External provider capability는 최소한 다음을 explicit하게 보여준다.
 
@@ -122,7 +132,7 @@ Host Agent forwards only the documented Guest Runtime routes unchanged. It owns 
 
 This boundary is complete only when public-contract acceptance proves all of the following.
 
-1. An external integration can be configured as available, unavailable, failed, or unsupported; its capability matrix explicitly marks lifecycle/update/backup unsupported.
+1. An external integration can be configured as available, unavailable, failed, or unsupported; its capability matrix explicitly marks lifecycle/update/backup unsupported. The `external-vitalserver-http` acceptance uses a separate non-loopback HTTP endpoint and proves that only C46's exact path and accepted status code produce `available`; it never substitutes a delivery URL or loopback endpoint.
 2. An external topology references the integration and returns its own explicit capability/connection state; it never falls back to bundled.
 3. A relay can be available while external upstream is unavailable (and vice versa) without either resource being rewritten.
 4. Host and Guest time quality are node-local; synchronized requires full quality evidence, and an unavailable/failed probe cannot become synchronized.
@@ -141,7 +151,7 @@ This boundary deliberately does not claim Windows/Linux OS provider, installer/r
 
 | owner | 구현 위치 | durable state | public proof |
 | --- | --- | --- | --- |
-| External Upstream / Relay | `runtime-platform/services/guest-runtime/internal/guestruntimeapplication/{external_upstream,outbound_relay}.go` | Guest SQLite의 별도 integration/relay table | external C4 capability와 relay를 별도 process profile에서 조회 |
+| External Upstream / Relay | `runtime-platform/services/guest-runtime/internal/guestruntimeapplication/{external_upstream,outbound_relay}.go`, `adapters/externalupstreamobservationprovider/` | Guest SQLite의 별도 integration/relay table | C46 exact HTTP observation adapter와 independent relay profile을 별도 조회 |
 | Guest Time / Catalog / Telemetry | `runtime-platform/services/guest-runtime/internal/guestruntimeapplication/{time_authority,observation_catalog,telemetry}.go` | Guest SQLite의 time/catalog/telemetry table | Guest public route로 clock evidence, immutable `occurredAt`, receipt를 조회 |
 | Host Time / Telemetry | `runtime-platform/services/host-agent/internal/hostagentapplication/{host_time_authority_application_service,host_telemetry_pipeline_application_service}.go` | Host SQLite의 `host_*` table | `/v1/platform/time/*`, `/v1/platform/telemetry/*`로 Guest와 독립된 node state를 조회 |
 | Product profile | `runtime-platform/product/time/`, `runtime-platform/product/observability/` | 없음 — deployment declaration | profile은 source/collector를 명시할 뿐 owner state를 만들지 않음 |
@@ -154,8 +164,15 @@ HTTP/application boundary를 증명하지만 production Linux Guest AF_VSOCK tra
 않는다. `available`, `unavailable`, `failed`, `unsupported`, `outcome-unknown`은
 각각 명시된 test/deployment profile adapter의 결과다. 특히 `outcome-unknown`은
 resource/receipt를 만들지 않고 durable `running` operation만 남기는지를 증명한다.
+별도의 C46 HTTP scenario는 profile adapter가 아니라 real
+`external-vitalserver-http` adapter를 구성한다. Harness가 Host의 non-loopback
+interface에 독립 endpoint를 bind하고 C46을 생성하므로, network discovery나
+`localhost` exception 없이 external-observation 계약을 검증한다.
 
-현재 executable의 기본 physical-provider mode는 Time/Telemetry 모두 `unsupported`이다. 이는 local clock 또는 endpoint 환경변수에서 성공을 추정하지 않기 위한 선택이다. production deployment는 인증된 node-local NTP probe와 OTLP exporter adapter를 명시적으로 설치·선택해야 한다. `product/observability/otel-collector.yaml`은 permissive/open-source OpenTelemetry Collector profile이며, backend endpoint도 명시적으로 주입해야 한다. collector/NTP의 실제 network conformance, OS service registration, signing, installer, reboot/rollback/uninstall은 cross-platform delivery proof로 남긴다.
+Production C37 selects `chrony-tracking`, loopback `otlp-http`, and
+`external-vitalserver-http`; it never derives any of their values from a local
+clock, environment variable, delivery URL, or response redirect. The bundled
+open-source Collector configuration is `product/observability/guest-telemetry-collector.yaml` and its binary is a separate C35 payload. Collector/NTP's actual network conformance, OS service registration, signing, installer, reboot/rollback/uninstall remain cross-platform delivery proof.
 
 ### v1 baseline correction before first release
 

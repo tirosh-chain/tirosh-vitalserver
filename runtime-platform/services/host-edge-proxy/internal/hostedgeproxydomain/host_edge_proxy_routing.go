@@ -12,6 +12,12 @@ import (
 // deployment document version accepted by this bounded context.
 const HostEdgeProxyDeploymentConfigurationSchemaVersion = "v1"
 
+// HostEdgeProxyLocalAdministrationCredentialMaterialPath is C60's exact
+// Host Agent local-administration route. It is never eligible for C36 public
+// routing, including from an otherwise valid catch-all browser route. C52 OS
+// transport authorization owns access instead.
+const HostEdgeProxyLocalAdministrationCredentialMaterialPath = "/v1/runtime/archive/credential-material"
+
 // HostEdgeProxyDeploymentConfiguration is C36 after its Host deployment input
 // has been decoded. It is desired configuration, not a claim about listener
 // reachability, Guest readiness, or upstream health.
@@ -111,6 +117,9 @@ func ValidateHostEdgeProxyDeploymentConfiguration(configuration HostEdgeProxyDep
 // ResolveHostEdgeProxyRoute returns only a configured route. An unmatched
 // request has no implicit default backend.
 func ResolveHostEdgeProxyRoute(routes []HostEdgeProxyRoute, requestPath string) (HostEdgeProxyRoute, bool) {
+	if requestPath == HostEdgeProxyLocalAdministrationCredentialMaterialPath {
+		return HostEdgeProxyRoute{}, false
+	}
 	for _, route := range routes {
 		if strings.HasPrefix(requestPath, route.RequestPathPrefix) {
 			return route, true

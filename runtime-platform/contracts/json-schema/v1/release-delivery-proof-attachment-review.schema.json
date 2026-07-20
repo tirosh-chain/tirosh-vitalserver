@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:release-delivery-proof-attachment-review",
+  "title": "ReleaseDeliveryProofAttachmentReview",
+  "description": "Release-process-owned review record for a new immutable C24 proof set. It records the exact source proof set, proof fragments, and evidence identities that an operator explicitly reviewed. It neither creates Host state nor changes a canonical source proof set in place.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "reviewId",
+    "reviewerId",
+    "reviewedAt",
+    "sourceProofSet",
+    "attachedProofs",
+    "outputProofSet"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "reviewId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "reviewerId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "reviewedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "sourceProofSet": {
+      "$ref": "#/$defs/DocumentIdentity"
+    },
+    "attachedProofs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/AttachedProof"
+      }
+    },
+    "outputProofSet": {
+      "$ref": "#/$defs/OutputProofSet"
+    }
+  },
+  "$defs": {
+    "DocumentIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uri",
+        "sha256"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "AttachedProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planId",
+        "stage",
+        "status",
+        "proofFragment"
+      ],
+      "properties": {
+        "planId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "stage": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:release-delivery-plan#/$defs/ProofStage"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "failed",
+            "unsupported"
+          ]
+        },
+        "proofFragment": {
+          "$ref": "#/$defs/DocumentIdentity"
+        },
+        "evidence": {
+          "$ref": "#/$defs/DocumentIdentity"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "evidence"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "evidence"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "OutputProofSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileName",
+        "sha256"
+      ],
+      "properties": {
+        "fileName": {
+          "const": "release-delivery-proofs.v1.json"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "documentKind": "host-product-removal-receipt",
+  "id": "product-removal-request-001-receipt",
+  "requestId": "product-removal-request-001",
+  "installationId": "vitalserver-runtime-platform",
+  "releaseId": "runtime-platform-0.2.0-dev-build-001",
+  "dataDisposition": "purge-all-product-data",
+  "state": "completed",
+  "packageReceiptRemoval": "removed-by-host-installation-manager",
+  "observedAt": "2026-07-18T03:00:00Z"
+}

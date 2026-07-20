@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v1",
+  "recoveryId": "update-030-recovery-001",
+  "operationId": "update-030-host-platform-apply",
+  "action": "reconcile-current-release",
+  "state": "succeeded",
+  "activeReleaseId": "runtime-platform-030",
+  "observedAt": "2026-07-20T00:00:00Z"
+}

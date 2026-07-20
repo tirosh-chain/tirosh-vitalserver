@@ -39,3 +39,42 @@ func TestStagedProductUpdateExecutionReportFileReaderReadsOneExplicitC28Document
 		t.Fatalf("report=%+v err=%v", actual, err)
 	}
 }
+
+func TestWriteStagedProductUpdateExecutionReportWritesOneIdempotentDocument(t *testing.T) {
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temporary directory: %v", err)
+	}
+	path := filepath.Join(directory, "written-report.json")
+	report := hostupdaterdomain.StagedProductUpdateExecutionReport{SchemaVersion: "v1", UpdateID: "update-001"}
+	if err := WriteStagedProductUpdateExecutionReport(path, report); err != nil {
+		t.Fatalf("write C28 report: %v", err)
+	}
+	if err := WriteStagedProductUpdateExecutionReport(path, report); err != nil {
+		t.Fatalf("repeat identical C28 report: %v", err)
+	}
+	actual, err := (StagedProductUpdateExecutionReportFileReader{}).Read(path)
+	if err != nil || actual.UpdateID != report.UpdateID {
+		t.Fatalf("read written C28 report=%+v err=%v", actual, err)
+	}
+}
+
+func TestWriteStagedProductUpdateExecutionReportRejectsReplacementWithDifferentEvidence(t *testing.T) {
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temporary directory: %v", err)
+	}
+	path := filepath.Join(directory, "report.json")
+	if err := WriteStagedProductUpdateExecutionReport(path, hostupdaterdomain.StagedProductUpdateExecutionReport{SchemaVersion: "v1", UpdateID: "update-001"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteStagedProductUpdateExecutionReport(path, hostupdaterdomain.StagedProductUpdateExecutionReport{SchemaVersion: "v1", UpdateID: "update-002"}); err == nil {
+		t.Fatal("expected different C28 evidence to be rejected")
+	}
+}
+
+func TestWriteStagedProductUpdateExecutionReportRequiresAbsoluteHostOwnedPath(t *testing.T) {
+	if err := WriteStagedProductUpdateExecutionReport("report.json", hostupdaterdomain.StagedProductUpdateExecutionReport{}); err == nil {
+		t.Fatal("expected relative C28 report output path to be rejected")
+	}
+}

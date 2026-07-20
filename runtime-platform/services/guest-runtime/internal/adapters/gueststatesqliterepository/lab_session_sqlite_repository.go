@@ -185,11 +185,25 @@ func (repository *GuestRuntimeStateSQLiteRepository) CommitLabStateTransition(ct
 		return fmt.Errorf("begin Lab transaction: %w", err)
 	}
 	defer transaction.Rollback()
-	if err := validateLabTargetRevision(ctx, transaction, commit.Operation.Target); err != nil {
-		return err
-	}
-	if _, err := transaction.ExecContext(ctx, `INSERT INTO runtime_operations (id, request_id, command_digest, document_json) VALUES (?, ?, ?, ?)`, commit.Operation.ID, commit.Operation.RequestID, commit.Operation.CommandDigest, encoded.operation); err != nil {
-		return mapLabConflict("persist Lab operation", err)
+	if commit.OperationContinuation {
+		result, err := transaction.ExecContext(ctx, `UPDATE runtime_operations SET document_json = ? WHERE id = ? AND request_id = ? AND command_digest = ?`, encoded.operation, commit.Operation.ID, commit.Operation.RequestID, commit.Operation.CommandDigest)
+		if err != nil {
+			return fmt.Errorf("persist Lab operation continuation: %w", err)
+		}
+		updated, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("read Lab operation continuation result: %w", err)
+		}
+		if updated != 1 {
+			return guestruntimeapplication.ErrGuestRuntimeOwnedResourceConflict
+		}
+	} else {
+		if err := validateLabTargetRevision(ctx, transaction, commit.Operation.Target); err != nil {
+			return err
+		}
+		if _, err := transaction.ExecContext(ctx, `INSERT INTO runtime_operations (id, request_id, command_digest, document_json) VALUES (?, ?, ?, ?)`, commit.Operation.ID, commit.Operation.RequestID, commit.Operation.CommandDigest, encoded.operation); err != nil {
+			return mapLabConflict("persist Lab operation", err)
+		}
 	}
 	if encoded.session != "" {
 		if _, err := transaction.ExecContext(ctx, `INSERT INTO lab_sessions (id, document_json) VALUES (?, ?)

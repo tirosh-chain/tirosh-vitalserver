@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "id": "vitalserver-windows-reference-update-handoff-supervisor",
+  "stagingDirectory": "C:\\ProgramData\\VitalServerRuntimePlatform\\data\\update-staging",
+  "handoffQueueDirectory": "C:\\ProgramData\\VitalServerRuntimePlatform\\data\\update-staging\\handoff-queue",
+  "executionEvidenceDirectory": "C:\\ProgramData\\VitalServerRuntimePlatform\\data\\update-execution",
+  "layerEffectReceiptDirectory": "C:\\ProgramData\\VitalServerRuntimePlatform\\data\\update-layer-effects",
+  "hostLocalAdministrationDescriptorPath": "C:\\ProgramData\\VitalServerRuntimePlatform\\control\\host-agent.local.json",
+  "layerEffectTimeoutMilliseconds": 300000,
+  "completionTimeoutMilliseconds": 30000,
+  "servicePollIntervalMilliseconds": 1000
+}

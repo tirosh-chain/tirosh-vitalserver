@@ -229,6 +229,7 @@ def verify_payload_documents(
     host_agent_path = payload_destination(payload_root, release_path / "bin" / "host-agent")
     host_edge_proxy_path = payload_destination(payload_root, release_path / "bin" / "host-edge-proxy")
     host_installation_manager_path = payload_destination(payload_root, release_path / "bin" / "host-installation-manager")
+    platformctl_path = payload_destination(payload_root, release_path / "bin" / "platformctl")
     macos_virtual_machine_supervisor_path = payload_destination(payload_root, release_path / "bin" / "macos-virtual-machine-supervisor")
     c33_path = payload_destination(payload_root, release_path / "config" / "host-agent-deployment.json")
     c36_path = payload_destination(payload_root, release_path / "config" / "host-edge-proxy-deployment.json")
@@ -239,6 +240,7 @@ def verify_payload_documents(
         ("Host Agent", host_agent_path),
         ("Host Edge Proxy", host_edge_proxy_path),
         ("Host Installation Manager", host_installation_manager_path),
+        ("platformctl", platformctl_path),
         ("macOS virtual machine supervisor", macos_virtual_machine_supervisor_path),
         ("C33 HostAgentDeploymentConfiguration", c33_path),
         ("C36 HostEdgeProxyDeploymentConfiguration", c36_path),
@@ -589,8 +591,11 @@ def verify_guest_artifact_compilation_receipt(
         consumed_ids.add(input_artifact["id"])
         verify_receipt_artifact_digest(input_artifact, "C35 consumed input artifact " + input_artifact["id"])
     required_guest_product_input_ids = {
+        "guest-node-services-linux-arm64",
         "guest-product-process-supervisor-linux-arm64",
         "guest-product-process-deployment-configuration",
+        "guest-product-release-manager-linux-arm64",
+        "guest-product-release-manager-configuration",
         "guest-product-service-manager-deployment-configuration",
         "guest-product-bootstrap-configuration",
         "guest-product-vitalserver-topology-deployment",
@@ -848,7 +853,12 @@ def verify_postinstall_service_reconciliation(
         raise MacOSHostPackageVerificationError("package postinstall service reconciliation script is missing") from error
     required_lines = [
         "set -eu",
+        "transaction_started=0",
+        "trap recover_installation 0",
+        "--mode recover",
+        "--mode quiesce",
         "--mode activate",
+        "--mode finalize",
         "--manifest '" + str(immutable_release_slot_path(verification) / "installation-manifest.json").replace("'", "'\\''") + "'",
         "/usr/bin/install -d -m 0750",
         "/usr/bin/touch '"
@@ -859,34 +869,26 @@ def verify_postinstall_service_reconciliation(
         "'" + str(directory).replace("'", "'\\''") + "'"
         for directory in host_filesystem_preparation.declared_host_runtime_directories
     )
-    for service_label in (
-        macos_host_package_release_plan.host_agent_launchd_service_label,
-        macos_host_package_release_plan.host_edge_proxy_launchd_service_label,
-    ):
-        required_lines.extend(
-            [
-                "/bin/launchctl bootstrap system '" + str(PurePosixPath("/Library/LaunchDaemons") / (service_label + ".plist")) + "'",
-            ]
-        )
     if any(line not in postinstall for line in required_lines):
         raise MacOSHostPackageVerificationError(
-            "package postinstall does not explicitly activate the release, prepare the Host filesystem, and bootstrap declared launchd services"
+            "package postinstall does not explicitly prepare the Host filesystem and execute the C50 quiesce, activate, finalize, and recovery sequence"
         )
     if "|| true" in postinstall:
-        raise MacOSHostPackageVerificationError("package postinstall must not hide activation or launchd bootstrap failures")
-    if "/bin/launchctl bootout" in postinstall:
-        raise MacOSHostPackageVerificationError("package postinstall must not own Host service quiescence")
+        raise MacOSHostPackageVerificationError("package postinstall must not hide installation recovery failures")
+    if "/bin/launchctl bootout" in postinstall or "/bin/launchctl bootstrap" in postinstall:
+        raise MacOSHostPackageVerificationError("package postinstall must not own Host service reconciliation")
 
 
 def verify_preinstall_host_installation_transaction(
     verification: MacOSHostPackageVerification,
     expanded_package: Path,
 ) -> None:
-    """Require the script-only C50 transaction handoff before payload write.
+    """Require the script-only C50 preflight handoff before payload write.
 
     The PKG script supplies C48/C50 values to the installed manager binary;
     it must not independently inspect receipts or invoke launchctl. That keeps
-    admission and service-quiescence policy in the Host state owner.
+    admission policy in the Host state owner. Service effects occur only after
+    payload delivery in postinstall, where recovery can use the installed C48.
     """
 
     scripts_root = expanded_package / "Scripts"
@@ -897,26 +899,50 @@ def verify_preinstall_host_installation_transaction(
         raise MacOSHostPackageVerificationError(
             "package preinstall Host Installation Manager script is missing"
         ) from error
-    if not (scripts_root / "host-installation-manager").is_file() or not (
-        scripts_root / "installation-manifest.json"
-    ).is_file():
+    script_installation_manager = scripts_root / "host-installation-manager"
+    script_installation_manifest = scripts_root / "installation-manifest.json"
+    payload_root = expanded_package / "Payload"
+    payload_installation_manager = payload_destination(
+        payload_root,
+        immutable_release_slot_path(verification) / "bin" / "host-installation-manager",
+    )
+    payload_installation_manifest = payload_destination(
+        payload_root,
+        immutable_release_slot_path(verification) / "installation-manifest.json",
+    )
+    if not script_installation_manager.is_file() or not script_installation_manifest.is_file():
         raise MacOSHostPackageVerificationError(
             "package preinstall Host Installation Manager inputs are missing"
+        )
+    if not payload_installation_manager.is_file() or not payload_installation_manifest.is_file():
+        raise MacOSHostPackageVerificationError(
+            "package payload Host Installation Manager inputs are missing"
+        )
+    if not script_installation_manager.stat().st_mode & 0o111:
+        raise MacOSHostPackageVerificationError(
+            "package script Host Installation Manager must be executable"
+        )
+    if script_installation_manager.read_bytes() != payload_installation_manager.read_bytes():
+        raise MacOSHostPackageVerificationError(
+            "package script Host Installation Manager bytes do not match the immutable payload"
+        )
+    if script_installation_manifest.read_bytes() != payload_installation_manifest.read_bytes():
+        raise MacOSHostPackageVerificationError(
+            "package script C48 installation manifest bytes do not match the immutable payload"
         )
     required_lines = (
         "set -eu",
         '"$script_directory/host-installation-manager" --mode preflight',
-        '"$script_directory/host-installation-manager" --mode quiesce',
         "--release-id '" + verification.release_slot_id + "'",
         '--manifest "$script_directory/installation-manifest.json"',
     )
     if any(line not in preinstall for line in required_lines):
         raise MacOSHostPackageVerificationError(
-            "package preinstall does not execute the C50 preflight and service-quiescence sequence"
+            "package preinstall does not execute the C50 preflight sequence"
         )
-    if "/bin/launchctl bootout" in preinstall or "|| true" in preinstall:
+    if "--mode quiesce" in preinstall or "/bin/launchctl bootout" in preinstall or "/bin/launchctl bootstrap" in preinstall or "|| true" in preinstall:
         raise MacOSHostPackageVerificationError(
-            "package preinstall must not own Host service quiescence or hide installation failures"
+            "package preinstall must not quiesce Host services or hide installation failures"
         )
 
 
@@ -971,16 +997,63 @@ def verify_host_product_installation_manifest(
     activation = required_object(manifest, "activation", "C48")
     if (
         activation.get("currentReleaseLinkPath") != str(current_release_path(verification))
+        or activation.get("referenceKind") != "symbolic-link"
         or activation.get("expectedReleaseRootPath") != str(release_path)
     ):
         raise MacOSHostPackageVerificationError(
             "C48 activation does not bind current to the declared immutable release slot"
+        )
+    operator_interface = required_object(manifest, "operatorInterface", "C48")
+    bootstrap_configuration_path = operator_interface.get("bootstrapConfigurationPath")
+    bootstrap_configuration_sha256 = operator_interface.get("bootstrapConfigurationSha256")
+    if not isinstance(bootstrap_configuration_path, str) or not isinstance(bootstrap_configuration_sha256, str):
+        raise MacOSHostPackageVerificationError("C48 operator interface declaration is invalid")
+    staged_bootstrap_configuration = payload_destination(
+        payload_root,
+        PurePosixPath(bootstrap_configuration_path),
+    )
+    if not staged_bootstrap_configuration.is_file() or sha256_file(staged_bootstrap_configuration) != bootstrap_configuration_sha256:
+        raise MacOSHostPackageVerificationError(
+            "C48 operator interface bootstrap configuration does not match packaged bytes"
+        )
+    bootstrap_configuration = load_json_document(
+        staged_bootstrap_configuration,
+        "C53 OperatorInterfaceBootstrapConfiguration",
+    )
+    try:
+        c53_validation_errors = repository.validate_instance(
+            "operator-interface-bootstrap-configuration.schema.json",
+            bootstrap_configuration,
+        )
+    except ContractToolError as error:
+        raise MacOSHostPackageVerificationError(
+            "C53 contract source is unavailable: " + str(error)
+        ) from error
+    if c53_validation_errors:
+        raise MacOSHostPackageVerificationError(
+            "C53 OperatorInterfaceBootstrapConfiguration is invalid: "
+            + "; ".join(c53_validation_errors)
+        )
+    c33_local_administration = required_object(
+        required_object(host_agent_deployment, "control", "C33"),
+        "localAdministration",
+        "C33 control",
+    )
+    if (
+        bootstrap_configuration.get("bootstrapConfigurationPath")
+        != bootstrap_configuration_path
+        or bootstrap_configuration.get("localAdministrationDescriptorPath")
+        != c33_local_administration.get("descriptorPath")
+    ):
+        raise MacOSHostPackageVerificationError(
+            "C53 must bind its packaged path and the exact C33 local administration descriptor path"
         )
     entries = immutable_payload.get("entries")
     if not isinstance(entries, list) or not entries:
         raise MacOSHostPackageVerificationError("C48 immutable payload entries are missing")
     declared_paths: set[str] = set()
     staged_release_root = payload_destination(payload_root, release_path)
+    platformctl_path = staged_release_root / "bin" / "platformctl"
     for entry in entries:
         if not isinstance(entry, dict):
             raise MacOSHostPackageVerificationError("C48 immutable payload entry is invalid")
@@ -995,13 +1068,46 @@ def verify_host_product_installation_manifest(
                 "C48 immutable payload entry does not match packaged bytes: "
                 + relative_path
             )
+        expected_executable = entry.get("executable")
+        if not isinstance(expected_executable, bool) or bool(candidate.stat().st_mode & 0o111) != expected_executable:
+            raise MacOSHostPackageVerificationError(
+                "C48 immutable payload entry executable mode does not match packaged bytes: "
+                + relative_path
+            )
     if "installation-manifest.json" in declared_paths:
         raise MacOSHostPackageVerificationError(
             "C48 immutable payload entries must not recursively declare the manifest itself"
         )
+    release_entries = list(staged_release_root.rglob("*"))
+    symbolic_links = sorted(
+        candidate.relative_to(staged_release_root).as_posix()
+        for candidate in release_entries
+        if candidate.is_symlink()
+    )
+    if symbolic_links:
+        raise MacOSHostPackageVerificationError(
+            "C48 immutable payload must not contain symbolic links: "
+            + ",".join(symbolic_links)
+        )
+    packaged_release_files = {
+        candidate.relative_to(staged_release_root).as_posix()
+        for candidate in release_entries
+        if candidate.is_file()
+    }
+    expected_release_files = declared_paths | {"installation-manifest.json"}
+    if packaged_release_files != expected_release_files:
+        unexpected = sorted(packaged_release_files - expected_release_files)
+        missing = sorted(expected_release_files - packaged_release_files)
+        raise MacOSHostPackageVerificationError(
+            "C48 immutable payload inventory is not exact: unexpected="
+            + ",".join(unexpected)
+            + " missing="
+            + ",".join(missing)
+        )
     required_binaries = {
         "bin/macos-virtual-machine-supervisor": macos_virtual_machine_supervisor_path,
         "bin/host-installation-manager": host_installation_manager_path,
+        "bin/platformctl": platformctl_path,
     }
     for relative_path, binary_path in required_binaries.items():
         if relative_path not in declared_paths or not binary_path.is_file():

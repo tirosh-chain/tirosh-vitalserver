@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:archive-export-provider",
+  "title": "ArchiveExportProviderConfiguration",
+  "description": "The Archive Export owner's non-secret configured provider reference. It is a configuration fact only; it does not report Recorder finalization, .vital formation, upload, indexing, or provider reachability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "provider"],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "provider": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:export-receipt#/$defs/ProviderReference"
+    }
+  }
+}

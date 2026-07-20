@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "v1",
+  "control": {
+    "localAdministration": {
+      "transport": "unix-domain-socket",
+      "endpointAddress": "/run/vitalserver-runtime-platform/host-agent.sock",
+      "descriptorPath": "/opt/vitalserver-runtime-platform/control/host-agent.local.json",
+      "authorizedUserId": 0
+    },
+    "loopbackHTTP": { "mode": "disabled" },
+    "stateDatabasePath": "/var/lib/vitalserver-runtime-platform/data/host-agent/host-agent.sqlite",
+    "guestTimeoutMilliseconds": 5000
+  },
+  "installation": {
+    "installationId": "vitalserver-runtime-platform-linux-reference",
+    "productVersion": "0.2.0-dev",
+    "runtimeVersion": "0.2.0-dev",
+    "dataDirectory": "/var/lib/vitalserver-runtime-platform/data"
+  },
+  "guestRuntimeControlEndpoint": {
+    "id": "vitalserver-linux-external-guest-runtime",
+    "scheme": "http",
+    "host": "192.0.2.10",
+    "port": 18443
+  },
+  "provider": {
+    "kind": "linux-kvm-libvirt-systemd",
+    "id": "vitalserver-linux-kvm-libvirt-reference-provider",
+    "nativeProviderBridgeExecutablePath": "/opt/vitalserver-runtime-platform/current/bin/linux-kvm-libvirt-systemd-bridge",
+    "nativeVirtualMachineName": "vitalserver-guest",
+    "hostServiceName": "vitalserver-host-agent.service",
+    "nativeGuestMachineOwnership": "externally-provisioned"
+  },
+  "time": {
+    "hostNodeId": "vitalserver-linux-reference-host",
+    "timeAuthorityId": "vitalserver-linux-reference-time-authority",
+    "kind": "time-authority-outcome-profile",
+    "providerMode": "outcome-unknown"
+  },
+  "telemetry": {
+    "kind": "telemetry-export-outcome-profile",
+    "pipelineMode": "outcome-unknown",
+    "exportMode": "outcome-unknown"
+  },
+  "updateBootstrap": {
+    "mode": "staged",
+    "bundleStoreDirectory": "/var/lib/vitalserver-runtime-platform/data/update-bundles",
+    "stagingDirectory": "/var/lib/vitalserver-runtime-platform/data/update-staging",
+    "trustStorePath": "/opt/vitalserver-runtime-platform/current/config/update-trust-store.json"
+  }
+}

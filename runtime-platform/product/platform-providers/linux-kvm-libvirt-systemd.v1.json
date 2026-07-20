@@ -10,11 +10,14 @@
   },
   "serviceManager": "systemd",
   "requiredCapabilities": [
+    "native-guest-machine-provisioning",
     "guest-vm-lifecycle",
     "host-service-lifecycle"
   ],
   "nativeDependencies": [
+    "qemu-img",
     "libvirt virsh",
+    "qemu-system-x86_64 and OVMF",
     "systemd systemctl"
   ]
 }

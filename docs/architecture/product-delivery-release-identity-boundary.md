@@ -21,6 +21,7 @@ Release process
        └─ required Host service registrations
            ├─ host-agent
            └─ host-edge-proxy
+           └─ host-update-handoff-supervisor
             ↓ explicit selected plan
 Product Delivery package adapter
   └─ MacOSHostPackageReleasePlan
@@ -29,7 +30,8 @@ Product Delivery package adapter
        ├─ expected PKG file name
        ├─ pkgbuild / PackageInfo installer package identifier
        ├─ Host Agent launchd label
-       └─ Host Edge Proxy launchd label
+       ├─ Host Edge Proxy launchd label
+       └─ Host Update Handoff Supervisor launchd label
             ↓ package payload
 Host installation
   └─ C33 HostAgentDeploymentConfiguration
@@ -64,8 +66,9 @@ C47 `MacOSReleasePackageAssemblyReceipt`은 completed C41/C35/C34/PKG identity�
 ```
 
 조립기와 검증기는 `--product-version`, 일반 `--launchd-service-label`, 또는
-`--host-edge-proxy-launchd-service-label`을 받지 않는다. 선택된
-`MacOSHostPackageReleasePlan`에서 두 Host service launchd label, product version,
+`--host-edge-proxy-launchd-service-label` 또는
+`--host-update-handoff-supervisor-launchd-service-label`을 받지 않는다. 선택된
+`MacOSHostPackageReleasePlan`에서 세 Host service launchd label, product version,
 expected PKG filename, macOS installer package identifier를 읽는다. 그러므로 다음 모두가 같아야 package composition 또는
 verification이 성공한다.
 
@@ -75,16 +78,19 @@ verification이 성공한다.
    launchd plist label
 4. C23 `requiredHostServiceRegistrations[host-edge-proxy].name`과 packaged Host
    Edge Proxy launchd plist label
-5. C33 `installation.productVersion`
-6. expanded PKG `PackageInfo.version`
-7. C23 `macOSInstallerPackageIdentifier`, `pkgbuild --identifier`, expanded PKG
+5. C23 `requiredHostServiceRegistrations[host-update-handoff-supervisor].name`과
+   packaged Host Update Handoff Supervisor launchd plist label
+6. C33 `installation.productVersion`
+7. expanded PKG `PackageInfo.version`
+8. C23 `macOSInstallerPackageIdentifier`, `pkgbuild --identifier`, expanded PKG
    `PackageInfo.identifier`, clean Host `pkgutil` receipt package identifier
 
 `requiredHostServiceRegistrations`는 generic `service`가 아니라 package가 등록해야
-하는 Host-side process role을 말한다. 각 release plan에는 `host-agent`와
-`host-edge-proxy`가 정확히 하나씩 있으며, macOS projection은 두 registration이
-모두 `launchd`임을 요구한다. 이로써 Host Edge Proxy가 installer contract 밖의
-보조 process로 사라지지 않고, generic `service-label`도 남지 않는다.
+하는 Host-side process role을 말한다. 각 release plan에는 `host-agent`,
+`host-edge-proxy`, `host-update-handoff-supervisor`가 정확히 하나씩 있으며, macOS
+projection은 세 registration이 모두 `launchd`임을 요구한다. 이로써 Host Edge
+Proxy나 update handoff supervisor가 installer contract 밖의 보조 process로
+사라지지 않고, generic `service-label`도 남지 않는다.
 
 ## 제품 버전과 component 버전은 다르다
 

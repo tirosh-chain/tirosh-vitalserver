@@ -22,7 +22,7 @@
     "LayerPlan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["layer", "dependsOn", "artifact", "rollback"],
+      "required": ["layer", "dependsOn", "artifact", "effectExecutor", "rollback"],
       "properties": {
         "layer": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/UpdateLayer" },
         "dependsOn": {
@@ -31,8 +31,42 @@
           "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/UpdateLayer" }
         },
         "artifact": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/Artifact" },
+        "effectExecutor": { "$ref": "#/$defs/LayerEffectExecutor" },
         "rollback": { "$ref": "#/$defs/RollbackPlan" }
       }
+    },
+    "LayerEffectExecutor": {
+      "description": "One immutable, C26-declared executable and separately declared immutable configuration that the staged next updater invokes through its fixed layer-effect protocol. Neither field is an arbitrary Host command path, shell expression, or inferred sibling file.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "relativePath", "sha256", "sizeBytes", "mediaType", "configurationArtifact"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "relativePath": { "type": "string", "minLength": 9, "maxLength": 1024, "pattern": "^payload/[^\\\\]*$" },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "mediaType": { "const": "application/vnd.tirosh.vitalserver.update-layer-effect-executor" },
+        "configurationArtifact": { "$ref": "#/$defs/LayerEffectExecutorConfigurationArtifact" }
+      },
+      "allOf": [
+        { "not": { "properties": { "relativePath": { "pattern": "\\.\\." } }, "required": ["relativePath"] } }
+      ]
+    },
+    "LayerEffectExecutorConfigurationArtifact": {
+      "description": "Immutable release-owned desired input supplied to exactly one effect executor by the fixed C26 protocol. The Host updater verifies the bytes but does not decode a layer-specific configuration.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "relativePath", "sha256", "sizeBytes", "mediaType"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "relativePath": { "type": "string", "minLength": 9, "maxLength": 1024, "pattern": "^payload/[^\\\\]*$" },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "mediaType": { "const": "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json" }
+      },
+      "allOf": [
+        { "not": { "properties": { "relativePath": { "pattern": "\\.\\." } }, "required": ["relativePath"] } }
+      ]
     },
     "RollbackPlan": {
       "type": "object",

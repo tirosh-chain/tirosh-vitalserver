@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-linux-boot-artifact-extraction-declaration",
   "title": "GuestLinuxBootArtifactExtractionDeclaration",
-  "description": "C42 immutable release-build declaration for extracting one gzip-compressed ARM64 Linux kernel into the uncompressed Image consumed by the macOS Virtualization boot loader, copying the declared uncompressed initial ramdisk, and publishing one byte-identified whole-disk ext4 source image as the C35 root-storage source. sourceAbsolutePath is a build-machine-only input and must never appear in the receipt or emitted artifacts.",
+  "description": "C42 immutable release-build declaration for publishing one ARM64 Linux root filesystem, uncompressed kernel Image, and initial ramdisk as distinct identified release-build inputs. A boot resource is read either from the explicitly selected ext4 source filesystem or from its own identified external source artifact; it is never guessed from the root image. The source filesystem is either the entire raw disk or one explicitly numbered raw-disk partition. A QCOW2 source disk must first be materialized through C73. Build-machine paths never appear in the receipt or emitted artifacts.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "extractionId", "architecture", "sourceImage", "sourceFilesystem", "bootResources", "rootStorage"],
@@ -16,9 +16,17 @@
       "additionalProperties": false,
       "required": ["layout", "filesystemType"],
       "properties": {
-        "layout": { "const": "whole-disk-ext4" },
-        "filesystemType": { "const": "ext4" }
-      }
+        "layout": { "enum": ["whole-disk-ext4", "partitioned-disk-ext4"] },
+        "filesystemType": { "const": "ext4" },
+        "partitionIndex": { "type": "integer", "minimum": 1, "maximum": 128 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "layout": { "const": "partitioned-disk-ext4" } }, "required": ["layout"] },
+          "then": { "required": ["partitionIndex"] },
+          "else": { "not": { "required": ["partitionIndex"] } }
+        }
+      ]
     },
     "bootResources": {
       "type": "object",
@@ -65,16 +73,26 @@
         "sourceOriginUri": { "type": "string", "format": "uri", "maxLength": 4096 },
         "sourceRelease": { "type": "string", "minLength": 1, "maxLength": 256 },
         "sizeBytes": { "type": "integer", "minimum": 1 },
-        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sourceMaterialization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["receiptAbsolutePath", "receiptSHA256", "materializationId"],
+          "properties": {
+            "receiptAbsolutePath": { "type": "string", "minLength": 2, "maxLength": 4096, "pattern": "^/" },
+            "receiptSHA256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+            "materializationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+          }
+        }
       }
     },
     "GzipCompressedLinuxKernelExtraction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "guestAbsolutePath", "sourceCompression", "outputRelativePath", "outputFormat"],
+      "required": ["id", "source", "sourceCompression", "outputRelativePath", "outputFormat"],
       "properties": {
         "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
-        "guestAbsolutePath": { "$ref": "#/$defs/GuestAbsolutePath" },
+        "source": { "$ref": "#/$defs/BootResourceSource" },
         "sourceCompression": { "const": "gzip" },
         "outputRelativePath": { "const": "boot/Image" },
         "outputFormat": { "const": "uncompressed-linux-arm64-image" }
@@ -83,13 +101,41 @@
     "UncompressedInitialRamdiskExtraction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "guestAbsolutePath", "sourceCompression", "outputRelativePath", "outputFormat"],
+      "required": ["id", "source", "sourceCompression", "outputRelativePath", "outputFormat"],
       "properties": {
         "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
-        "guestAbsolutePath": { "$ref": "#/$defs/GuestAbsolutePath" },
+        "source": { "$ref": "#/$defs/BootResourceSource" },
         "sourceCompression": { "const": "none" },
         "outputRelativePath": { "const": "boot/initrd.img" },
         "outputFormat": { "const": "cpio" }
+      }
+    },
+    "BootResourceSource": {
+      "oneOf": [
+        { "$ref": "#/$defs/SourceImageFilesystemBootResource" },
+        { "$ref": "#/$defs/ExternalArtifactBootResource" }
+      ]
+    },
+    "SourceImageFilesystemBootResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "guestAbsolutePath"],
+      "properties": {
+        "kind": { "const": "source-image-filesystem" },
+        "guestAbsolutePath": { "$ref": "#/$defs/GuestAbsolutePath" }
+      }
+    },
+    "ExternalArtifactBootResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sourceAbsolutePath", "sourceOriginUri", "sourceRelease", "sizeBytes", "sha256"],
+      "properties": {
+        "kind": { "const": "external-artifact" },
+        "sourceAbsolutePath": { "$ref": "#/$defs/SourceAbsolutePath" },
+        "sourceOriginUri": { "type": "string", "format": "uri", "maxLength": 4096 },
+        "sourceRelease": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
       }
     },
     "GuestRootStorageExtraction": {

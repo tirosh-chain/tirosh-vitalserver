@@ -32,6 +32,19 @@ type ProductUpdateArtifact struct {
 	MediaType    string `json:"mediaType"`
 }
 
+// ProductUpdateLayerEffectExecutor is the one release payload executable that
+// can perform a declared layer operation. The next updater invokes it through
+// a fixed argument protocol; a C26 document never carries a Host command path,
+// shell expression, or caller-defined arguments.
+type ProductUpdateLayerEffectExecutor struct {
+	ID                    string                `json:"id"`
+	RelativePath          string                `json:"relativePath"`
+	SHA256                string                `json:"sha256"`
+	SizeBytes             int64                 `json:"sizeBytes"`
+	MediaType             string                `json:"mediaType"`
+	ConfigurationArtifact ProductUpdateArtifact `json:"configurationArtifact"`
+}
+
 // ProductUpdateLayerRollbackPlan declares whether the selected update layer
 // has a rollback artifact; it is desired input, not rollback execution fact.
 type ProductUpdateLayerRollbackPlan struct {
@@ -43,10 +56,11 @@ type ProductUpdateLayerRollbackPlan struct {
 // ProductUpdateLayerPlan is the ordered desired work declaration for one
 // C26 product-update layer.
 type ProductUpdateLayerPlan struct {
-	Layer     string                         `json:"layer"`
-	DependsOn []string                       `json:"dependsOn"`
-	Artifact  ProductUpdateArtifact          `json:"artifact"`
-	Rollback  ProductUpdateLayerRollbackPlan `json:"rollback"`
+	Layer          string                           `json:"layer"`
+	DependsOn      []string                         `json:"dependsOn"`
+	Artifact       ProductUpdateArtifact            `json:"artifact"`
+	EffectExecutor ProductUpdateLayerEffectExecutor `json:"effectExecutor"`
+	Rollback       ProductUpdateLayerRollbackPlan   `json:"rollback"`
 }
 
 // ProductUpdateSpecification is C26.  It can evolve independently because it
@@ -103,6 +117,31 @@ func validateProductUpdateArtifact(artifact ProductUpdateArtifact) error {
 	}
 	if len(artifact.RelativePath) < len("payload/") || artifact.RelativePath[:len("payload/")] != "payload/" || containsTraversal(artifact.RelativePath) {
 		return fmt.Errorf("layer artifact relativePath must stay below payload/ without traversal")
+	}
+	return nil
+}
+
+func validateProductUpdateLayerEffectExecutor(executor ProductUpdateLayerEffectExecutor, artifact ProductUpdateArtifact, rollback ProductUpdateLayerRollbackPlan) error {
+	if executor.ID == "" || executor.RelativePath == "" || executor.SizeBytes < 1 || executor.MediaType != "application/vnd.tirosh.vitalserver.update-layer-effect-executor" || !sha256Pattern.MatchString(executor.SHA256) {
+		return fmt.Errorf("layer effect executor identity, digest, size, and media type are required")
+	}
+	if len(executor.RelativePath) < len("payload/") || executor.RelativePath[:len("payload/")] != "payload/" || containsTraversal(executor.RelativePath) {
+		return fmt.Errorf("layer effect executor relativePath must stay below payload/ without traversal")
+	}
+	if executor.ID == artifact.ID || executor.RelativePath == artifact.RelativePath || executor.SHA256 == artifact.SHA256 {
+		return fmt.Errorf("layer effect executor must be distinct from the applied artifact")
+	}
+	if err := validateProductUpdateArtifact(executor.ConfigurationArtifact); err != nil || executor.ConfigurationArtifact.MediaType != "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json" {
+		return fmt.Errorf("layer effect executor configuration artifact identity, digest, size, and media type are required")
+	}
+	if executor.ConfigurationArtifact.ID == executor.ID || executor.ConfigurationArtifact.RelativePath == executor.RelativePath || executor.ConfigurationArtifact.SHA256 == executor.SHA256 || executor.ConfigurationArtifact.ID == artifact.ID || executor.ConfigurationArtifact.RelativePath == artifact.RelativePath || executor.ConfigurationArtifact.SHA256 == artifact.SHA256 {
+		return fmt.Errorf("layer effect executor configuration artifact must be distinct from the executor and applied artifact")
+	}
+	if rollback.State == "available" && (executor.ID == rollback.Artifact.ID || executor.RelativePath == rollback.Artifact.RelativePath || executor.SHA256 == rollback.Artifact.SHA256) {
+		return fmt.Errorf("layer effect executor must be distinct from the rollback artifact")
+	}
+	if rollback.State == "available" && (executor.ConfigurationArtifact.ID == rollback.Artifact.ID || executor.ConfigurationArtifact.RelativePath == rollback.Artifact.RelativePath || executor.ConfigurationArtifact.SHA256 == rollback.Artifact.SHA256) {
+		return fmt.Errorf("layer effect executor configuration artifact must be distinct from the rollback artifact")
 	}
 	return nil
 }
@@ -169,6 +208,9 @@ func PlanStagedProductUpdateExecution(input StagedProductUpdatePlanningInput) (S
 			return StagedProductUpdateExecutionPlan{}, err
 		}
 		if err := validateProductUpdateLayerRollbackPlan(layer.Rollback); err != nil {
+			return StagedProductUpdateExecutionPlan{}, err
+		}
+		if err := validateProductUpdateLayerEffectExecutor(layer.EffectExecutor, layer.Artifact, layer.Rollback); err != nil {
 			return StagedProductUpdateExecutionPlan{}, err
 		}
 		for _, dependency := range layer.DependsOn {

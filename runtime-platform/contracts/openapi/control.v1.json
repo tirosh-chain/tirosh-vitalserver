@@ -279,6 +279,66 @@
         }
       }
     },
+    "/v1/runtime/archive/export-provider": {
+      "get": {
+        "operationId": "getArchiveExportProviderConfiguration",
+        "summary": "Read the non-secret Archive Export provider reference",
+        "description": "The Archive Export owner publishes only its configured provider reference. This read is not Recorder finalization evidence, artifact formation, upload, indexing, or provider reachability.",
+        "x-owner": "archive-export",
+        "responses": {
+          "200": {
+            "description": "Archive Export provider configuration read result",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/read-result.schema.json" } } }
+          },
+          "503": {
+            "description": "Archive Export is not composed",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/read-result.schema.json" } } }
+          }
+        }
+      }
+    },
+    "/v1/runtime/archive/credential-material": {
+      "get": {
+        "operationId": "getRuntimeArchiveCredentialMaterialAvailability",
+        "summary": "Read non-secret indexed-library credential-material availability through local administration only",
+        "x-owner": "guest-secret-material",
+        "x-local-administration-only": true,
+        "responses": {
+          "200": {
+            "description": "Non-secret C51 availability for the C46-selected indexed-library provider",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-availability.schema.json" } } }
+          },
+          "503": {
+            "description": "The selected topology has no configurable indexed-library credential-material owner",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-availability.schema.json" } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "provisionRuntimeArchiveCredentialMaterial",
+        "summary": "Provision one C51 document through local administration only",
+        "x-owner": "guest-secret-material",
+        "x-local-administration-only": true,
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/vitalserver-indexed-library-credential-material.schema.json" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "C51 was atomically provisioned; no credential value is returned",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-provisioning-outcome.schema.json" } } }
+          },
+          "400": {
+            "description": "The C51 command was rejected and no private write occurred",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-provisioning-outcome.schema.json" } } }
+          },
+          "503": {
+            "description": "The private credential-material write could not be completed",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-provisioning-outcome.schema.json" } } }
+          }
+        }
+      }
+    },
     "/v1/runtime/archive/manifests/{artifactId}": {
       "get": {
         "operationId": "getRuntimeArtifactManifest",
@@ -554,6 +614,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RecorderColdPathCaptureReadResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is outside the Guest-loopback control boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-rejection.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recorder-cold-path/captures/{coldPathCaptureId}:packet-sequence": {
+      "get": {
+        "operationId": "getRecorderColdPathPacketSequence",
+        "summary": "Read the immutable raw packet sequence for a finalized Recorder Gateway capture",
+        "description": "Guest-loopback-only. A binary success response is raw source evidence, not a .vital artifact, upload receipt, or indexing claim. A non-available owner read is returned as an explicit JSON ReadResult.",
+        "x-owner": "recorder-gateway",
+        "x-network-scope": "guest-loopback-only",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ColdPathCaptureId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A receipt-finalized raw packet sequence, or an explicit non-available read result",
+            "content": {
+              "application/vnd.tirosh.recorder-gateway.cold-path-packet-sequence+jsonl": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/read-result.schema.json"
                 }
               }
             }
@@ -1005,6 +1107,50 @@
         }
       }
     },
+    "/v1/platform/update-bundles:import": {
+      "post": {
+        "operationId": "importHostUpdateBundle",
+        "summary": "Atomically import one Host-local offline release bundle directory",
+        "description": "The source directory is selected through an OS-authorized local operator interface and is interpreted only by the Host. A successful import means complete immutable bytes were published under the Host bundle store; it does not claim C25 trust verification or update success.",
+        "x-owner": "host-update-bundle-store",
+        "x-network-scope": "host-local",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-bundle-control.schema.json#/$defs/HostUpdateBundleImportCommand" } } } },
+        "responses": {
+          "201": { "description": "New or idempotently existing immutable imported bundle", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-bundle-control.schema.json#/$defs/HostUpdateBundleImportReceipt" } } } },
+          "400": { "description": "Import command or selected bundle rejected", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host bundle-store outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/platform/update-bundles/{bundleId}": {
+      "get": {
+        "operationId": "getHostUpdateBundle",
+        "summary": "Read one Host-owned imported update-bundle declaration",
+        "description": "The declared C25 envelope is not a trust-verification result.",
+        "x-owner": "host-update-bundle-store",
+        "x-network-scope": "host-local",
+        "parameters": [{ "$ref": "#/components/parameters/UpdateBundleId" }],
+        "responses": {
+          "200": { "description": "Explicit imported-bundle read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateBundleReadResult" } } } }
+        }
+      }
+    },
+    "/v1/platform/update-bundles/{bundleId}:apply": {
+      "post": {
+        "operationId": "applyImportedHostUpdateBundle",
+        "summary": "Bind a Host-owned imported bundle to the existing durable C27 update workflow",
+        "description": "Host reads the stored C25 declaration and performs the normal C27 bootstrap verification and staged handoff. The caller cannot provide a separate envelope.",
+        "x-owner": "host-agent-update-journal",
+        "x-network-scope": "host-local",
+        "parameters": [{ "$ref": "#/components/parameters/UpdateBundleId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-bundle-control.schema.json#/$defs/HostUpdateBundleApplyCommand" } } } },
+        "responses": {
+          "202": { "description": "Durably admitted Host update operation and journal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateWorkflowOutcome" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host update admission outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
     "/v1/platform/updates/{updateId}": {
       "get": {
         "operationId": "getHostUpdateJournal",
@@ -1169,6 +1315,14 @@
       },
       "UpdateId": {
         "name": "updateId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "UpdateBundleId": {
+        "name": "bundleId",
         "in": "path",
         "required": true,
         "schema": {
@@ -1522,6 +1676,12 @@
         "allOf": [
           { "$ref": "../json-schema/v1/read-result.schema.json" },
           { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/host-update-journal.schema.json" } } }
+        ]
+      },
+      "HostUpdateBundleReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/host-update-bundle-control.schema.json#/$defs/HostUpdateBundleDeclaration" } } }
         ]
       },
       "HostUpdateWorkflowOutcome": {

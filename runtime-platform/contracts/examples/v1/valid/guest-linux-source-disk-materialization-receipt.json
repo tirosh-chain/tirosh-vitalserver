@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "v1",
+  "documentKind": "guest-linux-source-disk-materialization-receipt",
+  "materializationId": "ubuntu-noble-arm64-qcow2-to-raw",
+  "architecture": "arm64",
+  "materializationDeclarationSha256": "7c61b967ba4a27dd1966f835a67643073ed55c2860ce3dc1cb0517282e6b8bec",
+  "sourceImage": {
+    "id": "ubuntu-noble-arm64-cloud-image-qcow2",
+    "sourceOriginUri": "https://cloud-images.ubuntu.com/releases/noble/release-20250516/ubuntu-24.04-server-cloudimg-arm64.img",
+    "sourceRelease": "ubuntu-24.04-noble-release-20250516",
+    "sizeBytes": 606289408,
+    "sha256": "6a61b967ba4a27dd1966f835a67643073ed55c2860ce3dc1cb0517282e6b8bec"
+  },
+  "sourceImageFormat": "qcow2",
+  "rawImage": {
+    "id": "ubuntu-noble-arm64-raw-disk",
+    "relativePath": "storage/ubuntu-noble-arm64.raw",
+    "imageFormat": "raw",
+    "sizeBytes": 3758096384,
+    "sha256": "8d6161defd323d24d66f85dda40e64e2b9021aefa4ca879dcbc4ec775ad1bbc5"
+  },
+  "completedAt": "2026-07-20T00:00:00Z"
+}

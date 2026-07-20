@@ -3,7 +3,6 @@ package guestruntimedomain
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 )
 
@@ -15,12 +14,50 @@ type ArchiveProviderReference struct {
 	CapabilityRevision int    `json:"capabilityRevision"`
 }
 
+// ArchiveExportProviderConfiguration is Archive Export's non-secret public
+// projection of the provider selected by the Guest deployment.  It is a
+// configuration fact, not an upload, indexing, or .vital artifact outcome.
+//
+// An operator surface reads this document before requesting a manual export
+// so it can carry the exact Archive-owned provider reference.  The surface
+// must not construct a provider reference from a Lab display name, an
+// endpoint, or a prior command response.
+type ArchiveExportProviderConfiguration struct {
+	SchemaVersion string                   `json:"schemaVersion"`
+	Provider      ArchiveProviderReference `json:"provider"`
+}
+
 type ArtifactExportCommand struct {
 	SchemaVersion            string                   `json:"schemaVersion"`
 	RequestID                string                   `json:"requestId"`
 	VirtualRecorderID        string                   `json:"virtualRecorderId"`
 	ExpectedResourceRevision int                      `json:"expectedResourceRevision"`
+	Source                   ArtifactExportSource     `json:"source"`
 	Provider                 ArchiveProviderReference `json:"provider"`
+}
+
+// ArtifactExportSource is an explicit selection of the finalized source that
+// Archive Export must consume.  A stopped Lab recorder alone is not source
+// evidence: the named Recorder Gateway finalization receipt is required.
+type ArtifactExportSource struct {
+	Kind                          string `json:"kind"`
+	ColdPathFinalizationReceiptID string `json:"coldPathFinalizationReceiptId"`
+}
+
+const RecorderGatewayColdPathArtifactExportSourceKind = "recorder-gateway-cold-path"
+
+// FinalizedRecorderColdPathPacketSequence is the complete Gateway-owned
+// source fact handed to Archive Export after the adapter has verified the
+// Gateway receipt and raw stream digest.  It is intentionally not persisted
+// as a Lab document and does not claim that .vital bytes exist.
+type FinalizedRecorderColdPathPacketSequence struct {
+	FinalizationReceiptID string
+	CaptureID             string
+	RecorderID            string
+	FinalizedAt           string
+	MediaType             string
+	SHA256                string
+	Bytes                 []byte
 }
 
 type ArtifactManifest struct {
@@ -89,38 +126,14 @@ func ValidateArtifactExportCommand(command ArtifactExportCommand) *Issue {
 	if !ValidIdentifier(command.Provider.Kind) || !ValidIdentifier(command.Provider.ID) || command.Provider.CapabilityRevision < 1 {
 		return &Issue{Code: "invalid-archive-provider-reference", Message: "provider kind, id, and capabilityRevision must be explicit and valid"}
 	}
+	if command.Source.Kind != RecorderGatewayColdPathArtifactExportSourceKind || !ValidIdentifier(command.Source.ColdPathFinalizationReceiptID) {
+		return &Issue{Code: "invalid-artifact-export-source", Message: "source must explicitly select one finalized Recorder Gateway cold-path receipt"}
+	}
 	return nil
 }
 
-// FinalizeLabVitalPayload produces the bytes owned by the Lab source adapter.
-// It deliberately contains a minimal simulation envelope, not a claim that an
-// external VitalServer parser has accepted the artifact. The later provider
-// provider integration replaces only this adapter contract, not Lab lifecycle state.
-func FinalizeLabVitalPayload(source StoppedRecorderSource) ([]byte, error) {
-	if !ValidIdentifier(source.VirtualRecorderID) || !ValidIdentifier(source.SessionID) || source.VirtualRecorderRevision < 1 || source.StoppedAt == "" {
-		return nil, fmt.Errorf("invalid stopped Lab recorder source")
-	}
-	payload, err := json.Marshal(struct {
-		Format                  string `json:"format"`
-		VirtualRecorderID       string `json:"virtualRecorderId"`
-		VirtualRecorderRevision int    `json:"virtualRecorderRevision"`
-		SessionID               string `json:"sessionId"`
-		StoppedAt               string `json:"stoppedAt"`
-	}{
-		Format:                  "vital-lab-source-v1",
-		VirtualRecorderID:       source.VirtualRecorderID,
-		VirtualRecorderRevision: source.VirtualRecorderRevision,
-		SessionID:               source.SessionID,
-		StoppedAt:               source.StoppedAt,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("encode Lab vital source: %w", err)
-	}
-	return append(payload, '\n'), nil
-}
-
-func NewArtifactManifest(id string, artifactID string, operationID string, source StoppedRecorderSource, finalizedAt string, payload []byte) (ArtifactManifest, error) {
-	if !ValidIdentifier(id) || !ValidIdentifier(artifactID) || !ValidIdentifier(operationID) || len(payload) == 0 {
+func NewArtifactManifest(id string, artifactID string, operationID string, source StoppedRecorderSource, sourceEvidence EvidenceReference, finalizedAt string, payload []byte) (ArtifactManifest, error) {
+	if !ValidIdentifier(id) || !ValidIdentifier(artifactID) || !ValidIdentifier(operationID) || !ValidIdentifier(source.VirtualRecorderID) || !ValidIdentifier(sourceEvidence.Kind) || !ValidIdentifier(sourceEvidence.ID) || finalizedAt == "" || len(payload) == 0 {
 		return ArtifactManifest{}, fmt.Errorf("invalid artifact manifest construction input")
 	}
 	digest := sha256.Sum256(payload)
@@ -129,13 +142,10 @@ func NewArtifactManifest(id string, artifactID string, operationID string, sourc
 		ID:            id,
 		OperationID:   operationID,
 		Source: FinalizedSource{
-			ResourceType: VirtualRecorderResourceType,
-			ResourceID:   source.VirtualRecorderID,
-			FinalizedAt:  finalizedAt,
-			EvidenceReference: EvidenceReference{
-				Kind: "lab-source-finalization",
-				ID:   "finalization-" + operationID,
-			},
+			ResourceType:      VirtualRecorderResourceType,
+			ResourceID:        source.VirtualRecorderID,
+			FinalizedAt:       finalizedAt,
+			EvidenceReference: sourceEvidence,
 		},
 		Artifact: ImmutableArtifact{
 			ArtifactID:       artifactID,

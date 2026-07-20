@@ -33,6 +33,7 @@ concepts (`ExternalUpstreamIntegration`, `OutboundRelayTarget`,
 | Application | `internal/guestruntimeapplication/guest_runtime_topology_application_service.go` | topology/operation/capability/readiness workflow only |
 | Application | `internal/guestruntimeapplication/guest_runtime_application_ports.go` | explicit Guest Runtime persistence, clock, identifier, and provider ports |
 | Adapter | `gueststatesqliterepository/` | Guest-owned SQLite state persistence, partitioned by Lab, archive, integration, and operational resources |
+| Adapter | `vitalserverindexedlibrary/` | C46-selected indexed-library archive adapter and the separate C51 private credential-material owner |
 | Presentation adapter | `internal/guestruntimecontrolhttpapi/guest_runtime_control_http_server.go` | versioned control request decoding and explicit result formatting |
 
 Names such as `Service`, `Repository`, `Server`, `New`, and `runtime.go` are
@@ -48,6 +49,23 @@ cross-aggregate ordering use case is named
 `GuestRuntimeArchiveRetentionAndExportWorkflow` ports, plus an explicit
 `LabArchiveLifecycleCoordinationClock`. It must not read the Lab service's
 private clock, either aggregate's SQLite tables, or a presentation model.
+
+## External Archive credential material is not Guest Runtime state
+
+For an external `vitalserver-indexed-library` Archive provider, C46 carries
+only the credential **reference**. C51 carries the secret value and is owned by
+`VitalServerIndexedLibraryCredentialMaterialFileOwner`, never by the SQLite
+repository. Guest Runtime can start with C51 absent; C60 then reports the
+explicit `missing` state through the named Host Agent C52 local-administration
+facade. A local provision command atomically writes the private file and
+returns only a non-secret outcome. It is intentionally unavailable through the
+Host public edge and never appears in an operation, receipt, telemetry, or a
+normal response.
+
+Archive Export opens the C51 material only when an upload/index effect is due.
+If it is missing or invalid, the adapter returns a known failed export step so
+the Archive owner records a failed receipt rather than treating the condition
+as a successful, empty, or unknown upload.
 
 Likewise, the running `Operation` admitted before a resource observation or
 effect is not an External Upstream concept. The package-local

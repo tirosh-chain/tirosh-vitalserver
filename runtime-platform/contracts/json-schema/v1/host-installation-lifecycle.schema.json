@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-installation-lifecycle",
   "title": "HostInstallationRequest, HostInstallationJournal, and HostInstallationReceipt",
-  "description": "C50 Host Installation Manager-owned install command, durable transaction state, and receipt language. It distinguishes preflight admission, service quiescence, and activation, and never makes a direct version-changing package install an implicit update.",
+  "description": "C50 Host Installation Manager-owned install command, durable transaction state, and receipt language. It distinguishes side-effect-free preflight, durable service quiescence intent, activation, service finalization, and explicit recovery. It never makes a direct version-changing package install an implicit update.",
   "oneOf": [
     {
       "$ref": "#/$defs/Request"
@@ -48,7 +48,16 @@
           "enum": [
             "preflight",
             "quiesce-services",
-            "activate-release"
+            "activate-release",
+            "finalize-services",
+            "recover-installation"
+          ]
+        },
+        "packageManagerOperation": {
+          "description": "Optional explicit package-manager phase supplied by a package transport. Only a platform-specific Host Installation Manager transition may consume it; absence is not a default phase.",
+          "type": "string",
+          "enum": [
+            "windows-msi-installing"
           ]
         },
         "expectedReleaseId": {
@@ -96,8 +105,11 @@
           "type": "string",
           "enum": [
             "preflight-verified",
+            "services-quiescing",
             "activation-pending",
             "activated",
+            "completed",
+            "recovered",
             "failed"
           ]
         },
@@ -176,6 +188,8 @@
             "preflight-admitted",
             "services-quiesced",
             "activated",
+            "completed",
+            "recovered",
             "blocked",
             "failed"
           ]

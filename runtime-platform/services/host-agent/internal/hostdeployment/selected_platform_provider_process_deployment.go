@@ -17,13 +17,14 @@ import (
 // virtual machine supervisor. The Windows/Linux native provider bridge requires its own explicit native
 // resource names; it must not receive a macOS configuration path.
 type SelectedPlatformProviderProcessDeployment struct {
-	ProviderKind                                string
-	ProviderID                                  string
-	NativeProviderBridgeExecutablePath          string
-	MacOSVirtualMachineSupervisorExecutablePath string
-	MacOSVirtualMachineConfigurationPath        string
-	NativeVirtualMachineName                    string
-	HostServiceName                             string
+	ProviderKind                                    string
+	ProviderID                                      string
+	NativeProviderBridgeExecutablePath              string
+	MacOSVirtualMachineSupervisorExecutablePath     string
+	MacOSVirtualMachineConfigurationPath            string
+	NativeVirtualMachineName                        string
+	HostServiceName                                 string
+	NativeGuestMachineProvisioningConfigurationPath string
 }
 
 // ResolveSelectedPlatformProviderProcessCommand returns the single provider process
@@ -54,6 +55,9 @@ func ResolveSelectedPlatformProviderProcessCommand(deployment SelectedPlatformPr
 			return platformproviderprocess.SelectedPlatformProviderProcessCommand{}, fmt.Errorf("native Platform Provider bridge requires explicit provider ID, virtual machine name, and Host service name")
 		}
 		command.Arguments = []string{"--provider-id", providerID, "--vm-name", virtualMachineName, "--service-name", hostServiceName}
+		if provisioningConfigurationPath := strings.TrimSpace(deployment.NativeGuestMachineProvisioningConfigurationPath); provisioningConfigurationPath != "" {
+			command.Arguments = append(command.Arguments, "--native-guest-machine-provisioning-configuration", provisioningConfigurationPath)
+		}
 		return command, nil
 	default:
 		return platformproviderprocess.SelectedPlatformProviderProcessCommand{}, fmt.Errorf("selected Platform Provider kind is unsupported")

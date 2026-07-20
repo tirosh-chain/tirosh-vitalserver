@@ -12,15 +12,21 @@
     "topologyKind": { "enum": ["bundled-vitalserver", "external-vitalserver"] },
     "vitalServerDeliveryProvider": { "$ref": "#/$defs/VitalServerDeliveryProvider" },
     "publicBrowserExposure": { "enum": ["not-exposed", "guest-virtio-route", "host-external-route"] },
-    "bundledVitalServerServiceDeployment": { "$ref": "#/$defs/BundledVitalServerServiceDeployment" },
+    "bundledUpstreamImageSetDeployment": { "$ref": "#/$defs/BundledUpstreamImageSetDeployment" },
     "externalVitalServerDeploymentConfiguration": { "$ref": "#/$defs/ExternalVitalServerDeploymentConfiguration" }
   },
   "allOf": [
     {
       "if": { "properties": { "topologyKind": { "const": "bundled-vitalserver" } }, "required": ["topologyKind"] },
       "then": {
-        "required": ["bundledVitalServerServiceDeployment"],
-        "properties": { "publicBrowserExposure": { "enum": ["not-exposed", "guest-virtio-route"] } },
+        "required": ["bundledUpstreamImageSetDeployment"],
+        "properties": {
+          "publicBrowserExposure": { "enum": ["not-exposed", "guest-virtio-route"] },
+          "vitalServerDeliveryProvider": {
+            "properties": { "kind": { "const": "bundled-vitalserver" } },
+            "required": ["kind"]
+          }
+        },
         "not": { "required": ["externalVitalServerDeploymentConfiguration"] }
       }
     },
@@ -29,7 +35,7 @@
       "then": {
         "required": ["externalVitalServerDeploymentConfiguration"],
         "properties": { "publicBrowserExposure": { "enum": ["not-exposed", "host-external-route"] } },
-        "not": { "required": ["bundledVitalServerServiceDeployment"] }
+        "not": { "required": ["bundledUpstreamImageSetDeployment"] }
       }
     }
   ],
@@ -59,17 +65,73 @@
         "capabilityRevision": { "type": "integer", "minimum": 1 }
       }
     },
-    "BundledVitalServerServiceDeployment": {
-      "description": "Required desired bundled service facts. The C35/C39 composer must later prove artifact installation and C37 process invocation agreement; this declaration alone never means that the service started.",
+    "BundledUpstreamImageSetDeployment": {
+      "description": "Required desired facts for a C64-owned VitalServer/Redis image set. C44 names the Guest-loopback packet, observation, and indexed-library archive endpoints together with the C64 configuration resource, but never claims that C64 loaded images, Docker started a container, or any endpoint is reachable.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["guestProductProcessName", "serviceArtifactId", "executablePath", "deliveryListener", "stateDirectory"],
+      "required": ["imageSetManagerConfigurationReference", "vitalServerPacketDeliveryEndpoint", "vitalServerDeliveryAcknowledgementTimeoutMilliseconds", "vitalServerObservationEndpoint", "vitalServerArchiveProvider", "vitalServerIndexedLibraryEndpoint", "vitalServerArchiveCredentialReference", "vitalServerArchiveRequestTimeoutMilliseconds"],
       "properties": {
-        "guestProductProcessName": { "const": "bundled-vitalserver" },
-        "serviceArtifactId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
-        "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
-        "deliveryListener": { "$ref": "#/$defs/GuestLoopbackListener" },
-        "stateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" }
+        "imageSetManagerConfigurationReference": {
+          "allOf": [
+            { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+            { "properties": { "resourceType": { "const": "guest-bundled-upstream-image-set-manager-configuration" } }, "required": ["resourceType"] }
+          ]
+        },
+        "vitalServerPacketDeliveryEndpoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scheme", "host", "port"],
+          "properties": {
+            "scheme": { "const": "http" },
+            "host": { "const": "127.0.0.1" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        },
+        "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 },
+        "vitalServerObservationEndpoint": { "$ref": "#/$defs/BundledVitalServerObservationEndpoint" },
+        "vitalServerArchiveProvider": { "$ref": "#/$defs/VitalServerArchiveProvider" },
+        "vitalServerIndexedLibraryEndpoint": { "$ref": "#/$defs/BundledVitalServerEndpoint" },
+        "vitalServerArchiveCredentialReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SecretReference" },
+        "vitalServerArchiveRequestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 }
+      }
+    },
+    "VitalServerArchiveProvider": {
+      "description": "The independent capability that uploads and verifies indexed .vital files. Packet delivery does not imply archive export.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision"],
+      "properties": {
+        "kind": { "const": "vitalserver-indexed-library" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "BundledVitalServerEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port"],
+      "properties": {
+        "scheme": { "const": "http" },
+        "host": { "const": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "BundledVitalServerObservationEndpoint": {
+      "description": "The exact Guest-loopback health path exposed by the C64-managed Image-set. C44 does not claim that the path is reachable.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port", "path", "acceptedStatusCodes"],
+      "properties": {
+        "scheme": { "const": "http" },
+        "host": { "const": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "path": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^/[^?#]*$" },
+        "acceptedStatusCodes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 100, "maximum": 599 }
+        }
       }
     },
     "ExternalVitalServerDeploymentConfiguration": {

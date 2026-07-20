@@ -13,19 +13,21 @@ import (
 // ExportReceipt state. It asks Lab only through GuestRuntimeLabRecorderSourceReader and never reads
 // Lab persistence or changes Lab execution state.
 type GuestRuntimeArchiveApplicationService struct {
-	repository   GuestRuntimeArchiveStateRepository
-	sourceReader GuestRuntimeLabRecorderSourceReader
-	provider     GuestRuntimeArchiveExportProvider
-	clock        GuestRuntimeClock
-	identifiers  GuestRuntimeRequestCorrelationIdentifierGenerator
-	workflowMu   sync.Mutex
+	repository             GuestRuntimeArchiveStateRepository
+	labSourceReader        GuestRuntimeLabRecorderSourceReader
+	coldPathSourceReader   GuestRuntimeRecorderColdPathPacketSequenceReader
+	vitalArtifactFormation GuestRuntimeVitalArtifactFormationProvider
+	provider               GuestRuntimeArchiveExportProvider
+	clock                  GuestRuntimeClock
+	identifiers            GuestRuntimeRequestCorrelationIdentifierGenerator
+	workflowMu             sync.Mutex
 }
 
-func NewGuestRuntimeArchiveApplicationService(repository GuestRuntimeArchiveStateRepository, sourceReader GuestRuntimeLabRecorderSourceReader, provider GuestRuntimeArchiveExportProvider, clock GuestRuntimeClock, identifiers GuestRuntimeRequestCorrelationIdentifierGenerator) (*GuestRuntimeArchiveApplicationService, error) {
-	if repository == nil || sourceReader == nil || provider == nil || clock == nil || identifiers == nil {
-		return nil, fmt.Errorf("Archive repository, Lab source reader, provider, clock, and identifier generator are required")
+func NewGuestRuntimeArchiveApplicationService(repository GuestRuntimeArchiveStateRepository, labSourceReader GuestRuntimeLabRecorderSourceReader, coldPathSourceReader GuestRuntimeRecorderColdPathPacketSequenceReader, vitalArtifactFormation GuestRuntimeVitalArtifactFormationProvider, provider GuestRuntimeArchiveExportProvider, clock GuestRuntimeClock, identifiers GuestRuntimeRequestCorrelationIdentifierGenerator) (*GuestRuntimeArchiveApplicationService, error) {
+	if repository == nil || labSourceReader == nil || coldPathSourceReader == nil || vitalArtifactFormation == nil || provider == nil || clock == nil || identifiers == nil {
+		return nil, fmt.Errorf("Archive repository, Lab source reader, Recorder Gateway cold-path source reader, Vital artifact formation provider, provider, clock, and identifier generator are required")
 	}
-	return &GuestRuntimeArchiveApplicationService{repository: repository, sourceReader: sourceReader, provider: provider, clock: clock, identifiers: identifiers}, nil
+	return &GuestRuntimeArchiveApplicationService{repository: repository, labSourceReader: labSourceReader, coldPathSourceReader: coldPathSourceReader, vitalArtifactFormation: vitalArtifactFormation, provider: provider, clock: clock, identifiers: identifiers}, nil
 }
 
 func (service *GuestRuntimeArchiveApplicationService) ReadArtifactManifest(ctx context.Context, id string) guestruntimedomain.ReadResult {
@@ -56,6 +58,27 @@ func (service *GuestRuntimeArchiveApplicationService) ReadArtifactExportReceipt(
 		return failedRead(now, "archive-state-store-read-failed", err.Error(), "guest-state-store")
 	}
 	return guestruntimedomain.ReadResult{SchemaVersion: guestruntimedomain.SchemaVersion, State: "available", ObservedAt: now, Value: receipt}
+}
+
+// ReadArchiveExportProviderConfiguration publishes the configured, non-secret
+// Archive provider reference.  It deliberately does not probe the provider,
+// read a Lab recorder, or report an upload result.  Those are distinct owner
+// facts and must not be inferred from configuration availability.
+func (service *GuestRuntimeArchiveApplicationService) ReadArchiveExportProviderConfiguration(_ context.Context) guestruntimedomain.ReadResult {
+	now := guestruntimedomain.Timestamp(service.clock.Now())
+	provider := service.provider.ArchiveExportProviderReference()
+	if !guestruntimedomain.ValidIdentifier(provider.Kind) || !guestruntimedomain.ValidIdentifier(provider.ID) || provider.CapabilityRevision < 1 {
+		return failedRead(now, "archive-export-provider-reference-invalid", "Archive Export provider configuration does not contain one valid provider reference", "archive-export")
+	}
+	return guestruntimedomain.ReadResult{
+		SchemaVersion: guestruntimedomain.SchemaVersion,
+		State:         "available",
+		ObservedAt:    now,
+		Value: guestruntimedomain.ArchiveExportProviderConfiguration{
+			SchemaVersion: guestruntimedomain.SchemaVersion,
+			Provider:      provider,
+		},
+	}
 }
 
 // ListArtifactsRetainedForResource is the explicit Archive-to-Lab deletion port. An empty
@@ -89,13 +112,24 @@ func (service *GuestRuntimeArchiveApplicationService) ExecuteArtifactExportComma
 		return service.admissionFailure(command.RequestID, "not-admitted", archiveStoreReadIssue("Archive request id ownership", err))
 	}
 
-	source, err := service.sourceReader.ReadStoppedLabVirtualRecorderArchiveSource(ctx, command.VirtualRecorderID, command.ExpectedResourceRevision)
+	source, err := service.labSourceReader.ReadStoppedLabVirtualRecorderArchiveSource(ctx, command.VirtualRecorderID, command.ExpectedResourceRevision)
 	if err != nil {
 		var eligibility SourceEligibilityError
 		if errors.As(err, &eligibility) {
 			return service.commandRejection(command.RequestID, eligibility.Issue)
 		}
 		return service.admissionFailure(command.RequestID, "not-admitted", guestruntimedomain.Issue{Code: "lab-source-read-failed", Message: "Archive Export could not read stopped Lab source: " + err.Error(), Retryable: boolPointer(true), Dependency: "guest-runtime-lab"})
+	}
+	coldPathPacketSequence, err := service.coldPathSourceReader.ReadFinalizedRecorderColdPathPacketSequence(ctx, command.Source)
+	if err != nil {
+		var eligibility SourceEligibilityError
+		if errors.As(err, &eligibility) {
+			return service.commandRejection(command.RequestID, eligibility.Issue)
+		}
+		return service.admissionFailure(command.RequestID, "not-admitted", guestruntimedomain.Issue{Code: "recorder-cold-path-source-read-failed", Message: "Archive Export could not read the finalized Recorder Gateway source: " + err.Error(), Retryable: boolPointer(true), Dependency: "recorder-gateway"})
+	}
+	if coldPathPacketSequence.RecorderID != source.RecorderGatewayRecorderID {
+		return service.commandRejection(command.RequestID, guestruntimedomain.Issue{Code: "recorder-cold-path-source-recorder-mismatch", Message: "the finalized Recorder Gateway source belongs to a different virtual recorder"})
 	}
 
 	operationID, err := service.identifiers.NewRequestCorrelationIdentifier("guest-operation")
@@ -115,11 +149,11 @@ func (service *GuestRuntimeArchiveApplicationService) ExecuteArtifactExportComma
 	if failure != nil {
 		return guestruntimedomain.Operation{}, nil, failure
 	}
-	payload, err := guestruntimedomain.FinalizeLabVitalPayload(source)
+	payload, sourceEvidence, err := service.vitalArtifactFormation.FormVitalArtifact(ctx, source, coldPathPacketSequence)
 	if err != nil {
-		return service.admissionFailure(command.RequestID, "not-admitted", guestruntimedomain.Issue{Code: "lab-source-finalization-failed", Message: "Archive Export could not finalize the Lab source: " + err.Error(), Retryable: boolPointer(false), Dependency: "archive-export"})
+		return service.commandRejection(command.RequestID, guestruntimedomain.Issue{Code: "vital-artifact-formation-rejected", Message: "Archive Export could not form a .vital artifact from the finalized Recorder Gateway source: " + err.Error(), Dependency: "vital-artifact-formation"})
 	}
-	manifest, err := guestruntimedomain.NewArtifactManifest(manifestID, artifactID, operation.ID, source, at, payload)
+	manifest, err := guestruntimedomain.NewArtifactManifest(manifestID, artifactID, operation.ID, source, sourceEvidence, coldPathPacketSequence.FinalizedAt, payload)
 	if err != nil {
 		return service.admissionFailure(command.RequestID, "not-admitted", guestruntimedomain.Issue{Code: "artifact-manifest-construction-failed", Message: "Archive Export could not construct an immutable manifest", Retryable: boolPointer(false), Dependency: "archive-export"})
 	}
@@ -169,6 +203,25 @@ func (service *GuestRuntimeArchiveApplicationService) ExecuteArtifactExportComma
 		return operation, nil, nil
 	}
 	return terminal, nil, nil
+}
+
+// ExecuteTerminalLabArtifactExport accepts a Lab-owned terminal intent and
+// supplies the Archive-owned configured provider reference. The coordinator
+// cannot choose a provider, form a .vital payload, or interpret an upload;
+// those responsibilities remain in Archive Export.
+func (service *GuestRuntimeArchiveApplicationService) ExecuteTerminalLabArtifactExport(ctx context.Context, candidate guestruntimedomain.TerminalArchiveExportCandidate) (guestruntimedomain.Operation, *guestruntimedomain.CommandRejection, *guestruntimedomain.CommandAdmissionFailure) {
+	command := guestruntimedomain.ArtifactExportCommand{
+		SchemaVersion:            guestruntimedomain.SchemaVersion,
+		RequestID:                candidate.RequestID,
+		VirtualRecorderID:        candidate.VirtualRecorderID,
+		ExpectedResourceRevision: candidate.ExpectedResourceRevision,
+		Source: guestruntimedomain.ArtifactExportSource{
+			Kind:                          guestruntimedomain.RecorderGatewayColdPathArtifactExportSourceKind,
+			ColdPathFinalizationReceiptID: candidate.ColdPathFinalizationReceiptID,
+		},
+		Provider: service.provider.ArchiveExportProviderReference(),
+	}
+	return service.ExecuteArtifactExportCommand(ctx, command)
 }
 
 func (service *GuestRuntimeArchiveApplicationService) newRunningOperation(id string, command guestruntimedomain.ArtifactExportCommand, at string, digest string) (guestruntimedomain.Operation, *guestruntimedomain.CommandAdmissionFailure) {

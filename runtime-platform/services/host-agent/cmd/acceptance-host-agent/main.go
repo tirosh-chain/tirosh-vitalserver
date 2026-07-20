@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/telemetryexporter"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/timeprovider"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/updatebootstrap"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/updatebundlestore"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentapplication"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentcontrolhttpapi"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentdomain"
@@ -95,6 +97,8 @@ func main() {
 	var updateBundleStore string
 	var updateStagingDirectory string
 	var updateTrustStore string
+	var localAdministrationSocket string
+	var localAdministrationDescriptor string
 	flag.StringVar(&listenAddress, "listen", "", "required Host Agent control listen address")
 	flag.StringVar(&stateDatabase, "state-db", "", "required Host Agent-owned SQLite database path")
 	flag.StringVar(&installationID, "installation-id", "", "required Host installation identifier")
@@ -118,6 +122,8 @@ func main() {
 	flag.StringVar(&updateBundleStore, "update-bundle-store", "", "required with verified-staged-bundle: Host-owned release bundle store")
 	flag.StringVar(&updateStagingDirectory, "update-staging-directory", "", "required with verified-staged-bundle: Host-owned update staging directory")
 	flag.StringVar(&updateTrustStore, "update-trust-store", "", "required with verified-staged-bundle: Ed25519 release trust store")
+	flag.StringVar(&localAdministrationSocket, "local-administration-socket", "", "optional absolute Unix socket path for C52 acceptance control")
+	flag.StringVar(&localAdministrationDescriptor, "local-administration-descriptor", "", "optional absolute C52 descriptor path paired with local-administration-socket")
 	flag.Parse()
 	if listenAddress == "" || stateDatabase == "" || installationID == "" || productVersion == "" || runtimeVersion == "" || dataDirectory == "" || guestRuntimeControlEndpointID == "" || guestRuntimeControlHTTPScheme == "" || guestRuntimeControlHTTPHost == "" || guestRuntimeControlHTTPPort == 0 || providerKind == "" || providerID == "" {
 		fmt.Fprintln(os.Stderr, "all acceptance Host Agent ownership configuration flags are required")
@@ -137,6 +143,10 @@ func main() {
 	}
 	if updateBootstrapMode != "verified-staged-bundle" && (updateBundleStore != "" || updateStagingDirectory != "" || updateTrustStore != "") {
 		fmt.Fprintln(os.Stderr, "update bundle paths are only valid with verified-staged-bundle")
+		os.Exit(2)
+	}
+	if (localAdministrationSocket == "") != (localAdministrationDescriptor == "") || (localAdministrationSocket != "" && (!filepath.IsAbs(localAdministrationSocket) || !filepath.IsAbs(localAdministrationDescriptor))) {
+		fmt.Fprintln(os.Stderr, "local administration socket and descriptor must be paired absolute paths")
 		os.Exit(2)
 	}
 
@@ -185,6 +195,19 @@ func main() {
 		fmt.Fprintf(os.Stderr, "acceptance Host update handoff recovery failed: %v\n", err)
 		os.Exit(1)
 	}
+	var updateBundles *hostagentapplication.HostUpdateBundleApplicationService
+	if updateBootstrapMode == "verified-staged-bundle" {
+		bundleStore, bundleStoreErr := updatebundlestore.NewFileSystemStore(updatebundlestore.FileSystemStoreConfig{Directory: updateBundleStore, Clock: clock})
+		if bundleStoreErr != nil {
+			fmt.Fprintf(os.Stderr, "acceptance Host update bundle store initialization failed: %v\n", bundleStoreErr)
+			os.Exit(1)
+		}
+		updateBundles, err = hostagentapplication.NewHostUpdateBundleApplicationService(bundleStore, updates, clock)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "acceptance Host update bundle application initialization failed: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	node := hostagentdomain.NodeReference{Kind: "host", ID: hostNodeID}
 	timeProbe, err := timeprovider.NewConfiguredHostTimeAuthorityOutcomeProfile(timeProviderMode)
 	if err != nil {
@@ -211,11 +234,38 @@ func main() {
 		fmt.Fprintf(os.Stderr, "acceptance Host Agent listen failed: %v\n", err)
 		os.Exit(1)
 	}
-	server := &http.Server{Handler: hostagentcontrolhttpapi.NewHostAgentControlHTTPServerWithModules(hostagentcontrolhttpapi.HostAgentControlHTTPModules{Lifecycle: service, Update: updates, Time: timeAuthority, Telemetry: telemetry})}
+	server := &http.Server{Handler: hostagentcontrolhttpapi.NewHostAgentControlHTTPServerWithModules(hostagentcontrolhttpapi.HostAgentControlHTTPModules{Lifecycle: service, Update: updates, Bundles: updateBundles, Time: timeAuthority, Telemetry: telemetry})}
+	var localAdministrationListener net.Listener
+	if localAdministrationSocket != "" {
+		if _, statErr := os.Lstat(localAdministrationSocket); !errors.Is(statErr, os.ErrNotExist) {
+			fmt.Fprintln(os.Stderr, "acceptance local administration socket path must be absent")
+			os.Exit(1)
+		}
+		localAdministrationListener, err = net.Listen("unix", localAdministrationSocket)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "acceptance local administration listen failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer os.Remove(localAdministrationSocket)
+		if err := os.WriteFile(localAdministrationDescriptor, []byte(fmt.Sprintf(`{"schemaVersion":"v1","transport":"unix-domain-socket","address":%q}`, localAdministrationSocket)), 0o600); err != nil {
+			_ = localAdministrationListener.Close()
+			fmt.Fprintf(os.Stderr, "acceptance C52 descriptor write failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer os.Remove(localAdministrationDescriptor)
+		go func() {
+			if serveErr := server.Serve(localAdministrationListener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) && !errors.Is(serveErr, net.ErrClosed) {
+				fmt.Fprintf(os.Stderr, "acceptance local administration server failed: %v\n", serveErr)
+			}
+		}()
+	}
 	fmt.Printf("acceptance-host-agent listening address=%s\n", listener.Addr().String())
 	go func() {
 		<-context.Done()
 		_ = server.Shutdown(context)
+		if localAdministrationListener != nil {
+			_ = localAdministrationListener.Close()
+		}
 	}()
 	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintf(os.Stderr, "acceptance Host Agent server failed: %v\n", err)

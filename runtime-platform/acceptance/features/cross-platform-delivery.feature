@@ -19,8 +19,23 @@ Feature: Cross-platform provider selection and delivery proof
     And the endpoint provider and transport observations are unavailable
     And no macOS or Windows provider invocation occurs
 
+  Scenario: A local authorized operator consumes only the Host-published descriptor
+    Given C33 configures a Unix local-administration socket for the current operator
+    And Host Agent has published C52 after that socket is ready
+    When platformctl reads the Host installation through the explicit C52 descriptor
+    Then the response is an unchanged Host-owned C7 ReadResult
+    And Host Agent removes C52 when that local listener stops
+
   Scenario: A package cannot be called released without clean-host evidence
     Given a C23 delivery plan has every required proof stage
     And C24 records a stage as pending because no OS clean-host runner was assigned
     When the release-ready gate runs
     Then it fails with the explicit pending proof labels
+
+  Scenario: Reviewed proof attachment publishes a new candidate without rewriting source
+    Given a C23 required stage has a pending source C24 proof record
+    And a matching OS runner emitted one terminal C24 fragment and evidence document
+    When a release reviewer supplies the exact evidence bytes whose SHA-256 matches that fragment
+    Then C74 records the source, fragment, evidence, and new proof-set SHA-256
+    And only the new immutable C24 candidate contains the terminal proof
+    And the source C24 template remains unchanged

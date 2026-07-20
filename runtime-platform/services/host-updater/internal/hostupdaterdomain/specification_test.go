@@ -9,10 +9,11 @@ func digest(value string) string { return strings.Repeat(value, 64) }
 
 func productUpdateLayerPlan(layerName string, dependsOn ...string) ProductUpdateLayerPlan {
 	return ProductUpdateLayerPlan{
-		Layer:     layerName,
-		DependsOn: dependsOn,
-		Artifact:  ProductUpdateArtifact{ID: "artifact-" + layerName, RelativePath: "payload/" + layerName + ".tar", SHA256: digest("a"), SizeBytes: 1, MediaType: "application/octet-stream"},
-		Rollback:  ProductUpdateLayerRollbackPlan{State: "available", Artifact: &ProductUpdateArtifact{ID: "rollback-" + layerName, RelativePath: "payload/rollback-" + layerName + ".tar", SHA256: digest("b"), SizeBytes: 1, MediaType: "application/octet-stream"}},
+		Layer:          layerName,
+		DependsOn:      dependsOn,
+		Artifact:       ProductUpdateArtifact{ID: "artifact-" + layerName, RelativePath: "payload/" + layerName + ".tar", SHA256: digest("a"), SizeBytes: 1, MediaType: "application/octet-stream"},
+		EffectExecutor: ProductUpdateLayerEffectExecutor{ID: "executor-" + layerName, RelativePath: "payload/executors/" + layerName, SHA256: digest("c"), SizeBytes: 1, MediaType: "application/vnd.tirosh.vitalserver.update-layer-effect-executor", ConfigurationArtifact: ProductUpdateArtifact{ID: "executor-configuration-" + layerName, RelativePath: "payload/executor-configurations/" + layerName + ".json", SHA256: digest("d"), SizeBytes: 1, MediaType: "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json"}},
+		Rollback:       ProductUpdateLayerRollbackPlan{State: "available", Artifact: &ProductUpdateArtifact{ID: "rollback-" + layerName, RelativePath: "payload/rollback-" + layerName + ".tar", SHA256: digest("b"), SizeBytes: 1, MediaType: "application/octet-stream"}},
 	}
 }
 

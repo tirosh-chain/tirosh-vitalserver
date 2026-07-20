@@ -15,5 +15,27 @@
     "host": "vitalserver.hospital.example",
     "port": 443
   },
-  "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": 1000
+  "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": 1000,
+  "vitalServerObservationEndpoint": {
+    "scheme": "https",
+    "host": "vitalserver.hospital.example",
+    "port": 443,
+    "path": "/healthz",
+    "acceptedStatusCodes": [200]
+  },
+  "vitalServerArchiveProvider": {
+    "kind": "vitalserver-indexed-library",
+    "id": "hospital-vitalserver-library",
+    "capabilityRevision": 1
+  },
+  "vitalServerIndexedLibraryEndpoint": {
+    "scheme": "https",
+    "host": "vitalserver.hospital.example",
+    "port": 443
+  },
+  "vitalServerArchiveCredentialReference": {
+    "kind": "vitalserver-library-credential",
+    "id": "hospital-vitalserver-library"
+  },
+  "vitalServerArchiveRequestTimeoutMilliseconds": 10000
 }

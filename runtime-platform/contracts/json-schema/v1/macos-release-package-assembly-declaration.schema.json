@@ -119,6 +119,8 @@
         "hostAgentBinaryAbsolutePath",
         "hostEdgeProxyBinaryAbsolutePath",
         "hostInstallationManagerBinaryAbsolutePath",
+        "hostUpdateHandoffSupervisorBinaryAbsolutePath",
+        "platformctlBinaryAbsolutePath",
         "macOSVirtualMachineSupervisorBinaryAbsolutePath",
         "guestProductProcessSupervisorArtifactAbsolutePath"
       ],
@@ -130,6 +132,12 @@
           "$ref": "#/$defs/AbsoluteHostPath"
         },
         "hostInstallationManagerBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostUpdateHandoffSupervisorBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "platformctlBinaryAbsolutePath": {
           "$ref": "#/$defs/AbsoluteHostPath"
         },
         "macOSVirtualMachineSupervisorBinaryAbsolutePath": {
@@ -145,7 +153,10 @@
       "additionalProperties": false,
       "required": [
         "hostAgentDeploymentConfigurationAbsolutePath",
+        "operatorInterfaceBootstrapConfigurationAbsolutePath",
         "hostEdgeProxyDeploymentConfigurationAbsolutePath",
+        "hostUpdateHandoffSupervisorConfigurationAbsolutePath",
+        "hostUpdateTrustStoreAbsolutePath",
         "macOSVirtualMachineConfigurationAbsolutePath",
         "guestProductProcessDeploymentConfigurationAbsolutePath",
         "guestProductServiceManagerDeploymentConfigurationAbsolutePath",
@@ -156,7 +167,16 @@
         "hostAgentDeploymentConfigurationAbsolutePath": {
           "$ref": "#/$defs/AbsoluteHostPath"
         },
+        "operatorInterfaceBootstrapConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
         "hostEdgeProxyDeploymentConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostUpdateHandoffSupervisorConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostUpdateTrustStoreAbsolutePath": {
           "$ref": "#/$defs/AbsoluteHostPath"
         },
         "macOSVirtualMachineConfigurationAbsolutePath": {
@@ -175,6 +195,9 @@
           "$ref": "#/$defs/AbsoluteHostPath"
         },
         "externalVitalServerDeliveryConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "guestBundledUpstreamImageSetManagerConfigurationAbsolutePath": {
           "$ref": "#/$defs/AbsoluteHostPath"
         }
       }

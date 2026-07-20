@@ -40,14 +40,15 @@ type GuestRuntimeTopologyStateRepository interface {
 // repository. The application layer computes every state transition before the
 // adapter writes it; the adapter only performs the atomic persistence effect.
 type LabStateTransitionCommit struct {
-	Operation         guestruntimedomain.Operation
-	UpsertSession     *guestruntimedomain.LabSession
-	UpsertBeds        []guestruntimedomain.LabBed
-	UpsertRecorders   []guestruntimedomain.VirtualRecorder
-	DeleteSessionID   string
-	DeleteBedIDs      []string
-	DeleteRecorderIDs []string
-	DeletionReceipt   *guestruntimedomain.DeletionReceipt
+	Operation             guestruntimedomain.Operation
+	OperationContinuation bool
+	UpsertSession         *guestruntimedomain.LabSession
+	UpsertBeds            []guestruntimedomain.LabBed
+	UpsertRecorders       []guestruntimedomain.VirtualRecorder
+	DeleteSessionID       string
+	DeleteBedIDs          []string
+	DeleteRecorderIDs     []string
+	DeletionReceipt       *guestruntimedomain.DeletionReceipt
 }
 
 type GuestRuntimeLabStateRepository interface {
@@ -72,6 +73,30 @@ type GuestRuntimeLabRecorderSourceReader interface {
 	ReadStoppedLabVirtualRecorderArchiveSource(context.Context, string, int) (guestruntimedomain.StoppedRecorderSource, error)
 }
 
+// GuestRuntimeLabRecorderRunner is the only Lab-to-Runner control boundary.
+// The runner owns live Socket.IO effects and Gateway finalization calls; Lab
+// owns durable lifecycle state and persists only the receipts this port returns.
+type GuestRuntimeLabRecorderRunner interface {
+	StartLabVirtualRecorderRun(context.Context, string, string, string, string) (guestruntimedomain.LabRecorderRunnerStartReceipt, error)
+	StopLabVirtualRecorderRun(context.Context, string, string, int) (guestruntimedomain.LabRecorderRunnerFinalizationReceipt, error)
+}
+
+// GuestRuntimeRecorderColdPathPacketSequenceReader is the only Archive-to-
+// Recorder Gateway source boundary. The adapter must return a complete,
+// receipt-verified source or an explicit error. It never turns a missing
+// Gateway capture into an empty artifact input.
+type GuestRuntimeRecorderColdPathPacketSequenceReader interface {
+	ReadFinalizedRecorderColdPathPacketSequence(context.Context, guestruntimedomain.ArtifactExportSource) (guestruntimedomain.FinalizedRecorderColdPathPacketSequence, error)
+}
+
+// GuestRuntimeVitalArtifactFormationProvider owns the binary .vital formation
+// boundary. It consumes verified source bytes and returns the evidence that
+// identifies that source; it does not read Lab state, access Gateway storage,
+// or upload the artifact.
+type GuestRuntimeVitalArtifactFormationProvider interface {
+	FormVitalArtifact(context.Context, guestruntimedomain.StoppedRecorderSource, guestruntimedomain.FinalizedRecorderColdPathPacketSequence) ([]byte, guestruntimedomain.EvidenceReference, error)
+}
+
 type GuestRuntimeArchiveStateRepository interface {
 	ReadArtifactExportOperation(context.Context, string) (guestruntimedomain.Operation, error)
 	ReadArtifactExportOperationByRequestID(context.Context, string) (guestruntimedomain.Operation, error)
@@ -89,6 +114,16 @@ type GuestRuntimeArchiveExportProvider interface {
 	ArchiveExportProviderReference() guestruntimedomain.ArchiveProviderReference
 	UploadArtifactExportPayload(context.Context, guestruntimedomain.ArtifactManifest, []byte, string) (guestruntimedomain.ExportStep, error)
 	VerifyUploadedArtifactIndex(context.Context, guestruntimedomain.ArtifactManifest, guestruntimedomain.ExportStep, string) (guestruntimedomain.ExportStep, error)
+}
+
+// GuestRuntimeArchiveCredentialMaterialOwner owns only C51's private Guest
+// file. It exposes a non-secret availability projection and one atomic
+// provision effect. It must not use the Guest Runtime SQLite repository,
+// produce an Operation/receipt, or return credential values to its caller.
+type GuestRuntimeArchiveCredentialMaterialOwner interface {
+	CredentialReference() guestruntimedomain.VitalServerIndexedLibraryCredentialReference
+	ObserveVitalServerIndexedLibraryCredentialMaterial(context.Context) (string, *guestruntimedomain.Issue)
+	ProvisionVitalServerIndexedLibraryCredentialMaterial(context.Context, guestruntimedomain.VitalServerIndexedLibraryCredentialMaterial) *guestruntimedomain.Issue
 }
 
 // GuestRuntimeExternalUpstreamStateRepository owns only ExternalUpstreamIntegration documents

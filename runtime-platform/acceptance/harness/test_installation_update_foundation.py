@@ -66,6 +66,12 @@ class RunningHost:
     def __init__(self, binary: Path, work: Path, handoff_evidence: Path, mode: str = "staged", update_arguments: list[str] | None = None) -> None:
         self.port = free_port()
         self.url = "http://127.0.0.1:{0}".format(self.port)
+        # Unix-domain socket paths are bounded by the kernel (104 bytes on
+        # macOS), while this suite's per-test directory is intentionally long.
+        # Keep the C52 socket name under the OS-standard temporary root and
+        # retain the descriptor in the test-owned working directory.
+        self.local_administration_socket = Path("/tmp") / ("vsrp-" + str(self.port) + ".sock")
+        self.local_administration_descriptor = work / ("host-administration-" + str(self.port) + ".json")
         arguments = [
             str(binary), "--listen", "127.0.0.1:{0}".format(self.port),
             "--state-db", str(work / "host.sqlite"),
@@ -75,6 +81,8 @@ class RunningHost:
             "--guest-runtime-control-http-host", "127.0.0.1", "--guest-runtime-control-http-port", "18443",
             "--provider-kind", "macos-virtualization", "--provider-id", "guest-vm",
             "--update-bootstrap-mode", mode,
+            "--local-administration-socket", str(self.local_administration_socket),
+            "--local-administration-descriptor", str(self.local_administration_descriptor),
         ]
         if mode != "verified-staged-bundle":
             arguments.extend(["--update-handoff-evidence", str(handoff_evidence)])
@@ -108,12 +116,14 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
         cls.contracts = ContractRepository(ROOT)
         cls.contracts.load()
         cls.temporary_directory = tempfile.TemporaryDirectory()
-        cls.work = Path(cls.temporary_directory.name)
+        cls.work = Path(os.path.realpath(cls.temporary_directory.name))
         cls.host_binary = cls.work / "acceptance-host-agent"
         cls.updater_binary = cls.work / "host-updater"
+        cls.handoff_supervisor_binary = cls.work / "host-update-handoff-supervisor"
         cls.release_composer_binary = cls.work / "release-composer"
         cls.build(ROOT / "services" / "host-agent", "./cmd/acceptance-host-agent", cls.host_binary)
         cls.build(ROOT / "services" / "host-updater", "./cmd/host-updater", cls.updater_binary)
+        cls.build(ROOT / "services" / "host-update-handoff-supervisor", "./cmd/host-update-handoff-supervisor", cls.handoff_supervisor_binary)
         cls.build(ROOT / "tooling" / "release-composer", "./cmd/release-composer", cls.release_composer_binary)
 
     @classmethod
@@ -164,6 +174,60 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
     def sha(character: str) -> str:
         return character * 64
 
+    @staticmethod
+    def layer_artifact_bytes(artifact_id: str) -> bytes:
+        return ("release-layer-artifact:" + artifact_id).encode("utf-8")
+
+    @classmethod
+    def layer_artifact(cls, artifact_id: str, relative_path: str, media_type: str) -> dict:
+        contents = cls.layer_artifact_bytes(artifact_id)
+        return {
+            "id": artifact_id,
+            "relativePath": relative_path,
+            "sha256": hashlib.sha256(contents).hexdigest(),
+            "sizeBytes": len(contents),
+            "mediaType": media_type,
+        }
+
+    @staticmethod
+    def layer_effect_executor_bytes(executor_id: str) -> bytes:
+        # This is a release-owned fixed C55 protocol fixture, not an arbitrary
+        # command supplied by C26. It proves that host-updater executes only
+        # the digest-verified payload and accepts the typed receipt rather
+        # than an exit code as the layer outcome.
+        return f'''#!/bin/sh
+if [ "$1" != "--protocol-version" ] || [ "$2" != "v1" ] || [ "$3" != "--effect-executor-id" ] || [ "$4" != "{executor_id}" ] || [ "$5" != "--effect-configuration-path" ] || [ "$7" != "--receipt-path" ] || [ "$9" != "--update-id" ] || [ "${{11}}" != "--layer" ] || [ "${{13}}" != "--operation" ] || [ "${{15}}" != "--artifact-path" ] || [ "${{17}}" != "--artifact-sha256" ]; then
+  exit 73
+fi
+printf '{{"schemaVersion":"v1","updateId":"%s","layer":"%s","effectExecutorId":"{executor_id}","operation":"%s","artifactSha256":"%s","state":"succeeded","observedAt":"2026-07-19T00:00:00Z","evidence":{{"kind":"layer-effect-receipt","id":"%s-%s"}}}}\n' "${{10}}" "${{12}}" "${{14}}" "${{18}}" "${{12}}" "${{14}}" > "$8"
+'''.encode("utf-8")
+
+    @staticmethod
+    def layer_effect_executor_configuration_bytes(executor_id: str) -> bytes:
+        return json.dumps(
+            {"schemaVersion": "v1", "effectExecutorId": executor_id},
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+    @classmethod
+    def layer_effect_executor(cls, executor_id: str, relative_path: str) -> dict:
+        contents = cls.layer_effect_executor_bytes(executor_id)
+        configuration_contents = cls.layer_effect_executor_configuration_bytes(executor_id)
+        return {
+            "id": executor_id,
+            "relativePath": relative_path,
+            "sha256": hashlib.sha256(contents).hexdigest(),
+            "sizeBytes": len(contents),
+            "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-executor",
+            "configurationArtifact": {
+                "id": executor_id + "-configuration",
+                "relativePath": "payload/executor-configurations/" + executor_id + ".json",
+                "sha256": hashlib.sha256(configuration_contents).hexdigest(),
+                "sizeBytes": len(configuration_contents),
+                "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json",
+            },
+        }
+
     def command(self, request_id: str, revision: int, target: str = "0.2.0", specification_sha256: str | None = None, specification_size: int | None = None) -> dict:
         return {
             "schemaVersion": "v1",
@@ -188,9 +252,9 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
         return {
             "schemaVersion": "v1", "id": "product-update-020", "bootstrapEnvelopeId": bootstrap_envelope_id,
             "layerPlan": [
-                {"layer": "guest-runtime", "dependsOn": [], "artifact": {"id": "guest-runtime-020", "relativePath": "payload/guest-runtime.tar", "sha256": self.sha("d"), "sizeBytes": 1, "mediaType": "application/x-tar"}, "rollback": {"state": "available", "artifact": {"id": "guest-runtime-010", "relativePath": "payload/guest-runtime-rollback.tar", "sha256": self.sha("e"), "sizeBytes": 1, "mediaType": "application/x-tar"}}},
-                {"layer": "container", "dependsOn": ["guest-runtime"], "artifact": {"id": "container-020", "relativePath": "payload/container.tar", "sha256": self.sha("f"), "sizeBytes": 1, "mediaType": "application/x-tar"}, "rollback": {"state": "available", "artifact": {"id": "container-010", "relativePath": "payload/container-rollback.tar", "sha256": self.sha("1"), "sizeBytes": 1, "mediaType": "application/x-tar"}}},
-                {"layer": "host-platform", "dependsOn": ["container"], "artifact": {"id": "host-platform-020", "relativePath": "payload/host-platform.pkg", "sha256": self.sha("2"), "sizeBytes": 1, "mediaType": "application/vnd.apple.installer+xml"}, "rollback": {"state": "unsupported", "reason": "requires separately verified platform rollback bundle"}},
+                {"layer": "guest-runtime", "dependsOn": [], "artifact": self.layer_artifact("guest-runtime-020", "payload/guest-runtime.tar", "application/x-tar"), "effectExecutor": self.layer_effect_executor("guest-runtime-update-executor-020", "payload/executors/guest-runtime-update"), "rollback": {"state": "available", "artifact": self.layer_artifact("guest-runtime-010", "payload/guest-runtime-rollback.tar", "application/x-tar")}},
+                {"layer": "container", "dependsOn": ["guest-runtime"], "artifact": self.layer_artifact("container-020", "payload/container.tar", "application/x-tar"), "effectExecutor": self.layer_effect_executor("container-update-executor-020", "payload/executors/container-update"), "rollback": {"state": "available", "artifact": self.layer_artifact("container-010", "payload/container-rollback.tar", "application/x-tar")}},
+                {"layer": "host-platform", "dependsOn": ["container"], "artifact": self.layer_artifact("host-platform-020", "payload/host-platform.pkg", "application/vnd.apple.installer+xml"), "effectExecutor": self.layer_effect_executor("host-platform-update-executor-020", "payload/executors/host-platform-update"), "rollback": {"state": "unsupported", "reason": "requires separately verified platform rollback bundle"}},
             ],
         }
 
@@ -203,7 +267,23 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
         payload_directory.mkdir()
         bundle_id = "release-bundle-verified-020"
         specification = self.specification(bundle_id)
-        (payload_directory / "host-updater").write_bytes(b"verified-next-updater")
+        (payload_directory / "host-updater").write_bytes(self.updater_binary.read_bytes())
+        (payload_directory / "host-updater").chmod(0o700)
+        for layer in specification["layerPlan"]:
+            for artifact in [layer["artifact"], layer["effectExecutor"], layer["effectExecutor"]["configurationArtifact"], layer["rollback"].get("artifact")]:
+                if artifact is None:
+                    continue
+                destination = payload_directory / artifact["relativePath"].removeprefix("payload/")
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if artifact is layer["effectExecutor"]:
+                    contents = self.layer_effect_executor_bytes(artifact["id"])
+                elif artifact is layer["effectExecutor"]["configurationArtifact"]:
+                    contents = self.layer_effect_executor_configuration_bytes(layer["effectExecutor"]["id"])
+                else:
+                    contents = self.layer_artifact_bytes(artifact["id"])
+                destination.write_bytes(contents)
+                if artifact is layer["effectExecutor"]:
+                    destination.chmod(0o700)
         (payload_directory / "product-update.json").write_text(json.dumps(specification, separators=(",", ":")), encoding="utf-8")
         composition = {
             "schemaVersion": "v1", "bundleId": bundle_id, "productId": "vitalserver-runtime-platform",
@@ -242,6 +322,23 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
         stage = self.test_work / "next-updater" / journal["id"]
         payload = stage / "payload"
         payload.mkdir(parents=True, exist_ok=True)
+        for layer in specification["layerPlan"]:
+            for artifact in [layer["artifact"], layer["effectExecutor"], layer["effectExecutor"]["configurationArtifact"], layer["rollback"].get("artifact")]:
+                if artifact is None:
+                    continue
+                destination = stage / artifact["relativePath"]
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if artifact is layer["effectExecutor"]:
+                    contents = self.layer_effect_executor_bytes(artifact["id"])
+                elif artifact is layer["effectExecutor"]["configurationArtifact"]:
+                    contents = self.layer_effect_executor_configuration_bytes(layer["effectExecutor"]["id"])
+                else:
+                    contents = self.layer_artifact_bytes(artifact["id"])
+                self.assertEqual(artifact["sha256"], hashlib.sha256(contents).hexdigest())
+                self.assertEqual(artifact["sizeBytes"], len(contents))
+                destination.write_bytes(contents)
+                if artifact is layer["effectExecutor"]:
+                    destination.chmod(0o700)
         specification_bytes = json.dumps(specification, separators=(",", ":")).encode("utf-8")
         (payload / "product-update.json").write_bytes(specification_bytes)
         invocation = {
@@ -260,9 +357,9 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
         if out_of_order:
             order[0] = "container"
         artifact_sha256 = {
-            "guest-runtime": self.sha("d"),
-            "container": self.sha("f"),
-            "host-platform": self.sha("2"),
+            "guest-runtime": hashlib.sha256(self.layer_artifact_bytes("guest-runtime-020")).hexdigest(),
+            "container": hashlib.sha256(self.layer_artifact_bytes("container-020")).hexdigest(),
+            "host-platform": hashlib.sha256(self.layer_artifact_bytes("host-platform-020")).hexdigest(),
         }
         evidence = []
         for index, layer in enumerate(order):
@@ -333,18 +430,29 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
         self.assertEqual(journal["layerOrder"], json.loads(planned.stdout)["layerPlan"] and [item["layer"] for item in json.loads(planned.stdout)["layerPlan"]])
 
         report_path = self.test_work / "next-updater-report.json"
-        report = self.report(journal)
+        effect_receipt_directory = self.test_work / "layer-effect-receipts"
+        effect_receipt_directory.mkdir()
+        executed = subprocess.run(
+            [str(self.updater_binary), "--mode", "execute", "--invocation", str(invocation_path), "--report", str(report_path), "--layer-effect-receipt-directory", str(effect_receipt_directory), "--layer-effect-timeout", "30s"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, executed.returncode, executed.stderr)
+        self.assert_schema("update-execution-report.schema.json", json.loads(executed.stdout))
+        report = json.loads(report_path.read_text(encoding="utf-8"))
         self.assert_schema("update-execution-report.schema.json", report)
-        report_path.write_text(json.dumps(report, separators=(",", ":")), encoding="utf-8")
+        self.assertEqual("succeeded", report["state"], report)
+        self.assertEqual(journal["layerOrder"], [evidence["layer"] for evidence in report["layerEvidence"]])
         completed_by_updater = subprocess.run(
-            [str(self.updater_binary), "--mode", "complete", "--invocation", str(invocation_path), "--report", str(report_path), "--completion-endpoint", host.url],
+            [str(self.updater_binary), "--mode", "complete", "--invocation", str(invocation_path), "--report", str(report_path), "--completion-descriptor", str(host.local_administration_descriptor)],
             capture_output=True,
             text=True,
             check=False,
         )
         self.assertEqual(0, completed_by_updater.returncode, completed_by_updater.stderr)
-        self.assert_schema("update-completion-command.schema.json", json.loads(completed_by_updater.stdout))
-
+        completion_command = json.loads(completed_by_updater.stdout)
+        self.assert_schema("update-completion-command.schema.json", completion_command)
         status, completed = request_json(host.url + "/v1/platform/updates/{0}".format(journal["id"]))
         self.assertEqual(200, status, completed)
         self.assertEqual("succeeded", completed["value"]["state"])
@@ -361,7 +469,7 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
         self.assertNotEqual(0, incompatible.returncode)
         self.assertIn("does not match the bootstrap envelope", incompatible.stderr)
 
-        completion = self.completion(journal)
+        completion = completion_command
         self.assert_schema("update-completion-command.schema.json", completion)
         status, completed_replay = request_json(host.url + "/v1/platform/updates/{0}:complete".format(journal["id"]), "POST", completion)
         self.assertEqual(202, status, completed_replay)
@@ -444,18 +552,73 @@ class InstallationUpdateFoundationAcceptance(unittest.TestCase):
         self.assertEqual(journal["id"], invocation["updateId"])
         self.assertEqual(journal["requestId"], invocation["requestId"])
         self.assertEqual(journal["journalRevision"], invocation["expectedHandoffJournalRevision"])
-        planned = subprocess.run([str(self.updater_binary), "--mode", "plan", "--invocation", str(invocation_path)], capture_output=True, text=True, check=False)
-        self.assertEqual(0, planned.returncode, planned.stderr)
-        self.assertEqual(journal["layerOrder"], [entry["layer"] for entry in json.loads(planned.stdout)["layerPlan"]])
         queued_bytes = handoff_path.read_bytes()
         invocation_bytes = invocation_path.read_bytes()
-        host.close()
-        restarted = self.start_verified_bundle_host(bundle_store, staging_directory, trust_store)
+        supervisor_configuration = {
+            "schemaVersion": "v1",
+            "id": "acceptance-handoff-supervisor",
+            "stagingDirectory": str(staging_directory),
+            "handoffQueueDirectory": str(staging_directory / "handoff-queue"),
+            "executionEvidenceDirectory": str(self.test_work / "handoff-execution-evidence"),
+            "layerEffectReceiptDirectory": str(self.test_work / "handoff-layer-effect-receipts"),
+            "hostLocalAdministrationDescriptorPath": str(host.local_administration_descriptor),
+            "layerEffectTimeoutMilliseconds": 30000,
+            "completionTimeoutMilliseconds": 30000,
+            "servicePollIntervalMilliseconds": 100,
+        }
+        self.assert_schema("host-update-handoff-supervisor-configuration.schema.json", supervisor_configuration)
+        supervisor_configuration_path = self.test_work / "handoff-supervisor.json"
+        supervisor_configuration_path.write_text(json.dumps(supervisor_configuration, separators=(",", ":")), encoding="utf-8")
+        dispatched = subprocess.run(
+            [str(self.handoff_supervisor_binary), "--configuration", str(supervisor_configuration_path), "--handoff", str(handoff_path), "--attempt-id", "verified-handoff-attempt-020"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, dispatched.returncode, dispatched.stdout + dispatched.stderr)
+        dispatch_receipt = json.loads(dispatched.stdout)
+        self.assert_schema("host-update-handoff-dispatch-receipt.schema.json", dispatch_receipt)
+        self.assertEqual("completion-submitted", dispatch_receipt["state"], dispatch_receipt)
+        status, completed = request_json(host.url + "/v1/platform/updates/" + journal["id"])
+        self.assertEqual(200, status, completed)
+        self.assertEqual("succeeded", completed["value"]["state"])
+        status, installation = request_json(host.url + "/v1/platform/installation")
+        self.assertEqual(200, status, installation)
+        self.assertEqual("0.2.0", installation["value"]["release"]["productVersion"])
         self.assertEqual(queued_bytes, handoff_path.read_bytes())
         self.assertEqual(invocation_bytes, invocation_path.read_bytes())
-        status, recovered = request_json(restarted.url + "/v1/platform/updates/" + journal["id"])
-        self.assertEqual(200, status, recovered)
-        self.assertEqual("handoff-pending", recovered["value"]["state"])
+
+    def test_operator_imported_bundle_is_host_owned_before_existing_update_admission(self) -> None:
+        source_store, _, trust_store, envelope = self.compose_verified_bundle()
+        imported_store = self.test_work / "operator-imported-bundles"
+        staging_directory = self.test_work / "operator-imported-staging"
+        imported_store.mkdir()
+        staging_directory.mkdir()
+        host = self.start_verified_bundle_host(imported_store, staging_directory, trust_store)
+        source_directory = source_store / envelope["id"]
+        status, receipt = request_json(host.url + "/v1/platform/update-bundles:import", "POST", {
+            "schemaVersion": "v1", "requestId": "operator-import-verified-020", "sourceDirectory": str(source_directory),
+        })
+        self.assertEqual(201, status, receipt)
+        self.assertEqual("imported", receipt["state"])
+        self.assertEqual(envelope["id"], receipt["bundle"]["id"])
+        self.assertEqual("declared", receipt["bundle"]["state"])
+        # A declared imported C25 is intentionally not presented as trust
+        # verification. C27 below performs the signature verification.
+        status, read = request_json(host.url + "/v1/platform/update-bundles/" + envelope["id"])
+        self.assertEqual(200, status, read)
+        self.assertEqual("available", read["state"])
+        self.assertEqual("declared", read["value"]["state"])
+        status, installation = request_json(host.url + "/v1/platform/installation")
+        self.assertEqual(200, status, installation)
+        status, admitted = request_json(host.url + "/v1/platform/update-bundles/" + envelope["id"] + ":apply", "POST", {
+            "schemaVersion": "v1", "requestId": "operator-apply-verified-020", "installationId": installation["value"]["id"],
+            "expectedInstallationRevision": installation["value"]["resourceRevision"], "bundleReferenceId": envelope["id"],
+        })
+        self.assertEqual(202, status, admitted)
+        self.assertEqual("handoff-pending", admitted["journal"]["state"])
+        self.assertEqual(envelope["id"], admitted["journal"]["bundleReferenceId"])
+        self.assertTrue((staging_directory / "handoff-queue" / (admitted["journal"]["id"] + ".json")).is_file())
 
 
 if __name__ == "__main__":

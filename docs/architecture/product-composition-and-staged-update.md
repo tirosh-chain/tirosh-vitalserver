@@ -77,26 +77,49 @@ unreadable. C31 makes that indirection explicit and durable.
   recovery may request the handoff again but cannot create a second meaning.
 - The next updater resolves C30's C26 path below the staged directory, rejects
   traversal, symlinks, missing files, size overflow, and digest mismatch, then
-  passes complete explicit input to pure `PlanStagedUpdate` policy.
+  passes complete explicit input to pure `PlanStagedUpdate` policy. For every
+  layer it re-verifies the C26 artifact and C26-declared effect executable,
+  invokes the release-owned fixed C55 protocol without a shell or
+  caller-selected arguments, and accepts only a correlated C55 receipt. The
+  application workflow aggregates those receipts into one atomic C28 report.
 
 ## Current scope and next responsibility
 
 The implementation proves signed composition, Host staging, durable C31
-publication, restart re-handoff, next-updater planning, and C28-to-C27
-completion submission by a separate `host-updater` process. It does not claim
-that a deployment supervisor launches the updater, that a layer effect was
-applied, or that a platform package was activated. Those are separate future
-responsibilities:
+publication, restart re-handoff, next-updater planning, digest-verified C55
+layer-effect invocation, atomic C28 publication, and C52-local C27 completion
+submission by a separate `host-updater` process. For the Guest Runtime layer,
+the release-owned C61 executor is concrete: it sends a re-verified Guest
+Product archive through the direct C32 Host-local bridge to C59 and maps its
+terminal operation to C55. The concrete release process now uses
+`guest-product-release-update-composer` to select immutable C61/C26 inputs:
+the next updater, apply archive, C55 executable, and optionally the reverse
+rollback archive. It writes a prepared payload and generic signer input, then
+`release-composer` owns C25 signing. The composer currently rejects non-macOS
+arm64 targets because C61 depends on the concrete macOS C32 AF_VSOCK bridge;
+the shared C25–C31 contract does not imply a nonexistent platform effect. The
+packaged
+`host-update-handoff-supervisor` also consumes C31 and launches only the
+C25-selected updater, publishing C57 rather than inferring update success from
+process exit. It does not claim that a concrete release package was activated,
+that a release-composition owner selected the target Guest archive and C61
+configuration for an actual signed bundle, that any Container/Host replacement
+occurred, or that a matching OS package manager performed rollback. Those remain separate
+product-composition responsibilities:
 
-- **Deployment supervisor** consumes C31, resolves C30 below Host staging, and
-  launches only the C25-selected updater.
-- **Layer effect adapters** execute container, Guest Runtime, and Host platform
-  changes selected by the pure `UpdateExecutionPlan`.
-- **Selected layer effect executor** creates C28 layer/rollback evidence.
-  **Next updater completion workflow** validates it against C30/C26 and
-  composes C27 with C30's `requestId`/`expectedHandoffJournalRevision`; Host
-  Agent atomically verifies that handoff version, enters `applying`, and
-  settles C29 only from that command.
+- **Release-owned layer effect executors** apply or compensate container and
+  Host-platform changes selected by the pure
+  `UpdateExecutionPlan`. Each must implement the fixed C55 protocol and write
+  only its own correlated receipt.
+- **Guest Product release composition** selects immutable target bytes and
+  generates the C61 apply/rollback transition for each signed C25/C26 bundle.
+  C59 owns Guest activation and rollback; C61 does not become a second Guest
+  release-state owner.
+- **Next updater execution workflow** validates C55 against C30/C26 and
+  creates one C28 layer/rollback report. `execute` creates C28 only;
+  `complete` reads that immutable report and submits C27 through C52 without
+  rerunning a layer effect. Host Agent atomically verifies that handoff
+  revision, enters `applying`, and settles C29 only from that command.
 - **Release delivery proof** attaches C24 clean-host install, update, rollback,
   and uninstall evidence for each target platform.
 

@@ -39,42 +39,53 @@ func TestValidateGuestProductBootstrapVolumeCompositionPlanRejectsUnspecifiedArc
 
 func completeDeclaredGuestProductBootstrapVolumePlan() guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan {
 	return guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan{
-		SchemaVersion:         "v1",
-		BootstrapID:           "vitalserver-guest-product-bootstrap",
-		VolumeLabel:           "CIDATA",
-		StorageImageFormat:    "raw",
-		GuestVolumeFileSystem: "iso9660",
-		InstanceID:            "vitalserver-guest-bootstrap-instance",
-		LocalHostName:         "vitalserver-guest",
-		ServiceUnitName:       "vitalserver-guest-product.service",
+		SchemaVersion:                 "v1",
+		BootstrapID:                   "vitalserver-guest-product-bootstrap",
+		VolumeLabel:                   "CIDATA",
+		StorageImageFormat:            "raw",
+		GuestVolumeFileSystem:         "iso9660",
+		InstanceID:                    "vitalserver-guest-bootstrap-instance",
+		LocalHostName:                 "vitalserver-guest",
+		ServiceUnitName:               "vitalserver-guest-product.service",
+		ReleaseManagerServiceUnitName: "vitalserver-guest-product-release-manager.service",
+		GuestProductRelease: guestproductbootstrapvolumeplan.DeclaredGuestProductRelease{
+			ReleaseID: "vitalserver-guest-product-0.2.0-dev", ReleaseDirectory: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev", CurrentReleaseLinkPath: "/opt/vitalserver/current", ReleaseStateDirectory: "/var/lib/vitalserver/guest-product-releases", ReleaseStateDirectoryMode: "0700",
+		},
 		GuestRuntimeStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
 			DirectoryPath: "/var/lib/vitalserver/guest-runtime",
 			DirectoryMode: "0700",
 		},
 		Sources: []guestproductbootstrapvolumeplan.DeclaredBootstrapSource{
 			declaredBootstrapSource("guest-runtime-linux-arm64", "sources/guest-runtime-linux-arm64"),
-			declaredBootstrapSource("recorder-gateway-linux-arm64", "sources/recorder-gateway-linux-arm64"),
+			declaredBootstrapSource("guest-node-services-linux-arm64", "sources/guest-node-services-linux-arm64"),
 			declaredBootstrapSource("guest-product-process-supervisor-linux-arm64", "sources/guest-product-process-supervisor-linux-arm64"),
 			declaredBootstrapSource("guest-product-process-deployment-configuration", "sources/guest-product-process-deployment-configuration"),
+			declaredBootstrapSource("guest-product-release-manager-linux-arm64", "sources/guest-product-release-manager-linux-arm64"),
+			declaredBootstrapSource("guest-product-release-manager-configuration", "sources/guest-product-release-manager-configuration"),
 			declaredBootstrapSource("guest-product-vitalserver-topology-deployment", "sources/guest-product-vitalserver-topology-deployment"),
 			declaredBootstrapSource("guest-product-service-manager-deployment-configuration", "sources/guest-product-service-manager-deployment-configuration"),
 			declaredBootstrapSource("guest-product-systemd-unit", "generated/vitalserver-guest-product.service"),
+			declaredBootstrapSource("guest-product-release-manager-systemd-unit", "generated/vitalserver-guest-product-release-manager.service"),
 		},
 		FileInstallations: []guestproductbootstrapvolumeplan.DeclaredGuestFileInstallation{
-			{SourceID: "guest-runtime-linux-arm64", DestinationPath: "/opt/vitalserver/bin/guest-runtime", FileMode: "0755"},
-			{SourceID: "guest-product-process-supervisor-linux-arm64", DestinationPath: "/opt/vitalserver/bin/guest-product-process-supervisor", FileMode: "0755"},
-			{SourceID: "guest-product-process-deployment-configuration", DestinationPath: "/etc/vitalserver/guest-product-process-deployment.json", FileMode: "0644"},
-			{SourceID: "guest-product-vitalserver-topology-deployment", DestinationPath: "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json", FileMode: "0644"},
-			{SourceID: "guest-product-service-manager-deployment-configuration", DestinationPath: "/etc/vitalserver/guest-product-service-manager-deployment.json", FileMode: "0644"},
+			{SourceID: "guest-runtime-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-runtime", FileMode: "0755"},
+			{SourceID: "guest-product-process-supervisor-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-process-supervisor", FileMode: "0755"},
+			{SourceID: "guest-product-process-deployment-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-process-deployment.json", FileMode: "0644"},
+			{SourceID: "guest-product-release-manager-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-release-manager", FileMode: "0755"},
+			{SourceID: "guest-product-release-manager-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-release-manager.json", FileMode: "0644"},
+			{SourceID: "guest-product-vitalserver-topology-deployment", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-vitalserver-topology-deployment.json", FileMode: "0644"},
+			{SourceID: "guest-product-service-manager-deployment-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-service-manager-deployment.json", FileMode: "0644"},
 			{SourceID: "guest-product-systemd-unit", DestinationPath: "/etc/systemd/system/vitalserver-guest-product.service", FileMode: "0644"},
+			{SourceID: "guest-product-release-manager-systemd-unit", DestinationPath: "/etc/systemd/system/vitalserver-guest-product-release-manager.service", FileMode: "0644"},
 		},
 		ArchiveInstallations: []guestproductbootstrapvolumeplan.DeclaredGuestArchiveInstallation{{
-			SourceID: "recorder-gateway-linux-arm64", ArchiveFormat: "tar-gzip", EntryModePolicy: "preserve-archive-mode", SymbolicLinkPolicy: guestproductbootstrapvolumeplan.AllowRelativeLinksToDeclaredRegularFilesPolicy, DestinationDirectory: "/opt/vitalserver",
-			RequiredArchivePaths: []string{"node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js"},
+			SourceID: "guest-node-services-linux-arm64", ArchiveFormat: "tar-gzip", EntryModePolicy: "preserve-archive-mode", SymbolicLinkPolicy: guestproductbootstrapvolumeplan.AllowRelativeLinksToDeclaredRegularFilesPolicy, DestinationDirectory: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev",
+			RequiredArchivePaths: []string{"node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js", "lab-recorder-runner/dist/cmd/lab-recorder-runner.js", "lab-recorder-runner/lab-scenario-catalog.json"},
 		}},
-		SymbolicLinks: []guestproductbootstrapvolumeplan.DeclaredGuestSymbolicLink{{
-			LinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", TargetPath: "/etc/systemd/system/vitalserver-guest-product.service",
-		}},
+		SymbolicLinks: []guestproductbootstrapvolumeplan.DeclaredGuestSymbolicLink{
+			{LinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", TargetPath: "/etc/systemd/system/vitalserver-guest-product.service"},
+			{LinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product-release-manager.service", TargetPath: "/etc/systemd/system/vitalserver-guest-product-release-manager.service"},
+		},
 	}
 }
 

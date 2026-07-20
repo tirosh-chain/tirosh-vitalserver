@@ -61,11 +61,24 @@ def wait_for_endpoint(url: str, process: subprocess.Popen[str]) -> None:
     raise AssertionError(f"Host Agent did not become reachable: {url}")
 
 
+def wait_for_file(path: Path, process: subprocess.Popen[str]) -> None:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            stderr = process.stderr.read() if process.stderr else ""
+            raise AssertionError(f"Host Agent exited before publishing {path.name} ({process.returncode}): {stderr}")
+        if path.is_file():
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"Host Agent did not publish {path}")
+
+
 class CrossPlatformDeliveryAcceptance(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.work = Path(self.temporary_directory.name)
         self.host_binary = self.work / "host-agent"
+        self.platformctl_binary = self.work / "platformctl"
         build = subprocess.run(
             [GO, "build", "-o", str(self.host_binary), "./cmd/host-agent"],
             cwd=ROOT / "services" / "host-agent",
@@ -75,6 +88,15 @@ class CrossPlatformDeliveryAcceptance(unittest.TestCase):
         )
         if build.returncode != 0:
             raise AssertionError(f"build Host Agent failed:\n{build.stdout}\n{build.stderr}")
+        build = subprocess.run(
+            [GO, "build", "-o", str(self.platformctl_binary), "./cmd/platformctl"],
+            cwd=ROOT / "interfaces" / "platformctl",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if build.returncode != 0:
+            raise AssertionError(f"build platformctl failed:\n{build.stdout}\n{build.stderr}")
         self.bridge_log = self.work / "bridge-invocations.jsonl"
         self.bridge = self.work / "provider-bridge-fixture.py"
         self.bridge.write_text(
@@ -128,6 +150,7 @@ class CrossPlatformDeliveryAcceptance(unittest.TestCase):
             env=environment,
         )
         base_url = f"http://127.0.0.1:{port}"
+        wait_for_file(self.work / "host-agent.local.json", self.host_process)
         wait_for_endpoint(base_url + "/v1/platform/guest-runtime-control-endpoint", self.host_process)
         return base_url
 
@@ -135,7 +158,13 @@ class CrossPlatformDeliveryAcceptance(unittest.TestCase):
         configuration = {
             "schemaVersion": "v1",
             "control": {
-                "listenAddress": f"127.0.0.1:{port}",
+                "localAdministration": {
+                    "transport": "unix-domain-socket",
+                    "endpointAddress": str(self.work / "host-agent.sock"),
+                    "descriptorPath": str(self.work / "host-agent.local.json"),
+                    "authorizedUserId": os.geteuid(),
+                },
+                "loopbackHTTP": {"mode": "development-loopback", "listenAddress": f"127.0.0.1:{port}"},
                 "stateDatabasePath": str(self.work / "host.sqlite"),
                 "guestTimeoutMilliseconds": 5000,
             },
@@ -152,9 +181,10 @@ class CrossPlatformDeliveryAcceptance(unittest.TestCase):
                 "nativeProviderBridgeExecutablePath": str(self.bridge),
                 "nativeVirtualMachineName": "guest-vm",
                 "hostServiceName": "vitalserver-host-agent",
+                "nativeGuestMachineOwnership": "externally-provisioned",
             },
-            "time": {"hostNodeId": "acceptance-host", "timeAuthorityId": "acceptance-time", "providerMode": "unsupported"},
-            "telemetry": {"pipelineMode": "unsupported", "exportMode": "unavailable"},
+            "time": {"hostNodeId": "acceptance-host", "timeAuthorityId": "acceptance-time", "kind": "time-authority-outcome-profile", "providerMode": "unsupported"},
+            "telemetry": {"kind": "telemetry-export-outcome-profile", "pipelineMode": "unsupported", "exportMode": "unavailable"},
             "updateBootstrap": {"mode": "unavailable"},
         }
         path = self.work / "host-agent-deployment.json"
@@ -243,6 +273,39 @@ class CrossPlatformDeliveryAcceptance(unittest.TestCase):
         self.assertNotEqual(0, completed.returncode)
         self.assertIn("deployment configuration is invalid", completed.stderr)
         self.assertFalse((self.work / "host.sqlite").exists())
+
+    def test_host_local_administration_descriptor_drives_platformctl_without_a_tcp_endpoint(self) -> None:
+        self.start_host("linux-kvm-libvirt-systemd")
+        descriptor_path = self.work / "host-agent.local.json"
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {
+                "schemaVersion": "v1",
+                "transport": "unix-domain-socket",
+                "address": str(self.work / "host-agent.sock"),
+            },
+            descriptor,
+        )
+        invocation = subprocess.run(
+            [str(self.platformctl_binary), "--local-control-descriptor", str(descriptor_path), "installation"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, invocation.returncode, invocation.stderr)
+        response = json.loads(invocation.stdout)
+        self.assertEqual(200, response["httpStatus"])
+        self.assertEqual("available", response["document"]["state"])
+
+        assert self.host_process is not None
+        self.host_process.terminate()
+        self.host_process.wait(timeout=5)
+        if self.host_process.stdout is not None:
+            self.host_process.stdout.close()
+        if self.host_process.stderr is not None:
+            self.host_process.stderr.close()
+        self.host_process = None
+        self.assertFalse(descriptor_path.exists(), "Host Agent left a stale C52 descriptor after shutdown")
 
     def test_windows_and_linux_bridge_evidence_is_c22_valid_when_wrong_os_is_explicit(self) -> None:
         repository = ContractRepository(ROOT)

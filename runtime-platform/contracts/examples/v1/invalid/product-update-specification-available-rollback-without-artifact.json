@@ -7,6 +7,7 @@
       "layer": "container",
       "dependsOn": [],
       "artifact": { "id": "container-020", "relativePath": "payload/container.tar", "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "sizeBytes": 102, "mediaType": "application/x-tar" },
+      "effectExecutor": { "id": "container-update-executor-020", "relativePath": "payload/executors/container-update", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "sizeBytes": 105, "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-executor", "configurationArtifact": { "id": "container-update-executor-configuration-020", "relativePath": "payload/executors/configuration/container-update.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "sizeBytes": 50, "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json" } },
       "rollback": { "state": "available" }
     }
   ]

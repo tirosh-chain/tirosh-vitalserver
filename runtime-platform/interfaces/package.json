@@ -1,0 +1,37 @@
+{
+  "name": "@tirosh-chain/vitalserver-runtime-platform-interfaces",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform operator interfaces for VitalServer Runtime Platform",
+  "engines": {
+    "node": ">=20.19.0 <21"
+  },
+  "workspaces": [
+    "runtime-console-control-contract",
+    "runtime-console-web",
+    "runtime-console-desktop"
+  ],
+  "scripts": {
+    "license-check": "node tooling/verify_npm_license_policy.mjs",
+    "check": "npm run license-check && npm run check --workspace=@tirosh-chain/runtime-console-control-contract && npm run build --workspace=@tirosh-chain/runtime-console-control-contract && npm run check --workspace=@tirosh-chain/runtime-console-web && npm run check --workspace=@tirosh-chain/runtime-console-desktop",
+    "build": "npm run build --workspace=@tirosh-chain/runtime-console-control-contract && npm run build --workspace=@tirosh-chain/runtime-console-web && npm run build --workspace=@tirosh-chain/runtime-console-desktop",
+    "test": "npm run test --workspace=@tirosh-chain/runtime-console-control-contract && npm run test --workspace=@tirosh-chain/runtime-console-desktop",
+    "package:macos": "npm run build && npm run package:macos --workspace=@tirosh-chain/runtime-console-desktop",
+    "package:windows": "npm run build && npm run package:windows --workspace=@tirosh-chain/runtime-console-desktop",
+    "package:linux": "npm run build && npm run package:linux --workspace=@tirosh-chain/runtime-console-desktop",
+    "package:linux-deb": "npm run build && npm run package:linux-deb --workspace=@tirosh-chain/runtime-console-desktop"
+  },
+  "overrides": {
+    "tar": "7.5.20"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/react": "19.1.15",
+    "@types/react-dom": "19.1.9",
+    "app-builder-bin": "5.0.0-alpha.10",
+    "electron": "41.7.1",
+    "electron-builder": "25.1.8",
+    "esbuild": "0.25.9",
+    "typescript": "5.9.3"
+  }
+}

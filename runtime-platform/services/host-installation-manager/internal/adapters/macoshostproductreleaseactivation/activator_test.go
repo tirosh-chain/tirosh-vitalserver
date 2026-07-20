@@ -19,6 +19,7 @@ func TestActivateHostProductReleaseCreatesCurrentLinkToExactDeclaredSlot(t *test
 		Platform: "macos",
 		Activation: hostinstallationmanagerdomain.HostProductReleaseActivation{
 			CurrentReleaseLinkPath:  filepath.Join(root, "current"),
+			ReferenceKind:           "symbolic-link",
 			ExpectedReleaseRootPath: releaseRoot,
 		},
 	}
@@ -50,6 +51,7 @@ func TestActivateHostProductReleaseRefusesToReplaceOtherCurrentSlot(t *testing.T
 		Platform: "macos",
 		Activation: hostinstallationmanagerdomain.HostProductReleaseActivation{
 			CurrentReleaseLinkPath:  current,
+			ReferenceKind:           "symbolic-link",
 			ExpectedReleaseRootPath: newReleaseRoot,
 		},
 	}

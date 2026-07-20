@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "v1",
+  "deploymentId": "vitalserver-guest-product-bundled-vitalserver",
+  "requiredProcessExitPolicy": "terminate-guest-product",
+  "guestRuntime": {
+    "executablePath": "/opt/vitalserver/current/bin/guest-runtime",
+    "listener": { "bindHost": "0.0.0.0", "port": 18443 },
+    "controlVirtioSocketListener": { "port": 18443 },
+    "publicServiceVirtioSocketBridges": [
+      {
+        "routeId": "recorder-gateway",
+        "guestProductProcessName": "recorder-gateway",
+        "virtioSocketPort": 18090,
+        "targetHost": "127.0.0.1",
+        "targetPort": 8090
+      }
+    ],
+    "stateDatabasePath": "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite",
+    "serviceVersion": "0.1.0-dev",
+    "instanceId": "guest-runtime-primary",
+    "archiveExportProvider": {
+      "kind": "vitalserver-indexed-library",
+      "id": "bundled-vitalserver-reference-library",
+      "capabilityRevision": 1,
+      "vitalServerConfiguration": {
+        "kind": "bundled-vitalserver-topology-deployment",
+        "configurationPath": "/opt/vitalserver/current/config/guest-product-vitalserver-topology-deployment.json"
+      },
+      "credentialMaterialPath": "/run/vitalserver/secrets/bundled-vitalserver-reference-library.json"
+    },
+    "recorderGatewayColdPathSourceEndpoint": "http://127.0.0.1:8090",
+    "labRecorderRunnerEndpoint": "http://127.0.0.1:8091",
+    "externalUpstreamObservationProvider": {
+      "kind": "external-capability-profile",
+      "id": "bundled-vitalserver-has-no-external-integration",
+      "capabilityRevision": 1,
+      "outcomeMode": "unsupported"
+    },
+    "outboundRelayObservationProvider": {
+      "kind": "outbound-relay-profile",
+      "id": "outbound-relay",
+      "capabilityRevision": 1,
+      "outcomeMode": "unsupported"
+    },
+    "timeAuthority": {
+      "guestNodeId": "guest-primary",
+      "timeAuthorityId": "guest-time-authority",
+      "kind": "chrony-tracking",
+      "chronyExecutablePath": "/usr/bin/chronyc",
+      "ntpServerHost": "ntp.example.test",
+      "ntpServerPort": 123,
+      "requestTimeoutMilliseconds": 5000
+    },
+    "telemetryPipeline": {
+      "kind": "otlp-http",
+      "collectorBaseEndpoint": "http://127.0.0.1:4318",
+      "requestTimeoutMilliseconds": 5000
+    }
+  },
+  "recorderGateway": {
+    "nodeExecutablePath": "/opt/vitalserver/current/node/bin/node",
+    "programPath": "/opt/vitalserver/current/recorder-gateway/dist/cmd/recorder-gateway.js",
+    "listener": { "bindHost": "0.0.0.0", "port": 8090 },
+    "durableIngressStateDirectory": "/var/lib/vitalserver/recorder-gateway",
+    "vitalServerTopologyDeploymentPath": "/opt/vitalserver/current/config/guest-product-vitalserver-topology-deployment.json",
+    "deliveryReplayAdmissionPolicy": {
+      "maximumPendingItems": 1024,
+      "maximumPendingBytes": 67108864
+    },
+    "coldPathCapturePolicy": {
+      "maximumRetainedPackets": 1024,
+      "maximumRetainedPayloadBytes": 67108864
+    },
+    "replayPolicy": {
+      "intervalMilliseconds": 100,
+      "maximumAttempts": 3,
+      "retryDelayMilliseconds": 100,
+      "leaseDurationMilliseconds": 1000
+    }
+  },
+  "labRecorderRunner": {
+    "nodeExecutablePath": "/opt/vitalserver/current/node/bin/node",
+    "programPath": "/opt/vitalserver/current/lab-recorder-runner/dist/cmd/lab-recorder-runner.js",
+    "listener": { "bindHost": "127.0.0.1", "port": 8091 },
+    "recorderGatewayEndpoint": "http://127.0.0.1:8090",
+    "guestRuntimeObservationCatalogEndpoint": "http://127.0.0.1:18443",
+    "scenarioCatalogPath": "/opt/vitalserver/current/lab-recorder-runner/lab-scenario-catalog.json"
+  },
+  "telemetryCollector": {
+    "executablePath": "/opt/vitalserver/current/bin/guest-telemetry-collector",
+    "configurationPath": "/opt/vitalserver/current/config/guest-telemetry-collector.yaml",
+    "otlpHttpListener": { "bindHost": "127.0.0.1", "port": 4318 }
+  }
+}

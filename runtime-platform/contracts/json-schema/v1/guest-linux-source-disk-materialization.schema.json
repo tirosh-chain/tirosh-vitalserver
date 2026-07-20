@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-linux-source-disk-materialization",
+  "title": "GuestLinuxSourceDiskMaterialization",
+  "description": "C73 release-build declaration and receipt for converting one identified ARM64 QCOW2 Guest Linux source image into one immutable raw disk image. It does not select or download a source image, inspect Guest boot files, create C42/C43 outputs, or claim Guest boot or package installation.",
+  "oneOf": [
+    { "$ref": "#/$defs/Declaration" },
+    { "$ref": "#/$defs/Receipt" }
+  ],
+  "$defs": {
+    "Identifier": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "Sha256": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+    },
+    "Timestamp": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "SourceAbsolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/"
+    },
+    "StorageOutputRelativePath": {
+      "type": "string",
+      "minLength": 13,
+      "maxLength": 1024,
+      "pattern": "^storage/[A-Za-z0-9][A-Za-z0-9._-]*\\.raw$"
+    },
+    "SourceImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourceAbsolutePath", "sourceOriginUri", "sourceRelease", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "sourceAbsolutePath": { "$ref": "#/$defs/SourceAbsolutePath" },
+        "sourceOriginUri": { "type": "string", "format": "uri", "maxLength": 4096 },
+        "sourceRelease": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "SourceImageIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourceOriginUri", "sourceRelease", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "sourceOriginUri": { "type": "string", "format": "uri", "maxLength": 4096 },
+        "sourceRelease": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "RawImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "outputRelativePath", "imageFormat"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "outputRelativePath": { "$ref": "#/$defs/StorageOutputRelativePath" },
+        "imageFormat": { "const": "raw" }
+      }
+    },
+    "RawImageIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "relativePath", "imageFormat", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "relativePath": { "$ref": "#/$defs/StorageOutputRelativePath" },
+        "imageFormat": { "const": "raw" },
+        "sizeBytes": { "type": "integer", "minimum": 512, "multipleOf": 512 },
+        "sha256": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "Declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "documentKind", "materializationId", "architecture", "sourceImage", "sourceImageFormat", "rawImage"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "documentKind": { "const": "guest-linux-source-disk-materialization-declaration" },
+        "materializationId": { "$ref": "#/$defs/Identifier" },
+        "architecture": { "const": "arm64" },
+        "sourceImage": { "$ref": "#/$defs/SourceImage" },
+        "sourceImageFormat": { "const": "qcow2" },
+        "rawImage": { "$ref": "#/$defs/RawImage" }
+      }
+    },
+    "Receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "documentKind", "materializationId", "architecture", "materializationDeclarationSha256", "sourceImage", "sourceImageFormat", "rawImage", "completedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "documentKind": { "const": "guest-linux-source-disk-materialization-receipt" },
+        "materializationId": { "$ref": "#/$defs/Identifier" },
+        "architecture": { "const": "arm64" },
+        "materializationDeclarationSha256": { "$ref": "#/$defs/Sha256" },
+        "sourceImage": { "$ref": "#/$defs/SourceImageIdentity" },
+        "sourceImageFormat": { "const": "qcow2" },
+        "rawImage": { "$ref": "#/$defs/RawImageIdentity" },
+        "completedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    }
+  }
+}

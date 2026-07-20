@@ -21,10 +21,10 @@ func TestComposeGuestProductBootstrapVolumePlanPreservesExplicitOwnershipAndPayl
 	if plan.StorageImageFormat != "raw" || plan.GuestVolumeFileSystem != "iso9660" {
 		t.Fatalf("C40 storage delivery contract is not explicit: %#v", plan)
 	}
-	if plan.Sources[0].ID != "guest-product-process-deployment-configuration" {
+	if plan.Sources[0].ID != "guest-node-services-linux-arm64" {
 		t.Fatalf("sources are not canonicalized: %#v", plan.Sources)
 	}
-	if plan.Sources[len(plan.Sources)-1].ID != "recorder-gateway-linux-arm64" {
+	if plan.Sources[len(plan.Sources)-1].ID != "guest-runtime-linux-arm64" {
 		t.Fatalf("sources are not canonicalized: %#v", plan.Sources)
 	}
 	if plan.FileInstallations[0].DestinationPath != composition.BootstrapConfiguration.GuestRuntime.DestinationPath {
@@ -32,18 +32,18 @@ func TestComposeGuestProductBootstrapVolumePlanPreservesExplicitOwnershipAndPayl
 	}
 	topologyInstalled := false
 	for _, installation := range plan.FileInstallations {
-		if installation.SourceID == "guest-product-vitalserver-topology-deployment" && installation.DestinationPath == "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json" {
+		if installation.SourceID == "guest-product-vitalserver-topology-deployment" && installation.DestinationPath == "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-vitalserver-topology-deployment.json" {
 			topologyInstalled = true
 		}
 	}
 	if !topologyInstalled {
 		t.Fatalf("C44 VitalServer topology deployment was not installed: %#v", plan.FileInstallations)
 	}
-	if plan.ArchiveInstallations[0].DestinationDirectory != "/opt/vitalserver" {
-		t.Fatalf("Recorder Gateway archive destination was not preserved")
+	if plan.ArchiveInstallations[0].DestinationDirectory != "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev" {
+		t.Fatalf("Guest Node Services archive destination was not preserved")
 	}
 	if plan.ArchiveInstallations[0].SymbolicLinkPolicy != "allow-relative-links-to-declared-regular-files" {
-		t.Fatalf("Recorder Gateway archive symbolic-link policy was not preserved: %#v", plan.ArchiveInstallations[0])
+		t.Fatalf("Guest Node Services archive symbolic-link policy was not preserved: %#v", plan.ArchiveInstallations[0])
 	}
 	if plan.GuestRuntimeStateDirectory.DirectoryPath != "/var/lib/vitalserver/guest-runtime" || plan.GuestRuntimeStateDirectory.DirectoryMode != "0700" {
 		t.Fatalf("Guest Runtime state directory was not preserved: %#v", plan.GuestRuntimeStateDirectory)
@@ -56,6 +56,57 @@ func TestComposeGuestProductBootstrapVolumePlanRejectsStateDirectoryMismatch(t *
 	_, err := guestproductbootstrapplancomposer.ComposeGuestProductBootstrapVolumePlan(composition)
 	if err == nil || !strings.Contains(err.Error(), "state database parent") {
 		t.Fatalf("expected explicit C37/C39 state directory agreement failure, got %v", err)
+	}
+}
+
+func TestComposeGuestProductBootstrapVolumePlanDeclaresChronyBootstrapFromExplicitC37Source(t *testing.T) {
+	composition := completeGuestProductBootstrapVolumePlanComposition()
+	composition.ProcessDeployment.GuestTimeAuthorityKind = "chrony-tracking"
+	composition.ProcessDeployment.GuestTimeAuthorityNTPServerHost = "ntp.example.test"
+	composition.ProcessDeployment.GuestTimeAuthorityNTPServerPort = 123
+	composition.BootstrapConfiguration.GuestTimeSynchronization = &guestproductbootstrapplancomposer.GuestProductBootstrapTimeSynchronization{
+		PackageManager: "apt", PackageName: "chrony", ServiceName: "chrony.service", ConfigurationDestinationPath: "/etc/chrony/chrony.conf",
+	}
+
+	plan, err := guestproductbootstrapplancomposer.ComposeGuestProductBootstrapVolumePlan(composition)
+	if err != nil {
+		t.Fatalf("compose C40 plan with Guest time synchronization: %v", err)
+	}
+	if plan.GuestTimeSynchronization == nil || plan.GuestTimeSynchronization.PackageName != "chrony" {
+		t.Fatalf("C40 time synchronization was not preserved: %#v", plan.GuestTimeSynchronization)
+	}
+	installed := false
+	for _, installation := range plan.FileInstallations {
+		if installation.SourceID == "guest-time-synchronization-configuration" && installation.DestinationPath == "/etc/chrony/chrony.conf" && installation.FileMode == "0644" {
+			installed = true
+		}
+	}
+	if !installed {
+		t.Fatalf("C40 does not install generated Chrony configuration: %#v", plan.FileInstallations)
+	}
+	if configuration := guestproductbootstrapplancomposer.RenderGuestTimeSynchronizationConfiguration(composition.ProcessDeployment); configuration != "# Managed by VitalServer Guest Product bootstrap.\nserver ntp.example.test port 123 iburst\nmakestep 1.0 3\nrtcsync\n" {
+		t.Fatalf("generated Chrony configuration=%q", configuration)
+	}
+}
+
+func TestComposeGuestProductBootstrapVolumePlanRejectsGuestTimeSynchronizationWithoutExactNTPSource(t *testing.T) {
+	composition := completeGuestProductBootstrapVolumePlanComposition()
+	composition.ProcessDeployment.GuestTimeAuthorityKind = "chrony-tracking"
+	composition.BootstrapConfiguration.GuestTimeSynchronization = &guestproductbootstrapplancomposer.GuestProductBootstrapTimeSynchronization{
+		PackageManager: "apt", PackageName: "chrony", ServiceName: "chrony.service", ConfigurationDestinationPath: "/etc/chrony/chrony.conf",
+	}
+	if _, err := guestproductbootstrapplancomposer.ComposeGuestProductBootstrapVolumePlan(composition); err == nil || !strings.Contains(err.Error(), "explicit C37 chrony-tracking") {
+		t.Fatalf("expected C37 NTP source requirement, got %v", err)
+	}
+}
+
+func TestComposeGuestProductBootstrapVolumePlanRejectsLabRecorderRunnerOutsideGuestNodeServicesBundle(t *testing.T) {
+	composition := completeGuestProductBootstrapVolumePlanComposition()
+	composition.ProcessDeployment.LabScenarioCatalogPath = "/etc/vitalserver/lab-scenario-catalog.json"
+
+	_, err := guestproductbootstrapplancomposer.ComposeGuestProductBootstrapVolumePlan(composition)
+	if err == nil || !strings.Contains(err.Error(), "C37 process paths") {
+		t.Fatalf("expected explicit Runner/C39 bundle agreement failure, got %v", err)
 	}
 }
 
@@ -72,7 +123,7 @@ func TestComposeGuestProductBootstrapVolumePlanInstallsDeclaredExternalVitalServ
 	composition := completeGuestProductBootstrapVolumePlanComposition()
 	configurationIdentifier := "external-vitalserver-delivery-configuration"
 	composition.BootstrapConfiguration.ExternalVitalServerDeliveryConfiguration = &guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{
-		ArtifactID: configurationIdentifier, DestinationPath: "/etc/vitalserver/external-vitalserver-delivery-configuration.json", FileMode: "0644",
+		ArtifactID: configurationIdentifier, DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/external-vitalserver-delivery-configuration.json", FileMode: "0644",
 	}
 	digest := sha256.Sum256([]byte(configurationIdentifier))
 	composition.Payloads[configurationIdentifier] = guestproductbootstrapplancomposer.GuestProductBootstrapPayloadIdentity{
@@ -85,7 +136,7 @@ func TestComposeGuestProductBootstrapVolumePlanInstallsDeclaredExternalVitalServ
 	}
 	externalDeliveryConfigurationInstalled := false
 	for _, installation := range plan.FileInstallations {
-		if installation.SourceID == configurationIdentifier && installation.DestinationPath == "/etc/vitalserver/external-vitalserver-delivery-configuration.json" && installation.FileMode == "0644" {
+		if installation.SourceID == configurationIdentifier && installation.DestinationPath == "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/external-vitalserver-delivery-configuration.json" && installation.FileMode == "0644" {
 			externalDeliveryConfigurationInstalled = true
 		}
 	}
@@ -107,7 +158,7 @@ func TestComposeGuestProductBootstrapVolumePlanInstallsExplicitExternalVitalServ
 		ID: identifier, SourceRelativePath: "sources/" + identifier, SizeBytes: int64(len(identifier)), SHA256: hex.EncodeToString(digest[:]),
 	}
 	composition.BootstrapConfiguration.ExternalVitalServerDeliveryConfiguration = &guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{
-		ArtifactID: identifier, DestinationPath: "/etc/vitalserver/external-vitalserver-delivery-configuration.json", FileMode: "0644",
+		ArtifactID: identifier, DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/external-vitalserver-delivery-configuration.json", FileMode: "0644",
 	}
 
 	plan, err := guestproductbootstrapplancomposer.ComposeGuestProductBootstrapVolumePlan(composition)
@@ -116,7 +167,7 @@ func TestComposeGuestProductBootstrapVolumePlanInstallsExplicitExternalVitalServ
 	}
 	installed := false
 	for _, installation := range plan.FileInstallations {
-		if installation.SourceID == identifier && installation.DestinationPath == "/etc/vitalserver/external-vitalserver-delivery-configuration.json" && installation.FileMode == "0644" {
+		if installation.SourceID == identifier && installation.DestinationPath == "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/external-vitalserver-delivery-configuration.json" && installation.FileMode == "0644" {
 			installed = true
 		}
 	}
@@ -125,10 +176,51 @@ func TestComposeGuestProductBootstrapVolumePlanInstallsExplicitExternalVitalServ
 	}
 }
 
+func TestComposeGuestProductBootstrapVolumePlanInstallsAndExplicitlyInitializesBundledImageSetManager(t *testing.T) {
+	composition := completeGuestProductBootstrapVolumePlanComposition()
+	managerExecutableID := "guest-bundled-upstream-image-set-manager-linux-arm64"
+	managerConfigurationID := "guest-bundled-upstream-image-set-manager-configuration"
+	for _, identifier := range []string{managerExecutableID, managerConfigurationID} {
+		digest := sha256.Sum256([]byte(identifier))
+		composition.Payloads[identifier] = guestproductbootstrapplancomposer.GuestProductBootstrapPayloadIdentity{ID: identifier, SourceRelativePath: "sources/" + identifier, SizeBytes: int64(len(identifier)), SHA256: hex.EncodeToString(digest[:])}
+	}
+	composition.BootstrapConfiguration.GuestBundledUpstreamImageSetManager = &guestproductbootstrapplancomposer.GuestProductBootstrapBundledUpstreamImageSetManager{
+		ManagerID:                  "bundled-upstream-image-set-manager",
+		Executable:                 guestproductbootstrapplancomposer.GuestProductBootstrapExecutablePayload{ArtifactID: managerExecutableID, DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-bundled-upstream-image-set-manager", FileMode: "0755"},
+		Configuration:              guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{ArtifactID: managerConfigurationID, DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-bundled-upstream-image-set-manager.json", FileMode: "0644"},
+		StateDirectory:             guestproductbootstrapplancomposer.GuestProductBootstrapStateDirectory{DirectoryPath: "/var/lib/vitalserver/bundled-upstream-image-sets", DirectoryMode: "0700"},
+		ContainerEngineBootstrap:   guestproductbootstrapplancomposer.GuestProductBootstrapContainerEngineBootstrap{PackageManager: "apt", PackageName: "docker.io", ServiceName: "docker.service"},
+		ServiceUnit:                guestproductbootstrapplancomposer.GuestProductBootstrapReleaseManagerServiceUnit{ServiceUnitName: "vitalserver-guest-bundled-upstream-image-set-manager.service", UnitDestinationPath: "/etc/systemd/system/vitalserver-guest-bundled-upstream-image-set-manager.service", EnabledUnitLinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-bundled-upstream-image-set-manager.service", EnabledUnitLinkTargetPath: "/etc/systemd/system/vitalserver-guest-bundled-upstream-image-set-manager.service", RestartMode: "on-failure", RestartDelayMilliseconds: 1000, StandardOutput: "journal+console", StandardError: "journal+console", WantedByTarget: "multi-user.target"},
+		InitialActiveImageSetState: "unprovisioned",
+	}
+	composition.GeneratedBundledUpstreamImageSetManagerSystemdUnitContents = []byte("[Service]\nExecStart=/opt/vitalserver/current/bin/guest-bundled-upstream-image-set-manager --configuration /opt/vitalserver/current/config/guest-bundled-upstream-image-set-manager.json --mode serve\n")
+
+	plan, err := guestproductbootstrapplancomposer.ComposeGuestProductBootstrapVolumePlan(composition)
+	if err != nil {
+		t.Fatalf("compose C40 plan with bundled manager: %v", err)
+	}
+	manager := plan.GuestBundledUpstreamImageSetManager
+	if manager == nil || manager.ManagerID != "bundled-upstream-image-set-manager" || manager.ExecutablePath != "/opt/vitalserver/current/bin/guest-bundled-upstream-image-set-manager" || manager.InitialActiveImageSetState != "unprovisioned" {
+		t.Fatalf("bundled manager plan=%#v", manager)
+	}
+	if len(plan.SymbolicLinks) != 3 {
+		t.Fatalf("bundled manager must add exactly one explicit service enable link: %#v", plan.SymbolicLinks)
+	}
+	installed := map[string]bool{}
+	for _, installation := range plan.FileInstallations {
+		installed[installation.SourceID] = true
+	}
+	for _, identifier := range []string{managerExecutableID, managerConfigurationID, "guest-bundled-upstream-image-set-manager-systemd-unit"} {
+		if !installed[identifier] {
+			t.Fatalf("C40 does not install %s: %#v", identifier, plan.FileInstallations)
+		}
+	}
+}
+
 func TestComposeGuestProductBootstrapVolumePlanRejectsDeclaredExternalDeliveryConfigurationWithoutItsPayload(t *testing.T) {
 	composition := completeGuestProductBootstrapVolumePlanComposition()
 	composition.BootstrapConfiguration.ExternalVitalServerDeliveryConfiguration = &guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{
-		ArtifactID: "external-vitalserver-delivery-configuration", DestinationPath: "/etc/vitalserver/external-vitalserver-delivery-configuration.json", FileMode: "0644",
+		ArtifactID: "external-vitalserver-delivery-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/external-vitalserver-delivery-configuration.json", FileMode: "0644",
 	}
 
 	_, err := guestproductbootstrapplancomposer.ComposeGuestProductBootstrapVolumePlan(composition)
@@ -140,8 +232,9 @@ func TestComposeGuestProductBootstrapVolumePlanRejectsDeclaredExternalDeliveryCo
 func completeGuestProductBootstrapVolumePlanComposition() guestproductbootstrapplancomposer.GuestProductBootstrapVolumePlanComposition {
 	payloads := guestproductbootstrapplancomposer.GuestProductBootstrapPayloads{}
 	for _, identifier := range []string{
-		"guest-runtime-linux-arm64", "recorder-gateway-linux-arm64",
+		"guest-runtime-linux-arm64", "guest-node-services-linux-arm64",
 		"guest-product-process-supervisor-linux-arm64", "guest-product-process-deployment-configuration",
+		"guest-product-release-manager-linux-arm64", "guest-product-release-manager-configuration",
 		"guest-product-vitalserver-topology-deployment", "guest-product-service-manager-deployment-configuration",
 	} {
 		digest := sha256.Sum256([]byte(identifier))
@@ -151,22 +244,30 @@ func completeGuestProductBootstrapVolumePlanComposition() guestproductbootstrapp
 	}
 	return guestproductbootstrapplancomposer.GuestProductBootstrapVolumePlanComposition{
 		ProcessDeployment: guestproductbootstrapplancomposer.GuestProductProcessDeploymentPaths{
-			GuestRuntimeExecutablePath: "/opt/vitalserver/bin/guest-runtime", GuestRuntimeStateDatabasePath: "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite", RecorderGatewayNodePath: "/opt/vitalserver/node/bin/node", RecorderGatewayProgramPath: "/opt/vitalserver/recorder-gateway/dist/cmd/recorder-gateway.js",
+			GuestRuntimeExecutablePath: "/opt/vitalserver/current/bin/guest-runtime", GuestRuntimeStateDatabasePath: "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite", RecorderGatewayNodePath: "/opt/vitalserver/current/node/bin/node", RecorderGatewayProgramPath: "/opt/vitalserver/current/recorder-gateway/dist/cmd/recorder-gateway.js", LabRecorderRunnerNodePath: "/opt/vitalserver/current/node/bin/node", LabRecorderRunnerProgramPath: "/opt/vitalserver/current/lab-recorder-runner/dist/cmd/lab-recorder-runner.js", LabScenarioCatalogPath: "/opt/vitalserver/current/lab-recorder-runner/lab-scenario-catalog.json",
 		},
 		ServiceManagerDeployment: guestproductbootstrapplancomposer.GuestProductServiceManagerDeployment{
-			ServiceUnitName: "vitalserver-guest-product.service", SupervisorExecutablePath: "/opt/vitalserver/bin/guest-product-process-supervisor", SupervisorDeploymentConfigurationPath: "/etc/vitalserver/guest-product-process-deployment.json",
+			ServiceUnitName: "vitalserver-guest-product.service", SupervisorExecutablePath: "/opt/vitalserver/current/bin/guest-product-process-supervisor", SupervisorDeploymentConfigurationPath: "/opt/vitalserver/current/config/guest-product-process-deployment.json",
 		},
 		BootstrapConfiguration: guestproductbootstrapplancomposer.GuestProductBootstrapConfiguration{
-			BootstrapID: "vitalserver-guest-product-bootstrap", VolumeLabel: "CIDATA", GuestVolumeFileSystem: "iso9660", InstanceID: "vitalserver-guest-bootstrap-instance", LocalHostName: "vitalserver-guest",
-			GuestRuntime:                              guestproductbootstrapplancomposer.GuestProductBootstrapExecutablePayload{ArtifactID: "guest-runtime-linux-arm64", DestinationPath: "/opt/vitalserver/bin/guest-runtime", FileMode: "0755"},
-			GuestRuntimeStateDirectory:                guestproductbootstrapplancomposer.GuestProductBootstrapStateDirectory{DirectoryPath: "/var/lib/vitalserver/guest-runtime", DirectoryMode: "0700"},
-			RecorderGatewayBundle:                     guestproductbootstrapplancomposer.GuestProductBootstrapRecorderGatewayArchive{ArtifactID: "recorder-gateway-linux-arm64", ArchiveFormat: "tar-gzip", EntryModePolicy: "preserve-archive-mode", SymbolicLinkPolicy: "allow-relative-links-to-declared-regular-files", DestinationDirectory: "/opt/vitalserver", RequiredArchivePaths: []string{"node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js"}},
-			GuestProductProcessSupervisor:             guestproductbootstrapplancomposer.GuestProductBootstrapExecutablePayload{ArtifactID: "guest-product-process-supervisor-linux-arm64", DestinationPath: "/opt/vitalserver/bin/guest-product-process-supervisor", FileMode: "0755"},
-			GuestProductProcessDeployment:             guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{ArtifactID: "guest-product-process-deployment-configuration", DestinationPath: "/etc/vitalserver/guest-product-process-deployment.json", FileMode: "0644"},
-			GuestProductVitalServerTopologyDeployment: guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{ArtifactID: "guest-product-vitalserver-topology-deployment", DestinationPath: "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json", FileMode: "0644"},
-			GuestProductServiceManagerDeployment:      guestproductbootstrapplancomposer.GuestProductBootstrapServiceManagerPayload{ArtifactID: "guest-product-service-manager-deployment-configuration", ConfigurationDestinationPath: "/etc/vitalserver/guest-product-service-manager-deployment.json", UnitDestinationPath: "/etc/systemd/system/vitalserver-guest-product.service", EnabledUnitLinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", EnabledUnitLinkTargetPath: "/etc/systemd/system/vitalserver-guest-product.service"},
+			GuestArchitecture: "arm64",
+			BootstrapID:       "vitalserver-guest-product-bootstrap", VolumeLabel: "CIDATA", GuestVolumeFileSystem: "iso9660", InstanceID: "vitalserver-guest-bootstrap-instance", LocalHostName: "vitalserver-guest",
+			GuestProductRelease:           guestproductbootstrapplancomposer.GuestProductBootstrapRelease{ReleaseID: "vitalserver-guest-product-0.2.0-dev", ReleaseDirectory: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev", CurrentReleaseLinkPath: "/opt/vitalserver/current", ReleaseStateDirectory: "/var/lib/vitalserver/guest-product-releases", ReleaseStateDirectoryMode: "0700"},
+			GuestRuntime:                  guestproductbootstrapplancomposer.GuestProductBootstrapExecutablePayload{ArtifactID: "guest-runtime-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-runtime", FileMode: "0755"},
+			GuestRuntimeStateDirectory:    guestproductbootstrapplancomposer.GuestProductBootstrapStateDirectory{DirectoryPath: "/var/lib/vitalserver/guest-runtime", DirectoryMode: "0700"},
+			GuestNodeServicesBundle:       guestproductbootstrapplancomposer.GuestProductBootstrapNodeServicesArchive{ArtifactID: "guest-node-services-linux-arm64", ArchiveFormat: "tar-gzip", EntryModePolicy: "preserve-archive-mode", SymbolicLinkPolicy: "allow-relative-links-to-declared-regular-files", DestinationDirectory: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev", RequiredArchivePaths: []string{"node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js", "lab-recorder-runner/dist/cmd/lab-recorder-runner.js", "lab-recorder-runner/lab-scenario-catalog.json"}},
+			GuestProductProcessSupervisor: guestproductbootstrapplancomposer.GuestProductBootstrapExecutablePayload{ArtifactID: "guest-product-process-supervisor-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-process-supervisor", FileMode: "0755"},
+			GuestProductProcessDeployment: guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{ArtifactID: "guest-product-process-deployment-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-process-deployment.json", FileMode: "0644"},
+			GuestProductReleaseManager: guestproductbootstrapplancomposer.GuestProductBootstrapReleaseManager{
+				Executable:    guestproductbootstrapplancomposer.GuestProductBootstrapExecutablePayload{ArtifactID: "guest-product-release-manager-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-release-manager", FileMode: "0755"},
+				Configuration: guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{ArtifactID: "guest-product-release-manager-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-release-manager.json", FileMode: "0644"},
+				ServiceUnit:   guestproductbootstrapplancomposer.GuestProductBootstrapReleaseManagerServiceUnit{ServiceUnitName: "vitalserver-guest-product-release-manager.service", UnitDestinationPath: "/etc/systemd/system/vitalserver-guest-product-release-manager.service", EnabledUnitLinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product-release-manager.service", EnabledUnitLinkTargetPath: "/etc/systemd/system/vitalserver-guest-product-release-manager.service", RestartMode: "on-failure", RestartDelayMilliseconds: 1000, StandardOutput: "journal+console", StandardError: "journal+console", WantedByTarget: "multi-user.target"},
+			},
+			GuestProductVitalServerTopologyDeployment: guestproductbootstrapplancomposer.GuestProductBootstrapConfigurationPayload{ArtifactID: "guest-product-vitalserver-topology-deployment", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-vitalserver-topology-deployment.json", FileMode: "0644"},
+			GuestProductServiceManagerDeployment:      guestproductbootstrapplancomposer.GuestProductBootstrapServiceManagerPayload{ArtifactID: "guest-product-service-manager-deployment-configuration", ConfigurationDestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-service-manager-deployment.json", UnitDestinationPath: "/etc/systemd/system/vitalserver-guest-product.service", EnabledUnitLinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", EnabledUnitLinkTargetPath: "/etc/systemd/system/vitalserver-guest-product.service"},
 		},
 		Payloads:                     payloads,
-		GeneratedSystemdUnitContents: []byte("[Service]\\nExecStart=/opt/vitalserver/bin/guest-product-process-supervisor\\n"),
+		GeneratedSystemdUnitContents: []byte("[Service]\\nExecStart=/opt/vitalserver/current/bin/guest-product-process-supervisor\\n"),
+		GeneratedReleaseManagerSystemdUnitContents: []byte("[Service]\\nExecStart=/opt/vitalserver/current/bin/guest-product-release-manager\\n"),
 	}
 }

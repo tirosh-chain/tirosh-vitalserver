@@ -8,10 +8,12 @@ from pathlib import Path
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from acceptance.harness.guest_runtime_control_http_acceptance_fixture_arguments import (
     compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments,
@@ -27,6 +29,73 @@ def free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
         return int(listener.getsockname()[1])
+
+
+def local_unicast_ipv4_address() -> str:
+    """Return the Host interface address used for an external-dependency proof.
+
+    The C46 adapter intentionally rejects loopback. UDP connect selects a local
+    route without sending an NTP/HTTP request, which lets the acceptance server
+    bind a real non-loopback Host interface without depending on an Internet
+    service or pretending 127.0.0.1 is an external VitalServer.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect(("192.0.2.1", 9))
+        address = probe.getsockname()[0]
+    if address.startswith("127.") or address == "0.0.0.0":
+        raise AssertionError("Host did not expose a non-loopback IPv4 address for the external VitalServer acceptance proof")
+    return address
+
+
+class RunningExternalVitalServer:
+    """One C46-declared external HTTP observation endpoint for acceptance."""
+
+    def __init__(self, observation_path: str, accepted_status: int) -> None:
+        self.observation_path = observation_path
+        self.accepted_status = accepted_status
+        self.requests: list[tuple[str, str]] = []
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+                owner.requests.append((self.command, self.path))
+                if self.path != owner.observation_path:
+                    self.send_response(404)
+                else:
+                    self.send_response(owner.accepted_status)
+                self.end_headers()
+
+            def log_message(self, _format: str, *_arguments: object) -> None:
+                return
+
+        self.address = local_unicast_ipv4_address()
+        self.server = ThreadingHTTPServer((self.address, 0), Handler)
+        self.port = int(self.server.server_address[1])
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
+
+    def write_c46(self, directory: Path, configuration_id: str, integration_id: str) -> Path:
+        path = directory / "external-vitalserver-delivery.json"
+        document = {
+            "schemaVersion": "v1",
+            "configurationId": configuration_id,
+            "externalUpstreamIntegrationReference": {"resourceType": "external-upstream-integration", "resourceId": integration_id},
+            "vitalServerDeliveryProvider": {"kind": "external-vitalserver", "id": integration_id, "capabilityRevision": 1},
+            "vitalServerPacketDeliveryEndpoint": {"scheme": "http", "host": self.address, "port": self.port},
+            "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": 1000,
+            "vitalServerObservationEndpoint": {"scheme": "http", "host": self.address, "port": self.port, "path": self.observation_path, "acceptedStatusCodes": [self.accepted_status]},
+            "vitalServerArchiveProvider": {"kind": "vitalserver-indexed-library", "id": integration_id + "-library", "capabilityRevision": 1},
+            "vitalServerIndexedLibraryEndpoint": {"scheme": "http", "host": self.address, "port": self.port},
+            "vitalServerArchiveCredentialReference": {"kind": "vitalserver-library-credential", "id": integration_id + "-library"},
+            "vitalServerArchiveRequestTimeoutMilliseconds": 1000,
+        }
+        path.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
+        return path
 
 
 def request_json(url: str, method: str = "GET", payload: dict | None = None) -> tuple[int, dict]:
@@ -77,7 +146,7 @@ class RunningProcess:
 
 
 class RunningGuest(RunningProcess):
-    def __init__(self, binary: Path, parent: Path, suffix: str, *, external: str = "available", relay: str = "available", clock: str = "synchronized", pipeline: str = "ready", export: str = "exported") -> None:
+    def __init__(self, binary: Path, parent: Path, suffix: str, *, external: str = "available", relay: str = "available", clock: str = "synchronized", pipeline: str = "ready", export: str = "exported", external_provider_kind: str = "external-capability-profile", external_provider_id: str = "external-upstream", external_c46_path: Path | None = None, external_timeout_milliseconds: int | None = None) -> None:
         work = Path(tempfile.mkdtemp(dir=parent, prefix="external-time-guest-"))
         self.port = free_port()
         self.url = "http://127.0.0.1:{0}".format(self.port)
@@ -86,9 +155,13 @@ class RunningGuest(RunningProcess):
                 str(binary),
                 *compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
                     listen_address="127.0.0.1:{0}".format(self.port), state_database_path=str(work / "guest.sqlite"), service_version="external-time-acceptance", instance_id="guest-" + suffix,
-                    archive_export_outcome_mode="succeed", external_upstream_outcome_mode=external, outbound_relay_outcome_mode=relay,
+                    archive_export_outcome_mode="succeed", recorder_gateway_cold_path_source_endpoint="http://127.0.0.1:8090", lab_recorder_runner_endpoint="http://127.0.0.1:8091", external_upstream_outcome_mode=external, outbound_relay_outcome_mode=relay,
                     guest_node_id="guest-" + suffix, time_authority_id="guest-time-" + suffix, time_probe_outcome_mode=clock,
                     telemetry_collector_probe_outcome_mode=pipeline, telemetry_export_outcome_mode=export,
+                    external_upstream_observation_provider_kind=external_provider_kind,
+                    external_upstream_observation_provider_id=external_provider_id,
+                    external_upstream_observation_external_vitalserver_delivery_configuration_path=None if external_c46_path is None else str(external_c46_path),
+                    external_upstream_observation_request_timeout_milliseconds=external_timeout_milliseconds,
                 ),
             ],
             self.url + "/v1/runtime/readiness",
@@ -165,13 +238,13 @@ class ExternalTimeObservabilityAcceptance(unittest.TestCase):
         return result
 
     @staticmethod
-    def external_command(request_id: str, integration_id: str = "external-primary") -> dict:
+    def external_command(request_id: str, integration_id: str = "external-primary", provider_kind: str = "external-capability-profile", provider_id: str = "external-upstream", endpoint_resource_type: str = "external-vitalserver-endpoint", endpoint_resource_id: str = "primary") -> dict:
         return {
             "schemaVersion": "v1", "requestId": request_id, "integrationId": integration_id,
             "expectedResourceRevision": 0,
             "spec": {
-                "provider": {"kind": "external-capability-profile", "id": "external-upstream", "capabilityRevision": 1},
-                "endpointReference": {"resourceType": "external-vitalserver-endpoint", "resourceId": "primary"},
+                "provider": {"kind": provider_kind, "id": provider_id, "capabilityRevision": 1},
+                "endpointReference": {"resourceType": endpoint_resource_type, "resourceId": endpoint_resource_id},
             },
         }
 
@@ -289,6 +362,38 @@ class ExternalTimeObservabilityAcceptance(unittest.TestCase):
         self.assertIn("operation.kind", cardinality_receipt["droppedAttributeKeys"], cardinality_receipt)
         after = self.read(guest.url, "/v1/runtime/topology")["value"]
         self.assertEqual(topology_resource["resourceRevision"], after["resourceRevision"], after)
+
+    def test_external_vitalserver_http_observation_uses_only_the_c46_declared_endpoint(self) -> None:
+        integration_id = "external-vitalserver-http"
+        configuration_id = "external-vitalserver-http-delivery"
+        external_vitalserver = RunningExternalVitalServer("/operator-approved-status", 204)
+        self.addCleanup(external_vitalserver.close)
+        configuration_path = external_vitalserver.write_c46(self.work, configuration_id, integration_id)
+        guest = self.start_guest(
+            "external-vitalserver-http",
+            external="",
+            external_provider_kind="external-vitalserver-http",
+            external_provider_id=integration_id,
+            external_c46_path=configuration_path,
+            external_timeout_milliseconds=1000,
+        )
+        operation = self.post(
+            guest.url,
+            "/v1/runtime/external-upstreams",
+            self.external_command(
+                "external-vitalserver-http-observation",
+                integration_id=integration_id,
+                provider_kind="external-vitalserver-http",
+                provider_id=integration_id,
+                endpoint_resource_type="external-vitalserver-delivery-configuration",
+                endpoint_resource_id=configuration_id,
+            ),
+        )
+        self.assertEqual("succeeded", operation["state"], operation)
+        integration = self.read(guest.url, "/v1/runtime/external-upstreams/" + integration_id)["value"]
+        self.assertEqual("available", integration["status"]["state"], integration)
+        self.assertEqual("reachable", integration["status"]["connection"]["state"], integration)
+        self.assertEqual([("GET", "/operator-approved-status")], external_vitalserver.requests)
 
     def test_unavailable_and_unknown_profiles_remain_explicit_and_independent(self) -> None:
         known = self.start_guest("known", external="unavailable", relay="available", clock="failed", pipeline="unavailable", export="unavailable")

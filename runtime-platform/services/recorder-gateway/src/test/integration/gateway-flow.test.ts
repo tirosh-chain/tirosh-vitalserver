@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createServer, type Server as HttpServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -100,6 +101,12 @@ test("Socket.IO v2 recorder flow keeps ingress and delivery state distinct", asy
   const finalizationReceipt = (await finalizationResponse.json()) as RecorderColdPathCaptureFinalizationReceipt;
   assert.equal(finalizationReceipt.captureReference.resourceId, firstJoin.coldPathCaptureId);
   assert.equal(finalizationReceipt.finalizedPacketSequence.packetCount, 2);
+  const packetSequenceResponse = await fetch(`${gatewayUrl}/v1/recorder-cold-path/captures/${firstJoin.coldPathCaptureId}:packet-sequence`);
+  assert.equal(packetSequenceResponse.status, 200);
+  assert.equal(packetSequenceResponse.headers.get("content-type"), "application/vnd.tirosh.recorder-gateway.cold-path-packet-sequence+jsonl");
+  const packetSequence = new Uint8Array(await packetSequenceResponse.arrayBuffer());
+  assert.equal(createHash("sha256").update(packetSequence).digest("hex"), finalizationReceipt.finalizedPacketSequence.sha256);
+  assert.match(Buffer.from(packetSequence).toString("utf8"), /"payloadBase64"/);
   const coldPathCaptureRead = await fetchReadResult<RecorderColdPathCapture>(gatewayUrl, `/v1/recorder-cold-path/captures/${firstJoin.coldPathCaptureId}`);
   assert.equal(coldPathCaptureRead.state, "available");
   assert.equal(coldPathCaptureRead.value?.state, "finalized");

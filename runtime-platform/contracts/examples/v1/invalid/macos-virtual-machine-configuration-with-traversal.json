@@ -24,6 +24,11 @@
     "hostLoopbackPort": 18443,
     "guestVirtioSocketPort": 18443
   },
+  "guestProductReleaseManagerHostLocalHTTPBridge": {
+    "hostLoopbackAddress": "127.0.0.1",
+    "hostLoopbackPort": 18444,
+    "guestVirtioSocketPort": 18444
+  },
   "guestPublicServiceHostLocalHTTPBridges": [
     {
       "routeId": "recorder-gateway",

@@ -10,10 +10,12 @@
   },
   "serviceManager": "windows-scm",
   "requiredCapabilities": [
+    "native-guest-machine-provisioning",
     "guest-vm-lifecycle",
     "host-service-lifecycle"
   ],
   "nativeDependencies": [
+    "qemu-img with vhdx output",
     "Hyper-V PowerShell module",
     "Windows Service Control Manager"
   ]

@@ -1,6 +1,6 @@
 # macOS Development Installation Evidence Boundary
 
-> 상태: **unsigned PKG + ad-hoc Virtualization-entitled Supervisor를 위한 runner와 deterministic command-contract test 구현 완료 / Apple Developer ID release proof(C24)는 별도 pending**
+> 상태: **unsigned PKG + ad-hoc Virtualization-entitled Supervisor를 위한 development runner와 deterministic command-contract test 구현 완료 / C24 runner는 C23가 명시한 `unsigned` 또는 `developer-id` PKG state를 각각 검증하며, Apple Developer ID distribution identity·notarization은 별도 pending**
 
 ## 1. 왜 release proof와 분리하는가
 
@@ -11,12 +11,19 @@
 signature는 Developer ID Installer package/Developer ID Application signature와 다른
 macOS artifact다.
 
+C24 clean-Host runner도 C23가 `unsigned`을 명시하면 그 raw signature state와
+exact package identity를 검증할 수 있다. 그것은 **명시적으로 unsigned인 package를
+clean Host에 설치했다는 delivery fact**일 뿐 Apple identity, notarization, 또는
+Apple distribution trust가 아니다. 반대로 C23가 `developer-id`를 선택하면 C24는
+Developer ID Installer state를 요구한다. 두 경우 모두 C24는 Guest readiness나
+Supervisor signing state를 만들지 않는다.
+
 따라서 다음 두 evidence chain은 서로 상태나 성공 결과를 공유하지 않는다.
 
 | evidence chain | owner | artifact policy | durable journal | 증명하는 것 | 증명하지 않는 것 |
 | --- | --- | --- | --- | --- | --- |
 | Development installation | `MacOSDevelopmentInstallationEvidenceRunner` | unsigned PKG + ad-hoc Supervisor + `com.apple.security.virtualization=true` | development-installation SQLite | local controlled installation, service registration, reboot retention, installed Supervisor entitlement | Apple identity, notarization, C24 release delivery, Guest readiness |
-| Release clean-Host | `MacOSCleanHostReleaseEvidenceRunner` | Developer ID PKG + Developer ID Supervisor | C24 release-evidence SQLite | reviewed release package의 clean-Host install/reboot fact와 C24 proof fragments | development journal의 성공 또는 Guest readiness |
+| Release clean-Host | `MacOSCleanHostReleaseEvidenceRunner` | C23가 명시한 `unsigned` 또는 `developer-id` PKG; Supervisor signing은 별도 product artifact fact | C24 release-evidence SQLite | bound package의 clean-Host install/reboot fact와 reviewable C24 proof fragments | Apple identity/notarization (unsigned인 경우), development journal의 성공, Guest readiness |
 
 둘 다 macOS external fact는 `pkgutil`, `installer`, `launchctl`, `codesign`, `sysctl`의
 raw command observation으로만 읽는다. `macos_host_installation_observation.py`는 그
@@ -30,7 +37,7 @@ policy를 의도적으로 분리한다.
 
 | artifact | allowed mode | 의미 |
 | --- | --- | --- |
-| Installer package | `unsigned`, `developer-id` | unsigned는 development installation 전용이고, `developer-id`만 release distribution input이다. `developer-id` identity는 `Developer ID Installer: ...`로 명시한다. PKG에는 ad-hoc mode가 없다. |
+| Installer package | `unsigned`, `developer-id` | C23가 `unsigned`을 선택하면 C24는 `Status: no signature`과 bound hash만 evidence로 받는다. 이는 Apple distribution identity를 뜻하지 않는다. `developer-id`는 Apple distribution input이며 `Developer ID Installer: ...` identity를 요구한다. PKG에는 ad-hoc mode가 없다. |
 | macOS Virtual Machine Supervisor | `unsigned`, `ad-hoc`, `developer-id` | `ad-hoc`은 controlled local development 용도이며 named identity가 없어야 한다. `developer-id`는 `Developer ID Application: ...` identity, hardened runtime, timestamp를 요구한다. |
 
 development build의 유효한 조합은 다음 하나다.
@@ -87,7 +94,7 @@ virtualization entitlement가 다시 관측된다.
 | stage | external observation/effect | verified guard | failed/unavailable 의미 |
 | --- | --- | --- | --- |
 | `artifact-identity` | `pkgutil --expand`, `pkgutil --check-signature` | C23 identifier/version와 일치하고 `Status: no signature` | signed/unknown/invalid PKG는 development evidence가 아님 |
-| `clean-host-preflight` | `pkgutil --pkg-info`, `launchctl print` | receipt와 두 C23 service가 명시적으로 absent | 임의 non-zero는 absence가 아님 |
+| `clean-host-preflight` | `pkgutil --pkg-info`, `launchctl print` | receipt와 두 C23 service가 명시적으로 absent | legacy status `3` 또는 macOS 26의 exact label-bearing status `113`만 absent이며, 임의 non-zero는 absence가 아님 |
 | `installation` | root `installer -pkg <bound PKG> -target /` | installer success 후 exact C23 receipt installed | artifact mutation 또는 receipt mismatch |
 | `service-registration` | `launchctl print system/<C23 label>` | Host Agent와 Host Edge Proxy 모두 registered | service state를 runtime readiness로 해석하지 않음 |
 | `supervisor-signature` | `codesign --verify/--display/--entitlements` | installed Supervisor가 ad-hoc이고 entitlement가 present | Developer ID, unsigned, unknown-signed, missing entitlement 모두 실패 |
@@ -146,8 +153,10 @@ python3 -m tooling.macos_development_installation_evidence_runner record-reboot 
 
 이 journal과 JSON evidence는 local development verification 자료다. C24
 `ReleaseDeliveryProofSet`에 attach하지 않으며 `make release-ready`의 pending 상태를 바꾸지
-않는다. Developer ID identity와 notarization을 준비한 뒤에는 별도 C24 clean-Host runner를
-처음부터 수행한다.
+않는다. Apple distribution identity와 notarization이 필요한 release는 C23
+`developer-id`를 선택한 별도 C24 clean-Host runner를 처음부터 수행한다. C23가
+`unsigned`을 선택한 release도 별도 C24 run을 처음부터 수행할 수 있지만, 그 evidence는
+명시적으로 unsigned인 delivery fact로만 해석하며 Apple distribution proof로 바꾸지 않는다.
 
 ## 6. deterministic test와 native evidence의 차이
 

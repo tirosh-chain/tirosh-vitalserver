@@ -7,28 +7,43 @@
   "instanceId": "vitalserver-guest-bootstrap-instance",
   "localHostName": "vitalserver-guest",
   "serviceUnitName": "vitalserver-guest-product.service",
+  "releaseManagerServiceUnitName": "vitalserver-guest-product-release-manager.service",
+  "guestProductRelease": {
+    "releaseId": "vitalserver-guest-product-0.2.0-dev",
+    "releaseDirectory": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev",
+    "currentReleaseLinkPath": "/opt/vitalserver/current",
+    "releaseStateDirectory": "/var/lib/vitalserver/guest-product-releases",
+    "releaseStateDirectoryMode": "0700"
+  },
   "guestRuntimeStateDirectory": { "directoryPath": "/var/lib/vitalserver/guest-runtime", "directoryMode": "0700" },
   "sources": [
     { "id": "guest-runtime-linux-arm64", "sourceRelativePath": "sources/guest-runtime", "sizeBytes": 1024, "sha256": "1111111111111111111111111111111111111111111111111111111111111111" },
     { "id": "guest-product-process-supervisor-linux-arm64", "sourceRelativePath": "sources/guest-supervisor", "sizeBytes": 2048, "sha256": "3333333333333333333333333333333333333333333333333333333333333333" },
     { "id": "guest-product-process-deployment-configuration", "sourceRelativePath": "sources/guest-process-config", "sizeBytes": 512, "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+    { "id": "guest-product-release-manager-linux-arm64", "sourceRelativePath": "sources/guest-release-manager", "sizeBytes": 2048, "sha256": "9999999999999999999999999999999999999999999999999999999999999999" },
+    { "id": "guest-product-release-manager-configuration", "sourceRelativePath": "sources/guest-release-manager-config", "sizeBytes": 512, "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
     { "id": "guest-product-vitalserver-topology-deployment", "sourceRelativePath": "sources/guest-vitalserver-topology", "sizeBytes": 512, "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
     { "id": "guest-product-service-manager-deployment-configuration", "sourceRelativePath": "sources/guest-service-config", "sizeBytes": 512, "sha256": "6666666666666666666666666666666666666666666666666666666666666666" },
     { "id": "guest-product-systemd-unit", "sourceRelativePath": "generated/guest-service-unit", "sizeBytes": 512, "sha256": "7777777777777777777777777777777777777777777777777777777777777777" },
-    { "id": "recorder-gateway-linux-arm64", "sourceRelativePath": "sources/recorder-gateway", "sizeBytes": 4096, "sha256": "8888888888888888888888888888888888888888888888888888888888888888" }
+    { "id": "guest-product-release-manager-systemd-unit", "sourceRelativePath": "generated/guest-release-manager-service-unit", "sizeBytes": 512, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+    { "id": "guest-node-services-linux-arm64", "sourceRelativePath": "sources/guest-node-services", "sizeBytes": 4096, "sha256": "8888888888888888888888888888888888888888888888888888888888888888" }
   ],
   "fileInstallations": [
-    { "sourceId": "guest-runtime-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-runtime", "fileMode": "0755" },
-    { "sourceId": "guest-product-process-supervisor-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-product-process-supervisor", "fileMode": "0755" },
-    { "sourceId": "guest-product-process-deployment-configuration", "destinationPath": "/etc/vitalserver/guest-product-process-deployment.json", "fileMode": "0644" },
-    { "sourceId": "guest-product-vitalserver-topology-deployment", "destinationPath": "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json", "fileMode": "0644" },
-    { "sourceId": "guest-product-service-manager-deployment-configuration", "destinationPath": "/etc/vitalserver/guest-product-service-manager-deployment.json", "fileMode": "0644" },
-    { "sourceId": "guest-product-systemd-unit", "destinationPath": "/etc/systemd/system/vitalserver-guest-product.service", "fileMode": "0644" }
+    { "sourceId": "guest-runtime-linux-arm64", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-runtime", "fileMode": "0755" },
+    { "sourceId": "guest-product-process-supervisor-linux-arm64", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-process-supervisor", "fileMode": "0755" },
+    { "sourceId": "guest-product-process-deployment-configuration", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-process-deployment.json", "fileMode": "0644" },
+    { "sourceId": "guest-product-release-manager-linux-arm64", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-release-manager", "fileMode": "0755" },
+    { "sourceId": "guest-product-release-manager-configuration", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-release-manager.json", "fileMode": "0644" },
+    { "sourceId": "guest-product-vitalserver-topology-deployment", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-vitalserver-topology-deployment.json", "fileMode": "0644" },
+    { "sourceId": "guest-product-service-manager-deployment-configuration", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-service-manager-deployment.json", "fileMode": "0644" },
+    { "sourceId": "guest-product-systemd-unit", "destinationPath": "/etc/systemd/system/vitalserver-guest-product.service", "fileMode": "0644" },
+    { "sourceId": "guest-product-release-manager-systemd-unit", "destinationPath": "/etc/systemd/system/vitalserver-guest-product-release-manager.service", "fileMode": "0644" }
   ],
   "archiveInstallations": [
-    { "sourceId": "recorder-gateway-linux-arm64", "archiveFormat": "tar-gzip", "entryModePolicy": "preserve-archive-mode", "symbolicLinkPolicy": "allow-relative-links-to-declared-regular-files", "destinationDirectory": "/opt/vitalserver", "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js"] }
+    { "sourceId": "guest-node-services-linux-arm64", "archiveFormat": "tar-gzip", "entryModePolicy": "preserve-archive-mode", "symbolicLinkPolicy": "allow-relative-links-to-declared-regular-files", "destinationDirectory": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev", "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js", "lab-recorder-runner/dist/cmd/lab-recorder-runner.js", "lab-recorder-runner/lab-scenario-catalog.json"] }
   ],
   "symbolicLinks": [
-    { "linkPath": "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", "targetPath": "/etc/systemd/system/vitalserver-guest-product.service" }
+    { "linkPath": "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", "targetPath": "/etc/systemd/system/vitalserver-guest-product.service" },
+    { "linkPath": "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product-release-manager.service", "targetPath": "/etc/systemd/system/vitalserver-guest-product-release-manager.service" }
   ]
 }

@@ -43,9 +43,16 @@ class MacOSReleasePackageAssemblyTests(unittest.TestCase):
             host_agent_binary=self.root / "host-agent",
             host_edge_proxy_binary=self.root / "host-edge-proxy",
             host_installation_manager_binary=self.root / "host-installation-manager",
+            host_update_handoff_supervisor_binary=(
+                self.root / "host-update-handoff-supervisor"
+            ),
+            platformctl_binary=self.root / "platformctl",
             macos_virtual_machine_supervisor_binary=self.root / "macos-virtual-machine-supervisor",
             host_agent_deployment_configuration=self.root / "c33.json",
+            operator_interface_bootstrap_configuration=self.root / "c53.json",
             host_edge_proxy_deployment_configuration=self.root / "c36.json",
+            host_update_handoff_supervisor_configuration=self.root / "c56.json",
+            host_update_trust_store=self.root / "c58.json",
             macos_virtual_machine_configuration=self.root / "c32.json",
             guest_artifact_manifest=self.guest_artifact_output_directory / "macos-guest-artifact-manifest.json",
             guest_artifact_compilation_receipt=self.guest_artifact_output_directory / "guest-artifact-compilation-receipt.json",
@@ -110,6 +117,7 @@ class MacOSReleasePackageAssemblyTests(unittest.TestCase):
         return guest_artifact_compiler.GuestArtifactCompilationCommand(
             compilation_id="macos-release-candidate",
             artifact_set_id="macos-release-candidate-arm64",
+            architecture="arm64",
             build_environment_id="guest-product-bootstrap-artifact-composer",
             builder_executable_size_bytes=1,
             builder_executable_sha256="b" * 64,
@@ -122,13 +130,25 @@ class MacOSReleasePackageAssemblyTests(unittest.TestCase):
                 output_relative_path=PurePosixPath("boot/initrd.img"),
             ),
             guest_runtime_artifact=input_artifact("guest-runtime", "inputs/services/guest-runtime"),
-            recorder_gateway_artifact=input_artifact("recorder-gateway", "inputs/services/recorder-gateway.tar.gz"),
+            guest_telemetry_collector_artifact=input_artifact(
+                "guest-telemetry-collector-linux-arm64",
+                "inputs/services/guest-telemetry-collector",
+            ),
+            guest_telemetry_collector_configuration_artifact=input_artifact(
+                "guest-telemetry-collector-configuration",
+                "inputs/configuration/guest-telemetry-collector.yaml",
+            ),
+            guest_node_services_artifact=input_artifact("guest-node-services", "inputs/services/guest-node-services.tar.gz"),
             guest_product_process_supervisor_artifact=input_artifact("guest-product-process-supervisor", "inputs/services/guest-product-process-supervisor"),
             guest_product_process_deployment_configuration_artifact=input_artifact("guest-product-process-deployment", "inputs/configuration/c37.json"),
+            guest_product_release_manager_artifact=input_artifact("guest-product-release-manager", "inputs/services/guest-product-release-manager"),
+            guest_product_release_manager_configuration_artifact=input_artifact("guest-product-release-manager-configuration", "inputs/configuration/guest-product-release-manager.json"),
             guest_product_service_manager_deployment_configuration_artifact=input_artifact("guest-product-service-manager-deployment", "inputs/configuration/c38.json"),
             guest_product_bootstrap_configuration_artifact=input_artifact("guest-product-bootstrap", "inputs/configuration/c39.json"),
             guest_product_vitalserver_topology_deployment_artifact=input_artifact("guest-product-vitalserver-topology", "inputs/configuration/c44.json"),
             external_vitalserver_delivery_configuration_artifact=input_artifact("external-vitalserver-delivery", "inputs/configuration/c46.json"),
+            guest_bundled_upstream_image_set_manager_artifact=None,
+            guest_bundled_upstream_image_set_manager_configuration_artifact=None,
             storage_devices=(
                 guest_artifact_compiler.GuestStorageArtifactOutput(
                     identifier="guest-root",
@@ -304,6 +324,7 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
                                 "expectedName": self.package_path.name,
                             },
                             "macOSInstallerPackageIdentifier": "com.tirosh.vitalserver.runtime-platform",
+                            "macOSInstallerSignaturePolicy": "unsigned",
                             "requiredHostServiceRegistrations": [
                                 {
                                     "role": "host-agent",
@@ -314,6 +335,11 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
                                     "role": "host-edge-proxy",
                                     "manager": "launchd",
                                     "name": "com.tirosh.vitalserver.host-edge-proxy",
+                                },
+                                {
+                                    "role": "host-update-handoff-supervisor",
+                                    "manager": "launchd",
+                                    "name": "com.tirosh.vitalserver.host-update-handoff-supervisor",
                                 },
                             ],
                             "requiredProofStages": [
@@ -372,9 +398,9 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
                     "guestRuntimeArtifact": source(
                         "guest-runtime-linux-arm64", "inputs/services/guest-runtime"
                     ),
-                    "recorderGatewayArtifact": source(
-                        "recorder-gateway-linux-arm64",
-                        "inputs/services/recorder-gateway.tar.gz",
+                    "guestNodeServicesArtifact": source(
+                        "guest-node-services-linux-arm64",
+                        "inputs/services/guest-node-services.tar.gz",
                     ),
                     "guestProductProcessSupervisorArtifact": source(
                         "guest-product-process-supervisor-linux-arm64",
@@ -383,6 +409,14 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
                     "guestProductProcessDeploymentConfigurationArtifact": source(
                         "guest-product-process-deployment-configuration",
                         "inputs/configuration/guest-product-process-deployment.json",
+                    ),
+                    "guestProductReleaseManagerArtifact": source(
+                        "guest-product-release-manager-linux-arm64",
+                        "inputs/services/guest-product-release-manager",
+                    ),
+                    "guestProductReleaseManagerConfigurationArtifact": source(
+                        "guest-product-release-manager-configuration",
+                        "inputs/configuration/guest-product-release-manager.json",
                     ),
                     "guestProductServiceManagerDeploymentConfigurationArtifact": source(
                         "guest-product-service-manager-deployment-configuration",
@@ -428,6 +462,10 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
         c41_declaration = self.c41_declaration_document()
         host_agent = self.write_source_file("artifacts/host-agent")
         host_edge_proxy = self.write_source_file("artifacts/host-edge-proxy")
+        host_update_handoff_supervisor = self.write_source_file(
+            "artifacts/host-update-handoff-supervisor"
+        )
+        platformctl = self.write_source_file("artifacts/platformctl")
         virtual_machine_supervisor = self.write_source_file(
             "artifacts/macos-virtual-machine-supervisor"
         )
@@ -438,8 +476,17 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
             "hostAgentDeploymentConfigurationAbsolutePath": self.write_source_file(
                 "configuration/host-agent.json"
             ),
+            "operatorInterfaceBootstrapConfigurationAbsolutePath": self.write_source_file(
+                "configuration/operator-interface-bootstrap.json"
+            ),
             "hostEdgeProxyDeploymentConfigurationAbsolutePath": self.write_source_file(
                 "configuration/host-edge-proxy.json"
+            ),
+            "hostUpdateHandoffSupervisorConfigurationAbsolutePath": self.write_source_file(
+                "configuration/host-update-handoff-supervisor.json"
+            ),
+            "hostUpdateTrustStoreAbsolutePath": self.write_source_file(
+                "configuration/update-trust-store.json"
             ),
             "macOSVirtualMachineConfigurationAbsolutePath": self.write_source_file(
                 "configuration/macos-virtual-machine.json"
@@ -483,6 +530,10 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
                         "hostInstallationManagerBinaryAbsolutePath": str(
                             self.write_source_file("artifacts/host-installation-manager")
                         ),
+                        "hostUpdateHandoffSupervisorBinaryAbsolutePath": str(
+                            host_update_handoff_supervisor
+                        ),
+                        "platformctlBinaryAbsolutePath": str(platformctl),
                         "macOSVirtualMachineSupervisorBinaryAbsolutePath": str(
                             virtual_machine_supervisor
                         ),
@@ -588,6 +639,27 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
         )
         self.assertNotIn(str(self.root), json.dumps(receipt, sort_keys=True))
         self.assertEqual(receipt, result["macOSReleasePackageAssemblyReceipt"])
+
+    def test_c47_preserves_an_explicit_c64_manager_configuration_source(self) -> None:
+        declaration_path = self.declaration_document()
+        document = json.loads(declaration_path.read_text(encoding="utf-8"))
+        c64_path = self.write_source_file(
+            "configuration/guest-bundled-upstream-image-set-manager.json"
+        )
+        document["deploymentDocuments"][
+            "guestBundledUpstreamImageSetManagerConfigurationAbsolutePath"
+        ] = str(c64_path)
+
+        declaration = (
+            macos_release_package_assembly.parse_macos_release_package_assembly_declaration(
+                document
+            )
+        )
+
+        self.assertEqual(
+            c64_path,
+            declaration.guest_bundled_upstream_image_set_manager_configuration,
+        )
 
     def test_declared_assembly_requires_the_host_installation_manager_binary_before_c41_effects(self) -> None:
         declaration_path = self.declaration_document()

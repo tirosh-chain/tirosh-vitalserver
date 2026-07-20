@@ -27,11 +27,11 @@ type ProviderLifecycleRequest struct {
 }
 
 type PlatformProviderLifecycleInvocation struct {
-	SchemaVersion                 string                   `json:"schemaVersion"`
-	ProviderKind                  string                   `json:"providerKind"`
-	RequestID                     string                   `json:"requestId"`
+	SchemaVersion                               string                   `json:"schemaVersion"`
+	ProviderKind                                string                   `json:"providerKind"`
+	RequestID                                   string                   `json:"requestId"`
 	ExpectedGuestRuntimeControlEndpointRevision int                      `json:"expectedGuestRuntimeControlEndpointRevision"`
-	Lifecycle                     ProviderLifecycleRequest `json:"lifecycle"`
+	Lifecycle                                   ProviderLifecycleRequest `json:"lifecycle"`
 }
 
 type ProviderLifecycleResult struct {

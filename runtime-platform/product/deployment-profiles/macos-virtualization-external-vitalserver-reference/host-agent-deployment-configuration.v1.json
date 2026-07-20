@@ -1,7 +1,15 @@
 {
   "schemaVersion": "v1",
   "control": {
-    "listenAddress": "127.0.0.1:18280",
+    "localAdministration": {
+      "transport": "unix-domain-socket",
+      "endpointAddress": "/Library/Application Support/VitalServerRuntimePlatform/control/host-agent.sock",
+      "descriptorPath": "/Library/Application Support/VitalServerRuntimePlatform/control/host-agent.local.json",
+      "authorizedUserId": 501
+    },
+    "loopbackHTTP": {
+      "mode": "disabled"
+    },
     "stateDatabasePath": "/Library/Application Support/VitalServerRuntimePlatform/data/host-agent/host-agent.sqlite",
     "guestTimeoutMilliseconds": 5000
   },
@@ -26,13 +34,18 @@
   "time": {
     "hostNodeId": "vitalserver-macos-reference-host",
     "timeAuthorityId": "vitalserver-macos-reference-time-authority",
+    "kind": "time-authority-outcome-profile",
     "providerMode": "unsupported"
   },
   "telemetry": {
+    "kind": "telemetry-export-outcome-profile",
     "pipelineMode": "unsupported",
     "exportMode": "unavailable"
   },
   "updateBootstrap": {
-    "mode": "unavailable"
+    "mode": "staged",
+    "bundleStoreDirectory": "/Library/Application Support/VitalServerRuntimePlatform/data/update-bundles",
+    "stagingDirectory": "/Library/Application Support/VitalServerRuntimePlatform/data/update-staging",
+    "trustStorePath": "/Library/Application Support/VitalServerRuntimePlatform/current/config/update-trust-store.json"
   }
 }

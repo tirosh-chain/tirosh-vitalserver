@@ -17,14 +17,20 @@
   "bootResources": {
     "kernel": {
       "id": "linux-arm64-kernel",
-      "guestAbsolutePath": "/boot/vmlinuz",
+      "source": {
+        "kind": "source-image-filesystem",
+        "guestAbsolutePath": "/boot/vmlinuz"
+      },
       "sourceCompression": "gzip",
       "outputRelativePath": "boot/Image",
       "outputFormat": "uncompressed-linux-arm64-image"
     },
     "initialRamdisk": {
       "id": "linux-arm64-initrd",
-      "guestAbsolutePath": "/boot/initrd.img",
+      "source": {
+        "kind": "source-image-filesystem",
+        "guestAbsolutePath": "/boot/initrd.img"
+      },
       "sourceCompression": "none",
       "outputRelativePath": "boot/initrd.img",
       "outputFormat": "cpio"

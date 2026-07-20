@@ -53,6 +53,12 @@ Route는 일반적인 `proxy_pass` string이 아니다. `requestPathPrefix`가 �
 같은 route 겹침의 선택 규칙이 숨은 implementation detail이 되지 않는다. configured
 prefix에 맞지 않는 request는 404이며 default backend는 없다.
 
+`/v1/runtime/archive/credential-material` (C60)은 예외 없이 C52
+OS-local administration route다. 따라서 C36에 `/` 같은 browser catch-all
+route가 있더라도 route resolution은 이 exact path를 public edge에서
+제외한다. secret material은 public reverse proxy, browser route, 또는
+remote-port authorization으로 도달할 수 없다.
+
 각 route는 body size와 upstream response-header timeout을 직접 정한다. 큰 `.vital`
 upload나 Socket.IO payload를 허용하려면 operator가 C36에서 한도를 선언해야 하며,
 `0`, absence, 또는 listener 설정을 unlimited로 해석하지 않는다. `requestHostHeaderPolicy`

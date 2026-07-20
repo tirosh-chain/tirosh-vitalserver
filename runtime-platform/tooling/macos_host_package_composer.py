@@ -87,9 +87,14 @@ class MacOSHostPackageComposition:
     host_agent_binary: Path
     host_edge_proxy_binary: Path
     host_installation_manager_binary: Path
+    host_update_handoff_supervisor_binary: Path
+    platformctl_binary: Path
     macos_virtual_machine_supervisor_binary: Path
     host_agent_deployment_configuration: Path
+    operator_interface_bootstrap_configuration: Path
     host_edge_proxy_deployment_configuration: Path
+    host_update_handoff_supervisor_configuration: Path
+    host_update_trust_store: Path
     macos_virtual_machine_configuration: Path
     guest_artifact_manifest: Path
     guest_artifact_compilation_receipt: Path
@@ -107,6 +112,7 @@ class MacOSHostPackageComposition:
     macos_installer_package_signing: MacOSInstallerPackageSigning
     macos_virtual_machine_supervisor_code_signing: MacOSVirtualMachineSupervisorCodeSigning
     replace_output: bool
+    guest_bundled_upstream_image_set_manager_configuration: Path | None = None
 
 
 def immutable_release_slot_path(
@@ -127,7 +133,10 @@ def current_release_path(composition: MacOSHostPackageComposition) -> PurePosixP
 class MacOSHostPackageDocuments:
     macos_host_package_release_plan: MacOSHostPackageReleasePlan
     host_agent_deployment: Mapping[str, Any]
+    operator_interface_bootstrap_configuration: Mapping[str, Any]
     host_edge_proxy_deployment: Mapping[str, Any]
+    host_update_handoff_supervisor_configuration: Mapping[str, Any]
+    host_update_trust_store: Mapping[str, Any]
     virtual_machine: Mapping[str, Any]
     guest_artifact_manifest: Mapping[str, Any]
     guest_artifact_compilation_receipt: Mapping[str, Any]
@@ -136,6 +145,7 @@ class MacOSHostPackageDocuments:
     guest_product_bootstrap_configuration: Mapping[str, Any]
     guest_product_vitalserver_topology_deployment: Mapping[str, Any]
     external_vitalserver_delivery_configuration: Mapping[str, Any] | None
+    guest_bundled_upstream_image_set_manager_configuration: Mapping[str, Any] | None
 
 
 def load_macos_host_package_documents(composition: MacOSHostPackageComposition) -> MacOSHostPackageDocuments:
@@ -149,7 +159,19 @@ def load_macos_host_package_documents(composition: MacOSHostPackageComposition) 
     except ProductDeliveryReleasePlanError as error:
         raise MacOSHostPackageCompositionError(str(error)) from error
     host_agent_deployment = load_json_document(composition.host_agent_deployment_configuration, "C33 HostAgentDeploymentConfiguration")
+    operator_interface_bootstrap_configuration = load_json_document(
+        composition.operator_interface_bootstrap_configuration,
+        "C53 OperatorInterfaceBootstrapConfiguration",
+    )
     host_edge_proxy_deployment = load_json_document(composition.host_edge_proxy_deployment_configuration, "C36 HostEdgeProxyDeploymentConfiguration")
+    host_update_handoff_supervisor_configuration = load_json_document(
+        composition.host_update_handoff_supervisor_configuration,
+        "C56 HostUpdateHandoffSupervisorConfiguration",
+    )
+    host_update_trust_store = load_json_document(
+        composition.host_update_trust_store,
+        "C58 HostUpdateTrustStore",
+    )
     virtual_machine = load_json_document(composition.macos_virtual_machine_configuration, "C32 MacOSVirtualMachineConfiguration")
     guest_artifact_manifest = load_json_document(composition.guest_artifact_manifest, "C34 MacOSGuestArtifactManifest")
     guest_artifact_compilation_receipt = load_json_document(composition.guest_artifact_compilation_receipt, "C35 GuestArtifactCompilationReceipt")
@@ -177,10 +199,22 @@ def load_macos_host_package_documents(composition: MacOSHostPackageComposition) 
         if composition.external_vitalserver_delivery_configuration is not None
         else None
     )
+    guest_bundled_upstream_image_set_manager_configuration = (
+        load_json_document(
+            composition.guest_bundled_upstream_image_set_manager_configuration,
+            "C64 GuestBundledUpstreamImageSetManagerConfiguration",
+        )
+        if composition.guest_bundled_upstream_image_set_manager_configuration
+        is not None
+        else None
+    )
     validate_macos_host_package_documents(
         composition,
         host_agent_deployment,
+        operator_interface_bootstrap_configuration,
         host_edge_proxy_deployment,
+        host_update_handoff_supervisor_configuration,
+        host_update_trust_store,
         virtual_machine,
         guest_artifact_manifest,
         guest_artifact_compilation_receipt,
@@ -189,12 +223,16 @@ def load_macos_host_package_documents(composition: MacOSHostPackageComposition) 
         guest_product_bootstrap_configuration,
         guest_product_vitalserver_topology_deployment,
         external_vitalserver_delivery_configuration,
+        guest_bundled_upstream_image_set_manager_configuration,
         macos_host_package_release_plan,
     )
     return MacOSHostPackageDocuments(
         macos_host_package_release_plan=macos_host_package_release_plan,
         host_agent_deployment=host_agent_deployment,
+        operator_interface_bootstrap_configuration=operator_interface_bootstrap_configuration,
         host_edge_proxy_deployment=host_edge_proxy_deployment,
+        host_update_handoff_supervisor_configuration=host_update_handoff_supervisor_configuration,
+        host_update_trust_store=host_update_trust_store,
         virtual_machine=virtual_machine,
         guest_artifact_manifest=guest_artifact_manifest,
         guest_artifact_compilation_receipt=guest_artifact_compilation_receipt,
@@ -203,13 +241,19 @@ def load_macos_host_package_documents(composition: MacOSHostPackageComposition) 
         guest_product_bootstrap_configuration=guest_product_bootstrap_configuration,
         guest_product_vitalserver_topology_deployment=guest_product_vitalserver_topology_deployment,
         external_vitalserver_delivery_configuration=external_vitalserver_delivery_configuration,
+        guest_bundled_upstream_image_set_manager_configuration=(
+            guest_bundled_upstream_image_set_manager_configuration
+        ),
     )
 
 
 def validate_macos_host_package_documents(
     composition: MacOSHostPackageComposition,
     host_agent_deployment: Mapping[str, Any],
+    operator_interface_bootstrap_configuration: Mapping[str, Any],
     host_edge_proxy_deployment: Mapping[str, Any],
+    host_update_handoff_supervisor_configuration: Mapping[str, Any],
+    host_update_trust_store: Mapping[str, Any],
     virtual_machine: Mapping[str, Any],
     guest_artifact_manifest: Mapping[str, Any],
     guest_artifact_compilation_receipt: Mapping[str, Any],
@@ -218,6 +262,8 @@ def validate_macos_host_package_documents(
     guest_product_bootstrap_configuration: Mapping[str, Any],
     guest_product_vitalserver_topology_deployment: Mapping[str, Any],
     external_vitalserver_delivery_configuration: Mapping[str, Any] | None,
+    guest_bundled_upstream_image_set_manager_configuration: Mapping[str, Any]
+    | None,
     macos_host_package_release_plan: MacOSHostPackageReleasePlan,
 ) -> None:
     if host_agent_deployment.get("schemaVersion") != "v1" or virtual_machine.get("schemaVersion") != "v1":
@@ -247,7 +293,34 @@ def validate_macos_host_package_documents(
         )
     for field, value in (("stateDatabasePath", control.get("stateDatabasePath")), ("dataDirectory", installation.get("dataDirectory"))):
         require_safe_absolute_path(value, "C33 " + field)
+    validate_product_contract_document(
+        "operator-interface-bootstrap-configuration.schema.json",
+        "C53",
+        operator_interface_bootstrap_configuration,
+    )
+    local_administration = required_object(control, "localAdministration", "C33 control")
+    if (
+        required_string(
+            operator_interface_bootstrap_configuration,
+            "localAdministrationDescriptorPath",
+            "C53",
+        )
+        != required_string(local_administration, "descriptorPath", "C33 localAdministration")
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C53 must name the exact C33 local administration descriptor path"
+        )
+    require_safe_absolute_path(
+        operator_interface_bootstrap_configuration.get("bootstrapConfigurationPath"),
+        "C53 bootstrapConfigurationPath",
+    )
     validate_host_edge_proxy_deployment(host_edge_proxy_deployment)
+    validate_host_update_handoff_supervisor_configuration(
+        composition,
+        host_agent_deployment,
+        host_update_handoff_supervisor_configuration,
+        host_update_trust_store,
+    )
     validate_guest_product_process_deployment(guest_product_process_deployment)
     validate_packaged_guest_public_service_process_ownership(
         guest_product_process_deployment
@@ -275,11 +348,17 @@ def validate_macos_host_package_documents(
         validate_external_vitalserver_delivery_configuration(
             external_vitalserver_delivery_configuration
         )
+    if guest_bundled_upstream_image_set_manager_configuration is not None:
+        validate_guest_bundled_upstream_image_set_manager_configuration(
+            guest_bundled_upstream_image_set_manager_configuration
+        )
     validate_guest_product_vitalserver_delivery_bootstrap_composition(
         guest_product_process_deployment,
         guest_product_bootstrap_configuration,
         guest_product_vitalserver_topology_deployment,
         external_vitalserver_delivery_configuration,
+        guest_bundled_upstream_image_set_manager_configuration,
+        virtual_machine,
     )
 
     boot = required_object(virtual_machine, "boot", "C32")
@@ -328,8 +407,10 @@ def validate_macos_host_package_documents(
         composition.guest_product_process_deployment_configuration,
         composition.guest_product_service_manager_deployment_configuration,
         composition.guest_product_bootstrap_configuration,
+        guest_product_bootstrap_configuration,
         composition.guest_product_vitalserver_topology_deployment,
         composition.external_vitalserver_delivery_configuration,
+        composition.guest_bundled_upstream_image_set_manager_configuration,
     )
 
 
@@ -485,6 +566,32 @@ def compose_host_edge_proxy_launchd_service_definition(
     }
 
 
+def compose_host_update_handoff_supervisor_launchd_service_definition(
+    composition: MacOSHostPackageComposition,
+    macos_host_package_release_plan: MacOSHostPackageReleasePlan,
+) -> dict[str, Any]:
+    """Run the C56 consumer as a declared launchd service, not a script hook.
+
+    C31 is durable Host state. The long-running C56 service polls at its
+    explicit C56 interval and uses C57 immutable evidence to avoid turning a
+    restart or a later poll into an implicit second execution of one handoff.
+    """
+
+    return {
+        "Label": macos_host_package_release_plan.host_update_handoff_supervisor_launchd_service_label,
+        "ProgramArguments": [
+            str(current_release_path(composition) / "bin" / "host-update-handoff-supervisor"),
+            "--configuration",
+            str(current_release_path(composition) / "config" / "host-update-handoff-supervisor-configuration.json"),
+            "--mode",
+            "service",
+        ],
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ProcessType": "Background",
+    }
+
+
 def validate_host_edge_proxy_deployment(deployment: Mapping[str, Any]) -> None:
     """Keep a packaged C36 complete; Host Edge Proxy has no implicit route."""
 
@@ -532,6 +639,88 @@ def validate_host_edge_proxy_deployment(deployment: Mapping[str, Any]) -> None:
             raise MacOSHostPackageCompositionError("C36 route " + route_id + " requestHostHeaderPolicy is invalid")
         require_positive_integer(route.get("maximumRequestBodyBytes"), "C36 route " + route_id + " maximumRequestBodyBytes")
         require_positive_integer(route.get("upstreamResponseHeaderTimeoutMilliseconds"), "C36 route " + route_id + " upstreamResponseHeaderTimeoutMilliseconds")
+
+
+def validate_host_update_handoff_supervisor_configuration(
+    composition: MacOSHostPackageComposition,
+    host_agent_deployment: Mapping[str, Any],
+    configuration: Mapping[str, Any],
+    trust_store: Mapping[str, Any],
+) -> None:
+    """Keep C33's staged-update writer and C56's C31 reader on one contract.
+
+    The package composer is allowed to validate deployment-document identity;
+    it does not read update state or make a delivery decision.  This catches a
+    package that would install a supervisor looking at a queue that the Host
+    Agent never writes.
+    """
+
+    validate_product_contract_document(
+        "host-update-handoff-supervisor-configuration.schema.json",
+        "C56",
+        configuration,
+    )
+    validate_product_contract_document(
+        "host-update-trust-store.schema.json",
+        "C58",
+        trust_store,
+    )
+    update_bootstrap = required_object(host_agent_deployment, "updateBootstrap", "C33")
+    if update_bootstrap.get("mode") != "staged":
+        raise MacOSHostPackageCompositionError(
+            "C33 updateBootstrap must be staged when the package declares the C56 handoff supervisor"
+        )
+    staging_directory = required_string(
+        update_bootstrap,
+        "stagingDirectory",
+        "C33 updateBootstrap",
+    )
+    if configuration.get("stagingDirectory") != staging_directory:
+        raise MacOSHostPackageCompositionError(
+            "C56 stagingDirectory must equal C33 updateBootstrap stagingDirectory"
+        )
+    expected_trust_store_path = str(
+        current_release_path(composition) / "config" / "update-trust-store.json"
+    )
+    if update_bootstrap.get("trustStorePath") != expected_trust_store_path:
+        raise MacOSHostPackageCompositionError(
+            "C33 updateBootstrap trustStorePath must name the packaged C58 trust store"
+        )
+    if configuration.get("handoffQueueDirectory") != str(
+        PurePosixPath(staging_directory) / "handoff-queue"
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C56 handoffQueueDirectory must be the C33 staging handoff-queue"
+        )
+    local_administration = required_object(
+        required_object(host_agent_deployment, "control", "C33"),
+        "localAdministration",
+        "C33 control",
+    )
+    if configuration.get("hostLocalAdministrationDescriptorPath") != local_administration.get(
+        "descriptorPath"
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C56 Host-local administration descriptor must equal C33 local administration descriptor"
+        )
+    data_directory = PurePosixPath(
+        required_string(
+            required_object(host_agent_deployment, "installation", "C33"),
+            "dataDirectory",
+            "C33 installation",
+        )
+    )
+    for field in (
+        "stagingDirectory",
+        "handoffQueueDirectory",
+        "executionEvidenceDirectory",
+        "layerEffectReceiptDirectory",
+    ):
+        require_path_within_directory(
+            configuration.get(field),
+            str(data_directory),
+            "C56 " + field,
+        )
 
 
 def validate_packaged_guest_runtime_control_transport(
@@ -839,11 +1028,228 @@ def validate_external_vitalserver_delivery_configuration(
     )
 
 
+def validate_guest_bundled_upstream_image_set_manager_configuration(
+    configuration: Mapping[str, Any],
+) -> None:
+    """Require the selected C64 configuration before packaging a bundled C44.
+
+    C64 owns Docker and active image-set state.  The package composer reads the
+    document only to verify that C32's separate byte bridge targets the exact
+    declared control listener; it never starts a container or creates C64
+    state.
+    """
+
+    validate_product_contract_document(
+        "guest-bundled-upstream-image-set-management.schema.json",
+        "C64",
+        configuration,
+    )
+
+
+def validate_bundled_vitalserver_delivery_bootstrap_composition(
+    process_deployment: Mapping[str, Any],
+    bootstrap_configuration: Mapping[str, Any],
+    topology_deployment: Mapping[str, Any],
+    bundled_image_set_manager_configuration: Mapping[str, Any],
+    virtual_machine: Mapping[str, Any],
+) -> None:
+    """Bind C37/C39/C44/C64/C32 for a bundled Upstream image-set release.
+
+    C37 deliberately does not launch VitalServer or Redis.  C64 is the
+    separate state owner for the Docker image set and starts the selected
+    containers only after an explicit image-set operation.  This validation
+    checks the declared hand-off between the documents; it neither creates an
+    image set nor probes a container.
+    """
+
+    bundled_topology = required_object(
+        topology_deployment,
+        "bundledUpstreamImageSetDeployment",
+        "C44",
+    )
+    configuration_reference = required_object(
+        bundled_topology,
+        "imageSetManagerConfigurationReference",
+        "C44 bundled Upstream image set",
+    )
+    bundled_manager = required_object(
+        bootstrap_configuration,
+        "guestBundledUpstreamImageSetManager",
+        "C39",
+    )
+    expected_manager_id = required_string(
+        configuration_reference,
+        "resourceId",
+        "C44 bundled Upstream image set manager configuration reference",
+    )
+    if configuration_reference.get("resourceType") != (
+        "guest-bundled-upstream-image-set-manager-configuration"
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C44 bundled Upstream image set manager configuration reference must name C64"
+        )
+    if (
+        bundled_manager.get("managerId") != expected_manager_id
+        or bundled_image_set_manager_configuration.get("managerId")
+        != expected_manager_id
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C44, C39, and C64 must name the same bundled Upstream image-set manager"
+        )
+
+    manager_configuration_payload = required_object(
+        bundled_manager,
+        "configuration",
+        "C39 guestBundledUpstreamImageSetManager",
+    )
+    manager_configuration_destination = PurePosixPath(
+        required_string(
+            manager_configuration_payload,
+            "destinationPath",
+            "C39 Guest Bundled Upstream Image-set Manager configuration",
+        )
+    )
+    release_directory = PurePosixPath(
+        required_string(
+            required_object(
+                bootstrap_configuration,
+                "guestProductRelease",
+                "C39",
+            ),
+            "releaseDirectory",
+            "C39 guestProductRelease",
+        )
+    )
+    try:
+        manager_configuration_destination.relative_to(release_directory)
+    except ValueError as error:
+        raise MacOSHostPackageCompositionError(
+            "C39 Guest Bundled Upstream Image-set Manager configuration must be installed below its immutable Guest Product release"
+        ) from error
+    if manager_configuration_payload.get("artifactId") != (
+        "guest-bundled-upstream-image-set-manager-configuration"
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C39 Guest Bundled Upstream Image-set Manager configuration must name the C64 artifact"
+        )
+    manager_executable_payload = required_object(
+        bundled_manager,
+        "executable",
+        "C39 guestBundledUpstreamImageSetManager",
+    )
+    if manager_executable_payload.get("artifactId") != (
+        "guest-bundled-upstream-image-set-manager-linux-arm64"
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C39 Guest Bundled Upstream Image-set Manager executable must name the C64 manager artifact"
+        )
+    state_directory = required_object(
+        bundled_manager,
+        "stateDirectory",
+        "C39 guestBundledUpstreamImageSetManager",
+    )
+    if (
+        state_directory.get("directoryPath")
+        != bundled_image_set_manager_configuration.get("stateDirectory")
+        or state_directory.get("directoryMode")
+        != bundled_image_set_manager_configuration.get("stateDirectoryMode")
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C39 bundled Upstream image-set state directory must match C64"
+        )
+
+    c32_bridge = required_object(
+        virtual_machine,
+        "guestBundledUpstreamImageSetManagerHostLocalHTTPBridge",
+        "C32",
+    )
+    c64_control_listener = required_object(
+        bundled_image_set_manager_configuration,
+        "controlVirtioSocketListener",
+        "C64",
+    )
+    if c32_bridge.get("guestVirtioSocketPort") != c64_control_listener.get("port"):
+        raise MacOSHostPackageCompositionError(
+            "C32 bundled Upstream image-set manager Host-local HTTP bridge guestVirtioSocketPort must match C64 controlVirtioSocketListener port"
+        )
+
+    guest_runtime = required_object(process_deployment, "guestRuntime", "C37")
+    archive_provider = required_object(
+        guest_runtime,
+        "archiveExportProvider",
+        "C37 Guest Runtime",
+    )
+    bundled_archive_provider = required_object(
+        bundled_topology,
+        "vitalServerArchiveProvider",
+        "C44 bundled Upstream image set",
+    )
+    archive_provider_identity = {
+        field: archive_provider.get(field)
+        for field in ("kind", "id", "capabilityRevision")
+    }
+    bundled_archive_provider_identity = {
+        field: bundled_archive_provider.get(field)
+        for field in ("kind", "id", "capabilityRevision")
+    }
+    if archive_provider_identity != bundled_archive_provider_identity:
+        raise MacOSHostPackageCompositionError(
+            "C37 Archive Export provider must match C44 bundled VitalServer archive provider"
+        )
+    archive_vitalserver_configuration = required_object(
+        archive_provider,
+        "vitalServerConfiguration",
+        "C37 Guest Runtime archive export provider",
+    )
+    if archive_vitalserver_configuration.get("kind") != (
+        "bundled-vitalserver-topology-deployment"
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C37 Archive Export provider must declare C44 bundled VitalServer topology delivery"
+        )
+    topology_payload = required_object(
+        bootstrap_configuration,
+        "guestProductVitalServerTopologyDeployment",
+        "C39",
+    )
+    require_declared_current_release_path_for_bootstrap_payload(
+        required_string(
+            archive_vitalserver_configuration,
+            "configurationPath",
+            "C37 Guest Runtime archive export provider",
+        ),
+        required_string(
+            topology_payload,
+            "destinationPath",
+            "C39 guestProductVitalServerTopologyDeployment",
+        ),
+        bootstrap_configuration,
+        "C37 Archive Export C44 configuration path",
+        "C39 C44 installation destination",
+    )
+
+    external_observation_provider = required_object(
+        guest_runtime,
+        "externalUpstreamObservationProvider",
+        "C37 Guest Runtime",
+    )
+    if (
+        external_observation_provider.get("kind")
+        != "external-capability-profile"
+        or external_observation_provider.get("outcomeMode") != "unsupported"
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C37 bundled VitalServer topology must declare external Upstream observation as explicitly unsupported"
+        )
+
+
 def validate_guest_product_vitalserver_delivery_bootstrap_composition(
     process_deployment: Mapping[str, Any],
     bootstrap_configuration: Mapping[str, Any],
     topology_deployment: Mapping[str, Any],
     external_delivery_configuration: Mapping[str, Any] | None,
+    bundled_image_set_manager_configuration: Mapping[str, Any] | None,
+    virtual_machine: Mapping[str, Any],
 ) -> None:
     """Bind C37/C39/C44/C46 without inferring a delivery endpoint.
 
@@ -859,19 +1265,21 @@ def validate_guest_product_vitalserver_delivery_bootstrap_composition(
         "guestProductVitalServerTopologyDeployment",
         "C39",
     )
-    topology_path = required_string(
-        recorder_gateway,
-        "vitalServerTopologyDeploymentPath",
-        "C37 recorderGateway",
+    require_declared_current_release_path_for_bootstrap_payload(
+        required_string(
+            recorder_gateway,
+            "vitalServerTopologyDeploymentPath",
+            "C37 recorderGateway",
+        ),
+        required_string(
+            topology_payload,
+            "destinationPath",
+            "C39 guestProductVitalServerTopologyDeployment",
+        ),
+        bootstrap_configuration,
+        "C37 Recorder Gateway topology path",
+        "C39 C44 installation destination",
     )
-    if topology_path != required_string(
-        topology_payload,
-        "destinationPath",
-        "C39 guestProductVitalServerTopologyDeployment",
-    ):
-        raise MacOSHostPackageCompositionError(
-            "C37 Recorder Gateway topology path must match C39 C44 installation destination"
-        )
 
     topology_kind = required_string(topology_deployment, "topologyKind", "C44")
     external_delivery_path = recorder_gateway.get(
@@ -890,15 +1298,28 @@ def validate_guest_product_vitalserver_delivery_bootstrap_composition(
             raise MacOSHostPackageCompositionError(
                 "C44 bundled topology must not carry an unused C46 external delivery configuration"
             )
-        raise MacOSHostPackageCompositionError(
-            "C44 bundled topology requires an explicit C37 bundled VitalServer process launch plan; current C37 plans only Guest Runtime and Recorder Gateway"
+        if bundled_image_set_manager_configuration is None:
+            raise MacOSHostPackageCompositionError(
+                "C44 bundled topology requires one explicit C64 Guest Bundled Upstream Image-set Manager configuration"
+            )
+        validate_bundled_vitalserver_delivery_bootstrap_composition(
+            process_deployment,
+            bootstrap_configuration,
+            topology_deployment,
+            bundled_image_set_manager_configuration,
+            virtual_machine,
         )
+        return
 
     if topology_kind != "external-vitalserver":
         raise MacOSHostPackageCompositionError("C44 topologyKind is not supported")
     if external_delivery_configuration is None:
         raise MacOSHostPackageCompositionError(
             "C44 external topology requires one explicit C46 ExternalVitalServerDeliveryConfiguration"
+        )
+    if bundled_image_set_manager_configuration is not None:
+        raise MacOSHostPackageCompositionError(
+            "C44 external topology must not carry an unused C64 Guest Bundled Upstream Image-set Manager configuration"
         )
     if not isinstance(external_delivery_path, str) or not external_delivery_path:
         raise MacOSHostPackageCompositionError(
@@ -908,14 +1329,18 @@ def validate_guest_product_vitalserver_delivery_bootstrap_composition(
         raise MacOSHostPackageCompositionError(
             "C44 external topology requires C39 ExternalVitalServerDeliveryConfiguration installation"
         )
-    if external_delivery_path != required_string(
+    external_delivery_destination_path = required_string(
         external_delivery_payload,
         "destinationPath",
         "C39 externalVitalServerDeliveryConfiguration",
-    ):
-        raise MacOSHostPackageCompositionError(
-            "C37 Recorder Gateway external delivery configuration path must match C39 C46 installation destination"
-        )
+    )
+    require_declared_current_release_path_for_bootstrap_payload(
+        external_delivery_path,
+        external_delivery_destination_path,
+        bootstrap_configuration,
+        "C37 Recorder Gateway external delivery configuration path",
+        "C39 C46 installation destination",
+    )
 
     external_topology = required_object(
         topology_deployment,
@@ -958,6 +1383,101 @@ def validate_guest_product_vitalserver_delivery_bootstrap_composition(
     ):
         raise MacOSHostPackageCompositionError(
             "C44 VitalServer delivery provider must match C46 delivery provider"
+        )
+
+    guest_runtime = required_object(process_deployment, "guestRuntime", "C37")
+    external_observation_provider = required_object(
+        guest_runtime,
+        "externalUpstreamObservationProvider",
+        "C37 Guest Runtime",
+    )
+    if external_observation_provider.get("kind") == "external-vitalserver-http":
+        require_declared_current_release_path_for_bootstrap_payload(
+            required_string(
+                external_observation_provider,
+                "externalVitalServerDeliveryConfigurationPath",
+                "C37 Guest Runtime external VitalServer observation provider",
+            ),
+            external_delivery_destination_path,
+            bootstrap_configuration,
+            "C37 Guest Runtime external VitalServer observation configuration path",
+            "C39 C46 installation destination",
+        )
+    archive_provider = required_object(
+        guest_runtime,
+        "archiveExportProvider",
+        "C37 Guest Runtime",
+    )
+    external_archive_provider = required_object(
+        external_delivery_configuration,
+        "vitalServerArchiveProvider",
+        "C46",
+    )
+    archive_provider_identity = {
+        field: archive_provider.get(field)
+        for field in ("kind", "id", "capabilityRevision")
+    }
+    external_archive_provider_identity = {
+        field: external_archive_provider.get(field)
+        for field in ("kind", "id", "capabilityRevision")
+    }
+    if archive_provider_identity != external_archive_provider_identity:
+        raise MacOSHostPackageCompositionError(
+            "C37 Archive Export provider must match C46 VitalServer archive provider"
+        )
+
+
+def require_declared_current_release_path_for_bootstrap_payload(
+    declared_current_release_path: str,
+    bootstrap_destination_path: str,
+    bootstrap_configuration: Mapping[str, Any],
+    declared_path_name: str,
+    bootstrap_destination_name: str,
+) -> None:
+    """Require an explicit C37 current-link path for one C39 release payload.
+
+    C39 owns both immutable release installation and the initially activated
+    `currentReleaseLinkPath`. C37 intentionally consumes stable paths under
+    that link so Guest Product Release Manager can later switch releases. This
+    comparison therefore uses only the two declared C39 paths and their shared
+    relative suffix; it neither reads a filesystem link nor guesses a release.
+    """
+
+    guest_product_release = required_object(
+        bootstrap_configuration,
+        "guestProductRelease",
+        "C39",
+    )
+    release_directory = PurePosixPath(
+        required_string(
+            guest_product_release,
+            "releaseDirectory",
+            "C39 guestProductRelease",
+        )
+    )
+    current_release_link_path = PurePosixPath(
+        required_string(
+            guest_product_release,
+            "currentReleaseLinkPath",
+            "C39 guestProductRelease",
+        )
+    )
+    try:
+        relative_payload_path = PurePosixPath(bootstrap_destination_path).relative_to(
+            release_directory
+        )
+    except ValueError as error:
+        raise MacOSHostPackageCompositionError(
+            f"{bootstrap_destination_name} must be below C39 guestProductRelease.releaseDirectory"
+        ) from error
+    if relative_payload_path == PurePosixPath("."):
+        raise MacOSHostPackageCompositionError(
+            f"{bootstrap_destination_name} must name a file below C39 guestProductRelease.releaseDirectory"
+        )
+    expected_current_release_path = current_release_link_path / relative_payload_path
+    if PurePosixPath(declared_current_release_path) != expected_current_release_path:
+        raise MacOSHostPackageCompositionError(
+            f"{declared_path_name} must match {bootstrap_destination_name} through C39 guestProductRelease.currentReleaseLinkPath"
         )
 
 
@@ -1068,8 +1588,10 @@ def validate_guest_artifact_compilation_receipt(
     guest_product_process_deployment_configuration: Path,
     guest_product_service_manager_deployment_configuration: Path,
     guest_product_bootstrap_configuration: Path,
+    guest_product_bootstrap_configuration_document: Mapping[str, Any],
     guest_product_vitalserver_topology_deployment: Path,
     external_vitalserver_delivery_configuration: Path | None,
+    guest_bundled_upstream_image_set_manager_configuration: Path | None,
 ) -> None:
     """Require C35 to identify exact C34 and Guest Product bootstrap inputs."""
 
@@ -1130,6 +1652,52 @@ def validate_guest_artifact_compilation_receipt(
         "guest-product-bootstrap-configuration",
         "Guest Product bootstrap configuration",
     )
+    telemetry_collector_payload = guest_product_bootstrap_configuration_document.get(
+        "guestTelemetryCollector"
+    )
+    telemetry_collector_configuration_payload = (
+        guest_product_bootstrap_configuration_document.get(
+            "guestTelemetryCollectorConfiguration"
+        )
+    )
+    telemetry_state_directory = guest_product_bootstrap_configuration_document.get(
+        "guestTelemetryStateDirectory"
+    )
+    telemetry_is_declared = (
+        telemetry_collector_payload is not None
+        or telemetry_collector_configuration_payload is not None
+        or telemetry_state_directory is not None
+    )
+    if telemetry_is_declared:
+        if not (
+            isinstance(telemetry_collector_payload, Mapping)
+            and isinstance(telemetry_collector_configuration_payload, Mapping)
+            and isinstance(telemetry_state_directory, Mapping)
+        ):
+            raise MacOSHostPackageCompositionError(
+                "C39 Guest telemetry Collector binary, configuration, and state directory must be declared together"
+            )
+        for identifier, artifact_name in (
+            (
+                "guest-telemetry-collector-linux-arm64",
+                "Guest telemetry Collector binary",
+            ),
+            (
+                "guest-telemetry-collector-configuration",
+                "Guest telemetry Collector configuration",
+            ),
+        ):
+            matching_artifacts = [
+                artifact
+                for artifact in consumed_inputs
+                if isinstance(artifact, dict) and artifact.get("id") == identifier
+            ]
+            if len(matching_artifacts) != 1:
+                raise MacOSHostPackageCompositionError(
+                    "C35 receipt must contain exactly one "
+                    + artifact_name
+                    + " consumed input"
+                )
     validate_receipt_consumed_input_identity(
         consumed_inputs,
         guest_product_vitalserver_topology_deployment,
@@ -1141,7 +1709,39 @@ def validate_guest_artifact_compilation_receipt(
             raise MacOSHostPackageCompositionError(
                 "C35 receipt must not name C46 when the selected C44 topology has no external delivery configuration"
             )
+        if guest_bundled_upstream_image_set_manager_configuration is None:
+            raise MacOSHostPackageCompositionError(
+                "C35 receipt requires the explicit C64 configuration selected by the bundled C44 topology"
+            )
+        validate_receipt_consumed_input_identity(
+            consumed_inputs,
+            guest_bundled_upstream_image_set_manager_configuration,
+            "guest-bundled-upstream-image-set-manager-configuration",
+            "C64 Guest Bundled Upstream Image-set Manager configuration",
+        )
+        bundled_manager_artifacts = [
+            artifact
+            for artifact in consumed_inputs
+            if isinstance(artifact, dict)
+            and artifact.get("id")
+            == "guest-bundled-upstream-image-set-manager-linux-arm64"
+        ]
+        if len(bundled_manager_artifacts) != 1:
+            raise MacOSHostPackageCompositionError(
+                "C35 receipt must contain exactly one Guest Bundled Upstream Image-set Manager binary consumed input"
+            )
         return
+    if guest_bundled_upstream_image_set_manager_configuration is not None:
+        raise MacOSHostPackageCompositionError(
+            "C35 receipt must not select C64 when the selected C44 topology uses external delivery"
+        )
+    if (
+        "guest-bundled-upstream-image-set-manager-configuration" in consumed_ids
+        or "guest-bundled-upstream-image-set-manager-linux-arm64" in consumed_ids
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C35 receipt must not contain bundled Upstream image-set manager inputs for external C44 delivery"
+        )
     validate_receipt_consumed_input_identity(
         consumed_inputs,
         external_vitalserver_delivery_configuration,
@@ -1205,11 +1805,13 @@ def compose_preinstall_script(
     composition: MacOSHostPackageComposition,
     documents: MacOSHostPackageDocuments,
 ) -> str:
-    """Invoke the Installation Manager before pkgbuild writes any release byte.
+    """Admit package installation before pkgbuild writes any release byte.
 
     The script transports explicit C48/C50 values only.  It does not classify
     receipts, old release paths, services, or data: the Installation Manager
-    owns those C49 observations and C50 admission policy.
+    owns those C49 observations and C50 admission policy. In particular,
+    preinstall does not quiesce a running Host before payload delivery has
+    succeeded.
     """
 
     installation = required_object(documents.host_agent_deployment, "installation", "C33")
@@ -1231,12 +1833,6 @@ def compose_preinstall_script(
             + " --installation-id " + shell_quote(required_string(installation, "installationId", "C33 installation"))
             + " --release-id " + shell_quote(composition.release_slot_id)
             + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl",
-            '"$script_directory/host-installation-manager"'
-            + " --mode quiesce"
-            + " --manifest \"$script_directory/installation-manifest.json\""
-            + " --journal " + shell_quote(str(journal_path))
-            + " --receipt " + shell_quote(str(receipt_path))
-            + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl",
             "",
         ]
     )
@@ -1245,9 +1841,8 @@ def compose_preinstall_script(
 def compose_postinstall_script(
     composition: MacOSHostPackageComposition,
     host_agent_deployment: Mapping[str, Any],
+    host_update_handoff_supervisor_configuration: Mapping[str, Any],
     virtual_machine: Mapping[str, Any],
-    host_agent_launchd_service_label: str,
-    edge_proxy_launchd_service_label: str,
 ) -> str:
     control = required_object(host_agent_deployment, "control", "C33")
     installation = required_object(host_agent_deployment, "installation", "C33")
@@ -1280,31 +1875,88 @@ def compose_postinstall_script(
         PurePosixPath(guest_boot_console_capture_path).parent,
         runtime_disk_image_path.parent,
         provisioning_receipt_path.parent,
+        PurePosixPath(
+            required_string(
+                host_update_handoff_supervisor_configuration,
+                "stagingDirectory",
+                "C56",
+            )
+        ),
+        PurePosixPath(
+            required_string(
+                host_update_handoff_supervisor_configuration,
+                "handoffQueueDirectory",
+                "C56",
+            )
+        ),
+        PurePosixPath(
+            required_string(
+                host_update_handoff_supervisor_configuration,
+                "executionEvidenceDirectory",
+                "C56",
+            )
+        ),
+        PurePosixPath(
+            required_string(
+                host_update_handoff_supervisor_configuration,
+                "layerEffectReceiptDirectory",
+                "C56",
+            )
+        ),
     )
-    host_agent_service_path = PurePosixPath("/Library/LaunchDaemons") / (host_agent_launchd_service_label + ".plist")
-    edge_proxy_service_path = PurePosixPath("/Library/LaunchDaemons") / (edge_proxy_launchd_service_label + ".plist")
     release_root_path = immutable_release_slot_path(composition)
     installation_manager_path = release_root_path / "bin" / "host-installation-manager"
     installation_manifest_path = release_root_path / "installation-manifest.json"
     installation_journal_path = data_directory / "installation-manager" / "current-transaction.json"
     installation_receipt_path = data_directory / "installation-manager" / "latest-installation-receipt.json"
+    manager_arguments = (
+        " --manifest "
+        + shell_quote(str(installation_manifest_path))
+        + " --journal "
+        + shell_quote(str(installation_journal_path))
+        + " --receipt "
+        + shell_quote(str(installation_receipt_path))
+        + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl"
+    )
     return "\n".join(
         [
             "#!/bin/sh",
             "set -eu",
-            shell_quote(str(installation_manager_path))
-            + " --mode activate"
-            + " --manifest " + shell_quote(str(installation_manifest_path))
-            + " --journal " + shell_quote(str(installation_journal_path))
-            + " --receipt " + shell_quote(str(installation_receipt_path))
-            + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl",
+            "transaction_started=0",
+            "recover_installation() {",
+            "  installation_status=$?",
+            '  if [ "$transaction_started" -eq 1 ]; then',
+            "    set +e",
+            "    "
+            + shell_quote(str(installation_manager_path))
+            + " --mode recover"
+            + manager_arguments,
+            "    recovery_status=$?",
+            "    set -e",
+            '    if [ "$recovery_status" -ne 0 ]; then',
+            '      /bin/echo "Host Installation Manager recovery failed with status $recovery_status" >&2',
+            "    fi",
+            "  fi",
+            '  exit "$installation_status"',
+            "}",
+            "trap recover_installation 0",
             "/usr/bin/install -d -m 0750 "
             + " ".join(
                 shell_quote(str(directory)) for directory in host_runtime_directories
             ),
             "/usr/bin/touch " + shell_quote(guest_boot_console_capture_path),
-            "/bin/launchctl bootstrap system " + shell_quote(str(host_agent_service_path)),
-            "/bin/launchctl bootstrap system " + shell_quote(str(edge_proxy_service_path)),
+            "transaction_started=1",
+            shell_quote(str(installation_manager_path))
+            + " --mode quiesce"
+            + manager_arguments,
+            shell_quote(str(installation_manager_path))
+            + " --mode activate"
+            + manager_arguments,
+            shell_quote(str(installation_manager_path))
+            + " --mode finalize"
+            + manager_arguments,
+            "transaction_started=0",
+            "trap - 0",
             "",
         ]
     )
@@ -1363,7 +2015,12 @@ def compose_macos_host_package(composition: MacOSHostPackageComposition) -> dict
         )
         scripts_root.mkdir(parents=True)
         copy_declared_regular_file_to_package_payload(
-            composition.host_installation_manager_binary,
+            payload_destination(
+                payload_root,
+                immutable_release_slot_path(composition)
+                / "bin"
+                / "host-installation-manager",
+            ),
             scripts_root / "host-installation-manager",
             executable=True,
         )
@@ -1386,9 +2043,8 @@ def compose_macos_host_package(composition: MacOSHostPackageComposition) -> dict
             compose_postinstall_script(
                 composition,
                 documents.host_agent_deployment,
+                documents.host_update_handoff_supervisor_configuration,
                 documents.virtual_machine,
-                documents.macos_host_package_release_plan.host_agent_launchd_service_label,
-                documents.macos_host_package_release_plan.host_edge_proxy_launchd_service_label,
             ),
             encoding="utf-8",
         )
@@ -1487,7 +2143,27 @@ def compose_host_product_installation_manifest(
         },
         "activation": {
             "currentReleaseLinkPath": str(current_release_path(composition)),
+            "referenceKind": "symbolic-link",
             "expectedReleaseRootPath": str(release_root_path),
+        },
+        "operatorInterface": {
+            "bootstrapConfigurationPath": required_string(
+                documents.operator_interface_bootstrap_configuration,
+                "bootstrapConfigurationPath",
+                "C53",
+            ),
+            "bootstrapConfigurationSha256": sha256_file(
+                payload_destination(
+                    payload_root,
+                    PurePosixPath(
+                        required_string(
+                            documents.operator_interface_bootstrap_configuration,
+                            "bootstrapConfigurationPath",
+                            "C53",
+                        )
+                    ),
+                )
+            ),
         },
         "requiredServices": [
             {
@@ -1526,31 +2202,68 @@ def compose_host_product_installation_manifest(
                     )
                 ),
             },
+            {
+                "role": "host-update-handoff-supervisor",
+                "manager": "launchd",
+                "name": documents.macos_host_package_release_plan.host_update_handoff_supervisor_launchd_service_label,
+                "definitionPath": "/Library/LaunchDaemons/"
+                + documents.macos_host_package_release_plan.host_update_handoff_supervisor_launchd_service_label
+                + ".plist",
+                "definitionSha256": sha256_file(
+                    payload_destination(
+                        payload_root,
+                        PurePosixPath("/Library/LaunchDaemons")
+                        / (
+                            documents.macos_host_package_release_plan.host_update_handoff_supervisor_launchd_service_label
+                            + ".plist"
+                        ),
+                    )
+                ),
+            },
         ],
         "mutableStores": [
             {
                 "id": "installation-data-root",
                 "path": str(data_directory),
+                "kind": "directory",
                 "owner": "host-installation-manager",
                 "retention": "purge-only-by-explicit-command",
             },
             {
                 "id": "host-agent-state",
                 "path": str(state_database_path.parent),
+                "kind": "directory",
                 "owner": "host-agent",
                 "retention": "preserve-by-default",
             },
             {
                 "id": "virtual-machine-runtime",
                 "path": str(runtime_disk_path.parent),
+                "kind": "directory",
                 "owner": "macos-virtual-machine-supervisor",
                 "retention": "preserve-by-default",
             },
             {
                 "id": "installation-manager-journal",
                 "path": str(data_directory / "installation-manager"),
+                "kind": "directory",
                 "owner": "host-installation-manager",
                 "retention": "purge-only-by-explicit-command",
+            },
+            {
+                "id": "host-update-handoff-evidence",
+                "path": str(
+                    PurePosixPath(
+                        required_string(
+                            documents.host_update_handoff_supervisor_configuration,
+                            "executionEvidenceDirectory",
+                            "C56",
+                        )
+                    )
+                ),
+                "kind": "directory",
+                "owner": "host-update-handoff-supervisor",
+                "retention": "preserve-by-default",
             },
         ],
     }
@@ -1834,9 +2547,26 @@ def copy_package_payload(composition: MacOSHostPackageComposition, documents: Ma
     copy_declared_regular_file_to_package_payload(composition.host_agent_binary, payload_destination(payload_root, release_path / "bin" / "host-agent"), executable=True)
     copy_declared_regular_file_to_package_payload(composition.host_edge_proxy_binary, payload_destination(payload_root, release_path / "bin" / "host-edge-proxy"), executable=True)
     copy_declared_regular_file_to_package_payload(composition.host_installation_manager_binary, payload_destination(payload_root, release_path / "bin" / "host-installation-manager"), executable=True)
+    copy_declared_regular_file_to_package_payload(composition.host_update_handoff_supervisor_binary, payload_destination(payload_root, release_path / "bin" / "host-update-handoff-supervisor"), executable=True)
+    copy_declared_regular_file_to_package_payload(composition.platformctl_binary, payload_destination(payload_root, release_path / "bin" / "platformctl"), executable=True)
     copy_declared_regular_file_to_package_payload(composition.macos_virtual_machine_supervisor_binary, payload_destination(payload_root, release_path / "bin" / "macos-virtual-machine-supervisor"), executable=True)
     copy_declared_regular_file_to_package_payload(composition.host_agent_deployment_configuration, payload_destination(payload_root, release_path / "config" / "host-agent-deployment.json"))
+    copy_declared_regular_file_to_package_payload(
+        composition.operator_interface_bootstrap_configuration,
+        payload_destination(
+            payload_root,
+            PurePosixPath(
+                required_string(
+                    documents.operator_interface_bootstrap_configuration,
+                    "bootstrapConfigurationPath",
+                    "C53",
+                )
+            ),
+        ),
+    )
     copy_declared_regular_file_to_package_payload(composition.host_edge_proxy_deployment_configuration, payload_destination(payload_root, release_path / "config" / "host-edge-proxy-deployment.json"))
+    copy_declared_regular_file_to_package_payload(composition.host_update_handoff_supervisor_configuration, payload_destination(payload_root, release_path / "config" / "host-update-handoff-supervisor-configuration.json"))
+    copy_declared_regular_file_to_package_payload(composition.host_update_trust_store, payload_destination(payload_root, release_path / "config" / "update-trust-store.json"))
     copy_declared_regular_file_to_package_payload(composition.macos_virtual_machine_configuration, payload_destination(payload_root, release_path / "config" / "macos-virtual-machine.json"))
     copy_declared_regular_file_to_package_payload(composition.guest_artifact_manifest, payload_destination(payload_root, release_path / "release" / "macos-guest-artifact-manifest.json"))
     copy_declared_regular_file_to_package_payload(composition.guest_artifact_compilation_receipt, payload_destination(payload_root, release_path / "release" / "guest-artifact-compilation-receipt.json"))
@@ -1906,6 +2636,13 @@ def copy_package_payload(composition: MacOSHostPackageComposition, documents: Ma
                 documents.macos_host_package_release_plan,
             ),
         ),
+        (
+            documents.macos_host_package_release_plan.host_update_handoff_supervisor_launchd_service_label,
+            compose_host_update_handoff_supervisor_launchd_service_definition(
+                composition,
+                documents.macos_host_package_release_plan,
+            ),
+        ),
     ):
         with (launchd_directory / (service_label + ".plist")).open("wb") as plist_file:
             plistlib.dump(definition, plist_file, sort_keys=True)
@@ -1951,17 +2688,28 @@ def validate_package_artifacts(composition: MacOSHostPackageComposition, documen
             "C23 release delivery plan id is required"
         )
     if (
-        documents.macos_host_package_release_plan.host_agent_launchd_service_label
-        == documents.macos_host_package_release_plan.host_edge_proxy_launchd_service_label
+        len(
+            {
+                documents.macos_host_package_release_plan.host_agent_launchd_service_label,
+                documents.macos_host_package_release_plan.host_edge_proxy_launchd_service_label,
+                documents.macos_host_package_release_plan.host_update_handoff_supervisor_launchd_service_label,
+            }
+        )
+        != 3
     ):
-        raise MacOSHostPackageCompositionError("Host Agent and Host Edge Proxy launchd service labels must differ")
+        raise MacOSHostPackageCompositionError("declared Host launchd service labels must differ")
     require_safe_absolute_path(str(composition.payload_base_path), "payload base path")
     require_identifier(composition.release_slot_id, "C48 immutable release slot id")
     for name, path in (
         ("host Agent binary", composition.host_agent_binary),
         ("Host Edge Proxy binary", composition.host_edge_proxy_binary),
         ("Host Installation Manager binary", composition.host_installation_manager_binary),
+        ("Host Update Handoff Supervisor binary", composition.host_update_handoff_supervisor_binary),
+        ("platformctl binary", composition.platformctl_binary),
+        ("C53 OperatorInterfaceBootstrapConfiguration", composition.operator_interface_bootstrap_configuration),
         ("C36 HostEdgeProxyDeploymentConfiguration", composition.host_edge_proxy_deployment_configuration),
+        ("C56 HostUpdateHandoffSupervisorConfiguration", composition.host_update_handoff_supervisor_configuration),
+        ("C58 HostUpdateTrustStore", composition.host_update_trust_store),
         ("macOS virtual machine supervisor binary", composition.macos_virtual_machine_supervisor_binary),
         ("C35 GuestArtifactCompilationReceipt", composition.guest_artifact_compilation_receipt),
         ("Guest Product process supervisor artifact", composition.guest_product_process_supervisor_artifact),
@@ -1981,6 +2729,13 @@ def validate_package_artifacts(composition: MacOSHostPackageComposition, documen
         raise MacOSHostPackageCompositionError(
             "C46 ExternalVitalServerDeliveryConfiguration is missing or not a file"
         )
+    if composition.guest_bundled_upstream_image_set_manager_configuration is not None and (
+        not composition.guest_bundled_upstream_image_set_manager_configuration.is_absolute()
+        or not composition.guest_bundled_upstream_image_set_manager_configuration.is_file()
+    ):
+        raise MacOSHostPackageCompositionError(
+            "C64 GuestBundledUpstreamImageSetManagerConfiguration is missing or not a file"
+        )
     if composition.guest_initial_ramdisk_source is not None and (not composition.guest_initial_ramdisk_source.is_absolute() or not composition.guest_initial_ramdisk_source.is_file()):
         raise MacOSHostPackageCompositionError("Guest initial RAM disk source is missing or not a file")
     for storage_id, source in composition.guest_storage_sources.items():
@@ -1993,7 +2748,10 @@ def validate_package_artifacts(composition: MacOSHostPackageComposition, documen
     storage_digests = {device["id"]: device for device in manifest["storageDevices"]}
     for storage_id, source in composition.guest_storage_sources.items():
         validate_manifested_artifact(source, storage_digests[storage_id], "Guest storage source " + storage_id)
-    validate_macos_installer_package_signing(composition)
+    validate_macos_installer_package_signing(
+        composition,
+        documents.macos_host_package_release_plan,
+    )
     validate_macos_virtual_machine_supervisor_code_signing(
         composition.macos_virtual_machine_supervisor_code_signing
     )
@@ -2001,6 +2759,7 @@ def validate_package_artifacts(composition: MacOSHostPackageComposition, documen
 
 def validate_macos_installer_package_signing(
     composition: MacOSHostPackageComposition,
+    release_plan: MacOSHostPackageReleasePlan,
 ) -> None:
     """Validate the final package signature, not pkgbuild's candidate output."""
 
@@ -2027,10 +2786,18 @@ def validate_macos_installer_package_signing(
             raise MacOSHostPackageCompositionError(
                 "a developer-id macOS Installer package requires a developer-id macOS virtual machine supervisor"
             )
+        if signing.mode != release_plan.macos_installer_signature_policy:
+            raise MacOSHostPackageCompositionError(
+                "C23 macOS installer signature policy must match the selected macOS Installer package signing mode"
+            )
         return
     if signing.signing_identity is not None or signing.productsign_executable is not None:
         raise MacOSHostPackageCompositionError(
             "unsigned macOS Installer package signing must not supply signing inputs"
+        )
+    if signing.mode != release_plan.macos_installer_signature_policy:
+        raise MacOSHostPackageCompositionError(
+            "C23 macOS installer signature policy must match the selected macOS Installer package signing mode"
         )
 
 
@@ -2358,9 +3125,14 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
     parser.add_argument("--host-agent-binary", required=True)
     parser.add_argument("--host-edge-proxy-binary", required=True)
     parser.add_argument("--host-installation-manager-binary", required=True)
+    parser.add_argument("--host-update-handoff-supervisor-binary", required=True)
+    parser.add_argument("--platformctl-binary", required=True)
     parser.add_argument("--macos-virtual-machine-supervisor-binary", required=True)
     parser.add_argument("--host-agent-deployment-configuration", required=True)
+    parser.add_argument("--operator-interface-bootstrap-configuration", required=True)
     parser.add_argument("--host-edge-proxy-deployment-configuration", required=True)
+    parser.add_argument("--host-update-handoff-supervisor-configuration", required=True)
+    parser.add_argument("--host-update-trust-store", required=True)
     parser.add_argument("--macos-virtual-machine-configuration", required=True)
     parser.add_argument("--guest-artifact-manifest", required=True)
     parser.add_argument("--guest-artifact-compilation-receipt", required=True)
@@ -2370,6 +3142,7 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
     parser.add_argument("--guest-product-bootstrap-configuration", required=True)
     parser.add_argument("--guest-product-vitalserver-topology-deployment", required=True)
     parser.add_argument("--external-vitalserver-delivery-configuration")
+    parser.add_argument("--guest-bundled-upstream-image-set-manager-configuration")
     parser.add_argument("--guest-kernel-source", required=True)
     parser.add_argument("--guest-initial-ramdisk-source")
     parser.add_argument("--guest-storage-source", action="append", default=[])
@@ -2400,9 +3173,14 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
         host_agent_binary=Path(parsed.host_agent_binary),
         host_edge_proxy_binary=Path(parsed.host_edge_proxy_binary),
         host_installation_manager_binary=Path(parsed.host_installation_manager_binary),
+        host_update_handoff_supervisor_binary=Path(parsed.host_update_handoff_supervisor_binary),
+        platformctl_binary=Path(parsed.platformctl_binary),
         macos_virtual_machine_supervisor_binary=Path(parsed.macos_virtual_machine_supervisor_binary),
         host_agent_deployment_configuration=Path(parsed.host_agent_deployment_configuration),
+        operator_interface_bootstrap_configuration=Path(parsed.operator_interface_bootstrap_configuration),
         host_edge_proxy_deployment_configuration=Path(parsed.host_edge_proxy_deployment_configuration),
+        host_update_handoff_supervisor_configuration=Path(parsed.host_update_handoff_supervisor_configuration),
+        host_update_trust_store=Path(parsed.host_update_trust_store),
         macos_virtual_machine_configuration=Path(parsed.macos_virtual_machine_configuration),
         guest_artifact_manifest=Path(parsed.guest_artifact_manifest),
         guest_artifact_compilation_receipt=Path(parsed.guest_artifact_compilation_receipt),
@@ -2437,6 +3215,11 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
             else None,
         ),
         replace_output=parsed.replace_output,
+        guest_bundled_upstream_image_set_manager_configuration=(
+            Path(parsed.guest_bundled_upstream_image_set_manager_configuration)
+            if parsed.guest_bundled_upstream_image_set_manager_configuration
+            else None
+        ),
     )
 
 

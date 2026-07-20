@@ -82,6 +82,7 @@ class MacOSDevelopmentInstallationEvidenceRun:
     macos_installer_package_identifier: str
     host_agent_launchd_service_label: str
     host_edge_proxy_launchd_service_label: str
+    host_update_handoff_supervisor_launchd_service_label: str
     installed_virtual_machine_supervisor_path: Path
     installer_artifact_path: Path
     bound_installer_artifact_sha256: str
@@ -133,6 +134,7 @@ class MacOSDevelopmentInstallationEvidenceJournal:
                         macos_installer_package_identifier TEXT NOT NULL,
                         host_agent_launchd_service_label TEXT NOT NULL,
                         host_edge_proxy_launchd_service_label TEXT NOT NULL,
+                        host_update_handoff_supervisor_launchd_service_label TEXT NOT NULL,
                         installed_virtual_machine_supervisor_path TEXT NOT NULL,
                         installer_artifact_path TEXT NOT NULL,
                         bound_installer_artifact_sha256 TEXT NOT NULL,
@@ -158,11 +160,12 @@ class MacOSDevelopmentInstallationEvidenceJournal:
                         macos_installer_package_identifier,
                         host_agent_launchd_service_label,
                         host_edge_proxy_launchd_service_label,
+                        host_update_handoff_supervisor_launchd_service_label,
                         installed_virtual_machine_supervisor_path,
                         installer_artifact_path,
                         bound_installer_artifact_sha256, evidence_directory,
                         command_contract_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         evidence_run.run_id,
@@ -173,6 +176,7 @@ class MacOSDevelopmentInstallationEvidenceJournal:
                         evidence_run.macos_installer_package_identifier,
                         evidence_run.host_agent_launchd_service_label,
                         evidence_run.host_edge_proxy_launchd_service_label,
+                        evidence_run.host_update_handoff_supervisor_launchd_service_label,
                         str(evidence_run.installed_virtual_machine_supervisor_path),
                         str(evidence_run.installer_artifact_path),
                         evidence_run.bound_installer_artifact_sha256,
@@ -242,6 +246,12 @@ class MacOSDevelopmentInstallationEvidenceJournal:
             host_edge_proxy_launchd_service_label=required_non_empty_string(
                 row["host_edge_proxy_launchd_service_label"],
                 "journal Host Edge Proxy launchd service label",
+            ),
+            host_update_handoff_supervisor_launchd_service_label=(
+                required_non_empty_string(
+                    row["host_update_handoff_supervisor_launchd_service_label"],
+                    "journal Host Update Handoff Supervisor launchd service label",
+                )
             ),
             installed_virtual_machine_supervisor_path=Path(
                 required_non_empty_string(
@@ -387,7 +397,22 @@ class MacOSDevelopmentInstallationEvidenceJournal:
         try:
             connection = sqlite3.connect(self.journal_path)
             connection.row_factory = sqlite3.Row
+            column_names = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(development_installation_run)"
+                )
+            }
+            if "host_update_handoff_supervisor_launchd_service_label" not in column_names:
+                connection.close()
+                raise MacOSDevelopmentInstallationEvidenceRunError(
+                    "macOS development installation evidence journal does not record "
+                    "the C23 Host Update Handoff Supervisor service; evidence runs "
+                    "created before this required registration must be restarted"
+                )
             return connection
+        except MacOSDevelopmentInstallationEvidenceRunError:
+            raise
         except sqlite3.Error as error:
             raise MacOSDevelopmentInstallationEvidenceRunError(
                 "macOS development installation evidence journal cannot be opened: "
@@ -780,6 +805,9 @@ def evidence_run_from_release_plan(
         host_edge_proxy_launchd_service_label=(
             release_plan.host_edge_proxy_launchd_service_label
         ),
+        host_update_handoff_supervisor_launchd_service_label=(
+            release_plan.host_update_handoff_supervisor_launchd_service_label
+        ),
         installed_virtual_machine_supervisor_path=installed_virtual_machine_supervisor_path,
         installer_artifact_path=installer_artifact_path,
         bound_installer_artifact_sha256=sha256_file(installer_artifact_path),
@@ -994,6 +1022,12 @@ def observe_required_launchd_service_registrations(
             evidence_run.host_edge_proxy_launchd_service_label,
             execute_command=execute_macos_development_installation_command,
         ),
+        macos_host_installation_observation.observe_macos_launchd_service_registration(
+            evidence_run.command_contract.launchctl_executable,
+            "host-update-handoff-supervisor",
+            evidence_run.host_update_handoff_supervisor_launchd_service_label,
+            execute_command=execute_macos_development_installation_command,
+        ),
     )
 
 
@@ -1157,6 +1191,9 @@ def release_identity_document(
         "hostAgentLaunchdServiceLabel": evidence_run.host_agent_launchd_service_label,
         "hostEdgeProxyLaunchdServiceLabel": (
             evidence_run.host_edge_proxy_launchd_service_label
+        ),
+        "hostUpdateHandoffSupervisorLaunchdServiceLabel": (
+            evidence_run.host_update_handoff_supervisor_launchd_service_label
         ),
         "boundInstallerArtifactSHA256": evidence_run.bound_installer_artifact_sha256,
     }

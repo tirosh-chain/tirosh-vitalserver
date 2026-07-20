@@ -7,18 +7,21 @@
       "layer": "guest-runtime",
       "dependsOn": [],
       "artifact": { "id": "guest-runtime-020", "relativePath": "payload/guest-runtime.tar", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "sizeBytes": 101, "mediaType": "application/x-tar" },
+      "effectExecutor": { "id": "guest-runtime-update-executor-020", "relativePath": "payload/executors/guest-runtime-update", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "sizeBytes": 104, "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-executor", "configurationArtifact": { "id": "guest-runtime-update-executor-configuration-020", "relativePath": "payload/executors/configuration/guest-runtime-update.json", "sha256": "3333333333333333333333333333333333333333333333333333333333333333", "sizeBytes": 54, "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json" } },
       "rollback": { "state": "available", "artifact": { "id": "guest-runtime-010", "relativePath": "payload/guest-runtime-rollback.tar", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "sizeBytes": 99, "mediaType": "application/x-tar" } }
     },
     {
       "layer": "container",
       "dependsOn": ["guest-runtime"],
       "artifact": { "id": "container-020", "relativePath": "payload/container.tar", "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "sizeBytes": 102, "mediaType": "application/x-tar" },
+      "effectExecutor": { "id": "container-update-executor-020", "relativePath": "payload/executors/container-update", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "sizeBytes": 105, "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-executor", "configurationArtifact": { "id": "container-update-executor-configuration-020", "relativePath": "payload/executors/configuration/container-update.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "sizeBytes": 50, "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json" } },
       "rollback": { "state": "available", "artifact": { "id": "container-010", "relativePath": "payload/container-rollback.tar", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "sizeBytes": 98, "mediaType": "application/x-tar" } }
     },
     {
       "layer": "host-platform",
       "dependsOn": ["container"],
       "artifact": { "id": "host-platform-020", "relativePath": "payload/host-platform.pkg", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "sizeBytes": 103, "mediaType": "application/vnd.apple.installer+xml" },
+      "effectExecutor": { "id": "host-platform-update-executor-020", "relativePath": "payload/executors/host-platform-update", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "sizeBytes": 106, "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-executor", "configurationArtifact": { "id": "host-platform-update-executor-configuration-020", "relativePath": "payload/executors/configuration/host-platform-update.json", "sha256": "5555555555555555555555555555555555555555555555555555555555555555", "sizeBytes": 54, "mediaType": "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json" } },
       "rollback": { "state": "unsupported", "reason": "host platform rollback requires a separately validated bootstrap bundle" }
     }
   ]

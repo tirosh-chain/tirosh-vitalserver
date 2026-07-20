@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-platform-staged-release-update",
+  "title": "HostPlatformStagedReleaseUpdate and ExplicitRecovery",
+  "description": "C68 Host Installation Manager-owned command, durable operation state, and explicit recovery receipt for a verified Host Platform archive. The archive has the fixed layout `release/`, `service-definitions/`, and `operator-interface/`; its C48 manifest remains the declaration of target paths and immutable bytes. Recovery never replays the archive: it is an operator-requested reconciliation of the explicitly observed current Host release after a service-affecting interruption.",
+  "oneOf": [
+    { "$ref": "#/$defs/Command" },
+    { "$ref": "#/$defs/Operation" },
+    { "$ref": "#/$defs/RecoveryCommand" },
+    { "$ref": "#/$defs/RecoveryReceipt" }
+  ],
+  "$defs": {
+    "Issue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" },
+    "OperationName": { "type": "string", "enum": ["apply", "rollback"] },
+    "RecoveryAction": { "type": "string", "enum": ["reconcile-current-release"] },
+    "DurableState": { "type": "string", "enum": ["received", "staged", "services-quiescing", "release-publishing", "activating"] },
+    "ReleaseTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedActiveReleaseId", "targetReleaseId"],
+      "properties": {
+        "expectedActiveReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "targetReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "Artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "sizeBytes", "mediaType"],
+      "properties": {
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "mediaType": { "const": "application/vnd.tirosh.vitalserver.host-platform-release+tar+gzip" }
+      }
+    },
+    "Command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "operationId", "updateId", "operation", "transition", "artifact", "requestedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "operationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "operation": { "$ref": "#/$defs/OperationName" },
+        "transition": { "$ref": "#/$defs/ReleaseTransition" },
+        "artifact": { "$ref": "#/$defs/Artifact" },
+        "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "Operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "operationId", "updateId", "operation", "transition", "artifact", "state", "observedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "operationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "operation": { "$ref": "#/$defs/OperationName" },
+        "transition": { "$ref": "#/$defs/ReleaseTransition" },
+        "artifact": { "$ref": "#/$defs/Artifact" },
+        "state": { "type": "string", "enum": ["received", "staged", "services-quiescing", "release-publishing", "activating", "succeeded", "failed", "unavailable"] },
+        "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "issue": { "$ref": "#/$defs/Issue" },
+        "lastDurableState": { "$ref": "#/$defs/DurableState" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["failed", "unavailable"] } }, "required": ["state"] },
+          "then": { "required": ["issue", "lastDurableState"] },
+          "else": {
+            "allOf": [
+              { "not": { "required": ["issue"] } },
+              { "not": { "required": ["lastDurableState"] } }
+            ]
+          }
+        }
+      ]
+    },
+    "RecoveryCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "recoveryId", "operationId", "action", "requestedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "recoveryId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "operationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "action": { "$ref": "#/$defs/RecoveryAction" },
+        "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "RecoveryReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "recoveryId", "operationId", "action", "state", "observedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "recoveryId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "operationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "action": { "$ref": "#/$defs/RecoveryAction" },
+        "state": { "type": "string", "enum": ["succeeded", "blocked", "failed", "unavailable"] },
+        "activeReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "issue": { "$ref": "#/$defs/Issue" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
+          "then": {
+            "required": ["activeReleaseId"],
+            "not": { "required": ["issue"] }
+          },
+          "else": {
+            "required": ["issue"],
+            "not": { "required": ["activeReleaseId"] }
+          }
+        }
+      ]
+    }
+  }
+}

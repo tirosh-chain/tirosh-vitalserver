@@ -13,4 +13,6 @@ node_modules/
 # only through declared release assembly outputs, never from service roots.
 services/guest-runtime/guest-runtime
 services/guest-product-process-supervisor/guest-product-process-supervisor
+services/host-installation-manager/host-installation-manager
+services/host-updater/host-updater
 tooling/guest-product-bootstrap-volume-composer/guest-product-bootstrap-volume-composer

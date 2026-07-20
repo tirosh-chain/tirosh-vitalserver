@@ -37,12 +37,13 @@ func quiescenceManifest() hostinstallationmanagerdomain.HostProductInstallationM
 		RequiredServices: []hostinstallationmanagerdomain.HostProductRequiredService{
 			{Role: "host-agent", Manager: "launchd", Name: "com.tirosh.vitalserver.host-agent"},
 			{Role: "host-edge-proxy", Manager: "launchd", Name: "com.tirosh.vitalserver.host-edge-proxy"},
+			{Role: "host-update-handoff-supervisor", Manager: "launchd", Name: "com.tirosh.vitalserver.host-update-handoff-supervisor"},
 		},
 	}
 }
 
 func TestQuiesceHostProductServicesStopsOnlyDeclaredLaunchdServices(t *testing.T) {
-	runner := &hostServiceQuiescenceCommandRunnerFake{results: []HostServiceQuiescenceCommandResult{{ExitCode: 0}, {ExitCode: 3}}}
+	runner := &hostServiceQuiescenceCommandRunnerFake{results: []HostServiceQuiescenceCommandResult{{ExitCode: 0}, {ExitCode: 113, Stderr: "Bad request.\nCould not find service \"com.tirosh.vitalserver.host-edge-proxy\" in domain for system\n"}, {ExitCode: 113, Stderr: "Bad request.\nCould not find service \"com.tirosh.vitalserver.host-update-handoff-supervisor\" in domain for system\n"}}}
 	quiescer, err := NewMacOSHostProductServiceQuiescerWithCommandRunner("/bin/launchctl", runner)
 	if err != nil {
 		t.Fatal(err)
@@ -50,11 +51,23 @@ func TestQuiesceHostProductServicesStopsOnlyDeclaredLaunchdServices(t *testing.T
 	if err := quiescer.QuiesceHostProductServices(context.Background(), quiescenceManifest()); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) != 2 {
+	if len(runner.calls) != 3 {
 		t.Fatalf("calls=%+v", runner.calls)
 	}
-	if runner.calls[0].executable != "/bin/launchctl" || strings.Join(runner.calls[0].arguments, " ") != "bootout system/com.tirosh.vitalserver.host-agent" || strings.Join(runner.calls[1].arguments, " ") != "bootout system/com.tirosh.vitalserver.host-edge-proxy" {
+	if runner.calls[0].executable != "/bin/launchctl" || strings.Join(runner.calls[0].arguments, " ") != "bootout system/com.tirosh.vitalserver.host-agent" || strings.Join(runner.calls[1].arguments, " ") != "bootout system/com.tirosh.vitalserver.host-edge-proxy" || strings.Join(runner.calls[2].arguments, " ") != "bootout system/com.tirosh.vitalserver.host-update-handoff-supervisor" {
 		t.Fatalf("calls=%+v", runner.calls)
+	}
+}
+
+func TestQuiesceHostProductServicesRejectsAmbiguousMacOS26LaunchctlStatus(t *testing.T) {
+	runner := &hostServiceQuiescenceCommandRunnerFake{results: []HostServiceQuiescenceCommandResult{{ExitCode: 113, Stderr: "launchctl transport temporarily unavailable"}}}
+	quiescer, err := NewMacOSHostProductServiceQuiescerWithCommandRunner("/bin/launchctl", runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = quiescer.QuiesceHostProductServices(context.Background(), quiescenceManifest())
+	if err == nil || !strings.Contains(err.Error(), "status 113") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

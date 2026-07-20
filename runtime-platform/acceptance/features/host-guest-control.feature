@@ -41,3 +41,27 @@ Feature: Host and Guest control ownership
     When the client retries the same lifecycle request ID
     Then the Host returns the durable running operation
     And the Host does not invoke the provider a second time
+
+  Scenario: Headless operator control uses the same public facade
+    Given an operator supplies the exact Host loopback control endpoint
+    When platformctl reads the Host Guest Runtime Control endpoint
+    And it requests Guest start with the returned endpoint id and revision
+    Then it displays the Host operation returned by the public facade
+    And a stale revision remains a typed rejection with its actual HTTP status
+
+  Scenario: Archive provider configuration crosses the Host facade without an export claim
+    Given the Guest Archive Export owner has selected one non-secret provider reference
+    When platformctl reads Archive Export provider configuration through the Host facade
+    Then it receives the Guest-owned provider kind, ID, and capability revision unchanged
+    And the response does not claim source finalization, artifact formation, upload, indexing, or provider reachability
+
+  Scenario: External archive credentials stay local while Guest Runtime remains operable
+    Given C46 selects an external VitalServer indexed-library provider
+    And its C51 credential material has not been provisioned
+    When Guest Runtime starts
+    Then C60 reports credential material state missing without a user ID or password
+    And the public Host edge does not route the C60 credential-material path
+    When an OS-authorized C52 local operator provisions exact C51 material matching C46
+    Then C60 returns only a provisioned non-secret outcome
+    And a later Archive effect may use the private material
+    But an unavailable or invalid C51 writes a known failed Archive receipt rather than upload success

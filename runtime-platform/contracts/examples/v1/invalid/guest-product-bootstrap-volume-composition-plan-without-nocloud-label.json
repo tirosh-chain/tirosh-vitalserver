@@ -15,7 +15,7 @@
     { "id": "guest-product-vitalserver-topology-deployment", "sourceRelativePath": "sources/guest-vitalserver-topology", "sizeBytes": 512, "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
     { "id": "guest-product-service-manager-deployment-configuration", "sourceRelativePath": "sources/guest-service-config", "sizeBytes": 512, "sha256": "6666666666666666666666666666666666666666666666666666666666666666" },
     { "id": "guest-product-systemd-unit", "sourceRelativePath": "generated/guest-service-unit", "sizeBytes": 512, "sha256": "7777777777777777777777777777777777777777777777777777777777777777" },
-    { "id": "recorder-gateway-linux-arm64", "sourceRelativePath": "sources/recorder-gateway", "sizeBytes": 4096, "sha256": "8888888888888888888888888888888888888888888888888888888888888888" }
+    { "id": "guest-node-services-linux-arm64", "sourceRelativePath": "sources/guest-node-services", "sizeBytes": 4096, "sha256": "8888888888888888888888888888888888888888888888888888888888888888" }
   ],
   "fileInstallations": [
     { "sourceId": "guest-runtime-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-runtime", "fileMode": "0755" },
@@ -26,7 +26,7 @@
     { "sourceId": "guest-product-systemd-unit", "destinationPath": "/etc/systemd/system/vitalserver-guest-product.service", "fileMode": "0644" }
   ],
   "archiveInstallations": [
-    { "sourceId": "recorder-gateway-linux-arm64", "archiveFormat": "tar-gzip", "entryModePolicy": "preserve-archive-mode", "symbolicLinkPolicy": "allow-relative-links-to-declared-regular-files", "destinationDirectory": "/opt/vitalserver", "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js"] }
+    { "sourceId": "guest-node-services-linux-arm64", "archiveFormat": "tar-gzip", "entryModePolicy": "preserve-archive-mode", "symbolicLinkPolicy": "allow-relative-links-to-declared-regular-files", "destinationDirectory": "/opt/vitalserver", "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js", "lab-recorder-runner/dist/cmd/lab-recorder-runner.js", "lab-recorder-runner/lab-scenario-catalog.json"] }
   ],
   "symbolicLinks": [
     { "linkPath": "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", "targetPath": "/etc/systemd/system/vitalserver-guest-product.service" }

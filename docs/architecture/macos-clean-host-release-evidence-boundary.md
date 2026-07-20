@@ -1,6 +1,6 @@
 # macOS Clean-Host Release Evidence Boundary
 
-> 상태: **runner와 deterministic command-contract test 구현 완료 / 실제 Apple-signed PKG clean-Host evidence는 아직 없음**
+> 상태: **runner와 deterministic command-contract test 구현 완료 / 실제 clean-Host evidence는 아직 없음**
 
 ## 1. 문제와 책임 분리
 
@@ -23,12 +23,17 @@ Runtime SQLite, `launchd`, installer receipt를 직접 state로 재구성하지 
 command의 raw stdout/stderr와 return code를 evidence document로 보존하고, 검증 가능한
 경우에만 C24 proof fragment를 만든다.
 
-unsigned PKG와 ad-hoc Virtualization-entitled Supervisor의 local development
-installation은 이 runner의 입력이 아니다. 그것은 별도
-`MacOSDevelopmentInstallationEvidenceRunner` journal과 [development evidence
-boundary](macos-development-installation-evidence-boundary.md)를 사용한다. development
-evidence의 verified 상태는 C24 proof, Apple Developer ID identity, 또는 notarization을
-만들지 않는다.
+The C23 `macOSInstallerSignaturePolicy` makes the required PKG signature state
+explicit for each release: `unsigned` requires `pkgutil` to report `Status: no
+signature`, while `developer-id` requires an accepted Apple Developer ID
+Installer signature. The unsigned policy does not infer trust from a package
+filename or an `installer` exit code: the runner binds the observed SHA-256,
+PKG identifier, and version before any installation effect. Operators must
+obtain that immutable artifact through an authenticated delivery channel.
+
+The separate `MacOSDevelopmentInstallationEvidenceRunner` remains useful for
+ad-hoc Virtualization-entitled Supervisor development installs. Its evidence
+does not create C24 proof, Developer ID identity, or notarization.
 
 ## 2. 용어와 release identity
 
@@ -39,6 +44,7 @@ ReleaseDeliveryPlan
   ├─ productVersion
   ├─ intendedInstallerArtifact(kind=pkg, expectedName)
   ├─ macOSInstallerPackageIdentifier
+  ├─ macOSInstallerSignaturePolicy(unsigned | developer-id)
   └─ requiredHostServiceRegistrations
        ├─ host-agent / launchd / label
        └─ host-edge-proxy / launchd / label
@@ -63,9 +69,12 @@ stateDiagram-v2
     created --> artifact_integrity: signed PKG metadata + signature observed
     artifact_integrity --> clean_host_preflight: C23 receipt/service absence observed
     clean_host_preflight --> clean_install: explicit installer effect + receipt observed
-    clean_install --> service_registration: two C23 launchd services observed
+    clean_install --> service_registration: three C23 launchd services observed
     service_registration --> reboot_checkpoint: pre-reboot boot-session observed
     reboot_checkpoint --> reboot: changed boot-session + receipt/services observed
+    reboot --> update: separate succeeded C29/C28/C55 apply scenario
+    reboot --> rollback: separate failed C29/C28/C55 rollback scenario
+    reboot --> uninstall_reinstall: explicit C54 preservation removal + receipt/service absence + fresh installer effect
 
     artifact_integrity --> failed
     clean_host_preflight --> failed
@@ -82,7 +91,7 @@ stateDiagram-v2
 
 `reboot-checkpoint`는 reboot effect가 아니다. runner는 `kern.bootsessionuuid`를
 checkpoint로 persist하고 종료한다. 운영자가 실제 reboot를 수행한 뒤 `record-reboot`를
-실행하면, 값이 바뀌었는지와 receipt/두 service가 남아 있는지를 관측한다. 따라서
+실행하면, 값이 바뀌었는지와 receipt/세 service가 남아 있는지를 관측한다. 따라서
 release tooling이 개발자 Mac을 몰래 재부팅하거나, process uptime만 보고 reboot를
 추정하지 않는다.
 
@@ -90,17 +99,22 @@ release tooling이 개발자 Mac을 몰래 재부팅하거나, process uptime만
 
 | operation | explicit macOS command | verified 조건 | ambiguous/non-zero 처리 |
 | --- | --- | --- | --- |
-| artifact integrity | `pkgutil --expand <PKG> <temporary directory>`로 expanded `PackageInfo`를 읽고, `pkgutil --check-signature <PKG>` 실행 | C23 package identifier/version과 일치하고 `Status: signed` 관측 | C24 `artifact-integrity=failed` |
-| clean preflight | `pkgutil --pkg-info <C23 identifier>`, `launchctl print system/<C23 label>` | receipt와 두 service 모두 명시적으로 absent | unknown command failure는 absent가 아니라 failed |
+| artifact integrity | `pkgutil --expand <PKG> <temporary directory>`로 expanded `PackageInfo`를 읽고, `pkgutil --check-signature <PKG>` 실행 | C23 package identifier/version과 일치하고 C23 policy가 `unsigned`이면 `Status: no signature`, `developer-id`이면 `Status: signed` 관측 | C24 `artifact-integrity=failed` |
+| clean preflight | `pkgutil --pkg-info <C23 identifier>`, `launchctl print system/<C23 label>` | receipt와 세 service 모두 명시적으로 absent | unknown command failure는 absent가 아니라 failed |
 | install | `installer -pkg <bound PKG> -target /` | explicit root process에서 installer success 후 exact receipt observed | C24 `clean-install=failed` |
-| service registration | 두 `launchctl print` | 두 C23 label 모두 registered | C24 `service-registration=failed` |
+| service registration | 세 `launchctl print` | 세 C23 label 모두 registered | C24 `service-registration=failed` |
 | reboot | `sysctl -n kern.bootsessionuuid` + receipt/service checks | checkpoint와 다른 boot session, receipt/service retained | C24 `reboot=failed` |
+| update | explicit C23 + C29/C55/C48/C49 paths, then `pkgutil`/`launchctl` | succeeded C29/C28/C55 apply and C48/C49 facts agree with fresh native receipt/services | C24 `update=failed`; command never executes an update |
+| rollback | explicit C23 + failed C29/C28/C55 rollback/C48/C49 paths, then `pkgutil`/`launchctl` | restored C48 version and native receipt/services agree | C24 `rollback=failed`; one journal cannot contain both update and rollback scenarios |
+| uninstall/reinstall | installed `host-installation-manager --mode remove` + `pkgutil`/`launchctl` + `installer` | C54 `preserve-mutable-data` receipt has the exact installation/release IDs, manager-owned receipt removal, C23 receipt/service absence, then exact bound PKG receipt/service recovery | C54 receipt failure, non-zero remove, ambiguous absence, or failed reinstall is C24 `uninstall-reinstall=failed`; reinstall is not executed after a failed removal proof |
 
 macOS `pkgutil --pkg-info`는 설치된 receipt만 읽는다. 따라서 runner는 설치 전 flat
 PKG의 release identity를 filename에서 추정하지 않고, `pkgutil --expand` 결과의
 `PackageInfo.identifier`와 `PackageInfo.version`으로 관측한다. 이 runner가 서명 없는 dev
-PKG를 `verified`로 만들 수는 없다. `pkgutil` exit code만 보지 않고 signature output의
-accepted status를 확인한다. 또한 launchctl/pkgutil의
+PKG를 정책 없이 `verified`로 만들 수는 없다. C23가 명시적으로 `unsigned`을 선택한
+경우에만 `Status: no signature`을 artifact identity로 받아들이고, 그 외에는
+Developer ID status를 요구한다. `pkgutil` exit code만 보지 않고 policy에 해당하는
+signature output을 확인한다. 또한 launchctl/pkgutil의
 임의 non-zero를 absence로 바꾸지 않는다. macOS가 명시적으로 “receipt/service 없음”을
 보고한 경우에만 clean-host preflight의 absent fact가 된다.
 
@@ -139,28 +153,65 @@ python3 -m tooling.macos_clean_host_release_evidence_runner record-reboot-checkp
 # Operator performs the actual reboot here.
 python3 -m tooling.macos_clean_host_release_evidence_runner record-reboot \
   --journal-path /absolute/evidence/macos-020/release-evidence.sqlite
+
+# Run this only after the staged updater has already produced C29/C28/C55 and
+# Host Installation Manager has produced fresh C48/C49 facts. It records
+# evidence; it does not execute the update.
+python3 -m tooling.macos_clean_host_release_evidence_runner record-host-platform-update \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite \
+  --release-delivery-plans-document /absolute/source/runtime-platform/product/delivery/release-delivery-plans.v1.json \
+  --host-update-journal /absolute/evidence/update/current-journal.json \
+  --host-platform-effect-receipt /absolute/evidence/update/host-platform-apply.json \
+  --host-installation-manifest /Library/Application\ Support/VitalServerRuntimePlatform/current/installation-manifest.json \
+  --host-installation-footprint /absolute/evidence/update/installation-footprint.json
+
+# All paths and identities below are caller-supplied C48/C50/C54 facts. The
+# runner does not derive them from the selected package, current symlink, or
+# mutable data directory.
+sudo python3 -m tooling.macos_clean_host_release_evidence_runner execute-uninstall-reinstall-preserving-data \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite \
+  --host-installation-manager /Library/Application\ Support/VitalServerRuntimePlatform/current/bin/host-installation-manager \
+  --installed-manifest /Library/Application\ Support/VitalServerRuntimePlatform/current/installation-manifest.json \
+  --installation-journal /Library/Application\ Support/VitalServerRuntimePlatform/data/installation-manager/current-transaction.json \
+  --installation-receipt /Library/Application\ Support/VitalServerRuntimePlatform/data/installation-manager/latest-installation-receipt.json \
+  --removal-journal /Library/Application\ Support/VitalServerRuntimePlatform/data/installation-manager/c24-removal-020.json \
+  --removal-receipt /Library/Application\ Support/VitalServerRuntimePlatform/data/installation-manager/c24-removal-020-receipt.json \
+  --removal-request-id c24-removal-020 \
+  --expected-installation-id vitalserver-runtime-platform-macos-reference \
+  --expected-release-id macos-release-assembly-020 \
+  --authorize-uninstall-reinstall
 ```
 
-`print-stage-proof --stage <C24 stage>`는 C24 record fragment를 출력한다. Release
-process는 evidence와 fragment를 review한 뒤에만 canonical
-`release-delivery-proofs.v1.json`에 attach한다. runner가 source tree의 C24 document를
-자동으로 수정하지 않는 이유는 local machine observation과 reviewed release declaration의
-owner가 다르기 때문이다.
+`write-stage-proof-fragment --stage <C24 stage> --output-proof-fragment <new absolute file>`는
+runner-owned C24 record를 새 immutable fragment file로 한 번만 발행한다.
+`print-stage-proof`는 사람이 읽을 stdout view만 제공한다. Release process는 evidence와
+fragment를 review한 뒤 C74
+`release_delivery_proof_attachment.py`로 새 immutable C24 candidate에만 attach한다.
+source tree의 `release-delivery-proofs.v1.json`은 자동으로 수정하지 않는다. local
+machine observation과 reviewed release declaration의 owner가 다르기 때문이다. C74의
+evidence SHA-256 재검증과 candidate gate 절차는 [Release Delivery Proof Attachment
+Boundary](release-delivery-proof-attachment-boundary.md)를 따른다.
 
-SBOM/notices, update, rollback, uninstall/reinstall은 아직 runner가 수행하지 않는다.
-따라서 checked-in C24 record는 계속 `pending`이고 `make release-ready`도 실패해야 한다.
-이것은 미완료 release evidence를 성공처럼 보이지 않게 하는 정상 동작이다.
+`uninstall/reinstall`은 runner가 C54 preservation flow로 수행할 수 있다.
+`record-host-platform-update`와 `record-host-platform-rollback`은 각각 existing
+staged-update result를 fresh native observation과 결합한다. apply와 rollback은
+서로 배타적인 C29 terminal outcome이므로 별도 run에서 수집해야 한다. SBOM/notices와
+실제 clean-Host capture/review는 여전히 release-process work다. 따라서 checked-in
+C24 record는 계속 `pending`이고 `make release-ready`도 실패해야 한다. 이것은 미완료
+release evidence를 성공처럼 보이지 않게 하는 정상 동작이다.
 
 ## 6. 테스트와 실제 proof의 차이
 
 `tooling/tests/test_macos_clean_host_release_evidence_runner.py`는 fake command result로
 다음을 검증한다.
 
-1. signed metadata → explicit absent preflight → root installer effect → exact receipt →
-   two launchd registration → changed boot session의 전체 transition;
+1. C23-policy-matched package metadata → explicit absent preflight → root installer effect → exact receipt →
+   three launchd registrations → changed boot session의 전체 transition;
 2. 모호한 `launchctl` failure가 service absence가 되지 않는 규칙;
 3. run 생성 후 PKG bytes가 바뀌면 동일 release evidence로 사용하지 않는 규칙;
-4. stage evidence가 overwrite되지 않는 규칙.
+4. stage evidence가 overwrite되지 않는 규칙;
+5. C54 receipt/receipt absence/service absence를 모두 확인한 뒤에만 재설치하는 규칙,
+   그리고 C54 receipt가 invalid이면 재설치를 수행하지 않는 규칙.
 
-이는 runner의 decision/recording contract proof다. 실제 Apple-signed PKG, clean Host,
-launchd, reboot evidence가 C24에 attach되기 전에는 제품 설치 proof가 아니다.
+이는 runner의 decision/recording contract proof다. 실제 C23 policy에 맞는 PKG, clean
+Host, launchd, reboot evidence가 C24에 attach되기 전에는 제품 설치 proof가 아니다.

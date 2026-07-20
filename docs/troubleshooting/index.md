@@ -157,6 +157,10 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-146 | Apple Virtualization이 bootstrap ISO를 disk attachment로 열지 못함 | Guest artifact compilation / macOS virtualization | implementation verified; entitlement-signed Guest boot evidence pending | [Apple Virtualization bootstrap storage-image format boundary](146_vz_bootstrap_storage_image_format_boundary.md) |
 | TS-147 | macOS VM supervisor가 Virtualization entitlement 없이 VZ configuration validation에 실패 | Packaging / macOS virtualization | staged-signing verification implemented; signed identity execution evidence pending | [macOS VM supervisor Virtualization entitlement signature](147_macos_virtual_machine_supervisor_virtualization_entitlement_signature.md) |
 | TS-148 | macOS VM start가 VZErrorDomain/code=1로 Guest boot console 이전에 실패 | macOS virtualization / Guest boot diagnostics | diagnostic contract implemented; native start cause pending | [macOS VM start failure before Guest boot console](148_macos_virtual_machine_start_fails_before_guest_boot_console.md) |
+| TS-155 | Host install transaction이 payload 실패 뒤 서비스를 멈춘 채 남음 | Packaging / Host state persistence | implemented; clean-Host C24 evidence pending | [Host installation transaction strands services after payload failure](155_host_installation_transaction_strands_services_after_payload_failure.md) |
+| TS-156 | macOS `launchctl`의 missing-service 응답이 clean Runtime Platform pkg install을 차단함 | Packaging / Host installation | active | [macOS launchctl missing service blocks clean pkg install](156_macos_launchctl_missing_service_blocks_clean_pkg_install.md) |
+| TS-157 | Electron Builder DMG build가 temporary disk image attachment를 남김 | Packaging / Local development | active | [Electron Builder DMG build leaves a temporary disk image attached](157_electron_builder_dmg_stale_temporary_attachment.md) |
+| TS-158 | DEB removal 뒤 completion verifier가 없어 C54 terminal receipt를 쓸 수 없음 | Packaging / Uninstall | resolved | [Linux DEB removal loses its completion verifier after package payload deletion](158_linux_deb_removal_completion_transport.md) |
 
 ## Follow-up 규칙
 

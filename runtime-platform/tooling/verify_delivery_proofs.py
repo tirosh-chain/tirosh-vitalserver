@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -24,15 +25,109 @@ RUNNER_BY_PLATFORM = {
 
 
 def validate(root: Path) -> Tuple[List[str], List[str]]:
-    """Return structural failures and intentionally pending proof labels."""
+    """Verify the checked-in C23 plan and C24 proof-set documents."""
+
+    return validate_document_paths(
+        root,
+        root / "product" / "delivery" / "release-delivery-plans.v1.json",
+        root / "product" / "delivery" / "release-delivery-proofs.v1.json",
+    )
+
+
+def validate_document_paths(
+    root: Path,
+    release_delivery_plans_document_path: Path,
+    release_delivery_proof_set_document_path: Path,
+) -> Tuple[List[str], List[str]]:
+    """Verify explicitly selected C23/C24 document paths.
+
+    A reviewed C24 candidate is a release output outside the source template.
+    This function makes the candidate's plan/proof paths explicit instead of
+    requiring a reviewer to copy it back into the checked-in template merely
+    to run the release assertion.
+    """
+
+    try:
+        plans_document = load_json(release_delivery_plans_document_path)
+        proofs_document = load_json(release_delivery_proof_set_document_path)
+    except ContractToolError as error:
+        return [str(error)], []
+    return validate_documents(root, plans_document, proofs_document)
+
+
+def validate_reviewed_candidate_document_paths(
+    root: Path,
+    release_delivery_plans_document_path: Path,
+    source_release_delivery_proof_set_document_path: Path,
+    release_delivery_proof_set_document_path: Path,
+    release_delivery_proof_attachment_review_document_path: Path,
+) -> Tuple[List[str], List[str]]:
+    """Verify that C74 binds one exact C24 candidate to its source template.
+
+    C24 clean-Host runners write evidence outside the checked-in template. C74
+    records the reviewed source, stage changes, and candidate identity. Normal
+    development validation can inspect a pending template; the release gate
+    must also reject an unreviewed or subsequently altered candidate.
+    """
+
+    findings, pending = validate_document_paths(
+        root,
+        release_delivery_plans_document_path,
+        release_delivery_proof_set_document_path,
+    )
+    try:
+        source_proof_set = load_json(source_release_delivery_proof_set_document_path)
+        candidate_proof_set = load_json(release_delivery_proof_set_document_path)
+        review_document = load_json(release_delivery_proof_attachment_review_document_path)
+    except ContractToolError as error:
+        return findings + [str(error)], pending
+
+    repository = ContractRepository(root)
+    try:
+        repository.load()
+    except ContractToolError as error:
+        return findings + [str(error)], pending
+    for error in repository.validate_instance(
+        "release-delivery-proof-attachment-review.schema.json", review_document
+    ):
+        findings.append(f"release delivery proof attachment review: {error}")
+    if findings:
+        return findings, pending
+
+    _validate_review_document_identity(
+        source_release_delivery_proof_set_document_path,
+        release_delivery_proof_set_document_path,
+        review_document,
+        findings,
+    )
+    _validate_reviewed_candidate_changes(
+        source_proof_set,
+        candidate_proof_set,
+        review_document,
+        findings,
+    )
+    return findings, pending
+
+
+def validate_documents(
+    root: Path,
+    plans_document: JSON_OBJECT,
+    proofs_document: JSON_OBJECT,
+) -> Tuple[List[str], List[str]]:
+    """Verify explicit C23/C24 documents supplied by a release workflow.
+
+    The release-proof attachment workflow needs to verify a candidate immutable
+    proof set before it publishes it.  Keeping that validation here avoids a
+    second, weaker interpretation of C23/C24 in tooling.  This function does
+    not read the documents or mutate them; callers retain ownership of their
+    release input and output paths.
+    """
 
     findings: List[str] = []
     pending: List[str] = []
     repository = ContractRepository(root)
     try:
         repository.load()
-        plans_document = load_json(root / "product" / "delivery" / "release-delivery-plans.v1.json")
-        proofs_document = load_json(root / "product" / "delivery" / "release-delivery-proofs.v1.json")
     except ContractToolError as error:
         return [str(error)], pending
 
@@ -126,6 +221,130 @@ def validate(root: Path) -> Tuple[List[str], List[str]]:
             if (plan_id, stage) not in proof_by_key:
                 findings.append(f"plan {plan_id} has no proof record for required stage {stage}")
     return findings, pending
+
+
+def _validate_review_document_identity(
+    source_proof_set_path: Path,
+    candidate_proof_set_path: Path,
+    review_document: JSON_OBJECT,
+    findings: List[str],
+) -> None:
+    """Require C74 to name the exact source and output C24 document bytes."""
+
+    source = review_document["sourceProofSet"]
+    output = review_document["outputProofSet"]
+    expected_source_uri = source_proof_set_path.resolve().as_uri()
+    if source["uri"] != expected_source_uri:
+        findings.append("C74 source proof-set URI does not match the selected source C24 document")
+    observed_source_sha256 = _sha256_file(source_proof_set_path, findings, "source C24 proof set")
+    if observed_source_sha256 is not None and source["sha256"] != observed_source_sha256:
+        findings.append("C74 source proof-set SHA-256 does not match the selected source C24 document")
+    if output["fileName"] != candidate_proof_set_path.name:
+        findings.append("C74 output proof-set file name does not match the selected C24 candidate")
+    observed_candidate_sha256 = _sha256_file(
+        candidate_proof_set_path, findings, "selected C24 candidate"
+    )
+    if observed_candidate_sha256 is not None and output["sha256"] != observed_candidate_sha256:
+        findings.append("C74 output proof-set SHA-256 does not match the selected C24 candidate")
+
+
+def _validate_reviewed_candidate_changes(
+    source_proof_set: JSON_OBJECT,
+    candidate_proof_set: JSON_OBJECT,
+    review_document: JSON_OBJECT,
+    findings: List[str],
+) -> None:
+    """Ensure C74 lists exactly the C24 stages changed from its source.
+
+    A review can settle only source ``pending`` facts. For a verified stage it
+    must retain the candidate's exact evidence identity. Every other C24 edit
+    is an unreviewed release declaration and is rejected.
+    """
+
+    source_by_key = _proofs_by_key(source_proof_set, "source C24 proof set", findings)
+    candidate_by_key = _proofs_by_key(candidate_proof_set, "selected C24 candidate", findings)
+    attached_by_key: Dict[Tuple[str, str], JSON_OBJECT] = {}
+    for attached in review_document["attachedProofs"]:
+        key = (attached["planId"], attached["stage"])
+        if key in attached_by_key:
+            findings.append(f"C74 contains duplicate attached proof: {key[0]}/{key[1]}")
+            continue
+        attached_by_key[key] = attached
+
+    changed_keys = {
+        key
+        for key in set(source_by_key) | set(candidate_by_key)
+        if source_by_key.get(key) != candidate_by_key.get(key)
+    }
+    reviewed_keys = set(attached_by_key)
+    for plan_id, stage in sorted(changed_keys - reviewed_keys):
+        findings.append(f"selected C24 candidate changes an unreviewed proof: {plan_id}/{stage}")
+    for plan_id, stage in sorted(reviewed_keys - changed_keys):
+        findings.append(f"C74 attached proof does not change the selected C24 candidate: {plan_id}/{stage}")
+
+    for key in sorted(reviewed_keys & changed_keys):
+        source_proof = source_by_key.get(key)
+        candidate_proof = candidate_by_key.get(key)
+        attached = attached_by_key[key]
+        plan_id, stage = key
+        if source_proof is None or candidate_proof is None:
+            findings.append(f"C74 attached proof is absent from source or candidate C24: {plan_id}/{stage}")
+            continue
+        if source_proof.get("status") != "pending":
+            findings.append(f"C74 may only replace a source pending proof: {plan_id}/{stage}")
+        if candidate_proof.get("status") != attached["status"]:
+            findings.append(f"C74 attached status does not match selected C24 candidate: {plan_id}/{stage}")
+        if attached["status"] == "verified":
+            candidate_evidence = candidate_proof.get("evidence")
+            if candidate_evidence != attached.get("evidence"):
+                findings.append(
+                    f"C74 attached evidence does not match selected C24 candidate: {plan_id}/{stage}"
+                )
+
+
+def _proofs_by_key(
+    proof_set: JSON_OBJECT, owner_description: str, findings: List[str]
+) -> Dict[Tuple[str, str], JSON_OBJECT]:
+    proofs = proof_set.get("proofs")
+    if not isinstance(proofs, list):
+        findings.append(f"{owner_description} must contain a proofs array")
+        return {}
+    by_key: Dict[Tuple[str, str], JSON_OBJECT] = {}
+    for proof in proofs:
+        if not isinstance(proof, dict):
+            findings.append(f"{owner_description} proof entry must be an object")
+            continue
+        plan_id = proof.get("planId")
+        stage = proof.get("stage")
+        if not isinstance(plan_id, str) or not isinstance(stage, str):
+            findings.append(f"{owner_description} proof entry has no plan/stage identity")
+            continue
+        key = (plan_id, stage)
+        if key in by_key:
+            findings.append(f"{owner_description} has duplicate proof: {plan_id}/{stage}")
+            continue
+        by_key[key] = proof
+    return by_key
+
+
+def _sha256_file(path: Path, findings: List[str], label: str) -> Optional[str]:
+    """Read an explicit regular file without treating a symlink as evidence."""
+
+    if not path.is_absolute():
+        findings.append(f"{label} must be an absolute path")
+        return None
+    if path.is_symlink() or not path.is_file():
+        findings.append(f"{label} must be a regular non-symlink file: {path}")
+        return None
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        findings.append(f"could not read {label}: {error}")
+        return None
+    return digest.hexdigest()
 
 
 def validate_verified_installer_artifact_identity(
@@ -311,14 +530,79 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument(
+        "--release-delivery-plans-document",
+        type=Path,
+        help="absolute C23 release-delivery plans document; defaults to the selected root's source document",
+    )
+    parser.add_argument(
+        "--release-delivery-proof-set-document",
+        type=Path,
+        help="absolute C24 proof-set document; defaults to the selected root's source template",
+    )
+    parser.add_argument(
+        "--source-release-delivery-proof-set-document",
+        type=Path,
+        help="absolute source C24 proof-set document that a supplied C74 review must bind",
+    )
+    parser.add_argument(
+        "--release-delivery-proof-attachment-review-document",
+        type=Path,
+        help="absolute C74 review document required to release a reviewed C24 candidate",
+    )
+    parser.add_argument(
         "--require-verified",
         action="store_true",
         help="fail unless every declared required delivery stage has verified clean-host evidence",
     )
     arguments = parser.parse_args(argv)
-    findings, pending = validate(arguments.root.resolve())
+    root = arguments.root.resolve()
+    plans_document_path = (
+        arguments.release_delivery_plans_document
+        or root / "product" / "delivery" / "release-delivery-plans.v1.json"
+    )
+    proof_set_document_path = (
+        arguments.release_delivery_proof_set_document
+        or root / "product" / "delivery" / "release-delivery-proofs.v1.json"
+    )
+    source_proof_set_document_path = (
+        arguments.source_release_delivery_proof_set_document
+        or root / "product" / "delivery" / "release-delivery-proofs.v1.json"
+    )
+    for label, path in (
+        ("release delivery plans document", plans_document_path),
+        ("release delivery proof set document", proof_set_document_path),
+    ):
+        if not path.is_absolute():
+            parser.error(label + " must be an absolute path")
+    findings, pending = validate_document_paths(
+        root, plans_document_path, proof_set_document_path
+    )
+    if arguments.release_delivery_proof_attachment_review_document is not None:
+        review_document_path = arguments.release_delivery_proof_attachment_review_document
+        if not review_document_path.is_absolute():
+            parser.error("release delivery proof attachment review document must be an absolute path")
+        if not source_proof_set_document_path.is_absolute():
+            parser.error("source release delivery proof set document must be an absolute path")
+        findings, pending = validate_reviewed_candidate_document_paths(
+            root,
+            plans_document_path,
+            source_proof_set_document_path,
+            proof_set_document_path,
+            review_document_path,
+        )
     if arguments.require_verified:
+        canonical_source_proof_set_document_path = (
+            root / "product" / "delivery" / "release-delivery-proofs.v1.json"
+        )
+        if source_proof_set_document_path.resolve() != canonical_source_proof_set_document_path:
+            findings.append(
+                "release-ready C74 review must bind the checked-in canonical C24 source proof set"
+            )
         findings.extend(f"release proof is not verified: {label}" for label in pending)
+        if arguments.release_delivery_proof_attachment_review_document is None:
+            findings.append(
+                "release-ready requires an explicit C74 release delivery proof attachment review document"
+            )
     if findings:
         print("runtime-platform delivery proof verification failed:")
         for finding in findings:

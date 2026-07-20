@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-installation-footprint",
   "title": "HostInstallationFootprint",
-  "description": "C49 Host Installation Manager-owned observation of the package receipt, immutable release slot, activation link, services, mutable stores, and unfinished installation transaction. It never treats an unreadable or unknown resource as absent.",
+  "description": "C49 Host Installation Manager-owned observation of the package receipt, immutable release slot, activation link, services, mutable stores, and explicit C50 transaction state. It never treats an unreadable or unknown resource as absent.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -54,8 +54,8 @@
     },
     "requiredServices": {
       "type": "array",
-      "minItems": 2,
-      "maxItems": 2,
+      "minItems": 3,
+      "maxItems": 3,
       "items": {
         "$ref": "#/$defs/RequiredServiceObservation"
       }
@@ -74,6 +74,21 @@
   "$defs": {
     "Issue": {
       "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    },
+    "HostAbsolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "anyOf": [
+        {
+          "pattern": "^/[^\\\\]*$",
+          "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+        },
+        {
+          "pattern": "^[A-Za-z]:[\\\\/][^\\u0000]*$",
+          "not": { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" }
+        }
+      ]
     },
     "PackageReceiptObservation": {
       "type": "object",
@@ -101,6 +116,18 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 128
+        },
+        "packageManagerReceiptState": {
+          "description": "Optional exact package-manager state. Linux C49 writers provide this alongside the stable generic receipt state; consumers that require a Linux lifecycle transition must reject a missing value.",
+          "type": "string",
+          "enum": [
+            "unpacked",
+            "configuring",
+            "installed",
+            "removing",
+            "removed",
+            "configuration-retained"
+          ]
         },
         "issue": {
           "$ref": "#/$defs/Issue"
@@ -169,10 +196,7 @@
           ]
         },
         "releaseRootPath": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 4096,
-          "pattern": "^/"
+          "$ref": "#/$defs/HostAbsolutePath"
         },
         "issue": {
           "$ref": "#/$defs/Issue"
@@ -218,10 +242,7 @@
           ]
         },
         "releaseCatalogPath": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 4096,
-          "pattern": "^/"
+          "$ref": "#/$defs/HostAbsolutePath"
         },
         "releaseIds": {
           "type": "array",
@@ -293,16 +314,10 @@
           ]
         },
         "currentReleaseLinkPath": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 4096,
-          "pattern": "^/"
+          "$ref": "#/$defs/HostAbsolutePath"
         },
         "observedTargetPath": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 4096,
-          "pattern": "^/"
+          "$ref": "#/$defs/HostAbsolutePath"
         },
         "issue": {
           "$ref": "#/$defs/Issue"
@@ -362,7 +377,8 @@
           "type": "string",
           "enum": [
             "host-agent",
-            "host-edge-proxy"
+            "host-edge-proxy",
+            "host-update-handoff-supervisor"
           ]
         },
         "name": {
@@ -484,23 +500,31 @@
       "additionalProperties": false,
       "required": [
         "state",
-        "journalPath"
+        "journalPath",
+        "receiptPath"
       ],
       "properties": {
         "state": {
           "type": "string",
           "enum": [
             "absent",
-            "active",
+            "preflight-verified",
+            "services-quiescing",
+            "activation-pending",
+            "activated",
             "completed",
+            "recovered",
+            "failed",
+            "legacy-blocked-preflight",
+            "receipt-residue",
             "unreadable"
           ]
         },
         "journalPath": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 4096,
-          "pattern": "^/"
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "receiptPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
         },
         "issue": {
           "$ref": "#/$defs/Issue"

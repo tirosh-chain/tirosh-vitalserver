@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/hostinstallationfilesystem"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/hostinstallationmanagerdomain"
 )
 
@@ -45,6 +46,9 @@ func (HostInstallationJournalFileStore) ReadHostInstallationJournal(_ context.Co
 		}
 		return hostinstallationmanagerdomain.HostInstallationJournal{}, fmt.Errorf("read Host installation journal trailing content: %w", err)
 	}
+	if err := hostinstallationmanagerdomain.ValidateHostInstallationJournal(journal); err != nil {
+		return hostinstallationmanagerdomain.HostInstallationJournal{}, fmt.Errorf("validate Host installation journal: %w", err)
+	}
 	return journal, nil
 }
 
@@ -52,15 +56,24 @@ func (HostInstallationJournalFileStore) WriteHostInstallationJournal(_ context.C
 	if path == "" {
 		return fmt.Errorf("Host installation journal path is required")
 	}
+	if err := hostinstallationmanagerdomain.ValidateHostInstallationJournal(journal); err != nil {
+		return fmt.Errorf("validate Host installation journal: %w", err)
+	}
 	return WriteHostInstallationDocumentJSON(path, journal)
 }
 
 // WriteHostInstallationDocumentJSON is shared by C50 journal and receipt
 // adapters so both documents are persisted atomically with identical rules.
 func WriteHostInstallationDocumentJSON(path string, document any) error {
+	if err := hostinstallationfilesystem.RejectSymbolicLinkPathComponents(path); err != nil {
+		return fmt.Errorf("inspect Host installation document path: %w", err)
+	}
 	directory := filepath.Dir(path)
-	if err := os.MkdirAll(directory, 0755); err != nil {
+	if err := os.MkdirAll(directory, 0750); err != nil {
 		return fmt.Errorf("create Host installation document directory: %w", err)
+	}
+	if err := hostinstallationfilesystem.RejectSymbolicLinkPathComponents(path); err != nil {
+		return fmt.Errorf("verify Host installation document path after directory creation: %w", err)
 	}
 	temporaryFile, err := os.CreateTemp(directory, ".host-installation-document-")
 	if err != nil {

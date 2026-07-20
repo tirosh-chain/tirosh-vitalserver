@@ -85,7 +85,7 @@ func RunGuestProductProcessDeployment(
 	if err != nil {
 		return err
 	}
-	invocations, err := guestproductprocesssupervisordomain.PlanGuestProductProcessInvocations(deploymentConfiguration, resolution)
+	invocations, err := guestproductprocesssupervisordomain.PlanGuestProductProcessInvocations(deploymentConfiguration, resolution, externalVitalServerDeliveryConfiguration)
 	if err != nil {
 		return err
 	}

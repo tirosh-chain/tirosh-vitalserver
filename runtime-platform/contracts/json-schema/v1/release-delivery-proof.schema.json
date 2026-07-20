@@ -85,8 +85,8 @@
         },
         "observedHostServiceRegistrations": {
           "type": "array",
-          "minItems": 2,
-          "maxItems": 2,
+          "minItems": 3,
+          "maxItems": 3,
           "items": {
             "$ref": "#/$defs/ObservedHostServiceRegistration"
           },
@@ -112,6 +112,21 @@
                 "properties": {
                   "role": {
                     "const": "host-edge-proxy"
+                  }
+                },
+                "required": [
+                  "role"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "const": "host-update-handoff-supervisor"
                   }
                 },
                 "required": [
@@ -316,7 +331,8 @@
           "type": "string",
           "enum": [
             "host-agent",
-            "host-edge-proxy"
+            "host-edge-proxy",
+            "host-update-handoff-supervisor"
           ]
         },
         "manager": {

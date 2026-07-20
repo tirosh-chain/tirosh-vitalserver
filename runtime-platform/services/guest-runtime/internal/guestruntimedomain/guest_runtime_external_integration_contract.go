@@ -149,6 +149,40 @@ func ExternalProviderReferenceEqual(left IntegrationProviderReference, right Int
 	return left.Kind == right.Kind && left.ID == right.ID && left.CapabilityRevision == right.CapabilityRevision
 }
 
+// NewExternalUpstreamCapabilityDocument derives the stable, provider-owned
+// capability document after an adapter has observed the explicitly selected
+// upstream. It is pure policy: adapters decide neither document identity nor
+// which lifecycle commands an externally owned VitalServer supports.
+func NewExternalUpstreamCapabilityDocument(integrationID string, reference IntegrationProviderReference, observedAt string) (CapabilityDocument, error) {
+	if !ValidIdentifier(integrationID) || validateIntegrationProviderReference(reference) != nil {
+		return CapabilityDocument{}, fmt.Errorf("External Upstream integration and provider reference must be valid")
+	}
+	unsupported := func(name string, code string) Capability {
+		retryable := false
+		return Capability{Name: name, State: "unsupported", Issue: &Issue{Code: code, Message: "External Upstream provider does not own bundled lifecycle behavior", Retryable: &retryable, Dependency: reference.ID}}
+	}
+	return CapabilityDocument{
+		SchemaVersion:      SchemaVersion,
+		ID:                 fmt.Sprintf("capability-%s-%s-r%d", integrationID, reference.ID, reference.CapabilityRevision),
+		Provider:           Provider{Kind: reference.Kind, ID: reference.ID},
+		CapabilityRevision: reference.CapabilityRevision,
+		ObservedAt:         observedAt,
+		Commands: []Capability{
+			{Name: "upstream.recorder.deliver", State: "supported"},
+			{Name: "upstream.artifact.upload", State: "supported"},
+			unsupported("upstream.lifecycle.start", "external-upstream-lifecycle-unsupported"),
+			unsupported("upstream.lifecycle.stop", "external-upstream-lifecycle-unsupported"),
+			unsupported("upstream.update", "external-upstream-update-unsupported"),
+			unsupported("upstream.backup", "external-upstream-backup-unsupported"),
+		},
+		Reads: []Capability{
+			{Name: "upstream.connection", State: "supported"},
+			{Name: "upstream.delivery.receipt", State: "supported"},
+			{Name: "upstream.observation.query", State: "supported"},
+		},
+	}, nil
+}
+
 func NewExternalUpstreamIntegration(command ExternalUpstreamApplyCommand, revision int, createdAt string, observedAt time.Time, observation ExternalUpstreamObservation) (ExternalUpstreamIntegration, *CapabilityDocument, error) {
 	if revision < 1 || createdAt == "" {
 		return ExternalUpstreamIntegration{}, nil, fmt.Errorf("invalid external upstream resource revision or creation timestamp")

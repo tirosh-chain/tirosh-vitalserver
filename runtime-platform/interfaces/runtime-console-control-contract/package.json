@@ -1,0 +1,18 @@
+{
+  "name": "@tirosh-chain/runtime-console-control-contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Named public Control API requests used by Runtime Console interfaces",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
+  }
+}

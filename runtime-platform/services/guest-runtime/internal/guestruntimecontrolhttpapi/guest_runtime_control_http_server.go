@@ -2,8 +2,10 @@
 package guestruntimecontrolhttpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -18,15 +20,16 @@ const maximumCommandBytes int64 = 1 << 20
 // contracts. It formats explicit application outcomes; it does not own
 // topology, Lab, archive, external integration, time, catalog, or telemetry state.
 type GuestRuntimeControlHTTPServer struct {
-	topologyService *guestruntimeapplication.GuestRuntimeTopologyApplicationService
-	lab             *guestruntimeapplication.GuestRuntimeLabApplicationService
-	archive         *guestruntimeapplication.GuestRuntimeArchiveApplicationService
-	external        *guestruntimeapplication.GuestRuntimeExternalUpstreamApplicationService
-	relay           *guestruntimeapplication.GuestRuntimeOutboundRelayApplicationService
-	time            *guestruntimeapplication.GuestRuntimeTimeAuthorityApplicationService
-	catalog         *guestruntimeapplication.GuestRuntimeObservationCatalogApplicationService
-	telemetry       *guestruntimeapplication.GuestRuntimeTelemetryPipelineApplicationService
-	coordinator     *guestruntimeapplication.GuestRuntimeLabArchiveLifecycleCoordinator
+	topologyService           *guestruntimeapplication.GuestRuntimeTopologyApplicationService
+	lab                       *guestruntimeapplication.GuestRuntimeLabApplicationService
+	archive                   *guestruntimeapplication.GuestRuntimeArchiveApplicationService
+	archiveCredentialMaterial *guestruntimeapplication.GuestRuntimeArchiveCredentialMaterialApplicationService
+	external                  *guestruntimeapplication.GuestRuntimeExternalUpstreamApplicationService
+	relay                     *guestruntimeapplication.GuestRuntimeOutboundRelayApplicationService
+	time                      *guestruntimeapplication.GuestRuntimeTimeAuthorityApplicationService
+	catalog                   *guestruntimeapplication.GuestRuntimeObservationCatalogApplicationService
+	telemetry                 *guestruntimeapplication.GuestRuntimeTelemetryPipelineApplicationService
+	coordinator               *guestruntimeapplication.GuestRuntimeLabArchiveLifecycleCoordinator
 }
 
 // GuestRuntimeControlModules keeps module composition named as the Guest Runtime grows.
@@ -36,6 +39,7 @@ type GuestRuntimeControlModules struct {
 	Topology                             *guestruntimeapplication.GuestRuntimeTopologyApplicationService
 	Lab                                  *guestruntimeapplication.GuestRuntimeLabApplicationService
 	Archive                              *guestruntimeapplication.GuestRuntimeArchiveApplicationService
+	ArchiveCredentialMaterial            *guestruntimeapplication.GuestRuntimeArchiveCredentialMaterialApplicationService
 	ExternalUpstreamIntegration          *guestruntimeapplication.GuestRuntimeExternalUpstreamApplicationService
 	OutboundRelayTarget                  *guestruntimeapplication.GuestRuntimeOutboundRelayApplicationService
 	GuestTimeAuthority                   *guestruntimeapplication.GuestRuntimeTimeAuthorityApplicationService
@@ -57,16 +61,29 @@ func NewGuestRuntimeControlHTTPServer(topologyService *guestruntimeapplication.G
 
 func NewGuestRuntimeControlHTTPServerWithModules(modules GuestRuntimeControlModules) *GuestRuntimeControlHTTPServer {
 	return &GuestRuntimeControlHTTPServer{
-		topologyService: modules.Topology,
-		lab:             modules.Lab,
-		archive:         modules.Archive,
-		external:        modules.ExternalUpstreamIntegration,
-		relay:           modules.OutboundRelayTarget,
-		time:            modules.GuestTimeAuthority,
-		catalog:         modules.RecorderObservationCatalog,
-		telemetry:       modules.GuestTelemetryPipeline,
-		coordinator:     guestruntimeapplication.NewGuestRuntimeLabArchiveLifecycleCoordinator(modules.Lab, modules.Archive, modules.LabArchiveLifecycleCoordinationClock),
+		topologyService:           modules.Topology,
+		lab:                       modules.Lab,
+		archive:                   modules.Archive,
+		archiveCredentialMaterial: modules.ArchiveCredentialMaterial,
+		external:                  modules.ExternalUpstreamIntegration,
+		relay:                     modules.OutboundRelayTarget,
+		time:                      modules.GuestTimeAuthority,
+		catalog:                   modules.RecorderObservationCatalog,
+		telemetry:                 modules.GuestTelemetryPipeline,
+		coordinator:               guestruntimeapplication.NewGuestRuntimeLabArchiveLifecycleCoordinator(modules.Lab, modules.Archive, modules.LabArchiveLifecycleCoordinationClock),
 	}
+}
+
+// ReconcilePendingTerminalArchiveExports is the process-start recovery hook
+// for already durable Lab terminal intents. It is intentionally outside the
+// HTTP request switch: a process restart must not require a browser or expose
+// a generic recovery route. Missing Lab/Archive dependencies remain explicit
+// composition failure rather than an empty successful reconciliation.
+func (server *GuestRuntimeControlHTTPServer) ReconcilePendingTerminalArchiveExports(ctx context.Context) error {
+	if server.coordinator == nil {
+		return fmt.Errorf("Lab terminal archive reconciliation is unavailable because Lab, Archive, or its coordination clock is not composed")
+	}
+	return server.coordinator.ReconcilePendingTerminalArchiveExports(ctx)
 }
 
 func (server *GuestRuntimeControlHTTPServer) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -106,10 +123,16 @@ func (server *GuestRuntimeControlHTTPServer) ServeHTTP(response http.ResponseWri
 		server.getDeletionReceipt(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/lab/deletion-receipts/"))
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/archive/exports":
 		server.exportArtifact(response, request)
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/runtime/archive/export-provider":
+		server.getArchiveExportProviderConfiguration(response, request)
 	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/archive/manifests/") != "":
 		server.getArtifactManifest(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/archive/manifests/"))
 	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/archive/export-receipts/") != "":
 		server.getExportReceipt(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/archive/export-receipts/"))
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/runtime/archive/credential-material":
+		server.getArchiveCredentialMaterialAvailability(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/archive/credential-material":
+		server.provisionArchiveCredentialMaterial(response, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/runtime/external-upstreams":
 		server.listExternalUpstreams(response, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/external-upstreams":
@@ -146,6 +169,51 @@ func (server *GuestRuntimeControlHTTPServer) ServeHTTP(response http.ResponseWri
 		response.Header().Set("Allow", "GET, POST")
 		writeJSON(response, http.StatusNotFound, map[string]string{"error": "control route is not implemented by Guest Runtime"})
 	}
+}
+
+func (server *GuestRuntimeControlHTTPServer) getArchiveCredentialMaterialAvailability(response http.ResponseWriter, request *http.Request) {
+	if server.archiveCredentialMaterial == nil {
+		writeJSON(response, http.StatusServiceUnavailable, guestruntimedomain.VitalServerIndexedLibraryCredentialMaterialAvailability{
+			SchemaVersion: guestruntimedomain.SchemaVersion,
+			State:         "failed",
+			ObservedAt:    guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+			Issue:         &guestruntimedomain.Issue{Code: "credential-material-owner-unavailable", Message: "Guest credential-material owner is not configured", Retryable: boolPointer(true), Dependency: "guest-secret-material"},
+		})
+		return
+	}
+	writeJSON(response, http.StatusOK, server.archiveCredentialMaterial.ReadVitalServerIndexedLibraryCredentialMaterialAvailability(request.Context()))
+}
+
+func (server *GuestRuntimeControlHTTPServer) provisionArchiveCredentialMaterial(response http.ResponseWriter, request *http.Request) {
+	if server.archiveCredentialMaterial == nil {
+		writeJSON(response, http.StatusServiceUnavailable, guestruntimedomain.VitalServerIndexedLibraryCredentialMaterialProvisioningOutcome{
+			SchemaVersion: guestruntimedomain.SchemaVersion,
+			State:         "failed",
+			ObservedAt:    guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+			Issue:         &guestruntimedomain.Issue{Code: "credential-material-owner-unavailable", Message: "Guest credential-material owner is not configured", Retryable: boolPointer(true), Dependency: "guest-secret-material"},
+		})
+		return
+	}
+	var material guestruntimedomain.VitalServerIndexedLibraryCredentialMaterial
+	if _, err := decodeCommand(request, &material); err != nil {
+		writeJSON(response, http.StatusBadRequest, guestruntimedomain.VitalServerIndexedLibraryCredentialMaterialProvisioningOutcome{
+			SchemaVersion: guestruntimedomain.SchemaVersion,
+			State:         "rejected",
+			ObservedAt:    guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+			Issue:         &guestruntimedomain.Issue{Code: "invalid-credential-material-command", Message: "credential material command is invalid"},
+		})
+		return
+	}
+	outcome := server.archiveCredentialMaterial.ProvisionVitalServerIndexedLibraryCredentialMaterial(request.Context(), material)
+	if outcome.State == "provisioned" {
+		writeJSON(response, http.StatusOK, outcome)
+		return
+	}
+	if outcome.State == "rejected" {
+		writeJSON(response, http.StatusBadRequest, outcome)
+		return
+	}
+	writeJSON(response, http.StatusServiceUnavailable, outcome)
 }
 
 func (server *GuestRuntimeControlHTTPServer) applyTimeAuthority(response http.ResponseWriter, request *http.Request) {
@@ -417,6 +485,14 @@ func (server *GuestRuntimeControlHTTPServer) exportArtifact(response http.Respon
 	}
 	operation, rejection, admissionFailure := server.coordinator.ExecuteArtifactExportCommand(request.Context(), command)
 	server.writeCommandOutcome(response, operation, rejection, admissionFailure)
+}
+
+func (server *GuestRuntimeControlHTTPServer) getArchiveExportProviderConfiguration(response http.ResponseWriter, request *http.Request) {
+	if server.archive == nil {
+		server.writeArchiveUnavailable(response, request)
+		return
+	}
+	writeJSON(response, http.StatusOK, server.archive.ReadArchiveExportProviderConfiguration(request.Context()))
 }
 
 func (server *GuestRuntimeControlHTTPServer) getArtifactManifest(response http.ResponseWriter, request *http.Request, id string) {

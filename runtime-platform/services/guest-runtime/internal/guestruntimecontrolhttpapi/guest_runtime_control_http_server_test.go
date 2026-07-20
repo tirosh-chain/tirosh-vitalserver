@@ -201,3 +201,30 @@ func TestTopologyAdmissionAmbiguityUsesTypedPublicResponse(t *testing.T) {
 		t.Fatalf("failure = %+v", failure)
 	}
 }
+
+func TestArchiveRoutesReportAnUnavailableOwnerWithoutInventingOwnerState(t *testing.T) {
+	server := guestruntimecontrolhttpapi.NewGuestRuntimeControlHTTPServerWithModules(
+		guestruntimecontrolhttpapi.GuestRuntimeControlModules{},
+	)
+	for _, expectation := range []struct {
+		request       *http.Request
+		expectedState string
+	}{
+		{httptest.NewRequest(http.MethodGet, "/v1/runtime/archive/export-provider", nil), "unavailable"},
+		{httptest.NewRequest(http.MethodGet, "/v1/runtime/archive/credential-material", nil), "failed"},
+		{httptest.NewRequest(http.MethodPost, "/v1/runtime/archive/credential-material", bytes.NewBufferString(`{}`)), "failed"},
+	} {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, expectation.request)
+		if response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("archive owner unavailable status = %d body=%s", response.Code, response.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode archive owner unavailable response: %v", err)
+		}
+		if body["state"] != expectation.expectedState || body["credentialReference"] != nil || body["value"] != nil {
+			t.Fatalf("archive owner error must preserve its explicit state without inventing owner configuration: %#v", body)
+		}
+	}
+}

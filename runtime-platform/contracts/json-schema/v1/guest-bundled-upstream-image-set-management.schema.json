@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-bundled-upstream-image-set-management",
+  "title": "GuestBundledUpstreamImageSetManagement",
+  "description": "C64 Guest-owned bundled Upstream container image-set configuration, update command, and durable operation. A Host C55 executor may submit an immutable image-set archive through the declared C32 bridge but never reads or writes Guest image-set state and never invokes the Guest container engine.",
+  "oneOf": [
+    { "$ref": "#/$defs/ManagerConfiguration" },
+    { "$ref": "#/$defs/ImageSetUpdateCommand" },
+    { "$ref": "#/$defs/ImageSetOperation" }
+  ],
+  "$defs": {
+    "Identifier": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "AbsoluteGuestPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "Port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "Artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "sizeBytes", "mediaType"],
+      "properties": {
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "mediaType": { "const": "application/vnd.tirosh.vitalserver.bundled-upstream-image-set+tar+gzip" }
+      }
+    },
+    "ActiveImageSetSelection": {
+      "description": "The selected active image-set is explicitly either unprovisioned or active. A missing/invalid/unreadable manager state document is not represented by this desired or observed selection.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "enum": ["unprovisioned", "active"] },
+        "imageSetId": { "$ref": "#/$defs/Identifier" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "unprovisioned" } }, "required": ["state"] },
+          "then": { "not": { "required": ["imageSetId"] } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "active" } }, "required": ["state"] },
+          "then": { "required": ["imageSetId"] }
+        }
+      ]
+    },
+    "ImageSetTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["imageSetId", "artifact"],
+      "properties": {
+        "imageSetId": { "$ref": "#/$defs/Identifier" },
+        "artifact": { "$ref": "#/$defs/Artifact" }
+      }
+    },
+    "Issue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" },
+    "ManagerConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "managerId", "listener", "controlVirtioSocketListener", "stateDirectory", "stagingDirectory", "stateDirectoryMode", "maximumImageSetArtifactBytes", "containerEngine"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "managerId": { "$ref": "#/$defs/Identifier" },
+        "listener": {
+          "type": "object", "additionalProperties": false, "required": ["bindHost", "port"],
+          "properties": { "bindHost": { "const": "127.0.0.1" }, "port": { "$ref": "#/$defs/Port" } }
+        },
+        "controlVirtioSocketListener": {
+          "type": "object", "additionalProperties": false, "required": ["port"],
+          "properties": { "port": { "$ref": "#/$defs/Port" } }
+        },
+        "stateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "stagingDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "stateDirectoryMode": { "const": "0700" },
+        "maximumImageSetArtifactBytes": { "type": "integer", "minimum": 1, "maximum": 68719476736 },
+        "containerEngine": {
+          "description": "The one Guest-owned engine command. C64 invokes only its fixed `load --input` and `compose --project-name --file up --detach --remove-orphans` forms.",
+          "type": "object", "additionalProperties": false, "required": ["kind", "executablePath", "composeProjectName"],
+          "properties": {
+            "kind": { "const": "docker-cli" },
+            "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+            "composeProjectName": { "$ref": "#/$defs/Identifier" }
+          }
+        }
+      }
+    },
+    "ImageSetUpdateCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "updateId", "expectedActiveImageSet", "targetImageSet", "requestedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "updateId": { "$ref": "#/$defs/Identifier" },
+        "expectedActiveImageSet": { "$ref": "#/$defs/ActiveImageSetSelection" },
+        "targetImageSet": { "$ref": "#/$defs/ImageSetTarget" },
+        "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "ImageSetOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "updateId", "expectedActiveImageSet", "targetImageSet", "state", "observedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "updateId": { "$ref": "#/$defs/Identifier" },
+        "expectedActiveImageSet": { "$ref": "#/$defs/ActiveImageSetSelection" },
+        "targetImageSet": { "$ref": "#/$defs/ImageSetTarget" },
+        "state": { "enum": ["received", "staged", "loading-images", "starting-containers", "succeeded", "failed", "unavailable"] },
+        "activeImageSet": { "$ref": "#/$defs/ActiveImageSetSelection" },
+        "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "issue": { "$ref": "#/$defs/Issue" }
+      }
+    }
+  }
+}

@@ -12,6 +12,7 @@
         "expectedName": "VitalServerRuntimePlatform-0.2.0-dev.pkg"
       },
       "macOSInstallerPackageIdentifier": "com.tirosh.vitalserver.runtime-platform",
+      "macOSInstallerSignaturePolicy": "unsigned",
       "requiredHostServiceRegistrations": [
         {
           "role": "host-agent",
@@ -22,6 +23,11 @@
           "role": "host-edge-proxy",
           "manager": "launchd",
           "name": "com.tirosh.vitalserver.host-edge-proxy"
+        },
+        {
+          "role": "host-update-handoff-supervisor",
+          "manager": "launchd",
+          "name": "com.tirosh.vitalserver.host-update-handoff-supervisor"
         }
       ],
       "requiredProofStages": [
@@ -38,12 +44,12 @@
     {
       "schemaVersion": "v1",
       "id": "windows-runtime-platform-release",
-      "productVersion": "0.2.0-dev",
+      "productVersion": "0.2.0",
       "platform": "windows",
       "providerKind": "windows-hyperv-scm",
       "intendedInstallerArtifact": {
         "kind": "msi",
-        "expectedName": "VitalServerRuntimePlatform-0.2.0-dev.msi"
+        "expectedName": "VitalServerRuntimePlatform-0.2.0.msi"
       },
       "requiredHostServiceRegistrations": [
         {
@@ -55,6 +61,11 @@
           "role": "host-edge-proxy",
           "manager": "windows-scm",
           "name": "VitalServerHostEdgeProxy"
+        },
+        {
+          "role": "host-update-handoff-supervisor",
+          "manager": "windows-scm",
+          "name": "VitalServerHostUpdateHandoffSupervisor"
         }
       ],
       "requiredProofStages": [
@@ -88,6 +99,11 @@
           "role": "host-edge-proxy",
           "manager": "systemd",
           "name": "vitalserver-host-edge-proxy.service"
+        },
+        {
+          "role": "host-update-handoff-supervisor",
+          "manager": "systemd",
+          "name": "vitalserver-host-update-handoff-supervisor.service"
         }
       ],
       "requiredProofStages": [

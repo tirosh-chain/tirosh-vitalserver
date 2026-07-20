@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-product-removal-lifecycle",
+  "title": "HostProductRemovalRequest, HostProductRemovalJournal, and HostProductRemovalReceipt",
+  "description": "C54 Host Installation Manager-owned explicit product-removal lifecycle. A caller must choose whether mutable data is preserved or purged; no package uninstall, missing state, or adapter default supplies that choice. When dpkg or MSI owns the package receipt, C54 records an explicit awaiting-os-package-manager hand-off rather than claiming package removal completed.",
+  "oneOf": [
+    { "$ref": "#/$defs/Request" },
+    { "$ref": "#/$defs/Journal" },
+    { "$ref": "#/$defs/Receipt" }
+  ],
+  "$defs": {
+    "Issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    },
+    "DataDisposition": {
+      "type": "string",
+      "enum": ["preserve-mutable-data", "purge-all-product-data"]
+    },
+    "Request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "documentKind", "id", "installationId", "expectedReleaseId", "dataDisposition", "requestedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "documentKind": { "const": "host-product-removal-request" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "installationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "expectedReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "dataDisposition": { "$ref": "#/$defs/DataDisposition" },
+        "packageManagerCompletionTransport": { "$ref": "#/$defs/PackageManagerCompletionTransport" },
+        "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "Journal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "documentKind", "id", "requestId", "installationId", "releaseId", "dataDisposition", "state", "createdAt", "updatedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "documentKind": { "const": "host-product-removal-journal" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "installationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "releaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "dataDisposition": { "$ref": "#/$defs/DataDisposition" },
+        "packageManagerCompletionTransport": { "$ref": "#/$defs/PackageManagerCompletionTransport" },
+        "state": { "type": "string", "enum": ["removal-admitted", "services-quiescing", "immutable-content-removing", "mutable-data-removing", "awaiting-package-manager", "completed", "failed"] },
+        "failure": { "$ref": "#/$defs/Issue" },
+        "createdAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] },
+          "then": { "required": ["failure"] },
+          "else": { "not": { "required": ["failure"] } }
+        }
+      ]
+    },
+    "PackageManagerCompletionTransport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["managerPath", "manifestPath"],
+      "properties": {
+        "managerPath": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/HostAbsolutePath" },
+        "manifestPath": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/HostAbsolutePath" }
+      }
+    },
+    "Receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "documentKind", "id", "requestId", "installationId", "releaseId", "dataDisposition", "state", "observedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "documentKind": { "const": "host-product-removal-receipt" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "installationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "releaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "dataDisposition": { "$ref": "#/$defs/DataDisposition" },
+        "state": { "type": "string", "enum": ["completed", "awaiting-package-manager", "blocked", "failed"] },
+        "packageReceiptRemoval": {
+          "type": "string",
+          "enum": ["removed-by-host-installation-manager", "removed-by-os-package-manager", "awaiting-os-package-manager"]
+        },
+        "retainedMutableStoreIds": {
+          "type": "array",
+          "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+          "uniqueItems": true
+        },
+        "issue": { "$ref": "#/$defs/Issue" },
+        "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["blocked", "failed"] } }, "required": ["state"] },
+          "then": {
+            "required": ["issue"],
+            "not": { "anyOf": [{ "required": ["retainedMutableStoreIds"] }, { "required": ["packageReceiptRemoval"] }] }
+          },
+          "else": { "not": { "required": ["issue"] } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "completed" } }, "required": ["state"] },
+          "then": {
+            "required": ["packageReceiptRemoval"],
+            "properties": { "packageReceiptRemoval": { "enum": ["removed-by-host-installation-manager", "removed-by-os-package-manager"] } }
+          },
+          "else": {
+            "if": { "properties": { "state": { "const": "awaiting-package-manager" } }, "required": ["state"] },
+            "then": {
+              "required": ["packageReceiptRemoval"],
+              "properties": { "packageReceiptRemoval": { "const": "awaiting-os-package-manager" } }
+            },
+            "else": { "not": { "required": ["packageReceiptRemoval"] } }
+          }
+        },
+        {
+          "if": { "properties": { "dataDisposition": { "const": "purge-all-product-data" } }, "required": ["dataDisposition"] },
+          "then": { "not": { "required": ["retainedMutableStoreIds"] } }
+        }
+      ]
+    }
+  }
+}

@@ -19,7 +19,7 @@ package input에는 source absolute path를 남기지 않는다.
 | `GuestArtifactCompilationInputAssembler` | Release build | source byte 복사, identity capture, C35/C41 receipt을 한 new input root에 atomically publish | Guest image compile, ext4 write, boot, package compose |
 | C35 `GuestArtifactCompilationCommand` | GuestArtifactCompiler | relative input path, source size/SHA-256, selected builder identity, output layout | build-machine absolute path, source selection |
 | C41 `GuestArtifactCompilationInputAssemblyReceipt` | Release input assembler | C41 declaration digest, assembled C35/builder/input identity, completion time | Guest build/boot/install success |
-| `GuestProductBootstrapArtifactComposer` | selected C35 builder | C35/C37/C38/C39/C44와 external topology의 C46을 C40 `CIDATA` bootstrap-volume composition으로 바꿈 | builder/base 선택, Guest root write, Guest boot |
+| `GuestProductBootstrapArtifactComposer` | selected C35 builder | C35/C37/C38/C39/C44, C59 Guest Product Release Manager binary/configuration, external topology의 C46을 C40 `CIDATA` bootstrap-volume composition으로 바꿈 | builder/base 선택, Guest root write, Guest boot |
 
 전달 방향은 한 방향이다.
 

@@ -5,23 +5,48 @@
   "guestBootstrapVolumeFileSystem": "iso9660",
   "instanceId": "vitalserver-guest-bootstrap-instance",
   "localHostName": "vitalserver-guest",
-  "guestRuntime": { "artifactId": "guest-runtime-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-runtime", "fileMode": "0755" },
+  "guestArchitecture": "arm64",
+  "guestProductRelease": {
+    "releaseId": "vitalserver-guest-product-0.2.0-dev",
+    "releaseDirectory": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev",
+    "currentReleaseLinkPath": "/opt/vitalserver/current",
+    "releaseStateDirectory": "/var/lib/vitalserver/guest-product-releases",
+    "releaseStateDirectoryMode": "0700"
+  },
+  "guestRuntime": { "artifactId": "guest-runtime-linux-arm64", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-runtime", "fileMode": "0755" },
   "guestRuntimeStateDirectory": { "directoryPath": "/var/lib/vitalserver/guest-runtime", "directoryMode": "0700" },
-  "recorderGatewayBundle": {
-    "artifactId": "recorder-gateway-linux-arm64",
+  "guestTimeSynchronization": { "packageManager": "apt", "packageName": "chrony", "serviceName": "chrony.service", "configurationDestinationPath": "/etc/chrony/chrony.conf" },
+  "guestTelemetryCollector": { "artifactId": "guest-telemetry-collector-linux-arm64", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-telemetry-collector", "fileMode": "0755" },
+  "guestTelemetryCollectorConfiguration": { "artifactId": "guest-telemetry-collector-configuration", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-telemetry-collector.yaml", "fileMode": "0644" },
+  "guestTelemetryStateDirectory": { "directoryPath": "/var/lib/vitalserver/telemetry", "directoryMode": "0700" },
+  "guestNodeServicesBundle": {
+    "artifactId": "guest-node-services-linux-arm64",
     "archiveFormat": "tar-gzip",
     "entryModePolicy": "preserve-archive-mode",
     "symbolicLinkPolicy": "allow-relative-links-to-declared-regular-files",
-    "destinationDirectory": "/opt/vitalserver",
-    "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js"]
+    "destinationDirectory": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev",
+    "requiredArchivePaths": ["node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js", "lab-recorder-runner/dist/cmd/lab-recorder-runner.js", "lab-recorder-runner/lab-scenario-catalog.json"]
   },
-  "guestProductProcessSupervisor": { "artifactId": "guest-product-process-supervisor-linux-arm64", "destinationPath": "/opt/vitalserver/bin/guest-product-process-supervisor", "fileMode": "0755" },
-  "guestProductProcessDeployment": { "artifactId": "guest-product-process-deployment-configuration", "destinationPath": "/etc/vitalserver/guest-product-process-deployment.json", "fileMode": "0644" },
-  "guestProductVitalServerTopologyDeployment": { "artifactId": "guest-product-vitalserver-topology-deployment", "destinationPath": "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json", "fileMode": "0644" },
-  "externalVitalServerDeliveryConfiguration": { "artifactId": "external-vitalserver-delivery-configuration", "destinationPath": "/etc/vitalserver/external-vitalserver-delivery-configuration.json", "fileMode": "0644" },
+  "guestProductProcessSupervisor": { "artifactId": "guest-product-process-supervisor-linux-arm64", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-process-supervisor", "fileMode": "0755" },
+  "guestProductProcessDeployment": { "artifactId": "guest-product-process-deployment-configuration", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-process-deployment.json", "fileMode": "0644" },
+  "guestProductReleaseManager": {
+    "executable": { "artifactId": "guest-product-release-manager-linux-arm64", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-release-manager", "fileMode": "0755" },
+    "configuration": { "artifactId": "guest-product-release-manager-configuration", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-release-manager.json", "fileMode": "0644" },
+    "serviceUnit": {
+      "serviceUnitName": "vitalserver-guest-product-release-manager.service",
+      "unitDestinationPath": "/etc/systemd/system/vitalserver-guest-product-release-manager.service",
+      "enabledUnitLinkPath": "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product-release-manager.service",
+      "enabledUnitLinkTargetPath": "/etc/systemd/system/vitalserver-guest-product-release-manager.service",
+      "restart": { "mode": "on-failure", "delayMilliseconds": 1000 },
+      "logging": { "standardOutput": "journal+console", "standardError": "journal+console" },
+      "install": { "wantedByTarget": "multi-user.target" }
+    }
+  },
+  "guestProductVitalServerTopologyDeployment": { "artifactId": "guest-product-vitalserver-topology-deployment", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-vitalserver-topology-deployment.json", "fileMode": "0644" },
+  "externalVitalServerDeliveryConfiguration": { "artifactId": "external-vitalserver-delivery-configuration", "destinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/external-vitalserver-delivery-configuration.json", "fileMode": "0644" },
   "guestProductServiceManagerDeployment": {
     "artifactId": "guest-product-service-manager-deployment-configuration",
-    "configurationDestinationPath": "/etc/vitalserver/guest-product-service-manager-deployment.json",
+    "configurationDestinationPath": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-service-manager-deployment.json",
     "unitDestinationPath": "/etc/systemd/system/vitalserver-guest-product.service",
     "enabledUnitLinkPath": "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service",
     "enabledUnitLinkTargetPath": "/etc/systemd/system/vitalserver-guest-product.service"

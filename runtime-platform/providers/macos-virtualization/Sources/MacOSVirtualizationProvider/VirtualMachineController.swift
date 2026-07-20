@@ -15,6 +15,8 @@ public final class AppleVirtualMachineController: VirtualMachineControlling, @un
     // VZ state read and operation must stay on that exact queue.
     private let guestRuntimeVirtualMachineOperationQueue: DispatchQueue
     private let guestRuntimeControlHostLocalHTTPBridge: GuestRuntimeControlHostLocalHTTPBridge
+    private let guestProductReleaseManagerHostLocalHTTPBridge: GuestProductReleaseManagerHostLocalHTTPBridge
+    private let guestBundledUpstreamImageSetManagerHostLocalHTTPBridge: GuestBundledUpstreamImageSetManagerHostLocalHTTPBridge?
     private let guestPublicServiceHostLocalHTTPBridges: [GuestPublicServiceHostLocalHTTPBridge]
     private let guestBootConsoleCaptureFileHandle: FileHandle
 
@@ -22,12 +24,16 @@ public final class AppleVirtualMachineController: VirtualMachineControlling, @un
         virtualMachine: VZVirtualMachine,
         guestRuntimeVirtualMachineOperationQueue: DispatchQueue,
         guestRuntimeControlHostLocalHTTPBridge: GuestRuntimeControlHostLocalHTTPBridge,
+        guestProductReleaseManagerHostLocalHTTPBridge: GuestProductReleaseManagerHostLocalHTTPBridge,
+        guestBundledUpstreamImageSetManagerHostLocalHTTPBridge: GuestBundledUpstreamImageSetManagerHostLocalHTTPBridge?,
         guestPublicServiceHostLocalHTTPBridges: [GuestPublicServiceHostLocalHTTPBridge],
         guestBootConsoleCaptureFileHandle: FileHandle
     ) {
         self.virtualMachine = virtualMachine
         self.guestRuntimeVirtualMachineOperationQueue = guestRuntimeVirtualMachineOperationQueue
         self.guestRuntimeControlHostLocalHTTPBridge = guestRuntimeControlHostLocalHTTPBridge
+        self.guestProductReleaseManagerHostLocalHTTPBridge = guestProductReleaseManagerHostLocalHTTPBridge
+        self.guestBundledUpstreamImageSetManagerHostLocalHTTPBridge = guestBundledUpstreamImageSetManagerHostLocalHTTPBridge
         self.guestPublicServiceHostLocalHTTPBridges = guestPublicServiceHostLocalHTTPBridges
         self.guestBootConsoleCaptureFileHandle = guestBootConsoleCaptureFileHandle
     }
@@ -75,6 +81,19 @@ public final class AppleVirtualMachineController: VirtualMachineControlling, @un
                 case .success:
                     do {
                         try self.guestRuntimeControlHostLocalHTTPBridge.start()
+                        do {
+                            try self.guestProductReleaseManagerHostLocalHTTPBridge.start()
+                        } catch {
+                            self.guestRuntimeControlHostLocalHTTPBridge.stop()
+                            throw error
+                        }
+                        do {
+                            try self.guestBundledUpstreamImageSetManagerHostLocalHTTPBridge?.start()
+                        } catch {
+                            self.guestProductReleaseManagerHostLocalHTTPBridge.stop()
+                            self.guestRuntimeControlHostLocalHTTPBridge.stop()
+                            throw error
+                        }
                         var startedGuestPublicServiceHostLocalHTTPBridges: [GuestPublicServiceHostLocalHTTPBridge] = []
                         do {
                             for bridge in self.guestPublicServiceHostLocalHTTPBridges {
@@ -83,6 +102,8 @@ public final class AppleVirtualMachineController: VirtualMachineControlling, @un
                             }
                         } catch {
                             startedGuestPublicServiceHostLocalHTTPBridges.forEach { $0.stop() }
+                            self.guestBundledUpstreamImageSetManagerHostLocalHTTPBridge?.stop()
+                            self.guestProductReleaseManagerHostLocalHTTPBridge.stop()
                             self.guestRuntimeControlHostLocalHTTPBridge.stop()
                             throw error
                         }
@@ -104,6 +125,8 @@ public final class AppleVirtualMachineController: VirtualMachineControlling, @un
 
     public func requestStop() throws {
         guestPublicServiceHostLocalHTTPBridges.forEach { $0.stop() }
+        guestBundledUpstreamImageSetManagerHostLocalHTTPBridge?.stop()
+        guestProductReleaseManagerHostLocalHTTPBridge.stop()
         guestRuntimeControlHostLocalHTTPBridge.stop()
         try guestRuntimeVirtualMachineOperationQueue.sync {
             try virtualMachine.requestStop()

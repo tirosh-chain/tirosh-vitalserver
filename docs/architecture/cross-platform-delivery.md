@@ -8,9 +8,19 @@
 
 Cross-platform delivery는 Host core에 OS 조건문이나 fallback을 넣지 않는다. Host Agent는 deployment configuration에 적힌 `providerKind` 하나를 `GuestRuntimeControlEndpoint`에 저장하고, 그 Platform Provider process 하나만 호출한다.
 
+OS clean-host evidence runner도 같은 효과 경계를 따른다. artifact identity,
+preflight, service registration, boot-session, update/rollback observation은
+read-only stage이고 별도 승인 없이 기록할 수 있다. 반면 Windows/Linux의
+`execute-clean-install`은 반드시 `--authorize-clean-install`, C54
+`execute-uninstall-reinstall-preserving-data`는 반드시
+`--authorize-uninstall-reinstall`을 받아야 한다. macOS도 같은 이름의 명시
+승인 규칙을 사용한다. 이 플래그는 성공 증명이 아니라, runner가 package-manager
+effect를 시작해도 된다는 operator intent일 뿐이다.
+
 | 사실 | Owner | durable form / evidence | 뜻하지 않는 것 |
 | --- | --- | --- | --- |
 | provider 선택, request ID/revision idempotency, Host operation | Host Agent | Host SQLite `Operation`, `GuestRuntimeControlEndpoint` | native VM/service가 실제로 실행됐다는 것 |
+| native Guest machine provision/reuse | selected Windows/Linux platform provider | C62 desired input, C63 receipt | Guest boot/readiness, installer success, artifact build proof |
 | VM 및 Host service의 native effect/live observation | selected platform provider | C10 result, C22 installation evidence | Guest Runtime readiness, 다른 OS provider 사용 허용 |
 | intended installer artifact와 required Host service registration의 요구 stage | Release process | C23 `ReleaseDeliveryPlan` | package가 생성·서명·설치됐다는 것 |
 | clean install/reboot/update/rollback/uninstall proof | matching OS clean-host runner | C24 `ReleaseDeliveryProofSet` + `ObservedInstallerArtifact` + evidence URI/SHA-256 | portable unit/compile 성공 |
@@ -58,25 +68,47 @@ sequenceDiagram
 
 Windows/Linux bridge source is in `runtime-platform/providers/os-provider-bridge/`. It compiles independently for both target OSes. Its side-effect port is one command executor; unit tests supply exact outputs/errors rather than parsing a host log.
 
-- Linux reads `virsh domstate` and `systemctl is-active`, then uses only `virsh start/shutdown/reboot` and `systemctl start/stop/restart` for the selected configuration.
-- Windows reads `Get-VM` and `Get-Service`, then uses only `Start/Stop/Restart-VM` and `Start/Stop/Restart-Service`. VM and service names are PowerShell single-quoted/escaped; there is no shell interpolation fallback.
+- Linux reads `virsh domstate` and `systemctl is-active`, then uses only `virsh start/shutdown/reboot` and `systemctl start/stop/restart` for the selected configuration. Its separate C62 provision effect verifies two immutable raw release artifacts, converts them to declared qcow2 runtime attachments, defines the declared UEFI libvirt machine, and records C63 only after every effect succeeds.
+- Windows reads `Get-VM` and `Get-Service`, then uses only `Start/Stop/Restart-VM` and `Start/Stop/Restart-Service`. VM and service names are PowerShell single-quoted/escaped; there is no shell interpolation fallback. Its C62 provision effect converts the declared raw source artifacts to VHDX, defines the specified generation-2 Hyper-V machine, and records C63 only after the definition succeeds.
 - missing configuration/native executable, wrong host OS, command error, and unrecognised native state produce C10 `unavailable` or `failed` with an issue. They do not trigger a provider substitution.
 
 C22 `ProviderInstallationEvidence` keeps `installation`, `virtualMachine`, `service`, `guest-vm-lifecycle`, and `host-service-lifecycle` separate. A bridge’s `--mode evidence` response is provider-owned observation input for support/release evidence, not a Host-created health summary.
 
-Host Agent는 C33 `HostAgentDeploymentConfiguration` 하나를 service launch input으로 사용한다. C33은 **Host service instance**를 구성하고, C21은 **한 번의 lifecycle effect**에 대한 request ID/revision correlation이다. macOS C33은 C32 `MacOSVirtualMachineConfiguration` path와 `macOSVirtualMachineSupervisorExecutablePath`를 포함한다. C32는 **하나의 Guest VM**을 구성하며 kernel/initrd, disk image, CPU/memory, NAT attachment, unicast MAC이 모두 명시되어야 한다. Windows/Linux C33은 `nativeProviderBridgeExecutablePath`, native VM과 Host service name을 포함한다. Host Agent와 selected process는 설치 directory, VM name, 이전 process state에서 이 값을 만들어 내지 않는다.
+Host Agent는 C33 `HostAgentDeploymentConfiguration` 하나를 service launch input으로 사용한다. C33은 **Host service instance**를 구성하고, C21은 **한 번의 lifecycle effect**에 대한 request ID/revision correlation이다. macOS C33은 C32 `MacOSVirtualMachineConfiguration` path와 `macOSVirtualMachineSupervisorExecutablePath`를 포함한다. C32는 **하나의 Guest VM**을 구성하며 kernel/initrd, disk image, CPU/memory, NAT attachment, unicast MAC이 모두 명시되어야 한다. Windows/Linux C33은 `nativeProviderBridgeExecutablePath`, native VM과 Host service name, 그리고 `runtime-platform-provisioned` 또는 `externally-provisioned` ownership을 포함한다. 전자는 C62 path를 반드시 명시하고, 후자는 C62를 포함할 수 없다. Host Agent와 selected process는 설치 directory, VM name, 이전 process state에서 이 값을 만들어 내지 않는다.
 
 Host service registration과 Guest lifecycle은 같은 event가 아니다. macOS PKG는 C23이
-선언한 `host-agent`와 `host-edge-proxy` launchd registration을 각각 bootstrap하지만,
+선언한 `host-agent`, `host-edge-proxy`, `host-update-handoff-supervisor` launchd
+registration을 각각 bootstrap하지만,
 그 어느 service도 Guest VM을 자동으로 start하지 않는다. Host Agent만 C33으로 시작하며
 VM lifecycle은 반드시 C9 command의 request ID와 expected resource revision을 통해
 Host Agent가 admission해야 한다. 이 구분 때문에 installer/postinstall은 Guest start
-HTTP request를 보내지 않으며, C24 clean-host proof는 두 Host service registration 후
+HTTP request를 보내지 않으며, C24 clean-host proof는 C23의 모든 Host service
+registration 후
 별도의 explicit C9 start와 provider observation을 증명해야 한다.
 
 ## 4. Delivery and service-lifecycle contract
 
-`product/platform-providers/` declares supported provider selections. `product/delivery/release-delivery-plans.v1.json` declares one C23 plan per OS and identifies the `intendedInstallerArtifact` plus both `requiredHostServiceRegistrations` (`host-agent`, `host-edge-proxy`). The macOS plan also owns `macOSInstallerPackageIdentifier`, so package receipt identity is not inferred from a filename, install path, or service label. It uses no inferred data path, VM name, service name, endpoint, or credential.
+`product/platform-providers/` declares supported provider selections. `product/delivery/release-delivery-plans.v1.json` declares one C23 plan per OS and identifies the `intendedInstallerArtifact` plus every `requiredHostServiceRegistration` (`host-agent`, `host-edge-proxy`, `host-update-handoff-supervisor`). The macOS plan also owns `macOSInstallerPackageIdentifier`, so package receipt identity is not inferred from a filename, install path, or service label. It uses no inferred data path, VM name, service name, endpoint, or credential.
+
+For Windows, `windows_host_release_input_preparer.py` is the release-process
+step before the WiX adapter. Given explicit cross-compiled bytes, C23, a
+Windows deployment profile, ProductCode, UpgradeCode, and release slot, it
+creates one new C48 immutable source tree, C70 service execution definitions,
+C53 bootstrap copy, and the sole WiX composition input. C48 hashes and C70
+definitions therefore describe the same bytes that WiX receives; an earlier
+directory cannot be overwritten. `host-service-runner.exe` is the only SCM
+executable. It starts the role-specific current-release executable named by
+the immutable C70 document, so SCM does not contain role arguments that can
+drift from C48. The Windows CI runner cross-builds those actual six Host
+binaries and compiles both the fixture and actual input into an MSI with the
+pinned open-source WiX v4 toolchain.
+
+`windows-hyperv-external-guest-external-vitalserver-reference/` is the
+corresponding desired-input profile. It declares an externally provisioned
+Guest and its explicit Runtime Control/Recorder Gateway endpoints. Its
+reserved endpoint plus unknown time/telemetry outcomes are visible reference
+values that a deployment administrator must replace; they are not runtime
+fallbacks or availability claims.
 
 Every plan requires all eight C24 stages. A `verified` C24 record names the
 `ObservedInstallerArtifact` (kind, fileName, productVersion, SHA-256,
@@ -94,6 +126,26 @@ journal and emits reviewable fragments; it does not alter Host Agent state or
 silently edit the release proof document. See [macOS Clean-Host Release
 Evidence](macos-clean-host-release-evidence-boundary.md).
 
+Windows clean-host collection now has the same explicit release-process
+boundary. `WindowsCleanHostReleaseEvidenceRunner` persists only its own C24
+run journal, binds an exact C23-selected MSI SHA-256 plus explicit MSI
+ProductCode/product-root inputs, and observes MSI metadata/Authenticode,
+registry receipt, all three C23 SCM registrations, and a changed CIM
+boot-session identifier. Only its explicit clean-install command invokes
+`msiexec`; it never reboots Windows or mutates Host Agent state/C24 canonical
+proofs. An ambiguous registry/SCM/PowerShell result is a failed observation,
+not absence. See [Windows Clean-Host Release
+Evidence](windows-clean-host-release-evidence-boundary.md).
+
+Linux clean-host collection uses an equivalent explicit boundary:
+`LinuxCleanHostReleaseEvidenceRunner` binds a C23-selected DEB hash and
+C48-owned package/root inputs, then observes `dpkg-deb`, `dpkg-query`, all
+three C23 systemd units, retained product/data roots, and the kernel boot ID.
+Residual dpkg state or retained data is not a clean Host. The only installer
+effect is an explicit `dpkg --install`; reboot occurs outside the runner and
+canonical C24 proof remains unchanged until review. See [Linux Clean-Host
+Release Evidence](linux-clean-host-release-evidence-boundary.md).
+
 Every plan requires all eight C24 stages:
 
 1. `artifact-integrity`
@@ -107,6 +159,33 @@ Every plan requires all eight C24 stages:
 
 `uninstall-reinstall` must capture the operator’s explicit retention/purge choice. The system must not silently remove a Host data path merely because service registration was removed.
 
+### Update and rollback evidence
+
+A C24 `update` is not a package-overwrite assertion. The Host-platform layer
+uses the C25–C31 staged updater and C67–C68 candidate-release transition, so
+the release process first uses
+`tooling/host_platform_release_transition_evidence.py` to bind the exact C29
+Host journal, C28 execution report, and C55 Host-platform receipt. Update
+requires succeeded C29/C28 and a succeeded `host-platform` C55 `apply` receipt
+whose evidence reference matches C28. Rollback requires a failed C29/C28
+update, C28 `rollback.state=succeeded`, and a separate succeeded C55
+`rollback` receipt. The verifier records raw-input hashes and correlation; it
+first validates the complete raw C29 journal and C55 receipt against their
+published contracts, and does not start an update or claim that the C48
+`current` link changed.
+
+The matching OS clean-Host runner now receives the C23 document and the four
+explicit C29/C55/C48/C49 paths through `record-host-platform-update` or
+`record-host-platform-rollback`. It first uses the transition reader, then
+freshly observes the native package registration, all C23 service
+registrations, and the declared product roots where that runner owns root
+observation. A package receipt remains only the OS package manager's fact; it
+cannot prove C68 activation or restored release state without the C48/C49 half.
+An update-success scenario and a failed-update rollback scenario are separate
+C24 evidence runs, because their C29 terminal states are mutually exclusive.
+Until both halves are physically captured on a matching clean Host, the
+canonical C24 `update` and `rollback` records remain pending.
+
 For a verified `service-registration` stage, C24 must additionally list one
 `ObservedHostServiceRegistration` for each C23 role, including manager, service
 name, `registrationState=registered`, and `observedAt`. The release verifier
@@ -114,7 +193,7 @@ rejects evidence that omits a required service or claims a different service
 name/manager. Registration evidence is still distinct from Guest VM start and
 Guest Runtime readiness.
 
-The checked-in SPDX document is generated from `sbom-policy.v1.json` and is named **source inventory** deliberately. It is reproducible dependency/license input and has a document comment stating that it is not artifact evidence. A per-artifact SPDX plus aggregated notices and a hash/URI are required before the C24 `sbom-and-notices` proof can become `verified`.
+The checked-in SPDX document is generated from `sbom-policy.v1.json` and is named **source inventory** deliberately. It is reproducible dependency/license input and has a document comment stating that it is not artifact evidence. A per-artifact SPDX plus aggregated notices and a hash/URI are required before the C24 `sbom-and-notices` proof can become `verified`. `release_artifact_sbom_notices.py` makes that release-process boundary explicit: a caller supplies the exact C23-selected installer, the reviewed policy-component IDs actually selected by that release composition, matching clean-Host runner identity, and recorded timestamp. The tool emits the artifact-SHA-bound SPDX, notices, immutable evidence document, and a separate C24 proof fragment. It does not inspect an installed product or silently select every repository dependency; installing, rebooting, and review-merging the fragment remain separate C24 work.
 
 ## 5. Verification boundary
 
@@ -127,7 +206,7 @@ make -C runtime-platform delivery-proof-check
 make -C runtime-platform cross-platform-delivery-acceptance
 ```
 
-- provider unit tests and Linux/Windows cross-compilation;
+- provider unit tests, C62/C63 Linux/Windows command construction, and Linux/Windows cross-compilation;
 - C21 C10 correlation, selected-provider failure, and Host SQLite request/revision replay behavior via real Host public HTTP;
 - contract examples and C22/C23/C24 schema validation;
 - deterministic source inventory SBOM generation;
@@ -135,7 +214,7 @@ make -C runtime-platform cross-platform-delivery-acceptance
 - C35 `GuestArtifactCompilationCommand` requires one selected builder executable and every Guest source identity. `GuestArtifactCompiler` atomically emits C34 plus C35 receipt only after exact input/builder identity and declared output validation; it does not find a prior VM cache, download a base image, or prove boot.
 - the macOS package composer accepts only C35-receipt-correlated C34 prebuilt artifacts plus C32/C33 and materializes those exact paths into a launchd PKG payload; C34 byte size/SHA-256 must match every supplied Guest artifact and the C35 receipt must name that exact C34. It does not create a package from missing Guest assets or configuration defaults.
 
-The workspace is macOS. It has **not** installed an MSI, registered SCM, booted Hyper-V, installed a DEB, used libvirt/systemd, rebooted a clean Windows/Linux machine, or proven update/rollback/uninstall. `release-delivery-proofs.v1.json` therefore records all Windows/Linux stages as `pending`, not success.
+The workspace is macOS. It has **not** installed an MSI, registered SCM, booted Hyper-V, installed a DEB, used libvirt/systemd, rebooted a clean Windows/Linux machine, or proven update/rollback/uninstall. Windows CI compiles an MSI from the actual selected Host bytes, which is artifact-build evidence only. `release-delivery-proofs.v1.json` therefore records all Windows/Linux C24 stages as `pending`, not success.
 
 `make -C runtime-platform release-ready` intentionally fails while any C24 stage is pending. It is a release assertion to execute only after a matching clean-host runner has generated per-artifact evidence. Its failure in this workspace is expected evidence of an incomplete release proof, not a compile failure to hide.
 

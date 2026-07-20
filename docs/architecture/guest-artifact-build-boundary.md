@@ -15,11 +15,12 @@ operation after boot.
 
 | Name | Owner | Responsibility | Must not do |
 | --- | --- | --- | --- |
-| C42 `GuestLinuxBootArtifactExtractor` | Guest Linux release build | identify kernel, initrd, and a whole-disk Linux root source | choose/download a Linux distribution or claim boot |
+| C73 `GuestLinuxSourceDiskMaterializer` | Guest Linux release build | convert one declared QCOW2 source into identity-recorded raw disk bytes | choose/download a Linux distribution, partition, or claim boot |
+| C42 `GuestLinuxBootArtifactExtractor` | Guest Linux release build | select raw ext4 root storage and extract declared kernel/initrd sources | choose/download a Linux distribution or claim boot |
 | C43 `GuestRootStoragePartitionAssembler` | Guest Linux release build | publish one MBR-partitioned, writable `guest-root` base | install Guest Product files |
 | C41 `GuestArtifactCompilationInputAssembler` | release input assembler | copy declared build-machine files into one immutable C35 input root | choose a builder or a base image |
 | C35 `GuestArtifactCompiler` | release build orchestration | verify C35 identities, invoke the selected composer, publish C34 and its receipt | mount/edit a Guest root or claim boot |
-| `GuestProductBootstrapArtifactComposer` | selected C35 release builder | copy boot/root artifacts and compose the bootstrap RAW storage image from C37/C38/C39/C44 and external-topology C46 | discover sources or mutate Guest root bytes |
+| `GuestProductBootstrapArtifactComposer` | selected C35 release builder | copy boot/root artifacts and compose the bootstrap RAW storage image from C37/C38/C39/C44, the C59 Guest Product Release Manager binary/configuration, and external-topology C46 | discover sources or mutate Guest root bytes |
 | C40 `GuestProductBootstrapVolumeCompositionPlan` | Guest Product bootstrap release composer | specify the immutable RAW storage image and Guest-visible `CIDATA` filesystem | represent Guest runtime state |
 | `NoCloudGuestProductBootstrapVolumeAdapter` | C40 adapter | write one read-only RAW image containing an ISO9660 `CIDATA` partition | mount a Guest root or invoke systemd |
 | cloud-init bootstrap program | Linux Guest | verify payloads, write Guest files, link/enable/start the declared service | infer a payload or treat a failed step as complete |
@@ -29,7 +30,7 @@ operation after boot.
 ## Artifact flow
 
 ```text
-C42 Linux boot artifacts → C43 writable guest-root base
+C73 raw source disk → C42 Linux boot artifacts → C43 writable guest-root base
      + C37 process deployment + C38 service deployment + C39 bootstrap configuration
      + named Guest Product payload bytes
                                       │
@@ -71,7 +72,7 @@ intent so the macOS provider and package layer cannot silently reverse it.
 
 The following are presently distinct facts and must remain distinct:
 
-1. C42/C43 prove input extraction and root-storage assembly.
+1. C73 proves QCOW2-to-raw materialization; C42/C43 prove selected input extraction and root-storage assembly.
 2. C41 proves source selection and copying into a C35 input root.
 3. C35/C34 prove selected-builder input/output correlation.
 4. Guest boot smoke must prove kernel boot, CIDATA discovery, cloud-init
@@ -104,6 +105,7 @@ with a matching receipt, and can boot the ARM64 Guest through cloud-init and a
 serial login prompt while the C34 source digest remains unchanged. It is still
 not signed-PKG installation, Guest Runtime readiness, or C24 package proof.
 
-Related boundaries: [Guest Product Bootstrap Volume](guest-product-bootstrap-volume-boundary.md),
+Related boundaries: [Guest Linux Source Disk Materialization](guest-linux-source-disk-materialization-boundary.md),
+[Guest Product Bootstrap Volume](guest-product-bootstrap-volume-boundary.md),
 [Guest Root Storage Partition Assembly](guest-root-storage-partition-assembly-boundary.md),
 and [macOS Virtual Machine Supervisor](macos-virtual-machine-supervisor-boundary.md).

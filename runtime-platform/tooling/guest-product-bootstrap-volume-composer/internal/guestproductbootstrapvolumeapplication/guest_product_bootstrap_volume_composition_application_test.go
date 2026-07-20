@@ -94,10 +94,13 @@ func writeDeclaredBootstrapSourcesAndPlan(t *testing.T, sourceRoot string) guest
 		"guest-runtime-linux-arm64":                              []byte("guest-runtime"),
 		"guest-product-process-supervisor-linux-arm64":           []byte("guest-product-process-supervisor"),
 		"guest-product-process-deployment-configuration":         []byte(`{"schemaVersion":"v1"}`),
+		"guest-product-release-manager-linux-arm64":              []byte("guest-product-release-manager"),
+		"guest-product-release-manager-configuration":            []byte(`{"schemaVersion":"v1"}`),
 		"guest-product-vitalserver-topology-deployment":          []byte(`{"schemaVersion":"v1"}`),
 		"guest-product-service-manager-deployment-configuration": []byte(`{"schemaVersion":"v1"}`),
-		"guest-product-systemd-unit":                             []byte("[Service]\nExecStart=/opt/vitalserver/bin/guest-product-process-supervisor\n"),
-		"recorder-gateway-linux-arm64":                           testRecorderGatewayArchive(t),
+		"guest-product-systemd-unit":                             []byte("[Service]\nExecStart=/opt/vitalserver/current/bin/guest-product-process-supervisor\n"),
+		"guest-product-release-manager-systemd-unit":             []byte("[Service]\nExecStart=/opt/vitalserver/current/bin/guest-product-release-manager\n"),
+		"guest-node-services-linux-arm64":                        testGuestNodeServicesArchive(t),
 	}
 	sources := make([]guestproductbootstrapvolumeplan.DeclaredBootstrapSource, 0, len(contentsByID))
 	for identifier, contents := range contentsByID {
@@ -111,25 +114,32 @@ func writeDeclaredBootstrapSourcesAndPlan(t *testing.T, sourceRoot string) guest
 		})
 	}
 	return guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan{
-		SchemaVersion: "v1", BootstrapID: "vitalserver-guest-bootstrap", VolumeLabel: "CIDATA", StorageImageFormat: "raw", GuestVolumeFileSystem: "iso9660", InstanceID: "vitalserver-guest-bootstrap-instance", LocalHostName: "vitalserver-guest", ServiceUnitName: "vitalserver-guest-product.service",
+		SchemaVersion: "v1", BootstrapID: "vitalserver-guest-bootstrap", VolumeLabel: "CIDATA", StorageImageFormat: "raw", GuestVolumeFileSystem: "iso9660", InstanceID: "vitalserver-guest-bootstrap-instance", LocalHostName: "vitalserver-guest", ServiceUnitName: "vitalserver-guest-product.service", ReleaseManagerServiceUnitName: "vitalserver-guest-product-release-manager.service",
+		GuestProductRelease:        guestproductbootstrapvolumeplan.DeclaredGuestProductRelease{ReleaseID: "vitalserver-guest-product-0.2.0-dev", ReleaseDirectory: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev", CurrentReleaseLinkPath: "/opt/vitalserver/current", ReleaseStateDirectory: "/var/lib/vitalserver/guest-product-releases", ReleaseStateDirectoryMode: "0700"},
 		GuestRuntimeStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/guest-runtime", DirectoryMode: "0700"},
 		Sources:                    sources,
 		FileInstallations: []guestproductbootstrapvolumeplan.DeclaredGuestFileInstallation{
-			{SourceID: "guest-runtime-linux-arm64", DestinationPath: "/opt/vitalserver/bin/guest-runtime", FileMode: "0755"},
-			{SourceID: "guest-product-process-supervisor-linux-arm64", DestinationPath: "/opt/vitalserver/bin/guest-product-process-supervisor", FileMode: "0755"},
-			{SourceID: "guest-product-process-deployment-configuration", DestinationPath: "/etc/vitalserver/guest-product-process-deployment.json", FileMode: "0644"},
-			{SourceID: "guest-product-vitalserver-topology-deployment", DestinationPath: "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json", FileMode: "0644"},
-			{SourceID: "guest-product-service-manager-deployment-configuration", DestinationPath: "/etc/vitalserver/guest-product-service-manager-deployment.json", FileMode: "0644"},
+			{SourceID: "guest-runtime-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-runtime", FileMode: "0755"},
+			{SourceID: "guest-product-process-supervisor-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-process-supervisor", FileMode: "0755"},
+			{SourceID: "guest-product-process-deployment-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-process-deployment.json", FileMode: "0644"},
+			{SourceID: "guest-product-release-manager-linux-arm64", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/bin/guest-product-release-manager", FileMode: "0755"},
+			{SourceID: "guest-product-release-manager-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-release-manager.json", FileMode: "0644"},
+			{SourceID: "guest-product-vitalserver-topology-deployment", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-vitalserver-topology-deployment.json", FileMode: "0644"},
+			{SourceID: "guest-product-service-manager-deployment-configuration", DestinationPath: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev/config/guest-product-service-manager-deployment.json", FileMode: "0644"},
 			{SourceID: "guest-product-systemd-unit", DestinationPath: "/etc/systemd/system/vitalserver-guest-product.service", FileMode: "0644"},
+			{SourceID: "guest-product-release-manager-systemd-unit", DestinationPath: "/etc/systemd/system/vitalserver-guest-product-release-manager.service", FileMode: "0644"},
 		},
 		ArchiveInstallations: []guestproductbootstrapvolumeplan.DeclaredGuestArchiveInstallation{{
-			SourceID: "recorder-gateway-linux-arm64", ArchiveFormat: "tar-gzip", EntryModePolicy: "preserve-archive-mode", SymbolicLinkPolicy: guestproductbootstrapvolumeplan.AllowRelativeLinksToDeclaredRegularFilesPolicy, DestinationDirectory: "/opt/vitalserver", RequiredArchivePaths: []string{"node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js"},
+			SourceID: "guest-node-services-linux-arm64", ArchiveFormat: "tar-gzip", EntryModePolicy: "preserve-archive-mode", SymbolicLinkPolicy: guestproductbootstrapvolumeplan.AllowRelativeLinksToDeclaredRegularFilesPolicy, DestinationDirectory: "/opt/vitalserver/releases/vitalserver-guest-product-0.2.0-dev", RequiredArchivePaths: []string{"node/bin/node", "recorder-gateway/dist/cmd/recorder-gateway.js", "lab-recorder-runner/dist/cmd/lab-recorder-runner.js", "lab-recorder-runner/lab-scenario-catalog.json"},
 		}},
-		SymbolicLinks: []guestproductbootstrapvolumeplan.DeclaredGuestSymbolicLink{{LinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", TargetPath: "/etc/systemd/system/vitalserver-guest-product.service"}},
+		SymbolicLinks: []guestproductbootstrapvolumeplan.DeclaredGuestSymbolicLink{
+			{LinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product.service", TargetPath: "/etc/systemd/system/vitalserver-guest-product.service"},
+			{LinkPath: "/etc/systemd/system/multi-user.target.wants/vitalserver-guest-product-release-manager.service", TargetPath: "/etc/systemd/system/vitalserver-guest-product-release-manager.service"},
+		},
 	}
 }
 
-func testRecorderGatewayArchive(t *testing.T) []byte {
+func testGuestNodeServicesArchive(t *testing.T) []byte {
 	t.Helper()
 	var compressed bytes.Buffer
 	gzipWriter := gzip.NewWriter(&compressed)
@@ -140,6 +150,7 @@ func testRecorderGatewayArchive(t *testing.T) []byte {
 		{"recorder-gateway/node_modules/", "", ""}, {"recorder-gateway/node_modules/.bin/", "", ""}, {"recorder-gateway/node_modules/typescript/", "", ""}, {"recorder-gateway/node_modules/typescript/bin/", "", ""},
 		{"recorder-gateway/node_modules/typescript/bin/tsserver", "typescript-server", ""}, {"recorder-gateway/node_modules/typescript/bin/tsc", "typescript-compiler", ""},
 		{"recorder-gateway/node_modules/.bin/tsserver", "", "../typescript/bin/tsserver"}, {"recorder-gateway/node_modules/.bin/tsc", "", "../typescript/bin/tsc"},
+		{"lab-recorder-runner/", "", ""}, {"lab-recorder-runner/dist/", "", ""}, {"lab-recorder-runner/dist/cmd/", "", ""}, {"lab-recorder-runner/dist/cmd/lab-recorder-runner.js", "runner", ""}, {"lab-recorder-runner/lab-scenario-catalog.json", "{\"schemaVersion\":\"v1\",\"scenarios\":[]}", ""},
 	} {
 		header := &tar.Header{Name: entry.name, Mode: 0o755}
 		if entry.symbolicLinkTarget != "" {

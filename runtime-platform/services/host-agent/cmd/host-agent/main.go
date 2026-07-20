@@ -11,13 +11,16 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/guestruntimecontrolhttpclient"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/hostlocaladministration"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/hoststatesqliterepository"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/platformproviderprocess"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/telemetryexporter"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/timeprovider"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/updatebootstrap"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/updatebundlestore"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentapplication"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentcontrolhttpapi"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentdomain"
@@ -109,8 +112,32 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Host update handoff recovery failed: %v\n", err)
 		os.Exit(1)
 	}
+	var updateBundles *hostagentapplication.HostUpdateBundleApplicationService
+	if deploymentConfiguration.UpdateBootstrap.Mode == "staged" {
+		bundleStore, bundleStoreErr := updatebundlestore.NewFileSystemStore(updatebundlestore.FileSystemStoreConfig{Directory: deploymentConfiguration.UpdateBootstrap.BundleStoreDirectory, Clock: clock})
+		if bundleStoreErr != nil {
+			fmt.Fprintf(os.Stderr, "Host update bundle store initialization failed: %v\n", bundleStoreErr)
+			os.Exit(1)
+		}
+		updateBundles, err = hostagentapplication.NewHostUpdateBundleApplicationService(bundleStore, updates, clock)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Host update bundle application initialization failed: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	node := hostagentdomain.NodeReference{Kind: "host", ID: deploymentConfiguration.Time.HostNodeID}
-	timeProbe, err := timeprovider.NewConfiguredHostTimeAuthorityOutcomeProfile(deploymentConfiguration.Time.ProviderMode)
+	var timeProbe hostagentapplication.HostTimeAuthorityProvider
+	if deploymentConfiguration.Time.Kind == "time-authority-outcome-profile" {
+		timeProbe, err = timeprovider.NewConfiguredHostTimeAuthorityOutcomeProfile(deploymentConfiguration.Time.ProviderMode)
+	} else {
+		timeProbe, err = timeprovider.NewNTPUDPTimeAuthorityProvider(
+			deploymentConfiguration.Time.NTPServerAddress,
+			time.Duration(deploymentConfiguration.Time.RequestTimeoutMilliseconds)*time.Millisecond,
+			hostagentdomain.TimeSource{Profile: deploymentConfiguration.Time.SourceProfile, SourceID: deploymentConfiguration.Time.SourceID},
+			deploymentConfiguration.Time.MaximumOffsetMilliseconds,
+			deploymentConfiguration.Time.MaximumUncertaintyMilliseconds,
+		)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Host Time Authority provider initialization failed: %v\n", err)
 		os.Exit(1)
@@ -120,7 +147,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Host Time Authority initialization failed: %v\n", err)
 		os.Exit(1)
 	}
-	telemetryExporter, err := telemetryexporter.NewConfiguredHostTelemetryExportOutcomeProfile(deploymentConfiguration.Telemetry.PipelineMode, deploymentConfiguration.Telemetry.ExportMode)
+	var telemetryExporter hostagentapplication.HostTelemetryExporter
+	if deploymentConfiguration.Telemetry.Kind == "telemetry-export-outcome-profile" {
+		telemetryExporter, err = telemetryexporter.NewConfiguredHostTelemetryExportOutcomeProfile(deploymentConfiguration.Telemetry.PipelineMode, deploymentConfiguration.Telemetry.ExportMode)
+	} else {
+		telemetryExporter, err = telemetryexporter.NewOTLPHTTPTelemetryExporter(deploymentConfiguration.Telemetry.CollectorBaseEndpoint, time.Duration(deploymentConfiguration.Telemetry.RequestTimeoutMilliseconds)*time.Millisecond)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Host Telemetry exporter initialization failed: %v\n", err)
 		os.Exit(1)
@@ -130,20 +162,45 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Host Telemetry Pipeline initialization failed: %v\n", err)
 		os.Exit(1)
 	}
-	listener, err := net.Listen("tcp", deploymentConfiguration.Control.ListenAddress)
+	localAdministrationListener, err := hostlocaladministration.Open(deploymentConfiguration.Control.LocalAdministration)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Host Agent listen failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Host Agent local administration listener failed: %v\n", err)
 		os.Exit(1)
 	}
-	server := &http.Server{Handler: hostagentcontrolhttpapi.NewHostAgentControlHTTPServerWithModules(hostagentcontrolhttpapi.HostAgentControlHTTPModules{Lifecycle: service, Update: updates, Time: timeAuthority, Telemetry: telemetry})}
-	fmt.Printf("host-agent listening address=%s\n", listener.Addr().String())
+	defer localAdministrationListener.Close()
+	server := &http.Server{Handler: hostagentcontrolhttpapi.NewHostAgentControlHTTPServerWithModules(hostagentcontrolhttpapi.HostAgentControlHTTPModules{Lifecycle: service, Update: updates, Bundles: updateBundles, Time: timeAuthority, Telemetry: telemetry})}
+	serveErrors := make(chan error, 2)
+	serveHostAgentControl := func(listener net.Listener, label string) {
+		if serveErr := server.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) && !errors.Is(serveErr, net.ErrClosed) {
+			serveErrors <- fmt.Errorf("%s listener failed: %w", label, serveErr)
+		}
+	}
+	go serveHostAgentControl(localAdministrationListener, "local administration")
+	fmt.Printf("host-agent local administration transport=%s address=%s descriptor=%s\n", deploymentConfiguration.Control.LocalAdministration.Transport, deploymentConfiguration.Control.LocalAdministration.EndpointAddress, deploymentConfiguration.Control.LocalAdministration.DescriptorPath)
+	var developmentLoopbackListener net.Listener
+	if deploymentConfiguration.Control.LoopbackHTTP.Mode == "development-loopback" {
+		developmentLoopbackListener, err = net.Listen("tcp", deploymentConfiguration.Control.LoopbackHTTP.ListenAddress)
+		if err != nil {
+			_ = localAdministrationListener.Close()
+			fmt.Fprintf(os.Stderr, "Host Agent development loopback listener failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("host-agent development loopback address=%s\n", developmentLoopbackListener.Addr().String())
+		go serveHostAgentControl(developmentLoopbackListener, "development loopback")
+	}
 	go func() {
 		<-context.Done()
 		_ = server.Shutdown(context)
 	}()
-	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		fmt.Fprintf(os.Stderr, "Host Agent server failed: %v\n", err)
+	select {
+	case serveErr := <-serveErrors:
+		if developmentLoopbackListener != nil {
+			_ = developmentLoopbackListener.Close()
+		}
+		_ = localAdministrationListener.Close()
+		fmt.Fprintf(os.Stderr, "Host Agent server failed: %v\n", serveErr)
 		os.Exit(1)
+	case <-context.Done():
 	}
 }
 

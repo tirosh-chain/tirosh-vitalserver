@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "id": "host-update-dispatcher",
+  "stagingDirectory": "/Library/Application Support/VitalServerRuntimePlatform/data/update-staging",
+  "handoffQueueDirectory": "/Library/Application Support/VitalServerRuntimePlatform/data/update-staging/handoff-queue",
+  "executionEvidenceDirectory": "/Library/Application Support/VitalServerRuntimePlatform/data/update-execution",
+  "layerEffectReceiptDirectory": "/Library/Application Support/VitalServerRuntimePlatform/data/update-layer-effects",
+  "hostLocalAdministrationDescriptorPath": "/Library/Application Support/VitalServerRuntimePlatform/control/host-administration.json",
+  "layerEffectTimeoutMilliseconds": 300000,
+  "completionTimeoutMilliseconds": 30000,
+  "servicePollIntervalMilliseconds": 1000
+}

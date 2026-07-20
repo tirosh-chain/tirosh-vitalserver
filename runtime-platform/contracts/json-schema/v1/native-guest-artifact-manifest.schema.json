@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:native-guest-artifact-manifest",
+  "title": "NativeGuestArtifactManifest",
+  "description": "C65 immutable amd64 Guest image compiler output consumed by a Windows Hyper-V or Linux KVM/libvirt Host package composer and C62 native Guest machine provisioner. It identifies the complete UEFI-bootable raw Guest disk and separate read-only NoCloud bootstrap volume by logical role, byte size, and SHA-256. It does not claim UEFI boot, cloud-init completion, Guest service readiness, or Host installation success.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "artifactSetId", "architecture", "storageDevices"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "artifactSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "architecture": { "const": "amd64" },
+    "storageDevices": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/StorageArtifactDigest" }
+    }
+  },
+  "$defs": {
+    "StorageArtifactDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "role": { "enum": ["guest-root-storage", "guest-product-bootstrap-volume"] },
+        "storageImageFormat": { "const": "raw" },
+        "guestVolumeFileSystem": { "enum": ["iso9660"] },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      },
+      "required": ["id", "role", "storageImageFormat", "sizeBytes", "sha256"],
+      "oneOf": [
+        {
+          "properties": {
+            "id": { "const": "guest-root" },
+            "role": { "const": "guest-root-storage" },
+            "storageImageFormat": { "const": "raw" }
+          },
+          "not": { "required": ["guestVolumeFileSystem"] }
+        },
+        {
+          "properties": {
+            "id": { "const": "guest-product-bootstrap" },
+            "role": { "const": "guest-product-bootstrap-volume" },
+            "storageImageFormat": { "const": "raw" },
+            "guestVolumeFileSystem": { "const": "iso9660" }
+          },
+          "required": ["guestVolumeFileSystem"]
+        }
+      ]
+    }
+  }
+}

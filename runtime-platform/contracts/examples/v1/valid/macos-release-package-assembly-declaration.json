@@ -17,12 +17,17 @@
     "hostAgentBinaryAbsolutePath": "/release/artifacts/host-agent",
     "hostEdgeProxyBinaryAbsolutePath": "/release/artifacts/host-edge-proxy",
     "hostInstallationManagerBinaryAbsolutePath": "/release/artifacts/host-installation-manager",
+    "hostUpdateHandoffSupervisorBinaryAbsolutePath": "/release/artifacts/host-update-handoff-supervisor",
+    "platformctlBinaryAbsolutePath": "/release/artifacts/platformctl",
     "macOSVirtualMachineSupervisorBinaryAbsolutePath": "/release/artifacts/macos-virtual-machine-supervisor",
     "guestProductProcessSupervisorArtifactAbsolutePath": "/release/artifacts/guest-product-process-supervisor"
   },
   "deploymentDocuments": {
     "hostAgentDeploymentConfigurationAbsolutePath": "/release/configuration/host-agent-deployment.json",
+    "operatorInterfaceBootstrapConfigurationAbsolutePath": "/release/configuration/operator-interface-bootstrap.json",
     "hostEdgeProxyDeploymentConfigurationAbsolutePath": "/release/configuration/host-edge-proxy-deployment.json",
+    "hostUpdateHandoffSupervisorConfigurationAbsolutePath": "/release/configuration/host-update-handoff-supervisor-configuration.json",
+    "hostUpdateTrustStoreAbsolutePath": "/release/configuration/update-trust-store.json",
     "macOSVirtualMachineConfigurationAbsolutePath": "/release/configuration/macos-virtual-machine.json",
     "guestProductProcessDeploymentConfigurationAbsolutePath": "/release/configuration/guest-product-process-deployment.json",
     "guestProductServiceManagerDeploymentConfigurationAbsolutePath": "/release/configuration/guest-product-service-manager-deployment.json",

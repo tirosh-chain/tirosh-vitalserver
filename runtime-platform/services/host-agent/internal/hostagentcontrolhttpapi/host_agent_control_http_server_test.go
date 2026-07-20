@@ -6,11 +6,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/hoststatesqliterepository"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/adapters/updatebundlestore"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentapplication"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentcontrolhttpapi"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentdomain"
@@ -177,4 +180,80 @@ func TestLifecycleAdmissionFailureUsesTypedPublicResponse(t *testing.T) {
 	if failure.State != "failed" || failure.AdmissionState != "unknown" || failure.Issue.Code != "host-state-store-write-outcome-unknown" {
 		t.Fatalf("failure = %+v", failure)
 	}
+}
+
+func TestHostFacadeImportsAndReadsAnExplicitUpdateBundleWithoutClaimingTrustVerification(t *testing.T) {
+	repository, err := hoststatesqliterepository.OpenHostStateSQLiteRepository(context.Background(), filepath.Join(t.TempDir(), "host.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repository.Close() })
+	lifecycle, err := hostagentapplication.NewHostAgentControlApplicationService(repository, provider{}, guest{}, hostagentapplication.SystemHostAgentClock{}, hostagentapplication.CryptoHostAgentRequestCorrelationIdentifierGenerator{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeRoot := filepath.Join(t.TempDir(), "update-bundles")
+	if err := os.Mkdir(storeRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := updatebundlestore.NewFileSystemStore(updatebundlestore.FileSystemStoreConfig{Directory: storeRoot, Clock: hostagentapplication.SystemHostAgentClock{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundles, err := hostagentapplication.NewHostUpdateBundleApplicationService(store, &hostagentapplication.HostUpdateApplicationService{}, hostagentapplication.SystemHostAgentClock{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := hostagentcontrolhttpapi.NewHostAgentControlHTTPServerWithModules(hostagentcontrolhttpapi.HostAgentControlHTTPModules{Lifecycle: lifecycle, Bundles: bundles})
+	source := writeHTTPUpdateBundle(t)
+	request := httptest.NewRequest(http.MethodPost, "/v1/platform/update-bundles:import", strings.NewReader(`{"schemaVersion":"v1","requestId":"import-020","sourceDirectory":"`+source+`"}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("import status=%d body=%s", response.Code, response.Body.String())
+	}
+	var receipt hostagentdomain.HostUpdateBundleImportReceipt
+	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil {
+		t.Fatalf("decode receipt: %v", err)
+	}
+	if receipt.State != "imported" || receipt.Bundle.State != "declared" || receipt.Bundle.ID != "release-bootstrap-020" {
+		t.Fatalf("receipt=%+v", receipt)
+	}
+	readRequest := httptest.NewRequest(http.MethodGet, "/v1/platform/update-bundles/release-bootstrap-020", nil)
+	readResponse := httptest.NewRecorder()
+	handler.ServeHTTP(readResponse, readRequest)
+	if readResponse.Code != http.StatusOK || !strings.Contains(readResponse.Body.String(), `"state":"available"`) || !strings.Contains(readResponse.Body.String(), `"state":"declared"`) {
+		t.Fatalf("read status=%d body=%s", readResponse.Code, readResponse.Body.String())
+	}
+}
+
+func writeHTTPUpdateBundle(t *testing.T) string {
+	t.Helper()
+	directory := filepath.Join(t.TempDir(), "release")
+	if err := os.MkdirAll(filepath.Join(directory, "payload"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "payload", "host-updater"), []byte("updater"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "payload", "product-update.json"), []byte(`{"schemaVersion":"v1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	envelope := hostagentdomain.UpdateBootstrapEnvelope{
+		SchemaVersion: "v1", ID: "release-bootstrap-020", ProductID: "vitalserver-runtime-platform",
+		Target: hostagentdomain.UpdateTarget{Platform: "macos", Architecture: "arm64"}, TargetRelease: hostagentdomain.Release{ProductVersion: "0.2.0", RuntimeVersion: "0.2.0"},
+		LayerOrder:          []string{hostagentdomain.UpdateLayerGuestRuntime, hostagentdomain.UpdateLayerHostPlatform},
+		NextUpdaterArtifact: hostagentdomain.UpdateArtifact{ID: "host-updater-020", RelativePath: "payload/host-updater", SHA256: strings.Repeat("a", 64), SizeBytes: 1, MediaType: "application/octet-stream"},
+		Specification:       hostagentdomain.UpdateArtifact{ID: "product-update-020", RelativePath: "payload/product-update.json", SHA256: strings.Repeat("b", 64), SizeBytes: 1, MediaType: "application/json"},
+		Signature:           hostagentdomain.UpdateSignature{Algorithm: "ed25519", KeyID: "release-key-2026", SignedSHA256: strings.Repeat("c", 64), Value: "signature"},
+		IssuedAt:            time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).Format(time.RFC3339),
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "bootstrap-envelope.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return directory
 }

@@ -1,4 +1,4 @@
-"""Compile one explicit ARM64 Guest artifact set through a selected builder.
+"""Compile one explicit arm64 or amd64 Guest artifact set through a selected builder.
 
 GuestArtifactCompiler owns release-build orchestration only. C35 names every
 immutable input and the selected bootstrap-artifact composer identity; that
@@ -24,6 +24,7 @@ import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 
 from tooling import macos_guest_artifact_manifest_composer as manifest_composer
+from tooling import native_guest_artifact_manifest_composer as native_manifest_composer
 
 
 MAXIMUM_COMMAND_BYTES = 1 << 20
@@ -83,39 +84,59 @@ class GuestArtifactCompilationCommand:
 
     compilation_id: str
     artifact_set_id: str
+    architecture: str
     build_environment_id: str
     builder_executable_size_bytes: int
     builder_executable_sha256: str
-    kernel: BootArtifactOutput
+    kernel: BootArtifactOutput | None
     initial_ramdisk: BootArtifactOutput | None
     guest_runtime_artifact: InputArtifact
-    recorder_gateway_artifact: InputArtifact
+    guest_telemetry_collector_artifact: InputArtifact | None
+    guest_telemetry_collector_configuration_artifact: InputArtifact | None
+    guest_node_services_artifact: InputArtifact
     guest_product_process_supervisor_artifact: InputArtifact
     guest_product_process_deployment_configuration_artifact: InputArtifact
+    guest_product_release_manager_artifact: InputArtifact
+    guest_product_release_manager_configuration_artifact: InputArtifact
     guest_product_service_manager_deployment_configuration_artifact: InputArtifact
     guest_product_bootstrap_configuration_artifact: InputArtifact
     guest_product_vitalserver_topology_deployment_artifact: InputArtifact
     external_vitalserver_delivery_configuration_artifact: InputArtifact | None
+    guest_bundled_upstream_image_set_manager_artifact: InputArtifact | None
+    guest_bundled_upstream_image_set_manager_configuration_artifact: InputArtifact | None
     storage_devices: tuple[GuestStorageArtifactOutput, ...]
 
     def input_artifacts(self) -> tuple[InputArtifact, ...]:
-        boot_artifacts: tuple[InputArtifact, ...] = (self.kernel.source,)
+        boot_artifacts: tuple[InputArtifact, ...] = ()
+        if self.kernel is not None:
+            boot_artifacts = (self.kernel.source,)
         if self.initial_ramdisk is not None:
             boot_artifacts += (self.initial_ramdisk.source,)
         artifacts: tuple[InputArtifact, ...] = (
             *boot_artifacts,
             self.guest_runtime_artifact,
-            self.recorder_gateway_artifact,
         )
+        if self.guest_telemetry_collector_artifact is not None:
+            artifacts += (self.guest_telemetry_collector_artifact,)
+        if self.guest_telemetry_collector_configuration_artifact is not None:
+            artifacts += (self.guest_telemetry_collector_configuration_artifact,)
         artifacts += (
+            self.guest_node_services_artifact,
             self.guest_product_process_supervisor_artifact,
             self.guest_product_process_deployment_configuration_artifact,
+            self.guest_product_release_manager_artifact,
+            self.guest_product_release_manager_configuration_artifact,
             self.guest_product_service_manager_deployment_configuration_artifact,
             self.guest_product_bootstrap_configuration_artifact,
             self.guest_product_vitalserver_topology_deployment_artifact,
         )
         if self.external_vitalserver_delivery_configuration_artifact is not None:
             artifacts += (self.external_vitalserver_delivery_configuration_artifact,)
+        if self.guest_bundled_upstream_image_set_manager_artifact is not None:
+            artifacts += (
+                self.guest_bundled_upstream_image_set_manager_artifact,
+                self.guest_bundled_upstream_image_set_manager_configuration_artifact,
+            )
         return (*artifacts, *(storage.base_image for storage in self.storage_devices if storage.base_image is not None))
 
 
@@ -138,10 +159,10 @@ class GuestArtifactCompilationExecution:
 def compile_guest_artifact_set(
     execution: GuestArtifactCompilationExecution,
 ) -> dict[str, object]:
-    """Run a selected builder and atomically publish C34 plus a C35 receipt.
+    """Run a selected builder and atomically publish C34/C65 plus C35 receipt.
 
     A successful return proves only that declared source bytes were supplied to
-    the selected builder and that its declared outputs form C34. It does not
+    the selected builder and that its declared outputs form C34 or C65. It does not
     claim Linux boot, Guest service readiness, or clean-Host installation.
     """
 
@@ -165,8 +186,14 @@ def compile_guest_artifact_set(
     try:
         run_selected_guest_product_bootstrap_artifact_composer(execution, command, temporary_output_directory)
         validate_selected_builder_outputs(command, temporary_output_directory)
-        manifest_path = temporary_output_directory / "macos-guest-artifact-manifest.json"
-        manifest = compose_macos_guest_artifact_manifest(command, temporary_output_directory, manifest_path)
+        if command.architecture == "arm64":
+            manifest_path = temporary_output_directory / "macos-guest-artifact-manifest.json"
+            manifest = compose_macos_guest_artifact_manifest(command, temporary_output_directory, manifest_path)
+            manifest_key = "macOSGuestArtifactManifest"
+        else:
+            manifest_path = temporary_output_directory / "native-guest-artifact-manifest.json"
+            manifest = compose_native_guest_artifact_manifest(command, temporary_output_directory, manifest_path)
+            manifest_key = "nativeGuestArtifactManifest"
         receipt_path = temporary_output_directory / "guest-artifact-compilation-receipt.json"
         compilation_completion_time = (
             record_utc_guest_artifact_compilation_completion_time()
@@ -187,7 +214,7 @@ def compile_guest_artifact_set(
         "compilationId": command.compilation_id,
         "artifactSetId": command.artifact_set_id,
         "outputDirectory": str(execution.output_directory),
-        "macOSGuestArtifactManifest": manifest,
+        manifest_key: manifest,
         "guestArtifactCompilationReceipt": receipt,
     }
 
@@ -213,13 +240,19 @@ def parse_guest_artifact_compilation_command(contents: bytes) -> GuestArtifactCo
                 "buildEnvironment",
                 "boot",
                 "guestRuntimeArtifact",
-                "recorderGatewayArtifact",
+                "guestTelemetryCollectorArtifact",
+                "guestTelemetryCollectorConfigurationArtifact",
+                "guestNodeServicesArtifact",
                 "guestProductProcessSupervisorArtifact",
                 "guestProductProcessDeploymentConfigurationArtifact",
+                "guestProductReleaseManagerArtifact",
+                "guestProductReleaseManagerConfigurationArtifact",
                 "guestProductServiceManagerDeploymentConfigurationArtifact",
                 "guestProductBootstrapConfigurationArtifact",
                 "guestProductVitalServerTopologyDeploymentArtifact",
                 "externalVitalServerDeliveryConfigurationArtifact",
+                "guestBundledUpstreamImageSetManagerArtifact",
+                "guestBundledUpstreamImageSetManagerConfigurationArtifact",
                 "storageDevices",
             },
             {
@@ -228,11 +261,12 @@ def parse_guest_artifact_compilation_command(contents: bytes) -> GuestArtifactCo
                 "artifactSetId",
                 "architecture",
                 "buildEnvironment",
-                "boot",
                 "guestRuntimeArtifact",
-                "recorderGatewayArtifact",
+                "guestNodeServicesArtifact",
                 "guestProductProcessSupervisorArtifact",
                 "guestProductProcessDeploymentConfigurationArtifact",
+                "guestProductReleaseManagerArtifact",
+                "guestProductReleaseManagerConfigurationArtifact",
                 "guestProductServiceManagerDeploymentConfigurationArtifact",
                 "guestProductBootstrapConfigurationArtifact",
                 "guestProductVitalServerTopologyDeploymentArtifact",
@@ -242,8 +276,9 @@ def parse_guest_artifact_compilation_command(contents: bytes) -> GuestArtifactCo
             "command-validate",
             "C35 command",
         )
-        if document["schemaVersion"] != "v1" or document["architecture"] != "arm64":
-            raise ValueError("schemaVersion must be v1 and architecture must be arm64")
+        if document["schemaVersion"] != "v1" or document["architecture"] not in {"arm64", "amd64"}:
+            raise ValueError("schemaVersion must be v1 and architecture must be arm64 or amd64")
+        architecture = document["architecture"]
         artifact_set_id = identifier_field(document, "artifactSetId", compilation_id, "command-validate")
         compilation_id = validate_identifier(compilation_id, compilation_id, "command-validate", "compilationId")
         build_environment = object_field(document, "buildEnvironment", compilation_id, "command-validate")
@@ -258,19 +293,45 @@ def parse_guest_artifact_compilation_command(contents: bytes) -> GuestArtifactCo
         builder_size = positive_integer_field(build_environment, "builderExecutableSizeBytes", compilation_id, "command-validate")
         builder_sha256 = sha256_field(build_environment, "builderExecutableSHA256", compilation_id, "command-validate")
 
-        boot = object_field(document, "boot", compilation_id, "command-validate")
-        allowed_boot_keys = {"kernel", "initialRamdisk"}
-        require_exact_object_keys_subset(boot, allowed_boot_keys, {"kernel"}, compilation_id, "command-validate", "boot")
-        kernel = parse_boot_artifact_output(boot["kernel"], compilation_id, "kernel")
-        initial_ramdisk = (
-            parse_boot_artifact_output(boot["initialRamdisk"], compilation_id, "initialRamdisk")
-            if "initialRamdisk" in boot
+        if architecture == "arm64":
+            boot = object_field(document, "boot", compilation_id, "command-validate")
+            allowed_boot_keys = {"kernel", "initialRamdisk"}
+            require_exact_object_keys_subset(boot, allowed_boot_keys, {"kernel"}, compilation_id, "command-validate", "boot")
+            kernel = parse_boot_artifact_output(boot["kernel"], compilation_id, "kernel")
+            initial_ramdisk = (
+                parse_boot_artifact_output(boot["initialRamdisk"], compilation_id, "initialRamdisk")
+                if "initialRamdisk" in boot
+                else None
+            )
+        else:
+            if "boot" in document:
+                raise ValueError("amd64 C35 command must not declare macOS boot outputs")
+            kernel = None
+            initial_ramdisk = None
+        guest_runtime = parse_input_artifact(document["guestRuntimeArtifact"], compilation_id, "guestRuntimeArtifact")
+        guest_telemetry_collector = (
+            parse_input_artifact(
+                document["guestTelemetryCollectorArtifact"],
+                compilation_id,
+                "guestTelemetryCollectorArtifact",
+            )
+            if "guestTelemetryCollectorArtifact" in document
             else None
         )
-        guest_runtime = parse_input_artifact(document["guestRuntimeArtifact"], compilation_id, "guestRuntimeArtifact")
-        recorder_gateway = parse_input_artifact(document["recorderGatewayArtifact"], compilation_id, "recorderGatewayArtifact")
+        guest_telemetry_collector_configuration = (
+            parse_input_artifact(
+                document["guestTelemetryCollectorConfigurationArtifact"],
+                compilation_id,
+                "guestTelemetryCollectorConfigurationArtifact",
+            )
+            if "guestTelemetryCollectorConfigurationArtifact" in document
+            else None
+        )
+        guest_node_services = parse_input_artifact(document["guestNodeServicesArtifact"], compilation_id, "guestNodeServicesArtifact")
         guest_product_process_supervisor = parse_input_artifact(document["guestProductProcessSupervisorArtifact"], compilation_id, "guestProductProcessSupervisorArtifact")
         guest_product_process_deployment_configuration = parse_input_artifact(document["guestProductProcessDeploymentConfigurationArtifact"], compilation_id, "guestProductProcessDeploymentConfigurationArtifact")
+        guest_product_release_manager = parse_input_artifact(document["guestProductReleaseManagerArtifact"], compilation_id, "guestProductReleaseManagerArtifact")
+        guest_product_release_manager_configuration = parse_input_artifact(document["guestProductReleaseManagerConfigurationArtifact"], compilation_id, "guestProductReleaseManagerConfigurationArtifact")
         guest_product_service_manager_deployment_configuration = parse_input_artifact(document["guestProductServiceManagerDeploymentConfigurationArtifact"], compilation_id, "guestProductServiceManagerDeploymentConfigurationArtifact")
         guest_product_bootstrap_configuration = parse_input_artifact(document["guestProductBootstrapConfigurationArtifact"], compilation_id, "guestProductBootstrapConfigurationArtifact")
         guest_product_vitalserver_topology_deployment = parse_input_artifact(document["guestProductVitalServerTopologyDeploymentArtifact"], compilation_id, "guestProductVitalServerTopologyDeploymentArtifact")
@@ -283,6 +344,24 @@ def parse_guest_artifact_compilation_command(contents: bytes) -> GuestArtifactCo
             if "externalVitalServerDeliveryConfigurationArtifact" in document
             else None
         )
+        guest_bundled_upstream_image_set_manager = (
+            parse_input_artifact(
+                document["guestBundledUpstreamImageSetManagerArtifact"],
+                compilation_id,
+                "guestBundledUpstreamImageSetManagerArtifact",
+            )
+            if "guestBundledUpstreamImageSetManagerArtifact" in document
+            else None
+        )
+        guest_bundled_upstream_image_set_manager_configuration = (
+            parse_input_artifact(
+                document["guestBundledUpstreamImageSetManagerConfigurationArtifact"],
+                compilation_id,
+                "guestBundledUpstreamImageSetManagerConfigurationArtifact",
+            )
+            if "guestBundledUpstreamImageSetManagerConfigurationArtifact" in document
+            else None
+        )
         raw_storage_devices = document["storageDevices"]
         if not isinstance(raw_storage_devices, list) or not raw_storage_devices:
             raise ValueError("storageDevices must be a non-empty array")
@@ -293,19 +372,26 @@ def parse_guest_artifact_compilation_command(contents: bytes) -> GuestArtifactCo
         command = GuestArtifactCompilationCommand(
             compilation_id=compilation_id,
             artifact_set_id=artifact_set_id,
+            architecture=architecture,
             build_environment_id=build_environment_id,
             builder_executable_size_bytes=builder_size,
             builder_executable_sha256=builder_sha256,
             kernel=kernel,
             initial_ramdisk=initial_ramdisk,
             guest_runtime_artifact=guest_runtime,
-            recorder_gateway_artifact=recorder_gateway,
+            guest_telemetry_collector_artifact=guest_telemetry_collector,
+            guest_telemetry_collector_configuration_artifact=guest_telemetry_collector_configuration,
+            guest_node_services_artifact=guest_node_services,
             guest_product_process_supervisor_artifact=guest_product_process_supervisor,
             guest_product_process_deployment_configuration_artifact=guest_product_process_deployment_configuration,
+            guest_product_release_manager_artifact=guest_product_release_manager,
+            guest_product_release_manager_configuration_artifact=guest_product_release_manager_configuration,
             guest_product_service_manager_deployment_configuration_artifact=guest_product_service_manager_deployment_configuration,
             guest_product_bootstrap_configuration_artifact=guest_product_bootstrap_configuration,
             guest_product_vitalserver_topology_deployment_artifact=guest_product_vitalserver_topology_deployment,
             external_vitalserver_delivery_configuration_artifact=external_vitalserver_delivery_configuration,
+            guest_bundled_upstream_image_set_manager_artifact=guest_bundled_upstream_image_set_manager,
+            guest_bundled_upstream_image_set_manager_configuration_artifact=guest_bundled_upstream_image_set_manager_configuration,
             storage_devices=storage_devices,
         )
         validate_command_semantics(command)
@@ -352,8 +438,10 @@ def parse_input_artifact(value: Any, compilation_id: str, field_name: str) -> In
 
 
 def validate_command_semantics(command: GuestArtifactCompilationCommand) -> None:
-    if command.kernel.output_relative_path != PurePosixPath("boot/Image"):
+    if command.architecture == "arm64" and (command.kernel is None or command.kernel.output_relative_path != PurePosixPath("boot/Image")):
         raise ValueError("boot.kernel.outputRelativePath must be boot/Image")
+    if command.architecture == "amd64" and (command.kernel is not None or command.initial_ramdisk is not None):
+        raise ValueError("amd64 C35 command must not declare macOS boot outputs")
     if command.initial_ramdisk is not None and command.initial_ramdisk.output_relative_path != PurePosixPath("boot/initrd.img"):
         raise ValueError("boot.initialRamdisk.outputRelativePath must be boot/initrd.img")
     artifact_ids = [artifact.identifier for artifact in command.input_artifacts()]
@@ -363,6 +451,43 @@ def validate_command_semantics(command: GuestArtifactCompilationCommand) -> None
     if len(input_paths) != len(set(input_paths)):
         raise ValueError("each C35 input relative path must be unique")
     if (
+        (command.guest_telemetry_collector_artifact is None)
+        != (command.guest_telemetry_collector_configuration_artifact is None)
+    ):
+        raise ValueError(
+            "C35 Guest telemetry Collector binary and configuration artifacts must be declared together"
+        )
+    if (
+        command.guest_telemetry_collector_artifact is not None
+        and command.guest_telemetry_collector_artifact.identifier
+        != f"guest-telemetry-collector-linux-{command.architecture}"
+    ):
+        raise ValueError(
+            "C35 guestTelemetryCollectorArtifact ID must match C35 architecture"
+        )
+    if (
+        command.guest_telemetry_collector_configuration_artifact is not None
+        and command.guest_telemetry_collector_configuration_artifact.identifier
+        != "guest-telemetry-collector-configuration"
+    ):
+        raise ValueError(
+            "C35 guestTelemetryCollectorConfigurationArtifact ID must be guest-telemetry-collector-configuration"
+        )
+    if (
+        command.guest_product_release_manager_artifact.identifier
+        != f"guest-product-release-manager-linux-{command.architecture}"
+    ):
+        raise ValueError(
+            "C35 guestProductReleaseManagerArtifact ID must match C35 architecture"
+        )
+    if (
+        command.guest_product_release_manager_configuration_artifact.identifier
+        != "guest-product-release-manager-configuration"
+    ):
+        raise ValueError(
+            "C35 guestProductReleaseManagerConfigurationArtifact ID must be guest-product-release-manager-configuration"
+        )
+    if (
         command.external_vitalserver_delivery_configuration_artifact is not None
         and command.external_vitalserver_delivery_configuration_artifact.identifier
         != "external-vitalserver-delivery-configuration"
@@ -370,8 +495,33 @@ def validate_command_semantics(command: GuestArtifactCompilationCommand) -> None
         raise ValueError(
             "C35 externalVitalServerDeliveryConfigurationArtifact ID must be external-vitalserver-delivery-configuration"
         )
+    if (
+        (command.guest_bundled_upstream_image_set_manager_artifact is None)
+        != (command.guest_bundled_upstream_image_set_manager_configuration_artifact is None)
+    ):
+        raise ValueError(
+            "C35 Guest Bundled Upstream Image-set Manager binary and configuration artifacts must be declared together"
+        )
+    if (
+        command.guest_bundled_upstream_image_set_manager_artifact is not None
+        and command.guest_bundled_upstream_image_set_manager_artifact.identifier
+        != f"guest-bundled-upstream-image-set-manager-linux-{command.architecture}"
+    ):
+        raise ValueError(
+            "C35 guestBundledUpstreamImageSetManagerArtifact ID must match C35 architecture"
+        )
+    if (
+        command.guest_bundled_upstream_image_set_manager_configuration_artifact is not None
+        and command.guest_bundled_upstream_image_set_manager_configuration_artifact.identifier
+        != "guest-bundled-upstream-image-set-manager-configuration"
+    ):
+        raise ValueError(
+            "C35 guestBundledUpstreamImageSetManagerConfigurationArtifact ID must be guest-bundled-upstream-image-set-manager-configuration"
+        )
     storage_ids = [storage.identifier for storage in command.storage_devices]
-    output_paths = [command.kernel.output_relative_path, *(storage.output_relative_path for storage in command.storage_devices)]
+    output_paths = [*(storage.output_relative_path for storage in command.storage_devices)]
+    if command.kernel is not None:
+        output_paths.append(command.kernel.output_relative_path)
     if command.initial_ramdisk is not None:
         output_paths.append(command.initial_ramdisk.output_relative_path)
     if len(storage_ids) != len(set(storage_ids)):
@@ -458,9 +608,10 @@ def run_selected_guest_product_bootstrap_artifact_composer(
 
 def validate_selected_builder_outputs(command: GuestArtifactCompilationCommand, output_directory: Path) -> None:
     expected_artifacts = {
-        command.kernel.output_relative_path,
         *(storage.output_relative_path for storage in command.storage_devices),
     }
+    if command.kernel is not None:
+        expected_artifacts.add(command.kernel.output_relative_path)
     if command.initial_ramdisk is not None:
         expected_artifacts.add(command.initial_ramdisk.output_relative_path)
     found_artifacts: set[PurePosixPath] = set()
@@ -487,6 +638,8 @@ def compose_macos_guest_artifact_manifest(
     output_directory: Path,
     manifest_path: Path,
 ) -> dict[str, object]:
+    if command.kernel is None:
+        raise GuestArtifactCompilationError(command.compilation_id, "C34-manifest-compose", "arm64 C35 command has no kernel output")
     try:
         return manifest_composer.compose_macos_guest_artifact_manifest(
             manifest_composer.MacOSGuestArtifactManifestComposition(
@@ -511,6 +664,32 @@ def compose_macos_guest_artifact_manifest(
         raise GuestArtifactCompilationError(command.compilation_id, "C34-manifest-compose", str(error)) from error
 
 
+def compose_native_guest_artifact_manifest(
+    command: GuestArtifactCompilationCommand,
+    output_directory: Path,
+    manifest_path: Path,
+) -> dict[str, object]:
+    try:
+        return native_manifest_composer.compose_native_guest_artifact_manifest(
+            native_manifest_composer.NativeGuestArtifactManifestComposition(
+                artifact_set_id=command.artifact_set_id,
+                storage_sources=tuple(
+                    native_manifest_composer.NativeGuestStorageArtifactSource(
+                        storage_id=storage.identifier,
+                        storage_role=storage.role,
+                        storage_image_format=storage.storage_image_format,
+                        guest_volume_file_system=storage.guest_volume_file_system,
+                        source=output_directory / storage.output_relative_path,
+                    )
+                    for storage in command.storage_devices
+                ),
+                output_manifest=manifest_path,
+            )
+        )
+    except native_manifest_composer.NativeGuestArtifactManifestCompositionError as error:
+        raise GuestArtifactCompilationError(command.compilation_id, "C65-manifest-compose", str(error)) from error
+
+
 def compose_guest_artifact_compilation_receipt(
     command: GuestArtifactCompilationCommand,
     command_bytes: bytes,
@@ -523,6 +702,7 @@ def compose_guest_artifact_compilation_receipt(
         "schemaVersion": "v1",
         "compilationId": command.compilation_id,
         "artifactSetId": command.artifact_set_id,
+        "architecture": command.architecture,
         "compilationCommandSHA256": sha256_bytes(command_bytes),
         "buildEnvironment": {
             "id": command.build_environment_id,
@@ -533,11 +713,19 @@ def compose_guest_artifact_compilation_receipt(
             {"id": artifact.identifier, "sizeBytes": artifact.size_bytes, "sha256": artifact.sha256}
             for artifact in command.input_artifacts()
         ],
-        "macOSGuestArtifactManifest": {
-            "relativePath": "macos-guest-artifact-manifest.json",
-            "sizeBytes": manifest_path.stat().st_size,
-            "sha256": sha256_file(manifest_path),
-        },
+        **({
+            "macOSGuestArtifactManifest": {
+                "relativePath": "macos-guest-artifact-manifest.json",
+                "sizeBytes": manifest_path.stat().st_size,
+                "sha256": sha256_file(manifest_path),
+            }
+        } if command.architecture == "arm64" else {
+            "nativeGuestArtifactManifest": {
+                "relativePath": "native-guest-artifact-manifest.json",
+                "sizeBytes": manifest_path.stat().st_size,
+                "sha256": sha256_file(manifest_path),
+            }
+        }),
         "completedAt": compilation_completion_time.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
 

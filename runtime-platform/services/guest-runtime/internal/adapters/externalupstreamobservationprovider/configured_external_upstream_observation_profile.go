@@ -63,7 +63,7 @@ func (provider *ConfiguredExternalUpstreamObservationProfile) ObserveExternalUps
 	}
 	switch provider.mode {
 	case ModeAvailable:
-		capability, err := externalUpstreamCapability(integrationID, provider.reference, observedAt)
+		capability, err := guestruntimedomain.NewExternalUpstreamCapabilityDocument(integrationID, provider.reference, observedAt)
 		if err != nil {
 			return guestruntimedomain.ExternalUpstreamObservation{}, err
 		}
@@ -84,39 +84,6 @@ func (provider *ConfiguredExternalUpstreamObservationProfile) ObserveExternalUps
 	default:
 		return guestruntimedomain.ExternalUpstreamObservation{}, fmt.Errorf("unreachable External Upstream observation provider mode %q", provider.mode)
 	}
-}
-
-func externalUpstreamCapability(integrationID string, reference guestruntimedomain.IntegrationProviderReference, observedAt string) (guestruntimedomain.CapabilityDocument, error) {
-	if !guestruntimedomain.ValidIdentifier(integrationID) {
-		return guestruntimedomain.CapabilityDocument{}, fmt.Errorf("External Upstream integration ID must be valid")
-	}
-	unsupported := func(name string, code string) guestruntimedomain.Capability {
-		retryable := false
-		return guestruntimedomain.Capability{Name: name, State: "unsupported", Issue: &guestruntimedomain.Issue{Code: code, Message: "External Upstream provider does not own bundled lifecycle behavior", Retryable: &retryable, Dependency: reference.ID}}
-	}
-	return guestruntimedomain.CapabilityDocument{
-		SchemaVersion: guestruntimedomain.SchemaVersion,
-		// Provider identity is part of the stable document identity. A later
-		// integration update that switches provider cannot make an older
-		// topology reference appear to describe the new provider.
-		ID:                 fmt.Sprintf("capability-%s-%s-r%d", integrationID, reference.ID, reference.CapabilityRevision),
-		Provider:           guestruntimedomain.Provider{Kind: reference.Kind, ID: reference.ID},
-		CapabilityRevision: reference.CapabilityRevision,
-		ObservedAt:         observedAt,
-		Commands: []guestruntimedomain.Capability{
-			{Name: "upstream.recorder.deliver", State: "supported"},
-			{Name: "upstream.artifact.upload", State: "supported"},
-			unsupported("upstream.lifecycle.start", "external-upstream-lifecycle-unsupported"),
-			unsupported("upstream.lifecycle.stop", "external-upstream-lifecycle-unsupported"),
-			unsupported("upstream.update", "external-upstream-update-unsupported"),
-			unsupported("upstream.backup", "external-upstream-backup-unsupported"),
-		},
-		Reads: []guestruntimedomain.Capability{
-			{Name: "upstream.connection", State: "supported"},
-			{Name: "upstream.delivery.receipt", State: "supported"},
-			{Name: "upstream.observation.query", State: "supported"},
-		},
-	}, nil
 }
 
 var _ guestruntimeapplication.GuestRuntimeExternalUpstreamProvider = (*ConfiguredExternalUpstreamObservationProfile)(nil)

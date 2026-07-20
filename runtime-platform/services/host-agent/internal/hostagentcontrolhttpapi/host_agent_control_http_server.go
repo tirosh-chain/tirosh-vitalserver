@@ -19,6 +19,7 @@ const maximumCommandBytes int64 = 1 << 20
 type HostAgentControlHTTPServer struct {
 	service   *hostagentapplication.HostAgentControlApplicationService
 	updates   *hostagentapplication.HostUpdateApplicationService
+	bundles   *hostagentapplication.HostUpdateBundleApplicationService
 	time      *hostagentapplication.HostTimeAuthorityApplicationService
 	telemetry *hostagentapplication.HostTelemetryPipelineApplicationService
 }
@@ -34,6 +35,7 @@ func NewHostAgentControlHTTPServer(service *hostagentapplication.HostAgentContro
 type HostAgentControlHTTPModules struct {
 	Lifecycle *hostagentapplication.HostAgentControlApplicationService
 	Update    *hostagentapplication.HostUpdateApplicationService
+	Bundles   *hostagentapplication.HostUpdateBundleApplicationService
 	Time      *hostagentapplication.HostTimeAuthorityApplicationService
 	Telemetry *hostagentapplication.HostTelemetryPipelineApplicationService
 }
@@ -42,6 +44,7 @@ func NewHostAgentControlHTTPServerWithModules(modules HostAgentControlHTTPModule
 	return &HostAgentControlHTTPServer{
 		service:   modules.Lifecycle,
 		updates:   modules.Update,
+		bundles:   modules.Bundles,
 		time:      modules.Time,
 		telemetry: modules.Telemetry,
 	}
@@ -68,6 +71,12 @@ func (server *HostAgentControlHTTPServer) ServeHTTP(response http.ResponseWriter
 		server.executeLifecycle(response, request, "reboot")
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/platform/updates":
 		server.applyUpdate(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/platform/update-bundles:import":
+		server.importUpdateBundle(response, request)
+	case request.Method == http.MethodPost && updateBundleApplyID(request.URL.Path) != "":
+		server.applyImportedUpdateBundle(response, request, updateBundleApplyID(request.URL.Path))
+	case request.Method == http.MethodGet && pathParameter(request.URL.Path, "/v1/platform/update-bundles/") != "":
+		server.getUpdateBundle(response, request, pathParameter(request.URL.Path, "/v1/platform/update-bundles/"))
 	case request.Method == http.MethodGet && pathParameter(request.URL.Path, "/v1/platform/updates/") != "":
 		server.getUpdate(response, request, pathParameter(request.URL.Path, "/v1/platform/updates/"))
 	case request.Method == http.MethodPost && updateCompletionID(request.URL.Path) != "":
@@ -93,6 +102,64 @@ func (server *HostAgentControlHTTPServer) ServeHTTP(response http.ResponseWriter
 	default:
 		writeJSON(response, http.StatusNotFound, map[string]string{"error": "control route is not implemented by Host Agent"})
 	}
+}
+
+func (server *HostAgentControlHTTPServer) importUpdateBundle(response http.ResponseWriter, request *http.Request) {
+	if server.bundles == nil {
+		writeJSON(response, http.StatusServiceUnavailable, unavailableAdmission(requestIDFromRequest(request), "host-update-bundle-unavailable", "Host update bundle store is not configured"))
+		return
+	}
+	var command hostagentdomain.HostUpdateBundleImportCommand
+	requestID, err := decodeStrictCommand(request, &command)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(requestID, "invalid-host-update-bundle-import-command-envelope", err.Error()))
+		return
+	}
+	receipt, rejection, admissionFailure := server.bundles.ImportHostUpdateBundleCommand(request.Context(), command)
+	if rejection != nil {
+		writeJSON(response, http.StatusBadRequest, rejection)
+		return
+	}
+	if admissionFailure != nil {
+		writeJSON(response, http.StatusServiceUnavailable, admissionFailure)
+		return
+	}
+	writeJSON(response, http.StatusCreated, receipt)
+}
+
+func (server *HostAgentControlHTTPServer) getUpdateBundle(response http.ResponseWriter, request *http.Request, bundleID string) {
+	if server.bundles == nil {
+		writeJSON(response, http.StatusServiceUnavailable, unavailableRead("host-update-bundle-unavailable", "Host update bundle store is not configured"))
+		return
+	}
+	writeJSON(response, http.StatusOK, server.bundles.ReadHostUpdateBundle(request.Context(), bundleID))
+}
+
+func (server *HostAgentControlHTTPServer) applyImportedUpdateBundle(response http.ResponseWriter, request *http.Request, bundleID string) {
+	if server.bundles == nil {
+		writeJSON(response, http.StatusServiceUnavailable, unavailableAdmission(requestIDFromRequest(request), "host-update-bundle-unavailable", "Host update bundle store is not configured"))
+		return
+	}
+	var command hostagentdomain.HostUpdateBundleApplyCommand
+	requestID, err := decodeStrictCommand(request, &command)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(requestID, "invalid-host-update-bundle-apply-command-envelope", err.Error()))
+		return
+	}
+	if command.BundleReferenceID != bundleID {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(command.RequestID, "update-bundle-id-route-mismatch", "bundleReferenceId must match the requested route"))
+		return
+	}
+	outcome, rejection, admissionFailure := server.bundles.ApplyHostUpdateBundleCommand(request.Context(), command)
+	if rejection != nil {
+		writeJSON(response, http.StatusBadRequest, rejection)
+		return
+	}
+	if admissionFailure != nil {
+		writeJSON(response, http.StatusServiceUnavailable, admissionFailure)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, outcome)
 }
 
 func (server *HostAgentControlHTTPServer) applyUpdate(response http.ResponseWriter, request *http.Request) {
@@ -306,6 +373,8 @@ func (server *HostAgentControlHTTPServer) forwardRuntimeCommand(response http.Re
 func allowedRuntimeRead(path string) bool {
 	if path == "/v1/runtime/topology" || path == "/v1/runtime/capabilities" || path == "/v1/runtime/readiness" ||
 		path == "/v1/runtime/lab/sessions" || path == "/v1/runtime/lab/beds" || path == "/v1/runtime/lab/recorders" ||
+		path == "/v1/runtime/archive/export-provider" ||
+		path == "/v1/runtime/archive/credential-material" ||
 		path == "/v1/runtime/external-upstreams" || path == "/v1/runtime/relay-targets" ||
 		path == "/v1/time/clock-quality" || path == "/v1/runtime/catalog/recorder-observations" {
 		return true
@@ -341,6 +410,7 @@ func allowedRuntimeCommand(path string) bool {
 		path == "/v1/runtime/lab/sessions" ||
 		path == "/v1/runtime/lab/resources:command" ||
 		path == "/v1/runtime/archive/exports" ||
+		path == "/v1/runtime/archive/credential-material" ||
 		path == "/v1/runtime/external-upstreams" ||
 		path == "/v1/runtime/relay-targets" ||
 		path == "/v1/time/authorities" ||
@@ -360,6 +430,19 @@ func pathParameter(path string, prefix string) string {
 func updateCompletionID(path string) string {
 	const prefix = "/v1/platform/updates/"
 	const suffix = ":complete"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	value := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	if value == "" || strings.Contains(value, "/") {
+		return ""
+	}
+	return value
+}
+
+func updateBundleApplyID(path string) string {
+	const prefix = "/v1/platform/update-bundles/"
+	const suffix = ":apply"
 	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
 		return ""
 	}

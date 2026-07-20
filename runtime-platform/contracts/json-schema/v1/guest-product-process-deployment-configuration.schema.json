@@ -2,17 +2,38 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-process-deployment-configuration",
   "title": "GuestProductProcessDeploymentConfiguration",
-  "description": "C37 Guest-owned desired deployment input for the required Guest Runtime and Recorder Gateway processes. It makes every executable, listener, Guest public-service virtio bridge, durable store, C44 topology path, C46 external delivery-configuration path, retry limit, and selected diagnostic provider explicit. The Supervisor resolves a complete VitalServer packet-delivery configuration only from those explicit inputs. It is not a claim that either process started, accepted traffic, delivered a packet, or that an upstream is healthy.",
+  "description": "C37 Guest-owned desired deployment input for the required Guest Runtime, Recorder Gateway, Lab recorder Runner, and optionally selected Guest telemetry Collector process. It makes every executable, listener, Guest public-service virtio bridge, durable store, C44 topology path, C46 external delivery-configuration path, archive provider configuration kind/path, secret-material path, scenario catalog, retry limit, and selected diagnostic provider explicit. The Supervisor resolves complete VitalServer packet-delivery and archive-library configuration only from those explicit inputs. It is not a claim that any process started, accepted traffic, delivered a packet, exported an archive, or that an upstream is healthy.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "deploymentId", "requiredProcessExitPolicy", "guestRuntime", "recorderGateway"],
+  "required": ["schemaVersion", "deploymentId", "requiredProcessExitPolicy", "guestRuntime", "recorderGateway", "labRecorderRunner"],
   "properties": {
     "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
     "deploymentId": { "$ref": "#/$defs/Identifier" },
     "requiredProcessExitPolicy": { "const": "terminate-guest-product" },
     "guestRuntime": { "$ref": "#/$defs/GuestRuntimeProcess" },
-    "recorderGateway": { "$ref": "#/$defs/RecorderGatewayProcess" }
+    "recorderGateway": { "$ref": "#/$defs/RecorderGatewayProcess" },
+    "labRecorderRunner": { "$ref": "#/$defs/LabRecorderRunnerProcess" },
+    "telemetryCollector": { "$ref": "#/$defs/GuestTelemetryCollectorProcess" }
   },
+  "allOf": [
+    {
+      "if": { "required": ["telemetryCollector"] },
+      "then": {
+        "properties": {
+          "guestRuntime": {
+            "properties": {
+              "telemetryPipeline": {
+                "properties": { "kind": { "const": "otlp-http" } },
+                "required": ["kind"]
+              }
+            },
+            "required": ["telemetryPipeline"]
+          }
+        },
+        "required": ["guestRuntime"]
+      }
+    }
+  ],
   "$defs": {
     "Identifier": {
       "type": "string",
@@ -31,6 +52,13 @@
       "minLength": 1,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9:][A-Za-z0-9._:-]*$"
+    },
+    "GuestLoopbackHTTPURL": {
+      "description": "A Guest-internal HTTP endpoint for a named local process. C37 semantic validation additionally requires an explicit valid port and no path, query, credentials, or fragment.",
+      "type": "string",
+      "minLength": 18,
+      "maxLength": 64,
+      "pattern": "^http://(127\\.0\\.0\\.1|\\[::1\\]):[0-9]+$"
     },
     "Port": { "type": "integer", "minimum": 1, "maximum": 65535 },
     "Listener": {
@@ -55,24 +83,58 @@
     "ArchiveExportProvider": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "id", "capabilityRevision", "outcomeMode"],
+      "required": ["kind", "id", "capabilityRevision"],
       "properties": {
-        "kind": { "$ref": "#/$defs/Identifier" },
+        "kind": { "enum": ["archive-export-outcome-profile", "vitalserver-indexed-library"] },
         "id": { "$ref": "#/$defs/Identifier" },
         "capabilityRevision": { "type": "integer", "minimum": 1 },
-        "outcomeMode": { "enum": ["succeed", "upload-failed", "index-failed", "upload-outcome-unknown", "index-outcome-unknown"] }
+        "outcomeMode": { "enum": ["succeed", "upload-failed", "index-failed", "upload-outcome-unknown", "index-outcome-unknown"] },
+        "credentialMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "vitalServerConfiguration": { "$ref": "#/$defs/VitalServerArchiveProviderConfiguration" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "archive-export-outcome-profile" } }, "required": ["kind"] },
+          "then": { "required": ["outcomeMode"], "not": { "anyOf": [{ "required": ["credentialMaterialPath"] }, { "required": ["vitalServerConfiguration"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "vitalserver-indexed-library" } }, "required": ["kind"] },
+          "then": { "required": ["credentialMaterialPath", "vitalServerConfiguration"], "not": { "required": ["outcomeMode"] } }
+        }
+      ]
+    },
+    "VitalServerArchiveProviderConfiguration": {
+      "description": "The explicit desired document read by Guest Runtime's indexed-library adapter. C46 is an externally-administered target; C44 is the release-owned bundled target. The kind is never inferred from a loopback address.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "configurationPath"],
+      "properties": {
+        "kind": { "enum": ["external-vitalserver-delivery-configuration", "bundled-vitalserver-topology-deployment"] },
+        "configurationPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
       }
     },
     "ExternalUpstreamObservationProvider": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "id", "capabilityRevision", "outcomeMode"],
+      "required": ["kind", "id", "capabilityRevision"],
       "properties": {
-        "kind": { "$ref": "#/$defs/Identifier" },
+        "kind": { "enum": ["external-capability-profile", "external-vitalserver-http"] },
         "id": { "$ref": "#/$defs/Identifier" },
         "capabilityRevision": { "type": "integer", "minimum": 1 },
-        "outcomeMode": { "enum": ["available", "unavailable", "failed", "unsupported", "outcome-unknown"] }
-      }
+        "outcomeMode": { "enum": ["available", "unavailable", "failed", "unsupported", "outcome-unknown"] },
+        "externalVitalServerDeliveryConfigurationPath": { "$ref": "#/$defs/RecorderGatewayExternalVitalServerDeliveryConfigurationPath" },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 60000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "external-capability-profile" } }, "required": ["kind"] },
+          "then": { "required": ["outcomeMode"], "not": { "anyOf": [{ "required": ["externalVitalServerDeliveryConfigurationPath"] }, { "required": ["requestTimeoutMilliseconds"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "external-vitalserver-http" } }, "required": ["kind"] },
+          "then": { "required": ["externalVitalServerDeliveryConfigurationPath", "requestTimeoutMilliseconds"], "not": { "required": ["outcomeMode"] } }
+        }
+      ]
     },
     "OutboundRelayObservationProvider": {
       "type": "object",
@@ -88,26 +150,79 @@
     "GuestTimeAuthority": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["guestNodeId", "timeAuthorityId", "probeOutcomeMode"],
+      "required": ["guestNodeId", "timeAuthorityId", "kind"],
       "properties": {
         "guestNodeId": { "$ref": "#/$defs/Identifier" },
         "timeAuthorityId": { "$ref": "#/$defs/Identifier" },
+        "kind": { "enum": ["time-authority-outcome-profile", "chrony-tracking"] },
+        "chronyExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "ntpServerHost": {
+          "description": "Explicit Chrony NTP server hostname or IPv4 address. It is consumed only when C39 selects the Chrony Guest time-synchronization service.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$"
+        },
+        "ntpServerPort": { "$ref": "#/$defs/Port" },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 60000 },
         "probeOutcomeMode": { "enum": ["synchronized", "synchronizing", "unsynchronized", "stale", "failed", "unsupported", "outcome-unknown"] }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "time-authority-outcome-profile" } }, "required": ["kind"] },
+          "then": { "required": ["probeOutcomeMode"], "not": { "anyOf": [{ "required": ["chronyExecutablePath"] }, { "required": ["requestTimeoutMilliseconds"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "chrony-tracking" } }, "required": ["kind"] },
+          "then": { "required": ["chronyExecutablePath", "requestTimeoutMilliseconds"], "not": { "required": ["probeOutcomeMode"] } }
+        }
+      ]
     },
     "GuestTelemetryPipeline": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["collectorProbeOutcomeMode", "exportOutcomeMode"],
+      "required": ["kind"],
       "properties": {
+        "kind": { "enum": ["telemetry-export-outcome-profile", "otlp-http"] },
+        "collectorBaseEndpoint": { "type": "string", "minLength": 8, "maxLength": 2048 },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 60000 },
         "collectorProbeOutcomeMode": { "enum": ["ready", "unavailable", "failed", "unsupported", "outcome-unknown"] },
         "exportOutcomeMode": { "enum": ["exported", "dropped", "unavailable", "failed", "outcome-unknown"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "telemetry-export-outcome-profile" } }, "required": ["kind"] },
+          "then": { "required": ["collectorProbeOutcomeMode", "exportOutcomeMode"], "not": { "anyOf": [{ "required": ["collectorBaseEndpoint"] }, { "required": ["requestTimeoutMilliseconds"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "otlp-http" } }, "required": ["kind"] },
+          "then": { "required": ["collectorBaseEndpoint", "requestTimeoutMilliseconds"], "not": { "anyOf": [{ "required": ["collectorProbeOutcomeMode"] }, { "required": ["exportOutcomeMode"] }] } }
+        }
+      ]
+    },
+    "GuestTelemetryCollectorProcess": {
+      "description": "Optional Guest-local OpenTelemetry Collector selected only with the live otlp-http pipeline. Its one loopback OTLP listener is a desired process binding, not Collector readiness or backend delivery evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executablePath", "configurationPath", "otlpHttpListener"],
+      "properties": {
+        "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "configurationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "otlpHttpListener": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bindHost", "port"],
+          "properties": {
+            "bindHost": { "const": "127.0.0.1" },
+            "port": { "$ref": "#/$defs/Port" }
+          }
+        }
       }
     },
     "GuestRuntimeProcess": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["executablePath", "listener", "controlVirtioSocketListener", "publicServiceVirtioSocketBridges", "stateDatabasePath", "serviceVersion", "instanceId", "archiveExportProvider", "externalUpstreamObservationProvider", "outboundRelayObservationProvider", "timeAuthority", "telemetryPipeline"],
+      "required": ["executablePath", "listener", "controlVirtioSocketListener", "publicServiceVirtioSocketBridges", "stateDatabasePath", "serviceVersion", "instanceId", "archiveExportProvider", "recorderGatewayColdPathSourceEndpoint", "labRecorderRunnerEndpoint", "externalUpstreamObservationProvider", "outboundRelayObservationProvider", "timeAuthority", "telemetryPipeline"],
       "properties": {
         "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
         "listener": { "$ref": "#/$defs/Listener" },
@@ -121,6 +236,8 @@
         "serviceVersion": { "$ref": "#/$defs/Identifier" },
         "instanceId": { "$ref": "#/$defs/Identifier" },
         "archiveExportProvider": { "$ref": "#/$defs/ArchiveExportProvider" },
+        "recorderGatewayColdPathSourceEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
+        "labRecorderRunnerEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
         "externalUpstreamObservationProvider": { "$ref": "#/$defs/ExternalUpstreamObservationProvider" },
         "outboundRelayObservationProvider": { "$ref": "#/$defs/OutboundRelayObservationProvider" },
         "timeAuthority": { "$ref": "#/$defs/GuestTimeAuthority" },
@@ -204,6 +321,28 @@
         "deliveryReplayAdmissionPolicy": { "$ref": "#/$defs/RecorderGatewayDeliveryReplayAdmissionPolicy" },
         "coldPathCapturePolicy": { "$ref": "#/$defs/RecorderGatewayColdPathCapturePolicy" },
         "replayPolicy": { "$ref": "#/$defs/RecorderGatewayReplayPolicy" }
+      }
+    },
+    "LabRecorderRunnerProcess": {
+      "description": "Guest-local virtual-recorder Socket.IO execution process. It consumes a declared scenario catalog, the exact Recorder Gateway loopback endpoint, and Guest Runtime Recorder-observation catalog endpoint; it is not a public route, Lab state store, Gateway capture store, or Archive provider.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeExecutablePath", "programPath", "listener", "recorderGatewayEndpoint", "guestRuntimeObservationCatalogEndpoint", "scenarioCatalogPath"],
+      "properties": {
+        "nodeExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "programPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "listener": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bindHost", "port"],
+          "properties": {
+            "bindHost": { "const": "127.0.0.1" },
+            "port": { "$ref": "#/$defs/Port" }
+          }
+        },
+        "recorderGatewayEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
+        "guestRuntimeObservationCatalogEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
+        "scenarioCatalogPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
       }
     }
   }

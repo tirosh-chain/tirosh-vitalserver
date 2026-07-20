@@ -1,6 +1,6 @@
 // Package hostlocalupdatecompletionpublisher publishes an explicit C27 command
-// to the configured Host-local update endpoint. It owns HTTP transport only;
-// C28 meaning stays in the staged next-updater domain.
+// through the Host Agent-published C52 OS-local transport. It owns transport
+// only; C28 meaning stays in the staged next-updater domain.
 package hostlocalupdatecompletionpublisher
 
 import (
@@ -18,22 +18,9 @@ import (
 
 const maximumResponseBytes int64 = 1 << 20
 
-// HostLocalStagedProductUpdateCompletionHTTPPublisher has no default endpoint.
-// The selected deployment supervisor must pass the Host-local completion
-// endpoint explicitly for every execution attempt.
-type HostLocalStagedProductUpdateCompletionHTTPPublisher struct{ httpClient *http.Client }
-
-func NewHostLocalStagedProductUpdateCompletionHTTPPublisher(httpClient *http.Client) (*HostLocalStagedProductUpdateCompletionHTTPPublisher, error) {
+func publishStagedProductUpdateCompletion(ctx context.Context, httpClient *http.Client, endpoint string, command hostupdaterdomain.StagedProductUpdateCompletionCommand) error {
 	if httpClient == nil {
-		return nil, fmt.Errorf("Host-local completion HTTP client is required")
-	}
-	return &HostLocalStagedProductUpdateCompletionHTTPPublisher{httpClient: httpClient}, nil
-}
-
-func (publisher *HostLocalStagedProductUpdateCompletionHTTPPublisher) Publish(ctx context.Context, completionEndpoint string, command hostupdaterdomain.StagedProductUpdateCompletionCommand) error {
-	endpoint, err := hostLocalStagedProductUpdateCompletionURL(completionEndpoint, command.UpdateID)
-	if err != nil {
-		return err
+		return fmt.Errorf("Host-local completion HTTP client is required")
 	}
 	body, err := json.Marshal(command)
 	if err != nil {
@@ -45,7 +32,7 @@ func (publisher *HostLocalStagedProductUpdateCompletionHTTPPublisher) Publish(ct
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Content-Type", "application/json")
-	response, err := publisher.httpClient.Do(request)
+	response, err := httpClient.Do(request)
 	if err != nil {
 		return fmt.Errorf("publish C27 update completion: %w", err)
 	}
@@ -63,7 +50,10 @@ func (publisher *HostLocalStagedProductUpdateCompletionHTTPPublisher) Publish(ct
 	return nil
 }
 
-func hostLocalStagedProductUpdateCompletionURL(completionEndpoint string, updateID string) (string, error) {
+// stagedProductUpdateCompletionURL is shared by OS-local transports after
+// they have authenticated their own C52 endpoint. It validates URL syntax but
+// intentionally does not make a network-locality decision itself.
+func stagedProductUpdateCompletionURL(completionEndpoint string, updateID string) (string, error) {
 	if !validEndpointIdentifier(updateID) {
 		return "", fmt.Errorf("C27 completion updateId is invalid")
 	}

@@ -30,7 +30,12 @@
   },
   "activation": {
     "currentReleaseLinkPath": "/Library/Application Support/VitalServerRuntimePlatform/current",
+    "referenceKind": "symbolic-link",
     "expectedReleaseRootPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-0.2.0-dev-build-001"
+  },
+  "operatorInterface": {
+    "bootstrapConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json",
+    "bootstrapConfigurationSha256": "4444444444444444444444444444444444444444444444444444444444444444"
   },
   "requiredServices": [
     {
@@ -46,32 +51,50 @@
       "name": "com.tirosh.vitalserver.host-edge-proxy",
       "definitionPath": "/Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist",
       "definitionSha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "role": "host-update-handoff-supervisor",
+      "manager": "launchd",
+      "name": "com.tirosh.vitalserver.host-update-handoff-supervisor",
+      "definitionPath": "/Library/LaunchDaemons/com.tirosh.vitalserver.host-update-handoff-supervisor.plist",
+      "definitionSha256": "5555555555555555555555555555555555555555555555555555555555555555"
     }
   ],
   "mutableStores": [
     {
       "id": "installation-data-root",
       "path": "/Library/Application Support/VitalServerRuntimePlatform/data",
+      "kind": "directory",
       "owner": "host-installation-manager",
       "retention": "purge-only-by-explicit-command"
     },
     {
       "id": "host-agent-state",
       "path": "/Library/Application Support/VitalServerRuntimePlatform/data/host-agent",
+      "kind": "directory",
       "owner": "host-agent",
       "retention": "preserve-by-default"
     },
     {
       "id": "virtual-machine-runtime",
       "path": "/Library/Application Support/VitalServerRuntimePlatform/data/virtual-machine",
+      "kind": "directory",
       "owner": "macos-virtual-machine-supervisor",
       "retention": "preserve-by-default"
     },
     {
       "id": "installation-manager-journal",
       "path": "/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager",
+      "kind": "directory",
       "owner": "host-installation-manager",
       "retention": "purge-only-by-explicit-command"
+    },
+    {
+      "id": "host-update-handoff-evidence",
+      "path": "/Library/Application Support/VitalServerRuntimePlatform/data/update-execution",
+      "kind": "directory",
+      "owner": "host-update-handoff-supervisor",
+      "retention": "preserve-by-default"
     }
   ]
 }

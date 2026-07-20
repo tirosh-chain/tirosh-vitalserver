@@ -251,18 +251,38 @@ def parse_declared_guest_product_bootstrap_artifact_composer_source(
 
 def parse_declared_guest_artifact_compilation_input_sources(
     declaration: Mapping[str, Any], assembly_id: str
-) -> tuple[list[DeclaredGuestArtifactCompilationSource], Mapping[str, Any], list[Mapping[str, Any]]]:
-    boot = require_assembly_object(declaration.get("boot"), "C41 boot")
+) -> tuple[list[DeclaredGuestArtifactCompilationSource], Mapping[str, Any] | None, list[Mapping[str, Any]]]:
+    architecture = require_assembly_string(declaration, "architecture", "C41")
+    if architecture not in {"arm64", "amd64"}:
+        raise GuestArtifactCompilationInputAssemblyError(assembly_id, "C41-semantics", "C41 architecture is invalid")
+    boot = require_assembly_object(declaration.get("boot"), "C41 boot") if architecture == "arm64" else None
+    if architecture == "amd64" and "boot" in declaration:
+        raise GuestArtifactCompilationInputAssemblyError(assembly_id, "C41-semantics", "amd64 C41 must not declare macOS boot outputs")
     input_sources = [
-        parse_declared_input_source(
-            require_assembly_object(boot.get("kernel"), "C41 boot.kernel").get("source"),
-            "C41 boot.kernel.source",
-            assembly_id,
-        ),
         parse_declared_input_source(declaration.get("guestRuntimeArtifact"), "C41 guestRuntimeArtifact", assembly_id),
-        parse_declared_input_source(declaration.get("recorderGatewayArtifact"), "C41 recorderGatewayArtifact", assembly_id),
+        *(
+            [parse_declared_input_source(declaration.get("guestTelemetryCollectorArtifact"), "C41 guestTelemetryCollectorArtifact", assembly_id)]
+            if "guestTelemetryCollectorArtifact" in declaration
+            else []
+        ),
+        *(
+            [parse_declared_input_source(declaration.get("guestTelemetryCollectorConfigurationArtifact"), "C41 guestTelemetryCollectorConfigurationArtifact", assembly_id)]
+            if "guestTelemetryCollectorConfigurationArtifact" in declaration
+            else []
+        ),
+        parse_declared_input_source(declaration.get("guestNodeServicesArtifact"), "C41 guestNodeServicesArtifact", assembly_id),
         parse_declared_input_source(declaration.get("guestProductProcessSupervisorArtifact"), "C41 guestProductProcessSupervisorArtifact", assembly_id),
         parse_declared_input_source(declaration.get("guestProductProcessDeploymentConfigurationArtifact"), "C41 guestProductProcessDeploymentConfigurationArtifact", assembly_id),
+        parse_declared_input_source(
+            declaration.get("guestProductReleaseManagerArtifact"),
+            "C41 guestProductReleaseManagerArtifact",
+            assembly_id,
+        ),
+        parse_declared_input_source(
+            declaration.get("guestProductReleaseManagerConfigurationArtifact"),
+            "C41 guestProductReleaseManagerConfigurationArtifact",
+            assembly_id,
+        ),
         parse_declared_input_source(declaration.get("guestProductServiceManagerDeploymentConfigurationArtifact"), "C41 guestProductServiceManagerDeploymentConfigurationArtifact", assembly_id),
         parse_declared_input_source(
             declaration.get("guestProductBootstrapConfigurationArtifact"),
@@ -275,6 +295,15 @@ def parse_declared_guest_artifact_compilation_input_sources(
             assembly_id,
         ),
     ]
+    if boot is not None:
+        input_sources.insert(
+            0,
+            parse_declared_input_source(
+                require_assembly_object(boot.get("kernel"), "C41 boot.kernel").get("source"),
+                "C41 boot.kernel.source",
+                assembly_id,
+            ),
+        )
     if "externalVitalServerDeliveryConfigurationArtifact" in declaration:
         input_sources.append(
             parse_declared_input_source(
@@ -283,7 +312,21 @@ def parse_declared_guest_artifact_compilation_input_sources(
                 assembly_id,
             )
         )
-    initial_ramdisk = boot.get("initialRamdisk")
+    bundled_manager_keys = (
+        ("guestBundledUpstreamImageSetManagerArtifact", "C41 guestBundledUpstreamImageSetManagerArtifact"),
+        ("guestBundledUpstreamImageSetManagerConfigurationArtifact", "C41 guestBundledUpstreamImageSetManagerConfigurationArtifact"),
+    )
+    declared_bundled_manager_keys = [key for key, _ in bundled_manager_keys if key in declaration]
+    if declared_bundled_manager_keys and len(declared_bundled_manager_keys) != len(bundled_manager_keys):
+        raise GuestArtifactCompilationInputAssemblyError(
+            assembly_id,
+            "C41-semantics",
+            "C41 Guest Bundled Upstream Image-set Manager binary and configuration artifacts must be declared together",
+        )
+    for key, role in bundled_manager_keys:
+        if key in declaration:
+            input_sources.append(parse_declared_input_source(declaration.get(key), role, assembly_id))
+    initial_ramdisk = boot.get("initialRamdisk") if boot is not None else None
     if initial_ramdisk is not None:
         input_sources.append(
             parse_declared_input_source(
@@ -430,7 +473,7 @@ def compose_guest_artifact_compilation_command(
     builder_source: DeclaredGuestProductBootstrapArtifactComposerSource,
     assembled_builder: Mapping[str, Any],
     assembled_artifacts: Sequence[Mapping[str, Any]],
-    boot: Mapping[str, Any],
+    boot: Mapping[str, Any] | None,
     storage_devices: Sequence[Mapping[str, Any]],
     assembly_id: str,
 ) -> Mapping[str, Any]:
@@ -447,30 +490,64 @@ def compose_guest_artifact_compilation_command(
                 assembly_id, "C35-compose", "C41 source was not assembled: " + identifier
             ) from error
     def boot_output(role: str) -> Mapping[str, Any]:
+        if boot is None:
+            raise GuestArtifactCompilationInputAssemblyError(assembly_id, "C35-compose", "amd64 C41 has no macOS boot output")
         output = require_assembly_object(boot[role], "C41 boot." + role)
         source = require_assembly_object(output.get("source"), "C41 boot." + role + ".source")
         return {"source": artifact(require_assembly_string(source, "id", "C41 boot." + role + ".source")), "outputRelativePath": require_assembly_string(output, "outputRelativePath", "C41 boot." + role)}
+    architecture = require_assembly_string(declaration, "architecture", "C41")
     command: dict[str, Any] = {
         "schemaVersion": "v1",
         "compilationId": declaration["compilationId"],
         "artifactSetId": declaration["artifactSetId"],
         "architecture": declaration["architecture"],
         "buildEnvironment": {"id": builder_source.identifier, "builderExecutableSizeBytes": assembled_builder["sizeBytes"], "builderExecutableSHA256": assembled_builder["sha256"]},
-        "boot": {"kernel": boot_output("kernel")},
-        "guestRuntimeArtifact": artifact("guest-runtime-linux-arm64"),
-        "recorderGatewayArtifact": artifact("recorder-gateway-linux-arm64"),
-        "guestProductProcessSupervisorArtifact": artifact("guest-product-process-supervisor-linux-arm64"),
+        "guestRuntimeArtifact": artifact("guest-runtime-linux-" + architecture),
+        "guestNodeServicesArtifact": artifact("guest-node-services-linux-" + architecture),
+        "guestProductProcessSupervisorArtifact": artifact("guest-product-process-supervisor-linux-" + architecture),
         "guestProductProcessDeploymentConfigurationArtifact": artifact("guest-product-process-deployment-configuration"),
+        "guestProductReleaseManagerArtifact": artifact("guest-product-release-manager-linux-" + architecture),
+        "guestProductReleaseManagerConfigurationArtifact": artifact("guest-product-release-manager-configuration"),
         "guestProductServiceManagerDeploymentConfigurationArtifact": artifact("guest-product-service-manager-deployment-configuration"),
         "guestProductBootstrapConfigurationArtifact": artifact("guest-product-bootstrap-configuration"),
         "guestProductVitalServerTopologyDeploymentArtifact": artifact("guest-product-vitalserver-topology-deployment"),
         "storageDevices": [],
     }
+    if boot is not None:
+        command["boot"] = {"kernel": boot_output("kernel")}
+    telemetry_artifact_keys = (
+        ("guestTelemetryCollectorArtifact", "guest-telemetry-collector-linux-" + architecture),
+        ("guestTelemetryCollectorConfigurationArtifact", "guest-telemetry-collector-configuration"),
+    )
+    declared_telemetry_artifact_keys = [key for key, _ in telemetry_artifact_keys if key in declaration]
+    if declared_telemetry_artifact_keys and len(declared_telemetry_artifact_keys) != len(telemetry_artifact_keys):
+        raise GuestArtifactCompilationInputAssemblyError(
+            assembly_id,
+            "C35-compose",
+            "C41 telemetry Collector binary and configuration artifacts must be declared together",
+        )
+    for key, identifier in telemetry_artifact_keys:
+        if key in declaration:
+            command[key] = artifact(identifier)
     if "externalVitalServerDeliveryConfigurationArtifact" in declaration:
         command["externalVitalServerDeliveryConfigurationArtifact"] = artifact(
             "external-vitalserver-delivery-configuration"
         )
-    if "initialRamdisk" in boot:
+    bundled_manager_artifact_keys = (
+        ("guestBundledUpstreamImageSetManagerArtifact", "guest-bundled-upstream-image-set-manager-linux-" + architecture),
+        ("guestBundledUpstreamImageSetManagerConfigurationArtifact", "guest-bundled-upstream-image-set-manager-configuration"),
+    )
+    declared_bundled_manager_artifact_keys = [key for key, _ in bundled_manager_artifact_keys if key in declaration]
+    if declared_bundled_manager_artifact_keys and len(declared_bundled_manager_artifact_keys) != len(bundled_manager_artifact_keys):
+        raise GuestArtifactCompilationInputAssemblyError(
+            assembly_id,
+            "C35-compose",
+            "C41 Guest Bundled Upstream Image-set Manager binary and configuration artifacts must be declared together",
+        )
+    for key, identifier in bundled_manager_artifact_keys:
+        if key in declaration:
+            command[key] = artifact(identifier)
+    if boot is not None and "initialRamdisk" in boot:
         command["boot"]["initialRamdisk"] = boot_output("initialRamdisk")
     for index, storage_device in enumerate(storage_devices):
         storage_id = require_assembly_string(storage_device, "id", f"C41 storageDevices[{index}]")

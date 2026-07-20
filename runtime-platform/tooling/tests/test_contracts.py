@@ -30,6 +30,7 @@ class ContractKernelTests(unittest.TestCase):
         self.assertEqual(
             [
                 "json-schema/v1/artifact-export-command.schema.json",
+                "json-schema/v1/archive-export-provider.schema.json",
                 "json-schema/v1/artifact-manifest.schema.json",
                 "json-schema/v1/export-receipt.schema.json",
             ],
@@ -74,6 +75,132 @@ class ContractKernelTests(unittest.TestCase):
         self.assertEqual("Release process", by_id["C48"]["owner"])
         self.assertEqual("Host Installation Manager", by_id["C49"]["owner"])
         self.assertEqual("Host Installation Manager", by_id["C50"]["owner"])
+        self.assertEqual("Host Installation Manager", by_id["C54"]["owner"])
+        self.assertEqual("Guest secret-material owner", by_id["C51"]["owner"])
+        self.assertEqual("Guest secret-material owner", by_id["C60"]["owner"])
+        self.assertEqual("Guest Product release delivery", by_id["C61"]["owner"])
+        self.assertEqual("Host deployment configuration", by_id["C62"]["owner"])
+        self.assertEqual("Selected native Platform Provider", by_id["C63"]["owner"])
+        self.assertEqual("Guest Bundled Upstream Image-set Manager", by_id["C64"]["owner"])
+        self.assertEqual("Guest Bundled Upstream release delivery", by_id["C66"]["owner"])
+        self.assertEqual("Guest image compiler", by_id["C65"]["owner"])
+        self.assertEqual("Host Platform release delivery", by_id["C67"]["owner"])
+        self.assertEqual("Host Installation Manager", by_id["C68"]["owner"])
+        self.assertEqual("Host update bundle store and Host Agent", by_id["C69"]["owner"])
+        self.assertEqual("Release process", by_id["C70"]["owner"])
+        self.assertEqual("Runtime Console packager", by_id["C71"]["owner"])
+        self.assertEqual("Release process", by_id["C72"]["owner"])
+        self.assertEqual("Guest Linux source disk materializer", by_id["C73"]["owner"])
+        self.assertEqual("Release process", by_id["C74"]["owner"])
+
+    def test_checked_in_guest_bootstrap_configurations_are_explicit_valid_architecture_inputs(self) -> None:
+        product_root = self.root / "product" / "guest-product"
+        expected_artifact_suffixes = {
+            "arm64": "linux-arm64",
+            "amd64": "linux-amd64",
+        }
+
+        for architecture, suffix in expected_artifact_suffixes.items():
+            filename = (
+                "guest-product-bootstrap-configuration.v1.json"
+                if architecture == "arm64"
+                else "guest-product-bootstrap-configuration-amd64.v1.json"
+            )
+            configuration = contracts.load_json(product_root / filename)
+
+            self.assertEqual(
+                [],
+                self.repository.validate_instance(
+                    "guest-product-bootstrap-configuration.schema.json", configuration
+                ),
+                filename,
+            )
+            self.assertEqual(architecture, configuration["guestArchitecture"])
+            self.assertTrue(
+                configuration["guestRuntime"]["artifactId"].endswith(suffix)
+            )
+            self.assertTrue(
+                configuration["guestTelemetryCollector"]["artifactId"].endswith(suffix)
+            )
+            self.assertTrue(
+                configuration["guestNodeServicesBundle"]["artifactId"].endswith(suffix)
+            )
+            self.assertTrue(
+                configuration["guestProductProcessSupervisor"]["artifactId"].endswith(suffix)
+            )
+            self.assertTrue(
+                configuration["guestProductReleaseManager"]["executable"]["artifactId"].endswith(suffix)
+            )
+
+    def test_host_installation_footprint_accepts_explicit_windows_paths(self) -> None:
+        root = r"C:\ProgramData\VitalServerRuntimePlatform"
+        footprint = {
+            "schemaVersion": "v1",
+            "installationId": "vitalserver-runtime-platform",
+            "expectedReleaseId": "runtime-platform-0.2.0-dev-build-001",
+            "platform": "windows",
+            "observedAt": "2026-07-19T00:00:00Z",
+            "packageReceipt": {
+                "state": "absent",
+                "identifier": "com.tirosh.vitalserver.runtime-platform",
+            },
+            "releaseCatalog": {"state": "absent", "releaseCatalogPath": root + r"\releases"},
+            "immutableRelease": {
+                "state": "absent",
+                "releaseRootPath": root + r"\releases\runtime-platform-0.2.0-dev-build-001",
+            },
+            "activation": {"state": "absent", "currentReleaseLinkPath": root + r"\current"},
+            "requiredServices": [
+                {"role": "host-agent", "name": "VitalServerHostAgent", "state": "absent", "definitionState": "absent"},
+                {"role": "host-edge-proxy", "name": "VitalServerHostEdgeProxy", "state": "absent", "definitionState": "absent"},
+                {"role": "host-update-handoff-supervisor", "name": "VitalServerHostUpdateHandoffSupervisor", "state": "absent", "definitionState": "absent"},
+            ],
+            "mutableStores": [{"id": "native-machine-runtime", "state": "absent"}],
+            "installationTransaction": {
+                "state": "absent",
+                "journalPath": root + r"\data\installation-manager\current-transaction.json",
+                "receiptPath": root + r"\data\installation-manager\latest-installation-receipt.json",
+            },
+        }
+
+        self.assertEqual(
+            [],
+            self.repository.validate_instance("host-installation-footprint.schema.json", footprint),
+        )
+
+    def test_host_product_installation_manifest_binds_native_service_and_activation_contracts(self) -> None:
+        manifest = contracts.load_json(
+            self.root / "contracts" / "examples" / "v1" / "valid" / "host-product-installation-manifest.json"
+        )
+        linux = copy.deepcopy(manifest)
+        linux["platform"] = "linux"
+        for service in linux["requiredServices"]:
+            service["manager"] = "systemd"
+        self.assertEqual(
+            [],
+            self.repository.validate_instance("host-product-installation-manifest.schema.json", linux),
+        )
+
+        linux["activation"]["referenceKind"] = "directory-junction"
+        self.assertNotEqual(
+            [],
+            self.repository.validate_instance("host-product-installation-manifest.schema.json", linux),
+        )
+
+        windows = copy.deepcopy(manifest)
+        windows["platform"] = "windows"
+        windows["activation"]["referenceKind"] = "directory-junction"
+        for service in windows["requiredServices"]:
+            service["manager"] = "windows-scm"
+        self.assertEqual(
+            [],
+            self.repository.validate_instance("host-product-installation-manifest.schema.json", windows),
+        )
+        windows["requiredServices"][0]["manager"] = "launchd"
+        self.assertNotEqual(
+            [],
+            self.repository.validate_instance("host-product-installation-manifest.schema.json", windows),
+        )
 
     def test_extend_baseline_refuses_a_breaking_existing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

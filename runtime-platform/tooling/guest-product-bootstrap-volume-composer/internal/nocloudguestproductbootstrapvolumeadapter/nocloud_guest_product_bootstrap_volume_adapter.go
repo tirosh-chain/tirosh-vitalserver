@@ -490,12 +490,28 @@ func renderGuestOwnedBootstrapScript(plan guestproductbootstrapvolumeplan.GuestP
 		script.WriteString("[ \"$(wc -c < \"$mount_root/" + payloadPath + "\")\" -eq " + fmt.Sprintf("%d", source.SizeBytes) + " ]\n")
 		script.WriteString("printf '%s  %s\\n' '" + source.SHA256 + "' \"$mount_root/" + payloadPath + "\" | sha256sum -c -\n")
 	}
+	if plan.GuestTimeSynchronization != nil {
+		// The plan validator accepts exactly the selected apt/chrony/systemd
+		// tuple. This Guest-owned effect still fails closed if package retrieval
+		// or installation fails; it never falls back to an image-provided clock
+		// daemon whose owner or source was not declared.
+		script.WriteString("export DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install --yes --no-install-recommends chrony\n")
+	}
 	for _, installation := range plan.FileInstallations {
 		script.WriteString("install -D -m " + installation.FileMode + " \"$mount_root/payload/" + installation.SourceID + "\" \"" + installation.DestinationPath + "\"\n")
 	}
 	for _, installation := range plan.ArchiveInstallations {
 		script.WriteString("mkdir -p \"" + installation.DestinationDirectory + "\"\ntar -xzf \"$mount_root/payload/" + installation.SourceID + "\" --no-same-owner --no-same-permissions -C \"" + installation.DestinationDirectory + "\"\n")
 	}
+	// Initial release activation is deliberately narrower than a future update:
+	// bootstrap may create the current link when absent, or prove an idempotent
+	// retry already points to this exact release. It never retargets a link that
+	// names another release; that transition belongs to the Guest Product Release
+	// Manager and requires its own durable update journal.
+	release := plan.GuestProductRelease
+	script.WriteString("install -d -m " + release.ReleaseStateDirectoryMode + " \"" + release.ReleaseStateDirectory + "\"\n")
+	script.WriteString("[ -d \"" + release.ReleaseDirectory + "\" ]\n")
+	script.WriteString("if [ -e \"" + release.CurrentReleaseLinkPath + "\" ] || [ -L \"" + release.CurrentReleaseLinkPath + "\" ]; then\n  [ -L \"" + release.CurrentReleaseLinkPath + "\" ]\n  [ \"$(readlink -f \"" + release.CurrentReleaseLinkPath + "\")\" = \"" + release.ReleaseDirectory + "\" ]\nelse\n  mkdir -p \"$(dirname \"" + release.CurrentReleaseLinkPath + "\")\"\n  ln -s \"" + release.ReleaseDirectory + "\" \"" + release.CurrentReleaseLinkPath + "\"\nfi\n")
 	for _, symbolicLink := range plan.SymbolicLinks {
 		script.WriteString("mkdir -p \"$(dirname \"" + symbolicLink.LinkPath + "\")\"\nln -sfn \"" + symbolicLink.TargetPath + "\" \"" + symbolicLink.LinkPath + "\"\n")
 	}
@@ -504,7 +520,28 @@ func renderGuestOwnedBootstrapScript(plan guestproductbootstrapvolumeplan.GuestP
 	// database initialization failure rather than treating this declaration as
 	// readiness evidence.
 	script.WriteString("install -d -m " + plan.GuestRuntimeStateDirectory.DirectoryMode + " \"" + plan.GuestRuntimeStateDirectory.DirectoryPath + "\"\n")
-	script.WriteString("systemctl daemon-reload\nsystemctl enable " + plan.ServiceUnitName + "\nsystemctl start " + plan.ServiceUnitName + "\n")
+	if plan.GuestTelemetryStateDirectory != nil {
+		// The Collector owns this store. Cloud-init prepares only the declared
+		// directory; it does not treat creation as Collector readiness.
+		script.WriteString("install -d -m " + plan.GuestTelemetryStateDirectory.DirectoryMode + " \"" + plan.GuestTelemetryStateDirectory.DirectoryPath + "\"\n")
+	}
+	if manager := plan.GuestBundledUpstreamImageSetManager; manager != nil {
+		// C64 owns image-set state. The bootstrap only prepares its declared
+		// state root and invokes the manager's one-shot, exclusive initializer.
+		// It does not call Docker, inspect container state, or infer a selected
+		// image set from a missing state document.
+		script.WriteString("export DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install --yes --no-install-recommends " + manager.ContainerEngineBootstrap.PackageName + "\nsystemctl enable " + manager.ContainerEngineBootstrap.ServiceName + "\nsystemctl start " + manager.ContainerEngineBootstrap.ServiceName + "\n")
+		script.WriteString("install -d -m " + manager.StateDirectory.DirectoryMode + " \"" + manager.StateDirectory.DirectoryPath + "\"\n")
+		script.WriteString("\"" + manager.ExecutablePath + "\" --configuration \"" + manager.ConfigurationPath + "\" --mode initialize-active-image-set\n")
+	}
+	if plan.GuestTimeSynchronization != nil {
+		script.WriteString("systemctl enable chrony.service\nsystemctl restart chrony.service\n")
+	}
+	script.WriteString("systemctl daemon-reload\n")
+	if manager := plan.GuestBundledUpstreamImageSetManager; manager != nil {
+		script.WriteString("systemctl enable " + manager.ServiceUnitName + "\nsystemctl start " + manager.ServiceUnitName + "\n")
+	}
+	script.WriteString("systemctl enable " + plan.ServiceUnitName + "\nsystemctl start " + plan.ServiceUnitName + "\n")
 	script.WriteString("install -D -m 0644 /dev/null /var/lib/vitalserver/bootstrap-completed\nprintf '%s\\n' '" + plan.BootstrapID + "' > /var/lib/vitalserver/bootstrap-completed\n")
 	return script.String(), nil
 }

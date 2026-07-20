@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -38,7 +39,10 @@ def request_json(url: str, method: str = "GET", payload: dict | None = None) -> 
         with urllib.request.urlopen(request, timeout=2) as response:
             return response.status, response.read()
     except urllib.error.HTTPError as error:
-        return error.code, error.read()
+        try:
+            return error.code, error.read()
+        finally:
+            error.close()
 
 
 def wait_for_ready(url: str, process: subprocess.Popen[str]) -> None:
@@ -65,21 +69,18 @@ class HostGuestControlAcceptance(unittest.TestCase):
         self.host_port = free_port()
         self.guest_runtime_control_http_acceptance_fixture_binary = self.work / "guest-runtime-control-http-acceptance-fixture"
         self.host_binary = self.work / "acceptance-host-agent"
+        self.platformctl_binary = self.work / "platformctl"
         self._build(
             "services/guest-runtime",
             "./cmd/guest-runtime-control-http-acceptance-fixture",
             self.guest_runtime_control_http_acceptance_fixture_binary,
         )
         self._build("services/host-agent", "./cmd/acceptance-host-agent", self.host_binary)
+        self._build("interfaces/platformctl", "./cmd/platformctl", self.platformctl_binary)
         self.guest_process = subprocess.Popen(
             [
                 str(self.guest_runtime_control_http_acceptance_fixture_binary),
-                *compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
-                    listen_address=f"127.0.0.1:{self.guest_port}", state_database_path=str(self.work / "guest.sqlite"), service_version="acceptance", instance_id="guest-acceptance",
-                    archive_export_outcome_mode="succeed", external_upstream_outcome_mode="unsupported", outbound_relay_outcome_mode="unsupported",
-                    guest_node_id="guest-acceptance", time_authority_id="guest-time-acceptance", time_probe_outcome_mode="unsupported",
-                    telemetry_collector_probe_outcome_mode="unsupported", telemetry_export_outcome_mode="unavailable",
-                ),
+                *self.guest_fixture_arguments(),
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -109,6 +110,14 @@ class HostGuestControlAcceptance(unittest.TestCase):
         )
         self.host_url = f"http://127.0.0.1:{self.host_port}"
         wait_for_ready(self.host_url + "/v1/platform/guest-runtime-control-endpoint", self.host_process)
+
+    def guest_fixture_arguments(self) -> list[str]:
+        return compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
+            listen_address=f"127.0.0.1:{self.guest_port}", state_database_path=str(self.work / "guest.sqlite"), service_version="acceptance", instance_id="guest-acceptance",
+            archive_export_outcome_mode="succeed", recorder_gateway_cold_path_source_endpoint="http://127.0.0.1:8090", lab_recorder_runner_endpoint="http://127.0.0.1:8091", external_upstream_outcome_mode="unsupported", outbound_relay_outcome_mode="unsupported",
+            guest_node_id="guest-acceptance", time_authority_id="guest-time-acceptance", time_probe_outcome_mode="unsupported",
+            telemetry_collector_probe_outcome_mode="unsupported", telemetry_export_outcome_mode="unavailable",
+        )
 
     def tearDown(self) -> None:
         for process in (getattr(self, "host_process", None), getattr(self, "guest_process", None)):
@@ -161,6 +170,205 @@ class HostGuestControlAcceptance(unittest.TestCase):
         operation = json.loads(body)
         self.assertEqual("succeeded", operation["state"], operation)
         return operation
+
+    def platformctl(self, *arguments: str, standard_input: str | None = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(self.platformctl_binary), "--control-endpoint", self.host_url, *arguments],
+            input=standard_input,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_platformctl_uses_the_public_host_facade_without_state_discovery(self) -> None:
+        endpoint_read = self.platformctl("guest-runtime-control-endpoint")
+        self.assertEqual(0, endpoint_read.returncode, endpoint_read.stderr)
+        endpoint_response = json.loads(endpoint_read.stdout)
+        self.assertEqual(200, endpoint_response["httpStatus"], endpoint_response)
+        endpoint = endpoint_response["document"]
+        self.assertEqual("available", endpoint["state"], endpoint)
+        configured_endpoint = endpoint["value"]
+
+        start = self.platformctl(
+            "guest",
+            "start",
+            "--request-id",
+            "platformctl-host-start-1",
+            "--guest-runtime-control-endpoint-id",
+            configured_endpoint["id"],
+            "--expected-resource-revision",
+            str(configured_endpoint["resourceRevision"]),
+        )
+        self.assertEqual(0, start.returncode, start.stderr)
+        start_response = json.loads(start.stdout)
+        self.assertEqual(202, start_response["httpStatus"], start_response)
+        self.assertEqual("succeeded", start_response["document"]["state"], start_response)
+
+        readiness = self.platformctl("runtime", "readiness")
+        self.assertEqual(0, readiness.returncode, readiness.stderr)
+        readiness_response = json.loads(readiness.stdout)
+        self.assertEqual(200, readiness_response["httpStatus"], readiness_response)
+        self.assertEqual("available", readiness_response["document"]["state"], readiness_response)
+
+        archive_provider = self.platformctl("runtime", "archive-export-provider")
+        self.assertEqual(0, archive_provider.returncode, archive_provider.stderr)
+        archive_provider_response = json.loads(archive_provider.stdout)
+        self.assertEqual(200, archive_provider_response["httpStatus"], archive_provider_response)
+        archive_provider_document = archive_provider_response["document"]
+        self.assertEqual("available", archive_provider_document["state"], archive_provider_document)
+        self.assertEqual(
+            {"kind": "archive-export-outcome-profile", "id": "bundled-archive", "capabilityRevision": 1},
+            archive_provider_document["value"]["provider"],
+        )
+        self.assertNotIn("artifactManifestReference", archive_provider_document["value"])
+        self.assertNotIn("upload", archive_provider_document["value"])
+        self.assertNotIn("indexing", archive_provider_document["value"])
+
+        host_time = self.platformctl(
+            "time", "apply",
+            "--scope", "host",
+            "--request-id", "platformctl-host-time-apply-1",
+            "--authority-id", "acceptance-host-time",
+            "--expected-resource-revision", "0",
+            "--node-kind", "host",
+            "--node-id", "host-agent",
+            "--profile", "enterprise-ntp",
+            "--source-profile", "enterprise-ntp",
+            "--source-id", "hospital-ntp-primary",
+        )
+        self.assertEqual(0, host_time.returncode, host_time.stderr)
+        host_time_response = json.loads(host_time.stdout)
+        self.assertEqual(202, host_time_response["httpStatus"], host_time_response)
+        self.assertEqual("succeeded", host_time_response["document"]["state"], host_time_response)
+        guest_time = self.platformctl(
+            "time", "apply",
+            "--scope", "guest",
+            "--request-id", "platformctl-guest-time-apply-1",
+            "--authority-id", "acceptance-guest-time",
+            "--expected-resource-revision", "0",
+            "--node-kind", "guest",
+            "--node-id", "guest-acceptance",
+            "--profile", "enterprise-ntp",
+            "--source-profile", "enterprise-ntp",
+            "--source-id", "hospital-ntp-primary",
+        )
+        self.assertEqual(0, guest_time.returncode, guest_time.stderr)
+        guest_time_response = json.loads(guest_time.stdout)
+        self.assertEqual(202, guest_time_response["httpStatus"], guest_time_response)
+        self.assertEqual("succeeded", guest_time_response["document"]["state"], guest_time_response)
+
+        host_telemetry = self.platformctl(
+            "telemetry", "apply",
+            "--scope", "host",
+            "--request-id", "platformctl-host-telemetry-apply-1",
+            "--pipeline-id", "acceptance-host-telemetry",
+            "--expected-resource-revision", "0",
+            "--node-kind", "host",
+            "--node-id", "host-agent",
+            "--collector-resource-type", "otel-collector",
+            "--collector-resource-id", "acceptance-collector",
+            "--allowed-attribute-keys", "operation.kind,outcome.code",
+            "--max-attributes", "8",
+            "--max-value-length", "128",
+            "--max-distinct-values-per-key", "32",
+        )
+        self.assertEqual(0, host_telemetry.returncode, host_telemetry.stderr)
+        host_telemetry_response = json.loads(host_telemetry.stdout)
+        self.assertEqual(202, host_telemetry_response["httpStatus"], host_telemetry_response)
+        self.assertEqual("succeeded", host_telemetry_response["document"]["state"], host_telemetry_response)
+        guest_telemetry = self.platformctl(
+            "telemetry", "apply",
+            "--scope", "guest",
+            "--request-id", "platformctl-guest-telemetry-apply-1",
+            "--pipeline-id", "acceptance-guest-telemetry",
+            "--expected-resource-revision", "0",
+            "--node-kind", "guest",
+            "--node-id", "guest-acceptance",
+            "--collector-resource-type", "otel-collector",
+            "--collector-resource-id", "acceptance-collector",
+            "--allowed-attribute-keys", "operation.kind,outcome.code",
+            "--max-attributes", "8",
+            "--max-value-length", "128",
+            "--max-distinct-values-per-key", "32",
+        )
+        self.assertEqual(0, guest_telemetry.returncode, guest_telemetry.stderr)
+        guest_telemetry_response = json.loads(guest_telemetry.stdout)
+        self.assertEqual(202, guest_telemetry_response["httpStatus"], guest_telemetry_response)
+        self.assertEqual("succeeded", guest_telemetry_response["document"]["state"], guest_telemetry_response)
+
+        created = self.platformctl(
+            "lab", "create",
+            "--request-id", "platformctl-lab-create-1",
+            "--session-id", "platformctl-lab-session-1",
+            "--name", "baseline-monitoring",
+            "--scenario", "baseline-monitoring",
+            "--recorder-count", "1",
+        )
+        self.assertEqual(0, created.returncode, created.stderr)
+        created_response = json.loads(created.stdout)
+        self.assertEqual(202, created_response["httpStatus"], created_response)
+        self.assertEqual("succeeded", created_response["document"]["state"], created_response)
+        lab_beds = self.platformctl("runtime", "lab-beds")
+        self.assertEqual(0, lab_beds.returncode, lab_beds.stderr)
+        lab_beds_response = json.loads(lab_beds.stdout)
+        self.assertEqual("available", lab_beds_response["document"]["state"], lab_beds_response)
+        bed = lab_beds_response["document"]["value"][0]
+        hidden = self.platformctl(
+            "lab", "resource",
+            "--request-id", "platformctl-lab-bed-hide-1",
+            "--resource-type", "lab-bed",
+            "--resource-id", bed["id"],
+            "--expected-resource-revision", str(bed["resourceRevision"]),
+            "--action", "hide",
+        )
+        self.assertEqual(0, hidden.returncode, hidden.stderr)
+        hidden_response = json.loads(hidden.stdout)
+        self.assertEqual(202, hidden_response["httpStatus"], hidden_response)
+        self.assertEqual("succeeded", hidden_response["document"]["state"], hidden_response)
+
+        external = self.platformctl(
+            "external-upstream", "apply",
+            "--request-id", "platformctl-external-apply-1",
+            "--integration-id", "platformctl-external-primary",
+            "--expected-resource-revision", "0",
+            "--provider-kind", "external-capability-profile",
+            "--provider-id", "external-upstream",
+            "--provider-capability-revision", "1",
+            "--endpoint-resource-type", "external-vitalserver-endpoint",
+            "--endpoint-resource-id", "primary",
+        )
+        self.assertEqual(0, external.returncode, external.stderr)
+        external_response = json.loads(external.stdout)
+        self.assertEqual(202, external_response["httpStatus"], external_response)
+        self.assertEqual("succeeded", external_response["document"]["state"], external_response)
+        topology = self.platformctl(
+            "topology", "apply",
+            "--request-id", "platformctl-topology-apply-1",
+            "--topology-id", "platformctl-primary-topology",
+            "--expected-resource-revision", "0",
+            "--profile-kind", "external-upstream",
+            "--endpoint-resource-type", "external-upstream-integration",
+            "--endpoint-resource-id", "platformctl-external-primary",
+        )
+        self.assertEqual(0, topology.returncode, topology.stderr)
+        topology_response = json.loads(topology.stdout)
+        self.assertEqual(202, topology_response["httpStatus"], topology_response)
+        self.assertEqual("succeeded", topology_response["document"]["state"], topology_response)
+
+        stale_start = self.platformctl(
+            "guest",
+            "start",
+            "--request-id",
+            "platformctl-host-start-stale-1",
+            "--guest-runtime-control-endpoint-id",
+            configured_endpoint["id"],
+            "--expected-resource-revision",
+            str(configured_endpoint["resourceRevision"]),
+        )
+        self.assertNotEqual(0, stale_start.returncode)
+        stale_response = json.loads(stale_start.stdout)
+        self.assertEqual(400, stale_response["httpStatus"], stale_response)
+        self.assertEqual("rejected", stale_response["document"]["state"], stale_response)
 
     def test_lifecycle_facade_and_guest_topology_ownership(self) -> None:
         endpoint = self.get_host_endpoint()
@@ -250,6 +458,79 @@ class HostGuestControlAcceptance(unittest.TestCase):
         rejection = json.loads(body)
         self.assertEqual("rejected", rejection["state"])
         self.assertEqual("invalid-command-envelope", rejection["issue"]["code"])
+
+
+class HostGuestArchiveCredentialMaterialAcceptance(HostGuestControlAcceptance):
+    """Proves C51 stays Guest-owned while platformctl uses only the Host facade."""
+
+    # This stack deliberately selects a different Archive provider. Keep the
+    # general Host/Guest control proof on its outcome-profile stack; this class
+    # contributes only the C51 credential-material proof below.
+    test_platformctl_uses_the_public_host_facade_without_state_discovery = None
+    test_lifecycle_facade_and_guest_topology_ownership = None
+
+    credential_kind = "vitalserver-library-credential"
+    credential_id = "hospital-vitalserver-library"
+
+    def guest_fixture_arguments(self) -> list[str]:
+        configuration_path = self.work / "external-vitalserver-delivery-configuration.json"
+        shutil.copyfile(
+            ROOT / "contracts/examples/v1/valid/external-vitalserver-delivery-configuration.json",
+            configuration_path,
+        )
+        self.credential_material_path = self.work / "guest-private" / "archive-credential.json"
+        return compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
+            listen_address=f"127.0.0.1:{self.guest_port}", state_database_path=str(self.work / "guest.sqlite"), service_version="acceptance", instance_id="guest-credential-acceptance",
+            archive_export_outcome_mode=None, archive_provider_kind="vitalserver-indexed-library", archive_provider_id=self.credential_id,
+            archive_provider_vitalserver_configuration_kind="external-vitalserver-delivery-configuration", archive_provider_vitalserver_configuration_path=str(configuration_path), archive_provider_credential_material_path=str(self.credential_material_path),
+            recorder_gateway_cold_path_source_endpoint="http://127.0.0.1:8090", lab_recorder_runner_endpoint="http://127.0.0.1:8091", external_upstream_outcome_mode="unsupported", outbound_relay_outcome_mode="unsupported",
+            guest_node_id="guest-credential-acceptance", time_authority_id="guest-time-acceptance", time_probe_outcome_mode="unsupported",
+            telemetry_collector_probe_outcome_mode="unsupported", telemetry_export_outcome_mode="unavailable",
+        )
+
+    def test_platformctl_provisions_archive_credential_through_host_without_secret_exposure(self) -> None:
+        before = self.platformctl("archive", "credential-material")
+        self.assertEqual(0, before.returncode, before.stderr)
+        before_response = json.loads(before.stdout)
+        self.assertEqual(200, before_response["httpStatus"], before_response)
+        self.assertEqual("missing", before_response["document"]["state"], before_response)
+        self.assertEqual(
+            {"kind": self.credential_kind, "id": self.credential_id},
+            before_response["document"]["credentialReference"],
+        )
+
+        password = "acceptance-only-archive-password"
+        provision = self.platformctl(
+            "archive", "credential-material", "provision",
+            "--credential-kind", self.credential_kind,
+            "--credential-id", self.credential_id,
+            "--user-id", "acceptance-operator",
+            "--password-stdin", "true",
+            standard_input=f"{password}\n",
+        )
+        self.assertEqual(0, provision.returncode, provision.stderr)
+        provision_response = json.loads(provision.stdout)
+        self.assertEqual(200, provision_response["httpStatus"], provision_response)
+        self.assertEqual("provisioned", provision_response["document"]["state"], provision_response)
+        self.assertNotIn(password, provision.stdout + provision.stderr)
+        self.assertNotIn("acceptance-operator", provision.stdout + provision.stderr)
+
+        after = self.platformctl("archive", "credential-material")
+        self.assertEqual(0, after.returncode, after.stderr)
+        after_response = json.loads(after.stdout)
+        self.assertEqual(200, after_response["httpStatus"], after_response)
+        self.assertEqual("available", after_response["document"]["state"], after_response)
+        self.assertEqual(
+            {"kind": self.credential_kind, "id": self.credential_id},
+            after_response["document"]["credentialReference"],
+        )
+
+        self.assertTrue(self.credential_material_path.is_file())
+        self.assertEqual(0o600, self.credential_material_path.stat().st_mode & 0o777)
+        material = self.credential_material_path.read_text(encoding="utf-8")
+        self.assertIn(password, material)
+        self.assertIn("acceptance-operator", material)
+        self.assertNotIn(password, (self.work / "guest.sqlite").read_bytes().decode("latin-1"))
 
 
 if __name__ == "__main__":

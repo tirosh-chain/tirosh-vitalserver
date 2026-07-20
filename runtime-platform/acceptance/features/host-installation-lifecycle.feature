@@ -1,10 +1,10 @@
 Feature: Host product installation lifecycle
-  A macOS product package must not infer that old Host files are safe to
+  A Host product package must not infer that old Host files are safe to
   overwrite. The Host Installation Manager owns the admission and activation
   transaction, while package scripts transport only explicit contracts.
 
   Scenario: A clean Host installs one immutable release safely
-    Given C48 declares one release slot, current link, two launchd services, and separate mutable stores
+    Given C48 declares one release slot, current link, three launchd services, and separate mutable stores
     And C49 explicitly observes the receipt, release catalog and slot, current link, service registrations and definition bytes, stores, and journal as absent
     When C50 preflight is requested for the declared release
     Then the manager records a preflight-verified journal
@@ -24,3 +24,18 @@ Feature: Host product installation lifecycle
     When a package requests C50 preflight
     Then the manager records a typed blocked receipt
     And it does not delete the residue as a package-script fallback
+
+  Scenario: A package-owned receipt remains explicit until its owner removes it
+    Given Linux C49 observes the declared dpkg receipt as installed
+    And C54 has removed exactly the declared systemd definitions, activation, and immutable release
+    When the Linux removal adapter reaches the package receipt boundary
+    Then it records awaiting-package-manager rather than claiming completed
+    And the maintainer hook returns to dpkg without recursively invoking package removal
+
+  Scenario: Windows MSI removal leaves its executing payload to its receipt owner
+    Given Windows C49 observes the declared MSI ProductCode and exactly one matching immutable release
+    And C54 has prepared its manager-owned completion transport and removed only the declared SCM services and current junction
+    When the MSI pre-RemoveFiles action reaches the package receipt boundary
+    Then it records awaiting-package-manager while the exact immutable release remains for MSI
+    And MSI RemoveFiles owns payload deletion without a recursive msiexec invocation
+    And a commit action runs the durable C54 completion manager after MSI removes the ProductCode receipt

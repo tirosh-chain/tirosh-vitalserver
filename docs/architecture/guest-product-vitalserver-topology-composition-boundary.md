@@ -1,6 +1,6 @@
 # Guest Product VitalServer topology composition boundary
 
-> 상태: **C44 installation composition 및 C37+C44+C46 external delivery-resolution activation implemented**
+> 상태: **C44 external/bundled placement composition, C37 delivery-resolution, C39/C40 C64 manager bootstrap implemented**. 실제 bundled image-set 적용은 C55→C66→C64 update operation으로 별도 진행된다.
 >
 > 범위: Guest Product가 Recorder packet을 어느 VitalServer로 전달하고, Host public
 > browser route를 어떤 transport로 노출할지를 one topology declaration으로 조합하는
@@ -31,7 +31,8 @@ start, browser service, delivery acknowledgement를 주장하지 않는다.
 | `GuestProductVitalServerTopologyDeployment` | Guest Product release author | 한 release가 선택한 bundled/external VitalServer placement와 delivery/public exposure intent | connection, packet delivery, running process |
 | `VitalServerDeliveryProvider` | Recorder Gateway deployment | Gateway가 C13 receipt에 기록할 VitalServer capability identity | topology 자동 선택, fallback provider |
 | `ExternalUpstreamIntegration` (C16) | Guest Runtime | external VitalServer integration의 reference·observation·capability | Gateway spool, Host public route |
-| `BundledVitalServerServiceDeployment` | Guest Product release author | Guest 안에서 VitalServer service artifact와 local listener를 materialize할 desired process deployment | process가 이미 running, Redis health |
+| `BundledUpstreamImageSetDeployment` | Guest Product release author | C64가 소유하는 VitalServer/Redis image set과 Recorder Gateway의 명시적 Guest-loopback delivery endpoint를 연결하는 desired placement | image가 loaded됨, container가 running, Redis health |
+| `GuestBundledUpstreamImageSetManager` (C64) | Guest | image-set archive 검증, Docker load/Compose 효과, active image-set operation/state | Host update state, Recorder packet delivery receipt |
 | `ExternalVitalServerDeliveryConfiguration` (C46) | external delivery deployment administrator | C44-selected external integration/provider와 explicit Socket.IO delivery endpoint를 묶은 desired configuration | C16 availability, endpoint connection, packet delivery success |
 
 `upstream`, `endpoint`, `provider`, `bundle`만으로는 어떤 bounded context의 state인지
@@ -53,7 +54,8 @@ flowchart LR
   C39[C39 GuestProductBootstrapConfiguration]
   C35[C35/C40 release composer]
   G[Recorder Gateway]
-  V[Bundled VitalServer service]
+  M[C64 Image-set Manager]
+  V[Bundled VitalServer/Redis containers]
   E[External VitalServer]
   H[Host Edge Proxy]
 
@@ -66,7 +68,8 @@ flowchart LR
   C37 --> G
   T --> D
   D --> G
-  T -. bundled launch plan required .-> V
+  T --> M
+  M -. verified image-set update .-> V
   D -. configured external endpoint .-> E
   T --> H
 ```
@@ -78,15 +81,18 @@ arrow도 live TCP connection, process readiness, or packet-delivery success를 �
 
 Bundled mode는 아래 모두를 **same C35 input identity**로 갖춰야 한다.
 
-1. `BundledVitalServerServiceDeployment`가 executable/container runtime, declared local
-   listener, state directory, and dependency policy를 명시한다.
-2. C39가 그 exact artifact를 Guest destination에 install한다.
-3. C37 Supervisor가 VitalServer process를 required child로 계획한다. required child exit
-   policy는 Gateway/Guest Runtime shutdown semantics와 별도로 명시한다.
-4. `vitalserver-browser` C37 virtio bridge와 C32 Host-local bridge, C36 browser route는
-   바로 그 declared Guest-local listener와 일치한다.
-5. bundled Redis or database는 VitalServer bundle dependency로 명시하고 own durable store
-   and backup/update ownership을 분리한다.
+1. C44 `BundledUpstreamImageSetDeployment`가 C64 configuration resource ID와 Recorder
+   Gateway의 명시적 Guest-loopback delivery endpoint를 선택한다.
+2. C39/C40는 architecture-matched C64 executable/configuration/systemd unit을 install하고,
+   C64 state root를 만든 뒤 `initialize-active-image-set`을 **한 번** 실행한다. 이 단계는
+   `unprovisioned`를 기록할 뿐 image를 load하거나 Docker를 호출하지 않는다.
+3. C55/C66가 C64의 AF_VSOCK control contract로 검증된 image-set archive를 보낼 때만 C64가
+   Docker `load`와 fixed Compose command를 실행하고 active image-set operation을 기록한다.
+4. C37 Supervisor는 VitalServer container를 child로 실행하지 않는다. C44가 선언한 loopback
+   delivery URL과 timeout만 Recorder Gateway invocation으로 전달한다.
+5. browser exposure는 별도 C32/C36 route declaration이며 C64 control listener나 packet
+   delivery listener를 inferred route로 바꾸지 않는다. VitalServer/Redis durable data,
+   backup, and image-set rollback은 C64 image-set product contract에서 명시한다.
 
 하나라도 없으면 release composer는 `bundled-vitalserver composition is incomplete`로
 실패해야 한다. `127.0.0.1` default, empty browser, mock Socket.IO fixture, or probe log는
@@ -123,8 +129,8 @@ Guest bootstrap volume. C37 then resolves activation input only from C37, C44, a
 
 | Selected topology | Required | Forbidden |
 | --- | --- | --- |
-| `bundled-vitalserver` | C39 bundled service artifact, C37 bundled service invocation, one matching Guest-loopback listener, matching C32/C36 browser route when exposure is enabled | external integration reference as delivery fallback; unbundled `:8088` route |
-| `external-vitalserver` | C44 C16/C46 reference, C46 matching integration+configuration ID+provider revision, Gateway activation only after configuration | bundled service invocation; C32/C37 browser bridge; inferred NAT/loopback endpoint |
+| `bundled-vitalserver` | C39 C64 executable/configuration/unit/state-root/one-shot initialization, C44 matching manager resource ID and delivery loopback endpoint, C55→C66 image-set operation for actual provisioning | external integration/C46 fallback; C37 child process invocation; inferred image or `:8088` route |
+| `external-vitalserver` | C44 C16/C46 reference, C46 matching integration+configuration ID+provider revision, Gateway activation only after configuration | C64 payload/service; C32/C37 browser bridge; inferred NAT/loopback endpoint |
 
 Every required relationship is an equality/reference comparison over complete inputs. The
 composer neither opens a socket nor probes the Guest to make the configuration pass.
@@ -150,18 +156,20 @@ transition may silently substitute one topology for the other.
 
 C44 is a required C41 source, C35 immutable input, C39 file installation, and C40
 bootstrap-volume source. For external topology, C46 is the corresponding required C41
-source, C35 immutable input, C39 file installation, and C40 bootstrap-volume source. The
-macOS PKG composer checks the supplied C46 source against its C35 receipt identity before
-it creates the package; the verifier preserves C35→C34 bootstrap-volume provenance after
-package expansion. A package composer cannot silently omit an external topology's declared
-delivery configuration.
+source, C35 immutable input, C39 file installation, and C40 bootstrap-volume source. For
+bundled topology, the paired C64 executable and configuration are the required C41/C35/C39
+inputs; C40 installs and initializes their state but does not infer an image set from a
+missing file. The macOS PKG composer checks every supplied source against its C35 receipt
+identity before it creates the package; the verifier preserves C35→C34 bootstrap-volume
+provenance after package expansion.
 
 That is installation composition proof for C44. At runtime, C37 contains the exact C44
 path and optional C46 path, the Supervisor strict-decodes both owner documents, and the
 pure resolver refuses external activation unless all integration/configuration/provider
 identities match. It also rejects a C46 external endpoint that points to Guest loopback.
 
-Bundled topology remains deliberately rejected by the resolver until C44's declared
-service artifact receives an explicit C37 launch plan. This is not a bundled fallback or
-an availability observation. C24 clean-host proof likewise remains separate from every
+The bundled resolver accepts only the complete C44+C39+C64 agreement and returns the
+declared loopback delivery input. That is not container availability or packet-delivery
+success: C64 reports image-set operations, the upstream reports its own health, and Recorder
+Gateway reports C13 delivery evidence. C24 clean-host proof remains separate from every
 topology declaration and delivery-resolution result.

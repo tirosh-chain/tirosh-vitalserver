@@ -64,7 +64,7 @@ class BundledUpstreamCapabilityAcceptance(unittest.TestCase):
                 str(binary),
                 *compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
                     listen_address="127.0.0.1:{0}".format(self.port), state_database_path=str(work / "guest.sqlite"), service_version="bundled-capability-acceptance", instance_id="guest-capability-acceptance",
-                    archive_export_outcome_mode="succeed", external_upstream_outcome_mode="unsupported", outbound_relay_outcome_mode="unsupported",
+                    archive_export_outcome_mode="succeed", recorder_gateway_cold_path_source_endpoint="http://127.0.0.1:8090", lab_recorder_runner_endpoint="http://127.0.0.1:8091", external_upstream_outcome_mode="unsupported", outbound_relay_outcome_mode="unsupported",
                     guest_node_id="guest-capability-acceptance", time_authority_id="guest-time-capability-acceptance", time_probe_outcome_mode="unsupported",
                     telemetry_collector_probe_outcome_mode="unsupported", telemetry_export_outcome_mode="unavailable",
                 ),

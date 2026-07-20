@@ -26,10 +26,7 @@ EXPLICITLY_ABSENT_PACKAGE_RECEIPT_MARKERS = (
     "no receipt for",
     "no receipt found",
 )
-EXPLICITLY_ABSENT_LAUNCHD_SERVICE_MARKERS = (
-    "could not find service",
-    "service not found",
-)
+MACOS26_MISSING_SYSTEM_SERVICE_EXIT_STATUS = 113
 
 
 @dataclass(frozen=True)
@@ -234,22 +231,38 @@ def observe_macos_launchd_service_registration(
     command = execute_command(launchctl_executable, ["print", "system/" + service_label])
     if command.returncode == 0:
         state = "registered"
+    elif explicitly_absent_system_launchd_service(command, service_label):
+        state = "absent"
     else:
-        output = (command.stdout + "\n" + command.stderr).lower()
-        state = (
-            "absent"
-            if any(
-                marker in output
-                for marker in EXPLICITLY_ABSENT_LAUNCHD_SERVICE_MARKERS
-            )
-            else "unavailable"
-        )
+        state = "unavailable"
     return MacOSLaunchdServiceRegistrationObservation(
         role=role,
         service_label=service_label,
         state=state,
         command=command,
     )
+
+
+def explicitly_absent_system_launchd_service(
+    command: MacOSHostInstallationCommandObservation,
+    service_label: str,
+) -> bool:
+    """Decode only known launchctl no-service responses for this label.
+
+    Legacy macOS reports the no-service result with status 3. macOS 26 reports
+    status 113 with the exact service label in its diagnostic. A generic 113
+    response is unavailable external state, not an absent service.
+    """
+
+    if command.returncode == 3:
+        return True
+    if command.returncode != MACOS26_MISSING_SYSTEM_SERVICE_EXIT_STATUS:
+        return False
+    expected_response = (
+        'could not find service "' + service_label.lower() + '" in domain for system'
+    )
+    output = (command.stdout + "\n" + command.stderr).lower()
+    return expected_response in output
 
 
 def observe_macos_host_boot_session(

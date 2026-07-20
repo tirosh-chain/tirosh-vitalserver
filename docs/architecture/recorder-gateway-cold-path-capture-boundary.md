@@ -4,7 +4,7 @@
 >
 > 범위: Recorder Gateway가 받은 `send_data` bytes의 cold-path 보존, explicit
 > capture finalization, 그리고 Archive Export가 나중에 소비할 수 있는 source
-> evidence 경계. 이 문서는 `.vital` 형성·upload·indexing 성공을 주장하지 않는다.
+> evidence 경계. Gateway 자체는 `.vital` 형성·upload·indexing 성공을 주장하지 않는다.
 
 ## 1. 문제와 결정
 
@@ -113,25 +113,39 @@ the later Artifact Formation adapter, but it is not a `application/x-vital` clai
 
 ## 5. Cross-context handoff
 
-Lab does not manufacture a Gateway capture identifier. When Lab starts a virtual recorder
-client, it must retain the explicit `coldPathCaptureId` returned by that recorder's accepted
-`join_vr` acknowledgement. On stop, Lab must request finalization using that exact identifier.
-The C45 Gateway endpoint now exists; wiring a real Lab recorder client to this endpoint remains
-separate work. If Lab lacks the identifier, it reports the missing Gateway contract and does not
-invent a source from the virtual-recorder ID or display name.
+Lab does not manufacture a Gateway capture identifier. A real Lab recorder client must retain
+the explicit `coldPathCaptureId` returned by its accepted `join_vr` acknowledgement and request
+finalization using that exact identifier. The current Lab resource owner persists only the stable
+`recorderGatewayRecorderId`; it deliberately does **not** claim that it owns an active Socket.IO
+connection or a capture. Consequently, an Archive Export command must name the Gateway-issued
+finalization receipt explicitly. A future Lab recorder-control adapter may automate that handoff,
+but it must write the returned receipt reference as an effect result, never derive it from a
+virtual-recorder name or identifier.
 
 Archive Export consumes a finalized `RecorderColdPathPacketSequence` through a named Gateway
 control port. It verifies the receipt digest before calling a separately owned
-`VitalArtifactFormationPort`. Only a formatter that produces parser-verified
-`application/x-vital` bytes may create `ArtifactManifest`. Upload and index success remain
-separate Archive Export receipts.
+`VitalArtifactFormationPort`. Only a formatter that produces structurally validated
+`application/x-vital` bytes may create `ArtifactManifest`; external VitalServer parser proof is
+a separate release acceptance concern. Upload and index success remain separate Archive Export
+receipts.
 
 ## 6. Current proof boundary
 
-The existing Guest Runtime `lab-simulation-archive` profile creates a deterministic
-`vital-lab-source-v1` envelope for acceptance tests. It is not a real recorder capture and
-must not be presented as a valid `.vital` artifact. The implementation work under this
-boundary previously made only simulated archive acceptance possible. C45 now makes Recorder
-Gateway capture/finalization durable and observable; real Lab-to-Gateway control and
-parser-verified Vital Artifact Formation are separate follow-up changes with their own provider
-evidence.
+The old deterministic `vital-lab-source-v1` envelope has been removed. Archive Export now
+requires the named C45 finalization receipt, retrieves its C45 packet sequence over the
+Guest-loopback control route, verifies the published SHA-256 digest, and only then calls the
+binary Vital Artifact Formation adapter. Its unit and acceptance proof establish the legacy
+VITA v3 header, device/track/record packet formation, and refusal to create an empty artifact
+from invalid captured data.
+
+This is **format evidence**, not bundled or production-upstream parser
+acceptance. `VitalServerIndexedLibraryHTTPArchiveExportProvider` supplies the
+concrete multipart upload plus authenticated file-index verification adapter.
+C37/C46/C51 now select it explicitly for an external VitalServer. C37/C46
+provider mismatch blocks composition, while C51 availability is reported
+explicitly after Guest Runtime starts and blocks only the later archive effect;
+the
+configured `archive-export-outcome-profile` remains an explicit development/test
+adapter. A non-loopback external-library acceptance proves this configuration
+and wire path. A release still needs bundled-image or hospital parser/index
+acceptance before making those separate claims.

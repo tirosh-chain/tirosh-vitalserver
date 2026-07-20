@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "v1",
+  "transport": "unix-domain-socket",
+  "address": "/Library/Application Support/VitalServerRuntimePlatform/control/host-agent.sock"
+}

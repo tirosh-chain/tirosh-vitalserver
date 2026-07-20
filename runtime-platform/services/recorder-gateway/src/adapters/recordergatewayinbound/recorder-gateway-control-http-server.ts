@@ -44,6 +44,20 @@ async function handleRecorderGatewayControlRequest(
       return;
     }
     const coldPathCaptureID = readRecorderGatewayControlPathIdentifier(url.pathname, "/v1/recorder-cold-path/captures/");
+    const coldPathPacketSequenceCaptureID = readRecorderGatewayControlPacketSequenceCaptureIdentifier(url.pathname);
+    if (coldPathPacketSequenceCaptureID !== undefined) {
+      if (!isLoopbackRecorderGatewayControlClient(request)) {
+        writeJson(response, 403, recorderGatewayControlAccessDenied());
+        return;
+      }
+      const sequence = await service.readRecorderColdPathPacketSequence(coldPathPacketSequenceCaptureID);
+      if (sequence.state !== "available" || sequence.value === undefined) {
+        writeJson(response, 200, sequence);
+        return;
+      }
+      writeRecorderColdPathPacketSequence(response, sequence.value);
+      return;
+    }
     if (coldPathCaptureID !== undefined) {
       if (!isLoopbackRecorderGatewayControlClient(request)) {
         writeJson(response, 403, recorderGatewayControlAccessDenied());
@@ -154,6 +168,23 @@ function readRecorderGatewayControlFinalizationCaptureIdentifier(path: string): 
   }
 }
 
+function readRecorderGatewayControlPacketSequenceCaptureIdentifier(path: string): string | undefined {
+  const prefix = "/v1/recorder-cold-path/captures/";
+  const suffix = ":packet-sequence";
+  if (!path.startsWith(prefix) || !path.endsWith(suffix)) {
+    return undefined;
+  }
+  const identifier = path.slice(prefix.length, -suffix.length);
+  if (identifier === "" || identifier.includes("/")) {
+    return "invalid";
+  }
+  try {
+    return decodeURIComponent(identifier);
+  } catch {
+    return "invalid";
+  }
+}
+
 async function readRecorderGatewayControlJsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let byteCount = 0;
@@ -203,4 +234,12 @@ function writeJson(response: ServerResponse, status: number, value: unknown): vo
   response.statusCode = status;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.end(`${JSON.stringify(value)}\n`);
+}
+
+function writeRecorderColdPathPacketSequence(response: ServerResponse, value: Uint8Array): void {
+  response.statusCode = 200;
+  response.setHeader("content-type", "application/vnd.tirosh.recorder-gateway.cold-path-packet-sequence+jsonl");
+  response.setHeader("content-length", value.byteLength.toString());
+  response.setHeader("cache-control", "no-store");
+  response.end(value);
 }

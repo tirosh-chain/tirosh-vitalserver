@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v1",
+  "topologyDeploymentId": "bundled-vitalserver-reference-topology",
+  "topologyKind": "bundled-vitalserver",
+  "vitalServerDeliveryProvider": {
+    "kind": "bundled-vitalserver",
+    "id": "bundled-vitalserver-reference",
+    "capabilityRevision": 1
+  },
+  "publicBrowserExposure": "not-exposed",
+  "bundledUpstreamImageSetDeployment": {
+    "imageSetManagerConfigurationReference": {
+      "resourceType": "guest-bundled-upstream-image-set-manager-configuration",
+      "resourceId": "bundled-upstream-image-set-manager"
+    },
+    "vitalServerPacketDeliveryEndpoint": {
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 18300
+    },
+    "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": 1000,
+    "vitalServerObservationEndpoint": {
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 18300,
+      "path": "/healthz",
+      "acceptedStatusCodes": [200]
+    },
+    "vitalServerArchiveProvider": {
+      "kind": "vitalserver-indexed-library",
+      "id": "bundled-vitalserver-reference-library",
+      "capabilityRevision": 1
+    },
+    "vitalServerIndexedLibraryEndpoint": {
+      "scheme": "http",
+      "host": "127.0.0.1",
+      "port": 18300
+    },
+    "vitalServerArchiveCredentialReference": {
+      "kind": "vitalserver-library-credential",
+      "id": "bundled-vitalserver-reference-library"
+    },
+    "vitalServerArchiveRequestTimeoutMilliseconds": 10000
+  }
+}
