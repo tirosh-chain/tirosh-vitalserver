@@ -52,15 +52,19 @@ Current commands:
   guesses an old release or deletes mutable state.
 - `remove` is the separate C54 product-removal lifecycle. It requires an
   explicit `--data-disposition`: `preserve-mutable-data` stops and removes only
-  the declared package, service registrations, activation link, and immutable
-  release while retaining mutable stores and a durable removal receipt;
+  the declared package, service registrations, activation link, immutable
+  release, and—on macOS—the C48-proved `/Applications/VitalServer Runtime
+  Platform.app` bundle while retaining mutable stores and a durable removal
+  receipt;
   `purge-all-product-data` additionally removes the declared top-level mutable
   stores, returns its typed receipt on stdout, and intentionally leaves no
   in-product journal or receipt. It blocks unreadable resources, diverged
-  immutable content or service definitions, another release in the catalog or
-  activation link, and an unfinished installation transaction. It is never an
-  implicit PKG script fallback. `completed` means this manager owns and has
-  removed the package receipt (the macOS `pkgutil --forget` protocol). Linux
+  immutable content, service definitions, or the macOS operator application,
+  another release in the catalog or activation link, and an unfinished
+  installation transaction. It is never an implicit PKG script fallback.
+  `completed` means this manager owns and has removed the package receipt (the
+  macOS `pkgutil --forget` protocol) and C49 proved the application bundle is
+  absent. Linux
   and Windows package databases are instead owned by dpkg/MSI. Linux reaches
   `awaiting-package-manager` after the declared immutable payload is gone;
   Windows reaches it in an MSI pre-`RemoveFiles` action after C49 proves only

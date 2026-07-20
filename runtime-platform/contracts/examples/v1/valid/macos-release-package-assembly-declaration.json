@@ -20,6 +20,7 @@
     "hostUpdateHandoffSupervisorBinaryAbsolutePath": "/release/artifacts/host-update-handoff-supervisor",
     "platformctlBinaryAbsolutePath": "/release/artifacts/platformctl",
     "macOSVirtualMachineSupervisorBinaryAbsolutePath": "/release/artifacts/macos-virtual-machine-supervisor",
+    "operatorApplicationBundleAbsolutePath": "/release/artifacts/VitalServer Runtime Platform.app",
     "guestProductProcessSupervisorArtifactAbsolutePath": "/release/artifacts/guest-product-process-supervisor"
   },
   "deploymentDocuments": {

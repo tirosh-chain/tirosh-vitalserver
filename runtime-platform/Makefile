@@ -81,6 +81,7 @@ endif
 	runtime-console-test \
 	runtime-console-build \
 	runtime-console-package-macos \
+	runtime-console-package-macos-application \
 	runtime-console-package-windows \
 	runtime-console-package-linux \
 	runtime-console-package-linux-deb \
@@ -334,6 +335,10 @@ runtime-console-build: runtime-console-check
 runtime-console-package-macos: runtime-console-check runtime-console-audit
 	@node_path="$$(command -v "$(RUNTIME_CONSOLE_NODE)")"; \
 	cd interfaces && PATH="$$(dirname "$$node_path"):$$PATH" $(RUNTIME_CONSOLE_NPM) run package:macos
+
+runtime-console-package-macos-application: runtime-console-check runtime-console-audit
+	@node_path="$$(command -v "$(RUNTIME_CONSOLE_NODE)")"; \
+	cd interfaces && PATH="$$(dirname "$$node_path"):$$PATH" $(RUNTIME_CONSOLE_NPM) run package:macos-application
 
 runtime-console-package-windows: runtime-console-check runtime-console-audit
 	@node_path="$$(command -v "$(RUNTIME_CONSOLE_NODE)")"; \
@@ -679,9 +684,12 @@ macos-development-release-artifacts-build: ensure-go ensure-node
 	(cd tooling/guest-product-bootstrap-volume-composer && GOTOOLCHAIN="$(GUEST_PRODUCT_BOOTSTRAP_ARTIFACT_COMPOSER_GOTOOLCHAIN)" GOOS=darwin GOARCH=arm64 $(GUEST_PRODUCT_BOOTSTRAP_ARTIFACT_COMPOSER_GO) build -o "$$artifact_root/guest-product-bootstrap-artifact-composer" ./cmd/guest-product-bootstrap-artifact-composer); \
 	(cd providers/macos-virtualization && $(SWIFT) build -c release --product macos-virtual-machine-supervisor); \
 	cp "providers/macos-virtualization/.build/release/macos-virtual-machine-supervisor" "$$artifact_root/macos-virtual-machine-supervisor"; \
+	$(MAKE) runtime-console-package-macos-application; \
+	ditto "$(CURDIR)/.tmp/runtime-console-desktop/mac-arm64/VitalServer Runtime Platform.app" "$$artifact_root/VitalServer Runtime Platform.app"; \
 	$(MAKE) guest-telemetry-collector-artifact-build GUEST_TELEMETRY_COLLECTOR_GO="$(GO)" GUEST_TELEMETRY_COLLECTOR_GUEST_ARCHITECTURE="arm64" GUEST_TELEMETRY_COLLECTOR_OUTPUT_ARTIFACT="$$artifact_root/guest-telemetry-collector"; \
 	$(MAKE) guest-node-services-bundle GUEST_NODE_SERVICES_GUEST_ARCHITECTURE="arm64" GUEST_NODE_DISTRIBUTION_ROOT="$(GUEST_NODE_DISTRIBUTION_ROOT)" GUEST_NODE_SERVICES_BUNDLE_OUTPUT="$$artifact_root/guest-node-services.tar.gz"; \
 	for artifact in host-agent host-edge-proxy host-installation-manager host-updater host-update-handoff-supervisor platformctl guest-product-release-effect-executor guest-runtime guest-product-process-supervisor guest-product-release-manager guest-bundled-upstream-image-set-manager guest-product-bootstrap-artifact-composer macos-virtual-machine-supervisor guest-telemetry-collector guest-node-services.tar.gz; do test -s "$$artifact_root/$$artifact" || { printf '%s\n' "missing declared development artifact: $$artifact"; exit 2; }; done; \
+	test -x "$$artifact_root/VitalServer Runtime Platform.app/Contents/MacOS/VitalServer Runtime Platform" || { printf '%s\n' 'missing declared macOS operator application entrypoint'; exit 2; }; \
 	"$(SYSTEM_PYTHON)" -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$$artifact_root" "$$release_root/artifacts"; \
 	rmdir "$$staging_root"; \
 	trap - EXIT
@@ -722,6 +730,7 @@ macos-development-release-input-prepare: ensure-contract-python
 		--host-update-handoff-supervisor "$(MACOS_DEVELOPMENT_RELEASE_ROOT)/artifacts/host-update-handoff-supervisor" \
 		--platformctl "$(MACOS_DEVELOPMENT_RELEASE_ROOT)/artifacts/platformctl" \
 		--macos-virtual-machine-supervisor "$(MACOS_DEVELOPMENT_RELEASE_ROOT)/artifacts/macos-virtual-machine-supervisor" \
+		--operator-application-bundle "$(MACOS_DEVELOPMENT_RELEASE_ROOT)/artifacts/VitalServer Runtime Platform.app" \
 		--host-agent-deployment-configuration "$(MACOS_DEVELOPMENT_DEPLOYMENT_PROFILE_DIRECTORY)/host-agent-deployment-configuration.v1.json" \
 		--operator-interface-bootstrap-configuration "$(MACOS_DEVELOPMENT_DEPLOYMENT_PROFILE_DIRECTORY)/operator-interface-bootstrap-configuration.v1.json" \
 		--host-edge-proxy-deployment-configuration "$(MACOS_DEVELOPMENT_DEPLOYMENT_PROFILE_DIRECTORY)/host-edge-proxy-deployment-configuration.v1.json" \

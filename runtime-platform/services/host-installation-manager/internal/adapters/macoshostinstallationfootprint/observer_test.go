@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/hostinstallationjournalfile"
@@ -47,7 +48,7 @@ func observedHostInstallationManifest(root string) hostinstallationmanagerdomain
 			},
 		},
 		Activation:        hostinstallationmanagerdomain.HostProductReleaseActivation{CurrentReleaseLinkPath: filepath.Join(root, "current"), ReferenceKind: "symbolic-link", ExpectedReleaseRootPath: releaseRoot},
-		OperatorInterface: hostinstallationmanagerdomain.HostProductOperatorInterface{BootstrapConfigurationPath: filepath.Join(root, "control", "runtime-console-bootstrap.json"), BootstrapConfigurationSHA256: digestHostInstallationFile([]byte("runtime-console-bootstrap"))},
+		OperatorInterface: hostinstallationmanagerdomain.HostProductOperatorInterface{BootstrapConfigurationPath: filepath.Join(root, "control", "runtime-console-bootstrap.json"), BootstrapConfigurationSHA256: digestHostInstallationFile([]byte("runtime-console-bootstrap")), ApplicationBundlePath: filepath.Join(root, "Applications", "VitalServer Runtime Platform.app"), ApplicationBundleTreeSHA256: strings.Repeat("a", 64), ApplicationBundleEntrypointRelativePath: "Contents/MacOS/VitalServer Runtime Platform"},
 		RequiredServices: []hostinstallationmanagerdomain.HostProductRequiredService{
 			{Role: "host-agent", Manager: "launchd", Name: "com.tirosh.vitalserver.host-agent", DefinitionPath: filepath.Join(root, "host-agent.plist"), DefinitionSHA256: digestHostInstallationFile([]byte("host-agent-plist"))},
 			{Role: "host-edge-proxy", Manager: "launchd", Name: "com.tirosh.vitalserver.host-edge-proxy", DefinitionPath: filepath.Join(root, "host-edge-proxy.plist"), DefinitionSHA256: digestHostInstallationFile([]byte("host-edge-proxy-plist"))},
@@ -123,8 +124,52 @@ func TestObserveHostInstallationFootprintKeepsCleanResourcesExplicitlyAbsent(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if footprint.PackageReceipt.State != "absent" || footprint.ImmutableRelease.State != "absent" || footprint.Activation.State != "absent" || footprint.RequiredServices[0].State != "absent" || footprint.MutableStores[0].State != "absent" || footprint.InstallationTransaction.State != "absent" {
+	if footprint.PackageReceipt.State != "absent" || footprint.ImmutableRelease.State != "absent" || footprint.Activation.State != "absent" || footprint.OperatorApplication == nil || footprint.OperatorApplication.State != "absent" || footprint.RequiredServices[0].State != "absent" || footprint.MutableStores[0].State != "absent" || footprint.InstallationTransaction.State != "absent" {
 		t.Fatalf("footprint=%+v", footprint)
+	}
+}
+
+func TestObserveMacOSOperatorApplicationRequiresExactInternalBundleTree(t *testing.T) {
+	root := resolvedHostInstallationTestRoot(t)
+	applicationPath := filepath.Join(root, "Applications", "VitalServer Runtime Platform.app")
+	entrypointPath := filepath.Join(applicationPath, "Contents", "MacOS", "VitalServer Runtime Platform")
+	if err := os.MkdirAll(filepath.Dir(entrypointPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(applicationPath, "Contents", "Frameworks"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(applicationPath, "Contents", "Info.plist"), []byte("plist"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entrypointPath, []byte("entrypoint"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(applicationPath, "Contents", "Frameworks", "Vital.framework"), []byte("framework"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("Frameworks/Vital.framework", filepath.Join(applicationPath, "Contents", "CurrentFramework")); err != nil {
+		t.Fatal(err)
+	}
+	treeDigest, treeIssue := macOSOperatorApplicationTreeSHA256(applicationPath)
+	if treeIssue != nil {
+		t.Fatalf("tree issue=%+v", treeIssue)
+	}
+	declared := hostinstallationmanagerdomain.HostProductOperatorInterface{
+		ApplicationBundlePath:                   applicationPath,
+		ApplicationBundleTreeSHA256:             treeDigest,
+		ApplicationBundleEntrypointRelativePath: "Contents/MacOS/VitalServer Runtime Platform",
+	}
+	observation := observeMacOSOperatorApplication(declared)
+	if observation.State != "matching" || observation.Issue != nil {
+		t.Fatalf("matching observation=%+v", observation)
+	}
+	if err := os.WriteFile(filepath.Join(applicationPath, "Contents", "Frameworks", "Vital.framework"), []byte("changed framework"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	observation = observeMacOSOperatorApplication(declared)
+	if observation.State != "diverged" || observation.Issue == nil || observation.Issue.Code != "operator-application-tree-digest-mismatch" {
+		t.Fatalf("changed observation=%+v", observation)
 	}
 }
 
@@ -570,6 +615,14 @@ func TestPreflightOnlyJournalFootprintCanRetryAfterPayloadDeliveryDidNotStart(t 
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This test intentionally observes a temporary fixture. C48 production
+	// validation fixes the application location under /Applications, so model
+	// that declared location explicitly before exercising the pure preflight
+	// policy rather than relying on the workstation's real Applications folder.
+	manifest.OperatorInterface.ApplicationBundlePath = hostinstallationmanagerdomain.MacOSHostProductOperatorApplicationBundlePath
+	manifest.OperatorInterface.ApplicationBundleTreeSHA256 = strings.Repeat("a", 64)
+	manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath = hostinstallationmanagerdomain.MacOSHostProductOperatorApplicationEntrypointRelativePath
+	footprint.OperatorApplication = &hostinstallationmanagerdomain.HostInstallationOperatorApplicationObservation{State: "absent", ApplicationBundlePath: manifest.OperatorInterface.ApplicationBundlePath}
 	request := hostinstallationmanagerdomain.HostInstallationRequest{
 		SchemaVersion:     "v1",
 		DocumentKind:      "host-installation-request",

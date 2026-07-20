@@ -20,6 +20,7 @@ func installedHostProductRemovalFootprint(manifest HostProductInstallationManife
 	footprint.ReleaseCatalog = HostInstallationReleaseCatalogObservation{State: "only-expected-release", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath, ReleaseIDs: []string{manifest.Release.ID}}
 	footprint.ImmutableRelease.State = "matching"
 	footprint.Activation = HostInstallationActivationObservation{State: "points-to-expected-release", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath, ObservedTargetPath: manifest.Activation.ExpectedReleaseRootPath}
+	footprint.OperatorApplication = operatorApplicationFootprintFor(manifest, "matching")
 	footprint.InstallationTransaction.State = HostInstallationJournalCompleted
 	for index := range footprint.RequiredServices {
 		footprint.RequiredServices[index].State = "registered"
@@ -61,6 +62,22 @@ func TestDecideHostProductRemovalAdmitsPurgeOnlyWithOneTopLevelDataRoot(t *testi
 	}
 }
 
+func TestDecideHostProductRemovalRefusesChangedMacOSOperatorApplication(t *testing.T) {
+	manifest := declaredHostProductInstallationManifest()
+	footprint := installedHostProductRemovalFootprint(manifest)
+	footprint.OperatorApplication.State = "diverged"
+	plan, decision, err := DecideHostProductRemoval(
+		declaredHostProductRemovalRequest(manifest, HostProductRemovalDataDispositionPreserveMutableData),
+		manifest,
+		footprint,
+		"/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/current-removal-transaction.json",
+		"/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/latest-removal-receipt.json",
+	)
+	if err != nil || decision.State != "blocked" || decision.Issue == nil || decision.Issue.Code != "operator-application-not-declared" || plan.RemoveOperatorApplication {
+		t.Fatalf("plan=%+v decision=%+v err=%v", plan, decision, err)
+	}
+}
+
 func TestDecideHostProductRemovalUsesWindowsPathContainmentForPurge(t *testing.T) {
 	manifest := declaredHostProductInstallationManifest()
 	manifest.Platform = "windows"
@@ -74,6 +91,9 @@ func TestDecideHostProductRemovalUsesWindowsPathContainmentForPurge(t *testing.T
 	manifest.Activation.ReferenceKind = "directory-junction"
 	manifest.Activation.ExpectedReleaseRootPath = manifest.ImmutablePayload.ReleaseRootPath
 	manifest.OperatorInterface.BootstrapConfigurationPath = `C:\ProgramData\VitalServerRuntimePlatform\control\runtime-console-bootstrap.json`
+	manifest.OperatorInterface.ApplicationBundlePath = ""
+	manifest.OperatorInterface.ApplicationBundleTreeSHA256 = ""
+	manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath = ""
 	for index := range manifest.RequiredServices {
 		manifest.RequiredServices[index].Manager = "windows-scm"
 		manifest.RequiredServices[index].DefinitionPath = `C:\ProgramData\VitalServerRuntimePlatform\services\` + manifest.RequiredServices[index].Name + `.json`
@@ -135,6 +155,20 @@ func TestDecideHostProductRemovalCompletionRequiresAllDeclaredStoresAbsentAfterP
 		footprint,
 	)
 	if err != nil || decision.State != "blocked" || decision.Issue == nil || decision.Issue.Code != "product-data-purge-not-complete" {
+		t.Fatalf("decision=%+v err=%v", decision, err)
+	}
+}
+
+func TestDecideHostProductRemovalCompletionRequiresMacOSOperatorApplicationToBeAbsent(t *testing.T) {
+	manifest := declaredHostProductInstallationManifest()
+	footprint := cleanHostInstallationFootprintFor(manifest)
+	footprint.OperatorApplication.State = "matching"
+	decision, _, err := DecideHostProductRemovalCompletion(
+		declaredHostProductRemovalRequest(manifest, HostProductRemovalDataDispositionPreserveMutableData),
+		manifest,
+		footprint,
+	)
+	if err != nil || decision.State != "blocked" || decision.Issue == nil || decision.Issue.Code != "product-removal-not-complete" {
 		t.Fatalf("decision=%+v err=%v", decision, err)
 	}
 }

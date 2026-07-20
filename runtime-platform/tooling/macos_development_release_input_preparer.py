@@ -66,6 +66,7 @@ class MacOSDevelopmentReleaseInputPreparation:
     host_update_handoff_supervisor: Path
     platformctl: Path
     macos_virtual_machine_supervisor: Path
+    operator_application_bundle: Path
     host_agent_deployment_configuration: Path
     operator_interface_bootstrap_configuration: Path
     host_edge_proxy_deployment_configuration: Path
@@ -204,6 +205,10 @@ def validate_preparation(
     validate_upstream_topology_input_selection(preparation, topology)
     for name, path in input_files(preparation):
         require_absolute_regular_file(path, name)
+    require_absolute_macos_operator_application_bundle(
+        preparation.operator_application_bundle,
+        "macOS operator application bundle",
+    )
     for name, path in executable_input_files(preparation):
         if not os.access(path, os.X_OK):
             raise MacOSDevelopmentReleaseInputPreparationError(
@@ -717,6 +722,9 @@ def compose_macos_release_package_assembly_declaration(
             "macOSVirtualMachineSupervisorBinaryAbsolutePath": str(
                 preparation.macos_virtual_machine_supervisor
             ),
+            "operatorApplicationBundleAbsolutePath": str(
+                preparation.operator_application_bundle
+            ),
             "guestProductProcessSupervisorArtifactAbsolutePath": str(
                 preparation.guest_product_process_supervisor
             ),
@@ -865,6 +873,20 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def require_absolute_macos_operator_application_bundle(path: Path, name: str) -> None:
+    """Keep C47's user-facing application input explicit and self-contained."""
+
+    from tooling import macos_host_package_composer
+
+    try:
+        macos_host_package_composer.validate_declared_macos_operator_application_bundle(
+            path,
+            name,
+        )
+    except macos_host_package_composer.MacOSHostPackageCompositionError as error:
+        raise MacOSDevelopmentReleaseInputPreparationError(str(error)) from error
+
+
 def parse_arguments(arguments: Sequence[str]) -> MacOSDevelopmentReleaseInputPreparation:
     parser = argparse.ArgumentParser(
         description="prepare explicit C41/C47 inputs for one unsigned macOS development package"
@@ -892,6 +914,7 @@ def parse_arguments(arguments: Sequence[str]) -> MacOSDevelopmentReleaseInputPre
     parser.add_argument("--host-update-handoff-supervisor", required=True)
     parser.add_argument("--platformctl", required=True)
     parser.add_argument("--macos-virtual-machine-supervisor", required=True)
+    parser.add_argument("--operator-application-bundle", required=True)
     parser.add_argument("--host-agent-deployment-configuration", required=True)
     parser.add_argument("--operator-interface-bootstrap-configuration", required=True)
     parser.add_argument("--host-edge-proxy-deployment-configuration", required=True)
@@ -937,6 +960,7 @@ def parse_arguments(arguments: Sequence[str]) -> MacOSDevelopmentReleaseInputPre
         host_update_handoff_supervisor=Path(options.host_update_handoff_supervisor),
         platformctl=Path(options.platformctl),
         macos_virtual_machine_supervisor=Path(options.macos_virtual_machine_supervisor),
+        operator_application_bundle=Path(options.operator_application_bundle),
         host_agent_deployment_configuration=Path(options.host_agent_deployment_configuration),
         operator_interface_bootstrap_configuration=Path(options.operator_interface_bootstrap_configuration),
         host_edge_proxy_deployment_configuration=Path(options.host_edge_proxy_deployment_configuration),

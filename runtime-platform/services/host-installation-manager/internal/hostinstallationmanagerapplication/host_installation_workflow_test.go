@@ -119,12 +119,14 @@ type hostProductRemovalEffectsFake struct {
 	completionTransport      hostinstallationmanagerdomain.HostProductPackageManagerCompletionTransport
 	completionTransportCalls int
 	serviceDefinitions       int
+	operatorApplication      int
 	activationLink           int
 	releaseCatalog           int
 	mutableStores            []hostinstallationmanagerdomain.HostProductMutableStoreDeclaration
 	packageReceipt           int
 	packageReceiptRemoval    hostinstallationmanagerdomain.HostProductPackageReceiptRemoval
 	serviceDefinitionError   error
+	operatorApplicationError error
 }
 
 func (fake *hostProductRemovalEffectsFake) PrepareHostProductPackageManagerCompletionTransport(_ context.Context, _ hostinstallationmanagerdomain.HostProductInstallationManifest, transport hostinstallationmanagerdomain.HostProductPackageManagerCompletionTransport) error {
@@ -136,6 +138,11 @@ func (fake *hostProductRemovalEffectsFake) PrepareHostProductPackageManagerCompl
 func (fake *hostProductRemovalEffectsFake) RemoveHostProductServiceDefinitions(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest) error {
 	fake.serviceDefinitions++
 	return fake.serviceDefinitionError
+}
+
+func (fake *hostProductRemovalEffectsFake) RemoveHostProductOperatorApplication(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest) error {
+	fake.operatorApplication++
+	return fake.operatorApplicationError
 }
 
 func (fake *hostProductRemovalEffectsFake) RemoveHostProductActivationLink(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest) error {
@@ -193,7 +200,7 @@ func workflowManifest() hostinstallationmanagerdomain.HostProductInstallationMan
 			Entries:            []hostinstallationmanagerdomain.HostImmutableProductPayloadEntry{{RelativePath: "bin/host-agent", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Executable: true}},
 		},
 		Activation:        hostinstallationmanagerdomain.HostProductReleaseActivation{CurrentReleaseLinkPath: "/Library/Application Support/VitalServerRuntimePlatform/current", ReferenceKind: "symbolic-link", ExpectedReleaseRootPath: "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-0.2.0-dev-build-001"},
-		OperatorInterface: hostinstallationmanagerdomain.HostProductOperatorInterface{BootstrapConfigurationPath: "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json", BootstrapConfigurationSHA256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+		OperatorInterface: hostinstallationmanagerdomain.HostProductOperatorInterface{BootstrapConfigurationPath: "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json", BootstrapConfigurationSHA256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", ApplicationBundlePath: hostinstallationmanagerdomain.MacOSHostProductOperatorApplicationBundlePath, ApplicationBundleTreeSHA256: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", ApplicationBundleEntrypointRelativePath: hostinstallationmanagerdomain.MacOSHostProductOperatorApplicationEntrypointRelativePath},
 		RequiredServices: []hostinstallationmanagerdomain.HostProductRequiredService{
 			{Role: "host-agent", Manager: "launchd", Name: "com.tirosh.vitalserver.host-agent", DefinitionPath: "/Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist", DefinitionSHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
 			{Role: "host-edge-proxy", Manager: "launchd", Name: "com.tirosh.vitalserver.host-edge-proxy", DefinitionPath: "/Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist", DefinitionSHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
@@ -208,7 +215,7 @@ func workflowManifest() hostinstallationmanagerdomain.HostProductInstallationMan
 }
 
 func workflowFootprint(manifest hostinstallationmanagerdomain.HostProductInstallationManifest) hostinstallationmanagerdomain.HostInstallationFootprint {
-	return hostinstallationmanagerdomain.HostInstallationFootprint{
+	footprint := hostinstallationmanagerdomain.HostInstallationFootprint{
 		SchemaVersion:     "v1",
 		InstallationID:    manifest.InstallationID,
 		ExpectedReleaseID: manifest.Release.ID,
@@ -234,6 +241,10 @@ func workflowFootprint(manifest hostinstallationmanagerdomain.HostProductInstall
 			ReceiptPath: "/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/latest-installation-receipt.json",
 		},
 	}
+	if manifest.Platform == "macos" {
+		footprint.OperatorApplication = &hostinstallationmanagerdomain.HostInstallationOperatorApplicationObservation{State: "absent", ApplicationBundlePath: manifest.OperatorInterface.ApplicationBundlePath}
+	}
+	return footprint
 }
 
 func TestObserveHostInstallationFootprintReturnsOnlyHostObservation(t *testing.T) {
@@ -571,6 +582,7 @@ func TestExecuteHostProductRemovalPreservesMutableDataAndProvesOnlyProductConten
 	initial.ReleaseCatalog = hostinstallationmanagerdomain.HostInstallationReleaseCatalogObservation{State: "only-expected-release", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath, ReleaseIDs: []string{manifest.Release.ID}}
 	initial.ImmutableRelease.State = "matching"
 	initial.Activation = hostinstallationmanagerdomain.HostInstallationActivationObservation{State: "points-to-expected-release", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath, ObservedTargetPath: manifest.Activation.ExpectedReleaseRootPath}
+	initial.OperatorApplication.State = "matching"
 	initial.InstallationTransaction.State = hostinstallationmanagerdomain.HostInstallationJournalCompleted
 	for index := range initial.RequiredServices {
 		initial.RequiredServices[index].State = "registered"
@@ -625,7 +637,7 @@ func TestExecuteHostProductRemovalPreservesMutableDataAndProvesOnlyProductConten
 		"/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/current-removal-transaction.json",
 		"/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/latest-removal-receipt.json",
 	)
-	if err != nil || receipt.State != hostinstallationmanagerdomain.HostProductRemovalReceiptCompleted || len(receipt.RetainedMutableStoreIDs) != len(manifest.MutableStores) || removalJournalStore.journal.State != hostinstallationmanagerdomain.HostProductRemovalJournalCompleted || len(removalReceiptStore.writes) != 1 || quiescer.calls != 1 || removalEffects.serviceDefinitions != 1 || removalEffects.activationLink != 1 || removalEffects.releaseCatalog != 1 || removalEffects.packageReceipt != 1 || len(removalEffects.mutableStores) != 0 {
+	if err != nil || receipt.State != hostinstallationmanagerdomain.HostProductRemovalReceiptCompleted || len(receipt.RetainedMutableStoreIDs) != len(manifest.MutableStores) || removalJournalStore.journal.State != hostinstallationmanagerdomain.HostProductRemovalJournalCompleted || len(removalReceiptStore.writes) != 1 || quiescer.calls != 1 || removalEffects.serviceDefinitions != 1 || removalEffects.operatorApplication != 1 || removalEffects.activationLink != 1 || removalEffects.releaseCatalog != 1 || removalEffects.packageReceipt != 1 || len(removalEffects.mutableStores) != 0 {
 		t.Fatalf("receipt=%+v removalJournal=%+v receiptWrites=%d quiesce=%d effects=%+v err=%v", receipt, removalJournalStore.journal, len(removalReceiptStore.writes), quiescer.calls, removalEffects, err)
 	}
 }
@@ -637,6 +649,7 @@ func TestExecuteHostProductRemovalPurgesAllDeclaredMutableDataWithoutRecreatingE
 	initial.ReleaseCatalog = hostinstallationmanagerdomain.HostInstallationReleaseCatalogObservation{State: "only-expected-release", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath, ReleaseIDs: []string{manifest.Release.ID}}
 	initial.ImmutableRelease.State = "matching"
 	initial.Activation = hostinstallationmanagerdomain.HostInstallationActivationObservation{State: "points-to-expected-release", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath, ObservedTargetPath: manifest.Activation.ExpectedReleaseRootPath}
+	initial.OperatorApplication.State = "matching"
 	initial.InstallationTransaction.State = hostinstallationmanagerdomain.HostInstallationJournalCompleted
 	for index := range initial.RequiredServices {
 		initial.RequiredServices[index].State = "registered"
@@ -676,7 +689,7 @@ func TestExecuteHostProductRemovalPurgesAllDeclaredMutableDataWithoutRecreatingE
 		context.Background(), request, "manifest", initial.InstallationTransaction.JournalPath, initial.InstallationTransaction.ReceiptPath,
 		"/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/current-removal-transaction.json", "",
 	)
-	if err != nil || receipt.State != hostinstallationmanagerdomain.HostProductRemovalReceiptCompleted || len(receipt.RetainedMutableStoreIDs) != 0 || len(removalReceiptStore.writes) != 0 || removalJournalStore.journal.State != hostinstallationmanagerdomain.HostProductRemovalJournalMutableDataRemoving || len(removalEffects.mutableStores) != len(manifest.MutableStores) {
+	if err != nil || receipt.State != hostinstallationmanagerdomain.HostProductRemovalReceiptCompleted || len(receipt.RetainedMutableStoreIDs) != 0 || len(removalReceiptStore.writes) != 0 || removalJournalStore.journal.State != hostinstallationmanagerdomain.HostProductRemovalJournalMutableDataRemoving || removalEffects.operatorApplication != 1 || len(removalEffects.mutableStores) != len(manifest.MutableStores) {
 		t.Fatalf("receipt=%+v journal=%+v receiptWrites=%d mutableStores=%+v err=%v", receipt, removalJournalStore.journal, len(removalReceiptStore.writes), removalEffects.mutableStores, err)
 	}
 }
@@ -684,6 +697,9 @@ func TestExecuteHostProductRemovalPurgesAllDeclaredMutableDataWithoutRecreatingE
 func TestExecuteHostProductRemovalHandsPackageReceiptBackToOperatingSystemOwner(t *testing.T) {
 	manifest := workflowManifest()
 	manifest.Platform = "linux"
+	manifest.OperatorInterface.ApplicationBundlePath = ""
+	manifest.OperatorInterface.ApplicationBundleTreeSHA256 = ""
+	manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath = ""
 	manifest.Activation.ReferenceKind = "symbolic-link"
 	for index := range manifest.RequiredServices {
 		manifest.RequiredServices[index].Manager = "systemd"
@@ -744,6 +760,9 @@ func TestExecuteHostProductRemovalHandsPackageReceiptBackToOperatingSystemOwner(
 func TestCompleteHostProductRemovalAfterPackageManagerWritesTerminalLinuxEvidence(t *testing.T) {
 	manifest := workflowManifest()
 	manifest.Platform = "linux"
+	manifest.OperatorInterface.ApplicationBundlePath = ""
+	manifest.OperatorInterface.ApplicationBundleTreeSHA256 = ""
+	manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath = ""
 	manifest.Activation.ReferenceKind = "symbolic-link"
 	for index := range manifest.RequiredServices {
 		manifest.RequiredServices[index].Manager = "systemd"
@@ -793,6 +812,7 @@ func TestExecuteHostProductRemovalPreservesFailureJournalAndReceipt(t *testing.T
 	initial.ReleaseCatalog = hostinstallationmanagerdomain.HostInstallationReleaseCatalogObservation{State: "only-expected-release", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath, ReleaseIDs: []string{manifest.Release.ID}}
 	initial.ImmutableRelease.State = "matching"
 	initial.Activation = hostinstallationmanagerdomain.HostInstallationActivationObservation{State: "points-to-expected-release", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath, ObservedTargetPath: manifest.Activation.ExpectedReleaseRootPath}
+	initial.OperatorApplication.State = "matching"
 	initial.InstallationTransaction.State = hostinstallationmanagerdomain.HostInstallationJournalCompleted
 	for index := range initial.RequiredServices {
 		initial.RequiredServices[index].State = "registered"
@@ -830,7 +850,7 @@ func TestExecuteHostProductRemovalPreservesFailureJournalAndReceipt(t *testing.T
 		context.Background(), request, "manifest", initial.InstallationTransaction.JournalPath, initial.InstallationTransaction.ReceiptPath,
 		"/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/current-removal-transaction.json", "/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/latest-removal-receipt.json",
 	)
-	if err != nil || receipt.State != hostinstallationmanagerdomain.HostProductRemovalReceiptFailed || receipt.Issue == nil || receipt.Issue.Code != "service-definition-removal-failed" || removalJournalStore.journal.State != hostinstallationmanagerdomain.HostProductRemovalJournalFailed || removalJournalStore.journal.Failure == nil || len(removalReceiptStore.writes) != 1 || removalEffects.activationLink != 0 || removalEffects.releaseCatalog != 0 || removalEffects.packageReceipt != 0 {
+	if err != nil || receipt.State != hostinstallationmanagerdomain.HostProductRemovalReceiptFailed || receipt.Issue == nil || receipt.Issue.Code != "service-definition-removal-failed" || removalJournalStore.journal.State != hostinstallationmanagerdomain.HostProductRemovalJournalFailed || removalJournalStore.journal.Failure == nil || len(removalReceiptStore.writes) != 1 || removalEffects.operatorApplication != 0 || removalEffects.activationLink != 0 || removalEffects.releaseCatalog != 0 || removalEffects.packageReceipt != 0 {
 		t.Fatalf("receipt=%+v journal=%+v receiptWrites=%d effects=%+v err=%v", receipt, removalJournalStore.journal, len(removalReceiptStore.writes), removalEffects, err)
 	}
 }

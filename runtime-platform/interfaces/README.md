@@ -71,6 +71,7 @@ PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform
 PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run build
 PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces audit
 PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:macos
+PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:macos-application
 PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:windows
 PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:linux
 PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:linux-deb
@@ -86,9 +87,12 @@ so framework symlinks and temporary installer files cannot become source input.
 
 The package commands build a signing-independent Electron application installer
 for the selected OS: an arm64 DMG on macOS, an amd64 NSIS installer on Windows,
-and an amd64 AppImage on Linux. The selected architecture is explicit in the
-packaging adapter and is never inferred from the build host. `package:linux-deb`
-is a separate amd64 Debian package command and must run
+and an amd64 AppImage on Linux. `package:macos-application` is an internal
+macOS product-build input: it emits `VitalServer Runtime Platform.app` for C47
+to select and for the unified Runtime Platform PKG to install. It is not a
+second operator-delivered installer. The selected architecture is explicit in
+the packaging adapter and is never inferred from the build host.
+`package:linux-deb` is a separate amd64 Debian package command and must run
 on a Linux packaging worker; it is deliberately not treated as a successful
 macOS cross-build. The installer still needs the Runtime Platform Host product
 to have installed its OS-owned C53/C52 files; missing or invalid files are a

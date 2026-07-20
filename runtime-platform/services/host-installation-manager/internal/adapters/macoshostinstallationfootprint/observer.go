@@ -63,7 +63,13 @@ func NewMacOSHostInstallationFootprintObserverWithCommandRunner(pkgutilExecutabl
 }
 
 func (observer *MacOSHostInstallationFootprintObserver) ObserveHostInstallationFootprint(context context.Context, manifest hostinstallationmanagerdomain.HostProductInstallationManifest, journalPath string, receiptPath string) (hostinstallationmanagerdomain.HostInstallationFootprint, error) {
-	return observer.shared.ObserveHostInstallationFootprint(context, manifest, journalPath, receiptPath)
+	footprint, err := observer.shared.ObserveHostInstallationFootprint(context, manifest, journalPath, receiptPath)
+	if err != nil {
+		return hostinstallationmanagerdomain.HostInstallationFootprint{}, err
+	}
+	operatorApplication := observeMacOSOperatorApplication(manifest.OperatorInterface)
+	footprint.OperatorApplication = &operatorApplication
+	return footprint, nil
 }
 
 func (observer *MacOSHostInstallationFootprintObserver) ObserveHostPackageReceipt(context context.Context, packageIdentity hostinstallationmanagerdomain.HostProductPackageIdentity) hostinstallationmanagerdomain.HostInstallationPackageReceiptObservation {

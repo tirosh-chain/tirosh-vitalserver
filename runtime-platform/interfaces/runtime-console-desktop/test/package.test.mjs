@@ -15,6 +15,7 @@ import {
 
 test("desktop package accepts only an explicit target", () => {
   assert.equal(parseTarget(["--target", "macos"]), "macos");
+  assert.equal(parseTarget(["--target", "macos-application"]), "macos-application");
   assert.equal(parseTarget(["--target", "windows"]), "windows");
   assert.equal(parseTarget(["--target", "linux"]), "linux");
   assert.equal(parseTarget(["--target", "linux-deb"]), "linux-deb");
@@ -26,6 +27,7 @@ test("desktop package accepts only an explicit target", () => {
 
 test("desktop packaging uses the product delivery architecture, never the build host architecture", () => {
   assert.deepEqual(electronBuilderTargetArguments("macos"), ["--mac", "--arm64"]);
+  assert.deepEqual(electronBuilderTargetArguments("macos-application"), ["--mac", "--arm64", "--dir"]);
   assert.deepEqual(electronBuilderTargetArguments("windows"), ["--win", "--x64"]);
   assert.deepEqual(electronBuilderTargetArguments("linux"), ["--linux", "AppImage", "--x64"]);
   assert.deepEqual(electronBuilderTargetArguments("linux-deb"), ["--linux", "deb", "--x64"]);

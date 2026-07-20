@@ -12,6 +12,7 @@ const packageConfigurationPath = join(desktopRoot, "electron-builder.config.json
 const runtimeConsoleSourcePackageName = "@tirosh-chain/runtime-console-desktop";
 const runtimeConsoleProductPackageName = "vitalserver-runtime-console";
 const runtimeConsoleArtifactReceiptSuffix = ".runtime-console-artifact-receipt.json";
+const macosOperatorApplicationBundleName = "VitalServer Runtime Platform.app";
 
 /**
  * C71 is the Runtime Console packager's immutable output description.  A
@@ -100,11 +101,11 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === scriptPath) {
 
 export function parseTarget(arguments_) {
   if (arguments_.length !== 2 || arguments_[0] !== "--target") {
-    throw new Error("Runtime Console package requires exactly --target macos|windows|linux|linux-deb|all");
+    throw new Error("Runtime Console package requires exactly --target macos|macos-application|windows|linux|linux-deb|all");
   }
   const targetValue = arguments_[1];
-  if (targetValue !== "macos" && targetValue !== "windows" && targetValue !== "linux" && targetValue !== "linux-deb" && targetValue !== "all") {
-    throw new Error("Runtime Console package target must be macos, windows, linux, linux-deb, or all");
+  if (targetValue !== "macos" && targetValue !== "macos-application" && targetValue !== "windows" && targetValue !== "linux" && targetValue !== "linux-deb" && targetValue !== "all") {
+    throw new Error("Runtime Console package target must be macos, macos-application, windows, linux, linux-deb, or all");
   }
   return targetValue;
 }
@@ -122,6 +123,9 @@ export function electronBuilderTargetArguments(targetValue) {
   if (targetValue === "macos") {
     return ["--mac", "--arm64"];
   }
+  if (targetValue === "macos-application") {
+    return ["--mac", "--arm64", "--dir"];
+  }
   if (targetValue === "windows") {
     return ["--win", "--x64"];
   }
@@ -134,7 +138,7 @@ export function electronBuilderTargetArguments(targetValue) {
   if (targetValue === "all") {
     return ["--mac", "--arm64", "--win", "--x64", "--linux", "AppImage", "--x64"];
   }
-  throw new Error("Runtime Console package target must be macos, windows, linux, linux-deb, or all");
+  throw new Error("Runtime Console package target must be macos, macos-application, windows, linux, linux-deb, or all");
 }
 
 /** A DEB is a Linux package-manager artifact, so its builder is Linux-only. */
@@ -166,6 +170,10 @@ export function stagedRuntimeConsolePackageManifest(sourcePackage) {
 export async function packageRuntimeConsole(targetValue) {
   assertRuntimeConsolePackageBuildHost(targetValue);
   const desktopPackage = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
+  if (targetValue === "macos-application") {
+    await packageMacOSOperatorApplication();
+    return;
+  }
   await invalidateRuntimeConsoleArtifactReceipts(targetValue, desktopPackage.version);
   const stage = await mkdtemp(join(tmpdir(), "vitalserver-runtime-console-package-"));
   try {
@@ -173,6 +181,30 @@ export async function packageRuntimeConsole(targetValue) {
     await writeFile(join(stage, "package.json"), `${JSON.stringify(stagedRuntimeConsolePackageManifest(desktopPackage), null, 2)}\n`, "utf8");
     await runElectronBuilder(targetValue, stage);
     await publishRuntimeConsoleArtifactReceipts(targetValue, desktopPackage.version);
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Build the exact `.app` tree selected by the macOS product PKG composer.
+ * This is a build input, not a second operator-delivered installer.  The C47
+ * release declaration selects the copied app tree and C48 later records its
+ * package-visible identity.
+ */
+export async function packageMacOSOperatorApplication() {
+  const stage = await mkdtemp(join(tmpdir(), "vitalserver-runtime-platform-application-"));
+  const applicationPath = join(desktopRoot, "..", "..", ".tmp", "runtime-console-desktop", "mac-arm64", macosOperatorApplicationBundleName);
+  try {
+    await rm(applicationPath, { recursive: true, force: true });
+    await cp(join(desktopRoot, "dist"), join(stage, "dist"), { recursive: true, force: false, errorOnExist: true });
+    const desktopPackage = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
+    await writeFile(join(stage, "package.json"), `${JSON.stringify(stagedRuntimeConsolePackageManifest(desktopPackage), null, 2)}\n`, "utf8");
+    await runElectronBuilder("macos-application", stage);
+    const information = await lstat(applicationPath);
+    if (!information.isDirectory() || information.isSymbolicLink()) {
+      throw new Error(`Runtime Platform application output is not one directory: ${applicationPath}`);
+    }
   } finally {
     await rm(stage, { recursive: true, force: true });
   }
@@ -251,13 +283,20 @@ async function runElectronBuilder(targetValue, stage) {
   const executable = process.platform === "win32"
     ? join(interfacesRoot, "node_modules", ".bin", "electron-builder.cmd")
     : join(interfacesRoot, "node_modules", ".bin", "electron-builder");
-  await run(executable, [
+  const builderArguments = [
     "--projectDir", desktopRoot,
     "--config", packageConfigurationPath,
     `--config.directories.app=${stage}`,
     ...electronBuilderTargetArguments(targetValue),
     "--publish", "never",
-  ]);
+  ];
+  if (targetValue === "macos-application") {
+    builderArguments.push(
+      "--config.productName=VitalServer Runtime Platform",
+      "--config.mac.executableName=VitalServer Runtime Platform",
+    );
+  }
+  await run(executable, builderArguments);
 }
 
 function run(command, arguments_) {

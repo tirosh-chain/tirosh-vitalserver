@@ -24,9 +24,19 @@ class MacOSReleasePackageAssemblyTests(unittest.TestCase):
         self.assembled_input_root = self.root / "assembled-input"
         self.guest_artifact_output_directory = self.root / "guest-artifacts"
         self.package_path = self.root / "VitalServerRuntimePlatform-0.2.0-dev.pkg"
+        self.operator_application_bundle = self.write_operator_application_bundle()
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
+
+    def write_operator_application_bundle(self) -> Path:
+        bundle = self.root / "VitalServer Runtime Platform.app"
+        executable = bundle / "Contents" / "MacOS" / "VitalServer Runtime Platform"
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.write_bytes(b"operator-application")
+        executable.chmod(0o755)
+        (bundle / "Contents" / "Info.plist").write_bytes(b"info")
+        return bundle
 
     def request(self) -> macos_release_package_assembly.MacOSReleasePackageAssemblyRequest:
         expected_kernel = self.guest_artifact_output_directory / "boot" / "Image"
@@ -48,6 +58,7 @@ class MacOSReleasePackageAssemblyTests(unittest.TestCase):
             ),
             platformctl_binary=self.root / "platformctl",
             macos_virtual_machine_supervisor_binary=self.root / "macos-virtual-machine-supervisor",
+            operator_application_bundle=self.operator_application_bundle,
             host_agent_deployment_configuration=self.root / "c33.json",
             operator_interface_bootstrap_configuration=self.root / "c53.json",
             host_edge_proxy_deployment_configuration=self.root / "c36.json",
@@ -306,6 +317,15 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
         path.write_bytes(contents)
         return path
 
+    def write_operator_application_bundle(self) -> Path:
+        bundle = self.root / "artifacts" / "VitalServer Runtime Platform.app"
+        executable = bundle / "Contents" / "MacOS" / "VitalServer Runtime Platform"
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.write_bytes(b"operator-application")
+        executable.chmod(0o755)
+        (bundle / "Contents" / "Info.plist").write_bytes(b"info")
+        return bundle
+
     def release_delivery_plans_document(self) -> Path:
         path = self.write_source_file("release-delivery-plans.json")
         path.write_text(
@@ -536,6 +556,9 @@ class MacOSReleasePackageAssemblyDeclarationTests(unittest.TestCase):
                         "platformctlBinaryAbsolutePath": str(platformctl),
                         "macOSVirtualMachineSupervisorBinaryAbsolutePath": str(
                             virtual_machine_supervisor
+                        ),
+                        "operatorApplicationBundleAbsolutePath": str(
+                            self.write_operator_application_bundle()
                         ),
                         "guestProductProcessSupervisorArtifactAbsolutePath": str(
                             guest_process_supervisor

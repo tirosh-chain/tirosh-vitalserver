@@ -65,6 +65,7 @@ class MacOSReleasePackageAssemblyDeclaration:
     host_update_handoff_supervisor_binary: Path
     platformctl_binary: Path
     macos_virtual_machine_supervisor_binary: Path
+    operator_application_bundle: Path
     guest_product_process_supervisor_artifact: Path
     host_agent_deployment_configuration: Path
     operator_interface_bootstrap_configuration: Path
@@ -524,6 +525,11 @@ def parse_macos_release_package_assembly_declaration(
             "macOSVirtualMachineSupervisorBinaryAbsolutePath",
             "C47 hostArtifacts",
         ),
+        operator_application_bundle=required_absolute_path(
+            host_artifacts,
+            "operatorApplicationBundleAbsolutePath",
+            "C47 hostArtifacts",
+        ),
         guest_product_process_supervisor_artifact=required_absolute_path(
             host_artifacts,
             "guestProductProcessSupervisorArtifactAbsolutePath",
@@ -804,6 +810,13 @@ def validate_macos_release_package_assembly_declaration_execution(
     for name, path in input_files:
         require_regular_absolute_file(path, name)
     try:
+        macos_host_package_composer.validate_declared_macos_operator_application_bundle(
+            declaration.operator_application_bundle,
+            "macOS operator application bundle",
+        )
+    except macos_host_package_composer.MacOSHostPackageCompositionError as error:
+        raise MacOSReleasePackageAssemblyError(str(error)) from error
+    try:
         release_plan = load_selected_macos_host_package_release_plan(
             declaration.release_delivery_plans_document,
             declaration.release_delivery_plan_id,
@@ -888,6 +901,7 @@ def macos_release_package_assembly_request_from_declaration(
         macos_virtual_machine_supervisor_binary=(
             declaration.macos_virtual_machine_supervisor_binary
         ),
+        operator_application_bundle=declaration.operator_application_bundle,
         host_agent_deployment_configuration=(
             declaration.host_agent_deployment_configuration
         ),

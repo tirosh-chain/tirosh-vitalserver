@@ -112,16 +112,25 @@ clean-install target. Windows amd64/SCM and Linux amd64/systemd remain planned
 targets that reuse C25–C31 update contracts. This matrix is a composition
 declaration, not C24 proof or a claim that the corresponding installer exists.
 
-The Host installer is intentionally not the Runtime Console installer. C53 is
-the Host-installed bootstrap configuration for the separately packaged desktop
-Console, and C71 records the Console package bytes it actually produced. The
-release process uses `tooling/operator_delivery_kit_composer.py` to publish one
-new C72 directory containing both verified artifacts and a manifest that fixes
-the only supported order: install the Host installer first, then the Console.
-The composer verifies C23's expected Host installer name, C71's console
-platform/name/hash/size, and the platform's exact C53 bootstrap path (Linux is
-`/opt/vitalserver-runtime-platform/control/runtime-console-bootstrap.json`). It
-does not claim a kit installed successfully; that remains C24 evidence.
+On macOS, the operator receives **one** C23-selected Runtime Platform PKG.
+C47 selects one already-built `VitalServer Runtime Platform.app`; C48 records
+its fixed `/Applications/VitalServer Runtime Platform.app` path, entrypoint,
+and complete bundle-tree digest. The PKG composer copies that bundle together
+with Host services, while the package verifier expands the PKG and proves the
+same C48 identity again. C53 remains the Host-installed bootstrap
+configuration consumed by the app; the app still cannot create C52, C53, or a
+Host service. An explicit C54 removal proves the same bundle through C49 and
+removes it only when its full tree still matches C48; a changed or unreadable
+application remains an operator-visible failed removal rather than being
+silently deleted.
+
+C71 and C72 remain the standalone Runtime Console artifact/delivery-kit
+boundaries for platforms or channels that intentionally distribute a separate
+desktop installer. They are not the macOS Runtime Platform installation path.
+When used, the composer verifies C23's expected Host-installer name, C71's
+Console platform/name/hash/size, and the platform's exact C53 bootstrap path
+(Linux is `/opt/vitalserver-runtime-platform/control/runtime-console-bootstrap.json`).
+It does not claim a kit installed successfully; that remains C24 evidence.
 
 `platformctl` is part of the Host installer rather than a third operator-kit
 artifact. Each platform's C48 immutable release slot places it at
@@ -160,13 +169,11 @@ operator needs a fresh candidate kit without waiting for a new pull request or
 external Guest, VitalServer, or a standard operator account are usable; those
 are C24 observations from a dedicated clean Host.
 
-The macOS CI runner also publishes the independently installable arm64 Runtime
-Console DMG and its C71 receipt. It does **not** publish a macOS C72 kit: the
-Host PKG requires the release operator to explicitly provide the C42/C43 Guest
-boot/root-storage inputs and the ARM64 Node distribution before C41/C47
-assembly. A CI runner must not discover or substitute those selected release
-inputs. Once the operator has assembled that Host PKG, the same C72 composer
-and verifier bind it to the downloaded-or-locally-built C71 Console artifact.
+The macOS release build still requires the release operator to explicitly
+provide C42/C43 Guest boot/root-storage inputs and the ARM64 Node distribution
+before C41/C47 assembly. A CI runner must not discover or substitute those
+selected inputs. Once assembled, the resulting PKG already contains the
+operator app; no second macOS Console installer is required.
 
 `tooling/guest_artifact_compilation_input_assembler.py` is the C41
 `GuestArtifactCompilationInputAssembler`. It alone translates named

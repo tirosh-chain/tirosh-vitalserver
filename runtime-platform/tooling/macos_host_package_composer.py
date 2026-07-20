@@ -18,6 +18,7 @@ import os
 from pathlib import Path, PurePosixPath
 import plistlib
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,13 @@ class MacOSHostPackageCompositionError(RuntimeError):
 
 MACOS_INSTALLER_XAR_EXECUTABLE = Path("/usr/bin/xar")
 MACOS_INSTALLER_MKBOM_EXECUTABLE = Path("/usr/bin/mkbom")
+MACOS_OPERATOR_APPLICATION_BUNDLE_PATH = PurePosixPath(
+    "/Applications/VitalServer Runtime Platform.app"
+)
+MACOS_OPERATOR_APPLICATION_BUNDLE_ENTRYPOINT = PurePosixPath(
+    "Contents/MacOS/VitalServer Runtime Platform"
+)
+MACOS_OPERATOR_APPLICATION_BUNDLE_INFO = PurePosixPath("Contents/Info.plist")
 
 
 @dataclass(frozen=True)
@@ -90,6 +98,7 @@ class MacOSHostPackageComposition:
     host_update_handoff_supervisor_binary: Path
     platformctl_binary: Path
     macos_virtual_machine_supervisor_binary: Path
+    operator_application_bundle: Path
     host_agent_deployment_configuration: Path
     operator_interface_bootstrap_configuration: Path
     host_edge_proxy_deployment_configuration: Path
@@ -1846,6 +1855,7 @@ def compose_postinstall_script(
 ) -> str:
     control = required_object(host_agent_deployment, "control", "C33")
     installation = required_object(host_agent_deployment, "installation", "C33")
+    update_bootstrap = required_object(host_agent_deployment, "updateBootstrap", "C33")
     state_database_path = PurePosixPath(required_string(control, "stateDatabasePath", "C33 control"))
     data_directory = PurePosixPath(required_string(installation, "dataDirectory", "C33 installation"))
     guest_boot_console_capture = required_object(virtual_machine, "guestBootConsoleCapture", "C32")
@@ -1872,6 +1882,13 @@ def compose_postinstall_script(
     host_runtime_directories = declared_host_runtime_directories(
         state_database_path.parent,
         data_directory,
+        PurePosixPath(
+            required_string(
+                update_bootstrap,
+                "bundleStoreDirectory",
+                "C33 updateBootstrap",
+            )
+        ),
         PurePosixPath(guest_boot_console_capture_path).parent,
         runtime_disk_image_path.parent,
         provisioning_receipt_path.parent,
@@ -2163,6 +2180,16 @@ def compose_host_product_installation_manifest(
                         )
                     ),
                 )
+            ),
+            "applicationBundlePath": str(macos_operator_application_bundle_path()),
+            "applicationBundleTreeSha256": sha256_macos_application_bundle_tree(
+                payload_destination(
+                    payload_root,
+                    macos_operator_application_bundle_path(),
+                )
+            ),
+            "applicationBundleEntrypointRelativePath": (
+                macos_operator_application_bundle_entrypoint_relative_path().as_posix()
             ),
         },
         "requiredServices": [
@@ -2544,6 +2571,10 @@ def publish_macos_installer_package_with_selected_signature(
 
 def copy_package_payload(composition: MacOSHostPackageComposition, documents: MacOSHostPackageDocuments, payload_root: Path) -> None:
     release_path = immutable_release_slot_path(composition)
+    copy_declared_macos_operator_application_bundle_to_package_payload(
+        composition.operator_application_bundle,
+        payload_destination(payload_root, macos_operator_application_bundle_path()),
+    )
     copy_declared_regular_file_to_package_payload(composition.host_agent_binary, payload_destination(payload_root, release_path / "bin" / "host-agent"), executable=True)
     copy_declared_regular_file_to_package_payload(composition.host_edge_proxy_binary, payload_destination(payload_root, release_path / "bin" / "host-edge-proxy"), executable=True)
     copy_declared_regular_file_to_package_payload(composition.host_installation_manager_binary, payload_destination(payload_root, release_path / "bin" / "host-installation-manager"), executable=True)
@@ -2722,6 +2753,10 @@ def validate_package_artifacts(composition: MacOSHostPackageComposition, documen
     ):
         if not path.is_absolute() or not path.is_file():
             raise MacOSHostPackageCompositionError(name + " is missing or not a file")
+    validate_declared_macos_operator_application_bundle(
+        composition.operator_application_bundle,
+        "macOS operator application bundle",
+    )
     if composition.external_vitalserver_delivery_configuration is not None and (
         not composition.external_vitalserver_delivery_configuration.is_absolute()
         or not composition.external_vitalserver_delivery_configuration.is_file()
@@ -3094,6 +3129,140 @@ def copy_declared_regular_file_to_package_payload(
     destination.chmod(0o755 if executable else 0o644)
 
 
+def macos_operator_application_bundle_path() -> PurePosixPath:
+    """Return the one user-visible application location in a macOS product PKG."""
+
+    return MACOS_OPERATOR_APPLICATION_BUNDLE_PATH
+
+
+def macos_operator_application_bundle_entrypoint_relative_path() -> PurePosixPath:
+    """Return the explicit executable entrypoint below the application bundle."""
+
+    return MACOS_OPERATOR_APPLICATION_BUNDLE_ENTRYPOINT
+
+
+def validate_declared_macos_operator_application_bundle(
+    application_bundle: Path,
+    name: str,
+) -> None:
+    """Require one self-contained macOS operator application bundle.
+
+    Electron deliberately contains relative framework links.  Those links are
+    permitted only when they resolve inside the selected bundle; an absolute
+    link or one escaping the bundle would turn a package payload into a build
+    host dependency and is rejected before ``pkgbuild`` sees it.
+    """
+
+    if (
+        not application_bundle.is_absolute()
+        or ".." in application_bundle.parts
+        or not application_bundle.is_dir()
+        or application_bundle.is_symlink()
+    ):
+        raise MacOSHostPackageCompositionError(
+            name + " is missing, not a directory, or a symbolic link"
+        )
+    if application_bundle.name != MACOS_OPERATOR_APPLICATION_BUNDLE_PATH.name:
+        raise MacOSHostPackageCompositionError(
+            name
+            + " must be named "
+            + MACOS_OPERATOR_APPLICATION_BUNDLE_PATH.name
+        )
+    expected_files = (
+        (MACOS_OPERATOR_APPLICATION_BUNDLE_INFO, False),
+        (MACOS_OPERATOR_APPLICATION_BUNDLE_ENTRYPOINT, True),
+    )
+    for relative_path, executable in expected_files:
+        candidate = application_bundle / relative_path
+        if not candidate.is_file() or candidate.is_symlink():
+            raise MacOSHostPackageCompositionError(
+                name + " is missing regular file " + relative_path.as_posix()
+            )
+        if executable and not bool(candidate.stat().st_mode & 0o111):
+            raise MacOSHostPackageCompositionError(
+                name + " entrypoint is not executable"
+            )
+    root = application_bundle.resolve(strict=True)
+    for candidate in sorted(application_bundle.rglob("*"), key=lambda item: item.as_posix()):
+        if candidate.is_symlink():
+            try:
+                candidate.resolve(strict=True).relative_to(root)
+            except (OSError, ValueError) as error:
+                raise MacOSHostPackageCompositionError(
+                    name
+                    + " has a symbolic link escaping the bundle: "
+                    + candidate.relative_to(application_bundle).as_posix()
+                ) from error
+            continue
+        if candidate.is_dir() or candidate.is_file():
+            continue
+        raise MacOSHostPackageCompositionError(
+            name
+            + " contains unsupported filesystem entry: "
+            + candidate.relative_to(application_bundle).as_posix()
+        )
+
+
+def sha256_macos_application_bundle_tree(application_bundle: Path) -> str:
+    """Return an exact tree identity for one validated application bundle."""
+
+    validate_declared_macos_operator_application_bundle(
+        application_bundle,
+        "macOS operator application bundle",
+    )
+    digest = hashlib.sha256()
+    for candidate in sorted(application_bundle.rglob("*"), key=lambda item: item.as_posix()):
+        relative_path = candidate.relative_to(application_bundle).as_posix().encode("utf-8")
+        if candidate.is_symlink():
+            digest.update(b"symbolic-link\0")
+            digest.update(relative_path)
+            digest.update(b"\0")
+            digest.update(os.readlink(candidate).encode("utf-8"))
+            digest.update(b"\0")
+        elif candidate.is_file():
+            digest.update(b"regular-file\0")
+            digest.update(relative_path)
+            digest.update(b"\0")
+            digest.update(sha256_file(candidate).encode("ascii"))
+            digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def copy_declared_macos_operator_application_bundle_to_package_payload(
+    source: Path,
+    destination: Path,
+) -> None:
+    """Copy the validated application tree without following framework links."""
+
+    validate_declared_macos_operator_application_bundle(
+        source,
+        "macOS operator application bundle",
+    )
+    if destination.exists() or destination.is_symlink():
+        raise MacOSHostPackageCompositionError(
+            "macOS operator application bundle destination already exists"
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    def copy_file_without_extended_attributes(input_path: str, output_path: str) -> str:
+        shutil.copyfile(input_path, output_path)
+        source_mode = stat.S_IMODE(os.stat(input_path, follow_symlinks=False).st_mode)
+        os.chmod(output_path, source_mode)
+        return output_path
+
+    shutil.copytree(
+        source,
+        destination,
+        symlinks=True,
+        copy_function=copy_file_without_extended_attributes,
+    )
+    source_tree_sha256 = sha256_macos_application_bundle_tree(source)
+    if sha256_macos_application_bundle_tree(destination) != source_tree_sha256:
+        raise MacOSHostPackageCompositionError(
+            "macOS operator application bundle copy does not match declared bytes"
+        )
+
+
 def shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
@@ -3128,6 +3297,7 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
     parser.add_argument("--host-update-handoff-supervisor-binary", required=True)
     parser.add_argument("--platformctl-binary", required=True)
     parser.add_argument("--macos-virtual-machine-supervisor-binary", required=True)
+    parser.add_argument("--operator-application-bundle", required=True)
     parser.add_argument("--host-agent-deployment-configuration", required=True)
     parser.add_argument("--operator-interface-bootstrap-configuration", required=True)
     parser.add_argument("--host-edge-proxy-deployment-configuration", required=True)
@@ -3176,6 +3346,7 @@ def parse_arguments(arguments: list[str]) -> MacOSHostPackageComposition:
         host_update_handoff_supervisor_binary=Path(parsed.host_update_handoff_supervisor_binary),
         platformctl_binary=Path(parsed.platformctl_binary),
         macos_virtual_machine_supervisor_binary=Path(parsed.macos_virtual_machine_supervisor_binary),
+        operator_application_bundle=Path(parsed.operator_application_bundle),
         host_agent_deployment_configuration=Path(parsed.host_agent_deployment_configuration),
         operator_interface_bootstrap_configuration=Path(parsed.operator_interface_bootstrap_configuration),
         host_edge_proxy_deployment_configuration=Path(parsed.host_edge_proxy_deployment_configuration),

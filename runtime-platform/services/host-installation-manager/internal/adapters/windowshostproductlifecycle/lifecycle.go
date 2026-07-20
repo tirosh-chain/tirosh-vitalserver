@@ -258,6 +258,19 @@ func (lifecycle *WindowsHostProductLifecycle) RemoveHostProductServiceDefinition
 	return nil
 }
 
+// RemoveHostProductOperatorApplication is intentionally unavailable on
+// Windows. A macOS operator bundle must be rejected as a contract error rather
+// than silently becoming an unowned or guessed deletion target.
+func (lifecycle *WindowsHostProductLifecycle) RemoveHostProductOperatorApplication(_ context.Context, manifest hostinstallationmanagerdomain.HostProductInstallationManifest) error {
+	if err := requireWindowsManifest(manifest); err != nil {
+		return err
+	}
+	if manifest.OperatorInterface.ApplicationBundlePath != "" || manifest.OperatorInterface.ApplicationBundleTreeSHA256 != "" || manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath != "" {
+		return fmt.Errorf("Windows Host product removal cannot remove a macOS operator application")
+	}
+	return nil
+}
+
 func (lifecycle *WindowsHostProductLifecycle) RemoveHostProductActivationLink(_ context.Context, manifest hostinstallationmanagerdomain.HostProductInstallationManifest) error {
 	if err := requireWindowsManifest(manifest); err != nil {
 		return err

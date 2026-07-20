@@ -96,6 +96,19 @@ func (remover *LinuxHostProductRemover) RemoveHostProductServiceDefinitions(cont
 	return nil
 }
 
+// RemoveHostProductOperatorApplication is intentionally unavailable on Linux:
+// a macOS .app bundle is not a Linux C48 resource and must never become an
+// implicit deletion target in a Debian lifecycle.
+func (remover *LinuxHostProductRemover) RemoveHostProductOperatorApplication(_ context.Context, manifest hostinstallationmanagerdomain.HostProductInstallationManifest) error {
+	if err := requireLinuxManifest(manifest); err != nil {
+		return err
+	}
+	if manifest.OperatorInterface.ApplicationBundlePath != "" || manifest.OperatorInterface.ApplicationBundleTreeSHA256 != "" || manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath != "" {
+		return fmt.Errorf("Linux Host product removal cannot remove a macOS operator application")
+	}
+	return nil
+}
+
 func (remover *LinuxHostProductRemover) RemoveHostProductActivationLink(_ context.Context, manifest hostinstallationmanagerdomain.HostProductInstallationManifest) error {
 	if err := requireLinuxManifest(manifest); err != nil {
 		return err

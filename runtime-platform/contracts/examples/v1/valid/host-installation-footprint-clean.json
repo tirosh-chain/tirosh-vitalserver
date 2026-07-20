@@ -20,6 +20,10 @@
     "state": "absent",
     "currentReleaseLinkPath": "/Library/Application Support/VitalServerRuntimePlatform/current"
   },
+  "operatorApplication": {
+    "state": "absent",
+    "applicationBundlePath": "/Applications/VitalServer Runtime Platform.app"
+  },
   "requiredServices": [
     {
       "role": "host-agent",

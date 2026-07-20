@@ -49,12 +49,16 @@ func TestMacOSHostProductRemoverRemovesOnlyDeclaredResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := hostinstallationmanagerdomain.HostProductInstallationManifest{
-		Platform:         "macos",
-		Release:          hostinstallationmanagerdomain.HostProductRelease{ID: releaseID},
-		Package:          hostinstallationmanagerdomain.HostProductPackageIdentity{Identifier: "com.tirosh.vitalserver.runtime-platform"},
-		ImmutablePayload: hostinstallationmanagerdomain.HostImmutableProductPayload{ReleaseCatalogPath: releaseCatalog},
-		Activation:       hostinstallationmanagerdomain.HostProductReleaseActivation{CurrentReleaseLinkPath: currentLink, ReferenceKind: "symbolic-link", ExpectedReleaseRootPath: releaseRoot},
-		RequiredServices: []hostinstallationmanagerdomain.HostProductRequiredService{{Role: "host-agent", Name: "com.tirosh.vitalserver.host-agent", DefinitionPath: serviceDefinition}},
+		Platform:          "macos",
+		Release:           hostinstallationmanagerdomain.HostProductRelease{ID: releaseID},
+		Package:           hostinstallationmanagerdomain.HostProductPackageIdentity{Identifier: "com.tirosh.vitalserver.runtime-platform"},
+		ImmutablePayload:  hostinstallationmanagerdomain.HostImmutableProductPayload{ReleaseCatalogPath: releaseCatalog},
+		Activation:        hostinstallationmanagerdomain.HostProductReleaseActivation{CurrentReleaseLinkPath: currentLink, ReferenceKind: "symbolic-link", ExpectedReleaseRootPath: releaseRoot},
+		OperatorInterface: hostinstallationmanagerdomain.HostProductOperatorInterface{ApplicationBundlePath: filepath.Join(root, "Applications", "VitalServer Runtime Platform.app"), ApplicationBundleTreeSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ApplicationBundleEntrypointRelativePath: "Contents/MacOS/VitalServer Runtime Platform"},
+		RequiredServices:  []hostinstallationmanagerdomain.HostProductRequiredService{{Role: "host-agent", Name: "com.tirosh.vitalserver.host-agent", DefinitionPath: serviceDefinition}},
+	}
+	if err := os.MkdirAll(manifest.OperatorInterface.ApplicationBundlePath, 0755); err != nil {
+		t.Fatal(err)
 	}
 	runner := &hostProductRemovalCommandRunnerFake{}
 	remover, err := NewMacOSHostProductRemoverWithCommandRunner("/usr/sbin/pkgutil", runner)
@@ -66,6 +70,12 @@ func TestMacOSHostProductRemoverRemovesOnlyDeclaredResources(t *testing.T) {
 	}
 	if _, err := os.Lstat(serviceDefinition); !os.IsNotExist(err) {
 		t.Fatalf("service definition remains or could not be inspected: %v", err)
+	}
+	if err := remover.RemoveHostProductOperatorApplication(context.Background(), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(manifest.OperatorInterface.ApplicationBundlePath); !os.IsNotExist(err) {
+		t.Fatalf("operator application remains or could not be inspected: %v", err)
 	}
 	if err := remover.RemoveHostProductActivationLink(context.Background(), manifest); err != nil {
 		t.Fatal(err)
@@ -92,6 +102,43 @@ func TestMacOSHostProductRemoverRemovesOnlyDeclaredResources(t *testing.T) {
 	}
 	if runner.executable != "/usr/sbin/pkgutil" || len(runner.arguments) != 2 || runner.arguments[0] != "--forget" || runner.arguments[1] != manifest.Package.Identifier {
 		t.Fatalf("pkgutil invocation=%q %v", runner.executable, runner.arguments)
+	}
+}
+
+func TestMacOSHostProductRemoverRefusesSymbolicOperatorApplicationRoot(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target.app")
+	if err := os.MkdirAll(target, 0755); err != nil {
+		t.Fatal(err)
+	}
+	declaredPath := filepath.Join(root, "Applications", "VitalServer Runtime Platform.app")
+	if err := os.MkdirAll(filepath.Dir(declaredPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, declaredPath); err != nil {
+		t.Fatal(err)
+	}
+	remover, err := NewMacOSHostProductRemoverWithCommandRunner("pkgutil", &hostProductRemovalCommandRunnerFake{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := hostinstallationmanagerdomain.HostProductInstallationManifest{
+		Platform:   "macos",
+		Activation: hostinstallationmanagerdomain.HostProductReleaseActivation{ReferenceKind: "symbolic-link"},
+		OperatorInterface: hostinstallationmanagerdomain.HostProductOperatorInterface{
+			ApplicationBundlePath:                   declaredPath,
+			ApplicationBundleTreeSHA256:             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			ApplicationBundleEntrypointRelativePath: "Contents/MacOS/VitalServer Runtime Platform",
+		},
+	}
+	if err := remover.RemoveHostProductOperatorApplication(context.Background(), manifest); err == nil {
+		t.Fatal("expected symbolic application root to be rejected")
+	}
+	if _, err := os.Lstat(target); err != nil {
+		t.Fatalf("symbolic application target must remain: %v", err)
 	}
 }
 

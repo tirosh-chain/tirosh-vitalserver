@@ -21,7 +21,7 @@ func declaredHostProductInstallationManifest() HostProductInstallationManifest {
 			Entries:            []HostImmutableProductPayloadEntry{{RelativePath: "bin/host-agent", SHA256: hostInstallationDigest("a"), Executable: true}},
 		},
 		Activation:        HostProductReleaseActivation{CurrentReleaseLinkPath: "/Library/Application Support/VitalServerRuntimePlatform/current", ReferenceKind: "symbolic-link", ExpectedReleaseRootPath: "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-0.2.0-dev-build-001"},
-		OperatorInterface: HostProductOperatorInterface{BootstrapConfigurationPath: "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json", BootstrapConfigurationSHA256: hostInstallationDigest("d")},
+		OperatorInterface: HostProductOperatorInterface{BootstrapConfigurationPath: "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json", BootstrapConfigurationSHA256: hostInstallationDigest("d"), ApplicationBundlePath: MacOSHostProductOperatorApplicationBundlePath, ApplicationBundleTreeSHA256: hostInstallationDigest("f"), ApplicationBundleEntrypointRelativePath: MacOSHostProductOperatorApplicationEntrypointRelativePath},
 		RequiredServices: []HostProductRequiredService{
 			{Role: "host-agent", Manager: "launchd", Name: "com.tirosh.vitalserver.host-agent", DefinitionPath: "/Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist", DefinitionSHA256: hostInstallationDigest("b")},
 			{Role: "host-edge-proxy", Manager: "launchd", Name: "com.tirosh.vitalserver.host-edge-proxy", DefinitionPath: "/Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist", DefinitionSHA256: hostInstallationDigest("c")},
@@ -38,15 +38,16 @@ func declaredHostProductInstallationManifest() HostProductInstallationManifest {
 
 func cleanHostInstallationFootprintFor(manifest HostProductInstallationManifest) HostInstallationFootprint {
 	return HostInstallationFootprint{
-		SchemaVersion:     "v1",
-		InstallationID:    manifest.InstallationID,
-		ExpectedReleaseID: manifest.Release.ID,
-		Platform:          manifest.Platform,
-		ObservedAt:        "2026-07-18T03:00:00Z",
-		PackageReceipt:    HostInstallationPackageReceiptObservation{State: "absent", Identifier: manifest.Package.Identifier},
-		ReleaseCatalog:    HostInstallationReleaseCatalogObservation{State: "absent", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath},
-		ImmutableRelease:  HostInstallationImmutableReleaseObservation{State: "absent", ReleaseRootPath: manifest.ImmutablePayload.ReleaseRootPath},
-		Activation:        HostInstallationActivationObservation{State: "absent", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath},
+		SchemaVersion:       "v1",
+		InstallationID:      manifest.InstallationID,
+		ExpectedReleaseID:   manifest.Release.ID,
+		Platform:            manifest.Platform,
+		ObservedAt:          "2026-07-18T03:00:00Z",
+		PackageReceipt:      HostInstallationPackageReceiptObservation{State: "absent", Identifier: manifest.Package.Identifier},
+		ReleaseCatalog:      HostInstallationReleaseCatalogObservation{State: "absent", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath},
+		ImmutableRelease:    HostInstallationImmutableReleaseObservation{State: "absent", ReleaseRootPath: manifest.ImmutablePayload.ReleaseRootPath},
+		Activation:          HostInstallationActivationObservation{State: "absent", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath},
+		OperatorApplication: operatorApplicationFootprintFor(manifest, "absent"),
 		RequiredServices: []HostInstallationServiceObservation{
 			{Role: "host-agent", Name: "com.tirosh.vitalserver.host-agent", State: "absent", DefinitionState: "absent"},
 			{Role: "host-edge-proxy", Name: "com.tirosh.vitalserver.host-edge-proxy", State: "absent", DefinitionState: "absent"},
@@ -64,6 +65,13 @@ func cleanHostInstallationFootprintFor(manifest HostProductInstallationManifest)
 			ReceiptPath: "/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/latest-installation-receipt.json",
 		},
 	}
+}
+
+func operatorApplicationFootprintFor(manifest HostProductInstallationManifest, state string) *HostInstallationOperatorApplicationObservation {
+	if manifest.Platform != "macos" {
+		return nil
+	}
+	return &HostInstallationOperatorApplicationObservation{State: state, ApplicationBundlePath: manifest.OperatorInterface.ApplicationBundlePath}
 }
 
 func preflightHostInstallationRequest(manifest HostProductInstallationManifest) HostInstallationRequest {
@@ -94,6 +102,9 @@ func TestDecideHostInstallationPreflightAdmitsOnlyExactLinuxUnpackedPackagePaylo
 	manifest.ImmutablePayload.ManifestPath = manifest.ImmutablePayload.ReleaseRootPath + "/installation-manifest.json"
 	manifest.Activation = HostProductReleaseActivation{CurrentReleaseLinkPath: "/opt/vitalserver-runtime-platform/current", ReferenceKind: "symbolic-link", ExpectedReleaseRootPath: manifest.ImmutablePayload.ReleaseRootPath}
 	manifest.OperatorInterface.BootstrapConfigurationPath = "/opt/vitalserver-runtime-platform/control/runtime-console-bootstrap.json"
+	manifest.OperatorInterface.ApplicationBundlePath = ""
+	manifest.OperatorInterface.ApplicationBundleTreeSHA256 = ""
+	manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath = ""
 	for index := range manifest.RequiredServices {
 		manifest.RequiredServices[index].Manager = "systemd"
 		manifest.RequiredServices[index].DefinitionPath = "/etc/systemd/system/" + manifest.RequiredServices[index].Name + ".service"
@@ -134,6 +145,9 @@ func TestDecideHostInstallationPreflightAdmitsOnlyExplicitWindowsMSIPayloadPhase
 	manifest.ImmutablePayload.ManifestPath = manifest.ImmutablePayload.ReleaseRootPath + `\installation-manifest.json`
 	manifest.Activation = HostProductReleaseActivation{CurrentReleaseLinkPath: `C:\ProgramData\VitalServerRuntimePlatform\current`, ReferenceKind: "directory-junction", ExpectedReleaseRootPath: manifest.ImmutablePayload.ReleaseRootPath}
 	manifest.OperatorInterface.BootstrapConfigurationPath = `C:\ProgramData\VitalServerRuntimePlatform\control\runtime-console-bootstrap.json`
+	manifest.OperatorInterface.ApplicationBundlePath = ""
+	manifest.OperatorInterface.ApplicationBundleTreeSHA256 = ""
+	manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath = ""
 	for index := range manifest.RequiredServices {
 		manifest.RequiredServices[index].Manager = "windows-scm"
 		manifest.RequiredServices[index].DefinitionPath = `C:\ProgramData\VitalServerRuntimePlatform\services\` + manifest.RequiredServices[index].Name + `.json`
@@ -310,6 +324,7 @@ func TestDecideHostInstallationPreflightAdmitsSameReleaseRepairWithoutTouchingPe
 	footprint.ImmutableRelease.State = "diverged"
 	footprint.ReleaseCatalog = HostInstallationReleaseCatalogObservation{State: "only-expected-release", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath, ReleaseIDs: []string{manifest.Release.ID}}
 	footprint.Activation = HostInstallationActivationObservation{State: "points-to-expected-release", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath, ObservedTargetPath: manifest.ImmutablePayload.ReleaseRootPath}
+	footprint.OperatorApplication.State = "matching"
 	for index := range footprint.RequiredServices {
 		footprint.RequiredServices[index].State = "registered"
 		footprint.RequiredServices[index].DefinitionState = "matching"
@@ -330,6 +345,7 @@ func TestDecideHostInstallationPreflightAdmitsSameReleaseServiceDefinitionRepair
 	footprint.ReleaseCatalog = HostInstallationReleaseCatalogObservation{State: "only-expected-release", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath, ReleaseIDs: []string{manifest.Release.ID}}
 	footprint.ImmutableRelease.State = "matching"
 	footprint.Activation = HostInstallationActivationObservation{State: "points-to-expected-release", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath, ObservedTargetPath: manifest.ImmutablePayload.ReleaseRootPath}
+	footprint.OperatorApplication.State = "matching"
 	for index := range footprint.RequiredServices {
 		footprint.RequiredServices[index].State = "registered"
 		footprint.RequiredServices[index].DefinitionState = "matching"

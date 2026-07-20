@@ -1,6 +1,6 @@
 # Operator Control Surface
 
-> 상태: **C52 local-administration transport, `platformctl`, Electron main/preload transport, Lab·external-upstream·topology·NTP·OTLP·C69 update named control requests, C71 Console package receipt, C72 Host+Console delivery kit, unsigned macOS arm64 DMG, Windows x64 NSIS, and Linux x64 AppImage package creation implemented / joined clean-host proof and native OS execution proof pending**
+> 상태: **C52 local-administration transport, `platformctl`, Electron main/preload transport, Lab·external-upstream·topology·NTP·OTLP·C69 update named control requests, C71 Console package receipt, C72 Host+Console delivery kit, and C47/C48 unified macOS PKG application-bundle composition implemented / joined clean-host proof and native OS execution proof pending**
 
 Runtime Platform은 GUI를 만들기 전에, 운영자가 어느 state owner에게 어떤
 명령을 요청하는지 명확하게 보여 주는 하나의 control surface를 만든다. 이
@@ -182,15 +182,23 @@ C52, a socket, or a Host service. A Runtime Platform Host installation must
 already provide the exact C53/C52 files; their absence remains a visible app
 startup failure.
 
-Each package run writes an adjacent C71 receipt containing the exact Console
-artifact byte identity and the required C53 v1 contract. `C72`
-`operator_delivery_kit_composer.py` then creates a new immutable delivery
+Each standalone package run writes an adjacent C71 receipt containing the
+exact Console artifact byte identity and the required C53 v1 contract. C72
+`operator_delivery_kit_composer.py` can then create an immutable delivery
 directory with `artifacts/host-installer/`, `artifacts/runtime-console/`, and
-`operator-delivery-kit-manifest.json`. It binds C23's Host installer identity,
-C71's Console bytes, and C53's bootstrap bytes without putting the Console
-inside the privileged Host installer. The fixed installation order is Host
-installer first, Runtime Console second; C72 is delivery composition only and
-does not mark a C24 proof stage as verified.
+`operator-delivery-kit-manifest.json` for channels that intentionally keep
+those installers separate.
+
+The macOS Runtime Platform product uses a different, unified path: C47 selects
+an already-built `VitalServer Runtime Platform.app`, and C48 declares its
+fixed `/Applications` location, executable entrypoint, and bundle-tree digest.
+The privileged PKG installs both that unprivileged app and the Host-owned
+services; the package verifier rechecks the app tree after PKG expansion. The
+desktop app still obtains control access only through C53 → C52, so putting it
+in the same PKG does not give it Host state or service authority. C54 observes
+the same bundle as C49 state and removes it only after its full tree matches
+C48; an absent, changed, or unreadable bundle is never silently treated as the
+same removal result.
 
 ## 6. Executable acceptance expectations
 

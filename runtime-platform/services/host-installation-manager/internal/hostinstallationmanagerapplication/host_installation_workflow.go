@@ -67,6 +67,7 @@ type HostProductServiceReconciler interface {
 type HostProductRemovalEffects interface {
 	PrepareHostProductPackageManagerCompletionTransport(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest, hostinstallationmanagerdomain.HostProductPackageManagerCompletionTransport) error
 	RemoveHostProductServiceDefinitions(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest) error
+	RemoveHostProductOperatorApplication(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest) error
 	RemoveHostProductActivationLink(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest) error
 	RemoveHostProductReleaseCatalog(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest) error
 	RemoveHostProductMutableStores(context.Context, hostinstallationmanagerdomain.HostProductInstallationManifest, []hostinstallationmanagerdomain.HostProductMutableStoreDeclaration) error
@@ -577,6 +578,11 @@ func (workflow *HostInstallationWorkflow) ExecuteHostProductRemoval(
 	journal.UpdatedAt = now
 	if err := workflow.removalJournalStore.WriteHostProductRemovalJournal(context, removalJournalPath, journal); err != nil {
 		return hostinstallationmanagerdomain.HostProductRemovalReceipt{}, fmt.Errorf("persist Host product removal immutable-content intent: %w", err)
+	}
+	if plan.RemoveOperatorApplication {
+		if err := workflow.removalEffects.RemoveHostProductOperatorApplication(context, manifest); err != nil {
+			return workflow.recordHostProductRemovalFailure(context, request, manifest, removalJournalPath, removalReceiptPath, journal, "operator-application-removal-failed", err, now)
+		}
 	}
 	if plan.RemoveActivationLink {
 		if err := workflow.removalEffects.RemoveHostProductActivationLink(context, manifest); err != nil {

@@ -35,7 +35,10 @@
   },
   "operatorInterface": {
     "bootstrapConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json",
-    "bootstrapConfigurationSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    "bootstrapConfigurationSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "applicationBundlePath": "/Applications/VitalServer Runtime Platform.app",
+    "applicationBundleTreeSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+    "applicationBundleEntrypointRelativePath": "Contents/MacOS/VitalServer Runtime Platform"
   },
   "requiredServices": [
     {

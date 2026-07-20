@@ -11226,6 +11226,51 @@
                 "not": {
                   "required": [
                     "issue"
+        "OperatorApplicationObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "unreadable"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "required": [
+                  "issue"
+                ]
+              }
+            }
+          ],
+          "description": "C49 observation of the macOS operator application declared by C48. `matching` means the full bundle tree matches C48; a changed, missing, and unreadable bundle remain distinct.",
+          "properties": {
+            "applicationBundlePath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            },
+            "issue": {
+              "$ref": "#/$defs/Issue"
+            },
+            "state": {
+              "enum": [
+                "absent",
+                "matching",
+                "diverged",
+                "unreadable"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "applicationBundlePath"
+          ],
+          "type": "object"
+        },
                   ]
                 },
                 "required": [
@@ -11460,7 +11505,33 @@
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-installation-footprint",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "C49 Host Installation Manager-owned observation of the package receipt, immutable release slot, activation link, services, mutable stores, and explicit C50 transaction state. It never treats an unreadable or unknown resource as absent.",
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "operatorApplication"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "macos"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "required": [
+              "operatorApplication"
+            ]
+          }
+        }
+      ],
+      "description": "C49 Host Installation Manager-owned observation of the package receipt, immutable release slot, activation link, macOS operator application when declared, services, mutable stores, and explicit C50 transaction state. It never treats an unreadable or unknown resource as absent.",
       "properties": {
         "activation": {
           "$ref": "#/$defs/ActivationObservation"
@@ -11505,6 +11576,9 @@
           "items": {
             "$ref": "#/$defs/RequiredServiceObservation"
           },
+        "operatorApplication": {
+          "$ref": "#/$defs/OperatorApplicationObservation"
+        },
           "maxItems": 3,
           "minItems": 3,
           "type": "array"
@@ -12455,6 +12529,15 @@
           "properties": {
             "identifier": {
               "maxLength": 255,
+            "applicationBundleEntrypointRelativePath": {
+              "$ref": "#/$defs/RelativePayloadPath"
+            },
+            "applicationBundlePath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            },
+            "applicationBundleTreeSha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
               "minLength": 3,
               "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$",
               "type": "string"
@@ -12638,6 +12721,13 @@
         {
           "if": {
             "properties": {
+              "operatorInterface": {
+                "required": [
+                  "applicationBundlePath",
+                  "applicationBundleTreeSha256",
+                  "applicationBundleEntrypointRelativePath"
+                ]
+              },
               "platform": {
                 "const": "linux"
               }
@@ -15412,6 +15502,9 @@
         "MacOSInstallerPackageSigning": {
           "additionalProperties": false,
           "allOf": [
+            "operatorApplicationBundleAbsolutePath": {
+              "$ref": "#/$defs/AbsoluteHostPath"
+            },
             {
               "else": {
                 "allOf": [
@@ -15423,6 +15516,7 @@
                     }
                   },
                   {
+            "operatorApplicationBundleAbsolutePath",
                     "not": {
                       "required": [
                         "productsignExecutableAbsolutePath"
@@ -15634,7 +15728,7 @@
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:macos-release-package-assembly-declaration",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "C47 Release process desired input for one macOS product-package assembly. It selects the already-declared C41 Guest input assembly, Host artifacts, deployment documents, signing inputs, PKG output, package verification command, and a new C47 receipt destination. It does not prove that a package exists, that it installed, or that a Guest started.",
+      "description": "C47 Release process desired input for one macOS product-package assembly. It selects the already-declared C41 Guest input assembly, Host artifacts including one user-visible operator application bundle, deployment documents, signing inputs, PKG output, package verification command, and a new C47 receipt destination. It does not prove that a package exists, that it installed, or that a Guest started.",
       "properties": {
         "assemblyId": {
           "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"

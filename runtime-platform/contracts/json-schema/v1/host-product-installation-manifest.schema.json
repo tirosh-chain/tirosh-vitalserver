@@ -139,6 +139,13 @@
             "properties": { "referenceKind": { "const": "symbolic-link" } },
             "required": ["referenceKind"]
           },
+          "operatorInterface": {
+            "required": [
+              "applicationBundlePath",
+              "applicationBundleTreeSha256",
+              "applicationBundleEntrypointRelativePath"
+            ]
+          },
           "requiredServices": {
             "items": {
               "properties": { "manager": { "const": "launchd" } },
@@ -354,6 +361,15 @@
         },
         "bootstrapConfigurationSha256": {
           "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "applicationBundlePath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "applicationBundleTreeSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "applicationBundleEntrypointRelativePath": {
+          "$ref": "#/$defs/RelativePayloadPath"
         }
       }
     },

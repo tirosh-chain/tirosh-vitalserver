@@ -34,6 +34,7 @@ Package commands run only after the renderer and desktop bundle are rebuilt:
 
 ```sh
 npm --prefix runtime-platform/interfaces run package:macos
+npm --prefix runtime-platform/interfaces run package:macos-application
 npm --prefix runtime-platform/interfaces run package:windows
 npm --prefix runtime-platform/interfaces run package:linux
 npm --prefix runtime-platform/interfaces run package:linux-deb
@@ -41,10 +42,12 @@ npm --prefix runtime-platform/interfaces run package:linux-deb
 
 Their output is written below
 `runtime-platform/.tmp/runtime-console-desktop/`, outside the source workspace.
-The package is an unsigned operator-interface installer, deliberately separate from Host
-service authority. It cannot create C53/C52 or start a Host service; those are
-owned by the Runtime Platform Host installer. A failed/missing C53 or C52
-therefore remains an explicit application start failure.
+`package:macos-application` emits the `.app` tree selected by the unified
+macOS Runtime Platform PKG; it is a product-build input, not an additional
+operator installer. The other package commands emit standalone operator
+installers. Neither form has Host service authority: it cannot create C53/C52
+or start a Host service. A failed/missing C53 or C52 therefore remains an
+explicit application start failure.
 
 `package:linux` produces an AppImage. `package:linux-deb` produces a Debian
 package only on a Linux packaging worker; package creation must not pretend

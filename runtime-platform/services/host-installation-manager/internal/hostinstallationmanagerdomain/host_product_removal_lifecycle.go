@@ -129,6 +129,7 @@ type HostProductRemovalPlan struct {
 	DataDisposition                          string
 	PreparePackageManagerCompletionTransport bool
 	RemovePackageReceipt                     bool
+	RemoveOperatorApplication                bool
 	RemoveActivationLink                     bool
 	RemoveReleaseCatalog                     bool
 	RemoveServiceDefinitions                 []HostProductRequiredService
@@ -408,6 +409,9 @@ func DecideHostProductRemoval(
 	if footprint.Activation.State != "absent" && footprint.Activation.State != "points-to-expected-release" {
 		return HostProductRemovalPlan{}, blockedHostInstallationDecision(HostInstallationIssue{Code: "activation-does-not-point-to-declared-release", Message: "product removal will not delete an activation link that points to another release"}), nil
 	}
+	if manifest.Platform == "macos" && footprint.OperatorApplication.State != "absent" && footprint.OperatorApplication.State != "matching" {
+		return HostProductRemovalPlan{}, blockedHostInstallationDecision(HostInstallationIssue{Code: "operator-application-not-declared", Message: "product removal will not delete a changed macOS operator application bundle"}), nil
+	}
 	for _, service := range footprint.RequiredServices {
 		if service.DefinitionState != "absent" && service.DefinitionState != "matching" {
 			return HostProductRemovalPlan{}, blockedHostInstallationDecision(HostInstallationIssue{Code: "service-definition-not-declared", Message: "product removal will not delete a diverged Host service definition: " + service.Name}), nil
@@ -417,6 +421,7 @@ func DecideHostProductRemoval(
 		DataDisposition:                          request.DataDisposition,
 		PreparePackageManagerCompletionTransport: request.PackageManagerCompletionTransport != nil,
 		RemovePackageReceipt:                     true,
+		RemoveOperatorApplication:                manifest.Platform == "macos" && footprint.OperatorApplication.State == "matching",
 		RemoveActivationLink:                     footprint.Activation.State == "points-to-expected-release",
 		RemoveReleaseCatalog:                     manifest.Platform != "windows" && footprint.ReleaseCatalog.State != "absent",
 		RemoveServiceDefinitions:                 append([]HostProductRequiredService(nil), manifest.RequiredServices...),
@@ -454,8 +459,8 @@ func DecideHostProductRemovalCompletion(
 		return blockedHostInstallationDecision(*issue), nil, nil
 	}
 	packageReceiptRemoved := footprint.PackageReceipt.State == "absent" || (request.PackageManagerCompletionTransport != nil && manifest.Platform == "linux" && footprint.PackageReceipt.State == "installed" && footprint.PackageReceipt.PackageManagerReceiptState == "removed" && footprint.PackageReceipt.ProductVersion == manifest.Package.ProductVersion)
-	if !packageReceiptRemoved || footprint.ReleaseCatalog.State != "absent" || footprint.ImmutableRelease.State != "absent" || footprint.Activation.State != "absent" {
-		return blockedHostInstallationDecision(HostInstallationIssue{Code: "product-removal-not-complete", Message: "package receipt, immutable release catalog, or activation link remains after product removal"}), nil, nil
+	if !packageReceiptRemoved || footprint.ReleaseCatalog.State != "absent" || footprint.ImmutableRelease.State != "absent" || footprint.Activation.State != "absent" || (manifest.Platform == "macos" && footprint.OperatorApplication.State != "absent") {
+		return blockedHostInstallationDecision(HostInstallationIssue{Code: "product-removal-not-complete", Message: "package receipt, immutable release catalog, activation link, or macOS operator application remains after product removal"}), nil, nil
 	}
 	for _, service := range footprint.RequiredServices {
 		if service.State != "absent" || service.DefinitionState != "absent" {
@@ -560,6 +565,9 @@ func hostProductRemovalEffects(plan HostProductRemovalPlan) []string {
 	}
 	if plan.RemoveActivationLink {
 		effects = append(effects, "remove-current-release-link")
+	}
+	if plan.RemoveOperatorApplication {
+		effects = append(effects, "remove-declared-macos-operator-application")
 	}
 	if plan.RemoveReleaseCatalog {
 		effects = append(effects, "remove-declared-release-catalog")

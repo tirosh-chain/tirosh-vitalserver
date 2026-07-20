@@ -161,6 +161,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-156 | macOS `launchctl`의 missing-service 응답이 clean Runtime Platform pkg install을 차단함 | Packaging / Host installation | active | [macOS launchctl missing service blocks clean pkg install](156_macos_launchctl_missing_service_blocks_clean_pkg_install.md) |
 | TS-157 | Electron Builder DMG build가 temporary disk image attachment를 남김 | Packaging / Local development | active | [Electron Builder DMG build leaves a temporary disk image attached](157_electron_builder_dmg_stale_temporary_attachment.md) |
 | TS-158 | DEB removal 뒤 completion verifier가 없어 C54 terminal receipt를 쓸 수 없음 | Packaging / Uninstall | resolved | [Linux DEB removal loses its completion verifier after package payload deletion](158_linux_deb_removal_completion_transport.md) |
+| TS-161 | macOS Host Agent가 staged update bundle store 누락으로 종료됨 | Packaging / Host installation / Update | fixed; clean-install verification pending | [macOS Host Agent exits when the staged update bundle store is absent](161_macos_host_agent_staged_update_bundle_store_missing.md) |
 
 ## Follow-up 규칙
 

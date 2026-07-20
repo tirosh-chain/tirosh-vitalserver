@@ -21,6 +21,7 @@
     "start": "electron dist/runtime-console-main.cjs",
     "package": "npm run build && node scripts/package.mjs --target all",
     "package:macos": "npm run build && node scripts/package.mjs --target macos",
+    "package:macos-application": "npm run build && node scripts/package.mjs --target macos-application",
     "package:windows": "npm run build && node scripts/package.mjs --target windows",
     "package:linux": "npm run build && node scripts/package.mjs --target linux",
     "package:linux-deb": "npm run build && node scripts/package.mjs --target linux-deb"

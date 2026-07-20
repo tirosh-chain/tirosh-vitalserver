@@ -52,6 +52,10 @@ class MacOSDevelopmentReleaseInputPreparerTests(unittest.TestCase):
             str(self.release_root / "VitalServerRuntimePlatform-0.2.0-dev.pkg"),
             c47["macOSPackage"]["outputPackageAbsolutePath"],
         )
+        self.assertEqual(
+            str(self.source_root / "VitalServer Runtime Platform.app"),
+            c47["hostArtifacts"]["operatorApplicationBundleAbsolutePath"],
+        )
         self.assertFalse((self.release_root / "guest-artifact-compilation-input").exists())
         self.assertFalse((self.release_root / "guest-artifact-output").exists())
 
@@ -219,6 +223,18 @@ class MacOSDevelopmentReleaseInputPreparerTests(unittest.TestCase):
                 path.chmod(0o755)
             return path
 
+        def operator_application_bundle() -> Path:
+            bundle = self.source_root / "VitalServer Runtime Platform.app"
+            executable = bundle / "Contents" / "MacOS" / "VitalServer Runtime Platform"
+            executable.parent.mkdir(parents=True, exist_ok=True)
+            executable.write_text("operator-application", encoding="utf-8")
+            executable.chmod(0o755)
+            (bundle / "Contents" / "Info.plist").write_text(
+                "operator-application-info",
+                encoding="utf-8",
+            )
+            return bundle
+
         plans = self.source_root / "release-delivery-plans.json"
         plans.write_text(
             json.dumps(
@@ -302,6 +318,7 @@ class MacOSDevelopmentReleaseInputPreparerTests(unittest.TestCase):
             host_update_handoff_supervisor=source("host-update-handoff-supervisor"),
             platformctl=source("platformctl"),
             macos_virtual_machine_supervisor=source("macos-virtual-machine-supervisor"),
+            operator_application_bundle=operator_application_bundle(),
             host_agent_deployment_configuration=source("host-agent-deployment.json"),
             operator_interface_bootstrap_configuration=source("operator-interface-bootstrap.json"),
             host_edge_proxy_deployment_configuration=source("host-edge-proxy-deployment.json"),

@@ -32,6 +32,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         )
         self.platformctl_binary = self.write_file("artifacts/platformctl", b"platformctl")
         self.macos_virtual_machine_supervisor_binary = self.write_file("artifacts/macos-virtual-machine-supervisor", b"virtual-machine-supervisor")
+        self.operator_application_bundle = self.write_operator_application_bundle()
         self.guest_product_process_supervisor_artifact = self.write_file("artifacts/guest-product-process-supervisor", b"guest-product-process-supervisor")
         self.guest_bundled_upstream_image_set_manager_artifact = self.write_file(
             "artifacts/guest-bundled-upstream-image-set-manager",
@@ -450,6 +451,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             ),
             platformctl_binary=self.platformctl_binary,
             macos_virtual_machine_supervisor_binary=self.macos_virtual_machine_supervisor_binary,
+            operator_application_bundle=self.operator_application_bundle,
             host_agent_deployment_configuration=self.c33_path,
             operator_interface_bootstrap_configuration=self.c53_path,
             host_edge_proxy_deployment_configuration=self.c36_path,
@@ -485,6 +487,19 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             ),
             replace_output=False,
         )
+
+    def write_operator_application_bundle(self) -> Path:
+        bundle = self.root / "artifacts" / "VitalServer Runtime Platform.app"
+        executable = bundle / "Contents" / "MacOS" / "VitalServer Runtime Platform"
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.write_bytes(b"operator-application")
+        executable.chmod(0o755)
+        info = bundle / "Contents" / "Info.plist"
+        info.write_bytes(b"operator-application-info")
+        framework_link = bundle / "Contents" / "Frameworks" / "runtime-entrypoint"
+        framework_link.parent.mkdir(parents=True, exist_ok=True)
+        framework_link.symlink_to("../MacOS/VitalServer Runtime Platform")
+        return bundle
 
     def test_load_requires_c32_and_c33_to_name_the_exact_payload_resources(self) -> None:
         documents = composer.load_macos_host_package_documents(self.composition())
@@ -742,6 +757,31 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             self.assertTrue((payload_root / "Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist").is_file())
             self.assertTrue((payload_root / "Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist").is_file())
             self.assertTrue((payload_root / "Library/LaunchDaemons/com.tirosh.vitalserver.host-update-handoff-supervisor.plist").is_file())
+            staged_application = payload_root / "Applications/VitalServer Runtime Platform.app"
+            self.assertEqual(
+                b"operator-application",
+                (staged_application / "Contents/MacOS/VitalServer Runtime Platform").read_bytes(),
+            )
+            self.assertEqual(
+                composer.sha256_macos_application_bundle_tree(
+                    self.operator_application_bundle
+                ),
+                composer.sha256_macos_application_bundle_tree(staged_application),
+            )
+
+    def test_operator_application_bundle_rejects_a_link_escaping_its_declared_tree(self) -> None:
+        (self.operator_application_bundle / "Contents" / "escaped").symlink_to(
+            "/etc/passwd"
+        )
+
+        with self.assertRaisesRegex(
+            composer.MacOSHostPackageCompositionError,
+            "symbolic link escaping the bundle",
+        ):
+            composer.validate_package_artifacts(
+                self.composition(),
+                composer.load_macos_host_package_documents(self.composition()),
+            )
 
     def test_handoff_supervisor_launchd_definition_uses_the_persistent_c56_service_mode(self) -> None:
         documents = composer.load_macos_host_package_documents(self.composition())
@@ -809,6 +849,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         )
         self.assertIn("'/var/lib/vitalserver/host-agent'", script)
         self.assertIn("'/var/lib/vitalserver/data'", script)
+        self.assertIn("'/var/lib/vitalserver/data/update-bundles'", script)
         self.assertIn("'/var/lib/vitalserver/data/vm'", script)
         self.assertIn("/usr/bin/touch '/var/lib/vitalserver/data/guest-boot-console.log'", script)
         self.assertNotIn("/usr/bin/touch '/var/lib/vitalserver/data/vm/guest-root.raw'", script)
@@ -827,6 +868,18 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.assertNotIn("|| true", script)
         self.assertNotIn("guest:start", script)
         self.assertNotIn("curl", script)
+
+    def test_package_verifier_requires_declared_staged_update_directories_before_service_activation(self) -> None:
+        directories = verifier.declared_host_runtime_directories(
+            self.host_agent_deployment_document(),
+            "/var/lib/vitalserver/data/guest-boot-console.log",
+            {
+                "runtimeDiskImagePath": "/var/lib/vitalserver/data/vm/guest-root.raw",
+                "provisioningReceiptPath": "/var/lib/vitalserver/data/vm/guest-root-provisioning-receipt.json",
+            },
+        )
+        self.assertIn(PurePosixPath("/var/lib/vitalserver/data/update-bundles"), directories)
+        self.assertIn(PurePosixPath("/var/lib/vitalserver/data/update-staging"), directories)
 
     def test_package_verifier_rejects_script_inputs_not_bound_to_immutable_payload(self) -> None:
         verification = verifier.MacOSHostPackageVerification(
@@ -1599,6 +1652,29 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.assertEqual(b"platformctl", (release_root / "bin/platformctl").read_bytes())
         installation_manifest = json.loads(
             (release_root / "installation-manifest.json").read_text(encoding="utf-8")
+        )
+        operator_application = (
+            expanded_package
+            / "Payload"
+            / "Applications/VitalServer Runtime Platform.app"
+        )
+        self.assertEqual(
+            b"operator-application",
+            (
+                operator_application
+                / "Contents/MacOS/VitalServer Runtime Platform"
+            ).read_bytes(),
+        )
+        self.assertEqual(
+            "/Applications/VitalServer Runtime Platform.app",
+            installation_manifest["operatorInterface"]["applicationBundlePath"],
+        )
+        self.assertEqual(
+            composer.sha256_macos_application_bundle_tree(operator_application),
+            installation_manifest["operatorInterface"]["applicationBundleTreeSha256"],
+        )
+        self.assertTrue(
+            (operator_application / "Contents/Frameworks/runtime-entrypoint").is_symlink()
         )
         self.assertEqual(
             "/Library/Application Support/VitalServerRuntimePlatform/releases",

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-installation-footprint",
   "title": "HostInstallationFootprint",
-  "description": "C49 Host Installation Manager-owned observation of the package receipt, immutable release slot, activation link, services, mutable stores, and explicit C50 transaction state. It never treats an unreadable or unknown resource as absent.",
+  "description": "C49 Host Installation Manager-owned observation of the package receipt, immutable release slot, activation link, macOS operator application when declared, services, mutable stores, and explicit C50 transaction state. It never treats an unreadable or unknown resource as absent.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -52,6 +52,9 @@
     "activation": {
       "$ref": "#/$defs/ActivationObservation"
     },
+    "operatorApplication": {
+      "$ref": "#/$defs/OperatorApplicationObservation"
+    },
     "requiredServices": {
       "type": "array",
       "minItems": 3,
@@ -71,6 +74,32 @@
       "$ref": "#/$defs/InstallationTransactionObservation"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "const": "macos"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "then": {
+        "required": [
+          "operatorApplication"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "operatorApplication"
+          ]
+        }
+      }
+    }
+  ],
   "$defs": {
     "Issue": {
       "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
@@ -344,6 +373,51 @@
             ]
           }
         },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "OperatorApplicationObservation": {
+      "description": "C49 observation of the macOS operator application declared by C48. `matching` means the full bundle tree matches C48; a changed, missing, and unreadable bundle remain distinct.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "applicationBundlePath"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "matching",
+            "diverged",
+            "unreadable"
+          ]
+        },
+        "applicationBundlePath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
         {
           "if": {
             "properties": {

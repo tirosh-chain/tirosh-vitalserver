@@ -167,6 +167,13 @@ func validateHostInstallationFootprint(manifest HostProductInstallationManifest,
 	if footprint.PackageReceipt.Identifier != manifest.Package.Identifier || footprint.ReleaseCatalog.ReleaseCatalogPath != manifest.ImmutablePayload.ReleaseCatalogPath || footprint.ImmutableRelease.ReleaseRootPath != manifest.ImmutablePayload.ReleaseRootPath || footprint.Activation.CurrentReleaseLinkPath != manifest.Activation.CurrentReleaseLinkPath || footprint.InstallationTransaction.JournalPath == "" || footprint.InstallationTransaction.ReceiptPath == "" {
 		return fmt.Errorf("installation footprint resources do not match the declared release")
 	}
+	if manifest.Platform == "macos" {
+		if footprint.OperatorApplication == nil || footprint.OperatorApplication.ApplicationBundlePath != manifest.OperatorInterface.ApplicationBundlePath || !validHostInstallationOperatorApplicationObservationState(footprint.OperatorApplication.State) {
+			return fmt.Errorf("installation footprint does not cover the declared macOS operator application")
+		}
+	} else if footprint.OperatorApplication != nil {
+		return fmt.Errorf("non-macOS installation footprint must not contain a macOS operator application")
+	}
 	if len(footprint.RequiredServices) != len(manifest.RequiredServices) || len(footprint.MutableStores) != len(manifest.MutableStores) {
 		return fmt.Errorf("installation footprint does not cover every declared resource")
 	}
@@ -217,6 +224,9 @@ func unavailableFootprintIssue(footprint HostInstallationFootprint) *HostInstall
 	if footprint.InstallationTransaction.State == "unreadable" {
 		return withFootprintIssue("installation-transaction", footprint.InstallationTransaction.Issue)
 	}
+	if footprint.OperatorApplication != nil && footprint.OperatorApplication.State == "unreadable" {
+		return withFootprintIssue("operator-application", footprint.OperatorApplication.Issue)
+	}
 	for _, service := range footprint.RequiredServices {
 		if service.State == "unavailable" || service.State == "failed" {
 			return withFootprintIssue("service-"+service.Role, service.Issue)
@@ -242,6 +252,9 @@ func withFootprintIssue(resource string, issue *HostInstallationIssue) *HostInst
 
 func cleanHostInstallationFootprint(footprint HostInstallationFootprint) bool {
 	if footprint.PackageReceipt.State != "absent" || footprint.ReleaseCatalog.State != "absent" || footprint.ImmutableRelease.State != "absent" || footprint.Activation.State != "absent" || !absentOrPreflightOnlyHostInstallationTransaction(footprint.InstallationTransaction) {
+		return false
+	}
+	if footprint.OperatorApplication != nil && footprint.OperatorApplication.State != "absent" {
 		return false
 	}
 	for _, service := range footprint.RequiredServices {
@@ -401,14 +414,22 @@ func sameReleaseReinstallFootprint(manifest HostProductInstallationManifest, foo
 	if footprint.PackageReceipt.State != "installed" || footprint.PackageReceipt.ProductVersion != manifest.Package.ProductVersion || footprint.ReleaseCatalog.State != "only-expected-release" || footprint.ImmutableRelease.State != "matching" || footprint.Activation.State != "points-to-expected-release" || !terminalOrPreflightOnlyHostInstallationTransaction(footprint.InstallationTransaction) {
 		return false
 	}
-	return serviceDefinitionsMatch(footprint) && mutableStoresArePreservedWithoutMigration(footprint)
+	return operatorApplicationMatches(manifest, footprint) && serviceDefinitionsMatch(footprint) && mutableStoresArePreservedWithoutMigration(footprint)
 }
 
 func sameReleaseRepairFootprint(manifest HostProductInstallationManifest, footprint HostInstallationFootprint) bool {
 	if footprint.PackageReceipt.State != "installed" || footprint.PackageReceipt.ProductVersion != manifest.Package.ProductVersion || footprint.ReleaseCatalog.State != "only-expected-release" || (footprint.ImmutableRelease.State != "matching" && footprint.ImmutableRelease.State != "diverged") || footprint.Activation.State != "points-to-expected-release" || !terminalOrPreflightOnlyHostInstallationTransaction(footprint.InstallationTransaction) {
 		return false
 	}
-	return serviceDefinitionsAreRepairable(footprint) && sameReleaseRepairIsNeeded(footprint) && mutableStoresArePreservedWithoutMigration(footprint)
+	return operatorApplicationMatches(manifest, footprint) && serviceDefinitionsAreRepairable(footprint) && sameReleaseRepairIsNeeded(footprint) && mutableStoresArePreservedWithoutMigration(footprint)
+}
+
+func validHostInstallationOperatorApplicationObservationState(state string) bool {
+	return state == "absent" || state == "matching" || state == "diverged" || state == "unreadable"
+}
+
+func operatorApplicationMatches(manifest HostProductInstallationManifest, footprint HostInstallationFootprint) bool {
+	return manifest.Platform != "macos" || footprint.OperatorApplication != nil && footprint.OperatorApplication.State == "matching"
 }
 
 func serviceDefinitionsMatch(footprint HostInstallationFootprint) bool {

@@ -23,6 +23,7 @@ import tempfile
 from typing import Any, Mapping
 import xml.etree.ElementTree as ElementTree
 
+from tooling import macos_host_package_composer
 from tooling.contracts import ContractRepository, ContractToolError
 from tooling.product_delivery_release_plan import (
     MacOSHostPackageReleasePlan,
@@ -505,9 +506,26 @@ def declared_host_runtime_directories(
         raise MacOSHostPackageVerificationError(
             "C33 installation.dataDirectory must be an absolute path without traversal"
         )
+    update_bootstrap = required_object(
+        host_agent_deployment, "updateBootstrap", "C33"
+    )
+    bundle_store_directory = required_string(
+        update_bootstrap, "bundleStoreDirectory", "C33 updateBootstrap"
+    )
+    staging_directory = required_string(
+        update_bootstrap, "stagingDirectory", "C33 updateBootstrap"
+    )
+    if not is_safe_absolute_path(bundle_store_directory) or not is_safe_absolute_path(
+        staging_directory
+    ):
+        raise MacOSHostPackageVerificationError(
+            "C33 updateBootstrap directories must be absolute paths without traversal"
+        )
     candidate_directories = (
         PurePosixPath(state_database_path).parent,
         PurePosixPath(data_directory),
+        PurePosixPath(bundle_store_directory),
+        PurePosixPath(staging_directory),
         PurePosixPath(guest_boot_console_capture_path).parent,
         PurePosixPath(guest_runtime_disk_provisioning["runtimeDiskImagePath"]).parent,
         PurePosixPath(guest_runtime_disk_provisioning["provisioningReceiptPath"]).parent,
@@ -1047,6 +1065,43 @@ def verify_host_product_installation_manifest(
     ):
         raise MacOSHostPackageVerificationError(
             "C53 must bind its packaged path and the exact C33 local administration descriptor path"
+        )
+    application_bundle_path = operator_interface.get("applicationBundlePath")
+    application_bundle_tree_sha256 = operator_interface.get(
+        "applicationBundleTreeSha256"
+    )
+    application_bundle_entrypoint_relative_path = operator_interface.get(
+        "applicationBundleEntrypointRelativePath"
+    )
+    if (
+        application_bundle_path
+        != str(macos_host_package_composer.macos_operator_application_bundle_path())
+        or application_bundle_entrypoint_relative_path
+        != macos_host_package_composer.macos_operator_application_bundle_entrypoint_relative_path().as_posix()
+        or not isinstance(application_bundle_tree_sha256, str)
+    ):
+        raise MacOSHostPackageVerificationError(
+            "C48 operator application bundle declaration is invalid"
+        )
+    staged_application_bundle = payload_destination(
+        payload_root,
+        PurePosixPath(application_bundle_path),
+    )
+    try:
+        macos_host_package_composer.validate_declared_macos_operator_application_bundle(
+            staged_application_bundle,
+            "packaged macOS operator application bundle",
+        )
+    except macos_host_package_composer.MacOSHostPackageCompositionError as error:
+        raise MacOSHostPackageVerificationError(str(error)) from error
+    if (
+        macos_host_package_composer.sha256_macos_application_bundle_tree(
+            staged_application_bundle
+        )
+        != application_bundle_tree_sha256
+    ):
+        raise MacOSHostPackageVerificationError(
+            "C48 operator application bundle does not match packaged bytes"
         )
     entries = immutable_payload.get("entries")
     if not isinstance(entries, list) or not entries:

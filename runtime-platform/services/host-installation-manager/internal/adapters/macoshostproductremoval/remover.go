@@ -81,6 +81,24 @@ func (remover *MacOSHostProductRemover) RemoveHostProductServiceDefinitions(_ co
 	return nil
 }
 
+// RemoveHostProductOperatorApplication removes the single macOS application
+// bundle declared by an admitted C48. It never derives an application path
+// from the package identifier or application name; C54's preceding C49 proof
+// is the authority for this effect.
+func (remover *MacOSHostProductRemover) RemoveHostProductOperatorApplication(_ context.Context, manifest hostinstallationmanagerdomain.HostProductInstallationManifest) error {
+	if err := requireMacOSManifest(manifest); err != nil {
+		return err
+	}
+	operatorApplication := manifest.OperatorInterface
+	if operatorApplication.ApplicationBundlePath == "" || operatorApplication.ApplicationBundleTreeSHA256 == "" || operatorApplication.ApplicationBundleEntrypointRelativePath == "" {
+		return fmt.Errorf("macOS Host product removal requires a declared operator application bundle")
+	}
+	if err := removeDeclaredDirectory(operatorApplication.ApplicationBundlePath); err != nil {
+		return fmt.Errorf("remove declared macOS operator application: %w", err)
+	}
+	return nil
+}
+
 func (remover *MacOSHostProductRemover) RemoveHostProductActivationLink(_ context.Context, manifest hostinstallationmanagerdomain.HostProductInstallationManifest) error {
 	if err := requireMacOSManifest(manifest); err != nil {
 		return err

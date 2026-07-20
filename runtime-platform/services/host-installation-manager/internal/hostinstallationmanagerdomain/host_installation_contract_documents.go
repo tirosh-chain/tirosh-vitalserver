@@ -13,6 +13,15 @@ import (
 
 const HostInstallationDocumentSchemaVersion = "v1"
 
+// macOS product delivery installs the operator console as part of the same
+// C48 package as the Host services. Keeping this location and entrypoint in
+// the domain contract prevents a removal command from turning a caller-supplied
+// path into an application deletion authority.
+const (
+	MacOSHostProductOperatorApplicationBundlePath             = "/Applications/VitalServer Runtime Platform.app"
+	MacOSHostProductOperatorApplicationEntrypointRelativePath = "Contents/MacOS/VitalServer Runtime Platform"
+)
+
 // HostInstallationTransactionStoreID is the C48-declared mutable store that
 // owns the one current C50 transaction. A release may declare other manager
 // stores (for example C68 operation evidence), but they must never be guessed
@@ -102,12 +111,16 @@ type HostProductReleaseActivation struct {
 	ExpectedReleaseRootPath string `json:"expectedReleaseRootPath"`
 }
 
-// HostProductOperatorInterface declares the one installer-written C53 file
-// that a packaged desktop shell reads. It is an immutable release input, not
-// a claim that C52 currently exists or that the user was authorized.
+// HostProductOperatorInterface declares the installer-written C53 file that a
+// packaged desktop shell reads. On macOS, it also declares the immutable
+// application bundle delivered by the same C48 package. Neither declaration
+// claims that C52 currently exists or that the user was authorized.
 type HostProductOperatorInterface struct {
-	BootstrapConfigurationPath   string `json:"bootstrapConfigurationPath"`
-	BootstrapConfigurationSHA256 string `json:"bootstrapConfigurationSha256"`
+	BootstrapConfigurationPath              string `json:"bootstrapConfigurationPath"`
+	BootstrapConfigurationSHA256            string `json:"bootstrapConfigurationSha256"`
+	ApplicationBundlePath                   string `json:"applicationBundlePath,omitempty"`
+	ApplicationBundleTreeSHA256             string `json:"applicationBundleTreeSha256,omitempty"`
+	ApplicationBundleEntrypointRelativePath string `json:"applicationBundleEntrypointRelativePath,omitempty"`
 }
 
 type HostProductRequiredService struct {
@@ -141,18 +154,29 @@ type HostProductMutableStoreDeclaration struct {
 // HostInstallationFootprint is C49. Each state comes from an adapter
 // observation; the domain must not manufacture it from a missing detail.
 type HostInstallationFootprint struct {
-	SchemaVersion           string                                      `json:"schemaVersion"`
-	InstallationID          string                                      `json:"installationId"`
-	ExpectedReleaseID       string                                      `json:"expectedReleaseId"`
-	Platform                string                                      `json:"platform"`
-	ObservedAt              string                                      `json:"observedAt"`
-	PackageReceipt          HostInstallationPackageReceiptObservation   `json:"packageReceipt"`
-	ReleaseCatalog          HostInstallationReleaseCatalogObservation   `json:"releaseCatalog"`
-	ImmutableRelease        HostInstallationImmutableReleaseObservation `json:"immutableRelease"`
-	Activation              HostInstallationActivationObservation       `json:"activation"`
-	RequiredServices        []HostInstallationServiceObservation        `json:"requiredServices"`
-	MutableStores           []HostInstallationMutableStoreObservation   `json:"mutableStores"`
-	InstallationTransaction HostInstallationTransactionObservation      `json:"installationTransaction"`
+	SchemaVersion           string                                          `json:"schemaVersion"`
+	InstallationID          string                                          `json:"installationId"`
+	ExpectedReleaseID       string                                          `json:"expectedReleaseId"`
+	Platform                string                                          `json:"platform"`
+	ObservedAt              string                                          `json:"observedAt"`
+	PackageReceipt          HostInstallationPackageReceiptObservation       `json:"packageReceipt"`
+	ReleaseCatalog          HostInstallationReleaseCatalogObservation       `json:"releaseCatalog"`
+	ImmutableRelease        HostInstallationImmutableReleaseObservation     `json:"immutableRelease"`
+	Activation              HostInstallationActivationObservation           `json:"activation"`
+	OperatorApplication     *HostInstallationOperatorApplicationObservation `json:"operatorApplication,omitempty"`
+	RequiredServices        []HostInstallationServiceObservation            `json:"requiredServices"`
+	MutableStores           []HostInstallationMutableStoreObservation       `json:"mutableStores"`
+	InstallationTransaction HostInstallationTransactionObservation          `json:"installationTransaction"`
+}
+
+// HostInstallationOperatorApplicationObservation is the macOS-only C49
+// observation of the C48-declared bundled operator application. A missing app,
+// a changed app, and an unreadable app remain separate states so C54 never
+// deletes an application it has not proved belongs to this product.
+type HostInstallationOperatorApplicationObservation struct {
+	State                 string                 `json:"state"`
+	ApplicationBundlePath string                 `json:"applicationBundlePath"`
+	Issue                 *HostInstallationIssue `json:"issue,omitempty"`
 }
 
 type HostInstallationIssue struct {
@@ -296,6 +320,13 @@ func validateHostProductInstallationManifest(manifest HostProductInstallationMan
 	}
 	if !validAbsoluteHostInstallationPath(manifest.OperatorInterface.BootstrapConfigurationPath, manifest.Platform) || !validSHA256(manifest.OperatorInterface.BootstrapConfigurationSHA256) {
 		return fmt.Errorf("installation manifest operator interface is invalid")
+	}
+	if manifest.Platform == "macos" {
+		if manifest.OperatorInterface.ApplicationBundlePath != MacOSHostProductOperatorApplicationBundlePath || !validSHA256(manifest.OperatorInterface.ApplicationBundleTreeSHA256) || manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath != MacOSHostProductOperatorApplicationEntrypointRelativePath {
+			return fmt.Errorf("macOS installation manifest operator application is invalid")
+		}
+	} else if manifest.OperatorInterface.ApplicationBundlePath != "" || manifest.OperatorInterface.ApplicationBundleTreeSHA256 != "" || manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath != "" {
+		return fmt.Errorf("non-macOS installation manifest must not declare a macOS operator application")
 	}
 	if len(manifest.RequiredServices) != 3 || len(manifest.MutableStores) == 0 {
 		return fmt.Errorf("installation manifest required services or mutable stores are incomplete")
