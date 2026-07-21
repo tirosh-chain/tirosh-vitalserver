@@ -2353,6 +2353,71 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testLocalHTTPServerStagesLargeVitalMultipartAndRemovesRequestFiles() async throws {
+        let stagingRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "runtime-control-upload-test-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        let bodyURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runtime-control-upload-body-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: stagingRoot)
+            try? FileManager.default.removeItem(at: bodyURL)
+        }
+
+        let boundary = "runtime-control-large-upload"
+        let header = Data((
+            "--\(boundary)\r\n"
+                + "Content-Disposition: form-data; name=\"files\"; filename=\"bed_260721_120000.vital\"\r\n"
+                + "Content-Type: application/octet-stream\r\n\r\n"
+        ).utf8)
+        let content = Data(repeating: 0x5A, count: 3 * 1024 * 1024)
+        let footer = Data("\r\n--\(boundary)--\r\n".utf8)
+        var multipart = header
+        multipart.append(content)
+        multipart.append(footer)
+        try multipart.write(to: bodyURL)
+
+        let token = "dev-token"
+        let (server, port) = try await makeStartedServer(
+            token: token,
+            uploadStagingRoot: stagingRoot
+        )
+        defer { server.stop() }
+
+        var request = URLRequest(url: try XCTUnwrap(URL(
+            string: "http://127.0.0.1:\(port)/runtime/lab/vital-files/upload"
+        )))
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "X-Runtime-Control-Token")
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.setValue(String(multipart.count), forHTTPHeaderField: "Content-Length")
+
+        let (responseData, response) = try await URLSession.shared.upload(
+            for: request,
+            fromFile: bodyURL
+        )
+        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
+        let upload = try JSONDecoder().decode(
+            RuntimeLabVitalFileLibraryUploadResponse.self,
+            from: responseData
+        )
+
+        XCTAssertEqual(httpResponse.statusCode, 200)
+        XCTAssertEqual(upload.state, .completed)
+        XCTAssertEqual(upload.files.map(\.fileName), ["bed_260721_120000.vital"])
+        XCTAssertEqual(upload.files.map(\.sizeBytes), [content.count])
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: stagingRoot.path),
+            []
+        )
+    }
+
+    @MainActor
     func testRuntimeControlE2ESmokeServesCoreReadEndpointsOverHTTP() async throws {
         let token = "dev-token"
         let (server, port) = try await makeStartedServer(token: token)
@@ -2785,14 +2850,16 @@ final class RuntimeControlAPITests: XCTestCase {
     private func makeStartedServer(
         token: String,
         servesDevConsole: Bool = false,
-        browserSession: RuntimeControlLoopbackBrowserSession? = nil
+        browserSession: RuntimeControlLoopbackBrowserSession? = nil,
+        uploadStagingRoot: URL? = nil
     ) async throws -> (RuntimeControlLocalHTTPServer, UInt16) {
         let server = RuntimeControlLocalHTTPServer(
             configuration: RuntimeControlLocalHTTPServerConfiguration(
                 port: 0,
                 servesDevConsole: servesDevConsole,
                 bindsToLoopbackOnly: true,
-                browserSession: browserSession
+                browserSession: browserSession,
+                uploadStagingRoot: uploadStagingRoot
             ),
             router: RuntimeControlAPIRouter(
                 handler: StubRuntimeControlAPIReadHandler(),
@@ -3246,7 +3313,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
             RuntimeLabVitalFileLibraryUploadItem(
                 fileName: $0.fileName,
                 relativePath: $0.fileName,
-                sizeBytes: $0.content.count
+                sizeBytes: Int($0.sizeBytes)
             )
         })
     }

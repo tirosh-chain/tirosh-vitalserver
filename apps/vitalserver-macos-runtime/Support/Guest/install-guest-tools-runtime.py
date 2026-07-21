@@ -233,12 +233,37 @@ def validate_wheelhouse(
         raise GuestToolsInstallError(
             f"Guest Tools artifact is not a wheel: {guest_wheel}"
         )
+    local_dependency_entries = manifest.get("localDependencies")
+    if not isinstance(local_dependency_entries, list):
+        raise GuestToolsInstallError(
+            "Guest Tools local dependency wheel manifest is invalid"
+        )
     wheel_entries = target_document.get("wheels")
     if not isinstance(wheel_entries, list) or not wheel_entries:
         raise GuestToolsInstallError(
             f"Guest Tools target wheel manifest is invalid: target={target}"
         )
     wheel_hashes = {file_sha256(guest_wheel)}
+    for entry in local_dependency_entries:
+        if not isinstance(entry, dict):
+            raise GuestToolsInstallError(
+                "Guest Tools local dependency wheel manifest is invalid"
+            )
+        wheel = required_relative_file(
+            wheel_dir,
+            required_string(entry, "path", label="local dependency wheel"),
+            label="Guest Tools local dependency wheel",
+        )
+        if wheel.suffix != ".whl":
+            raise GuestToolsInstallError(
+                f"Guest Tools local dependency is not a wheel: {wheel}"
+            )
+        require_hash(
+            wheel,
+            required_string(entry, "sha256", label="local dependency wheel"),
+            label="Guest Tools local dependency wheel",
+        )
+        wheel_hashes.add(file_sha256(wheel))
     for entry in wheel_entries:
         if not isinstance(entry, dict):
             raise GuestToolsInstallError(

@@ -15,6 +15,7 @@ from .archive_finalization import (
 from .execution import (
     LabExecutionEngine,
     LabRecorderSendError,
+    LabSessionStartError,
     VitalServerRecorderPayloadSender,
 )
 from .model import (
@@ -26,9 +27,10 @@ from .model import (
     LabRecorderDeleteInput,
     LabScenario,
     LabSessionCreateInput,
+    LabSessionFailure,
     LabSessionStore,
-    LabSessionTransitionError,
     LabSessionStoreUnavailable,
+    LabSessionTransitionError,
     LabVitalFile,
     LabVitalFileReplayPolicy,
     lab_recorder_control_rejection,
@@ -313,8 +315,10 @@ def route_lab_request(
                         beds=beds,
                         recorders=recorders,
                         result_sink=session_store.save_recorder_execution_results,
-                        completion_sink=lambda completed_session_id: session_store.finish(
-                            completed_session_id
+                        completion_sink=(
+                            lambda completed_session_id: session_store.finish(
+                                completed_session_id
+                            )
                         ),
                     )
                     session_store.save_recorder_execution_results(
@@ -324,6 +328,34 @@ def route_lab_request(
                 return _store_failure_response(error, operation_id=operation_id)
             except LabSessionTransitionError as error:
                 return _transition_rejection_response(error, operation_id=operation_id)
+            except LabSessionStartError as error:
+                failure = LabSessionFailure(
+                    stage=error.stage,
+                    code=error.code,
+                    message=str(error),
+                    failed_at=utc_now_iso(),
+                )
+                try:
+                    session = session_store.fail(session_id, failure)
+                except LabSessionStoreUnavailable as persistence_error:
+                    return _store_failure_response(
+                        persistence_error,
+                        operation_id=operation_id,
+                    )
+                if session is None:
+                    return HTTPStatus.NOT_FOUND, _missing_session_response(
+                        session_id,
+                        operation_id=operation_id,
+                    )
+                return HTTPStatus.UNPROCESSABLE_ENTITY, {
+                    "state": "failed",
+                    "operationId": operation_id,
+                    "session": _session_document(
+                        session,
+                        execution_engine=execution_engine,
+                    ),
+                    "readError": str(error),
+                }
             except LabRecorderSendError as error:
                 session_store.stop(session_id)
                 return HTTPStatus.UNPROCESSABLE_ENTITY, {
@@ -480,8 +512,10 @@ def route_lab_request(
                         recorders=session_recorders,
                         recorder_id=recorder_id,
                         result_sink=session_store.save_recorder_execution_results,
-                        completion_sink=lambda completed_session_id: session_store.finish(
-                            completed_session_id
+                        completion_sink=(
+                            lambda completed_session_id: session_store.finish(
+                                completed_session_id
+                            )
                         ),
                     )
             else:
@@ -1067,13 +1101,16 @@ def _session_document(
             document["archiveFinalization"] = {
                 "state": "unavailable",
                 "updatedAt": None,
-                "readError": "Archive finalization reference was not recorded for this session.",
+                "readError": (
+                    "Archive finalization reference was not recorded for this session."
+                ),
             }
         return document
     try:
-        document["archiveFinalization"] = execution_engine.archive_finalization_progress(
+        progress = execution_engine.archive_finalization_progress(
             request_ids=request_ids
-        ).as_json()
+        )
+        document["archiveFinalization"] = progress.as_json()
     except LabArchiveFinalizationError as error:
         document["archiveFinalization"] = {
             "state": "unavailable",

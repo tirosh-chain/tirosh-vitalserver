@@ -403,6 +403,17 @@ gzip/header, existing VitalServer index conflict, upload, and index failures are
 reported for that file while remaining valid files continue. A partial result is never
 formatted as a completed upload.
 
+The repeated Host→Guest parts are a selection transport, not one combined
+VitalServer upload. Runtime Control stages the incoming body and each decoded part on
+disk with bounded reads. The Guest then sends accepted files serially to VitalServer:
+one complete `.vital` file per `POST /upload`, waiting for its response before starting
+the next file. Each outbound multipart body streams its source and declares its exact
+`Content-Length`; it is never assembled as one file-sized memory buffer. This preserves
+the historical upload OOM boundary. It does not split one Vital File into invalid byte
+ranges. A single file that exceeds the VitalServer parser's memory boundary requires a
+server-owned streaming parser or resumable-upload contract; recording duration alone
+does not authorize a transport or recovery layer to split the artifact.
+
 Product Lab session creation does not infer ownership from existing beds,
 recorders, fixture names, or previous command output. A session that should
 occupy existing Lab resources must pass explicit `bedIds` in

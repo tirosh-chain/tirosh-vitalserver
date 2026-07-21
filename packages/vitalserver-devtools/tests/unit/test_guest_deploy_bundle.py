@@ -36,6 +36,7 @@ GUEST_TOOLS_RUNTIME_INSTALLER = (
 )
 HOST_PYTHON_PACKAGES = (
     ROOT / "packages/vitalserver-core/pyproject.toml",
+    ROOT / "packages/vitalserver-guest-tools/pyproject.toml",
     ROOT / "packages/vitalserver-testkit/pyproject.toml",
     ROOT / "apps/vitalserver-recorder-recovery/pyproject.toml",
 )
@@ -409,6 +410,73 @@ def test_stage_guest_deploy_stages_verified_runtime_wheelhouse(
     assert "Requires-Dist: SQLAlchemy==2.0.51" in metadata
 
 
+def test_guest_runtime_wheelhouse_stages_declared_local_core_dependency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    guest_project = root / "packages/guest-tools"
+    core_project = root / "packages/vitalserver-core"
+    for project, package_name, distribution_name in (
+        (guest_project, "guest_tools", "guest-tools"),
+        (core_project, "tirosh_vitalserver", "tirosh-vitalserver-core"),
+    ):
+        (project / f"src/{package_name}").mkdir(parents=True)
+        (project / f"src/{package_name}/__init__.py").write_text("\n")
+        dependencies = (
+            '["SQLAlchemy==2.0.51", "tirosh-vitalserver-core"]'
+            if project == guest_project
+            else "[]"
+        )
+        (project / "pyproject.toml").write_text(
+            "\n".join(
+                [
+                    "[project]",
+                    f'name = "{distribution_name}"',
+                    'version = "0.1.0"',
+                    'requires-python = ">=3.12"',
+                    f"dependencies = {dependencies}",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    requirements = guest_project / "requirements"
+    requirements.mkdir()
+    for target in ("linux-aarch64", "linux-amd64"):
+        (requirements / f"guest-runtime-{target}.txt").write_text(
+            "sqlalchemy==2.0.51 --hash=sha256:deadbeef\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        deploy_bundle,
+        "download_guest_runtime_wheels",
+        lambda _lock, destination, _target: (
+            destination / "sqlalchemy.whl"
+        ).write_bytes(b"wheel"),
+    )
+    monkeypatch.setattr(
+        deploy_bundle,
+        "validate_guest_runtime_wheelhouse",
+        lambda **_: None,
+    )
+
+    destination = tmp_path / "wheelhouse"
+    deploy_bundle.stage_guest_python_wheelhouse(guest_project, destination)
+
+    manifest = json.loads((destination / "manifest.json").read_text())
+    assert [item["path"] for item in manifest["localDependencies"]] == [
+        "guest-tools/tirosh_vitalserver_core-0.1.0-py3-none-any.whl"
+    ]
+    requirements_text = (
+        destination / manifest["targets"]["linux-amd64"]["requirementsPath"]
+    ).read_text()
+    assert "../guest-tools/tirosh_vitalserver_core-0.1.0-py3-none-any.whl" in (
+        requirements_text
+    )
+
+
 def test_guest_runtime_wheelhouse_validation_reports_missing_dependency(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -600,6 +668,20 @@ def test_guest_deploy_material_digest_binds_rootfs_static_metadata(
     assert deploy_bundle.guest_deploy_material_sha256(deploy) != initial
 
 
+def test_guest_deploy_material_digest_ignores_finder_metadata(
+    tmp_path: Path,
+) -> None:
+    deploy = write_materialized_guest_deploy_source(tmp_path / "deploy")
+    initial = deploy_bundle.guest_deploy_material_sha256(deploy)
+    (deploy / ".DS_Store").write_bytes(b"root finder metadata")
+    nested = deploy / "build-metadata/__pycache__"
+    nested.mkdir(parents=True)
+    (nested / "module.pyc").write_bytes(b"cache")
+    (deploy / "build-metadata/._rootfs-input.json").write_bytes(b"apple double")
+
+    assert deploy_bundle.guest_deploy_material_sha256(deploy) == initial
+
+
 def test_guest_deploy_material_digest_rejects_symlink(
     tmp_path: Path,
 ) -> None:
@@ -624,6 +706,9 @@ def test_stage_materialized_guest_deploy_removes_volatile_contracts(
     tmp_path: Path,
 ) -> None:
     source = write_materialized_guest_deploy_source(tmp_path / "compiled-deploy")
+    (source / ".DS_Store").write_bytes(b"finder metadata")
+    (source / "vendor").mkdir()
+    (source / "vendor/.DS_Store").write_bytes(b"finder metadata")
     destination = tmp_path / "package/deploy"
 
     deploy_bundle.stage_materialized_guest_deploy(source, destination)
@@ -631,6 +716,8 @@ def test_stage_materialized_guest_deploy_removes_volatile_contracts(
     assert (destination / "bootstrap.sh").read_text(encoding="utf-8") == "#!/bin/sh\n"
     assert not (destination / "host-time.json").exists()
     assert not (destination / "build-metadata/rootfs-input.json").exists()
+    assert not (destination / ".DS_Store").exists()
+    assert not (destination / "vendor/.DS_Store").exists()
 
 
 def test_stage_materialized_guest_deploy_rejects_same_path(tmp_path: Path) -> None:
@@ -710,6 +797,77 @@ def test_guest_tools_runtime_installer_requires_hash_pinned_manifest_wheel_closu
             requirements,
             {guest_hash, dependency_hash},
         )
+
+
+def test_guest_tools_runtime_installer_includes_local_dependency_manifest_wheels(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "guest_tools_runtime_installer_local_dependencies",
+        GUEST_TOOLS_RUNTIME_INSTALLER,
+    )
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+
+    guest_tools_directory = tmp_path / "guest-tools"
+    target_directory = tmp_path / "linux-aarch64"
+    guest_tools_directory.mkdir()
+    target_directory.mkdir()
+    guest_wheel = guest_tools_directory / "guest_tools-0.1.0-py3-none-any.whl"
+    local_wheel = guest_tools_directory / "core-0.1.0-py3-none-any.whl"
+    target_wheel = target_directory / "dependency-0.1.0-py3-none-any.whl"
+    guest_wheel.write_bytes(b"guest tools")
+    local_wheel.write_bytes(b"local dependency")
+    target_wheel.write_bytes(b"target dependency")
+    requirements = target_directory / "requirements.txt"
+    requirements.write_text(
+        "\n".join(
+            (
+                "../guest-tools/" + guest_wheel.name + " --hash=sha256:"
+                + installer.file_sha256(guest_wheel),
+                "../guest-tools/" + local_wheel.name + " --hash=sha256:"
+                + installer.file_sha256(local_wheel),
+                target_wheel.name + " --hash=sha256:"
+                + installer.file_sha256(target_wheel),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "guestTools": {
+            "path": guest_wheel.relative_to(tmp_path).as_posix(),
+            "sha256": installer.file_sha256(guest_wheel),
+        },
+        "localDependencies": [
+            {
+                "path": local_wheel.relative_to(tmp_path).as_posix(),
+                "sha256": installer.file_sha256(local_wheel),
+            }
+        ],
+        "targets": {
+            "linux-aarch64": {
+                "requirementsPath": requirements.relative_to(tmp_path).as_posix(),
+                "requirementsSHA256": installer.file_sha256(requirements),
+                "wheels": [
+                    {
+                        "path": target_wheel.name,
+                        "sha256": installer.file_sha256(target_wheel),
+                    }
+                ],
+            }
+        },
+    }
+
+    actual_requirements, actual_guest_wheel = installer.validate_wheelhouse(
+        tmp_path,
+        manifest,
+        target="linux-aarch64",
+    )
+
+    assert actual_requirements == requirements
+    assert actual_guest_wheel == guest_wheel
 
 
 def test_guest_tools_runtime_installer_ignores_hashes_in_inline_comments(

@@ -18,6 +18,7 @@ from ..model import (
     LabRecorderExecutionResult,
     LabSession,
     LabSessionCreateInput,
+    LabSessionFailure,
     LabSessionStoreUnavailable,
 )
 from .mappers import (
@@ -79,6 +80,18 @@ class SQLAlchemyLabSessionStore(InMemoryLabSessionStore):
     def stop(self, session_id: str) -> LabSession | None:
         return self._mutate(
             lambda: super(SQLAlchemyLabSessionStore, self).stop(session_id)
+        )
+
+    def fail(
+        self,
+        session_id: str,
+        failure: LabSessionFailure,
+    ) -> LabSession | None:
+        return self._mutate(
+            lambda: super(SQLAlchemyLabSessionStore, self).fail(
+                session_id,
+                failure,
+            )
         )
 
     def finish(self, session_id: str) -> LabSession | None:

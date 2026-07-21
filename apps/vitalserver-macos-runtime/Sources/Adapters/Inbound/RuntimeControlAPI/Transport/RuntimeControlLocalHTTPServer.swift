@@ -14,23 +14,29 @@ public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
     public let staticFileDirectory: URL?
     public let bindsToLoopbackOnly: Bool
     public let browserSession: RuntimeControlLoopbackBrowserSession?
+    public let uploadStagingRoot: URL?
 
     public init(
         port: UInt16,
         servesDevConsole: Bool = false,
         staticFileDirectory: URL? = nil,
         bindsToLoopbackOnly: Bool = true,
-        browserSession: RuntimeControlLoopbackBrowserSession? = nil
+        browserSession: RuntimeControlLoopbackBrowserSession? = nil,
+        uploadStagingRoot: URL? = nil
     ) {
         self.port = port
         self.servesDevConsole = servesDevConsole
         self.staticFileDirectory = staticFileDirectory
         self.bindsToLoopbackOnly = bindsToLoopbackOnly
         self.browserSession = browserSession
+        self.uploadStagingRoot = uploadStagingRoot
     }
 }
 
 public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
+    private static let maximumRequestHeaderBytes = 64 * 1024
+    private static let vitalFileUploadPath = "/runtime/lab/vital-files/upload"
+
     private let configuration: RuntimeControlLocalHTTPServerConfiguration
     private let router: RuntimeControlAPIRouter
     private let staticFileResponder: RuntimeControlStaticFileResponder?
@@ -41,6 +47,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var requestBuffers: [ObjectIdentifier: Data] = [:]
+    private var stagedRequests: [ObjectIdentifier: RuntimeControlStagedIncomingRequest] = [:]
     private var streamTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
 
     public var activePort: UInt16? {
@@ -131,6 +138,10 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         }
         connections.removeAll()
         requestBuffers.removeAll()
+        for request in stagedRequests.values {
+            request.cleanup()
+        }
+        stagedRequests.removeAll()
         streamTasks.removeAll()
     }
 
@@ -148,6 +159,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             if case .cancelled = state {
                 self?.connections.removeValue(forKey: id)
                 self?.requestBuffers.removeValue(forKey: id)
+                self?.stagedRequests.removeValue(forKey: id)?.cleanup()
                 self?.streamTasks.removeValue(forKey: id)?.cancel()
             }
         }
@@ -162,7 +174,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
                 return
             }
             if let data, !data.isEmpty {
-                self.buffer(data, from: connection)
+                self.buffer(data, isComplete: isComplete, from: connection)
                 return
             }
             if isComplete || error != nil {
@@ -173,13 +185,85 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         }
     }
 
-    private func buffer(_ data: Data, from connection: NWConnection) {
+    private func buffer(
+        _ data: Data,
+        isComplete: Bool,
+        from connection: NWConnection
+    ) {
         let id = ObjectIdentifier(connection)
+        if let staged = stagedRequests[id] {
+            do {
+                let request = try staged.append(data)
+                if let request {
+                    stagedRequests.removeValue(forKey: id)
+                    respond(
+                        to: request,
+                        cleanupDirectory: staged.temporaryDirectoryURL,
+                        on: connection
+                    )
+                    return
+                }
+                if isComplete {
+                    throw RuntimeControlHTTPWireCodecError.invalidRequest
+                }
+                receive(from: connection)
+            } catch {
+                stagedRequests.removeValue(forKey: id)?.cleanup()
+                send(stagingResponse(for: error), on: connection)
+            }
+            return
+        }
+
         var buffered = requestBuffers[id] ?? Data()
         buffered.append(data)
 
         do {
+            if RuntimeControlHTTPWireCodec.headerSeparatorRange(in: buffered) == nil {
+                guard buffered.count <= Self.maximumRequestHeaderBytes else {
+                    throw RuntimeControlHTTPWireCodecError.invalidRequest
+                }
+                if isComplete {
+                    throw RuntimeControlHTTPWireCodecError.invalidRequest
+                }
+                requestBuffers[id] = buffered
+                receive(from: connection)
+                return
+            }
+
+            let head = try RuntimeControlHTTPWireCodec.decodeRequestHead(buffered)
+            if head.method == .post,
+               head.path.split(separator: "?", maxSplits: 1).first
+                == Substring(Self.vitalFileUploadPath) {
+                guard head.contentLength != nil else {
+                    requestBuffers.removeValue(forKey: id)
+                    send(RuntimeControlHTTPWireCodec.badRequestResponse(
+                        message: "Vital Files upload requires Content-Length."
+                    ), on: connection)
+                    return
+                }
+                let staged = try makeStagedRequest(head: head, buffered: buffered)
+                requestBuffers.removeValue(forKey: id)
+                if let request = try staged.completeRequestIfReady() {
+                    respond(
+                        to: request,
+                        cleanupDirectory: staged.temporaryDirectoryURL,
+                        on: connection
+                    )
+                    return
+                }
+                if isComplete {
+                    staged.cleanup()
+                    throw RuntimeControlHTTPWireCodecError.invalidRequest
+                }
+                stagedRequests[id] = staged
+                receive(from: connection)
+                return
+            }
+
             guard try RuntimeControlHTTPWireCodec.requestIsComplete(buffered) else {
+                if isComplete {
+                    throw RuntimeControlHTTPWireCodecError.invalidRequest
+                }
                 requestBuffers[id] = buffered
                 receive(from: connection)
                 return
@@ -188,7 +272,67 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             respond(to: buffered, on: connection)
         } catch {
             requestBuffers.removeValue(forKey: id)
-            send(RuntimeControlHTTPWireCodec.badRequestResponse(for: error), on: connection)
+            send(stagingResponse(for: error), on: connection)
+        }
+    }
+
+    private func makeStagedRequest(
+        head: RuntimeControlHTTPRequestHead,
+        buffered: Data
+    ) throws -> RuntimeControlStagedIncomingRequest {
+        guard let headerRange = RuntimeControlHTTPWireCodec.headerSeparatorRange(in: buffered),
+              let contentLength = head.contentLength else {
+            throw RuntimeControlHTTPWireCodecError.invalidRequest
+        }
+        do {
+            let root = configuration.uploadStagingRoot
+                ?? FileManager.default.temporaryDirectory
+            try FileManager.default.createDirectory(
+                at: root,
+                withIntermediateDirectories: true
+            )
+            let directory = root.appendingPathComponent(
+                "tirosh-runtime-vital-upload-\(UUID().uuidString)",
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: false
+            )
+            let bodyURL = directory.appendingPathComponent("request.multipart")
+            guard FileManager.default.createFile(atPath: bodyURL.path, contents: nil) else {
+                throw RuntimeControlMultipartStagingError(
+                    "Vital Files upload request staging file could not be created."
+                )
+            }
+            let request: RuntimeControlStagedIncomingRequest
+            do {
+                request = try RuntimeControlStagedIncomingRequest(
+                    head: head,
+                    temporaryDirectoryURL: directory,
+                    bodyURL: bodyURL,
+                    expectedBodyBytes: contentLength
+                )
+            } catch {
+                try? FileManager.default.removeItem(at: directory)
+                throw error
+            }
+            do {
+                let initialBody = Data(buffered[headerRange.upperBound...])
+                try request.appendInitial(initialBody)
+                return request
+            } catch {
+                request.cleanup()
+                throw error
+            }
+        } catch let error as RuntimeControlHTTPWireCodecError {
+            throw error
+        } catch let error as RuntimeControlMultipartStagingError {
+            throw error
+        } catch {
+            throw RuntimeControlMultipartStagingError(
+                "Vital Files upload request staging failed: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -201,13 +345,23 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             return
         }
 
+        respond(to: request, cleanupDirectory: nil, on: connection)
+    }
+
+    private func respond(
+        to request: RuntimeControlHTTPRequest,
+        cleanupDirectory: URL?,
+        on connection: NWConnection
+    ) {
         if request.method == .options {
+            cleanup(cleanupDirectory)
             send(preflightResponse(for: request), on: connection)
             return
         }
 
         if request.path == RuntimeControlLoopbackBrowserSession.bootstrapPath {
             guard let browserSession = configuration.browserSession else {
+                cleanup(cleanupDirectory)
                 send(RuntimeControlHTTPResponseFactory.error(
                     status: .unauthorized,
                     code: .unauthorized,
@@ -215,6 +369,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
                 ), on: connection)
                 return
             }
+            cleanup(cleanupDirectory)
             send(browserSession.bootstrapResponse(for: request, port: activePort), on: connection)
             return
         }
@@ -223,6 +378,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
            browserSession.allows(request: request),
            browserSession.needsOriginCheck(request: request),
            !browserSession.isSameOrigin(request: request, port: activePort) {
+            cleanup(cleanupDirectory)
             send(RuntimeControlHTTPResponseFactory.error(
                 status: .unauthorized,
                 code: .unauthorized,
@@ -233,19 +389,38 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
 
         if configuration.servesDevConsole,
            let devConsoleResponse = RuntimeControlDevConsoleDocument.response(for: request) {
+            cleanup(cleanupDirectory)
             send(corsResponse(devConsoleResponse, for: request), on: connection)
             return
         }
 
         if let staticResponse = staticFileResponder?.response(for: request) {
+            cleanup(cleanupDirectory)
             send(corsResponse(staticResponse, for: request), on: connection)
             return
         }
 
         Task { @MainActor [router] in
             let result = await router.routeResult(request)
+            self.cleanup(cleanupDirectory)
             self.send(result, for: request, on: connection)
         }
+    }
+
+    private func cleanup(_ directory: URL?) {
+        guard let directory else { return }
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func stagingResponse(for error: Error) -> RuntimeControlHTTPResponse {
+        if error is RuntimeControlMultipartStagingError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .serviceUnavailable,
+                code: .handlerFailed,
+                message: error.localizedDescription
+            )
+        }
+        return RuntimeControlHTTPWireCodec.badRequestResponse(for: error)
     }
 
     private func send(_ result: RuntimeControlHTTPRouteResult, for request: RuntimeControlHTTPRequest, on connection: NWConnection) {
@@ -336,5 +511,88 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             headers: stream.headers.merging(corsPolicy.headers(for: request)) { current, _ in current },
             events: stream.events
         )
+    }
+}
+
+private final class RuntimeControlStagedIncomingRequest {
+    let temporaryDirectoryURL: URL
+
+    private let head: RuntimeControlHTTPRequestHead
+    private let bodyURL: URL
+    private let expectedBodyBytes: Int
+    private let output: FileHandle
+    private var receivedBodyBytes = 0
+    private var closed = false
+
+    init(
+        head: RuntimeControlHTTPRequestHead,
+        temporaryDirectoryURL: URL,
+        bodyURL: URL,
+        expectedBodyBytes: Int
+    ) throws {
+        self.head = head
+        self.temporaryDirectoryURL = temporaryDirectoryURL
+        self.bodyURL = bodyURL
+        self.expectedBodyBytes = expectedBodyBytes
+        self.output = try FileHandle(forWritingTo: bodyURL)
+    }
+
+    func appendInitial(_ data: Data) throws {
+        try write(data)
+    }
+
+    func append(_ data: Data) throws -> RuntimeControlHTTPRequest? {
+        try write(data)
+        return try completeRequestIfReady()
+    }
+
+    func completeRequestIfReady() throws -> RuntimeControlHTTPRequest? {
+        guard receivedBodyBytes == expectedBodyBytes else { return nil }
+        guard !closed else {
+            throw RuntimeControlHTTPWireCodecError.invalidRequest
+        }
+        do {
+            try output.synchronize()
+            try output.close()
+            closed = true
+        } catch {
+            throw RuntimeControlMultipartStagingError(
+                "Vital Files upload request staging could not be finalized: \(error.localizedDescription)"
+            )
+        }
+        return RuntimeControlHTTPRequest(
+            method: head.method,
+            path: head.path,
+            headers: head.headers,
+            stagedBody: RuntimeControlStagedHTTPRequestBody(
+                fileURL: bodyURL,
+                temporaryDirectoryURL: temporaryDirectoryURL,
+                sizeBytes: Int64(expectedBodyBytes)
+            )
+        )
+    }
+
+    private func write(_ data: Data) throws {
+        guard !closed,
+              receivedBodyBytes <= expectedBodyBytes,
+              data.count <= expectedBodyBytes - receivedBodyBytes else {
+            throw RuntimeControlHTTPWireCodecError.invalidRequest
+        }
+        do {
+            try output.write(contentsOf: data)
+        } catch {
+            throw RuntimeControlMultipartStagingError(
+                "Vital Files upload request body could not be staged: \(error.localizedDescription)"
+            )
+        }
+        receivedBodyBytes += data.count
+    }
+
+    func cleanup() {
+        if !closed {
+            try? output.close()
+            closed = true
+        }
+        try? FileManager.default.removeItem(at: temporaryDirectoryURL)
     }
 }

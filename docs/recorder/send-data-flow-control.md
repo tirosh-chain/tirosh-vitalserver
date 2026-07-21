@@ -577,7 +577,8 @@ upstream으로 보냅니다. 추가로 최신 window 안에 없는 recorder가 �
 가장 최신 payload 하나를 realtime representative sample로 tail에 보존합니다. 따라서 realtime은 "원본 전체
 구간 보존"이 아니라 "active recorder의 최신 상태를 계속 갱신하는 표본 stream"입니다. Heavy 조건에서 replay
 처리량보다 입력량이 크면 어떤 원본 payload들은 realtime으로 가지 않습니다. 이때 특정 과거 구간의 원본
-완전성은 realtime이 아니라 raw archive와 `.vital` export/upload가 책임집니다.
+완전성은 realtime이 아니라 raw archive와 `.vital` recovery artifact export가 책임집니다. My Files 반영은
+별도의 명시적 publish workflow가 책임집니다.
 
 제품 운영 기준에서는 realtime projection도 무작위 손실처럼 보이면 안 됩니다. 현재 hot path는 최신 window와
 recorder representative sample 기반이며, queue가 명시적으로 비었을 때 recorder별 pending metric도 함께 drain
@@ -588,25 +589,26 @@ recorder representative sample 기반이며, queue가 명시적으로 비었을 
 `dropped`가 아니라, cold path에 원본이 남아 있는 경우에는 `skippedRealtimeEvents`처럼 실시간 전송
 후보에서 제외되었다는 의미를 드러내야 합니다.
 
-Idle/recovery path는 raw archive를 읽어 vrcode별 `.vital` 파일을 생성한 뒤 VitalServer `/upload` 또는
-`/upload_vital.php`로 업로드합니다. My Files 목록은 storage directory를 직접 스캔한 결과만으로 결정되지
-않고 upload endpoint가 Redis에 생성한 filelist index에 의존하므로, 생성된 `.vital` 파일을 storage
-directory에 직접 복사하는 방식은 복구 계약이 아닙니다.
+Idle/recovery path는 raw archive를 읽어 source byte window와 vrcode별 `.vital` recovery artifact를
+생성합니다. 이 export는
+Vital Recorder가 사용자가 선택한 `.vital` 파일을 업로드하는 native upload와 다른 계약입니다. Export 완료는
+VitalServer My Files 게시 완료가 아니며, 별도의 명시적 publish command와 publish receipt가 있어야만
+`published`가 됩니다. 파일을 storage directory에 직접 복사하는 방식도 publish 계약이 아닙니다.
 
 현재 구현은 raw archive JSONL, Redis pending list에 대한 realtime trim, failure log, 제품
-`recorder-recovery` 기반 `.vital` export/upload 명령과 API, 그리고 recorder ingress auto export worker를 제공합니다. Auto export
-worker는 testkit 세션 전용이 아니라 raw archive에 기록된 연결 Recorder 전체를 대상으로 vrcode별 `.vital`
-파일을 생성하고 업로드합니다. 따라서 현재의
+`recorder-recovery` 기반 `.vital` export 명령과 API, 그리고 recorder ingress auto export worker를 제공합니다. Auto export
+worker는 testkit 세션 전용이 아니라 raw archive에 기록된 연결 Recorder 전체를 대상으로 vrcode별
+하나의 `.vital` recovery artifact를 생성합니다. 따라서 현재의
 `skippedRealtimeEvents`는 "VitalServer로 realtime replay되지 않은 pending item"을 뜻하며,
-`rawArchive.autoExport.status = uploaded`와 checkpoint가 남기 전까지는 운영자가 자동 복구 완료 상태로
-해석하면 안 됩니다.
+`rawArchive.autoExport.status = exported`와 artifact receipt/checkpoint가 남기 전까지는 운영자가 cold-path
+export 완료 상태로 해석하면 안 됩니다. `exported`는 My Files 게시 완료를 뜻하지 않습니다.
 
 실제 Vital Recorder가 종료되었음을 뜻하는 명시 event는 recorder ingress 계약에 없습니다. 따라서 socket
 disconnect, `activeConnections = 0`, 또는 `send_data` silence를 `stopped`, `sleep`, `idle` 같은 recorder
 상태로 승격하지 않습니다. 자동화 trigger는 recorder lifecycle 추론이 아니라 raw archive 구간의
 `finalizable_by_inactivity` 정책입니다. 기본 정책은 같은 `vrcode`에 대해 join과 raw archive append가
 관측되었고, active connection이 없으며, 마지막 raw archive append 이후 5분(`300000ms`) 동안 archive cursor가
-안정적이고 realtime replay가 drain되었으며 같은 cursor가 아직 export/upload되지 않은 경우에만 export/upload
+안정적이고 realtime replay가 drain되었으며 같은 cursor가 아직 export되지 않은 경우에만 export
 후보로 봅니다. 5분이 지나기 전에는 `inactive_candidate`이며, 이 상태도 "종료됨"을 뜻하지 않습니다.
 
 Product Lab은 recorder lifecycle owner이므로 예외가 아니라 별도의 명시 계약을 사용합니다. Terminal session
@@ -616,28 +618,28 @@ Finish만 연결을 닫은 뒤 내부 `POST /recorder-ingress/raw-archive/finali
 `finalizable_by_explicit_request` 정책으로 처리합니다. 이 trigger도 active
 connection과 recorder별 realtime replay drain을 요구하지만 5분 inactivity와 cursor stability를 요구하지
 않습니다. Lab은 수락된 request ID를 private session reference로만 보관하고, ingress가 제공한 한 개의
-read-only progress 요약(`queued`, `processing`, `retrying`, `uploaded`, `failed`, `partial`, `missing`)만
-session read에 투영합니다. Lab UI가 stop state나 `.vital` upload 성공을 추측하지 않으며, ingress
-job/checkpoint가 수락·재시도·성공·실패를 소유합니다.
+read-only progress 요약(`queued`, `processing`, `retrying`, `exported`, `published`, `failed`, `partial`,
+`missing`)만 session read에 투영합니다. 현재 Finish는 export intent이며 자동 publish를 요청하지 않습니다.
+Lab UI는 stop state나 publish 성공을 추측하지 않고 ingress job/checkpoint의 명시 상태만 표시합니다.
 
 Auto export 판단은 전역 active connection 수가 아니라 recorder별 `activeConnections`, archive cursor,
 마지막 append 시각, spool/replay depth를 사용합니다. 따라서 다른 recorder가 계속 연결되어 있어도 종료된
 recorder의 cold path는 독립적으로 finalizable 상태가 될 수 있습니다. Recovery 요청은 해당 vrcode의 이전
-checkpoint 이후 byte window만 읽고, 현재 job이 생성한 artifact만 `/upload`로 전송합니다. Output directory에
-남아 있는 과거 `.vital` 파일은 현재 job의 upload input이 아닙니다.
+checkpoint 이후 byte window만 읽고, 현재 job이 생성한 artifact receipt만 저장합니다. Output directory에
+남아 있는 과거 `.vital` 파일은 현재 job의 artifact가 아닙니다.
 
 recorder ingress process가 `SIGTERM` 또는 `SIGINT`로 종료될 때는 별도 `shutdown` trigger를 사용합니다.
 이 trigger는 recorder lifecycle 추론이 아니라 process 종료 이벤트입니다. 종료 path는 active socket을 닫고
 마지막 auto export tick을 실행합니다. 이때 realtime replay가 이미 drain되었으면 `finalizable_by_shutdown`으로
-`.vital` export/upload를 시도하며, replay backlog가 남아 있으면 업로드를 진행하지 않고 raw archive와 recovery
-state를 bind mount에 보존합니다. 따라서 종료 시 upload 실패나 보류는 raw archive 삭제로 이어지면 안 되며, 다음
-기동 후 auto export worker 또는 수동 `recover-raw-archive-vital` 명령이 같은 raw archive를 처리해야 합니다.
+`.vital` export를 시도하며, replay backlog가 남아 있으면 export를 진행하지 않고 raw archive와 recovery
+state를 bind mount에 보존합니다. 따라서 종료 시 export 실패나 보류는 raw archive 삭제로 이어지면 안 되며,
+다음 기동 후 auto export worker 또는 수동 `export-raw-archive-vital` 명령이 같은 raw archive를 처리해야 합니다.
 
 제품화 결정은 다음과 같습니다.
 
 1. recorder ingress process는 raw archive auto export worker를 소유합니다. Worker는 recorder별 raw archive cursor를
    관측하고, `finalizable_by_inactivity` 또는 종료 path의 `finalizable_by_shutdown`이 참이면 job document를 만든 뒤 제품 `recorder-recovery` API를 호출합니다.
-   Product Lab Finish는 `finalizable_by_explicit_request` job을 추가합니다. Job state, retry state, upload result,
+   Product Lab Finish는 `finalizable_by_explicit_request` job을 추가합니다. Job state, retry state, artifact receipt,
    recorder별 checkpoint는
    `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH` JSON 문서에 남깁니다.
 2. 수동 운영 명령도 유지합니다. `recover-raw-archive-vital`은 raw archive JSONL을
@@ -673,7 +675,8 @@ state를 bind mount에 보존합니다. 따라서 종료 시 upload 실패나 �
 1. 원본 보존과 실시간 전송은 같은 queue에 맡기지 않습니다.
 2. Hot path는 bounded realtime projection이며, 최신성/latency를 위해 sampling이나 coalescing을 허용합니다.
 3. Cold path는 append-only raw archive이며, `.vital` 복구의 source of truth입니다.
-4. Idle/recovery path는 cold path에서 별도 `.vital` 파일을 생성하고 VitalServer `/upload` 계약으로 반영합니다.
+4. Idle/recovery path는 cold path에서 별도 `.vital` recovery artifact와 receipt를 생성합니다. VitalServer 반영은
+   export와 분리된 publish workflow만 수행할 수 있습니다.
 5. Raw archive가 없는 상태에서 realtime skip은 복구 가능한 사건이 아니라 replay 손실 사건입니다.
    Raw archive가 있는 상태에서도 `.vital` export worker가 완료되기 전까지는 replay 후보 제외 사건입니다.
 
@@ -703,11 +706,29 @@ uv run vitalserver-recorder-recovery recover-raw-archive-vital \
 TestKit의 raw archive 명령은 제품 `vitalserver-recorder-recovery` CLI를 호출하는 dev 검증 wrapper입니다.
 TestKit은 recorder-recovery Python 내부 모듈을 import하지 않습니다.
 TestKit은 release runtime에서 제외되므로 운영 경로는 `vitalserver-recorder-recovery` CLI 또는 API를 사용해야 합니다.
-제품 runtime에서는 `recorder-recovery` service의 `/raw-archive/recover-vital` API가 같은 계약을 수행합니다.
+제품 runtime에서는 `recorder-recovery` service의 `/raw-archive/export-vital` API가 같은 export 계약을 수행합니다.
+`/raw-archive/recover-vital`은 운영자가 export와 publish를 한 번에 명시한 수동 compatibility endpoint이며
+Recorder ingress 자동 경로에서는 사용하지 않습니다.
 
-`export-raw-archive-vital`은 raw archive JSONL의 `payloadBase64`를 inflate하고 vrcode별 `.vital` 파일을
-생성합니다. Auto export로 생성된 파일명은 `_auto_export.vital` suffix를 포함합니다. 이 명령은 VitalServer storage를 직접 쓰지 않습니다. 반영은 `upload-vital`이 `/upload`
-응답 body `success`를 확인하는 방식으로 수행합니다.
+`export-raw-archive-vital`은 raw archive JSONL의 `payloadBase64`를 64 KiB source window stream으로 읽고,
+decode한 record를 operation-owned SQLite spool에 적재한 뒤 source byte window와 vrcode별 완전한
+`.vital` 파일 하나를 생성합니다. 긴 녹화도 시간 기준으로 나누지 않습니다. SQLite spool은 decode 중간
+상태를 파일로 소유하기 위한 경계이며 artifact 분할 정책이 아닙니다. 파일명은 Vital File filename contract를 따르며
+origin은 파일명으로 추측하지 않습니다. Export
+response의 artifact receipt가 `origin=coldPathRecovery`, source byte range, coverage, writer version,
+SHA-256을 제공합니다. 이 명령은 VitalServer storage를 직접 쓰지 않습니다.
+
+제품 recovery API는 export 성공 전에 receipt를 SQLite registry에 commit합니다. `GET /artifacts`와
+`GET /artifacts/{artifactId}`는 private filesystem path를 제외한 receipt와 명시적인
+`exportState=exported`, 현재 `publishState`, operation/failure/index proof를 반환합니다. 같은 artifact ID와 같은 immutable
+receipt의 재등록은 idempotent하며, 다른 SHA-256/path/source evidence가 같은 ID로 들어오면 conflict입니다.
+Registry read, schema, decode, permission failure는 빈 artifact 목록으로 변환하지 않습니다.
+
+`POST /artifacts/{artifactId}/publish`만 export artifact의 명시적 publish intent입니다. Workflow는
+artifact size와 SHA-256, VitalServer index의 기존 filename 부재를 확인하고 완전한 파일 하나를 streaming
+upload합니다. Upload accept 뒤 file index가 같은 size/path를 제공해야 `published`가 됩니다. Persisted state가
+`publishing` 또는 `reconciling`이면 재업로드하지 않고 index만 reconcile합니다. 충돌, 인증, artifact 검증,
+upload, index timeout은 각각 stage/code/message/failedAt이 있는 `failed` 상태로 남습니다.
 
 ## 11. Runtime 설정
 
@@ -748,18 +769,19 @@ TestKit은 release runtime에서 제외되므로 운영 경로는 `vitalserver-r
 | `RECORDER_INGRESS_FAILURE_LOG_PATH` | `/var/log/vitalserver-recorder-ingress/failures/send-data-failures.jsonl` | append-only send_data failure JSONL path |
 | `RECORDER_INGRESS_RAW_ARCHIVE_ENABLED` | `1` | `.vital` recovery source가 되는 원본 `send_data` raw archive JSONL append 여부 |
 | `RECORDER_INGRESS_RAW_ARCHIVE_PATH` | `/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl` | append-only raw archive JSONL path. Local Compose는 `./data/recorder-ingress-raw`, macOS runtime은 `vm/data/run/recorder-ingress-raw`에 bind mount합니다. |
-| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED` | `1` | raw archive `.vital` export/upload worker enable flag. Product default는 enabled이며, worker는 아래 quiet window와 checkpoint 정책을 따라야 합니다. |
-| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS` | `300000` | 자동 export/upload 후보가 되기 전 필요한 raw archive inactivity window. 이 값은 recorder stopped 추론이 아니라 `finalizable_by_inactivity` 판단에만 사용합니다. |
+| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED` | `1` | raw archive `.vital` export worker enable flag. Product default는 enabled이며, worker는 아래 quiet window와 checkpoint 정책을 따라야 합니다. |
+| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS` | `300000` | 자동 export 후보가 되기 전 필요한 raw archive inactivity window. 이 값은 recorder stopped 추론이 아니라 `finalizable_by_inactivity` 판단에만 사용합니다. |
 | `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS` | `60000` | auto export worker scan interval |
 | `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS` | `60000` | 같은 archive cursor가 이 시간 이상 유지되어야 export 후보가 됩니다. |
 | `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS` | `60000` | retryable failure 후 다음 시도까지 대기 시간 |
-| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS` | `3` | 한 cursor export/upload job의 최대 시도 횟수 |
+| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS` | `3` | 한 cursor export job의 최대 시도 횟수 |
 | `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS` | `300000` | recovery API 호출 timeout |
-| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL` | `http://recorder-recovery:8080/raw-archive/recover-vital` | raw archive `.vital` 생성과 upload를 수행하는 제품 recovery endpoint. |
-| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL` | `http://app:80` | recovery service가 `.vital`을 upload할 VitalServer URL |
-| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT` | `/upload` | VitalServer `.vital` upload endpoint |
+| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_EXPORT_URL` | `http://recorder-recovery:8080/raw-archive/export-vital` | raw archive `.vital` artifact와 receipt를 생성하는 제품 recovery endpoint. |
 | `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR` | `/var/lib/vitalserver-recorder-ingress/recovery/vital-export` | 생성된 `.vital` artifact directory. recorder-ingress와 recovery service가 같은 path로 봐야 합니다. |
-| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH` | `/var/lib/vitalserver-recorder-ingress/recovery/raw-archive-auto-export-state.json` | job/checkpoint/retry/upload result persistence document |
+| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH` | `/var/lib/vitalserver-recorder-ingress/recovery/raw-archive-auto-export-state.json` | job/checkpoint/retry/artifact receipt persistence document |
+| `RECORDER_RECOVERY_ARTIFACT_REGISTRY_PATH` | `/var/lib/vitalserver-recorder-ingress/recovery/recovery-artifacts.sqlite3` | recorder-recovery가 private artifact path와 immutable receipt를 보존하는 SQLite registry. |
+| `RECORDER_RECOVERY_VITALSERVER_URL` | runtime compose가 `http://app`으로 명시 | artifact publish가 사용할 VitalServer owner URL. 누락 시 publish unavailable이며 disabled로 추정하지 않습니다. |
+| `VITALSERVER_ADMIN_PASSWORD` | runtime config가 명시 | file index login에 사용하는 현재 admin credential. recorder-recovery에 누락되면 publish는 503으로 실패합니다. |
 
 현재 recorder ingress process의 env parser는 mode와 numeric env에 documented default/fallback을 사용합니다. 즉 invalid mode나 invalid number가 process startup failure가 되지는 않습니다. 단, Helper `runtime-settings.json`에서 guest compose env로 전달되는 `send_data` mode와 replay throughput은 guest compose runner가 먼저 검증합니다. runtime-settings 값이 invalid이면 compose env 생성이 실패하고 recorder ingress를 잘못된 값으로 기동하지 않습니다.
 
@@ -788,9 +810,9 @@ Recorder ingress `/recorder-ingress/status`는 전체 상태와 recorder별 상�
 | `rawArchive.status` | `ready`면 raw archive append가 가능한 상태 | `failed`면 원본 복구 source write가 실패한 상태라 hot path drop/sampling을 복구 가능으로 보면 안 됩니다. |
 | `rawArchive.persistedEvents` / `persistedBytes` | raw archive에 보존한 원본 `send_data` count/bytes | `.vital` 파일 생성이나 upload 완료를 뜻하지 않습니다. |
 | `rawArchive.writeFailures` | raw archive append 실패 count | disk full, permission failure, path 문제를 확인해야 합니다. |
-| `rawArchive.autoExport.status` | `disabled`, `idle`, `inactive_candidate`, `finalizable_by_inactivity`, `running`, `uploaded`, `retryable_failed`, `failed` 중 하나 | `uploaded`만 해당 cursor의 export/upload 완료를 뜻합니다. |
-| `rawArchive.autoExport.activeJob` | 현재 export/upload job document 요약 | `attempts`, `nextAttemptAt`, `lastFailure`로 retry 상태를 확인합니다. |
-| `rawArchive.autoExport.lastResult` | 마지막 recovery API response | upload result persistence evidence입니다. |
+| `rawArchive.autoExport.status` | finalization decision 또는 `running`, `exported`, `export_retryable_failed`, `export_failed` | `exported`는 artifact 생성 완료이며 My Files publish 완료가 아닙니다. |
+| `rawArchive.autoExport.activeJob` | 현재 export job document 요약 | `origin`, `publishState`, `artifactIds`, `attempts`, `nextAttemptAt`, `lastFailure`를 확인합니다. |
+| `rawArchive.autoExport.lastExportResult` | 마지막 recovery export API response | artifact receipt persistence evidence입니다. |
 | `throughput.observedBytesPerSecond` | VRecorder에서 ingress가 관측한 입력 byte rate | item/sec보다 payload 크기를 더 잘 반영합니다. |
 | `throughput.replayedBytesPerSecond` | replay worker가 upstream으로 emit한 byte rate | upstream 내부 처리 완료를 뜻하지 않습니다. emit 기준입니다. |
 | `throughput.queueGrowthBytesPerSecond` | `spooledBytesPerSecond - replayedBytesPerSecond` | 양수면 backlog가 늘고, 음수면 drain 중입니다. |

@@ -134,7 +134,7 @@ components:
           nullable: true
         state:
           type: string
-          enum: [queued, processing, retrying, uploaded, failed, missing]
+          enum: [queued, processing, retrying, exported, published, failed, missing]
         attempts:
           type: integer
           minimum: 0
@@ -186,7 +186,7 @@ components:
           properties:
             state:
               type: string
-              enum: [queued, processing, retrying, uploaded, failed, partial, missing]
+              enum: [queued, processing, retrying, exported, published, failed, partial, missing]
             requests:
               type: array
               minItems: 1
@@ -551,9 +551,9 @@ components:
         - cursorStableForMs
         - lastDecisionAt
         - activeJob
-        - uploadedJobs
+        - exportedJobs
         - failedJobs
-        - lastResult
+        - lastExportResult
         - lastFailure
       properties:
         status:
@@ -561,13 +561,17 @@ components:
           enum:
             - disabled
             - idle
+            - not_observed
             - open
             - inactive_candidate
             - finalizable_by_inactivity
+            - finalizable_by_explicit_request
+            - finalizable_by_shutdown
+            - already_exported
             - running
-            - uploaded
-            - retryable_failed
-            - failed
+            - exported
+            - export_retryable_failed
+            - export_failed
         finalizable:
           type: boolean
         reasons:
@@ -590,13 +594,13 @@ components:
           nullable: true
         activeJob:
           $ref: "#/components/schemas/RecorderIngressRawArchiveAutoExportJob"
-        uploadedJobs:
+        exportedJobs:
           type: integer
           minimum: 0
         failedJobs:
           type: integer
           minimum: 0
-        lastResult:
+        lastExportResult:
           type: object
           additionalProperties: true
           nullable: true
@@ -608,9 +612,16 @@ components:
       additionalProperties: false
       required:
         - jobId
+        - requestId
+        - trigger
+        - origin
+        - vrcode
         - archivePath
-        - archiveCursor
+        - startOffset
+        - endOffset
         - state
+        - publishState
+        - artifactIds
         - attempts
         - maxAttempts
         - createdAt
@@ -622,19 +633,40 @@ components:
       properties:
         jobId:
           type: string
+        requestId:
+          type: string
+          nullable: true
+        trigger:
+          type: string
+          enum: [inactivity, shutdown, explicit]
+        origin:
+          type: string
+          enum: [coldPathRecovery, productLabGenerated]
+        vrcode:
+          type: string
         archivePath:
           type: string
-        archiveCursor:
+        startOffset:
+          type: integer
+          minimum: 0
+        endOffset:
           type: integer
           minimum: 0
         state:
           type: string
           enum:
-            - pending
-            - running
-            - uploaded
-            - retryable_failed
-            - failed
+            - export_pending
+            - exporting
+            - exported
+            - export_retryable_failed
+            - export_failed
+        publishState:
+          type: string
+          enum: [notRequested, published, unknownLegacy]
+        artifactIds:
+          type: array
+          items:
+            type: string
         attempts:
           type: integer
           minimum: 0

@@ -22,3 +22,7 @@ def test_api_exposes_health_and_recovery_endpoint() -> None:
 
     assert ("/health", ("GET",)) in routes
     assert ("/raw-archive/recover-vital", ("POST",)) in routes
+    assert ("/raw-archive/export-vital", ("POST",)) in routes
+    assert ("/artifacts", ("GET",)) in routes
+    assert ("/artifacts/{artifact_id}", ("GET",)) in routes
+    assert ("/artifacts/{artifact_id}/publish", ("POST",)) in routes

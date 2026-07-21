@@ -1,6 +1,10 @@
 import gzip
 import json
+import struct
+from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -8,7 +12,10 @@ from tirosh_guest_tools.adapters.outbound.vital_files import (
     VitalServerHTTPResponse,
     VitalServerVitalFileLibrary,
 )
-from tirosh_guest_tools.domain.guest_control.models import GuestControlDependencyError
+from tirosh_guest_tools.domain.guest_control.models import (
+    GuestControlDependencyError,
+    VitalFileUploadResult,
+)
 from tirosh_guest_tools.domain.runtime_config import RuntimeConfig
 
 
@@ -47,8 +54,13 @@ def empty_file_list_response() -> VitalServerHTTPResponse:
     return response(b'{"message":"No result found"}', status=404)
 
 
-def vital_content(payload: bytes = b"") -> bytes:
-    return gzip.compress(b"VITA" + payload)
+def vital_content(payload: bytes = b"", *, version: int = 3) -> bytes:
+    header = struct.pack("<hI4B", -540, 0, 0, 0, 0, 0)
+    if version == 3:
+        header += struct.pack("<ddB", 100.0, 101.0, 0)
+    return gzip.compress(
+        b"VITA" + struct.pack("<IH", version, len(header)) + header + payload
+    )
 
 
 class FakeClock:
@@ -62,6 +74,19 @@ class FakeClock:
     def sleep(self, seconds: float) -> None:
         self.sleeps.append(seconds)
         self.now += seconds
+
+
+@dataclass(frozen=True)
+class MemoryUploadSource:
+    file_name: str
+    content: bytes
+
+    @property
+    def size_bytes(self) -> int:
+        return len(self.content)
+
+    def open(self) -> BytesIO:
+        return BytesIO(self.content)
 
 
 def library(
@@ -88,6 +113,22 @@ def library(
 
 def indexed_file(filename: str, size: int) -> dict[str, object]:
     return {"filename": filename, "filesize": size, "dtupload": 1784102400}
+
+
+def import_files(
+    target: VitalServerVitalFileLibrary,
+    files: list[tuple[str, bytes]],
+) -> VitalFileUploadResult:
+    return target.import_sources(
+        [MemoryUploadSource(file_name=name, content=content) for name, content in files]
+    )
+
+
+def request_body(request: dict[str, object]) -> bytes:
+    body = request["body"]
+    if isinstance(body, bytes):
+        return body
+    return b"".join(cast(tuple[bytes, ...], body))
 
 
 def test_lists_vitalserver_index_as_replayable_guest_paths() -> None:
@@ -152,8 +193,8 @@ def test_uploads_each_selected_file_through_vitalserver_and_verifies_index() -> 
         ]
     )
 
-    result = library(transport).import_files(
-        [(first, first_content), (second, second_content)]
+    result = import_files(
+        library(transport), [(first, first_content), (second, second_content)]
     )
 
     assert result.state.value == "completed"
@@ -165,8 +206,18 @@ def test_uploads_each_selected_file_through_vitalserver_and_verifies_index() -> 
         if str(request["url"]).endswith("/upload")
     ]
     assert len(upload_requests) == 2
-    assert b'name="vitalfile"' in upload_requests[0]["body"]
-    assert first.encode() in upload_requests[0]["body"]
+    first_body = request_body(upload_requests[0])
+    second_body = request_body(upload_requests[1])
+    assert b'name="vitalfile"' in first_body
+    assert first.encode() in first_body
+    assert second.encode() not in first_body
+    assert b'name="vitalfile"' in second_body
+    assert second.encode() in second_body
+    assert first.encode() not in second_body
+    headers = cast(dict[str, str], upload_requests[0]["headers"])
+    assert headers["Content-Length"] == str(len(first_body))
+    assert not isinstance(upload_requests[0]["body"], bytes)
+    assert not isinstance(upload_requests[1]["body"], bytes)
 
 
 def test_uploads_through_vitalserver_when_its_library_is_initially_empty() -> None:
@@ -182,7 +233,7 @@ def test_uploads_through_vitalserver_when_its_library_is_initially_empty() -> No
         ]
     )
 
-    result = library(transport).import_files([(filename, content)])
+    result = import_files(library(transport), [(filename, content)])
 
     assert result.as_json() == {
         "state": "completed",
@@ -208,11 +259,12 @@ def test_reports_invalid_file_without_blocking_other_uploads() -> None:
     filename = "OR-A_260715_120000.vital"
     transport = FakeTransport([])
 
-    result = library(transport).import_files(
+    result = import_files(
+        library(transport),
         [
             ("rejected.txt", b"text"),
             ("OR-A_260715_120000.vital", b"\x1f\x8b\x08\x00truncated"),
-        ]
+        ],
     )
 
     assert result.state.value == "failed"
@@ -229,7 +281,7 @@ def test_reports_invalid_file_without_blocking_other_uploads() -> None:
 def test_reports_unindexable_filename_without_api_calls() -> None:
     transport = FakeTransport([])
 
-    result = library(transport).import_files([("case.vital", b"vital")])
+    result = import_files(library(transport), [("case.vital", b"vital")])
 
     assert result.state.value == "failed"
     assert "<bed>_YYMMDD_HHMMSS.vital" in result.failed_files[0].reason
@@ -239,12 +291,58 @@ def test_reports_unindexable_filename_without_api_calls() -> None:
 def test_reports_truncated_vital_file_before_any_vitalserver_api_call() -> None:
     transport = FakeTransport([])
 
-    result = library(transport).import_files(
-        [("OR-A_260715_120000.vital", b"\x1f\x8b\x08\x00truncated")]
+    result = import_files(
+        library(transport), [("OR-A_260715_120000.vital", b"\x1f\x8b\x08\x00truncated")]
     )
 
     assert result.state.value == "failed"
     assert "gzip stream is invalid" in result.failed_files[0].reason
+    assert transport.requests == []
+
+
+@pytest.mark.parametrize("version", [1, 2, 3])
+def test_upload_preflight_accepts_each_supported_vital_version(version: int) -> None:
+    filename = f"OR-A_260715_12000{version}.vital"
+    transport = FakeTransport(
+        [
+            login_response(),
+            file_list_response([]),
+            response(b"success"),
+            login_response(),
+            file_list_response([indexed_file(filename, 5)]),
+        ]
+    )
+
+    result = import_files(
+        library(transport), [(filename, vital_content(version=version))]
+    )
+
+    assert result.state.value == "completed"
+
+
+def test_upload_preflight_rejects_future_version_before_vitalserver_api_call() -> None:
+    transport = FakeTransport([])
+
+    result = import_files(
+        library(transport), [("OR-A_260715_120004.vital", vital_content(version=4))]
+    )
+
+    assert result.state.value == "failed"
+    assert "code=unsupportedFormatVersion" in result.failed_files[0].reason
+    assert transport.requests == []
+
+
+def test_upload_preflight_rejects_truncated_declared_header() -> None:
+    content = gzip.compress(b"VITA" + struct.pack("<IH", 3, 27) + b"short")
+    transport = FakeTransport([])
+
+    result = import_files(
+        library(transport),
+        [("OR-A_260715_120000.vital", content)],
+    )
+
+    assert result.state.value == "failed"
+    assert "code=truncatedHeader" in result.failed_files[0].reason
     assert transport.requests == []
 
 
@@ -254,7 +352,10 @@ def test_reports_http_200_parser_error_as_file_failure() -> None:
         [login_response(), file_list_response([]), response(b"invalid vital header")]
     )
 
-    result = library(transport).import_files([(filename, vital_content(b"source"))])
+    result = import_files(
+        library(transport),
+        [(filename, vital_content(b"source"))],
+    )
 
     assert result.state.value == "failed"
     assert "invalid vital header" in result.failed_files[0].reason
@@ -272,7 +373,10 @@ def test_reports_successful_upload_that_is_missing_from_vitalserver_index() -> N
         ]
     )
 
-    result = library(transport).import_files([(filename, vital_content(b"content"))])
+    result = import_files(
+        library(transport),
+        [(filename, vital_content(b"content"))],
+    )
 
     assert result.state.value == "failed"
     assert "did not report the file in its index" in result.failed_files[0].reason
@@ -294,13 +398,16 @@ def test_waits_for_vitalserver_to_publish_uploaded_file_indexes() -> None:
         ]
     )
 
-    result = library(
-        transport,
-        index_wait_seconds=5.0,
-        index_poll_interval_seconds=1.0,
-        monotonic_clock=clock.monotonic,
-        sleep_fn=clock.sleep,
-    ).import_files([(filename, content)])
+    result = import_files(
+        library(
+            transport,
+            index_wait_seconds=5.0,
+            index_poll_interval_seconds=1.0,
+            monotonic_clock=clock.monotonic,
+            sleep_fn=clock.sleep,
+        ),
+        [(filename, content)],
+    )
 
     assert result.as_json() == {
         "state": "completed",
@@ -330,8 +437,9 @@ def test_attempts_later_files_when_an_earlier_upload_fails() -> None:
         ]
     )
 
-    result = library(transport).import_files(
-        [(first, vital_content(b"first")), (second, vital_content(b"second"))]
+    result = import_files(
+        library(transport),
+        [(first, vital_content(b"first")), (second, vital_content(b"second"))],
     )
 
     assert result.state.value == "partial"
@@ -360,22 +468,26 @@ def test_attempts_valid_files_when_another_file_has_invalid_gzip_content() -> No
         ]
     )
 
-    result = library(transport).import_files(
+    result = import_files(
+        library(transport),
         [
             (first, vital_content(b"first")),
             (rejected, b"\x1f\x8b\x08\x00truncated"),
             (second, vital_content(b"second")),
-        ]
+        ],
     )
 
     assert result.state.value == "partial"
     assert [item.file_name for item in result.files] == [first, second]
     assert [item.file_name for item in result.failed_files] == [rejected]
     assert "gzip stream is invalid" in result.failed_files[0].reason
-    assert len(
-        [
-            request
-            for request in transport.requests
-            if str(request["url"]).endswith("/upload")
-        ]
-    ) == 2
+    assert (
+        len(
+            [
+                request
+                for request in transport.requests
+                if str(request["url"]).endswith("/upload")
+            ]
+        )
+        == 2
+    )

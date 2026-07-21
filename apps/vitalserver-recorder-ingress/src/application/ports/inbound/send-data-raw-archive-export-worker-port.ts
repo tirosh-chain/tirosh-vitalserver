@@ -28,11 +28,11 @@ export type SendDataRawArchiveFinalizationStatusReadResult = {
   ok: boolean;
   state: "loaded" | "rejected";
   finalization?: {
-    state: "queued" | "processing" | "retrying" | "uploaded" | "failed" | "partial" | "missing";
+    state: "queued" | "processing" | "retrying" | "exported" | "published" | "failed" | "partial" | "missing";
     requests: Array<{
       requestId: string;
       vrcode: string | null;
-      state: "queued" | "processing" | "retrying" | "uploaded" | "failed" | "missing";
+      state: "queued" | "processing" | "retrying" | "exported" | "published" | "failed" | "missing";
       attempts: number;
       maxAttempts: number | null;
       requestedAt: string | null;

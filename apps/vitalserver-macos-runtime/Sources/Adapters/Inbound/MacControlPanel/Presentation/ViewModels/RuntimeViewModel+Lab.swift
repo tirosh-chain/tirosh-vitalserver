@@ -24,7 +24,7 @@ extension RuntimeViewModel {
         guard labCanControlSelectedSession, let session = selectedLabSession else {
             return false
         }
-        return session.state == .accepted || session.state == .stopped
+        return session.state == .accepted || session.state == .stopped || session.state == .failed
     }
 
     var labCanStopSelectedSession: Bool {

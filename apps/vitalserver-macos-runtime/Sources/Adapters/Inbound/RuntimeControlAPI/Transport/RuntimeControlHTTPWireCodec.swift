@@ -1,6 +1,13 @@
 import Foundation
 import Errors
 
+struct RuntimeControlHTTPRequestHead {
+    let method: RuntimeControlHTTPMethod
+    let path: String
+    let headers: [String: String]
+    let contentLength: Int?
+}
+
 public enum RuntimeControlHTTPWireCodec {
     public static func requestIsComplete(_ data: Data) throws -> Bool {
         guard let headerRange = headerSeparatorRange(in: data) else {
@@ -27,29 +34,59 @@ public enum RuntimeControlHTTPWireCodec {
     }
 
     public static func decodeRequest(_ data: Data) throws -> RuntimeControlHTTPRequest {
+        let head = try decodeRequestHead(data)
         guard let headerRange = headerSeparatorRange(in: data) else {
             throw RuntimeControlHTTPWireCodecError.invalidRequest
         }
+        let body = try decodeBody(
+            Data(data[headerRange.upperBound...]),
+            headers: head.headers
+        )
+        return RuntimeControlHTTPRequest(
+            method: head.method,
+            path: head.path,
+            headers: head.headers,
+            body: body
+        )
+    }
 
-        guard let headerText = String(data: data[..<headerRange.lowerBound], encoding: .utf8) else {
+    static func decodeRequestHead(_ data: Data) throws -> RuntimeControlHTTPRequestHead {
+        guard let headerRange = headerSeparatorRange(in: data),
+              let headerText = String(
+                data: data[..<headerRange.lowerBound],
+                encoding: .utf8
+              ) else {
             throw RuntimeControlHTTPWireCodecError.invalidRequest
         }
         let lines = headerText.components(separatedBy: "\r\n")
         guard let requestLine = lines.first else {
             throw RuntimeControlHTTPWireCodecError.invalidRequest
         }
-
-        let requestParts = requestLine.split(separator: " ", maxSplits: 2).map(String.init)
+        let requestParts = requestLine
+            .split(separator: " ", maxSplits: 2)
+            .map(String.init)
         guard requestParts.count >= 2 else {
             throw RuntimeControlHTTPWireCodecError.invalidRequest
         }
         guard let method = RuntimeControlHTTPMethod(rawValue: requestParts[0]) else {
             throw RuntimeControlHTTPWireCodecError.unsupportedMethod(requestParts[0])
         }
-
         let headers = try decodeHeaders(Array(lines.dropFirst()))
-        let body = try decodeBody(Data(data[headerRange.upperBound...]), headers: headers)
-        return RuntimeControlHTTPRequest(method: method, path: requestParts[1], headers: headers, body: body)
+        let contentLength: Int?
+        if let value = headerValue("Content-Length", in: headers) {
+            guard let decoded = Int(value), decoded >= 0 else {
+                throw RuntimeControlHTTPWireCodecError.invalidContentLength(value)
+            }
+            contentLength = decoded
+        } else {
+            contentLength = nil
+        }
+        return RuntimeControlHTTPRequestHead(
+            method: method,
+            path: requestParts[1],
+            headers: headers,
+            contentLength: contentLength
+        )
     }
 
     public static func encodeResponse(_ response: RuntimeControlHTTPResponse) -> Data {
@@ -129,7 +166,7 @@ public enum RuntimeControlHTTPWireCodec {
         return Data(bodyData.prefix(contentLength))
     }
 
-    private static func headerSeparatorRange(in data: Data) -> Range<Data.Index>? {
+    static func headerSeparatorRange(in data: Data) -> Range<Data.Index>? {
         data.range(of: Data("\r\n\r\n".utf8))
     }
 

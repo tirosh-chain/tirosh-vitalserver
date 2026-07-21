@@ -79,21 +79,24 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
             throw vitalFileImportError("Select at least one .vital file.")
         }
         let normalizedSources = sources.map(\.standardizedFileURL)
-        for source in normalizedSources {
-            let values = try source.resourceValues(forKeys: [.isRegularFileKey])
-            guard values.isRegularFile == true else {
-                throw vitalFileImportError("Upload source is not a regular file: \(source.path)")
-            }
-        }
-
         return try normalizedSources.map { source in
             let accessed = source.startAccessingSecurityScopedResource()
             defer {
                 if accessed { source.stopAccessingSecurityScopedResource() }
             }
+            let values = try source.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .fileSizeKey,
+            ])
+            guard values.isRegularFile == true, let sizeBytes = values.fileSize,
+                  sizeBytes >= 0 else {
+                throw vitalFileImportError("Upload source is not a regular file: \(source.path)")
+            }
             return RuntimeLabVitalFileUploadSource(
                 fileName: source.lastPathComponent,
-                content: try Data(contentsOf: source, options: .mappedIfSafe)
+                fileURL: source,
+                sizeBytes: Int64(sizeBytes),
+                accessMode: .securityScoped
             )
         }
     }

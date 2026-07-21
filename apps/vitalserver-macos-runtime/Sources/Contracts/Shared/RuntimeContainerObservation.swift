@@ -216,9 +216,9 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportStatus: Codable, Equatab
     public let cursorStableForMs: Int?
     public let lastDecisionAt: String?
     public let activeJob: RuntimeRecorderIngressRawArchiveAutoExportJob?
-    public let uploadedJobs: Int?
+    public let exportedJobs: Int?
     public let failedJobs: Int?
-    public let lastResult: RuntimeRecorderIngressRawArchiveAutoExportResult?
+    public let lastExportResult: RuntimeRecorderIngressRawArchiveAutoExportResult?
     public let lastFailure: RuntimeRecorderIngressFailureObservation?
 
     public init(
@@ -230,9 +230,9 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportStatus: Codable, Equatab
         cursorStableForMs: Int? = nil,
         lastDecisionAt: String? = nil,
         activeJob: RuntimeRecorderIngressRawArchiveAutoExportJob? = nil,
-        uploadedJobs: Int? = nil,
+        exportedJobs: Int? = nil,
         failedJobs: Int? = nil,
-        lastResult: RuntimeRecorderIngressRawArchiveAutoExportResult? = nil,
+        lastExportResult: RuntimeRecorderIngressRawArchiveAutoExportResult? = nil,
         lastFailure: RuntimeRecorderIngressFailureObservation? = nil
     ) {
         self.status = status
@@ -243,18 +243,25 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportStatus: Codable, Equatab
         self.cursorStableForMs = cursorStableForMs
         self.lastDecisionAt = lastDecisionAt
         self.activeJob = activeJob
-        self.uploadedJobs = uploadedJobs
+        self.exportedJobs = exportedJobs
         self.failedJobs = failedJobs
-        self.lastResult = lastResult
+        self.lastExportResult = lastExportResult
         self.lastFailure = lastFailure
     }
 }
 
 public struct RuntimeRecorderIngressRawArchiveAutoExportJob: Codable, Equatable, Sendable {
     public let jobId: String?
+    public let requestId: String?
+    public let trigger: String?
+    public let origin: String?
+    public let vrcode: String?
     public let archivePath: String?
-    public let archiveCursor: Int?
+    public let startOffset: Int?
+    public let endOffset: Int?
     public let state: String?
+    public let publishState: String?
+    public let artifactIds: [String]?
     public let attempts: Int?
     public let maxAttempts: Int?
     public let createdAt: String?
@@ -266,9 +273,16 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportJob: Codable, Equatable,
 
     public init(
         jobId: String? = nil,
+        requestId: String? = nil,
+        trigger: String? = nil,
+        origin: String? = nil,
+        vrcode: String? = nil,
         archivePath: String? = nil,
-        archiveCursor: Int? = nil,
+        startOffset: Int? = nil,
+        endOffset: Int? = nil,
         state: String? = nil,
+        publishState: String? = nil,
+        artifactIds: [String]? = nil,
         attempts: Int? = nil,
         maxAttempts: Int? = nil,
         createdAt: String? = nil,
@@ -279,9 +293,16 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportJob: Codable, Equatable,
         lastFailure: RuntimeRecorderIngressFailureObservation? = nil
     ) {
         self.jobId = jobId
+        self.requestId = requestId
+        self.trigger = trigger
+        self.origin = origin
+        self.vrcode = vrcode
         self.archivePath = archivePath
-        self.archiveCursor = archiveCursor
+        self.startOffset = startOffset
+        self.endOffset = endOffset
         self.state = state
+        self.publishState = publishState
+        self.artifactIds = artifactIds
         self.attempts = attempts
         self.maxAttempts = maxAttempts
         self.createdAt = createdAt

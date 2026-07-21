@@ -16,11 +16,49 @@ public enum RuntimeLabSessionState: String, Codable, Equatable, Sendable {
     case unavailable
 }
 
+public enum RuntimeLabSessionFailureStage: String, Codable, Equatable, Sendable {
+    case fileValidation
+    case replayFrame
+}
+
+public enum RuntimeLabSessionFailureCode: String, Codable, Equatable, Sendable {
+    case sourceUnavailable
+    case readerUnavailable
+    case decodeFailed
+    case nonPositiveDuration
+    case invalidWaveformSampleRate
+    case unsupportedTrackType
+    case trackReadFailed
+    case noReplayableTracks
+    case offsetOutsideSourceDuration
+    case noFiniteRecords
+}
+
+public struct RuntimeLabSessionFailure: Codable, Equatable, Sendable {
+    public let stage: RuntimeLabSessionFailureStage
+    public let code: RuntimeLabSessionFailureCode
+    public let message: String
+    public let failedAt: String
+
+    public init(
+        stage: RuntimeLabSessionFailureStage,
+        code: RuntimeLabSessionFailureCode,
+        message: String,
+        failedAt: String
+    ) {
+        self.stage = stage
+        self.code = code
+        self.message = message
+        self.failedAt = failedAt
+    }
+}
+
 public enum RuntimeLabArchiveFinalizationState: String, Codable, Equatable, Sendable {
     case queued
     case processing
     case retrying
-    case uploaded
+    case exported
+    case published
     case failed
     case partial
     case missing
@@ -142,6 +180,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
     public let recorderIds: [String]?
     public let vitalFileRelativePath: String?
     public let replayPolicy: RuntimeLabVitalFileReplayPolicy?
+    public let failure: RuntimeLabSessionFailure?
     public let archiveFinalization: RuntimeLabArchiveFinalization?
     public let createdAt: String?
     public let updatedAt: String?
@@ -157,6 +196,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
         recorderIds: [String]? = nil,
         vitalFileRelativePath: String? = nil,
         replayPolicy: RuntimeLabVitalFileReplayPolicy? = nil,
+        failure: RuntimeLabSessionFailure? = nil,
         archiveFinalization: RuntimeLabArchiveFinalization? = nil,
         createdAt: String? = nil,
         updatedAt: String? = nil
@@ -171,6 +211,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
         self.recorderIds = recorderIds
         self.vitalFileRelativePath = vitalFileRelativePath
         self.replayPolicy = replayPolicy
+        self.failure = failure
         self.archiveFinalization = archiveFinalization
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -509,13 +550,62 @@ public struct RuntimeLabVitalFileReplayResourceSelection: Codable, Equatable, Se
     }
 }
 
+public enum RuntimeLabVitalFileAccessMode: Equatable, Sendable {
+    case direct
+    case securityScoped
+}
+
+public struct RuntimeLabVitalFileUploadFile: Equatable, Sendable {
+    public let url: URL
+    public let sizeBytes: Int64
+    public let accessMode: RuntimeLabVitalFileAccessMode
+
+    public init(
+        url: URL,
+        sizeBytes: Int64,
+        accessMode: RuntimeLabVitalFileAccessMode
+    ) {
+        self.url = url
+        self.sizeBytes = sizeBytes
+        self.accessMode = accessMode
+    }
+}
+
+public enum RuntimeLabVitalFileUploadPayload: Equatable, Sendable {
+    case bytes(Data)
+    case file(RuntimeLabVitalFileUploadFile)
+}
+
 public struct RuntimeLabVitalFileUploadSource: Equatable, Sendable {
     public let fileName: String
-    public let content: Data
+    public let payload: RuntimeLabVitalFileUploadPayload
 
     public init(fileName: String, content: Data) {
         self.fileName = fileName
-        self.content = content
+        self.payload = .bytes(content)
+    }
+
+    public init(
+        fileName: String,
+        fileURL: URL,
+        sizeBytes: Int64,
+        accessMode: RuntimeLabVitalFileAccessMode
+    ) {
+        self.fileName = fileName
+        self.payload = .file(RuntimeLabVitalFileUploadFile(
+            url: fileURL,
+            sizeBytes: sizeBytes,
+            accessMode: accessMode
+        ))
+    }
+
+    public var sizeBytes: Int64 {
+        switch payload {
+        case .bytes(let content):
+            return Int64(content.count)
+        case .file(let file):
+            return file.sizeBytes
+        }
     }
 }
 

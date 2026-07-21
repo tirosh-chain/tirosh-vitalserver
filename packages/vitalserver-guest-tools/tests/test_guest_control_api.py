@@ -13,6 +13,7 @@ import pytest
 
 from tirosh_guest_tools.adapters.inbound import guest_control_api
 from tirosh_guest_tools.adapters.inbound.guest_control_api import route_request
+from tirosh_guest_tools.application.guest_control.ports import VitalFileUploadSource
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
     TERMINAL_OPERATION_STATES,
@@ -279,16 +280,24 @@ def handle_with_test_handler(
     body: bytes,
     usecases: GuestControlUseCases,
     allowed_routes: frozenset[tuple[str, str]] | None = None,
+    headers: dict[str, str] | None = None,
+    request_stream: BytesIO | None = None,
+    upload_staging_root: Path | None = None,
+    include_content_length: bool = True,
 ) -> tuple[HTTPStatus, dict[str, object]]:
     handler_type = guest_control_api.make_handler(
         usecases,
         allowed_routes=allowed_routes,
+        upload_staging_root=upload_staging_root,
     )
     handler = object.__new__(handler_type)
     captured: dict[str, int] = {}
     handler.path = path
-    handler.headers = {"Content-Length": str(len(body))}
-    handler.rfile = BytesIO(body)
+    request_headers = dict(headers or {})
+    if include_content_length and "Content-Length" not in request_headers:
+        request_headers["Content-Length"] = str(len(body))
+    handler.headers = request_headers
+    handler.rfile = request_stream or BytesIO(body)
     handler.wfile = BytesIO()
     handler.send_response = lambda status_code: captured.__setitem__(
         "status",
@@ -302,6 +311,41 @@ def handle_with_test_handler(
     return HTTPStatus(captured["status"]), json.loads(
         handler.wfile.getvalue().decode("utf-8")
     )
+
+
+class TrackingRequestStream(BytesIO):
+    def __init__(self, content: bytes) -> None:
+        super().__init__(content)
+        self.requested_read_sizes: list[int] = []
+
+    def read(self, size: int = -1) -> bytes:
+        self.requested_read_sizes.append(size)
+        return super().read(size)
+
+    def readline(self, size: int = -1) -> bytes:
+        self.requested_read_sizes.append(size)
+        return super().readline(size)
+
+
+def multipart_upload_body(
+    files: list[tuple[str, bytes]],
+    *,
+    boundary: str,
+) -> bytes:
+    body = bytearray()
+    for filename, content in files:
+        body.extend(
+            (
+                f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="files"; '
+                f'filename="{filename}"\r\n'
+                "Content-Type: application/octet-stream\r\n\r\n"
+            ).encode()
+        )
+        body.extend(content)
+        body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode())
+    return bytes(body)
 
 
 class FakeProductLab:
@@ -814,7 +858,14 @@ class FakeVitalFileLibrary:
             }
         ]
 
-    def import_files(self, files: list[tuple[str, bytes]]) -> VitalFileUploadResult:
+    def import_sources(
+        self,
+        sources: list[VitalFileUploadSource],
+    ) -> VitalFileUploadResult:
+        files: list[tuple[str, bytes]] = []
+        for source in sources:
+            with source.open() as stream:
+                files.append((source.file_name, stream.read()))
         self.imported.append(files)
         return VitalFileUploadResult.from_items(
             [
@@ -2023,6 +2074,130 @@ def test_lab_upload_vital_files_route_accepts_multiple_multipart_files(
         ],
         "failedFiles": [],
     }
+
+
+def test_lab_upload_handler_stages_large_request_with_bounded_reads(
+    tmp_path: Path,
+) -> None:
+    boundary = "bounded-vital-files-boundary"
+    content = b"v" * (3 * 1024 * 1024)
+    body = multipart_upload_body(
+        [("OR-A_260721_120000.vital", content)],
+        boundary=boundary,
+    )
+    request_stream = TrackingRequestStream(body)
+    staging_root = tmp_path / "uploads"
+    staging_root.mkdir()
+    vital_file_library = FakeVitalFileLibrary()
+    upload_usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        vital_file_library=vital_file_library,
+    )
+
+    status, document = handle_with_test_handler(
+        method="POST",
+        path="/runtime/lab/vital-files/upload",
+        body=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        request_stream=request_stream,
+        upload_staging_root=staging_root,
+        usecases=upload_usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document["state"] == "completed"
+    assert document["files"] == [
+        {
+            "fileName": "OR-A_260721_120000.vital",
+            "relativePath": "OR-A_260721_120000.vital",
+            "sizeBytes": len(content),
+        }
+    ]
+    assert vital_file_library.imported == [[("OR-A_260721_120000.vital", content)]]
+    assert max(request_stream.requested_read_sizes) <= 64 * 1024
+    assert list(staging_root.iterdir()) == []
+
+
+def test_lab_upload_handler_reports_truncated_request_and_cleans_staging(
+    tmp_path: Path,
+) -> None:
+    boundary = "truncated-vital-files-boundary"
+    body = multipart_upload_body(
+        [("OR-A_260721_120000.vital", b"content")],
+        boundary=boundary,
+    )
+    staging_root = tmp_path / "uploads"
+    staging_root.mkdir()
+    vital_file_library = FakeVitalFileLibrary()
+    upload_usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        vital_file_library=vital_file_library,
+    )
+
+    status, document = handle_with_test_handler(
+        method="POST",
+        path="/runtime/lab/vital-files/upload",
+        body=body,
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(len(body) + 17),
+        },
+        upload_staging_root=staging_root,
+        usecases=upload_usecases,
+    )
+
+    assert status == HTTPStatus.BAD_REQUEST
+    assert document["code"] == "truncatedUpload"
+    assert vital_file_library.imported == []
+    assert list(staging_root.iterdir()) == []
+
+
+def test_lab_upload_handler_requires_explicit_content_length(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = handle_with_test_handler(
+        method="POST",
+        path="/runtime/lab/vital-files/upload",
+        body=b"",
+        headers={"Content-Type": "multipart/form-data; boundary=missing-length"},
+        include_content_length=False,
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.BAD_REQUEST
+    assert document == {
+        "code": "vitalFileUploadInvalid",
+        "detail": "Vital Files upload requires a Content-Length header.",
+    }
+
+
+def test_lab_upload_handler_reports_unavailable_staging_storage(
+    tmp_path: Path,
+    usecases: GuestControlUseCases,
+) -> None:
+    boundary = "unavailable-staging-boundary"
+    body = multipart_upload_body(
+        [("OR-A_260721_120000.vital", b"content")],
+        boundary=boundary,
+    )
+
+    status, document = handle_with_test_handler(
+        method="POST",
+        path="/runtime/lab/vital-files/upload",
+        body=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        upload_staging_root=tmp_path / "missing",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.SERVICE_UNAVAILABLE
+    assert document["code"] == "vitalFileUploadStagingFailed"
 
 
 def test_latest_vitaldb_observation_route_returns_product_read_model(

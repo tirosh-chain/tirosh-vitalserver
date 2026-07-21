@@ -246,6 +246,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(prepareAirgapRootfs.contains("tirosh-vitalserver-rootfs-smoke"))
         XCTAssertTrue(prepareAirgapRootfs.contains("update_apt_indexes()"))
         XCTAssertTrue(prepareAirgapRootfs.contains("ROOTFS_STAGE=\"apt-index-update\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("Acquire::Retries=5"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT::Update::Error-Mode=any"))
         XCTAssertTrue(prepareAirgapRootfs.contains("update_apt_indexes\n  record_apt_plan"))
         XCTAssertFalse(prepareAirgapRootfs.contains("docker run --rm --network none"))
         XCTAssertFalse(prepareAirgapRootfs.contains("docker compose --project-name"))

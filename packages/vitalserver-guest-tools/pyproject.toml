@@ -2,11 +2,12 @@
 name = "tirosh-vitalserver-guest-tools"
 version = "0.2.0"
 description = "Guest-side tools for Tirosh VitalServer runtime."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
   "SQLAlchemy==2.0.51",
   "alembic==1.16.5",
   "psycopg[binary]==3.3.4",
+  "tirosh-vitalserver-core",
 ]
 
 [project.scripts]

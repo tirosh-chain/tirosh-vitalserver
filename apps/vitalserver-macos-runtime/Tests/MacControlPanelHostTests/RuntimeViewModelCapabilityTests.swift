@@ -1407,6 +1407,35 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertFalse(viewModel.labCanStartSelectedSession)
     }
 
+    func testProductLabFailedSessionCanRetry() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.selectedLabSessionID = "failed-session"
+        viewModel.labSessionResponse = RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: "failed-session",
+                state: .failed,
+                scenarioId: "vital-file-replay",
+                recorderCount: 1,
+                targetURL: "http://edge/",
+                failure: RuntimeLabSessionFailure(
+                    stage: .fileValidation,
+                    code: .invalidWaveformSampleRate,
+                    message: "invalid waveform sample rate",
+                    failedAt: "2026-07-21T03:00:00Z"
+                )
+            )
+        )
+
+        XCTAssertTrue(viewModel.labCanStartSelectedSession)
+        XCTAssertFalse(viewModel.labCanStopSelectedSession)
+    }
+
     func testProductLabRecorderControlsUseExplicitRunningSessionOwnership() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.labSessionsToLoad = RuntimeLabSessionList(
@@ -1663,7 +1692,20 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
 
         XCTAssertEqual(uploadSources.map(\.fileName), ["first.vital", "second.VITAL"])
-        XCTAssertEqual(uploadSources.map(\.content), [Data("first".utf8), Data("second".utf8)])
+        XCTAssertEqual(uploadSources, [
+            RuntimeLabVitalFileUploadSource(
+                fileName: "first.vital",
+                fileURL: first,
+                sizeBytes: 5,
+                accessMode: .securityScoped
+            ),
+            RuntimeLabVitalFileUploadSource(
+                fileName: "second.VITAL",
+                fileURL: second,
+                sizeBytes: 6,
+                accessMode: .securityScoped
+            ),
+        ])
     }
 
     func testSystemNativeShellForwardsEachReadableFileForOwnerSideBatchValidation() throws {
@@ -2727,7 +2769,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
             RuntimeLabVitalFileLibraryUploadItem(
                 fileName: $0.fileName,
                 relativePath: $0.fileName,
-                sizeBytes: $0.content.count
+                sizeBytes: Int($0.sizeBytes)
             )
         })
     }

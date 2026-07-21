@@ -149,6 +149,11 @@ struct Launcher {
         }
         let config = try JSONDecoder().decode(VMRuntimeConfig.self, from: settings.payload.vmConfigJSON)
         try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
+        try RuntimeVMLifecycleProcessExitReconciler.reconcileBeforeServiceStart(
+            paths: paths,
+            fileStore: fileStore,
+            log: { print($0) }
+        )
         try RuntimeHostTimeContractWriter(
             destination: paths.installed.hostTime,
             fileStore: fileStore,

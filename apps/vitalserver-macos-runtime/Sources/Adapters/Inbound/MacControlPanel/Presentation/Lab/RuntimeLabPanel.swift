@@ -192,6 +192,23 @@ struct RuntimeLabPanel: View {
                     statusRow(AppConstants.Labels.status) {
                         Text(session.state.rawValue).fontWeight(.medium)
                     }
+                    if let failure = session.failure {
+                        statusRow("Failure stage") {
+                            Text(failure.stage.rawValue).fontWeight(.medium)
+                        }
+                        statusRow("Failure code") {
+                            Text(failure.code.rawValue).fontWeight(.medium)
+                        }
+                        statusRow(AppConstants.Labels.lastError) {
+                            Text(failure.message)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        statusRow("Failed at") {
+                            Text(failure.failedAt).fontWeight(.medium)
+                        }
+                    }
                     statusRow("Session ID") {
                         Text(session.sessionId)
                             .fontWeight(.medium)
@@ -209,7 +226,7 @@ struct RuntimeLabPanel: View {
                             .fontWeight(.medium)
                     }
                     if let finalization = session.archiveFinalization {
-                        statusRow(RuntimeLabPanelText.archiveUpload) {
+                        statusRow(RuntimeLabPanelText.archiveExport) {
                             Text(finalization.state.rawValue).fontWeight(.medium)
                         }
                         statusRow(RuntimeLabPanelText.archiveUpdated) {
@@ -237,8 +254,8 @@ struct RuntimeLabPanel: View {
                     .disabled(!viewModel.labCanStopSelectedSession)
                     Button(
                         session.state == .finished
-                            ? RuntimeLabPanelText.retryUpload
-                            : RuntimeLabPanelText.finishAndUpload
+                            ? RuntimeLabPanelText.retryExport
+                            : RuntimeLabPanelText.finishAndExport
                     ) {
                         Task { await viewModel.finishProductLabSession() }
                     }
@@ -284,7 +301,7 @@ struct RuntimeLabPanel: View {
         switch state {
         case .queued, .processing, .retrying:
             return true
-        case .uploaded, .failed, .partial, .missing, .unavailable:
+        case .exported, .published, .failed, .partial, .missing, .unavailable:
             return false
         }
     }

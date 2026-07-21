@@ -17,22 +17,41 @@ public enum RuntimeControlHTTPStatus: Int, Codable, Equatable, Sendable {
     case internalServerError = 500
 }
 
+public struct RuntimeControlStagedHTTPRequestBody: Equatable, Sendable {
+    public let fileURL: URL
+    public let temporaryDirectoryURL: URL
+    public let sizeBytes: Int64
+
+    public init(
+        fileURL: URL,
+        temporaryDirectoryURL: URL,
+        sizeBytes: Int64
+    ) {
+        self.fileURL = fileURL
+        self.temporaryDirectoryURL = temporaryDirectoryURL
+        self.sizeBytes = sizeBytes
+    }
+}
+
 public struct RuntimeControlHTTPRequest: Equatable, Sendable {
     public let method: RuntimeControlHTTPMethod
     public let path: String
     public let headers: [String: String]
     public let body: Data?
+    public let stagedBody: RuntimeControlStagedHTTPRequestBody?
 
     public init(
         method: RuntimeControlHTTPMethod,
         path: String,
         headers: [String: String] = [:],
-        body: Data? = nil
+        body: Data? = nil,
+        stagedBody: RuntimeControlStagedHTTPRequestBody? = nil
     ) {
         self.method = method
         self.path = path
         self.headers = headers
         self.body = body
+        self.stagedBody = stagedBody
     }
 }
 

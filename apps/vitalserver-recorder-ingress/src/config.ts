@@ -173,9 +173,7 @@ function loadConfig(env) {
           "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS",
           DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS
         ),
-        recoverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL || "",
-        vitalserverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL || "http://app:80",
-        uploadEndpoint: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT || "/upload",
+        exportUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_EXPORT_URL || "",
         outputDir: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR
           || "/var/lib/vitalserver-recorder-ingress/recovery/vital-export",
         statePath: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH

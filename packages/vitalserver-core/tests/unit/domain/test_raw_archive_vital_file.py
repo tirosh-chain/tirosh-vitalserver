@@ -10,6 +10,7 @@ from tirosh_vitalserver.core.domain.vital_file import (
     RawArchiveDecodeError,
     raw_archive_payload_from_record,
     raw_archive_payloads_from_jsonl_lines,
+    vital_groups_from_raw_archive,
     vital_tracks_by_vrcode_from_raw_archive,
 )
 from tirosh_vitalserver.core.types.json import JsonValue
@@ -57,6 +58,11 @@ def test_raw_archive_payloads_decode_send_data_jsonl() -> None:
     assert tuple(tracks) == ("VR_RAW",)
     assert tracks["VR_RAW"][0].dtname == "OR1_Demo/HR"
     assert tracks["VR_RAW"][0].records[0].value == 72
+
+    groups = vital_groups_from_raw_archive(payloads)
+    assert groups[0].vrcode == "VR_RAW"
+    assert groups[0].room_names == ("OR1",)
+    assert groups[0].tracks == tracks["VR_RAW"]
 
 
 @pytest.mark.parametrize(

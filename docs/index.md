@@ -92,6 +92,8 @@
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA primary UI와 local/remote RuntimeControlClient boundary 결정 |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | VitalServer Helper layer와 component version model 결정 |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update와 VM Image Update 계약 결정 |
+| [ADR 0005](adr/0005-vital-file-versioned-compatibility-and-canonical-model.md) | Vital File v1/v2/v3 입력 호환성과 canonical 최신 writer 결정 |
+| [ADR 0006](adr/0006-recovery-artifact-origin-and-publish-boundary.md) | cold-path recovery artifact origin, receipt, export와 publish 책임 분리 결정 |
 
 ### VRecorder와 데이터
 
@@ -142,6 +144,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 구분 |
+| [ADR 0005](adr/0005-vital-file-versioned-compatibility-and-canonical-model.md) | Vital File version reader, canonical model, v3 writer, upload/replay streaming 경계 |
 
 ### 개발 운영
 

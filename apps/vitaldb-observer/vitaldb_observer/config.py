@@ -44,7 +44,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> ObserverSettings:
             "VITALDB_OBSERVER_AUDIT_REDIS_LIST",
             "vitalserver:audit_events",
         ),
-        audit_event_limit=_int_env(env, "VITALDB_OBSERVER_AUDIT_EVENT_LIMIT", 1000),
+        audit_event_limit=_int_env(env, "VITALDB_OBSERVER_AUDIT_EVENT_LIMIT", 10000),
         access_log_path=env.get("VITALDB_OBSERVER_ACCESS_LOG_PATH", ""),
         access_log_limit=_int_env(env, "VITALDB_OBSERVER_ACCESS_LOG_LIMIT", 200),
     )

@@ -49,6 +49,38 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
     assert result["status"] == "completed"
 
 
+def test_guest_bootstrap_reports_each_running_step_and_failed_step(
+    tmp_path: Path,
+) -> None:
+    context = bootstrap_context(tmp_path)
+    events: list[str] = []
+    operations = fake_operations(events)
+    operations = GuestBootstrapOperations(
+        **{
+            **operations.__dict__,
+            "prepare_runtime_data": lambda: (_ for _ in ()).throw(
+                RuntimeError("stop failed")
+            ),
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="stop failed"):
+        run_guest_bootstrap(context=context, operations=operations)
+
+    running_messages = [
+        event.removeprefix("result:running:")
+        for event in events
+        if event.startswith("result:running:")
+    ]
+    assert "Guest bootstrap is running." in running_messages
+    assert "Guest bootstrap step running: prepare-runtime-data." in running_messages
+    result = json.loads(context.bootstrap_result.read_text(encoding="utf-8"))
+    assert result["status"] == "failed"
+    assert result["message"] == (
+        "Guest bootstrap failed at step: prepare-runtime-data."
+    )
+
+
 def test_guest_bootstrap_rejects_docker_start_before_control_store_migration(
     tmp_path: Path,
 ) -> None:
@@ -124,7 +156,7 @@ def bootstrap_context(tmp_path: Path) -> GuestBootstrapContext:
 
 def fake_operations(events: list[str]) -> GuestBootstrapOperations:
     def write_result(path: Path, document: BootstrapResultDocument) -> None:
-        events.append(f"result:{document.status}")
+        events.append(f"result:{document.status}:{document.message}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
@@ -187,6 +219,10 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
 
 
 def assert_before(events: list[str], first: str, second: str) -> None:
-    assert first in events
-    assert second in events
-    assert events.index(first) < events.index(second)
+    first_index = next(
+        index for index, event in enumerate(events) if event.startswith(first)
+    )
+    second_index = next(
+        index for index, event in enumerate(events) if event.startswith(second)
+    )
+    assert first_index < second_index

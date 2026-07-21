@@ -7,6 +7,47 @@ import OutboundAdapters
 import Errors
 
 enum RuntimeVMLifecycleProcessExitReconciler {
+    static func reconcileBeforeServiceStart(
+        paths: LauncherPaths,
+        fileStore: RuntimeFileReading & RuntimeFileWriting,
+        processExists: (pid_t) -> Bool = ProcessState.defaultProcessExists,
+        log: @escaping (String) -> Void
+    ) throws {
+        let processState = ProcessState.inspect(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            processExists: processExists
+        )
+        switch processState {
+        case .stalePid(let pid):
+            try reconcile(
+                expectedVMProcessID: pid_t(pid),
+                paths: paths,
+                log: log
+            )
+            ProcessState.removePidFile(paths.pidFile, fileStore: fileStore, log: log)
+        case .pidFileMissing:
+            let owner = SQLiteRuntimeVMLifecycleResourceStore(
+                databaseURL: paths.installed.runtimeStateDatabase,
+                transitionDecider: RuntimeVMLifecycleTransitionUseCase()
+            )
+            let read = owner.loadVMLifecycleResource()
+            if read.state == .missing || read.document?.state == .stopped || read.document?.state == .failed {
+                return
+            }
+            throw LauncherError.runtimeOperationFailed(
+                "VM lifecycle reconciliation blocked before service start "
+                    + "processState=\(processState.rawValue) lifecycleReadState=\(read.state.rawValue) "
+                    + "lifecycleState=\(read.document?.state.rawValue ?? "missing") "
+                    + "error=\(read.readError ?? "none")"
+            )
+        case .running, .pidFileInvalid, .readFailed, .signalFailed, .stopTimedOut, .unknown, .stopped:
+            throw LauncherError.runtimeOperationFailed(
+                "VM lifecycle reconciliation blocked before service start processState=\(processState.rawValue)"
+            )
+        }
+    }
+
     static func reconcile(
         expectedVMProcessID: pid_t,
         paths: LauncherPaths,

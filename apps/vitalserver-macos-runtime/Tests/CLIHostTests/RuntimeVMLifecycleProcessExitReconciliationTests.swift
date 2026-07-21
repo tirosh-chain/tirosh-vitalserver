@@ -116,6 +116,94 @@ final class RuntimeVMLifecycleProcessExitReconciliationTests: XCTestCase {
         ])
     }
 
+    func testServiceStartReconcilesStalePidAndNonTerminalLifecycle() throws {
+        let context = try makeContext()
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        _ = try context.owner.writeVMLifecycleResource(
+            state: .starting,
+            operation: .startServices,
+            message: "start"
+        )
+        _ = try context.owner.writeVMLifecycleResource(
+            state: .stopping,
+            message: "stop requested"
+        )
+        try FileManager.default.createDirectory(
+            at: context.paths.pidFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("42\n".utf8).write(to: context.paths.pidFile)
+        var logs: [String] = []
+
+        try RuntimeVMLifecycleProcessExitReconciler.reconcileBeforeServiceStart(
+            paths: context.paths,
+            fileStore: SystemRuntimeFileStore(),
+            processExists: { _ in false },
+            log: { logs.append($0) }
+        )
+
+        let read = context.owner.loadVMLifecycleResource()
+        XCTAssertEqual(read.document?.state, .failed)
+        XCTAssertEqual(read.document?.terminalReason, .processExitedWithoutTerminalState)
+        XCTAssertEqual(
+            read.document?.message,
+            "VM process exited without terminal lifecycle state pid=42 previousState=stopping"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: context.paths.pidFile.path))
+        XCTAssertEqual(logs, [
+            "VM process exited without terminal lifecycle state pid=42 previousState=stopping"
+        ])
+    }
+
+    func testServiceStartRejectsNonTerminalLifecycleWhenPidFileIsMissing() throws {
+        let context = try makeContext()
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        _ = try context.owner.writeVMLifecycleResource(
+            state: .starting,
+            operation: .startServices,
+            message: "start"
+        )
+
+        XCTAssertThrowsError(try RuntimeVMLifecycleProcessExitReconciler.reconcileBeforeServiceStart(
+            paths: context.paths,
+            fileStore: SystemRuntimeFileStore(),
+            processExists: { _ in false },
+            log: { _ in }
+        )) { error in
+            XCTAssertTrue(String(describing: error).contains(
+                "VM lifecycle reconciliation blocked before service start processState=pid-file-missing"
+            ))
+        }
+        XCTAssertEqual(context.owner.loadVMLifecycleResource().document?.state, .starting)
+    }
+
+    func testServiceStartRejectsPidThatStillReferencesRunningProcess() throws {
+        let context = try makeContext()
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        _ = try context.owner.writeVMLifecycleResource(
+            state: .starting,
+            operation: .startServices,
+            message: "start"
+        )
+        try FileManager.default.createDirectory(
+            at: context.paths.pidFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("42\n".utf8).write(to: context.paths.pidFile)
+
+        XCTAssertThrowsError(try RuntimeVMLifecycleProcessExitReconciler.reconcileBeforeServiceStart(
+            paths: context.paths,
+            fileStore: SystemRuntimeFileStore(),
+            processExists: { $0 == 42 },
+            log: { _ in }
+        )) { error in
+            XCTAssertTrue(String(describing: error).contains(
+                "VM lifecycle reconciliation blocked before service start processState=running: pid=42"
+            ))
+        }
+        XCTAssertEqual(context.owner.loadVMLifecycleResource().document?.state, .starting)
+    }
+
     private func makeContext() throws -> (
         root: URL,
         paths: LauncherPaths,

@@ -591,12 +591,12 @@ function recordSendDataRawArchiveAutoExportStarted(metrics, job) {
 function recordSendDataRawArchiveAutoExportSucceeded(metrics, job, result) {
   const archive = metrics.sendDataRawArchive || defaultRawArchiveStatus();
   const autoExport = archive.autoExport || defaultRawArchiveAutoExportStatus();
-  autoExport.status = "uploaded";
+  autoExport.status = "exported";
   autoExport.finalizable = false;
   autoExport.reasons = [];
   autoExport.activeJob = null;
-  autoExport.uploadedJobs += 1;
-  autoExport.lastResult = result || null;
+  autoExport.exportedJobs += 1;
+  autoExport.lastExportResult = result || null;
   autoExport.lastDecisionAt = new Date().toISOString();
   archive.autoExport = autoExport;
   metrics.sendDataRawArchive = archive;
@@ -619,11 +619,16 @@ function rawArchiveAutoExportJobSnapshot(job) {
     jobId: job.jobId,
     requestId: job.requestId,
     trigger: job.trigger,
+    origin: job.origin,
     vrcode: job.vrcode,
     archivePath: job.archivePath,
     startOffset: job.startOffset,
     endOffset: job.endOffset,
     state: job.state,
+    publishState: job.publishState,
+    artifactIds: Array.isArray(job.artifacts)
+      ? job.artifacts.map((artifact) => artifact.artifactId)
+      : [],
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
     createdAt: job.createdAt,
@@ -811,9 +816,9 @@ function defaultRawArchiveAutoExportStatus() {
     cursorStableForMs: null,
     lastDecisionAt: null,
     activeJob: null,
-    uploadedJobs: 0,
+    exportedJobs: 0,
     failedJobs: 0,
-    lastResult: null,
+    lastExportResult: null,
     lastFailure: null,
   };
 }

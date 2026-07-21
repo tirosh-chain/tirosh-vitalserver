@@ -25,11 +25,13 @@ from .model import (
     utc_now_iso,
 )
 from .vital_replay import (
+    LabReplayGapPolicy,
+    LabReplayStringTrackPolicy,
     LabVitalReplaySource,
     LabVitalReplaySourceFactory,
-    VitalDBReplaySourceFactory,
     VitalReplaySourceError,
 )
+from .vital_replay_spool import StreamingVitalReplaySourceFactory
 
 
 @dataclass(frozen=True)
@@ -191,6 +193,13 @@ class LabRecorderSendError(Exception):
     pass
 
 
+class LabSessionStartError(Exception):
+    def __init__(self, message: str, *, stage: str, code: str) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.code = code
+
+
 def _connect_socketio(
     target_url: str,
     *,
@@ -236,7 +245,11 @@ class LabExecutionEngine:
     ) -> None:
         self.sender = sender
         self.vital_replay_source_factory = (
-            vital_replay_source_factory or VitalDBReplaySourceFactory()
+            vital_replay_source_factory
+            or StreamingVitalReplaySourceFactory(
+                string_track_policy=LabReplayStringTrackPolicy.REJECT,
+                gap_policy=LabReplayGapPolicy.OMIT_TRACK,
+            )
         )
         self.frame_interval_seconds = max(0.0, frame_interval_seconds)
         self.archive_finalizer = archive_finalizer
@@ -268,15 +281,19 @@ class LabExecutionEngine:
 
         replay_source = self._open_replay_source(session)
         case_started_at = time.time()
-        results = self._send_session_frame(
-            session=session,
-            beds_by_id=beds_by_id,
-            recorders=recorders,
-            sequence=1,
-            frame_started_at=case_started_at,
-            case_started_at=case_started_at,
-            replay_source=replay_source,
-        )
+        try:
+            results = self._send_session_frame(
+                session=session,
+                beds_by_id=beds_by_id,
+                recorders=recorders,
+                sequence=1,
+                frame_started_at=case_started_at,
+                case_started_at=case_started_at,
+                replay_source=replay_source,
+            )
+        except Exception:
+            _close_replay_source(replay_source)
+            raise
         if recorders:
             self._start_session_runner(
                 session=session,
@@ -289,6 +306,8 @@ class LabExecutionEngine:
                 replay_source=replay_source,
                 completion_sink=completion_sink,
             )
+        else:
+            _close_replay_source(replay_source)
         return results
 
     def start_recorder(
@@ -333,15 +352,20 @@ class LabExecutionEngine:
         else:
             case_started_at = time.time()
             replay_source = self._open_replay_source(session)
-        results = self._send_session_frame(
-            session=session,
-            beds_by_id=beds_by_id,
-            recorders=(recorder,),
-            sequence=1,
-            frame_started_at=time.time(),
-            case_started_at=case_started_at,
-            replay_source=replay_source,
-        )
+        try:
+            results = self._send_session_frame(
+                session=session,
+                beds_by_id=beds_by_id,
+                recorders=(recorder,),
+                sequence=1,
+                frame_started_at=time.time(),
+                case_started_at=case_started_at,
+                replay_source=replay_source,
+            )
+        except Exception:
+            if running is None:
+                _close_replay_source(replay_source)
+            raise
         if running is None:
             self._start_session_runner(
                 session=session,
@@ -358,9 +382,7 @@ class LabExecutionEngine:
             result_sink(results)
         return results[0]
 
-    def stop_recorder(
-        self, session_id: str, recorder_id: str
-    ) -> None:
+    def stop_recorder(self, session_id: str, recorder_id: str) -> None:
         with self._running_sessions_lock:
             running = self._running_sessions.get(session_id)
         if running is None:
@@ -391,6 +413,7 @@ class LabExecutionEngine:
                 target_url=running.target_url,
                 vrcode=vrcode,
             )
+        _close_replay_source(running.replay_source)
         return
 
     def finish_session(
@@ -478,9 +501,7 @@ class LabExecutionEngine:
                     replay_source=replay_source,
                     sequence=sequence,
                 ):
-                    completed_vrcodes = tuple(
-                        recorder.vrcode for recorder in recorders
-                    )
+                    completed_vrcodes = tuple(recorder.vrcode for recorder in recorders)
                     for vrcode in completed_vrcodes:
                         self.sender.close_recorder(
                             target_url=target_url,
@@ -496,15 +517,18 @@ class LabExecutionEngine:
                             "[vitalserver-lab] recorder archive finalization failed:",
                             str(error),
                         )
-                    if completion_sink is not None:
-                        completion_sink(session.session_id)
-                    with self._running_sessions_lock:
-                        current = self._running_sessions.get(session.session_id)
-                        if (
-                            current is not None
-                            and current.thread is threading.current_thread()
-                        ):
-                            self._running_sessions.pop(session.session_id, None)
+                    try:
+                        if completion_sink is not None:
+                            completion_sink(session.session_id)
+                    finally:
+                        _close_replay_source(replay_source)
+                        with self._running_sessions_lock:
+                            current = self._running_sessions.get(session.session_id)
+                            if (
+                                current is not None
+                                and current.thread is threading.current_thread()
+                            ):
+                                self._running_sessions.pop(session.session_id, None)
                     return
                 with active_recorder_ids_lock:
                     active_recorders = tuple(
@@ -554,6 +578,9 @@ class LabExecutionEngine:
             )
         if previous is not None:
             previous.stop_event.set()
+            if threading.current_thread() is not previous.thread:
+                previous.thread.join(timeout=2)
+            _close_replay_source(previous.replay_source)
         thread.start()
 
     def _replay_is_complete(
@@ -647,9 +674,7 @@ class LabExecutionEngine:
             )
         return tuple(results)
 
-    def _open_replay_source(
-        self, session: LabSession
-    ) -> LabVitalReplaySource | None:
+    def _open_replay_source(self, session: LabSession) -> LabVitalReplaySource | None:
         if session.scenario_id != "vital-file-replay":
             return None
         if session.vital_file_path is None:
@@ -657,7 +682,17 @@ class LabExecutionEngine:
         try:
             return self.vital_replay_source_factory.open(Path(session.vital_file_path))
         except VitalReplaySourceError as error:
-            raise LabRecorderSendError(str(error)) from error
+            raise LabSessionStartError(
+                str(error),
+                stage=error.stage,
+                code=error.code,
+            ) from error
+
+
+def _close_replay_source(source: LabVitalReplaySource | None) -> None:
+    if source is not None:
+        source.close()
+
 
 def lab_recorder_payload(
     *,

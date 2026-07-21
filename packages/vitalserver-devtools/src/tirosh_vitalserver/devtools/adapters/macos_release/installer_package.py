@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import plistlib
-import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +19,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     copy_tree,
     install_file,
     remove_apple_double_files,
+    remove_staging_tree,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_templates import (
     plist_text,
@@ -47,8 +47,6 @@ RESET_TROUBLESHOOTING_CLI_NAME = "vitalserver-troubleshooting-reset-for-reinstal
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
 UPSTREAM_REDIS_SAVE_CLI_NAME = "vitalserver-troubleshooting-upstream-redis-save"
 UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
-
-
 @dataclass(frozen=True)
 class DmgAttachment:
     mount_point: Path
@@ -90,7 +88,7 @@ def build_pkg(context: PackageContext) -> None:
 def build_dmg(context: PackageContext) -> None:
     staging = context.settings.dmg_staging_dir
     if staging.exists():
-        shutil.rmtree(staging)
+        remove_staging_tree(staging)
     staging.mkdir(parents=True)
     stage_troubleshooting_tools(
         settings=context.settings,
@@ -359,7 +357,7 @@ def stage_troubleshooting_tools(
     tools_dir: Path,
 ) -> None:
     if tools_dir.exists():
-        shutil.rmtree(tools_dir)
+        remove_staging_tree(tools_dir)
     tools_dir.mkdir(parents=True, exist_ok=True)
     stage_reset_installer_command(
         settings=settings,
@@ -397,9 +395,9 @@ def stage_pkg_root(context: PackageContext) -> None:
         )
 
     if context.pkg_root.exists():
-        shutil.rmtree(context.pkg_root)
+        remove_staging_tree(context.pkg_root)
     if context.pkg_scripts.exists():
-        shutil.rmtree(context.pkg_scripts)
+        remove_staging_tree(context.pkg_scripts)
 
     mkdirs = [
         package_path(context, package_install_value(context, "applications_dir")),

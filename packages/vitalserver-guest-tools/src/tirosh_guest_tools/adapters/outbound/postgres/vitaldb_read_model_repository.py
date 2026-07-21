@@ -12,7 +12,9 @@ from tirosh_guest_tools.adapters.outbound.postgres.mappings import domain_docume
 from tirosh_guest_tools.adapters.outbound.postgres.records import (
     VitalDBObservationRecord,
     VitalDBRecordBase,
+    VitalDBRecorderActivityBucketRecord,
     VitalDBRelationshipRecord,
+    VitalDBSchemaMigrationRecord,
     VitalDBVisibilityRecord,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
@@ -28,6 +30,8 @@ RELATIONSHIP_HISTORY_STATES = {"loaded", "partiallyLoaded", "readFailed"}
 VISIBLE = "visible"
 HIDDEN = "hidden"
 DELETED = "deleted"
+ACTIVITY_BUCKET_PROJECTION_MIGRATION = "20260720_activity_bucket_projection_v1"
+ACTIVITY_BUCKET_MIGRATION_BATCH_SIZE = 256
 
 
 class PostgresVitalDBReadModelRepository:
@@ -46,6 +50,7 @@ class PostgresVitalDBReadModelRepository:
     def ensure_schema(self) -> None:
         try:
             VitalDBRecordBase.metadata.create_all(self._engine)
+            self._migrate_activity_bucket_projection()
         except SQLAlchemyError as error:
             raise _database_error(error, stage="schema migration") from error
 
@@ -83,35 +88,21 @@ class PostgresVitalDBReadModelRepository:
                 "buckets": [],
                 "readError": None,
             }
-        buckets_by_identity: dict[tuple[str, int], dict[str, Any]] = {}
-        for observation in self._observation_documents():
-            activity_buckets = observation.get("activityBuckets")
-            if not isinstance(activity_buckets, list):
-                raise VitalDBReadModelDependencyError(
-                    "VitalDB recorder activity read model field is invalid.",
-                    kind="vitaldb-read-model-invalid",
+        try:
+            with Session(self._engine) as session:
+                records = list(
+                    session.scalars(
+                        select(VitalDBRecorderActivityBucketRecord)
+                        .where(VitalDBRecorderActivityBucketRecord.vrcode == vrcode)
+                        .order_by(
+                            VitalDBRecorderActivityBucketRecord.bucket_started_at,
+                            VitalDBRecorderActivityBucketRecord.bucket_seconds,
+                        )
+                    )
                 )
-            for bucket in activity_buckets:
-                if not isinstance(bucket, dict):
-                    raise VitalDBReadModelDependencyError(
-                        "VitalDB recorder activity bucket item is invalid.",
-                        kind="vitaldb-read-model-invalid",
-                    )
-                bucket_vrcode = bucket.get("vrcode")
-                if not isinstance(bucket_vrcode, str):
-                    raise VitalDBReadModelDependencyError(
-                        "VitalDB recorder activity bucket vrcode field is invalid.",
-                        kind="vitaldb-read-model-invalid",
-                    )
-                if bucket_vrcode == vrcode:
-                    validated = _validated_activity_bucket(bucket, vrcode=vrcode)
-                    buckets_by_identity[
-                        (validated["bucketStartedAt"], validated["bucketSeconds"])
-                    ] = validated
-        buckets = sorted(
-            buckets_by_identity.values(),
-            key=lambda bucket: (bucket["bucketStartedAt"], bucket["bucketSeconds"]),
-        )
+        except SQLAlchemyError as error:
+            raise _database_error(error, stage="recorder activity read") from error
+        buckets = [_activity_bucket_document(record) for record in records]
         return {
             "state": "loaded",
             "vrcode": vrcode,
@@ -431,6 +422,7 @@ class PostgresVitalDBReadModelRepository:
         *,
         observed_at: datetime,
     ) -> None:
+        activity_buckets = _validated_activity_buckets(observation)
         try:
             with Session(self._engine) as session, session.begin():
                 session.add(
@@ -438,8 +430,125 @@ class PostgresVitalDBReadModelRepository:
                         document=observation, observed_at=observed_at
                     )
                 )
+                self._project_activity_buckets(session, activity_buckets)
         except SQLAlchemyError as error:
             raise _database_error(error, stage="latest observation save") from error
+
+    def _migrate_activity_bucket_projection(self) -> None:
+        try:
+            with Session(self._engine) as session:
+                if (
+                    session.get(
+                        VitalDBSchemaMigrationRecord,
+                        ACTIVITY_BUCKET_PROJECTION_MIGRATION,
+                    )
+                    is not None
+                ):
+                    return
+
+            last_snapshot_id = 0
+            batch_number = 0
+            total_rows = 0
+            while True:
+                with Session(self._engine) as session, session.begin():
+                    observations = list(
+                        session.execute(
+                            select(
+                                VitalDBObservationRecord.snapshot_id,
+                                VitalDBObservationRecord.document,
+                            )
+                            .where(
+                                VitalDBObservationRecord.snapshot_id > last_snapshot_id
+                            )
+                            .order_by(VitalDBObservationRecord.snapshot_id)
+                            .limit(ACTIVITY_BUCKET_MIGRATION_BATCH_SIZE)
+                        )
+                    )
+                    if not observations:
+                        break
+                    projected_buckets: dict[tuple[str, str, int], dict[str, Any]] = {}
+                    for snapshot_id, raw_document in observations:
+                        document = domain_document(
+                            raw_document,
+                            label="activity bucket projection migration",
+                        )
+                        for bucket in _validated_activity_buckets(document):
+                            _merge_activity_bucket(projected_buckets, bucket)
+                        last_snapshot_id = snapshot_id
+                    self._project_activity_buckets(
+                        session,
+                        list(projected_buckets.values()),
+                    )
+                    batch_number += 1
+                    total_rows += len(observations)
+                    print(
+                        "activity bucket projection migration batch completed "
+                        f"batch={batch_number} rows={len(observations)} "
+                        f"totalRows={total_rows} lastSnapshotID={last_snapshot_id}",
+                        flush=True,
+                    )
+
+            with Session(self._engine) as session, session.begin():
+                if (
+                    session.get(
+                        VitalDBSchemaMigrationRecord,
+                        ACTIVITY_BUCKET_PROJECTION_MIGRATION,
+                    )
+                    is not None
+                ):
+                    return
+                session.add(
+                    VitalDBSchemaMigrationRecord(
+                        migration_id=ACTIVITY_BUCKET_PROJECTION_MIGRATION,
+                        applied_at=datetime.now(UTC),
+                    )
+                )
+            print(
+                "activity bucket projection migration completed "
+                f"batches={batch_number} totalRows={total_rows}",
+                flush=True,
+            )
+        except SQLAlchemyError as error:
+            raise _database_error(
+                error,
+                stage="activity bucket projection migration",
+            ) from error
+
+    def _project_activity_buckets(
+        self,
+        session: Session,
+        buckets: list[dict[str, Any]],
+    ) -> None:
+        for bucket in buckets:
+            identity = {
+                "vrcode": bucket["vrcode"],
+                "bucket_started_at": bucket["bucketStartedAt"],
+                "bucket_seconds": bucket["bucketSeconds"],
+            }
+            record = session.get(VitalDBRecorderActivityBucketRecord, identity)
+            if record is None:
+                session.add(
+                    VitalDBRecorderActivityBucketRecord(
+                        **identity,
+                        message_count=bucket["messageCount"],
+                        byte_count=bucket["byteCount"],
+                        room_count=bucket["roomCount"],
+                        first_observed_at=bucket["firstObservedAt"],
+                        last_observed_at=bucket["lastObservedAt"],
+                    )
+                )
+                continue
+            record.message_count = max(record.message_count, bucket["messageCount"])
+            record.byte_count = max(record.byte_count, bucket["byteCount"])
+            record.room_count = max(record.room_count, bucket["roomCount"])
+            record.first_observed_at = min(
+                record.first_observed_at,
+                bucket["firstObservedAt"],
+            )
+            record.last_observed_at = max(
+                record.last_observed_at,
+                bucket["lastObservedAt"],
+            )
 
     def save_relationship_history(
         self,
@@ -509,6 +618,73 @@ def _validated_activity_bucket(
         "roomCount": bucket["roomCount"],
         "firstObservedAt": bucket["firstObservedAt"],
         "lastObservedAt": bucket["lastObservedAt"],
+    }
+
+
+def _validated_activity_buckets(
+    observation: dict[str, Any],
+) -> list[dict[str, Any]]:
+    activity_buckets = observation.get("activityBuckets")
+    if not isinstance(activity_buckets, list):
+        raise VitalDBReadModelDependencyError(
+            "VitalDB recorder activity read model field is invalid.",
+            kind="vitaldb-read-model-invalid",
+        )
+    validated: list[dict[str, Any]] = []
+    for bucket in activity_buckets:
+        if not isinstance(bucket, dict):
+            raise VitalDBReadModelDependencyError(
+                "VitalDB recorder activity bucket item is invalid.",
+                kind="vitaldb-read-model-invalid",
+            )
+        vrcode = bucket.get("vrcode")
+        if not isinstance(vrcode, str):
+            raise VitalDBReadModelDependencyError(
+                "VitalDB recorder activity bucket vrcode field is invalid.",
+                kind="vitaldb-read-model-invalid",
+            )
+        validated.append(_validated_activity_bucket(bucket, vrcode=vrcode))
+    return validated
+
+
+def _merge_activity_bucket(
+    projected: dict[tuple[str, str, int], dict[str, Any]],
+    bucket: dict[str, Any],
+) -> None:
+    identity = (
+        bucket["vrcode"],
+        bucket["bucketStartedAt"],
+        bucket["bucketSeconds"],
+    )
+    current = projected.get(identity)
+    if current is None:
+        projected[identity] = dict(bucket)
+        return
+    current["messageCount"] = max(current["messageCount"], bucket["messageCount"])
+    current["byteCount"] = max(current["byteCount"], bucket["byteCount"])
+    current["roomCount"] = max(current["roomCount"], bucket["roomCount"])
+    current["firstObservedAt"] = min(
+        current["firstObservedAt"],
+        bucket["firstObservedAt"],
+    )
+    current["lastObservedAt"] = max(
+        current["lastObservedAt"],
+        bucket["lastObservedAt"],
+    )
+
+
+def _activity_bucket_document(
+    record: VitalDBRecorderActivityBucketRecord,
+) -> dict[str, Any]:
+    return {
+        "vrcode": record.vrcode,
+        "bucketStartedAt": record.bucket_started_at,
+        "bucketSeconds": record.bucket_seconds,
+        "messageCount": record.message_count,
+        "byteCount": record.byte_count,
+        "roomCount": record.room_count,
+        "firstObservedAt": record.first_observed_at,
+        "lastObservedAt": record.last_observed_at,
     }
 
 

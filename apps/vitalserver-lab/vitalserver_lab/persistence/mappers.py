@@ -6,6 +6,7 @@ from ..model import (
     LabBed,
     LabRecorder,
     LabSession,
+    LabSessionFailure,
     LabSessionStoreUnavailable,
     LabVitalFileReplayPolicy,
 )
@@ -57,6 +58,7 @@ def session_domain(record: LabSessionRecord) -> LabSession:
         archive_finalization_request_ids=_optional_strings(
             d, "archiveFinalizationRequestIds"
         ),
+        failure=_optional_failure(d, "failure"),
     )
 
 
@@ -154,6 +156,24 @@ def _optional_replay_policy(
         return LabVitalFileReplayPolicy(mode=mode, count=count)
     except ValueError as error:
         raise _invalid(str(error)) from error
+
+
+def _optional_failure(
+    document: dict[str, object], field: str
+) -> LabSessionFailure | None:
+    value = document.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise _invalid(f"Lab document field is invalid: {field}")
+    failed_at = _string(value, "failedAt")
+    _timestamp(failed_at)
+    return LabSessionFailure(
+        stage=_string(value, "stage"),
+        code=_string(value, "code"),
+        message=_string(value, "message"),
+        failed_at=failed_at,
+    )
 
 
 def _timestamp(value: str) -> datetime:

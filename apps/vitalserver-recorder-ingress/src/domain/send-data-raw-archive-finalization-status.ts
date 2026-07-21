@@ -9,7 +9,8 @@ export type SendDataRawArchiveFinalizationProgressState =
   | "queued"
   | "processing"
   | "retrying"
-  | "uploaded"
+  | "exported"
+  | "published"
   | "failed"
   | "partial"
   | "missing";
@@ -71,7 +72,7 @@ function projectRequest(
   if (pending) return queuedProgress(pending);
 
   // Earlier persisted state documents used checkpoint.jobId as the externally
-  // returned identifier. Preserve that explicit legacy identifier as uploaded;
+  // returned identifier. Preserve that explicit legacy identifier as published;
   // future checkpoints also store requestId.
   const checkpoint = Object.values(document.checkpointsByVrcode).find(
     (candidate) =>
@@ -137,7 +138,7 @@ function checkpointProgress(
   return {
     requestId,
     vrcode: checkpoint.vrcode,
-    state: "uploaded",
+    state: checkpoint.publishState === "published" ? "published" : "exported",
     attempts: 1,
     maxAttempts: null,
     requestedAt: checkpoint.completedAt,
@@ -152,10 +153,12 @@ function checkpointProgress(
 function stateForJob(
   job: SendDataRawArchiveExportJob,
 ): Exclude<SendDataRawArchiveFinalizationProgressState, "partial" | "missing"> {
-  if (job.state === "uploaded") return "uploaded";
-  if (job.state === "failed") return "failed";
-  if (job.state === "retryable_failed") return "retrying";
-  return job.state === "pending" ? "queued" : "processing";
+  if (job.state === "exported") {
+    return job.publishState === "published" ? "published" : "exported";
+  }
+  if (job.state === "export_failed") return "failed";
+  if (job.state === "export_retryable_failed") return "retrying";
+  return job.state === "export_pending" ? "queued" : "processing";
 }
 
 function aggregateState(
@@ -165,10 +168,11 @@ function aggregateState(
     return "missing";
   }
   const states = new Set(requests.map((request) => request.state));
-  const completed = states.has("uploaded");
+  const completed = states.has("published") || states.has("exported");
   const terminalProblem = states.has("failed") || states.has("missing");
   if (completed && terminalProblem) return "partial";
-  if (completed && states.size === 1) return "uploaded";
+  if (states.has("published") && states.size === 1) return "published";
+  if (states.has("exported") && states.size === 1) return "exported";
   if (states.has("failed")) return "failed";
   if (states.has("missing")) return "missing";
   if (states.has("processing")) return "processing";

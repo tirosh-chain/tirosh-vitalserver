@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, BinaryIO, Protocol
 
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceResource,
@@ -121,12 +121,31 @@ class ProductLabPort(Protocol):
         raise NotImplementedError
 
 
+class VitalFileUploadSource(Protocol):
+    @property
+    def file_name(self) -> str:
+        """Return the untrusted client-supplied basename."""
+        raise NotImplementedError
+
+    @property
+    def size_bytes(self) -> int:
+        """Return the explicit compressed source size."""
+        raise NotImplementedError
+
+    def open(self) -> BinaryIO:
+        """Open a new binary stream owned by the caller."""
+        raise NotImplementedError
+
+
 class VitalFileLibraryPort(Protocol):
     def list_files(self) -> list[dict[str, object]]:
         """Read the authoritative VitalServer indexed file collection."""
         raise NotImplementedError
 
-    def import_files(self, files: list[tuple[str, bytes]]) -> VitalFileUploadResult:
+    def import_sources(
+        self,
+        sources: list[VitalFileUploadSource],
+    ) -> VitalFileUploadResult:
         """Upload every independently valid file and report per-file outcomes."""
         raise NotImplementedError
 

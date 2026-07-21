@@ -6,33 +6,21 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from tirosh_vitalserver.core.domain.vital_file import (
+    VitalTrack,
+    VitalTrackKind,
+    VitalTrackRecord,
+)
+from tirosh_vitalserver.core.domain.vital_file.session_recording import (
+    recorder_track_kind,
+    recorder_track_sample_rate,
+)
 from tirosh_vitalserver.testkit.domain.recorder.montypes import RecorderTrackMontype
 from tirosh_vitalserver.testkit.domain.recorder.simulator.frames import (
     generate_simulated_recorder_payload,
 )
 from tirosh_vitalserver.testkit.domain.signal import SignalProfile
 from tirosh_vitalserver.testkit.types.json import JsonObject, JsonValue
-
-
-@dataclass(frozen=True)
-class VitalTrackRecord:
-    """One explicit record for a `.vital` track."""
-
-    dt: float
-    value: JsonValue
-
-
-@dataclass(frozen=True)
-class VitalTrack:
-    """A `.vital` track assembled from sent recorder frames."""
-
-    dtname: str
-    records: tuple[VitalTrackRecord, ...]
-    srate: float
-    unit: str
-    mindisp: float
-    maxdisp: float
-    montype: int
 
 
 @dataclass(frozen=True)
@@ -83,7 +71,10 @@ def vital_tracks_from_recorder_playback(
     """Return `.vital` tracks regenerated from an explicit play window."""
 
     track_records: dict[str, list[VitalTrackRecord]] = {}
-    track_configs: dict[str, tuple[float, str, float, float, int]] = {}
+    track_configs: dict[
+        str,
+        tuple[VitalTrackKind, float, str, float, float, int],
+    ] = {}
 
     for _vrcode, payload, messages_sent in playback:
         for sequence in range(messages_sent):
@@ -105,12 +96,13 @@ def vital_tracks_from_recorder_playback(
     return tuple(
         VitalTrack(
             dtname=dtname,
+            kind=track_configs[dtname][0],
             records=tuple(sorted(records, key=lambda record: record.dt)),
-            srate=track_configs[dtname][0],
-            unit=track_configs[dtname][1],
-            mindisp=track_configs[dtname][2],
-            maxdisp=track_configs[dtname][3],
-            montype=track_configs[dtname][4],
+            srate=track_configs[dtname][1],
+            unit=track_configs[dtname][2],
+            mindisp=track_configs[dtname][3],
+            maxdisp=track_configs[dtname][4],
+            montype=track_configs[dtname][5],
         )
         for dtname, records in sorted(track_records.items())
         if records
@@ -201,7 +193,10 @@ def collect_frame_tracks(
     payload: Mapping[str, JsonValue],
     *,
     track_records: dict[str, list[VitalTrackRecord]],
-    track_configs: dict[str, tuple[float, str, float, float, int]],
+    track_configs: dict[
+        str,
+        tuple[VitalTrackKind, float, str, float, float, int],
+    ],
 ) -> None:
     """Collect exportable track records from one recorder frame."""
 
@@ -219,14 +214,19 @@ def collect_frame_tracks(
                 continue
 
             dtname = vital_track_name(room_name, track)
-            srate = positive_float(track.get("srate"))
+            kind = recorder_track_kind(track.get("type"), dtname=dtname)
+            srate = recorder_track_sample_rate(
+                kind,
+                track.get("srate"),
+                dtname=dtname,
+            )
             unit = string_value(track.get("unit"))
             mindisp = float_value(track.get("mindisp"))
             maxdisp = float_value(track.get("maxdisp"))
             montype = vital_monitor_type_id(track.get("montype"))
             track_configs.setdefault(
                 dtname,
-                (srate, unit, mindisp, maxdisp, montype),
+                (kind, srate, unit, mindisp, maxdisp, montype),
             )
             records = track.get("recs")
             if not isinstance(records, list):
@@ -249,6 +249,7 @@ def metadata_track(metadata: VitalSessionMetadata) -> VitalTrack:
     dt = metadata.started_at or metadata.stopped_at or 0.0
     return VitalTrack(
         dtname="TestKit/METADATA",
+        kind=VitalTrackKind.STRING,
         records=(VitalTrackRecord(dt=dt, value=metadata.as_json()),),
         srate=0.0,
         unit="",

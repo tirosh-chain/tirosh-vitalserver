@@ -410,6 +410,52 @@ def test_apt_snapshot_probe_preserves_unavailable_after_retries(
     assert "attempt=2" in check.detail
 
 
+def test_apt_snapshot_probe_default_tolerates_short_cdn_error_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    delays: list[int] = []
+
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def getcode(self) -> int:
+            return 200
+
+        def read(self, size: int) -> bytes:
+            assert size == 1
+            return b"x"
+
+    def urlopen(_: object, *, timeout: int) -> Response:
+        nonlocal calls
+        assert timeout == runtime_lifecycle.APT_SNAPSHOT_PROBE_TIMEOUT_SECONDS
+        calls += 1
+        if calls < runtime_lifecycle.APT_SNAPSHOT_PROBE_ATTEMPTS:
+            raise runtime_lifecycle.urllib.error.HTTPError(
+                "https://snapshot.example/InRelease",
+                503,
+                "Service Unavailable",
+                {},
+                None,
+            )
+        return Response()
+
+    monkeypatch.setattr(runtime_lifecycle.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(runtime_lifecycle.time, "sleep", delays.append)
+
+    check = runtime_lifecycle.probe_apt_snapshot_url(
+        "https://snapshot.example/InRelease"
+    )
+
+    assert check.status == runtime_lifecycle.PreflightStatus.PASSED
+    assert calls == 4
+    assert delays == [3, 3, 3]
+
+
 def test_golden_rootfs_preflight_rejects_invalid_rootfs_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

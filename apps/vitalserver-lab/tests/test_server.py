@@ -39,7 +39,10 @@ from vitalserver_lab.settings import (
     LabSettingsConfigurationError,
     load_settings,
 )
-from vitalserver_lab.vital_replay import LabVitalReplayFrame
+from vitalserver_lab.vital_replay import (
+    LabVitalReplayFrame,
+    VitalReplaySourceError,
+)
 
 
 def test_health_and_ready_are_explicit() -> None:
@@ -857,9 +860,7 @@ def test_session_finish_requests_durable_archive_finalization() -> None:
             },
         )
         request(address, "POST", "/lab/sessions/lab_session_1/start")
-        vrcodes = tuple(
-            recorder.vrcode for recorder in address.store.list_recorders()
-        )
+        vrcodes = tuple(recorder.vrcode for recorder in address.store.list_recorders())
 
         finished = request(address, "POST", "/lab/sessions/lab_session_1/finish")
 
@@ -891,14 +892,14 @@ def test_finished_session_reads_ingress_owned_archive_finalization_progress() ->
         )
         request(address, "POST", "/lab/sessions/lab_session_1/start")
         request(address, "POST", "/lab/sessions/lab_session_1/finish")
-        finalizer.progress_state = "uploaded"
+        finalizer.progress_state = "exported"
 
         session = request(address, "GET", "/lab/sessions/lab_session_1")
         sessions = request(address, "GET", "/lab/sessions")
 
     assert session["status"] == 200
-    assert session["body"]["session"]["archiveFinalization"]["state"] == "uploaded"
-    assert sessions["body"]["sessions"][0]["archiveFinalization"]["state"] == "uploaded"
+    assert session["body"]["session"]["archiveFinalization"]["state"] == "exported"
+    assert sessions["body"]["sessions"][0]["archiveFinalization"]["state"] == "exported"
     persisted = address.store.get("lab_session_1")
     assert persisted is not None
     assert persisted.archive_finalization_request_ids == ("finalization-1",)
@@ -979,7 +980,9 @@ def test_accepted_session_cannot_finish_or_request_archive_finalization() -> Non
     assert finalizer.calls == []
 
 
-def test_session_finish_preserves_finished_state_when_finalization_request_fails() -> None:
+def test_session_finish_preserves_finished_state_when_finalization_request_fails() -> (
+    None
+):
     with running_server(
         ["lab_session_1"],
         archive_finalizer=FailingArchiveFinalizer(),
@@ -1121,12 +1124,12 @@ def test_replay_vital_file_start_uses_replay_payload_without_exposing_path(
             address,
             "POST",
             "/lab/vital-files/replay",
-                {
-                    "vitalFileRelativePath": "private/sample.vital",
-                    "targetURL": "http://edge/",
-                    "resourceSelection": {"mode": "quickCreate"},
-                    "repeatPolicy": {"mode": "continuous"},
-                },
+            {
+                "vitalFileRelativePath": "private/sample.vital",
+                "targetURL": "http://edge/",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "continuous"},
+            },
         )
         started = request(address, "POST", "/lab/sessions/lab_replay_1/start")
         time.sleep(0.03)
@@ -1145,6 +1148,98 @@ def test_replay_vital_file_start_uses_replay_payload_without_exposing_path(
     recorder = recorders["body"]["recorders"][0]
     assert recorder["lastSendState"] == "sent"
     assert recorder["messagesSent"] > 1
+
+
+def test_replay_session_shutdown_closes_operation_owned_source(tmp_path: Path) -> None:
+    source_factory = FakeVitalReplaySourceFactory()
+    vital_file = tmp_path / "sample.vital"
+    vital_file.write_bytes(b"vital")
+
+    with running_server(
+        ["lab_replay_1"],
+        sender=FakeSender(),
+        vital_files_mount=tmp_path,
+        frame_interval_seconds=0.01,
+        replay_source_factory=source_factory,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/vital-files/replay",
+            {
+                "vitalFileRelativePath": "sample.vital",
+                "targetURL": "http://edge/",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "continuous"},
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_replay_1/start")
+        assert source_factory.sources[0].closed is False
+
+    assert source_factory.sources[0].closed is True
+
+
+def test_replay_file_validation_failure_is_persisted_and_cleared_on_retry(
+    tmp_path: Path,
+) -> None:
+    source_factory = FailingThenSuccessfulVitalReplaySourceFactory()
+    vital_file = tmp_path / "sample.vital"
+    vital_file.write_bytes(b"vital")
+
+    with running_server(
+        ["lab_replay_1"],
+        vital_files_mount=tmp_path,
+        replay_source_factory=source_factory,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/vital-files/replay",
+            {
+                "vitalFileRelativePath": "sample.vital",
+                "targetURL": "http://edge/",
+                "resourceSelection": {"mode": "quickCreate"},
+                "repeatPolicy": {"mode": "once"},
+            },
+        )
+
+        failed = request(address, "POST", "/lab/sessions/lab_replay_1/start")
+        loaded_after_failure = request(
+            address,
+            "GET",
+            "/lab/sessions/lab_replay_1",
+        )
+        listed_after_failure = request(address, "GET", "/lab/sessions")
+        recorder_after_failure = request(address, "GET", "/lab/recorders")["body"][
+            "recorders"
+        ][0]
+        restarted = request(address, "POST", "/lab/sessions/lab_replay_1/start")
+        loaded_after_restart = request(
+            address,
+            "GET",
+            "/lab/sessions/lab_replay_1",
+        )
+
+    assert failed["status"] == 422
+    assert failed["body"]["state"] == "failed"
+    assert failed["body"]["session"]["state"] == "failed"
+    failure = failed["body"]["session"]["failure"]
+    assert failure["stage"] == "fileValidation"
+    assert failure["code"] == "invalidWaveformSampleRate"
+    assert failure["message"] == (
+        "Vital File waveform track has an invalid sample rate: Source/PLETH"
+    )
+    assert failure["failedAt"]
+    assert loaded_after_failure["body"]["session"]["failure"] == failure
+    assert listed_after_failure["body"]["sessions"][0]["failure"] == failure
+    assert recorder_after_failure["state"] == "failed"
+    assert recorder_after_failure["messagesSent"] == 0
+    assert recorder_after_failure["lastSendState"] == "notAttempted"
+    assert recorder_after_failure["lastSendError"] is None
+    assert restarted["status"] == 202
+    assert restarted["body"]["session"]["state"] == "running"
+    assert "failure" not in restarted["body"]["session"]
+    assert "failure" not in loaded_after_restart["body"]["session"]
 
 
 def test_replay_vital_file_rejects_unavailable_or_unmounted_source(
@@ -1213,8 +1308,7 @@ def test_replay_vital_file_rejects_unavailable_or_unmounted_source(
     assert relative["body"]["error"] == "vitalFileRelativePath_absolute"
     assert invalid_extension["status"] == 400
     assert (
-        invalid_extension["body"]["error"]
-        == "vitalFileRelativePath_invalid_extension"
+        invalid_extension["body"]["error"] == "vitalFileRelativePath_invalid_extension"
     )
     assert outside_mount["status"] == 400
     assert outside_mount["body"]["error"] == "vitalFileRelativePath_outside_library"
@@ -1434,13 +1528,37 @@ class FakeSocketIOClient:
 
 
 class FakeVitalReplaySourceFactory:
+    def __init__(self) -> None:
+        self.sources: list[FakeVitalReplaySource] = []
+
     def open(self, path: Path) -> FakeVitalReplaySource:
         assert path.name == "sample.vital"
+        source = FakeVitalReplaySource()
+        self.sources.append(source)
+        return source
+
+
+class FailingThenSuccessfulVitalReplaySourceFactory:
+    def __init__(self) -> None:
+        self.open_count = 0
+
+    def open(self, path: Path) -> FakeVitalReplaySource:
+        assert path.name == "sample.vital"
+        self.open_count += 1
+        if self.open_count == 1:
+            raise VitalReplaySourceError(
+                "Vital File waveform track has an invalid sample rate: Source/PLETH",
+                stage="fileValidation",
+                code="invalidWaveformSampleRate",
+            )
         return FakeVitalReplaySource()
 
 
 class FakeVitalReplaySource:
     duration_seconds = 2
+
+    def __init__(self) -> None:
+        self.closed = False
 
     def frame(self, *, offset_seconds: int, output_time: float) -> LabVitalReplayFrame:
         return LabVitalReplayFrame(
@@ -1460,6 +1578,9 @@ class FakeVitalReplaySource:
                 },
             ),
         )
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class UnavailableStore:

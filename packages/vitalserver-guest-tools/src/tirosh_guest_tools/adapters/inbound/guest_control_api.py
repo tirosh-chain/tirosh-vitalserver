@@ -3,17 +3,23 @@ from __future__ import annotations
 import json
 import os
 import stat
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from email import policy
 from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from socketserver import ThreadingMixIn, UnixStreamServer
 from threading import Thread
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from tirosh_guest_tools.adapters.inbound.vital_file_multipart import (
+    VitalFileMultipartError,
+    staged_vital_file_uploads,
+)
 from tirosh_guest_tools.adapters.outbound.compose import ComposeGuestControlAdapter
 from tirosh_guest_tools.adapters.outbound.maintenance import (
     DatastoreRepairMaintenanceAdapter,
@@ -42,6 +48,7 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control import SQLiteControlRep
 from tirosh_guest_tools.adapters.outbound.vital_files import (
     VitalServerVitalFileLibrary,
 )
+from tirosh_guest_tools.application.guest_control.ports import VitalFileUploadSource
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
     UUIDOperationIdFactory,
@@ -102,6 +109,20 @@ RUNTIME_V2_READ_CORE_ROUTES = (
 RUNTIME_EVENT_QUERY_ERROR_KINDS = frozenset(
     {"runtimeEventCursorInvalid", "runtimeEventQueryInvalid"}
 )
+VITAL_FILE_UPLOAD_PATH = "/runtime/lab/vital-files/upload"
+
+
+@dataclass(frozen=True)
+class BufferedVitalFileUploadSource:
+    file_name: str
+    content: bytes
+
+    @property
+    def size_bytes(self) -> int:
+        return len(self.content)
+
+    def open(self) -> BytesIO:
+        return BytesIO(self.content)
 
 
 class GuestControlAPIError(Exception):
@@ -156,6 +177,7 @@ def make_handler(
     usecases: GuestControlUseCases,
     *,
     allowed_routes: frozenset[tuple[str, str]] | None = None,
+    upload_staging_root: Path | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     class GuestControlAPIHandler(BaseHTTPRequestHandler):
         server_version = "TiroshGuestControlAPI/0.1"
@@ -185,14 +207,52 @@ def make_handler(
                         detail="The status owner transport does not serve this route.",
                         code="statusOwnerRouteNotFound",
                     )
-                status, document = route_request(
-                    method=method,
-                    path=parsed.path,
-                    query=parse_qs(parsed.query, keep_blank_values=True),
-                    body=self._request_body(),
-                    headers={key.lower(): value for key, value in self.headers.items()},
-                    usecases=usecases,
-                )
+                headers = {key.lower(): value for key, value in self.headers.items()}
+                route_arguments: dict[str, Any] = {
+                    "method": method,
+                    "path": parsed.path,
+                    "query": parse_qs(parsed.query, keep_blank_values=True),
+                    "headers": headers,
+                    "usecases": usecases,
+                }
+                if method == "POST" and parsed.path == VITAL_FILE_UPLOAD_PATH:
+                    content_length = _required_upload_content_length(headers)
+                    content_type = headers.get("content-type")
+                    if content_type is None:
+                        raise GuestControlAPIError(
+                            HTTPStatus.BAD_REQUEST,
+                            detail=(
+                                "Vital Files upload requires a Content-Type header."
+                            ),
+                            code="vitalFileUploadInvalid",
+                        )
+                    try:
+                        with staged_vital_file_uploads(
+                            self.rfile,
+                            content_length=content_length,
+                            content_type=content_type,
+                            staging_root=upload_staging_root,
+                        ) as sources:
+                            status, document = route_request(
+                                **route_arguments,
+                                vital_file_uploads=sources,
+                            )
+                    except VitalFileMultipartError as error:
+                        status = (
+                            HTTPStatus.SERVICE_UNAVAILABLE
+                            if error.code == "vitalFileUploadStagingFailed"
+                            else HTTPStatus.BAD_REQUEST
+                        )
+                        raise GuestControlAPIError(
+                            status,
+                            detail=error.detail,
+                            code=error.code,
+                        ) from error
+                else:
+                    status, document = route_request(
+                        **route_arguments,
+                        body=self._request_body(),
+                    )
             except GuestControlAPIError as error:
                 self._write_json(
                     error.status,
@@ -302,6 +362,7 @@ def route_request(
     body: bytes = b"",
     headers: dict[str, str] | None = None,
     usecases: GuestControlUseCases,
+    vital_file_uploads: list[VitalFileUploadSource] | None = None,
 ) -> tuple[HTTPStatus, dict[str, Any]]:
     parts = [unquote(part) for part in path.split("/") if part]
     query = query or {}
@@ -530,9 +591,13 @@ def route_request(
         return HTTPStatus.ACCEPTED, usecases.replay_lab_vital_file(_json_body(body))
 
     if method == "POST" and parts == ["runtime", "lab", "vital-files", "upload"]:
-        files = _multipart_vital_files(
-            body,
-            content_type=headers.get("content-type"),
+        files = (
+            vital_file_uploads
+            if vital_file_uploads is not None
+            else _multipart_vital_files(
+                body,
+                content_type=headers.get("content-type"),
+            )
         )
         return HTTPStatus.OK, usecases.import_lab_vital_files(files)
 
@@ -685,7 +750,7 @@ def _multipart_vital_files(
     body: bytes,
     *,
     content_type: str | None,
-) -> list[tuple[str, bytes]]:
+) -> list[VitalFileUploadSource]:
     if content_type is None or not content_type.lower().startswith(
         "multipart/form-data;"
     ):
@@ -707,7 +772,7 @@ def _multipart_vital_files(
             code="vitalFileUploadInvalid",
         )
 
-    files: list[tuple[str, bytes]] = []
+    files: list[VitalFileUploadSource] = []
     for part in message.iter_parts():
         if part.get_content_disposition() != "form-data":
             raise GuestControlAPIError(
@@ -735,7 +800,12 @@ def _multipart_vital_files(
                 detail=f"Vital Files upload part could not be decoded: {filename}",
                 code="vitalFileUploadInvalid",
             )
-        files.append((filename, content))
+        files.append(
+            BufferedVitalFileUploadSource(
+                file_name=filename,
+                content=content,
+            )
+        )
     if not files:
         raise GuestControlAPIError(
             HTTPStatus.BAD_REQUEST,
@@ -743,6 +813,31 @@ def _multipart_vital_files(
             code="vitalFileUploadInvalid",
         )
     return files
+
+
+def _required_upload_content_length(headers: dict[str, str]) -> int:
+    length_text = headers.get("content-length")
+    if length_text is None:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Vital Files upload requires a Content-Length header.",
+            code="vitalFileUploadInvalid",
+        )
+    try:
+        content_length = int(length_text)
+    except ValueError as error:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Vital Files upload Content-Length must be an integer.",
+            code="vitalFileUploadInvalid",
+        ) from error
+    if content_length <= 0:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Vital Files upload Content-Length must be positive.",
+            code="vitalFileUploadInvalid",
+        )
+    return content_length
 
 
 def _json_body(body: bytes) -> dict[str, Any]:

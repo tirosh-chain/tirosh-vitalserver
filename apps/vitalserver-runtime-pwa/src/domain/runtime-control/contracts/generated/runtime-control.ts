@@ -2336,18 +2336,25 @@ export interface components {
             cursorStableForMs?: number | null;
             lastDecisionAt?: string | null;
             activeJob?: components["schemas"]["RuntimeRecorderIngressRawArchiveAutoExportJob"];
-            uploadedJobs?: number | null;
+            exportedJobs?: number | null;
             failedJobs?: number | null;
-            lastResult?: {
+            lastExportResult?: {
                 [key: string]: unknown;
             } | null;
             lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
         };
         RuntimeRecorderIngressRawArchiveAutoExportJob: {
             jobId?: string | null;
+            requestId?: string | null;
+            trigger?: string | null;
+            origin?: string | null;
+            vrcode?: string | null;
             archivePath?: string | null;
-            archiveCursor?: number | null;
+            startOffset?: number | null;
+            endOffset?: number | null;
             state?: string | null;
+            publishState?: string | null;
+            artifactIds?: string[];
             attempts?: number | null;
             maxAttempts?: number | null;
             createdAt?: string | null;

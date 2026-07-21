@@ -14,7 +14,10 @@ public struct RuntimeGuestControlHTTPResponse: Sendable {
 }
 
 public protocol RuntimeGuestControlHTTPClient: Sendable {
-    func send(_ request: URLRequest) throws -> RuntimeGuestControlHTTPResponse
+    func send(
+        _ request: URLRequest,
+        bodyFileURL: URL?
+    ) throws -> RuntimeGuestControlHTTPResponse
 }
 
 public enum RuntimeGuestControlHTTPGatewayError: Error, Equatable, CustomStringConvertible, LocalizedError {
@@ -59,9 +62,13 @@ public enum RuntimeGuestControlHTTPGatewayError: Error, Equatable, CustomStringC
 public struct URLSessionRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPClient {
     public init() {}
 
-    public func send(_ request: URLRequest) throws -> RuntimeGuestControlHTTPResponse {
+    public func send(
+        _ request: URLRequest,
+        bodyFileURL: URL?
+    ) throws -> RuntimeGuestControlHTTPResponse {
         let resultBox = RuntimeGuestControlHTTPResultBox()
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+        let completion: @Sendable (Data?, URLResponse?, Error?) -> Void = {
+            data, response, error in
             if let error {
                 resultBox.store(.failure(RuntimeGuestControlHTTPGatewayError.transportFailed(
                     url: request.url?.absoluteString ?? "unknown",
@@ -80,6 +87,19 @@ public struct URLSessionRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPCl
                 data: data ?? Data()
             )))
         }
+        let task: URLSessionTask
+        if let bodyFileURL {
+            task = URLSession.shared.uploadTask(
+                with: request,
+                fromFile: bodyFileURL,
+                completionHandler: completion
+            )
+        } else {
+            task = URLSession.shared.dataTask(
+                with: request,
+                completionHandler: completion
+            )
+        }
         task.resume()
         return try resultBox.wait()
     }
@@ -89,6 +109,166 @@ public struct URLSessionRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPCl
             return urlError.localizedDescription
         }
         return error.localizedDescription
+    }
+}
+
+private struct RuntimeGuestControlMultipartFile {
+    private static let chunkBytes = 64 * 1024
+
+    let directoryURL: URL
+    let bodyURL: URL
+    let sizeBytes: Int64
+
+    static func build(
+        sources: [RuntimeLabVitalFileUploadSource],
+        boundary: String
+    ) throws -> RuntimeGuestControlMultipartFile {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "vitalserver-runtime-upload-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        do {
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: false
+            )
+            let bodyURL = directoryURL.appendingPathComponent("multipart.body")
+            guard FileManager.default.createFile(
+                atPath: bodyURL.path,
+                contents: nil
+            ) else {
+                throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                    "multipart staging file could not be created"
+                )
+            }
+            let output = try FileHandle(forWritingTo: bodyURL)
+            do {
+                for source in sources {
+                    try validateFileName(source.fileName)
+                    try output.write(contentsOf: Data(
+                        "--\(boundary)\r\n".utf8
+                    ))
+                    try output.write(contentsOf: Data((
+                        "Content-Disposition: form-data; name=\"files\"; "
+                        + "filename=\"\(source.fileName)\"\r\n"
+                    ).utf8))
+                    try output.write(contentsOf: Data(
+                        "Content-Type: application/octet-stream\r\n\r\n".utf8
+                    ))
+                    try append(source, to: output)
+                    try output.write(contentsOf: Data("\r\n".utf8))
+                }
+                try output.write(contentsOf: Data("--\(boundary)--\r\n".utf8))
+                try output.synchronize()
+                try output.close()
+            } catch {
+                try? output.close()
+                throw error
+            }
+            let values = try bodyURL.resourceValues(forKeys: [.fileSizeKey])
+            guard let sizeBytes = values.fileSize, sizeBytes >= 0 else {
+                throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                    "multipart staging size is unavailable"
+                )
+            }
+            return RuntimeGuestControlMultipartFile(
+                directoryURL: directoryURL,
+                bodyURL: bodyURL,
+                sizeBytes: Int64(sizeBytes)
+            )
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            try? FileManager.default.removeItem(at: directoryURL)
+            throw error
+        } catch {
+            try? FileManager.default.removeItem(at: directoryURL)
+            throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                "multipart staging failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    func remove() {
+        try? FileManager.default.removeItem(at: directoryURL)
+    }
+
+    private static func validateFileName(_ fileName: String) throws {
+        guard !fileName.isEmpty,
+              !fileName.contains("/"),
+              !fileName.contains("\\"),
+              !fileName.contains("\""),
+              !fileName.contains("\r"),
+              !fileName.contains("\n")
+        else {
+            throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                "only basename file names are accepted: \(fileName)"
+            )
+        }
+    }
+
+    private static func append(
+        _ source: RuntimeLabVitalFileUploadSource,
+        to output: FileHandle
+    ) throws {
+        switch source.payload {
+        case .bytes(let content):
+            try output.write(contentsOf: content)
+        case .file(let file):
+            try append(file, named: source.fileName, to: output)
+        }
+    }
+
+    private static func append(
+        _ source: RuntimeLabVitalFileUploadFile,
+        named fileName: String,
+        to output: FileHandle
+    ) throws {
+        guard source.sizeBytes >= 0 else {
+            throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                "source size is invalid: \(fileName)"
+            )
+        }
+        let accessed = source.accessMode == .securityScoped
+            ? source.url.startAccessingSecurityScopedResource()
+            : false
+        defer {
+            if accessed {
+                source.url.stopAccessingSecurityScopedResource()
+            }
+        }
+        let values = try source.url.resourceValues(forKeys: [
+            .isRegularFileKey,
+            .fileSizeKey,
+        ])
+        let actualSizeDescription = values.fileSize.map { String($0) }
+            ?? "unavailable"
+        guard values.isRegularFile == true,
+              let actualSize = values.fileSize,
+              Int64(actualSize) == source.sizeBytes else {
+            throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                "source size changed before upload: \(fileName) "
+                + "expected=\(source.sizeBytes) actual=\(actualSizeDescription)"
+            )
+        }
+        let input = try FileHandle(forReadingFrom: source.url)
+        defer { try? input.close() }
+        var remaining = source.sizeBytes
+        while remaining > 0 {
+            let requested = Int(min(Int64(chunkBytes), remaining))
+            guard let chunk = try input.read(upToCount: requested), !chunk.isEmpty else {
+                throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                    "source ended before its declared size: \(fileName) "
+                    + "remaining=\(remaining)"
+                )
+            }
+            try output.write(contentsOf: chunk)
+            remaining -= Int64(chunk.count)
+        }
+        if let extra = try input.read(upToCount: 1), !extra.isEmpty {
+            throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
+                "source exceeds its declared size: \(fileName)"
+            )
+        }
     }
 }
 
@@ -157,7 +337,10 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
     }
 
     public func ready() throws -> RuntimeGuestControlReadiness {
-        let response = try httpClient.send(request(method: "GET", path: "/ready", body: nil))
+        let response = try httpClient.send(
+            request(method: "GET", path: "/ready", body: nil),
+            bodyFileURL: nil
+        )
         do {
             return try decoder.decode(RuntimeGuestControlReadiness.self, from: response.data)
         } catch {
@@ -605,44 +788,29 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
             )
         }
         let boundary = "----tirosh-runtime-\(UUID().uuidString.lowercased())"
-        var body = Data()
-        for source in sources {
-            let fileName = source.fileName
-            guard !fileName.isEmpty,
-                  !fileName.contains("/"),
-                  !fileName.contains("\\"),
-                  !fileName.contains("\""),
-                  !fileName.contains("\r"),
-                  !fileName.contains("\n")
-            else {
-                throw RuntimeGuestControlHTTPGatewayError.invalidVitalFileUpload(
-                    "only basename file names are accepted: \(fileName)"
-                )
-            }
-            body.append(Data("--\(boundary)\r\n".utf8))
-            body.append(Data(
-                "Content-Disposition: form-data; name=\"files\"; filename=\"\(fileName)\"\r\n".utf8
-            ))
-            body.append(Data("Content-Type: application/octet-stream\r\n\r\n".utf8))
-            body.append(source.content)
-            body.append(Data("\r\n".utf8))
-        }
-        body.append(Data("--\(boundary)--\r\n".utf8))
+        let multipart = try RuntimeGuestControlMultipartFile.build(
+            sources: sources,
+            boundary: boundary
+        )
+        defer { multipart.remove() }
 
         var request = try request(
             method: "POST",
             path: "/runtime/lab/vital-files/upload",
             body: nil
         )
-        request.httpBody = body
         request.timeoutInterval = max(timeout, 3_600)
         request.setValue(
             "multipart/form-data; boundary=\(boundary)",
             forHTTPHeaderField: "Content-Type"
         )
+        request.setValue(
+            String(multipart.sizeBytes),
+            forHTTPHeaderField: "Content-Length"
+        )
         return try decode(
             RuntimeLabVitalFileLibraryUploadResponse.self,
-            from: httpClient.send(request)
+            from: httpClient.send(request, bodyFileURL: multipart.bodyURL)
         )
     }
 
@@ -651,7 +819,10 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         method: String,
         path: String
     ) throws -> T {
-        let response = try httpClient.send(request(method: method, path: path, body: nil))
+        let response = try httpClient.send(
+            request(method: method, path: path, body: nil),
+            bodyFileURL: nil
+        )
         return try decode(type, from: response)
     }
 
@@ -667,7 +838,10 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         } catch {
             throw RuntimeGuestControlHTTPGatewayError.decodeFailed(error.localizedDescription)
         }
-        let response = try httpClient.send(request(method: method, path: path, body: encodedBody))
+        let response = try httpClient.send(
+            request(method: method, path: path, body: encodedBody),
+            bodyFileURL: nil
+        )
         return try decode(type, from: response)
     }
 

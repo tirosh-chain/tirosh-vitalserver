@@ -76,7 +76,7 @@ maintained separately at `docs/runtime/runtime-control.openapi.json`.
 | `VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS` | `120` |
 | `VITALDB_OBSERVER_RECORDER_ACTIVITY_WINDOW_SECONDS` | `300` |
 | `VITALDB_OBSERVER_AUDIT_REDIS_LIST` | `vitalserver:audit_events` |
-| `VITALDB_OBSERVER_AUDIT_EVENT_LIMIT` | `1000` |
+| `VITALDB_OBSERVER_AUDIT_EVENT_LIMIT` | `10000` (matches recorder-ingress audit retention) |
 | `VITALDB_OBSERVER_ACCESS_LOG_PATH` | empty |
 | `VITALDB_OBSERVER_ACCESS_LOG_LIMIT` | `200` |
 

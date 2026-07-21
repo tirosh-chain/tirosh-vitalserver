@@ -7,9 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-LabArchiveFinalizationReason = Literal[
-    "lab_session_finished",
-]
+LabArchiveFinalizationReason = Literal["lab_session_finished",]
 
 
 @dataclass(frozen=True)
@@ -25,7 +23,8 @@ LabArchiveFinalizationProgressState = Literal[
     "queued",
     "processing",
     "retrying",
-    "uploaded",
+    "exported",
+    "published",
     "failed",
     "partial",
     "missing",
@@ -119,8 +118,10 @@ class RecorderIngressArchiveFinalizer:
                 "recorder ingress archive finalization response is invalid"
             )
         request_ids = document.get("requestIds")
-        if not isinstance(request_ids, list) or not request_ids or not all(
-            isinstance(value, str) and value for value in request_ids
+        if (
+            not isinstance(request_ids, list)
+            or not request_ids
+            or not all(isinstance(value, str) and value for value in request_ids)
         ):
             raise LabArchiveFinalizationError(
                 "recorder ingress archive finalization response is missing requestIds"
@@ -140,8 +141,9 @@ class RecorderIngressArchiveFinalizer:
                 "recorder archive finalization status requires requestIds"
             )
         status_url = self.url.removesuffix("/finalize") + "/finalizations"
+        query = urlencode([("requestId", request_id) for request_id in request_ids])
         request = Request(
-            f"{status_url}?{urlencode([('requestId', request_id) for request_id in request_ids])}",
+            f"{status_url}?{query}",
             method="GET",
         )
         try:
@@ -179,7 +181,8 @@ def _progress_from_document(
         "queued",
         "processing",
         "retrying",
-        "uploaded",
+        "exported",
+        "published",
         "failed",
         "partial",
         "missing",
@@ -198,7 +201,15 @@ def _progress_from_document(
         and isinstance(item.get("requestId"), str)
         and item.get("requestId") in request_ids
         and item.get("state")
-        in {"queued", "processing", "retrying", "uploaded", "failed", "missing"}
+        in {
+            "queued",
+            "processing",
+            "retrying",
+            "exported",
+            "published",
+            "failed",
+            "missing",
+        }
         for item in requests
     ):
         raise LabArchiveFinalizationError(
@@ -222,8 +233,10 @@ def _progress_from_document(
 
 
 def _request_ids(value: object) -> tuple[str, ...]:
-    if not isinstance(value, list) or not value or not all(
-        isinstance(item, str) and item for item in value
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item for item in value)
     ):
         raise LabArchiveFinalizationError(
             "recorder ingress archive finalization status requestIds are invalid"

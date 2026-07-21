@@ -7,7 +7,7 @@ import type {
   SendDataRawArchiveFinalizationRequest,
   SendDataRawArchiveFinalizationTrigger,
 } from "./ports/outbound/send-data-raw-archive-export-job-store-port";
-import type { SendDataRawArchiveRecoveryExecutorPort } from "./ports/outbound/send-data-raw-archive-recovery-executor-port";
+import type { SendDataRawArchiveExporterPort } from "./ports/outbound/send-data-raw-archive-recovery-executor-port";
 
 "use strict";
 
@@ -24,12 +24,12 @@ const {
 
 function createSendDataRawArchiveExportWorker({
   config,
-  executor,
+  exporter,
   jobStore,
   metrics,
 }: {
   config: { rawArchive?: { autoExport?: Record<string, unknown>; path?: string } };
-  executor: SendDataRawArchiveRecoveryExecutorPort;
+  exporter: SendDataRawArchiveExporterPort;
   jobStore: SendDataRawArchiveExportJobStorePort;
   metrics: Record<string, unknown>;
 }): SendDataRawArchiveExportWorkerPort {
@@ -54,7 +54,7 @@ function createSendDataRawArchiveExportWorker({
     try {
       return await runExportTick({
         settings,
-        executor,
+        exporter,
         jobStore,
         metrics,
         trigger: options.trigger || "inactivity",
@@ -85,7 +85,7 @@ function createSendDataRawArchiveExportWorker({
 
     const nowIso = new Date().toISOString();
     let state = jobStore.read();
-    if (state.activeJob && state.activeJob.state === "failed") {
+    if (state.activeJob && state.activeJob.state === "export_failed") {
       return {
         ok: false,
         state: "rejected" as const,
@@ -136,7 +136,7 @@ function createSendDataRawArchiveExportWorker({
     });
     // Finishing a Lab session is a durable request, not a synchronous export.
     // Return after the request is persisted so callers can read its owner-side
-    // progress instead of waiting for Vital file generation and upload.
+    // progress instead of waiting for recovery artifact generation.
     scheduleExplicitFinalizationDrain(Math.max(enqueuedCount, 1));
     return { ok: true, state: "accepted" as const, requestIds };
   }
@@ -172,7 +172,7 @@ function createSendDataRawArchiveExportWorker({
   async function drainExplicitFinalizations(maxJobs: number) {
     for (let index = 0; index < maxJobs; index += 1) {
       const result = await runOnce({ trigger: "explicit" });
-      if (result.state !== "uploaded") return;
+      if (result.state !== "exported") return;
     }
   }
 
@@ -196,7 +196,7 @@ function createSendDataRawArchiveExportWorker({
   };
 }
 
-async function runExportTick({ settings, executor, jobStore, metrics, trigger }) {
+async function runExportTick({ settings, exporter, jobStore, metrics, trigger }) {
   const snapshot = metricsSnapshot(metrics);
   const archive = snapshot.rawArchive || {};
   const archivePath = archive.path || "";
@@ -213,18 +213,18 @@ async function runExportTick({ settings, executor, jobStore, metrics, trigger })
     return { ok: true, state: "open" };
   }
 
-  if (state.activeJob && state.activeJob.state === "retryable_failed") {
+  if (state.activeJob && state.activeJob.state === "export_retryable_failed") {
     const nextAttemptAt = state.activeJob.nextAttemptAt ? Date.parse(state.activeJob.nextAttemptAt) : NaN;
     if (Number.isFinite(nextAttemptAt) && nextAttemptAt > now.getTime()) {
-      return { ok: true, state: "retryable_failed", jobId: state.activeJob.jobId };
+      return { ok: true, state: "export_retryable_failed", jobId: state.activeJob.jobId };
     }
-    return await executeJob({ settings, executor, jobStore, metrics, state, job: state.activeJob });
+    return await executeJob({ settings, exporter, jobStore, metrics, state, job: state.activeJob });
   }
-  if (state.activeJob && state.activeJob.state === "failed") {
-    return { ok: false, state: "failed", reason: "job_failed", message: "raw archive export job is terminal", jobId: state.activeJob.jobId };
+  if (state.activeJob && state.activeJob.state === "export_failed") {
+    return { ok: false, state: "export_failed", reason: "job_failed", message: "raw archive export job is terminal", jobId: state.activeJob.jobId };
   }
   if (state.activeJob) {
-    return await executeJob({ settings, executor, jobStore, metrics, state, job: state.activeJob });
+    return await executeJob({ settings, exporter, jobStore, metrics, state, job: state.activeJob });
   }
 
   const candidates = candidateVrcodes(state, snapshot, trigger);
@@ -300,17 +300,17 @@ async function runExportTick({ settings, executor, jobStore, metrics, trigger })
       requestId: candidate.requestId,
     });
     state = writeState(jobStore, { ...state, updatedAt: nowIso, activeJob: job });
-    return await executeJob({ settings, executor, jobStore, metrics, state, job });
+    return await executeJob({ settings, exporter, jobStore, metrics, state, job });
   }
 
   return { ok: true, state: firstDecision ? String(firstDecision.state) : "not_observed" };
 }
 
-async function executeJob({ settings, executor, jobStore, metrics, state, job }) {
+async function executeJob({ settings, exporter, jobStore, metrics, state, job }) {
   const startedAt = new Date().toISOString();
   const runningJob = {
     ...job,
-    state: "running" as const,
+    state: "exporting" as const,
     attempts: job.attempts + 1,
     startedAt,
     updatedAt: startedAt,
@@ -319,11 +319,9 @@ async function executeJob({ settings, executor, jobStore, metrics, state, job })
   recordSendDataRawArchiveAutoExportStarted(metrics, runningJob);
   state = writeState(jobStore, { ...state, updatedAt: startedAt, activeJob: runningJob });
 
-  const result = await executor.recover({
+  const result = await exporter.export({
     rawArchivePath: runningJob.archivePath,
     outputDir: settings.outputDir,
-    vitalserverUrl: settings.vitalserverUrl,
-    endpoint: settings.uploadEndpoint,
     timeoutMs: settings.requestTimeoutMs,
     vrcode: runningJob.vrcode,
     startOffset: runningJob.startOffset,
@@ -332,47 +330,52 @@ async function executeJob({ settings, executor, jobStore, metrics, state, job })
   const completedAt = new Date().toISOString();
 
   if (result.ok) {
-    const uploadedJob = {
+    const exportedJob = {
       ...runningJob,
-      state: "uploaded" as const,
+      state: "exported" as const,
+      artifacts: result.artifacts,
       completedAt,
       updatedAt: completedAt,
       result: result.response,
     };
     const pendingFinalizations = state.pendingFinalizations.filter(
-      (request) => request.requestId !== uploadedJob.requestId
+      (request) => request.requestId !== exportedJob.requestId
     );
     writeState(jobStore, {
       ...state,
       updatedAt: completedAt,
       checkpointsByVrcode: {
         ...state.checkpointsByVrcode,
-        [uploadedJob.vrcode]: {
-          vrcode: uploadedJob.vrcode,
-          archivePath: uploadedJob.archivePath,
-          endOffset: uploadedJob.endOffset,
-          jobId: uploadedJob.jobId,
-          requestId: uploadedJob.requestId,
+        [exportedJob.vrcode]: {
+          origin: exportedJob.origin,
+          vrcode: exportedJob.vrcode,
+          archivePath: exportedJob.archivePath,
+          endOffset: exportedJob.endOffset,
+          jobId: exportedJob.jobId,
+          requestId: exportedJob.requestId,
           completedAt,
+          artifactIds: exportedJob.artifacts.map((artifact) => artifact.artifactId),
+          publishState: exportedJob.publishState,
         },
       },
       pendingFinalizations,
       activeJob: null,
-      history: [uploadedJob, ...(state.history || [])].slice(0, settings.historyLimit),
+      history: [exportedJob, ...(state.history || [])].slice(0, settings.historyLimit),
     });
-    recordSendDataRawArchiveAutoExportSucceeded(metrics, uploadedJob, result.response);
-    return { ok: true, state: "uploaded", jobId: uploadedJob.jobId };
+    recordSendDataRawArchiveAutoExportSucceeded(metrics, exportedJob, result.response);
+    return { ok: true, state: "exported", jobId: exportedJob.jobId };
   }
 
   const canRetry = runningJob.attempts < runningJob.maxAttempts;
   const failure = {
+    stage: "export" as const,
     reason: result.reason,
     message: result.message,
     occurredAt: completedAt,
   };
   const failedJob = {
     ...runningJob,
-    state: canRetry ? "retryable_failed" as const : "failed" as const,
+    state: canRetry ? "export_retryable_failed" as const : "export_failed" as const,
     updatedAt: completedAt,
     completedAt: canRetry ? null : completedAt,
     nextAttemptAt: canRetry ? new Date(Date.parse(completedAt) + settings.retryDelayMs).toISOString() : null,
@@ -411,7 +414,7 @@ function candidateVrcodes(state, snapshot, trigger) {
 
 function createJob({ archivePath, startOffset, endOffset, settings, nowIso, vrcode, trigger, requestId }): SendDataRawArchiveExportJob {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     jobId: crypto.randomUUID(),
     requestId,
     trigger,
@@ -419,7 +422,10 @@ function createJob({ archivePath, startOffset, endOffset, settings, nowIso, vrco
     archivePath,
     startOffset,
     endOffset,
-    state: "pending",
+    origin: "coldPathRecovery",
+    state: "export_pending",
+    publishState: "notRequested",
+    artifacts: [],
     attempts: 0,
     maxAttempts: settings.maxAttempts,
     createdAt: nowIso,
@@ -457,8 +463,6 @@ function normalizeSettings(raw) {
     maxAttempts: positiveInteger(raw && raw.maxAttempts, 3),
     requestTimeoutMs: positiveInteger(raw && raw.requestTimeoutMs, 300000),
     outputDir: stringValue(raw && raw.outputDir, "/var/lib/vitalserver-recorder-ingress/recovery/vital-export"),
-    vitalserverUrl: stringValue(raw && raw.vitalserverUrl, "http://app:80"),
-    uploadEndpoint: stringValue(raw && raw.uploadEndpoint, "/upload"),
     historyLimit: positiveInteger(raw && raw.historyLimit, 20),
   };
 }

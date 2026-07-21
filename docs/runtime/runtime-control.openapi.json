@@ -6704,7 +6704,7 @@
           "activeJob": {
             "$ref": "#/components/schemas/RuntimeRecorderIngressRawArchiveAutoExportJob"
           },
-          "uploadedJobs": {
+          "exportedJobs": {
             "type": [
               "integer",
               "null"
@@ -6718,7 +6718,7 @@
             ],
             "minimum": 0
           },
-          "lastResult": {
+          "lastExportResult": {
             "type": [
               "object",
               "null"
@@ -6740,13 +6740,44 @@
               "null"
             ]
           },
+          "requestId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "archivePath": {
             "type": [
               "string",
               "null"
             ]
           },
-          "archiveCursor": {
+          "startOffset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "endOffset": {
             "type": [
               "integer",
               "null"
@@ -6758,6 +6789,18 @@
               "string",
               "null"
             ]
+          },
+          "publishState": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artifactIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "attempts": {
             "type": [

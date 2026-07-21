@@ -375,6 +375,12 @@ TestKit API의 SoT는 “시뮬레이터가 무엇을 실행 중인지”이다.
 있습니다. Runtime v2 제품 UI에서 이 기능을 제공할 때의 제품 소유자는
 TestKit이 아니라 Lab 또는 recorder-recovery 쪽 계약이어야 합니다.
 
+여러 파일을 선택해도 VitalServer에는 파일별로 독립된 `/upload` 요청을
+순서대로 보냅니다. 한 파일의 응답이 끝나기 전에 다음 파일을 동시에 보내거나,
+여러 파일을 하나의 multipart request로 합치지 않습니다. Multipart body는
+file-backed streaming으로 전송하므로 파일 크기만큼의 메모리 buffer를 만들지
+않습니다. 이는 단일 `.vital`을 byte 범위로 쪼개는 resumable upload가 아닙니다.
+
 Recorder ingress raw archive JSONL을 `.vital` 파일로 변환한 뒤 같은 upload 계약으로 반영할 수도 있습니다.
 이 기능의 제품 소유자는 `apps/vitalserver-recorder-recovery`이며, TestKit CLI는 제품 CLI를 호출하는
 검증 wrapper입니다. TestKit은 recorder-recovery Python 내부 모듈을 import하지 않습니다.
@@ -408,22 +414,26 @@ uv run vitalserver-recorder-recovery recover-raw-archive-vital \
   --concurrency 4
 ```
 
-제품 `recorder-recovery` server는 같은 기능을 HTTP API로도 제공합니다. Recorder ingress auto export worker는
-기본적으로 이 endpoint를 호출합니다. TestKit server는 이 recovery endpoint를 제공하지 않습니다.
+제품 `recorder-recovery` server는 export와 수동 recover 기능을 서로 다른 HTTP API로 제공합니다. Recorder
+ingress auto export worker는 `/raw-archive/export-vital`만 호출하며 VitalServer publish를 요청하지 않습니다.
+TestKit server는 이 recovery endpoint를 제공하지 않습니다.
 `rawArchivePath`와 `outputDir`은 recorder-ingress와 recorder-recovery container가 같은 mount path로
 볼 수 있어야 합니다.
 
 ```sh
-curl -X POST http://recorder-recovery:8080/raw-archive/recover-vital \
+curl -X POST http://recorder-recovery:8080/raw-archive/export-vital \
   -H 'content-type: application/json' \
   -d '{
     "rawArchivePath": "/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl",
     "outputDir": "/var/lib/vitalserver-recorder-ingress/recovery/vital-export",
-    "vitalserverUrl": "http://app:80",
-    "endpoint": "/upload",
-    "skipFilenameCheck": true
+    "vrcode": "VR001"
   }'
 ```
+
+응답 artifact receipt의 `origin=coldPathRecovery`, source byte range, coverage, format/writer version,
+SHA-256을 보존해야 합니다. Export 완료는 Vital Recorder native upload 또는 My Files publish 완료가 아닙니다.
+`recover-raw-archive-vital` CLI와 `/raw-archive/recover-vital` API는 운영자가 export와 publish를 한 번에
+명시적으로 요청하는 수동 compatibility 경로이며 auto export worker는 사용하지 않습니다.
 
 TestKit의 `.vital` upload 검증 경로는 Python 코드에서 직접 호출할 수도 있습니다.
 

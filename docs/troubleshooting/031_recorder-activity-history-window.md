@@ -27,6 +27,14 @@ Recorder activity가 실제 장시간 트래픽 추세를 보여주지 못합니
 
 현재 activity chart는 Runtime Control의 Guest/Postgres read model 기반 recorder activity read를 표시합니다.
 
+2026-07-20 재발 원인은 Guest/Postgres activity endpoint 자체에 있었습니다.
+
+- `recorder_activity()`가 전용 activity projection을 읽지 않고 최신 observation snapshot 1,000개를 다시 합쳤습니다.
+- observation 주기는 5초이므로 1,000개는 약 83분 20초에 불과합니다.
+- 각 observation의 300초 rolling window를 포함해도 실질 coverage는 약 88분뿐입니다.
+- Runtime Control은 반환된 bucket의 최소/최대 시각을 전체 history bounds로 사용했기 때문에 `All`도 잘린 구간을 전체 이력처럼 표시했습니다.
+- observer audit 조회 기본값 1,000건은 recorder-ingress Redis 보존 길이 10,000건보다 작아, 트래픽이 많으면 300초 window 안의 packet도 조기에 누락될 수 있었습니다.
+
 당시 문제를 만든 legacy 흐름은 두 계층의 조합이었습니다.
 
 1. `vitaldb-observer`는 Redis audit list에서 최근 `recorderActivityWindowSeconds` 구간을 읽어 rolling activity bucket을 만듭니다.
@@ -131,6 +139,14 @@ Recorder send_data
 - `RuntimeObservationRecorder`는 event 기록만 담당하도록 정리했습니다. VitalDB observation persistence는 명시적 projection 경로로 이동했습니다.
 - Remote Console의 `Packets` 지표는 chart y-axis 최대값이 아니라 최신 non-zero bucket 값을 보여주도록 수정했습니다.
 
+2026-07-20 Guest/Postgres 수정:
+
+- `vitaldb_recorder_activity_buckets`를 Guest/Postgres의 durable product read model table로 추가했습니다.
+- observation 저장과 같은 transaction에서 `vrcode + bucketStartedAt + bucketSeconds`를 identity로 bucket을 upsert합니다.
+- 반복 rolling snapshot은 count의 최대값과 first/last observation 경계를 병합하며, API 조회는 observation snapshot 1,000개 제한과 무관하게 전용 table을 읽습니다.
+- 기존 설치는 `20260720_activity_bucket_projection_v1` migration이 보유 중인 observation snapshot을 한 번 재생해 bucket table을 채웁니다. Migration 실패는 성공이나 빈 history로 숨기지 않습니다.
+- observer audit 조회 기본값을 recorder-ingress Redis 보존 길이와 같은 10,000건으로 맞췄습니다.
+
 - `/runtime/vitaldb/recorders` response에 `activityHistory` metadata를 추가해 SQLite projection source, bucket coverage, read error를 명시했습니다.
 - Remote Console은 `activityHistory.readError`가 있으면 activity chart 영역에서 history가 불완전하다는 오류를 표시합니다.
 
@@ -164,3 +180,4 @@ latest rolling window를 장시간 history처럼 보이게 만들면 안 됩니�
 - 2026-05-30: recorder activity 1-minute bucket projection을 SQLite에 명시적으로 추가하고, `/runtime/vitaldb/recorders` read model이 projection bucket을 activity timeline으로 사용하도록 전환했습니다.
 - 2026-05-30: SQLite activity projection read failure를 `/runtime/vitaldb/recorders.activityHistory.readError`로 노출하고, Remote Console에서 불완전한 activity history를 표시하도록 수정했습니다.
 - 2026-05-31: VRecorder 상태 변화가 30-60초 늦게 보이는 증상을 확인했습니다. `/runtime/vitaldb/recorders`가 Host watchdog이 쌓는 SQLite/status projection을 current status처럼 사용하던 구조를 분리하고, Guest/Postgres read model을 current source로 명시했습니다.
+- 2026-07-20: 2일 이상 수집해도 최신 1-2시간에 packet이 몰려 보이는 재발을 확인했습니다. Guest activity API의 최신 1,000 snapshot 재구성을 제거하고 durable Postgres bucket projection과 기존 snapshot migration을 추가했습니다.

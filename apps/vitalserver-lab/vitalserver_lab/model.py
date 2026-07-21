@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 import string
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Literal, Protocol
@@ -106,6 +106,22 @@ class LabVitalFile:
 
 
 @dataclass(frozen=True)
+class LabSessionFailure:
+    stage: str
+    code: str
+    message: str
+    failed_at: str
+
+    def as_json(self) -> dict[str, str]:
+        return {
+            "stage": self.stage,
+            "code": self.code,
+            "message": self.message,
+            "failedAt": self.failed_at,
+        }
+
+
+@dataclass(frozen=True)
 class LabSessionCreateInput:
     scenario_id: str
     name: str
@@ -165,6 +181,7 @@ class LabSession:
     updated_at: str
     # Lab owns only the reference. recorder-ingress owns the finalization state.
     archive_finalization_request_ids: tuple[str, ...] | None = None
+    failure: LabSessionFailure | None = None
 
     def as_json(self) -> dict[str, object]:
         document: dict[str, object] = {
@@ -185,6 +202,8 @@ class LabSession:
             document["replayPolicy"] = self.replay_policy.as_json()
         if self.recorder_ids:
             document["recorderIds"] = list(self.recorder_ids)
+        if self.failure is not None:
+            document["failure"] = self.failure.as_json()
         return document
 
     def as_private_json(self) -> dict[str, object]:
@@ -279,6 +298,13 @@ class LabSessionStore(Protocol):
     def stop(self, session_id: str) -> LabSession | None:
         """Transition an existing Lab session to stopped."""
 
+    def fail(
+        self,
+        session_id: str,
+        failure: LabSessionFailure,
+    ) -> LabSession | None:
+        """Transition a running Lab session to failed with explicit evidence."""
+
     def finish(self, session_id: str) -> LabSession | None:
         """Transition an existing Lab session to the terminal finished state."""
 
@@ -353,7 +379,9 @@ def lab_session_state_after(*, session_id: str, state: str, action: str) -> str:
     transitions = {
         ("accepted", "start"): "running",
         ("stopped", "start"): "running",
+        ("failed", "start"): "running",
         ("running", "stop"): "stopped",
+        ("running", "fail"): "failed",
         ("running", "finish"): "finished",
         ("stopped", "finish"): "finished",
         ("finished", "finish"): "finished",
@@ -466,6 +494,7 @@ class InMemoryLabSessionStore:
             state=session.state,
             action="start",
         )
+        session.failure = None
         session.updated_at = utc_now_iso()
         self._save_session_state_read_model(session, state="running")
         return session
@@ -481,6 +510,24 @@ class InMemoryLabSessionStore:
         )
         session.updated_at = utc_now_iso()
         self._save_session_state_read_model(session, state="stopped")
+        return session
+
+    def fail(
+        self,
+        session_id: str,
+        failure: LabSessionFailure,
+    ) -> LabSession | None:
+        session = self.sessions.get(session_id)
+        if session is None:
+            return None
+        session.state = lab_session_state_after(
+            session_id=session_id,
+            state=session.state,
+            action="fail",
+        )
+        session.failure = failure
+        session.updated_at = failure.failed_at
+        self._save_session_state_read_model(session, state="failed")
         return session
 
     def finish(self, session_id: str) -> LabSession | None:
@@ -580,9 +627,7 @@ class InMemoryLabSessionStore:
         self,
         request: LabRecorderCreateInput,
     ) -> tuple[LabRecorder, ...]:
-        beds = matching_beds_for_recorder_create(
-            tuple(self.beds.values()), request
-        )
+        beds = matching_beds_for_recorder_create(tuple(self.beds.values()), request)
         if not beds:
             raise LabSessionStoreUnavailable(
                 "No Lab beds matched the recorder create request.",
@@ -684,16 +729,12 @@ class InMemoryLabSessionStore:
         if session.bed_ids:
             self._occupy_existing_read_model_beds(
                 session,
-                explicit_beds_for_session(
-                    tuple(self.beds.values()), session.bed_ids
-                ),
+                explicit_beds_for_session(tuple(self.beds.values()), session.bed_ids),
                 state=state,
             )
             return
         existing_beds = tuple(
-            bed
-            for bed in self.beds.values()
-            if bed.session_id == session.session_id
+            bed for bed in self.beds.values() if bed.session_id == session.session_id
         )
         if existing_beds:
             self._occupy_existing_read_model_beds(session, existing_beds, state=state)
@@ -900,7 +941,10 @@ def matching_recorders(
     )
 
 
-def next_recorder_index(recorders: object, session_id: str) -> int:
+def next_recorder_index(
+    recorders: Iterable[LabRecorder],
+    session_id: str,
+) -> int:
     session_recorders = [
         recorder
         for recorder in recorders

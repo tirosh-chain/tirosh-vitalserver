@@ -2,23 +2,21 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
-  createRawArchiveRecoveryExecutor,
+  createRawArchiveExporter,
 } = require("../../src/adapters/outbound/http/raw-archive-recovery-executor");
 
-test("raw archive recovery executor reports missing endpoint explicitly", async () => {
-  const executor = createRawArchiveRecoveryExecutor({
+test("raw archive exporter reports missing endpoint explicitly", async () => {
+  const exporter = createRawArchiveExporter({
     rawArchive: {
       autoExport: {
-        recoverUrl: "",
+        exportUrl: "",
       },
     },
   });
 
-  const result = await executor.recover({
+  const result = await exporter.export({
     rawArchivePath: "/archive.jsonl",
     outputDir: "/export",
-    vitalserverUrl: "http://app:80",
-    endpoint: "/upload",
     timeoutMs: 1000,
     vrcode: "VR-A",
     startOffset: 0,
@@ -28,38 +26,29 @@ test("raw archive recovery executor reports missing endpoint explicitly", async 
   assert.deepStrictEqual(result, {
     ok: false,
     reason: "not_configured",
-    message: "raw archive recovery endpoint is not configured",
+    message: "raw archive export endpoint is not configured",
   });
 });
 
-test("raw archive recovery executor posts explicit recovery request", async () => {
+test("raw archive exporter posts explicit export-only request", async () => {
   const originalFetch = global.fetch;
   const calls = [];
   global.fetch = (async (url, options) => {
     calls.push({ url, options });
-    return response({
-      artifacts: [],
-      upload: {
-        totalRequests: 1,
-        successfulRequests: 1,
-        failedRequests: 0,
-      },
-    });
+    return response(exportDocument());
   }) as typeof fetch;
   try {
-    const executor = createRawArchiveRecoveryExecutor({
+    const exporter = createRawArchiveExporter({
       rawArchive: {
         autoExport: {
-          recoverUrl: "http://recorder-recovery:8080/raw-archive/recover-vital",
+          exportUrl: "http://recorder-recovery:8080/raw-archive/export-vital",
         },
       },
     });
 
-    const result = await executor.recover({
+    const result = await exporter.export({
       rawArchivePath: "/archive.jsonl",
       outputDir: "/export",
-      vitalserverUrl: "http://app:80",
-      endpoint: "/upload",
       timeoutMs: 12345,
       vrcode: "VR-A",
       startOffset: 10,
@@ -68,41 +57,36 @@ test("raw archive recovery executor posts explicit recovery request", async () =
 
     assert.strictEqual(result.ok, true);
     assert.strictEqual(calls.length, 1);
-    assert.strictEqual(calls[0].url, "http://recorder-recovery:8080/raw-archive/recover-vital");
+    assert.strictEqual(calls[0].url, "http://recorder-recovery:8080/raw-archive/export-vital");
     assert.strictEqual(calls[0].options.method, "POST");
     assert.deepStrictEqual(JSON.parse(calls[0].options.body), {
       rawArchivePath: "/archive.jsonl",
       outputDir: "/export",
-      vitalserverUrl: "http://app:80",
-      endpoint: "/upload",
-      timeout: 12,
-      skipFilenameCheck: true,
       vrcode: "VR-A",
       startOffset: 10,
       endOffset: 42,
     });
+    assert.strictEqual(result.artifacts[0].origin, "coldPathRecovery");
   } finally {
     global.fetch = originalFetch;
   }
 });
 
-test("raw archive recovery executor rejects malformed success response", async () => {
+test("raw archive exporter rejects malformed success response", async () => {
   const originalFetch = global.fetch;
   global.fetch = (async () => response({ ok: true })) as typeof fetch;
   try {
-    const executor = createRawArchiveRecoveryExecutor({
+    const exporter = createRawArchiveExporter({
       rawArchive: {
         autoExport: {
-          recoverUrl: "http://recorder-recovery:8080/raw-archive/recover-vital",
+          exportUrl: "http://recorder-recovery:8080/raw-archive/export-vital",
         },
       },
     });
 
-    const result = await executor.recover({
+    const result = await exporter.export({
       rawArchivePath: "/archive.jsonl",
       outputDir: "/export",
-      vitalserverUrl: "http://app:80",
-      endpoint: "/upload",
       timeoutMs: 1000,
       vrcode: "VR-A",
       startOffset: 0,
@@ -112,7 +96,7 @@ test("raw archive recovery executor rejects malformed success response", async (
     assert.deepStrictEqual(result, {
       ok: false,
       reason: "invalid_response",
-      message: "raw archive recovery response did not match the recovery result contract",
+      message: "raw archive export response did not match the artifact receipt contract",
       statusCode: 200,
       response: { ok: true },
     });
@@ -121,23 +105,21 @@ test("raw archive recovery executor rejects malformed success response", async (
   }
 });
 
-test("raw archive recovery executor reports HTTP failure body", async () => {
+test("raw archive exporter reports HTTP failure body", async () => {
   const originalFetch = global.fetch;
-  global.fetch = (async () => response({ detail: "upload failed" }, { status: 502 })) as typeof fetch;
+  global.fetch = (async () => response({ detail: "export failed" }, { status: 502 })) as typeof fetch;
   try {
-    const executor = createRawArchiveRecoveryExecutor({
+    const exporter = createRawArchiveExporter({
       rawArchive: {
         autoExport: {
-          recoverUrl: "http://recorder-recovery:8080/raw-archive/recover-vital",
+          exportUrl: "http://recorder-recovery:8080/raw-archive/export-vital",
         },
       },
     });
 
-    const result = await executor.recover({
+    const result = await exporter.export({
       rawArchivePath: "/archive.jsonl",
       outputDir: "/export",
-      vitalserverUrl: "http://app:80",
-      endpoint: "/upload",
       timeoutMs: 1000,
       vrcode: "VR-A",
       startOffset: 0,
@@ -147,14 +129,39 @@ test("raw archive recovery executor reports HTTP failure body", async () => {
     assert.deepStrictEqual(result, {
       ok: false,
       reason: "http_failed",
-      message: "raw archive recovery failed with HTTP 502",
+      message: "raw archive export failed with HTTP 502",
       statusCode: 502,
-      response: { detail: "upload failed" },
+      response: { detail: "export failed" },
     });
   } finally {
     global.fetch = originalFetch;
   }
 });
+
+function exportDocument() {
+  return {
+    operation: "export",
+    artifacts: [{
+      artifactId: "a".repeat(64),
+      origin: "coldPathRecovery",
+      producer: "vitalserver-recorder-recovery",
+      writerVersion: "1",
+      vrcode: "VR-A",
+      roomNames: ["OR-A"],
+      sourceArchiveId: "/archive.jsonl",
+      sourceStartOffset: 10,
+      sourceEndOffset: 42,
+      coverageStartedAt: 1,
+      coverageEndedAt: 2,
+      formatVersion: 3,
+      sha256: "b".repeat(64),
+      filename: "VR-A_260101_000000.vital",
+      sizeBytes: 10,
+      createdAt: 3,
+      trackCount: 1,
+    }],
+  };
+}
 
 function response(body: unknown, options: { status?: number } = {}): Response {
   return {

@@ -1295,6 +1295,44 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
+    func testLabSessionsPreservePersistedReplayFailure() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state": "loaded",
+              "sessions": [{
+                "sessionId": "lab-session-1",
+                "state": "failed",
+                "scenarioId": "vital-file-replay",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+                "failure": {
+                  "stage": "fileValidation",
+                  "code": "invalidWaveformSampleRate",
+                  "message": "invalid waveform sample rate",
+                  "failedAt": "2026-07-21T03:00:00Z"
+                }
+              }],
+              "readError": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let response = try gateway.labSessions()
+        let session = try XCTUnwrap(response.sessions.first)
+
+        XCTAssertEqual(session.state, .failed)
+        XCTAssertEqual(session.failure?.stage, .fileValidation)
+        XCTAssertEqual(session.failure?.code, .invalidWaveformSampleRate)
+        XCTAssertEqual(session.failure?.message, "invalid waveform sample rate")
+        XCTAssertEqual(session.failure?.failedAt, "2026-07-21T03:00:00Z")
+    }
+
     func testLabSessionCommandsEncodeSessionIDAsOnePathSegment() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 202,
@@ -1544,12 +1582,52 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertNotNil(body.range(of: Data("broken.vital".utf8)))
     }
 
+    func testUploadLabVitalFilesStagesFileSourceAndRemovesMultipartAfterSend() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceURL = root.appendingPathComponent("OR-A_260715_120000.vital")
+        let content = Data(repeating: 0x5A, count: 3 * 1024 * 1024)
+        try content.write(to: sourceURL)
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: #"{"state":"completed","files":[],"failedFiles":[]}"#
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        _ = try gateway.uploadLabVitalFiles([
+            RuntimeLabVitalFileUploadSource(
+                fileName: sourceURL.lastPathComponent,
+                fileURL: sourceURL,
+                sizeBytes: Int64(content.count),
+                accessMode: .securityScoped
+            ),
+        ])
+
+        let bodyFileURL = try XCTUnwrap(client.bodyFileURLs.first)
+        XCTAssertEqual(client.bodyFileExistsDuringSend, [true])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: bodyFileURL.path))
+        let request = try XCTUnwrap(client.requests.first)
+        let body = try XCTUnwrap(request.httpBody)
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "Content-Length"),
+            String(body.count)
+        )
+        XCTAssertNotNil(body.range(of: content))
+    }
+
 }
 
 private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPClient, @unchecked Sendable {
     private let response: RuntimeGuestControlHTTPResponse
     private let lock = NSLock()
     private var capturedRequests: [URLRequest] = []
+    private var capturedBodyFileURLs: [URL] = []
+    private var capturedBodyFileExistence: [Bool] = []
 
     var requests: [URLRequest] {
         lock.lock()
@@ -1557,13 +1635,38 @@ private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlH
         return capturedRequests
     }
 
+    var bodyFileURLs: [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return capturedBodyFileURLs
+    }
+
+    var bodyFileExistsDuringSend: [Bool] {
+        lock.lock()
+        defer { lock.unlock() }
+        return capturedBodyFileExistence
+    }
+
     init(response: RuntimeGuestControlHTTPResponse) {
         self.response = response
     }
 
-    func send(_ request: URLRequest) throws -> RuntimeGuestControlHTTPResponse {
+    func send(
+        _ request: URLRequest,
+        bodyFileURL: URL?
+    ) throws -> RuntimeGuestControlHTTPResponse {
+        var capturedRequest = request
+        if let bodyFileURL {
+            capturedRequest.httpBody = try Data(contentsOf: bodyFileURL)
+        }
         lock.lock()
-        capturedRequests.append(request)
+        capturedRequests.append(capturedRequest)
+        if let bodyFileURL {
+            capturedBodyFileURLs.append(bodyFileURL)
+            capturedBodyFileExistence.append(
+                FileManager.default.fileExists(atPath: bodyFileURL.path)
+            )
+        }
         lock.unlock()
         return response
     }

@@ -10,7 +10,7 @@ enum RuntimeLabPanelText {
     static let productLabSession = "New scenario session"
     static let productLabSessions = "Sessions"
     static let selectedLabSession = "Selected session"
-    static let archiveUpload = "Archive upload"
+    static let archiveExport = "Recovery artifact export"
     static let archiveUpdated = "Archive updated"
     static let archiveError = "Archive error"
     static let sessionRecorders = "Session recorders"
@@ -35,9 +35,9 @@ enum RuntimeLabPanelText {
     static let startingLabSession = "Starting Product Lab session..."
     static let stoppingLabSession = "Pausing Product Lab session..."
     static let pause = "Pause"
-    static let finishingLabSession = "Finishing Product Lab session and uploading its .vital files..."
-    static let finishAndUpload = "Finish & upload"
-    static let retryUpload = "Retry upload"
+    static let finishingLabSession = "Finishing Product Lab session and exporting its recovery artifacts..."
+    static let finishAndExport = "Finish & export"
+    static let retryExport = "Retry export"
     static let startingLabRecorder = "Starting Product Lab recorder..."
     static let stoppingLabRecorder = "Stopping Product Lab recorder..."
     static let replayingLabVitalFile = "Starting .vital replay session..."
@@ -90,7 +90,7 @@ enum RuntimeLabPanelText {
     }
 
     static func finishedLabSession(_ id: String) -> String {
-        "Finished Product Lab session \(id) and requested .vital file upload."
+        "Finished Product Lab session \(id) and requested recovery artifact export."
     }
 
     static func startedLabRecorder(_ vrcode: String) -> String {

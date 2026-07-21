@@ -6,6 +6,8 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from tirosh_vitalserver.core.domain.vital_file.format import VitalTrackKind
+from tirosh_vitalserver.core.errors import VitalFileFormatError
 from tirosh_vitalserver.core.types.json import JsonValue
 
 
@@ -22,6 +24,7 @@ class VitalTrack:
     """A `.vital` track assembled from sent recorder frames."""
 
     dtname: str
+    kind: VitalTrackKind
     records: tuple[VitalTrackRecord, ...]
     srate: float
     unit: str
@@ -70,7 +73,10 @@ def collect_frame_tracks(
     payload: Mapping[str, JsonValue],
     *,
     track_records: dict[str, list[VitalTrackRecord]],
-    track_configs: dict[str, tuple[float, str, float, float, int]],
+    track_configs: dict[
+        str,
+        tuple[VitalTrackKind, float, str, float, float, int],
+    ],
 ) -> None:
     """Collect exportable track records from one recorder frame."""
 
@@ -88,14 +94,19 @@ def collect_frame_tracks(
                 continue
 
             dtname = vital_track_name(room_name, track)
-            srate = positive_float(track.get("srate"))
+            kind = recorder_track_kind(track.get("type"), dtname=dtname)
+            srate = recorder_track_sample_rate(
+                kind,
+                track.get("srate"),
+                dtname=dtname,
+            )
             unit = string_value(track.get("unit"))
             mindisp = float_value(track.get("mindisp"))
             maxdisp = float_value(track.get("maxdisp"))
             montype = vital_monitor_type_id(track.get("montype"))
             track_configs.setdefault(
                 dtname,
-                (srate, unit, mindisp, maxdisp, montype),
+                (kind, srate, unit, mindisp, maxdisp, montype),
             )
             records = track.get("recs")
             if not isinstance(records, list):
@@ -118,6 +129,7 @@ def metadata_track(metadata: VitalSessionMetadata) -> VitalTrack:
     dt = metadata.started_at or metadata.stopped_at or 0.0
     return VitalTrack(
         dtname="RecorderRecovery/METADATA",
+        kind=VitalTrackKind.STRING,
         records=(VitalTrackRecord(dt=dt, value=metadata.as_json()),),
         srate=0.0,
         unit="",
@@ -176,6 +188,40 @@ def positive_float(value: JsonValue) -> float:
     if isinstance(value, int | float) and value > 0:
         return float(value)
     return 0.0
+
+
+def recorder_track_kind(value: JsonValue, *, dtname: str) -> VitalTrackKind:
+    """Decode the recorder wire kind without consulting sample rate."""
+
+    kinds = {
+        "wav": VitalTrackKind.WAVEFORM,
+        "num": VitalTrackKind.NUMERIC,
+        "str": VitalTrackKind.STRING,
+    }
+    if not isinstance(value, str) or value not in kinds:
+        raise VitalFileFormatError(
+            code="invalidTrackMetadata",
+            detail=f"recorder track requires explicit type wav/num/str: {dtname}",
+        )
+    return kinds[value]
+
+
+def recorder_track_sample_rate(
+    kind: VitalTrackKind,
+    value: JsonValue,
+    *,
+    dtname: str,
+) -> float:
+    """Normalize recorder sample rate according to its explicit track kind."""
+
+    if kind is not VitalTrackKind.WAVEFORM:
+        return 0.0
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        raise VitalFileFormatError(
+            code="invalidWaveformSampleRate",
+            detail=f"recorder waveform requires positive srate: {dtname}",
+        )
+    return float(value)
 
 
 def float_value(value: JsonValue) -> float:

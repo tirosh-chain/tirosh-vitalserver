@@ -1,19 +1,20 @@
-export type SendDataRawArchiveRecoveryRequest = {
+import type { RecoveryArtifactReceipt } from "./send-data-raw-archive-export-job-store-port";
+
+export type SendDataRawArchiveExportRequest = {
   rawArchivePath: string;
   outputDir: string;
-  vitalserverUrl: string;
-  endpoint: string;
   timeoutMs: number;
   vrcode: string;
   startOffset: number;
   endOffset: number;
 };
 
-export type SendDataRawArchiveRecoveryResult =
+export type SendDataRawArchiveExportResult =
   | {
       ok: true;
       statusCode: number;
-      response: unknown;
+      artifacts: RecoveryArtifactReceipt[];
+      response: { operation: "export"; artifacts: RecoveryArtifactReceipt[] };
     }
   | {
       ok: false;
@@ -23,6 +24,6 @@ export type SendDataRawArchiveRecoveryResult =
       response?: unknown;
     };
 
-export type SendDataRawArchiveRecoveryExecutorPort = {
-  recover(request: SendDataRawArchiveRecoveryRequest): Promise<SendDataRawArchiveRecoveryResult>;
+export type SendDataRawArchiveExporterPort = {
+  export(request: SendDataRawArchiveExportRequest): Promise<SendDataRawArchiveExportResult>;
 };

@@ -4,7 +4,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from vitalserver_lab.model import LabSessionCreateInput
+from vitalserver_lab.model import LabSessionCreateInput, LabSessionFailure
 from vitalserver_lab.persistence import SQLAlchemyLabSessionStore
 
 
@@ -54,6 +54,41 @@ def test_sqlalchemy_store_persists_session_and_children_as_one_start_transition(
     assert reopened.get(created.session_id).state == "running"
     assert {bed.state for bed in reopened.list_beds()} == {"running"}
     assert {recorder.state for recorder in reopened.list_recorders()} == {"running"}
+
+
+def test_sqlalchemy_store_persists_session_failure_and_children_atomically(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path / 'lab.sqlite'}"
+    store = SQLAlchemyLabSessionStore(url, id_factory=lambda: "lab_session_1")
+    created = store.create(
+        LabSessionCreateInput(
+            scenario_id="vital-file-replay",
+            name="Failed replay",
+            recorder_count=1,
+            target_url="http://edge/",
+        )
+    )
+    store.start(created.session_id)
+
+    failed = store.fail(
+        created.session_id,
+        LabSessionFailure(
+            stage="fileValidation",
+            code="invalidWaveformSampleRate",
+            message="invalid waveform sample rate",
+            failed_at="2026-07-21T03:00:00Z",
+        ),
+    )
+    reopened = SQLAlchemyLabSessionStore(url)
+    loaded = reopened.get(created.session_id)
+
+    assert failed is not None
+    assert failed.state == "failed"
+    assert loaded is not None
+    assert loaded.failure == failed.failure
+    assert {bed.state for bed in reopened.list_beds()} == {"failed"}
+    assert {recorder.state for recorder in reopened.list_recorders()} == {"failed"}
 
 
 def test_sqlalchemy_store_deletes_session_and_owned_children_atomically(

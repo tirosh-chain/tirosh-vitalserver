@@ -10,14 +10,17 @@ from tirosh_vitalserver.core.domain.vital_file import (
     iter_vital_files,
 )
 from tirosh_vitalserver.recorder_recovery.adapters.outbound import (
-    RawArchiveVitalFileExporter,
+    SqliteRecoveryArtifactRegistry,
     VitalServerClient,
 )
 from tirosh_vitalserver.recorder_recovery.application.assertions import (
     assert_transfer_success,
 )
 from tirosh_vitalserver.recorder_recovery.application.usecases.recover import (
+    RawArchiveVitalExportRequest,
     RawArchiveVitalRecoveryRequest,
+    export_raw_archive_vital,
+    export_result_to_document,
     recover_raw_archive_vital,
     recovery_result_to_document,
     transfer_summary_to_document,
@@ -50,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="recorder-ingress send-data raw archive JSONL path",
     )
+    add_registry_path_arg(export_parser)
     export_parser.add_argument(
         "--output-dir",
         type=Path,
@@ -68,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="recorder-ingress send-data raw archive JSONL path",
     )
+    add_registry_path_arg(recover_parser)
     recover_parser.add_argument(
         "--output-dir",
         type=Path,
@@ -112,6 +117,20 @@ def add_upload_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_registry_path_arg(parser: argparse.ArgumentParser) -> None:
+    """Add the durable recovery artifact registry location."""
+
+    parser.add_argument(
+        "--registry-path",
+        type=Path,
+        default=None,
+        help=(
+            "SQLite artifact registry path; default is "
+            "<output-dir-parent>/recovery-artifacts.sqlite3"
+        ),
+    )
+
+
 def run_upload_vital(args: argparse.Namespace) -> int:
     """Upload one file or a directory of `.vital` files to VitalServer."""
 
@@ -136,18 +155,14 @@ def run_upload_vital(args: argparse.Namespace) -> int:
 def run_export_raw_archive_vital(args: argparse.Namespace) -> int:
     """Export recorder-ingress raw archive JSONL to `.vital` artifacts."""
 
-    artifacts = RawArchiveVitalFileExporter().export_raw_archive(
-        args.raw_archive_path,
-        args.output_dir,
+    result = export_raw_archive_vital(
+        RawArchiveVitalExportRequest(
+            raw_archive_path=args.raw_archive_path,
+            output_dir=args.output_dir,
+        ),
+        registry=SqliteRecoveryArtifactRegistry(registry_path(args)),
     )
-    for artifact in artifacts:
-        print(
-            "exported "
-            f"vrcode={artifact.vrcode} "
-            f"tracks={artifact.track_count} "
-            f"bytes={artifact.size_bytes} "
-            f"path={artifact.path}"
-        )
+    print(export_result_to_document(result))
     return 0
 
 
@@ -166,10 +181,19 @@ def run_recover_raw_archive_vital(args: argparse.Namespace) -> int:
             repeat=args.repeat,
             max_failure_rate=args.max_failure_rate,
             skip_filename_check=args.skip_filename_check,
-        )
+        ),
+        registry=SqliteRecoveryArtifactRegistry(registry_path(args)),
     )
     print(recovery_result_to_document(result))
     return 0
+
+
+def registry_path(args: argparse.Namespace) -> Path:
+    """Resolve the documented CLI registry path preset."""
+
+    if args.registry_path is not None:
+        return args.registry_path
+    return args.output_dir.parent / "recovery-artifacts.sqlite3"
 
 
 def run_serve(args: argparse.Namespace) -> int:

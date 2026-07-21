@@ -28,6 +28,13 @@ enum RuntimeControlHTTPErrorResponseMapper {
                 message: multipartError.localizedDescription
             )
         }
+        if let stagingError = error as? RuntimeControlMultipartStagingError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .serviceUnavailable,
+                code: .handlerFailed,
+                message: stagingError.localizedDescription
+            )
+        }
         if let guestQueryError = error as? RuntimeGuestOperationEventQueryRejectedError {
             return RuntimeControlHTTPResponseFactory.error(
                 status: .badRequest,

@@ -31,5 +31,6 @@ install_guest_tools_runtime() {
 }
 
 mount_share "${MOUNT_TAG}" "${MOUNT_POINT}"
+python3 "${DEPLOY_DIR}/pre_bootstrap_quiesce.py"
 install_guest_tools_runtime
 exec "${GUEST_TOOLS_VENV}/bin/tirosh-vitalserver-bootstrap"

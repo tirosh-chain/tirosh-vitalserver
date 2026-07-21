@@ -137,6 +137,7 @@ class GuestBootstrapOperations:
 class GuestBootstrapState:
     completed_steps: list[GuestBootstrapStep] = field(default_factory=list)
     result_terminal: bool = False
+    active_step: GuestBootstrapStep | None = None
 
     def complete(self, step: GuestBootstrapStep) -> None:
         self.completed_steps.append(step)
@@ -182,9 +183,15 @@ class GuestBootstrapWorkflow:
                 self.execute(step, action)
         except Exception:
             if not self.state.result_terminal:
+                failed_step = self.state.active_step
+                message = (
+                    "Guest bootstrap failed before completion."
+                    if failed_step is None
+                    else f"Guest bootstrap failed at step: {failed_step.value}."
+                )
                 self.write_bootstrap_result(
                     "failed",
-                    "Guest bootstrap failed before completion.",
+                    message,
                     ("guest-bootstrap-failed",),
                 )
             raise
@@ -241,8 +248,21 @@ class GuestBootstrapWorkflow:
         ]
 
     def execute(self, step: GuestBootstrapStep, action: Callable[[], None]) -> None:
+        self.state.active_step = step
+        print(f"Guest bootstrap step started: {step.value}", flush=True)
+        if (
+            self.state.has_completed(GuestBootstrapStep.WRITE_RUNNING_RESULT)
+            and not self.state.result_terminal
+        ):
+            self.write_bootstrap_result(
+                "running",
+                f"Guest bootstrap step running: {step.value}.",
+                (),
+            )
         action()
         self.state.complete(step)
+        self.state.active_step = None
+        print(f"Guest bootstrap step completed: {step.value}", flush=True)
 
     def write_running_result(self) -> None:
         self.write_bootstrap_result("running", "Guest bootstrap is running.", ())
@@ -346,8 +366,7 @@ class GuestBootstrapWorkflow:
         )
         if result.passed:
             print(
-                "Docker runtime smoke passed using "
-                f"{self.context.docker_smoke_image}."
+                f"Docker runtime smoke passed using {self.context.docker_smoke_image}."
             )
             return
         if result.missing_image:
@@ -409,9 +428,7 @@ class GuestBootstrapWorkflow:
             self.operations.sleep(self.context.edge_ready_poll_seconds)
         self.operations.write_edge_diagnostics()
         if last_failure:
-            raise RuntimeError(
-                "VitalServer edge did not become ready: " + last_failure
-            )
+            raise RuntimeError("VitalServer edge did not become ready: " + last_failure)
         raise RuntimeError("VitalServer edge did not become ready")
 
     def run_runtime_boot_smoke_if_requested(self) -> None:

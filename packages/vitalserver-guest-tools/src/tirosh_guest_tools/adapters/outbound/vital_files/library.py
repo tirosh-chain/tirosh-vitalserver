@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import gzip
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from io import BytesIO
 from pathlib import Path
 from time import monotonic, sleep
 from typing import Protocol
@@ -14,6 +13,7 @@ from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
+from tirosh_guest_tools.application.guest_control.ports import VitalFileUploadSource
 from tirosh_guest_tools.domain.errors import GuestContractError
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
@@ -22,6 +22,11 @@ from tirosh_guest_tools.domain.guest_control.models import (
     VitalFileUploadResult,
 )
 from tirosh_guest_tools.domain.runtime_config import RuntimeConfig
+from tirosh_vitalserver.core.domain.vital_file import (
+    VITAL_HEADER_PREFIX_LENGTH,
+    VitalFileFormatError,
+    probe_vital_header,
+)
 
 
 @dataclass(frozen=True)
@@ -38,7 +43,7 @@ class VitalServerHTTPTransport(Protocol):
         method: str,
         url: str,
         headers: Mapping[str, str],
-        body: bytes | None,
+        body: bytes | Iterable[bytes] | None,
         timeout: float,
     ) -> VitalServerHTTPResponse:
         raise NotImplementedError
@@ -51,7 +56,7 @@ class URLlibVitalServerHTTPTransport:
         method: str,
         url: str,
         headers: Mapping[str, str],
-        body: bytes | None,
+        body: bytes | Iterable[bytes] | None,
         timeout: float,
     ) -> VitalServerHTTPResponse:
         request = Request(url, data=body, headers=dict(headers), method=method)
@@ -157,27 +162,30 @@ class VitalServerVitalFileLibrary:
             )
         return sorted(files, key=lambda item: str(item["relativePath"]).lower())
 
-    def import_files(self, files: list[tuple[str, bytes]]) -> VitalFileUploadResult:
-        candidates, failures = self._upload_candidates(files)
+    def import_sources(
+        self,
+        sources: list[VitalFileUploadSource],
+    ) -> VitalFileUploadResult:
+        candidates, failures = self._upload_candidates(sources)
         if not candidates:
             return VitalFileUploadResult.from_items([], failures)
 
         indexed_before = {str(item["displayName"]): item for item in self.list_files()}
-        upload_candidates: list[tuple[str, bytes]] = []
-        for filename, content in candidates:
-            if filename in indexed_before:
+        upload_candidates: list[VitalFileUploadSource] = []
+        for source in candidates:
+            if source.file_name in indexed_before:
                 failures.append(
                     VitalFileUploadFailure(
-                        file_name=filename,
+                        file_name=source.file_name,
                         reason="VitalServer already indexes this filename.",
                     )
                 )
                 continue
-            upload_candidates.append((filename, content))
+            upload_candidates.append(source)
 
-        accepted: list[tuple[str, bytes]] = []
-        for filename, content in upload_candidates:
-            response = self._upload(filename, content)
+        accepted: list[VitalFileUploadSource] = []
+        for source in upload_candidates:
+            response = self._upload(source)
             response_text = response.body.decode("utf-8", errors="replace").strip()
             upload_succeeded = (
                 response.status_code in range(200, 300) and response_text == "success"
@@ -185,7 +193,7 @@ class VitalServerVitalFileLibrary:
             if not upload_succeeded:
                 failures.append(
                     VitalFileUploadFailure(
-                        file_name=filename,
+                        file_name=source.file_name,
                         reason=(
                             "VitalServer upload failed: "
                             f"HTTP {response.status_code} body={response_text!r}"
@@ -193,35 +201,35 @@ class VitalServerVitalFileLibrary:
                     )
                 )
                 continue
-            accepted.append((filename, content))
+            accepted.append(source)
 
         if not accepted:
             return VitalFileUploadResult.from_items([], failures)
 
         try:
             indexed_after, _ = self._wait_for_index(
-                [filename for filename, _ in accepted]
+                [source.file_name for source in accepted]
             )
         except GuestControlDependencyError as error:
             failures.extend(
                 VitalFileUploadFailure(
-                    file_name=filename,
+                    file_name=source.file_name,
                     reason=(
                         "VitalServer accepted the upload, but index verification "
                         f"failed: {error.message}"
                     ),
                 )
-                for filename, _ in accepted
+                for source in accepted
             )
             return VitalFileUploadResult.from_items([], failures)
 
         uploaded: list[VitalFileUploadItem] = []
-        for filename, content in accepted:
-            indexed = indexed_after.get(filename)
+        for source in accepted:
+            indexed = indexed_after.get(source.file_name)
             if indexed is None:
                 failures.append(
                     VitalFileUploadFailure(
-                        file_name=filename,
+                        file_name=source.file_name,
                         reason=(
                             "VitalServer accepted the upload but did not report "
                             "the file in its index within "
@@ -232,9 +240,9 @@ class VitalServerVitalFileLibrary:
                 continue
             uploaded.append(
                 VitalFileUploadItem(
-                    file_name=filename,
+                    file_name=source.file_name,
                     relative_path=str(indexed["relativePath"]),
-                    size_bytes=len(content),
+                    size_bytes=source.size_bytes,
                 )
             )
         return VitalFileUploadResult.from_items(uploaded, failures)
@@ -295,19 +303,23 @@ class VitalServerVitalFileLibrary:
             )
         return token
 
-    def _upload(self, filename: str, content: bytes) -> VitalServerHTTPResponse:
+    def _upload(self, source: VitalFileUploadSource) -> VitalServerHTTPResponse:
         boundary = f"----tirosh-vitalserver-{uuid4().hex}"
         prefix = (
             f"--{boundary}\r\n"
             'Content-Disposition: form-data; name="vitalfile"; '
-            f'filename="{filename}"\r\n'
+            f'filename="{source.file_name}"\r\n'
             "Content-Type: application/octet-stream\r\n\r\n"
         ).encode()
-        body = prefix + content + f"\r\n--{boundary}--\r\n".encode()
+        suffix = f"\r\n--{boundary}--\r\n".encode()
+        body = _multipart_body(source, prefix=prefix, suffix=suffix)
         return self._request(
             method="POST",
             path="/upload",
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(prefix) + source.size_bytes + len(suffix)),
+            },
             body=body,
         )
 
@@ -327,7 +339,7 @@ class VitalServerVitalFileLibrary:
         method: str,
         path: str,
         headers: Mapping[str, str] | None = None,
-        body: bytes | None = None,
+        body: bytes | Iterable[bytes] | None = None,
     ) -> VitalServerHTTPResponse:
         url = urljoin(self._base_url, path.lstrip("/"))
         try:
@@ -345,34 +357,37 @@ class VitalServerVitalFileLibrary:
             ) from error
 
     def _upload_candidates(
-        self, files: list[tuple[str, bytes]]
-    ) -> tuple[list[tuple[str, bytes]], list[VitalFileUploadFailure]]:
-        if not files:
+        self, sources: list[VitalFileUploadSource]
+    ) -> tuple[list[VitalFileUploadSource], list[VitalFileUploadFailure]]:
+        if not sources:
             raise GuestControlDependencyError(
                 "Select at least one .vital file.",
                 kind="vitalFileUploadInvalid",
             )
         names: set[str] = set()
-        candidates: list[tuple[str, bytes]] = []
+        candidates: list[VitalFileUploadSource] = []
         failures: list[VitalFileUploadFailure] = []
-        for filename, content in files:
+        for source in sources:
             try:
-                self._validate_upload_candidate(filename, content, names)
+                self._validate_upload_candidate(source, names)
             except GuestControlDependencyError as error:
                 failures.append(
-                    VitalFileUploadFailure(file_name=filename, reason=error.message)
+                    VitalFileUploadFailure(
+                        file_name=source.file_name,
+                        reason=error.message,
+                    )
                 )
                 continue
-            names.add(filename)
-            candidates.append((filename, content))
+            names.add(source.file_name)
+            candidates.append(source)
         return candidates, failures
 
     def _validate_upload_candidate(
         self,
-        filename: str,
-        content: bytes,
+        source: VitalFileUploadSource,
         names: set[str],
     ) -> None:
+        filename = source.file_name
         if not self._valid_filename(filename):
             raise GuestControlDependencyError(
                 "Only .vital files can be uploaded: "
@@ -392,19 +407,36 @@ class VitalServerVitalFileLibrary:
                 f"Upload contains duplicate filenames: {filename}",
                 kind="vitalFileUploadInvalid",
             )
-        self._validate_vital_file_content(filename, content)
+        if source.size_bytes < 0:
+            raise GuestControlDependencyError(
+                f"Vital file source size is invalid: {filename}",
+                kind="vitalFileUploadInvalid",
+            )
+        self._validate_vital_file_content(source)
 
     @staticmethod
-    def _validate_vital_file_content(filename: str, content: bytes) -> None:
+    def _validate_vital_file_content(source: VitalFileUploadSource) -> None:
+        filename = source.file_name
         try:
-            with gzip.GzipFile(fileobj=BytesIO(content), mode="rb") as archive:
-                if archive.read(4) != b"VITA":
-                    raise GuestControlDependencyError(
-                        f"Vital file is missing its VITA header: {filename}",
-                        kind="vitalFileUploadInvalid",
-                    )
+            with (
+                source.open() as compressed,
+                gzip.GzipFile(fileobj=compressed, mode="rb") as archive,
+            ):
+                prefix = archive.read(VITAL_HEADER_PREFIX_LENGTH)
+                header_length = (
+                    int.from_bytes(prefix[8:10], byteorder="little")
+                    if len(prefix) == VITAL_HEADER_PREFIX_LENGTH
+                    else 0
+                )
+                probe_vital_header(prefix + archive.read(header_length))
                 while archive.read(1024 * 1024):
                     pass
+        except VitalFileFormatError as error:
+            raise GuestControlDependencyError(
+                "Vital file header is invalid: "
+                f"{filename}: code={error.code} detail={error.detail}",
+                kind="vitalFileUploadInvalid",
+            ) from error
         except (gzip.BadGzipFile, EOFError, OSError) as error:
             raise GuestControlDependencyError(
                 f"Vital file gzip stream is invalid: {filename}: {error}",
@@ -465,3 +497,29 @@ class VitalServerVitalFileLibrary:
             f"VitalServer file list response is invalid: {detail}",
             kind="vitalFileLibraryInvalidResponse",
         )
+
+
+def _multipart_body(
+    source: VitalFileUploadSource,
+    *,
+    prefix: bytes,
+    suffix: bytes,
+) -> Iterator[bytes]:
+    yield prefix
+    remaining = source.size_bytes
+    with source.open() as stream:
+        while remaining > 0:
+            chunk = stream.read(min(1024 * 1024, remaining))
+            if not chunk:
+                raise OSError(
+                    "Vital file source ended before its declared size: "
+                    f"{source.file_name} remaining={remaining}"
+                )
+            remaining -= len(chunk)
+            yield chunk
+        if stream.read(1):
+            raise OSError(
+                "Vital file source exceeds its declared size: "
+                f"{source.file_name} size={source.size_bytes}"
+            )
+    yield suffix

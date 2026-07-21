@@ -26,3 +26,13 @@ class RecoverRawArchiveVitalRequest(RecoverySchema):
     skip_filename_check: bool = Field(default=False, alias="skipFilenameCheck")
     start_offset: int = Field(default=0, alias="startOffset", ge=0)
     end_offset: int | None = Field(default=None, alias="endOffset", ge=0)
+
+
+class ExportRawArchiveVitalRequest(RecoverySchema):
+    """Request body for export-only raw archive artifact generation."""
+
+    raw_archive_path: str = Field(alias="rawArchivePath", min_length=1)
+    output_dir: str = Field(alias="outputDir", min_length=1)
+    vrcode: str | None = None
+    start_offset: int = Field(default=0, alias="startOffset", ge=0)
+    end_offset: int | None = Field(default=None, alias="endOffset", ge=0)

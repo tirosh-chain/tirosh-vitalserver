@@ -377,7 +377,10 @@ PY
 
 update_apt_indexes() {
   ROOTFS_STAGE="apt-index-update"
-  apt-get update
+  apt-get \
+    -o Acquire::Retries=5 \
+    -o APT::Update::Error-Mode=any \
+    update
 }
 
 record_installed_runtime_packages() {

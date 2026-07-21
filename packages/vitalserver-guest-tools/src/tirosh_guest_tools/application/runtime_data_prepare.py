@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +12,23 @@ from tirosh_guest_tools.application.runtime_data_contract import (
     RuntimeDataContract,
     prepare_runtime_data_directories,
 )
+from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.infrastructure.common import DEPLOY_DIR
+
+VITALSERVER_DOCKER_CONSUMER_UNITS = (
+    RuntimeService.RUNTIME_OBSERVATION.value,
+    RuntimeService.CONTAINER_LOGS.value,
+    RuntimeService.COMPOSE.value,
+)
+DOCKER_RUNTIME_UNITS = (
+    "docker.service",
+    "docker.socket",
+    "containerd.service",
+)
+SYSTEMD_UNIT_STOP_TIMEOUT_SECONDS = 180.0
+SYSTEMD_UNIT_STOP_COMMAND_TIMEOUT_SECONDS = 30.0
+SYSTEMD_UNIT_STATE_READ_TIMEOUT_SECONDS = 30.0
+SYSTEMD_UNIT_STATE_POLL_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -25,6 +42,8 @@ class RuntimeDataPrepareContext:
 @dataclass(frozen=True)
 class RuntimeDataPrepareOperations:
     run: Callable[..., subprocess.CompletedProcess[str]]
+    current_time_seconds: Callable[[], float] = time.monotonic
+    sleep: Callable[[float], None] = time.sleep
 
 
 def default_context() -> RuntimeDataPrepareContext:
@@ -62,11 +81,172 @@ def prepare_runtime_data(
 
 
 def stop_docker_services(operations: RuntimeDataPrepareOperations) -> None:
-    run_checked(
-        operations,
-        ["systemctl", "stop", "docker.service", "docker.socket", "containerd.service"],
-        timeout_seconds=30.0,
+    stop_systemd_units(operations, VITALSERVER_DOCKER_CONSUMER_UNITS)
+    stop_systemd_units(operations, DOCKER_RUNTIME_UNITS)
+
+
+def stop_systemd_units(
+    operations: RuntimeDataPrepareOperations,
+    units: tuple[str, ...],
+) -> None:
+    arguments = ["systemctl", "stop", "--no-block", *units]
+    try:
+        completed = operations.run(
+            arguments,
+            check=False,
+            timeout_seconds=SYSTEMD_UNIT_STOP_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        unit_state_diagnostics = systemd_unit_state_diagnostics(operations, units)
+        raise RuntimeError(
+            "systemd unit stop timed out: "
+            f"units={','.join(units)} "
+            f"timeoutSeconds={SYSTEMD_UNIT_STOP_COMMAND_TIMEOUT_SECONDS:g} "
+            f"unitStates={unit_state_diagnostics}"
+        ) from error
+
+    unit_states = read_systemd_unit_states(operations, units)
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "systemd unit stop failed: "
+            f"units={','.join(units)} exit={completed.returncode} "
+            f"stdout={completed.stdout} stderr={completed.stderr} "
+            f"unitStates={format_systemd_unit_states(unit_states)}"
+        )
+
+    deadline = operations.current_time_seconds() + SYSTEMD_UNIT_STOP_TIMEOUT_SECONDS
+    while True:
+        for unit, state in unit_states.items():
+            if state != "failed":
+                continue
+            main_pid = read_systemd_unit_process_id(
+                operations,
+                unit=unit,
+                property_name="MainPID",
+            )
+            control_pid = read_systemd_unit_process_id(
+                operations,
+                unit=unit,
+                property_name="ControlPID",
+            )
+            if main_pid != 0 or control_pid != 0:
+                continue
+            reset_failed_systemd_unit(operations, unit)
+            recovered_state = read_systemd_unit_states(operations, (unit,))[unit]
+            if recovered_state != "inactive":
+                raise RuntimeError(
+                    "systemd unit failed-state recovery did not reach inactive: "
+                    f"unit={unit} state={recovered_state}"
+                )
+            unit_states[unit] = recovered_state
+
+        non_inactive_states = {
+            unit: state for unit, state in unit_states.items() if state != "inactive"
+        }
+        if not non_inactive_states:
+            return
+        if operations.current_time_seconds() >= deadline:
+            raise RuntimeError(
+                "systemd units did not stop before deadline: "
+                f"timeoutSeconds={SYSTEMD_UNIT_STOP_TIMEOUT_SECONDS:g} "
+                f"{format_systemd_unit_states(non_inactive_states)}"
+            )
+        operations.sleep(SYSTEMD_UNIT_STATE_POLL_SECONDS)
+        unit_states = read_systemd_unit_states(operations, units)
+
+
+def read_systemd_unit_process_id(
+    operations: RuntimeDataPrepareOperations,
+    *,
+    unit: str,
+    property_name: str,
+) -> int:
+    completed = operations.run(
+        ["systemctl", "show", f"--property={property_name}", "--value", unit],
+        check=False,
+        timeout_seconds=SYSTEMD_UNIT_STATE_READ_TIMEOUT_SECONDS,
     )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "systemd unit process state read failed: "
+            f"unit={unit} property={property_name} exit={completed.returncode} "
+            f"stdout={completed.stdout} stderr={completed.stderr}"
+        )
+    raw_value = completed.stdout.strip() if isinstance(completed.stdout, str) else ""
+    try:
+        value = int(raw_value)
+    except ValueError as error:
+        raise RuntimeError(
+            "systemd unit process state is invalid: "
+            f"unit={unit} property={property_name} value={raw_value!r}"
+        ) from error
+    if value < 0:
+        raise RuntimeError(
+            "systemd unit process state is invalid: "
+            f"unit={unit} property={property_name} value={raw_value!r}"
+        )
+    return value
+
+
+def reset_failed_systemd_unit(
+    operations: RuntimeDataPrepareOperations,
+    unit: str,
+) -> None:
+    print(
+        "Recovering stopped systemd unit from explicit failed state: "
+        f"unit={unit} MainPID=0 ControlPID=0"
+    )
+    completed = operations.run(
+        ["systemctl", "reset-failed", unit],
+        check=False,
+        timeout_seconds=SYSTEMD_UNIT_STATE_READ_TIMEOUT_SECONDS,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "systemd unit failed-state reset failed: "
+            f"unit={unit} exit={completed.returncode} "
+            f"stdout={completed.stdout} stderr={completed.stderr}"
+        )
+
+
+def read_systemd_unit_states(
+    operations: RuntimeDataPrepareOperations,
+    units: tuple[str, ...],
+) -> dict[str, str]:
+    states: dict[str, str] = {}
+    for unit in units:
+        completed = operations.run(
+            ["systemctl", "show", "--property=ActiveState", "--value", unit],
+            check=False,
+            timeout_seconds=SYSTEMD_UNIT_STATE_READ_TIMEOUT_SECONDS,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "systemd unit state read failed: "
+                f"unit={unit} exit={completed.returncode} "
+                f"stdout={completed.stdout} stderr={completed.stderr}"
+            )
+        state = completed.stdout.strip() if isinstance(completed.stdout, str) else ""
+        if not state or "\n" in state:
+            raise RuntimeError(
+                f"systemd unit ActiveState is invalid: unit={unit} value={state!r}"
+            )
+        states[unit] = state
+    return states
+
+
+def systemd_unit_state_diagnostics(
+    operations: RuntimeDataPrepareOperations,
+    units: tuple[str, ...],
+) -> str:
+    try:
+        return format_systemd_unit_states(read_systemd_unit_states(operations, units))
+    except (RuntimeError, subprocess.TimeoutExpired) as error:
+        return f"unavailable({error})"
+
+
+def format_systemd_unit_states(states: dict[str, str]) -> str:
+    return ",".join(f"{unit}={state}" for unit, state in states.items())
 
 
 def read_runtime_data_contract(deploy_dir: Path) -> RuntimeDataContract:

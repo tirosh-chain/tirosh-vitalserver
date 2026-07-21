@@ -10,7 +10,6 @@ from tirosh_vitalserver.core.domain.vital_file import (
     iter_vital_files,
 )
 from tirosh_vitalserver.recorder_recovery.adapters.outbound import (
-    RawArchiveVitalArtifact,
     RawArchiveVitalFileExporter,
     VitalServerClient,
 )
@@ -21,9 +20,17 @@ from tirosh_vitalserver.recorder_recovery.application.metrics import (
     transfer_failed_requests,
     transfer_successful_requests,
 )
+from tirosh_vitalserver.recorder_recovery.application.ports import (
+    RecoveryArtifactRegistryPort,
+)
 from tirosh_vitalserver.recorder_recovery.application.results import TransferSummary
 from tirosh_vitalserver.recorder_recovery.application.usecases.upload import (
     upload_vital_files,
+)
+from tirosh_vitalserver.recorder_recovery.domain import (
+    RecoveryArtifactOrigin,
+    RecoveryArtifactReceipt,
+    recovery_artifact_receipt_to_document,
 )
 
 
@@ -49,23 +56,67 @@ class RawArchiveVitalRecoveryRequest:
 class RawArchiveVitalRecoveryResult:
     """Artifacts and upload summary from one recovery operation."""
 
-    artifacts: tuple[RawArchiveVitalArtifact, ...]
+    artifacts: tuple[RecoveryArtifactReceipt, ...]
     upload: TransferSummary
 
 
-def recover_raw_archive_vital(
-    request: RawArchiveVitalRecoveryRequest,
-) -> RawArchiveVitalRecoveryResult:
-    """Export recorder raw archive payloads as `.vital` files and upload them."""
+@dataclass(frozen=True)
+class RawArchiveVitalExportRequest:
+    """Explicit inputs for an export-only cold-path operation."""
 
-    exporter = RawArchiveVitalFileExporter()
-    artifacts = exporter.export_raw_archive(
+    raw_archive_path: Path
+    output_dir: Path
+    vrcode: str | None = None
+    start_offset: int = 0
+    end_offset: int | None = None
+    origin: RecoveryArtifactOrigin = RecoveryArtifactOrigin.COLD_PATH_RECOVERY
+
+
+@dataclass(frozen=True)
+class RawArchiveVitalExportResult:
+    """Receipts created without publishing to VitalServer."""
+
+    artifacts: tuple[RecoveryArtifactReceipt, ...]
+
+
+def export_raw_archive_vital(
+    request: RawArchiveVitalExportRequest,
+    *,
+    registry: RecoveryArtifactRegistryPort,
+) -> RawArchiveVitalExportResult:
+    """Export raw archive artifacts without invoking a library upload."""
+
+    artifacts = RawArchiveVitalFileExporter().export_raw_archive(
         request.raw_archive_path,
         request.output_dir,
         vrcode=request.vrcode,
         start_offset=request.start_offset,
         end_offset=request.end_offset,
+        origin=request.origin,
     )
+    for artifact in artifacts:
+        registry.register_export(artifact)
+    return RawArchiveVitalExportResult(artifacts=artifacts)
+
+
+def recover_raw_archive_vital(
+    request: RawArchiveVitalRecoveryRequest,
+    *,
+    registry: RecoveryArtifactRegistryPort,
+) -> RawArchiveVitalRecoveryResult:
+    """Export recorder raw archive payloads as `.vital` files and upload them."""
+
+    export = export_raw_archive_vital(
+        RawArchiveVitalExportRequest(
+            raw_archive_path=request.raw_archive_path,
+            output_dir=request.output_dir,
+            vrcode=request.vrcode,
+            start_offset=request.start_offset,
+            end_offset=request.end_offset,
+        ),
+        registry=registry,
+    )
+    artifacts = export.artifacts
     payloads = tuple(
         payload
         for artifact in artifacts
@@ -95,17 +146,24 @@ def recovery_result_to_document(
 
     return {
         "artifacts": [
-            {
-                "vrcode": artifact.vrcode,
-                "path": artifact.path,
-                "filename": artifact.filename,
-                "sizeBytes": artifact.size_bytes,
-                "createdAt": artifact.created_at,
-                "trackCount": artifact.track_count,
-            }
+            recovery_artifact_receipt_to_document(artifact)
             for artifact in result.artifacts
         ],
         "upload": transfer_summary_to_document(result.upload),
+    }
+
+
+def export_result_to_document(
+    result: RawArchiveVitalExportResult,
+) -> dict[str, object]:
+    """Return an export-only result without publish state."""
+
+    return {
+        "operation": "export",
+        "artifacts": [
+            recovery_artifact_receipt_to_document(artifact)
+            for artifact in result.artifacts
+        ],
     }
 
 

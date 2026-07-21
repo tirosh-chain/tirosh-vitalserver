@@ -694,9 +694,16 @@ const runtimeRecorderIngressFailureObservationSchema = z
 const runtimeRecorderIngressRawArchiveAutoExportJobSchema = z
   .object({
     jobId: nullableString,
+    requestId: nullableString,
+    trigger: nullableString,
+    origin: nullableString,
+    vrcode: nullableString,
     archivePath: nullableString,
-    archiveCursor: nullableNumber,
+    startOffset: nullableNumber,
+    endOffset: nullableNumber,
     state: nullableString,
+    publishState: nullableString,
+    artifactIds: z.array(z.string()).optional(),
     attempts: nullableNumber,
     maxAttempts: nullableNumber,
     createdAt: nullableString,
@@ -718,9 +725,9 @@ const runtimeRecorderIngressRawArchiveAutoExportStatusSchema = z
     cursorStableForMs: nullableNumber,
     lastDecisionAt: nullableString,
     activeJob: runtimeRecorderIngressRawArchiveAutoExportJobSchema.nullable().optional(),
-    uploadedJobs: nullableNumber,
+    exportedJobs: nullableNumber,
     failedJobs: nullableNumber,
-    lastResult: z.record(z.string(), z.unknown()).nullable().optional(),
+    lastExportResult: z.record(z.string(), z.unknown()).nullable().optional(),
     lastFailure: runtimeRecorderIngressFailureObservationSchema.nullable().optional()
   })
   .passthrough();

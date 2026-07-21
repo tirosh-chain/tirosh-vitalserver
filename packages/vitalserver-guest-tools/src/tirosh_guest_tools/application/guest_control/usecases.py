@@ -22,6 +22,7 @@ from tirosh_guest_tools.application.guest_control.ports import (
     UpdateShutdownPort,
     VitalDBReadModelPort,
     VitalFileLibraryPort,
+    VitalFileUploadSource,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
     GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
@@ -860,14 +861,14 @@ class GuestControlUseCases:
         )
 
     def import_lab_vital_files(
-        self, files: list[tuple[str, bytes]]
+        self, sources: list[VitalFileUploadSource]
     ) -> dict[str, object]:
         if self._vital_file_library is None:
             raise GuestControlDependencyError(
                 "Vital Files library adapter is unavailable.",
                 kind="vitalFileLibraryUnavailable",
             )
-        return self._vital_file_library.import_files(files).as_json()
+        return self._vital_file_library.import_sources(sources).as_json()
 
     def create_lab_beds(self, request: dict[str, object]) -> dict[str, object]:
         return self._run_lab_read_model_operation(
@@ -1784,7 +1785,7 @@ def _guest_service_condition(
     status: str,
     reason: str,
     message: str,
-    observed_at,
+    observed_at: datetime,
 ) -> GuestServiceCondition:
     return GuestServiceCondition(
         type=type,

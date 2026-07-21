@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from tirosh_guest_tools.application.guest_control.ports import VitalFileUploadSource
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
     TERMINAL_OPERATION_STATES,
@@ -816,10 +817,17 @@ class FakeVitalFileLibrary:
     def list_files(self) -> list[dict[str, object]]:
         return []
 
-    def import_files(self, files: list[tuple[str, bytes]]) -> list[dict[str, object]]:
+    def import_sources(
+        self,
+        sources: list[VitalFileUploadSource],
+    ) -> list[dict[str, object]]:
         return [
-            {"fileName": name, "relativePath": name, "sizeBytes": len(content)}
-            for name, content in files
+            {
+                "fileName": source.file_name,
+                "relativePath": source.file_name,
+                "sizeBytes": source.size_bytes,
+            }
+            for source in sources
         ]
 
 
@@ -1182,8 +1190,7 @@ def test_guest_service_spec_initialization_seeds_missing_resources_explicitly() 
     )
 
 
-def test_guest_service_spec_initialization_migrates_missing_and_preserves_configured(
-) -> None:
+def test_guest_service_spec_initialization_migrates_and_preserves_configured() -> None:
     operations = FakeOperations()
     operations.save_guest_service_resource(
         GuestServiceResource(

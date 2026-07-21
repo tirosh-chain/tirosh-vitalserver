@@ -12,6 +12,7 @@ import sys
 import tomllib
 import zipfile
 from email.message import Message
+from fnmatch import fnmatchcase
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TypedDict
@@ -27,6 +28,9 @@ from tirosh_vitalserver.devtools.core.guest_services import (
 
 GUEST_DEPLOY_MATERIAL_DIGEST_VERSION = 2
 ROOTFS_INPUT_METADATA_RELATIVE_PATH = "build-metadata/rootfs-input.json"
+GUEST_LOCAL_RUNTIME_DEPENDENCIES = {
+    "tirosh-vitalserver-core": Path("../vitalserver-core"),
+}
 GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS = frozenset(
     {
         "host-time.json",
@@ -68,7 +72,11 @@ def stage_materialized_guest_deploy(source: Path, destination: Path) -> None:
         )
     if destination.exists():
         shutil.rmtree(destination)
-    shutil.copytree(source, destination)
+    shutil.copytree(
+        source,
+        destination,
+        ignore=shutil.ignore_patterns(*IGNORED_NAMES),
+    )
     for relative_path in GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS:
         volatile_contract = destination / relative_path
         if volatile_contract.exists():
@@ -108,7 +116,10 @@ def guest_deploy_material_sha256(deploy_dir: Path) -> str:
         f"vitalserver-guest-deploy-material-v{GUEST_DEPLOY_MATERIAL_DIGEST_VERSION}\n".encode()
     )
     for path in entries:
-        relative_path = path.relative_to(deploy_dir).as_posix()
+        relative = path.relative_to(deploy_dir)
+        if guest_deploy_path_is_ignored(relative):
+            continue
+        relative_path = relative.as_posix()
         require_safe_guest_deploy_relative_path(relative_path, deploy_dir)
         try:
             file_status = path.lstat()
@@ -169,6 +180,14 @@ def guest_deploy_material_sha256(deploy_dir: Path) -> str:
             f"directories: {path}"
         )
     return digest.hexdigest()
+
+
+def guest_deploy_path_is_ignored(relative_path: Path) -> bool:
+    return any(
+        fnmatchcase(part, pattern)
+        for part in relative_path.parts
+        for pattern in IGNORED_NAMES
+    )
 
 
 def require_guest_deploy_directory(deploy_dir: Path) -> None:
@@ -399,6 +418,10 @@ def stage_guest_python_wheelhouse(
     staged_guest_wheel = guest_tools_directory / built_wheel.name
     shutil.copy2(built_wheel, staged_guest_wheel)
     guest_wheel_identity = file_identity(staged_guest_wheel)
+    local_dependency_wheels = stage_guest_local_dependency_wheels(
+        project,
+        guest_tools_directory,
+    )
 
     target_configs: list[tuple[str, GuestRuntimeTarget]] = []
     for target in targets:
@@ -415,6 +438,11 @@ def stage_guest_python_wheelhouse(
             staged_guest_wheel,
             python_version=python_version,
         )
+        for dependency_wheel, _ in local_dependency_wheels:
+            validate_guest_python_wheel_syntax(
+                dependency_wheel,
+                python_version=python_version,
+            )
 
     target_documents: dict[str, object] = {}
     for target, target_config in target_configs:
@@ -432,6 +460,14 @@ def stage_guest_python_wheelhouse(
             + " --hash=sha256:"
             + str(guest_wheel_identity["sha256"])
             + "\n"
+            + "".join(
+                "../guest-tools/"
+                + wheel.name
+                + " --hash=sha256:"
+                + str(identity["sha256"])
+                + "\n"
+                for wheel, identity in local_dependency_wheels
+            )
             + lock.read_text(encoding="utf-8"),
             encoding="utf-8",
         )
@@ -460,12 +496,46 @@ def stage_guest_python_wheelhouse(
             "path": staged_guest_wheel.relative_to(destination).as_posix(),
             **guest_wheel_identity,
         },
+        "localDependencies": [
+            {
+                "path": wheel.relative_to(destination).as_posix(),
+                **identity,
+            }
+            for wheel, identity in local_dependency_wheels
+        ],
         "targets": target_documents,
     }
     (destination / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def stage_guest_local_dependency_wheels(
+    project: Path,
+    destination: Path,
+) -> list[tuple[Path, dict[str, object]]]:
+    dependency_names = {
+        normalize_distribution_name(requirement_name(requirement))
+        for requirement in project_runtime_dependencies(project)
+    }
+    wheels: list[tuple[Path, dict[str, object]]] = []
+    for dependency_name, relative_path in GUEST_LOCAL_RUNTIME_DEPENDENCIES.items():
+        if normalize_distribution_name(dependency_name) not in dependency_names:
+            continue
+        dependency_project = (project / relative_path).resolve()
+        wheel = build_pure_python_wheel(dependency_project, destination)
+        wheels.append((wheel, file_identity(wheel)))
+    return wheels
+
+
+def requirement_name(requirement: str) -> str:
+    name = requirement.split("[", maxsplit=1)[0]
+    for separator in (" ", "<", ">", "=", "!", "~", ";"):
+        name = name.split(separator, maxsplit=1)[0]
+    if not name:
+        raise SystemExit(f"error: invalid Python runtime dependency: {requirement!r}")
+    return name
 
 
 def validate_guest_python_wheel_syntax(

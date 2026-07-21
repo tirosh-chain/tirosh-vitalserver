@@ -6,13 +6,15 @@ import base64
 import binascii
 import json
 import zlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
+from tirosh_vitalserver.core.domain.vital_file.format import VitalTrackKind
 from tirosh_vitalserver.core.domain.vital_file.session_recording import (
     VitalTrack,
     collect_frame_tracks,
+    frame_rooms,
 )
 from tirosh_vitalserver.core.errors import RawArchiveDecodeError
 from tirosh_vitalserver.core.types.json import JsonObject, JsonValue
@@ -29,12 +31,28 @@ class RawArchivePayload:
     payload: JsonObject
 
 
+@dataclass(frozen=True)
+class RawArchiveVitalGroup:
+    """Canonical tracks and explicit room identities for one recorder."""
+
+    vrcode: str
+    room_names: tuple[str, ...]
+    tracks: tuple[VitalTrack, ...]
+
+
 def raw_archive_payloads_from_jsonl_lines(
     lines: Iterable[str],
 ) -> tuple[RawArchivePayload, ...]:
     """Decode raw archive JSONL text lines without reading external state."""
 
-    payloads: list[RawArchivePayload] = []
+    return tuple(iter_raw_archive_payloads_from_jsonl_lines(lines))
+
+
+def iter_raw_archive_payloads_from_jsonl_lines(
+    lines: Iterable[str],
+) -> Iterator[RawArchivePayload]:
+    """Yield decoded raw archive payloads without retaining source documents."""
+
     for line_number, line in enumerate(lines, start=1):
         text = line.strip()
         if not text:
@@ -43,8 +61,7 @@ def raw_archive_payloads_from_jsonl_lines(
             text,
             context=f"raw archive line {line_number}",
         )
-        payloads.append(raw_archive_payload_from_record(record))
-    return tuple(payloads)
+        yield raw_archive_payload_from_record(record)
 
 
 def raw_archive_payload_from_record(
@@ -80,34 +97,71 @@ def vital_tracks_by_vrcode_from_raw_archive(
 ) -> dict[str, tuple[VitalTrack, ...]]:
     """Return exportable `.vital` tracks grouped by recorder code."""
 
+    return {
+        group.vrcode: group.tracks
+        for group in vital_groups_from_raw_archive(payloads)
+    }
+
+
+def vital_groups_from_raw_archive(
+    payloads: Iterable[RawArchivePayload],
+) -> tuple[RawArchiveVitalGroup, ...]:
+    """Return tracks with recorder and room identities from explicit payloads."""
+
     grouped_records: dict[str, dict[str, list]] = {}
-    grouped_configs: dict[str, dict[str, tuple[float, str, float, float, int]]] = {}
+    grouped_configs: dict[
+        str,
+        dict[str, tuple[VitalTrackKind, float, str, float, float, int]],
+    ] = {}
+    grouped_room_names: dict[str, set[str]] = {}
 
     for raw_payload in payloads:
         track_records = grouped_records.setdefault(raw_payload.vrcode, {})
         track_configs = grouped_configs.setdefault(raw_payload.vrcode, {})
+        room_names = grouped_room_names.setdefault(raw_payload.vrcode, set())
+        room_names.update(recorder_room_names(raw_payload.payload))
         collect_frame_tracks(
             raw_payload.payload,
             track_records=track_records,
             track_configs=track_configs,
         )
 
-    return {
-        vrcode: tuple(
-            VitalTrack(
-                dtname=dtname,
-                records=tuple(sorted(records, key=lambda record: record.dt)),
-                srate=grouped_configs[vrcode][dtname][0],
-                unit=grouped_configs[vrcode][dtname][1],
-                mindisp=grouped_configs[vrcode][dtname][2],
-                maxdisp=grouped_configs[vrcode][dtname][3],
-                montype=grouped_configs[vrcode][dtname][4],
-            )
-            for dtname, records in sorted(track_records.items())
-            if records
+    return tuple(
+        RawArchiveVitalGroup(
+            vrcode=vrcode,
+            room_names=tuple(sorted(grouped_room_names[vrcode])),
+            tracks=tuple(
+                VitalTrack(
+                    dtname=dtname,
+                    kind=grouped_configs[vrcode][dtname][0],
+                    records=tuple(sorted(records, key=lambda record: record.dt)),
+                    srate=grouped_configs[vrcode][dtname][1],
+                    unit=grouped_configs[vrcode][dtname][2],
+                    mindisp=grouped_configs[vrcode][dtname][3],
+                    maxdisp=grouped_configs[vrcode][dtname][4],
+                    montype=grouped_configs[vrcode][dtname][5],
+                )
+                for dtname, records in sorted(track_records.items())
+                if records
+            ),
         )
         for vrcode, track_records in sorted(grouped_records.items())
-    }
+    )
+
+
+def recorder_room_names(payload: Mapping[str, JsonValue]) -> tuple[str, ...]:
+    """Return explicit room identities carried by one recorder payload."""
+
+    names: list[str] = []
+    for room_key, room in frame_rooms(payload).items():
+        if not isinstance(room, dict):
+            continue
+        room_name = room.get("roomname")
+        if isinstance(room_name, str) and room_name.strip():
+            names.append(room_name.strip())
+        else:
+            names.append(room_key)
+    return tuple(dict.fromkeys(names))
 
 
 def required_string(record: Mapping[str, JsonValue], key: str) -> str:

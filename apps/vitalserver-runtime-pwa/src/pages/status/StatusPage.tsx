@@ -583,8 +583,8 @@ function formatRecorderIngressRawArchiveAutoExport(
   if (autoExport.finalizable === true) {
     parts.push("finalizable");
   }
-  if (autoExport.uploadedJobs !== null && autoExport.uploadedJobs !== undefined) {
-    parts.push(`${autoExport.uploadedJobs} uploaded`);
+  if (autoExport.exportedJobs !== null && autoExport.exportedJobs !== undefined) {
+    parts.push(`${autoExport.exportedJobs} exported`);
   }
   if (autoExport.failedJobs !== null && autoExport.failedJobs !== undefined) {
     parts.push(`${autoExport.failedJobs} failed`);

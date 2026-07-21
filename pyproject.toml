@@ -11,6 +11,7 @@ dependencies = [
   "tirosh-vitalserver-guest-tools",
   "tirosh-vitalserver-recorder-recovery",
   "tirosh-vitalserver-testkit",
+  "tirosh-vitalserver-vitalfile",
 ]
 
 [dependency-groups]
@@ -30,6 +31,7 @@ members = [
   "packages/vitalserver-devtools",
   "packages/vitalserver-guest-tools",
   "packages/vitalserver-testkit",
+  "packages/vitalserver-vitalfile",
 ]
 
 [tool.uv.sources]
@@ -38,6 +40,7 @@ tirosh-vitalserver-devtools = { workspace = true }
 tirosh-vitalserver-guest-tools = { workspace = true }
 tirosh-vitalserver-recorder-recovery = { workspace = true }
 tirosh-vitalserver-testkit = { workspace = true }
+tirosh-vitalserver-vitalfile = { workspace = true }
 
 [tool.ruff]
 src = [
@@ -46,10 +49,12 @@ src = [
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-vitalfile/src",
   "packages/vitalserver-core/tests",
   "apps/vitalserver-recorder-recovery/tests",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
+  "packages/vitalserver-vitalfile/tests",
   "apps/vitaldb-observer",
   "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
@@ -111,7 +116,9 @@ files = [
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-vitalfile/src",
   "packages/vitalserver-testkit/tests",
+  "packages/vitalserver-vitalfile/tests",
   "apps/vitaldb-observer",
   "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
@@ -124,6 +131,7 @@ mypy_path = [
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-vitalfile/src",
   "apps/vitaldb-observer",
   "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
@@ -145,6 +153,7 @@ pythonpath = [
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-vitalfile/src",
   "apps/vitaldb-observer",
   "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
@@ -155,6 +164,7 @@ testpaths = [
   "packages/vitalserver-devtools/tests",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
+  "packages/vitalserver-vitalfile/tests",
   "apps/vitaldb-observer/tests",
   "apps/vitalserver-lab/tests",
   "apps/vitalserver-redis-relay/tests",

@@ -5,8 +5,19 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
+
+from tirosh_vitalserver.core.domain.vital_file import (
+    VitalFileFormatError,
+    VitalFileFormatVersion,
+    VitalTrackKind,
+)
+from tirosh_vitalserver.vitalfile import (
+    VitalDbVitalFileReader,
+    VitalFileReadError,
+)
 
 
 @dataclass(frozen=True)
@@ -16,10 +27,21 @@ class LabVitalReplayFrame:
 
 
 class LabVitalReplaySource(Protocol):
-    duration_seconds: int
+    @property
+    def format_version(self) -> VitalFileFormatVersion:
+        """Return the source file wire format version."""
+        ...
+
+    @property
+    def duration_seconds(self) -> int:
+        """Return the explicit replay duration in whole seconds."""
+        ...
 
     def frame(self, *, offset_seconds: int, output_time: float) -> LabVitalReplayFrame:
         """Read one explicit one-second frame from the source file."""
+
+    def close(self) -> None:
+        """Release operation-owned replay resources explicitly."""
 
 
 class LabVitalReplaySourceFactory(Protocol):
@@ -27,9 +49,24 @@ class LabVitalReplaySourceFactory(Protocol):
         """Open and validate one uploaded Vital File."""
 
 
+class LabReplayStringTrackPolicy(StrEnum):
+    """Configured Lab behavior for valid Vital string tracks."""
+
+    REJECT = "reject"
+    SKIP = "skip"
+
+
+class LabReplayGapPolicy(StrEnum):
+    """Configured Lab behavior when a track has no finite data for a frame."""
+
+    OMIT_TRACK = "omitTrack"
+    FAIL_FRAME = "failFrame"
+
+
 @dataclass(frozen=True)
 class _Track:
     track_id: int
+    kind: VitalTrackKind
     dtname: str
     name: str
     device_name: str
@@ -38,71 +75,86 @@ class _Track:
     sample_rate: float
     minimum_display: float
     maximum_display: float
-    samples: Sequence[float]
+    samples: Sequence[object]
 
     @property
     def is_wave(self) -> bool:
-        return self.sample_rate > 1.0
+        return self.kind is VitalTrackKind.WAVEFORM
 
 
 class VitalDBReplaySourceFactory:
+    def __init__(
+        self,
+        *,
+        string_track_policy: LabReplayStringTrackPolicy,
+        gap_policy: LabReplayGapPolicy,
+        reader: VitalDbVitalFileReader | None = None,
+    ) -> None:
+        self.string_track_policy = string_track_policy
+        self.gap_policy = gap_policy
+        self.reader = reader or VitalDbVitalFileReader()
+
     def open(self, path: Path) -> LabVitalReplaySource:
-        if path.suffix.lower() != ".vital" or not path.is_file():
-            raise VitalReplaySourceError(
-                f"Vital File replay source is unavailable: {path}"
-            )
         try:
-            from vitaldb import VitalFile
-        except ModuleNotFoundError as error:
+            source = self.reader.open(path)
+        except (VitalFileFormatError, VitalFileReadError) as error:
             raise VitalReplaySourceError(
-                "vitaldb package is required for Vital File replay"
+                f"Vital File replay source validation failed: {path.name}: {error}",
+                stage="fileValidation",
+                code=error.code,
             ) from error
-        try:
-            source = VitalFile(str(path))
-        except Exception as error:
-            raise VitalReplaySourceError(
-                f"Vital File replay source decode failed: {path.name}: {error}"
-            ) from error
-        duration_seconds = math.ceil(float(source.dtend) - float(source.dtstart))
+        manifest = source.manifest
+        duration_seconds = math.ceil(manifest.duration_seconds)
         if duration_seconds < 1:
             raise VitalReplaySourceError(
-                f"Vital File replay source has no positive duration: {path.name}"
+                f"Vital File replay source has no positive duration: {path.name}",
+                stage="fileValidation",
+                code="nonPositiveDuration",
             )
 
         tracks: list[_Track] = []
         next_wave_id = 1001
         next_numeric_id = 2001
-        for source_track in source.trks.values():
-            sample_rate = float(getattr(source_track, "srate", 0) or 0)
-            if sample_rate <= 0:
-                raise VitalReplaySourceError(
-                    "Vital File track has an invalid sample rate: "
-                    f"{getattr(source_track, 'dtname', '')}"
-                )
-            is_wave = sample_rate > 1.0
+        for source_track in manifest.tracks:
+            if source_track.kind is VitalTrackKind.STRING:
+                if self.string_track_policy is LabReplayStringTrackPolicy.REJECT:
+                    raise VitalReplaySourceError(
+                        "Vital File string track replay is unsupported: "
+                        f"{source_track.dtname}",
+                        stage="fileValidation",
+                        code="unsupportedStringTrack",
+                    )
+                continue
+
+            is_wave = source_track.kind is VitalTrackKind.WAVEFORM
             track_id = next_wave_id if is_wave else next_numeric_id
-            interval = 1.0 / sample_rate if is_wave else 1.0
-            dtname = str(getattr(source_track, "dtname", ""))
+            interval = 1.0 / source_track.sample_rate if is_wave else 1.0
             try:
-                samples = source.get_track_samples(dtname, interval)
-            except Exception as error:
+                samples = source.track_samples(
+                    source_track.dtname,
+                    interval_seconds=interval,
+                )
+            except VitalFileReadError as error:
                 raise VitalReplaySourceError(
-                    f"Vital File track read failed: {dtname}: {error}"
+                    error.detail,
+                    stage="fileValidation",
+                    code=error.code,
                 ) from error
             tracks.append(
                 _Track(
                     track_id=track_id,
-                    dtname=dtname,
-                    name=str(getattr(source_track, "name", "")) or dtname,
-                    device_name=str(getattr(source_track, "dname", "")) or "Vital File",
-                    unit=str(getattr(source_track, "unit", "")),
+                    kind=source_track.kind,
+                    dtname=source_track.dtname,
+                    name=source_track.name,
+                    device_name=source_track.device_name or "Vital File",
+                    unit=source_track.unit,
                     monitor_type=MONITOR_TYPE_NAMES.get(
-                        int(getattr(source_track, "montype", 0) or 0),
-                        str(int(getattr(source_track, "montype", 0) or 0)),
+                        source_track.monitor_type_id,
+                        str(source_track.monitor_type_id),
                     ),
-                    sample_rate=sample_rate,
-                    minimum_display=float(getattr(source_track, "mindisp", 0) or 0),
-                    maximum_display=float(getattr(source_track, "maxdisp", 0) or 0),
+                    sample_rate=source_track.sample_rate,
+                    minimum_display=source_track.minimum_display,
+                    maximum_display=source_track.maximum_display,
                     samples=samples,
                 )
             )
@@ -111,22 +163,36 @@ class VitalDBReplaySourceFactory:
             else:
                 next_numeric_id += 1
         if not tracks:
-            raise VitalReplaySourceError(f"Vital File contains no tracks: {path.name}")
+            raise VitalReplaySourceError(
+                f"Vital File contains no replayable tracks: {path.name}",
+                stage="fileValidation",
+                code="noReplayableTracks",
+            )
         return VitalDBReplaySource(
+            format_version=manifest.header.format_version,
             duration_seconds=duration_seconds,
             tracks=tuple(tracks),
+            gap_policy=self.gap_policy,
         )
 
 
 @dataclass(frozen=True)
 class VitalDBReplaySource:
+    format_version: VitalFileFormatVersion
     duration_seconds: int
     tracks: tuple[_Track, ...]
+    gap_policy: LabReplayGapPolicy
+
+    def close(self) -> None:
+        return None
 
     def frame(self, *, offset_seconds: int, output_time: float) -> LabVitalReplayFrame:
         if offset_seconds < 0 or offset_seconds >= self.duration_seconds:
             raise VitalReplaySourceError(
-                f"Vital File replay offset is outside source duration: {offset_seconds}"
+                "Vital File replay offset is outside source duration: "
+                f"{offset_seconds}",
+                stage="replayFrame",
+                code="offsetOutsideSourceDuration",
             )
         track_payloads: list[dict[str, object]] = []
         for track in self.tracks:
@@ -134,15 +200,18 @@ class VitalDBReplaySource:
                 track,
                 offset_seconds=offset_seconds,
                 output_time=output_time,
+                gap_policy=self.gap_policy,
             )
             if payload is not None:
                 track_payloads.append(payload)
         if not track_payloads:
             raise VitalReplaySourceError(
                 "Vital File replay frame has no finite records: "
-                f"offset={offset_seconds}"
+                f"offset={offset_seconds}",
+                stage="replayFrame",
+                code="noFiniteRecords",
             )
-        devices = tuple(
+        devices: tuple[dict[str, object], ...] = tuple(
             {
                 "type": "VitalFileReplay",
                 "name": device_name,
@@ -156,7 +225,10 @@ class VitalDBReplaySource:
 
 
 class VitalReplaySourceError(Exception):
-    pass
+    def __init__(self, message: str, *, stage: str, code: str) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.code = code
 
 
 def _track_frame(
@@ -164,18 +236,29 @@ def _track_frame(
     *,
     offset_seconds: int,
     output_time: float,
+    gap_policy: LabReplayGapPolicy,
 ) -> dict[str, object] | None:
     if track.is_wave:
         sample_count = max(1, round(track.sample_rate))
         begin = round(offset_seconds * track.sample_rate)
         values = _finite_wave_values(track.samples[begin : begin + sample_count])
-        if not values:
+        if values is None or len(values) != sample_count:
+            _handle_missing_track_frame(
+                track,
+                offset_seconds=offset_seconds,
+                gap_policy=gap_policy,
+            )
             return None
         records: list[dict[str, object]] = [{"dt": output_time, "val": values}]
         track_type = "wav"
     else:
-        value = _finite_value_at_or_before(track.samples, offset_seconds)
+        value = _finite_value_at_index(track.samples, offset_seconds)
         if value is None:
+            _handle_missing_track_frame(
+                track,
+                offset_seconds=offset_seconds,
+                gap_policy=gap_policy,
+            )
             return None
         records = [{"dt": output_time, "val": round(value, 4)}]
         track_type = "num"
@@ -197,31 +280,36 @@ def _track_frame(
     return payload
 
 
-def _finite_wave_values(values: Sequence[float]) -> list[float]:
-    cleaned: list[float | None] = []
-    previous: float | None = None
-    first: float | None = None
+def _handle_missing_track_frame(
+    track: _Track,
+    *,
+    offset_seconds: int,
+    gap_policy: LabReplayGapPolicy,
+) -> None:
+    if gap_policy is LabReplayGapPolicy.OMIT_TRACK:
+        return None
+    raise VitalReplaySourceError(
+        "Vital File replay track has no complete finite frame: "
+        f"{track.dtname} offset={offset_seconds}",
+        stage="replayFrame",
+        code="missingTrackRecord",
+    )
+
+
+def _finite_wave_values(values: Sequence[object]) -> list[float] | None:
+    cleaned: list[float] = []
     for raw in values:
         value = _finite_float(raw)
-        if value is not None:
-            previous = value
-            first = value if first is None else first
-            cleaned.append(round(value, 4))
-        else:
-            cleaned.append(None if previous is None else round(previous, 4))
-    if first is None:
-        return []
-    return [first if value is None else value for value in cleaned]
+        if value is None:
+            return None
+        cleaned.append(round(value, 4))
+    return cleaned
 
 
-def _finite_value_at_or_before(values: Sequence[float], index: int) -> float | None:
-    cursor = min(index, len(values) - 1)
-    while cursor >= 0:
-        value = _finite_float(values[cursor])
-        if value is not None:
-            return value
-        cursor -= 1
-    return None
+def _finite_value_at_index(values: Sequence[object], index: int) -> float | None:
+    if index < 0 or index >= len(values):
+        return None
+    return _finite_float(values[index])
 
 
 def _finite_float(value: Any) -> float | None:
