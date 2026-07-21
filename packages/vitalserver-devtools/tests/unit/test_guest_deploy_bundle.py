@@ -38,6 +38,7 @@ HOST_PYTHON_PACKAGES = (
     ROOT / "packages/vitalserver-core/pyproject.toml",
     ROOT / "packages/vitalserver-guest-tools/pyproject.toml",
     ROOT / "packages/vitalserver-testkit/pyproject.toml",
+    ROOT / "packages/vitalserver-vitalfile/pyproject.toml",
     ROOT / "apps/vitalserver-recorder-recovery/pyproject.toml",
 )
 
@@ -145,6 +146,16 @@ def test_guest_compose_contract_accepts_release_declared_services() -> None:
     ).read_text(encoding="utf-8")
 
     assert release_guest_compose_contract_errors(compose_text=compose_text) == ()
+
+
+def test_vitalfile_package_is_guest_deploy_and_rootfs_contract_input() -> None:
+    config = load_config(ROOT / "config/vm-build.toml")
+    deploy_config = load_guest_deploy_config(config)
+    deploy_sources = {entry.source for entry in deploy_config.includes}
+    rootfs_makefile = (ROOT / "make/vm/package.mk").read_text(encoding="utf-8")
+
+    assert Path("packages/vitalserver-vitalfile") in deploy_sources
+    assert "\tpackages/vitalserver-vitalfile \\" in rootfs_makefile
 
 
 def test_guest_compose_contract_rejects_missing_runtime_product_service() -> None:

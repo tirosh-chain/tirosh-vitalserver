@@ -481,6 +481,51 @@ def test_wait_for_rootfs_ready_extends_inactivity_deadline_on_manifest_progress(
     assert clock[0] == 1.5
 
 
+def test_wait_for_rootfs_ready_extends_inactivity_deadline_on_apt_plan_progress(
+    monkeypatch,
+    tmp_path,
+):
+    clock = [0.0]
+    sleep_count = [0]
+
+    def sleep(_seconds):
+        sleep_count[0] += 1
+        clock[0] += 0.75
+        if sleep_count[0] == 1:
+            write_rootfs_apt_plan(
+                tmp_path,
+                run_id="run-test",
+                status="allowed",
+                blocked=[],
+            )
+        elif sleep_count[0] == 2:
+            write_rootfs_manifest(tmp_path, run_id="run-test")
+            write_rootfs_marker(tmp_path, run_id="run-test")
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.monotonic",
+        lambda: clock[0],
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.sleep",
+        sleep,
+    )
+
+    result = wait_for_rootfs_ready(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="run-test",
+        )
+    )
+
+    assert result == 0
+    assert clock[0] == 1.5
+
+
 def test_wait_for_rootfs_ready_reports_cleanup_command_failure(tmp_path):
     write_rootfs_manifest(
         tmp_path,
@@ -1300,6 +1345,7 @@ def write_rootfs_apt_plan(
             {
                 "schemaVersion": 1,
                 "runId": run_id,
+                "generatedAt": "2026-07-21T07:19:04Z",
                 "status": status,
                 "snapshot": "20250313T000000Z",
                 "blockedUpgrades": blocked,

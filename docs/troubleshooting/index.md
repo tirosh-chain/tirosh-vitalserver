@@ -171,6 +171,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-168 | canonical Vital v3 artifact가 고정 offset parser에서 비어 있거나 손상된 파일로 처리됨 | Vital Files / Guest containers / TestKit | active | [Canonical Vital v3 artifact is misindexed by a fixed-offset parser](168_vital-v3-header-fixed-offset-parser.md) |
 | TS-169 | 대용량 Vital Files upload가 경계별 전체 buffer 또는 동시 request로 메모리 압력/OOM을 유발함 | Runtime Control PWA / Guest containers / Vital Files | fixed, operational verification pending | [Vital Files upload memory pressure and request boundary](169_vital-upload-memory-pressure-and-request-boundary.md) |
 | TS-170 | Golden rootfs가 올바른 Guest Tools local wheel hash를 unexpected로 거부함 | Packaging / Guest bootstrap | fixed, package verification pending | [Golden rootfs Guest Tools local wheel hash closure failure](170_golden-rootfs-guest-tools-local-wheel-hash-closure.md) |
+| TS-171 | Golden rootfs APT 진행 후 manifest 생성 전에 600초 timeout으로 VM이 종료됨 | Packaging / Local development / Guest bootstrap | implemented | [Golden rootfs times out after APT progress but before manifest](171_golden-rootfs-apt-progress-timeout-before-manifest.md) |
+| TS-172 | Golden rootfs compose build가 local Python package 누락으로 실패함 | Packaging / Local development / Guest bootstrap | implemented | [Golden rootfs compose build cannot find a local package](172_golden-rootfs-compose-build-missing-local-package.md) |
 
 ## Follow-up 규칙
 

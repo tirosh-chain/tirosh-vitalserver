@@ -53,6 +53,7 @@ VM_PKG_ROOTFS_CONTRACT_INPUT_ROOTS := \
 	apps/vitalserver-recorder-ingress \
 	apps/vitalserver-recorder-recovery \
 	packages/vitalserver-core \
+	packages/vitalserver-vitalfile \
 	apps/vitaldb-observer \
 	apps/vitalserver-redis-relay \
 	apps/vitalserver-lab \

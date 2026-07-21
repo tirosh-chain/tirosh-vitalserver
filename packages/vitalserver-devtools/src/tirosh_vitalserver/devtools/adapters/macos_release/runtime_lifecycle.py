@@ -1069,7 +1069,7 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         print(f"Expected golden rootfs runId: {expected_run_id}")
     deadline = time.monotonic() + input.timeout
     last_state = "not-started"
-    last_manifest_progress: str | None = None
+    last_progress: tuple[str, ...] = ()
     while time.monotonic() < deadline:
         failure_result = inspect_rootfs_failure_marker(
             failure,
@@ -1093,17 +1093,31 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         )
         if manifest_result["terminal"]:
             raise SystemExit(str(manifest_result["message"]))
-        manifest_progress = rootfs_manifest_progress_token(
-            manifest,
-            expected_run_id=expected_run_id,
+        current_progress = tuple(
+            token
+            for token in (
+                rootfs_document_progress_token(
+                    apt_plan,
+                    expected_run_id=expected_run_id,
+                    timestamp_field="generatedAt",
+                ),
+                rootfs_manifest_progress_token(
+                    manifest,
+                    expected_run_id=expected_run_id,
+                ),
+            )
+            if token is not None
         )
-        if (
-            manifest_progress is not None
-            and manifest_progress != last_manifest_progress
-        ):
-            last_manifest_progress = manifest_progress
+        if current_progress and current_progress != last_progress:
+            last_progress = current_progress
             deadline = time.monotonic() + input.timeout
-        last_state = str(manifest_result["message"])
+        manifest_message = str(manifest_result["message"])
+        apt_plan_message = str(apt_plan_result["message"])
+        last_state = (
+            f"{apt_plan_message}; {manifest_message}"
+            if apt_plan_message
+            else manifest_message
+        )
         if marker.is_file() and marker.stat().st_size > 0:
             marker_result = inspect_rootfs_ready_marker(
                 marker,
@@ -1125,7 +1139,8 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         )
         time.sleep(3)
     raise SystemExit(
-        f"error: timed out waiting for {marker}: last={last_state}\n"
+        f"error: timed out waiting for {marker}: last={last_state} "
+        f"progress={','.join(last_progress) or 'none'}\n"
         f"Check VM launcher log: {launcher_log(input.vm_home)}"
     )
 
@@ -1135,23 +1150,36 @@ def rootfs_manifest_progress_token(
     *,
     expected_run_id: str | None,
 ) -> str | None:
-    if not manifest.is_file():
+    return rootfs_document_progress_token(
+        manifest,
+        expected_run_id=expected_run_id,
+        timestamp_field="updatedAt",
+    )
+
+
+def rootfs_document_progress_token(
+    document_path: Path,
+    *,
+    expected_run_id: str | None,
+    timestamp_field: str,
+) -> str | None:
+    if not document_path.is_file():
         return None
     try:
-        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document = json.loads(document_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     if not isinstance(document, dict):
         return None
     run_id = document.get("runId")
-    updated_at = document.get("updatedAt")
+    timestamp = document.get(timestamp_field)
     if not isinstance(run_id, str) or not run_id:
         return None
     if expected_run_id is not None and run_id != expected_run_id:
         return None
-    if not isinstance(updated_at, str) or not updated_at:
+    if not isinstance(timestamp, str) or not timestamp:
         return None
-    return f"{run_id}:{updated_at}"
+    return f"{document_path.name}:{run_id}:{timestamp}"
 
 
 def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
