@@ -1326,7 +1326,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
-    func testLabSessionsPreservePersistedReplayFailure() throws {
+    func testLabSessionsPreserveGraphIncompatibleReplayFailure() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,
             body: """
@@ -1340,8 +1340,8 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
                 "targetURL": "http://edge/",
                 "failure": {
                   "stage": "fileValidation",
-                  "code": "invalidWaveformSampleRate",
-                  "message": "invalid waveform sample rate",
+                  "code": "noVitalServerGraphTracks",
+                  "message": "Vital File contains no VitalServer graph-compatible tracks",
                   "failedAt": "2026-07-21T03:00:00Z"
                 }
               }],
@@ -1359,9 +1359,88 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
 
         XCTAssertEqual(session.state, .failed)
         XCTAssertEqual(session.failure?.stage, .fileValidation)
-        XCTAssertEqual(session.failure?.code, .invalidWaveformSampleRate)
-        XCTAssertEqual(session.failure?.message, "invalid waveform sample rate")
+        XCTAssertEqual(session.failure?.code, .noVitalServerGraphTracks)
+        XCTAssertEqual(
+            session.failure?.message,
+            "Vital File contains no VitalServer graph-compatible tracks"
+        )
         XCTAssertEqual(session.failure?.failedAt, "2026-07-21T03:00:00Z")
+    }
+
+    func testLabSessionsPreserveProviderDefinedFailureCode() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state": "loaded",
+              "sessions": [{
+                "sessionId": "lab-session-1",
+                "state": "failed",
+                "scenarioId": "vital-file-replay",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+                "failure": {
+                  "stage": "fileValidation",
+                  "code": "futureProviderFailure",
+                  "message": "future provider failure",
+                  "failedAt": "2026-07-21T03:00:00Z"
+                }
+              }],
+              "readError": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let response = try gateway.labSessions()
+
+        XCTAssertEqual(
+            response.sessions.first?.failure?.code.rawValue,
+            "futureProviderFailure"
+        )
+    }
+
+    func testLabSessionsRejectEmptyFailureCodeWithCodingPath() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state": "loaded",
+              "sessions": [{
+                "sessionId": "lab-session-1",
+                "state": "failed",
+                "scenarioId": "vital-file-replay",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+                "failure": {
+                  "stage": "fileValidation",
+                  "code": "",
+                  "message": "missing failure code",
+                  "failedAt": "2026-07-21T03:00:00Z"
+                }
+              }],
+              "readError": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        XCTAssertThrowsError(try gateway.labSessions()) { error in
+            XCTAssertTrue(
+                error.localizedDescription.contains("sessions[0].failure.code"),
+                error.localizedDescription
+            )
+            XCTAssertTrue(
+                error.localizedDescription.contains("must not be empty"),
+                error.localizedDescription
+            )
+        }
     }
 
     func testLabSessionCommandsEncodeSessionIDAsOnePathSegment() throws {

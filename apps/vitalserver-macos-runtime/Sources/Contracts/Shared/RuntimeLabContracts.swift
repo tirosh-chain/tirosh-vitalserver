@@ -21,17 +21,57 @@ public enum RuntimeLabSessionFailureStage: String, Codable, Equatable, Sendable 
     case replayFrame
 }
 
-public enum RuntimeLabSessionFailureCode: String, Codable, Equatable, Sendable {
-    case sourceUnavailable
-    case readerUnavailable
-    case decodeFailed
-    case nonPositiveDuration
-    case invalidWaveformSampleRate
-    case unsupportedTrackType
-    case trackReadFailed
-    case noReplayableTracks
-    case offsetOutsideSourceDuration
-    case noFiniteRecords
+public struct RuntimeLabSessionFailureCode: RawRepresentable, Codable, Equatable,
+    Hashable, Sendable
+{
+    public let rawValue: String
+
+    public init?(rawValue: String) {
+        guard !rawValue.isEmpty else {
+            return nil
+        }
+        self.rawValue = rawValue
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        guard !rawValue.isEmpty else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Runtime Lab session failure code must not be empty."
+            )
+        }
+        self.rawValue = rawValue
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    private init(knownRawValue: String) {
+        self.rawValue = knownRawValue
+    }
+
+    public static let sourceUnavailable = Self(knownRawValue: "sourceUnavailable")
+    public static let readerUnavailable = Self(knownRawValue: "readerUnavailable")
+    public static let decodeFailed = Self(knownRawValue: "decodeFailed")
+    public static let nonPositiveDuration = Self(knownRawValue: "nonPositiveDuration")
+    public static let invalidWaveformSampleRate = Self(
+        knownRawValue: "invalidWaveformSampleRate"
+    )
+    public static let unsupportedTrackType = Self(knownRawValue: "unsupportedTrackType")
+    public static let unsupportedStringTrack = Self(knownRawValue: "unsupportedStringTrack")
+    public static let trackReadFailed = Self(knownRawValue: "trackReadFailed")
+    public static let noReplayableTracks = Self(knownRawValue: "noReplayableTracks")
+    public static let noVitalServerGraphTracks = Self(
+        knownRawValue: "noVitalServerGraphTracks"
+    )
+    public static let offsetOutsideSourceDuration = Self(
+        knownRawValue: "offsetOutsideSourceDuration"
+    )
+    public static let noFiniteRecords = Self(knownRawValue: "noFiniteRecords")
 }
 
 public struct RuntimeLabSessionFailure: Codable, Equatable, Sendable {

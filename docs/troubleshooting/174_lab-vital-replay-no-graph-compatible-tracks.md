@@ -1,7 +1,7 @@
 # Lab replay succeeds but VitalServer graph stays empty
 
 > ID: TS-174
-> Category: Product Lab / Runtime Control PWA / Upstream integration
+> Category: Product Lab / Runtime Control PWA / macOS Helper / Upstream integration
 > Owner: Product Lab
 > Status: active
 
@@ -19,11 +19,25 @@ Solar8000/PLETH_HR type=2 srate=0 montype=0
 Solar8000/PLETH_SPO2 type=2 srate=0 montype=0
 ```
 
+An affected macOS Helper version can instead show `Sessions 0` and the generic error below after
+the upload succeeds:
+
+```text
+guest control API response decode failed: The data couldn't be read because it isn't in the
+correct format.
+```
+
 ## Impact
 
 VitalServer accepts the recorder connection but cannot place any track into a Web Monitoring graph
 group. Older Lab replay adapters continued sending these tracks and reported the session as
 successful, so transport success hid the file-to-VitalServer compatibility failure.
+
+The first Helper implementation modeled Lab failure codes as a closed Swift enum even though the
+Runtime Control OpenAPI contract defines a provider-owned, non-empty string. When Lab introduced
+`noVitalServerGraphTracks`, one failed session made the complete session-list decode fail. The
+Helper then replaced the explicit failed session with an unavailable read and displayed zero
+sessions.
 
 ## Cause
 
@@ -78,12 +92,21 @@ Update the Guest stack and Runtime Control PWA together. Product Lab returns a s
 session for `noVitalServerGraphTracks`; Guest Control preserves that provider-owned failure from
 the Lab `422` response, and the PWA displays its stage, code, message, and timestamp.
 
+Update the macOS Helper contract with the Guest stack as well. The Helper preserves every
+non-empty provider failure code as its original string, while known values remain available as
+typed constants. Empty failure codes remain invalid. Decode failures now include the exact coding
+path, such as `sessions[0].failure.code`, rather than only Foundation's generic format message.
+
 ## Prevention
 
 Replay validates graph compatibility before the first recorder payload and before a streaming
 spool is committed. Both streaming and non-streaming paths test the all-unknown-monitor-type case.
 The monitor type ID/name mapping has one Core owner and regression assertions cover IDs that had
 drifted from the vendored upstream table.
+
+The Helper gateway tests cover `noVitalServerGraphTracks`, a future provider-defined code, and an
+invalid empty code. Adding a new provider failure must not make unrelated sessions disappear from
+the session list.
 
 ## Operational Notes
 
@@ -100,3 +123,7 @@ Validation failure does not modify or delete the source file.
 
 - 2026-07-22: reproduced with an online replay bed whose waveform and numeric tracks all had
   `montype=0`; VitalServer showed no graph despite successful recorder delivery.
+- 2026-07-22: reproduced the follow-on Helper failure with a persisted
+  `noVitalServerGraphTracks` session. Upload succeeded, but the closed Swift failure-code enum
+  rejected the list response and the UI displayed zero sessions. Replaced it with an extensible
+  non-empty string value and added coding-path diagnostics.

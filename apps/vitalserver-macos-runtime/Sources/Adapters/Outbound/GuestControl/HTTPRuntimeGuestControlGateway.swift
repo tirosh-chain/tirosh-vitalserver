@@ -395,7 +395,9 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
             return try decoder.decode(RuntimeGuestControlReadiness.self, from: response.data)
         } catch {
             guard !(200..<300).contains(response.statusCode) else {
-                throw RuntimeGuestControlHTTPGatewayError.decodeFailed(error.localizedDescription)
+                throw RuntimeGuestControlHTTPGatewayError.decodeFailed(
+                    runtimeGuestControlDecodingErrorDescription(error)
+                )
             }
             throw requestFailed(response)
         }
@@ -925,7 +927,9 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         do {
             return try decoder.decode(type, from: response.data)
         } catch {
-            throw RuntimeGuestControlHTTPGatewayError.decodeFailed(error.localizedDescription)
+            throw RuntimeGuestControlHTTPGatewayError.decodeFailed(
+                runtimeGuestControlDecodingErrorDescription(error)
+            )
         }
     }
 
@@ -992,4 +996,47 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
             availableServices: nil
         )
     }
+}
+
+private func runtimeGuestControlDecodingErrorDescription(_ error: Error) -> String {
+    guard let decodingError = error as? DecodingError else {
+        return error.localizedDescription
+    }
+    switch decodingError {
+    case .dataCorrupted(let context):
+        return decodingIssueText(
+            codingPath: context.codingPath,
+            detail: context.debugDescription
+        )
+    case .keyNotFound(let key, let context):
+        return decodingIssueText(
+            codingPath: context.codingPath + [key],
+            detail: "missing required key: \(context.debugDescription)"
+        )
+    case .typeMismatch(let type, let context):
+        return decodingIssueText(
+            codingPath: context.codingPath,
+            detail: "expected \(type): \(context.debugDescription)"
+        )
+    case .valueNotFound(let type, let context):
+        return decodingIssueText(
+            codingPath: context.codingPath,
+            detail: "missing \(type): \(context.debugDescription)"
+        )
+    @unknown default:
+        return decodingError.localizedDescription
+    }
+}
+
+private func decodingIssueText(codingPath: [any CodingKey], detail: String) -> String {
+    let path = codingPath.reduce(into: "") { result, key in
+        if let index = key.intValue {
+            result += "[\(index)]"
+        } else if result.isEmpty {
+            result = key.stringValue
+        } else {
+            result += ".\(key.stringValue)"
+        }
+    }
+    return path.isEmpty ? detail : "\(path): \(detail)"
 }
