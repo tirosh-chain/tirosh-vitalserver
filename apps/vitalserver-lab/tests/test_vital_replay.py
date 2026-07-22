@@ -70,6 +70,41 @@ def test_numeric_track_with_zero_sample_rate_is_replayed(
     assert second.tracks[1]["recs"] == [{"dt": 201.0, "val": 73.0}]
 
 
+def test_replay_rejects_file_without_vitalserver_graph_monitor_types(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = FakeVitalFile(
+        (
+            track(
+                dtname="SNUADC/PLETH",
+                track_type=1,
+                sample_rate=2.0,
+                samples=(0.1, 0.2, 0.3, 0.4),
+                monitor_type=0,
+            ),
+            track(
+                dtname="Solar8000/PLETH_HR",
+                track_type=2,
+                sample_rate=0.0,
+                samples=(72.0, 73.0),
+                monitor_type=0,
+            ),
+        )
+    )
+    install_fake_vitaldb(monkeypatch, source)
+
+    with pytest.raises(VitalReplaySourceError) as error:
+        replay_factory().open(vital_path(tmp_path))
+
+    assert error.value.stage == "fileValidation"
+    assert error.value.code == "noVitalServerGraphTracks"
+    assert str(error.value) == (
+        "Vital File contains no VitalServer graph-compatible tracks: sample.vital; "
+        "tracks=SNUADC/PLETH(montype=0), Solar8000/PLETH_HR(montype=0)"
+    )
+
+
 def test_waveform_track_requires_positive_sample_rate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -321,6 +356,7 @@ def track(
     track_type: int,
     sample_rate: float,
     samples: tuple[float, ...],
+    monitor_type: int | None = None,
 ) -> SimpleNamespace:
     dname, name = dtname.split("/", maxsplit=1)
     return SimpleNamespace(
@@ -334,7 +370,11 @@ def track(
         col=0,
         gain=1.0,
         offset=0.0,
-        montype=0,
+        montype=(
+            monitor_type
+            if monitor_type is not None
+            else {1: 8, 2: 9}.get(track_type, 0)
+        ),
         mindisp=0,
         maxdisp=100,
         samples=samples,

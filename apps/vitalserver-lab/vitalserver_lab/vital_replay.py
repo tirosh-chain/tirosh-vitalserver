@@ -12,6 +12,8 @@ from typing import Any, Protocol
 from tirosh_vitalserver.core.domain.vital_file import (
     VitalFileFormatError,
     VitalFileFormatVersion,
+    VitalServerMonitorType,
+    VitalTrackDefinition,
     VitalTrackKind,
 )
 from tirosh_vitalserver.vitalfile import (
@@ -112,18 +114,36 @@ class VitalDBReplaySourceFactory:
                 code="nonPositiveDuration",
             )
 
+        string_tracks = tuple(
+            track
+            for track in manifest.tracks
+            if track.kind is VitalTrackKind.STRING
+        )
+        if (
+            string_tracks
+            and self.string_track_policy is LabReplayStringTrackPolicy.REJECT
+        ):
+            raise VitalReplaySourceError(
+                "Vital File string track replay is unsupported: "
+                f"{string_tracks[0].dtname}",
+                stage="fileValidation",
+                code="unsupportedStringTrack",
+            )
+        replayable_definitions = tuple(
+            track
+            for track in manifest.tracks
+            if track.kind is not VitalTrackKind.STRING
+        )
+        require_vitalserver_graph_track(
+            replayable_definitions,
+            source_name=path.name,
+        )
+
         tracks: list[_Track] = []
         next_wave_id = 1001
         next_numeric_id = 2001
         for source_track in manifest.tracks:
             if source_track.kind is VitalTrackKind.STRING:
-                if self.string_track_policy is LabReplayStringTrackPolicy.REJECT:
-                    raise VitalReplaySourceError(
-                        "Vital File string track replay is unsupported: "
-                        f"{source_track.dtname}",
-                        stage="fileValidation",
-                        code="unsupportedStringTrack",
-                    )
                 continue
 
             is_wave = source_track.kind is VitalTrackKind.WAVEFORM
@@ -148,9 +168,8 @@ class VitalDBReplaySourceFactory:
                     name=source_track.name,
                     device_name=source_track.device_name or "Vital File",
                     unit=source_track.unit,
-                    monitor_type=MONITOR_TYPE_NAMES.get(
-                        source_track.monitor_type_id,
-                        str(source_track.monitor_type_id),
+                    monitor_type=monitor_type_wire_name(
+                        source_track.monitor_type_id
                     ),
                     sample_rate=source_track.sample_rate,
                     minimum_display=source_track.minimum_display,
@@ -229,6 +248,41 @@ class VitalReplaySourceError(Exception):
         super().__init__(message)
         self.stage = stage
         self.code = code
+
+
+def require_vitalserver_graph_track(
+    tracks: Sequence[VitalTrackDefinition],
+    *,
+    source_name: str,
+) -> None:
+    """Require an explicit monitor type understood by Web Monitoring."""
+
+    if any(
+        VitalServerMonitorType.from_id(track.monitor_type_id) is not None
+        for track in tracks
+    ):
+        return
+
+    described_tracks = ", ".join(
+        f"{track.dtname}(montype={track.monitor_type_id})"
+        for track in tracks[:8]
+    )
+    remaining = len(tracks) - 8
+    if remaining > 0:
+        described_tracks = f"{described_tracks}, +{remaining} more"
+    raise VitalReplaySourceError(
+        "Vital File contains no VitalServer graph-compatible tracks: "
+        f"{source_name}; tracks={described_tracks}",
+        stage="fileValidation",
+        code="noVitalServerGraphTracks",
+    )
+
+
+def monitor_type_wire_name(monitor_type_id: int) -> str:
+    """Preserve an unknown source id while formatting known wire names."""
+
+    monitor_type = VitalServerMonitorType.from_id(monitor_type_id)
+    return monitor_type.name if monitor_type is not None else str(monitor_type_id)
 
 
 def _track_frame(
@@ -318,40 +372,3 @@ def _finite_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
-
-
-MONITOR_TYPE_NAMES = {
-    1: "ECG_WAV",
-    2: "ECG_HR",
-    4: "IABP_WAV",
-    5: "IABP_SBP",
-    6: "IABP_DBP",
-    7: "IABP_MBP",
-    8: "PLETH_WAV",
-    9: "PLETH_HR",
-    10: "PLETH_SPO2",
-    12: "CO2_RR",
-    13: "CO2_WAV",
-    15: "CO2_CONC",
-    16: "NIBP_SBP",
-    17: "NIBP_DBP",
-    18: "NIBP_MBP",
-    19: "BT",
-    21: "CVP",
-    23: "TV",
-    25: "PIP",
-    26: "GAS_AGENT",
-    27: "GAS_EXPIRED",
-    37: "AWP",
-    38: "PEEP",
-    39: "ST",
-    51: "PPV",
-    70: "PSI",
-    71: "PVI",
-    72: "SPHB",
-    73: "ORI",
-    82: "SEFL",
-    85: "NMT_T4_T1",
-    86: "NMT_TOF_CNT",
-    95: "EEG",
-}

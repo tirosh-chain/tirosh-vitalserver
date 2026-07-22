@@ -23,11 +23,12 @@ from tirosh_vitalserver.vitalfile import (
 )
 
 from .vital_replay import (
-    MONITOR_TYPE_NAMES,
     LabReplayGapPolicy,
     LabReplayStringTrackPolicy,
     LabVitalReplayFrame,
     VitalReplaySourceError,
+    monitor_type_wire_name,
+    require_vitalserver_graph_track,
 )
 
 MAX_REPLAY_TRACKS = 4_096
@@ -84,6 +85,10 @@ class StreamingVitalReplaySourceFactory:
                 string_track_policy=self.string_track_policy,
             )
             header = self.scanner.scan(path, sink)
+            require_vitalserver_graph_track(
+                tuple(track.definition for track in sink.replay_tracks),
+                source_name=path.name,
+            )
             connection.commit()
             started_at, ended_at = sink.time_range(header)
             duration_seconds = math.ceil(ended_at - started_at)
@@ -416,10 +421,7 @@ class StreamingVitalReplaySource:
             "type": track_type,
             "name": definition.name,
             "dname": definition.device_name or "Vital File",
-            "montype": MONITOR_TYPE_NAMES.get(
-                definition.monitor_type_id,
-                str(definition.monitor_type_id),
-            ),
+            "montype": monitor_type_wire_name(definition.monitor_type_id),
             "unit": definition.unit,
             "sourceTrack": definition.dtname,
             "recs": records,

@@ -1568,6 +1568,38 @@ describe("runtime console pages", () => {
     expect(screen.getByText("2026-05-31T00:05:00Z")).toBeInTheDocument();
   });
 
+  it("shows persisted Vital File replay validation failure evidence", () => {
+    const base = labSessionResponse("stopped");
+    const response = {
+      ...base,
+      session: {
+        ...base.session,
+        state: "failed" as const,
+        failure: {
+          stage: "fileValidation",
+          code: "noVitalServerGraphTracks",
+          message: "Vital File contains no VitalServer graph-compatible tracks.",
+          failedAt: "2026-07-22T08:45:00Z"
+        }
+      }
+    };
+    hooks.useLabSessions.mockReturnValue(query({
+      state: "loaded",
+      sessions: [response.session],
+      readError: null
+    }));
+    hooks.useLabSession.mockReturnValue(query(response));
+
+    renderPage(<LabPage />);
+
+    expect(screen.getAllByText("fileValidation").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("noVitalServerGraphTracks").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Vital File contains no VitalServer graph-compatible tracks.").length
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("2026-07-22T08:45:00Z").length).toBeGreaterThan(0);
+  });
+
   it("selects a running Lab session and controls only its recorders", () => {
     const runningSession = labSessionResponse("running");
     const startLabRecorder = mutation({});

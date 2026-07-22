@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from http import HTTPStatus
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -104,7 +105,11 @@ class ProductLabServiceAdapter:
             self._request_json(
                 "POST",
                 f"/lab/sessions/{_path_segment(session_id)}/start",
-            )
+                accepted_http_error_statuses=(
+                    HTTPStatus.UNPROCESSABLE_ENTITY.value,
+                ),
+            ),
+            accepted_states=("loaded", "failed"),
         )
 
     def stop_session(self, session_id: str) -> ProductLabSessionResult:
@@ -202,6 +207,8 @@ class ProductLabServiceAdapter:
         method: str,
         path: str,
         payload: dict[str, Any] | None = None,
+        *,
+        accepted_http_error_statuses: tuple[int, ...] = (),
     ) -> dict[str, Any]:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
         request = Request(
@@ -214,11 +221,14 @@ class ProductLabServiceAdapter:
             with urlopen(request, timeout=self._timeout_seconds) as response:
                 data = response.read()
         except HTTPError as error:
-            detail = _http_error_detail(error)
-            raise ProductLabDependencyError(
-                f"Product Lab service request failed: {method} {path}: {detail}",
-                kind="product-lab-http-error",
-            ) from error
+            if error.code in accepted_http_error_statuses:
+                data = error.read()
+            else:
+                detail = _http_error_detail(error)
+                raise ProductLabDependencyError(
+                    f"Product Lab service request failed: {method} {path}: {detail}",
+                    kind="product-lab-http-error",
+                ) from error
         except URLError as error:
             raise ProductLabDependencyError(
                 f"Product Lab service is unavailable: {error.reason}",
@@ -246,14 +256,27 @@ class ProductLabServiceAdapter:
         return document
 
 
-def _session_from_response(document: dict[str, Any]) -> ProductLabSessionResult:
-    _require_state_document(document, expected_state="loaded")
+def _session_from_response(
+    document: dict[str, Any],
+    *,
+    accepted_states: tuple[str, ...] = ("loaded",),
+) -> ProductLabSessionResult:
+    state = document.get("state")
+    if state not in accepted_states:
+        read_error = document.get("readError")
+        detail = read_error if isinstance(read_error, str) else f"state={state}"
+        raise ProductLabDependencyError(
+            f"Product Lab service returned an unexpected state: {detail}",
+            kind="product-lab-contract-invalid",
+        )
     session = document.get("session")
     if not isinstance(session, dict):
         raise ProductLabDependencyError(
             "Product Lab service response is missing session.",
             kind="product-lab-contract-invalid",
         )
+    if state == "failed":
+        _require_session_failure(session)
     operation_id = document.get("operationId")
     if operation_id is not None and not isinstance(operation_id, str):
         raise ProductLabDependencyError(
@@ -261,6 +284,22 @@ def _session_from_response(document: dict[str, Any]) -> ProductLabSessionResult:
             kind="product-lab-contract-invalid",
         )
     return ProductLabSessionResult(session=session, lab_operation_id=operation_id)
+
+
+def _require_session_failure(session: dict[str, Any]) -> None:
+    failure = session.get("failure")
+    if not isinstance(failure, dict):
+        raise ProductLabDependencyError(
+            "Product Lab failed session response is missing failure.",
+            kind="product-lab-contract-invalid",
+        )
+    for field in ("stage", "code", "message", "failedAt"):
+        value = failure.get(field)
+        if not isinstance(value, str) or not value:
+            raise ProductLabDependencyError(
+                f"Product Lab failed session response requires failure.{field}.",
+                kind="product-lab-contract-invalid",
+            )
 
 
 def _read_model_from_response(

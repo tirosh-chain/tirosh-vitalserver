@@ -95,5 +95,12 @@ Recorder delivery remains `notAttempted` when validation fails before the first
 payload. Retrying a failed session clears the previous failure only after the
 explicit `failed -> running` transition is accepted.
 
+Replay also requires at least one non-string track whose `.vital` `montype` is
+known by VitalServer. An all-unknown file fails before delivery with
+`noVitalServerGraphTracks`; mixed files may retain custom tracks, but only known
+monitor types are graph-compatible. Monitor type IDs and realtime names use the
+single Core contract aligned with the vendored VitalServer `vitaldb.js` table.
+
 See [TS-167](../../docs/troubleshooting/167_lab-vital-numeric-zero-srate-replay-failure.md)
+and [TS-174](../../docs/troubleshooting/174_lab-vital-replay-no-graph-compatible-tracks.md)
 for diagnosis and operational guidance.

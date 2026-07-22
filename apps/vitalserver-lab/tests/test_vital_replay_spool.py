@@ -82,6 +82,23 @@ def test_streaming_replay_spool_stores_large_waveform_in_bounded_rows(
     replay.close()
 
 
+def test_streaming_replay_rejects_file_without_vitalserver_graph_monitor_types(
+    tmp_path: Path,
+) -> None:
+    path = write_vital(
+        tmp_path,
+        version=VitalFileFormatVersion.V3,
+        monitor_types=(0, 0, 0),
+    )
+
+    with pytest.raises(VitalReplaySourceError) as error:
+        replay_factory(spool_root=tmp_path).open(path)
+
+    assert error.value.stage == "fileValidation"
+    assert error.value.code == "noVitalServerGraphTracks"
+    assert "Source/WAVE(montype=0), Source/HR(montype=0)" in str(error.value)
+
+
 def test_streaming_replay_spool_rejects_string_policy_and_cleans_partial_spool(
     tmp_path: Path,
 ) -> None:
@@ -205,6 +222,7 @@ def write_vital(
     version: VitalFileFormatVersion,
     sample_rate: float = 2.0,
     waveform_samples: list[float] | None = None,
+    monitor_types: tuple[int, int, int] = (8, 9, 0),
 ) -> Path:
     values = waveform_samples or [1.25, 2.5, 3.75, 5.0]
     started_at = 100.0
@@ -230,18 +248,21 @@ def write_vital(
                 kind=VitalTrackKind.WAVEFORM,
                 name="WAVE",
                 sample_rate=sample_rate,
+                monitor_type=monitor_types[0],
             ),
             track_packet(
                 2,
                 kind=VitalTrackKind.NUMERIC,
                 name="HR",
                 sample_rate=0.0,
+                monitor_type=monitor_types[1],
             ),
             track_packet(
                 3,
                 kind=VitalTrackKind.STRING,
                 name="LABEL",
                 sample_rate=0.0,
+                monitor_type=monitor_types[2],
             ),
             record_packet(
                 1,
@@ -269,6 +290,7 @@ def track_packet(
     kind: VitalTrackKind,
     name: str,
     sample_rate: float,
+    monitor_type: int,
 ) -> bytes:
     return packet(
         0,
@@ -285,7 +307,7 @@ def track_packet(
                     sample_rate,
                     1.0,
                     0.0,
-                    0,
+                    monitor_type,
                     1,
                 ),
             )

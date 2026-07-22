@@ -1664,6 +1664,15 @@ const runtimeLabArchiveFinalizationSchema = z
   })
   .strict();
 
+const runtimeLabSessionFailureSchema = z
+  .object({
+    stage: z.string().min(1),
+    code: z.string().min(1),
+    message: z.string().min(1),
+    failedAt: z.string().min(1)
+  })
+  .strict();
+
 const runtimeLabRecorderSendStateSchema = z.enum([
   "notAttempted",
   "skipped",
@@ -1688,6 +1697,7 @@ const runtimeLabSessionSchema = z
     name: nullableString,
     recorderCount: z.number(),
     targetURL: z.string().nullable(),
+    failure: runtimeLabSessionFailureSchema.optional(),
     archiveFinalization: runtimeLabArchiveFinalizationSchema.nullable().optional(),
     createdAt: nullableString,
     updatedAt: nullableString

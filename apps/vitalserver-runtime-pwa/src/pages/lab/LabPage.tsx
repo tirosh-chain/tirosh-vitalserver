@@ -812,6 +812,7 @@ function LabSessionList({
                 value: archiveFinalizationSummary(session)
               },
               { label: "Session ID", value: session.sessionId },
+              { label: "Failure code", value: session.failure?.code ?? "-" },
               { label: "Updated", value: session.updatedAt ?? NOT_REPORTED }
             ]}
           />
@@ -1024,6 +1025,10 @@ function LabResponseSummary({
         { label: "Scenario", value: session?.scenarioId ?? NOT_REPORTED },
         { label: "Recorders", value: session?.recorderCount ?? NOT_REPORTED },
         { label: "Target", value: session?.targetURL ?? NOT_REPORTED },
+        { label: "Failure stage", value: session?.failure?.stage ?? "-" },
+        { label: "Failure code", value: session?.failure?.code ?? "-" },
+        { label: "Failure message", value: session?.failure?.message ?? "-" },
+        { label: "Failed at", value: session?.failure?.failedAt ?? NOT_REPORTED },
         {
           label: "Recovery artifact export",
           value: archiveFinalizationSummary(session)

@@ -5075,6 +5075,34 @@
           }
         }
       },
+      "RuntimeLabSessionFailure": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "code",
+          "message",
+          "failedAt"
+        ],
+        "properties": {
+          "stage": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "failedAt": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
       "RuntimeLabSession": {
         "type": "object",
         "additionalProperties": false,
@@ -5110,6 +5138,9 @@
               "string",
               "null"
             ]
+          },
+          "failure": {
+            "$ref": "#/components/schemas/RuntimeLabSessionFailure"
           },
           "bedIds": {
             "type": "array",

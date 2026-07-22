@@ -2025,6 +2025,12 @@ export interface components {
             labOperationId?: string | null;
             readError?: string | null;
         };
+        RuntimeLabSessionFailure: {
+            stage: string;
+            code: string;
+            message: string;
+            failedAt: string;
+        };
         RuntimeLabSession: {
             sessionId: string;
             state: components["schemas"]["RuntimeLabSessionState"];
@@ -2032,6 +2038,7 @@ export interface components {
             name?: string | null;
             recorderCount: number;
             targetURL: string | null;
+            failure?: components["schemas"]["RuntimeLabSessionFailure"];
             bedIds?: string[];
             recorderIds?: string[];
             vitalFileRelativePath?: string | null;

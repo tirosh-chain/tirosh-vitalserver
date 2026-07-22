@@ -138,6 +138,66 @@ def test_product_lab_service_adapter_preserves_http_failure(
     assert "Lab session is not available: missing-session" in error.value.message
 
 
+def test_product_lab_service_adapter_preserves_failed_session_from_422(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(lab_service, "urlopen", failed_session_urlopen)
+    adapter = ProductLabServiceAdapter(base_url="http://lab")
+
+    result = adapter.start_session("lab-replay-failed")
+
+    assert result.session["state"] == "failed"
+    assert result.session["failure"] == {
+        "stage": "fileValidation",
+        "code": "noVitalServerGraphTracks",
+        "message": (
+            "Vital File contains no VitalServer graph-compatible tracks: "
+            "sample.vital; tracks=Source/PLETH(montype=0)"
+        ),
+        "failedAt": "2026-07-22T08:45:00Z",
+    }
+    assert result.lab_operation_id == "lab-start-lab-replay-failed"
+
+
+def failed_session_urlopen(request: Request, timeout: float) -> FakeResponse:
+    del timeout
+    failure = {
+        "stage": "fileValidation",
+        "code": "noVitalServerGraphTracks",
+        "message": (
+            "Vital File contains no VitalServer graph-compatible tracks: "
+            "sample.vital; tracks=Source/PLETH(montype=0)"
+        ),
+        "failedAt": "2026-07-22T08:45:00Z",
+    }
+    raise HTTPError(
+        request.full_url,
+        HTTPStatus.UNPROCESSABLE_ENTITY.value,
+        "unprocessable entity",
+        hdrs={},
+        fp=BytesIO(
+            json.dumps(
+                {
+                    "state": "failed",
+                    "operationId": "lab-start-lab-replay-failed",
+                    "session": {
+                        "sessionId": "lab-replay-failed",
+                        "state": "failed",
+                        "scenarioId": "vital-file-replay",
+                        "name": "Vital File Replay",
+                        "recorderCount": 1,
+                        "targetURL": "http://edge/",
+                        "failure": failure,
+                        "createdAt": "2026-07-22T08:44:59Z",
+                        "updatedAt": "2026-07-22T08:45:00Z",
+                    },
+                    "readError": failure["message"],
+                }
+            ).encode("utf-8")
+        ),
+    )
+
+
 def fake_urlopen(request: Request, timeout: float) -> FakeResponse:
     del timeout
     method = request.get_method()

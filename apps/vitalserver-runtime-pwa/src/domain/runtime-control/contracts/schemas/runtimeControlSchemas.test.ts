@@ -24,6 +24,38 @@ import {
 } from "./runtimeControlSchemas";
 
 describe("runtime control contract schemas", () => {
+  it("requires complete Product Lab session failure evidence", () => {
+    const failedSession = {
+      state: "loaded" as const,
+      sessions: [
+        {
+          sessionId: "lab-replay-failed",
+          state: "failed" as const,
+          scenarioId: "vital-file-replay",
+          name: "Vital File Replay",
+          recorderCount: 1,
+          targetURL: "http://edge/",
+          failure: {
+            stage: "fileValidation",
+            code: "noVitalServerGraphTracks",
+            message: "Vital File contains no VitalServer graph-compatible tracks.",
+            failedAt: "2026-07-22T08:45:00Z"
+          },
+          createdAt: "2026-07-22T08:44:59Z",
+          updatedAt: "2026-07-22T08:45:00Z"
+        }
+      ],
+      readError: null
+    };
+
+    expect(runtimeLabSessionListSchema.parse(failedSession).sessions[0]?.failure)
+      .toMatchObject({ code: "noVitalServerGraphTracks" });
+
+    const missingCode = structuredClone(failedSession);
+    delete (missingCode.sessions[0]?.failure as { code?: string }).code;
+    expect(() => runtimeLabSessionListSchema.parse(missingCode)).toThrow(/code/);
+  });
+
   it("accepts explicit Lab archive export states and required nullable evidence", () => {
     const response = (state: "exported" | "published") => ({
       state: "loaded" as const,
