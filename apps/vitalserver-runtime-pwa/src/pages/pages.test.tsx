@@ -409,6 +409,8 @@ describe("runtime console pages", () => {
   it("renders recorder lists, filters history, and selects recorder details", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-31T01:00:30Z"));
+    const hideRecorder = mutation({});
+    hooks.useHideVitalDBRecorders.mockReturnValue(hideRecorder);
 
     renderPage(<RecordersPage />);
 
@@ -429,6 +431,30 @@ describe("runtime console pages", () => {
     expect(screen.getAllByText("Assignments").length).toBeGreaterThan(0);
     expect(screen.getByText("Events")).toBeInTheDocument();
     expect(screen.getByText("Bed has no linked VRecorder.")).toBeInTheDocument();
+
+    const recorderPanel = screen.getByRole("heading", { name: "Recorders" }).closest("section")!;
+    const recorderTable = within(recorderPanel).getByRole("table");
+    expect(
+      within(recorderTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+    ).toEqual(["Status", "VRecorder", "Bed", "Last seen", "Anomaly", "IP"]);
+    expect(within(recorderTable).queryByText("Visibility")).not.toBeInTheDocument();
+    expect(within(recorderTable).queryByRole("button", { name: "Hide" })).not.toBeInTheDocument();
+    expect(within(recorderTable).getByText("30s ago")).toBeInTheDocument();
+
+    const recorderDetails = screen
+      .getByRole("heading", { name: "Recorder Details" })
+      .closest("section")!;
+    expect(within(recorderDetails).getByText("Visibility")).toBeInTheDocument();
+    const hideButton = within(recorderDetails).getByRole("button", { name: "Hide" });
+    fireEvent.click(hideButton);
+    expect(hideRecorder.mutate).toHaveBeenCalledWith({ vrcodes: ["VR_A"] });
+    const lastSeenRow = within(recorderDetails)
+      .getByText("Last seen")
+      .closest(".key-value-row");
+    expect(lastSeenRow).toHaveTextContent("2026-05-31");
+    expect(lastSeenRow).not.toHaveTextContent("ago");
 
     fireEvent.change(screen.getByPlaceholderText("Search VRecorders"), {
       target: { value: "missing" }

@@ -5,8 +5,8 @@ import SwiftUI
 import Errors
 
 struct RuntimeRecorderTableLayout {
-    static let headerMinimumHeight: CGFloat = 20
-    static let rowMinimumHeight: CGFloat = 40
+    static let headerMinimumHeight: CGFloat = 28
+    static let rowMinimumHeight: CGFloat = 52
 }
 
 struct RuntimeRecordersPanel: View {
@@ -81,7 +81,7 @@ struct RuntimeRecordersPanel: View {
                             recorderRow(recorder)
                         }
                     }
-                    .frame(minWidth: 1200, alignment: .leading)
+                    .frame(minWidth: 1100, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -96,6 +96,7 @@ struct RuntimeRecordersPanel: View {
                 .font(.headline)
             if let recorder = selectedRecorder {
                 selectedRecorderSummary(recorder)
+                recorderManagement(recorder)
                 recorderNetworkAccess(recorder)
                 recorderActivity(recorder)
                 recorderMetadata(recorder)
@@ -210,14 +211,12 @@ struct RuntimeRecordersPanel: View {
 
     private var recorderHeaderRow: some View {
         HStack(spacing: 12) {
-            tableHeader("VRecorder", minWidth: 120)
-            tableHeader(AppConstants.Labels.recorderStatus, minWidth: 80)
-            tableHeader("IP", minWidth: 150)
-            tableHeader(AppConstants.Labels.bed, minWidth: 120)
-            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 220)
-            tableHeader("Visibility", minWidth: 80)
-            tableHeader(AppConstants.Labels.anomaly, minWidth: 130)
-            tableHeader("Actions", minWidth: 160)
+            tableHeader(AppConstants.Labels.recorderStatus, minWidth: 110)
+            tableHeader("VRecorder", minWidth: 170)
+            tableHeader(AppConstants.Labels.bed, minWidth: 180)
+            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 140)
+            tableHeader(AppConstants.Labels.anomaly, minWidth: 190)
+            tableHeader("IP", minWidth: 230)
         }
         .frame(minHeight: RuntimeRecorderTableLayout.headerMinimumHeight, alignment: .center)
         .padding(10)
@@ -229,22 +228,16 @@ struct RuntimeRecordersPanel: View {
                 selectedVrcode = recorder.vrcode
             } label: {
                 HStack(spacing: 12) {
-                    tableValue(recorder.vrcode, minWidth: 120, weight: .semibold)
-                    Text(statusLabel(recorder.status))
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(statusColor(recorder.status))
-                        .frame(minWidth: 80, alignment: .leading)
-                    tableIPValue(recorder, minWidth: 150)
-                    tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 120)
-                    tableValue(viewModel.presentationFormatter.systemTimeTextWithAge(recorder.lastSeenAt), minWidth: 220)
-                    tableValue(visibilityText(recorder.visibility), minWidth: 80)
-                    tableValue(recorderAnomalyText(recorder), minWidth: 130)
+                    recorderStatusValue(recorder.status, minWidth: 110)
+                    tableValue(recorder.vrcode, minWidth: 170, weight: .semibold)
+                    tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 180)
+                    tableValue(viewModel.presentationFormatter.systemTimeAgeText(recorder.lastSeenAt), minWidth: 140)
+                    tableValue(recorderAnomalyText(recorder), minWidth: 190)
+                    tableIPValue(recorder, minWidth: 230)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            recorderActionButtons(recorder)
         }
         .frame(minHeight: RuntimeRecorderTableLayout.rowMinimumHeight, alignment: .center)
         .padding(10)
@@ -287,16 +280,15 @@ struct RuntimeRecordersPanel: View {
                 .disabled(viewModel.isRunningVitalDBVisibilityAction)
             }
         }
-        .frame(minWidth: 160, alignment: .leading)
     }
 
     private func summaryMetric(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.title3)
+                .font(.title2)
                 .fontWeight(.semibold)
         }
     }
@@ -307,18 +299,40 @@ struct RuntimeRecordersPanel: View {
                 .fill(statusColor(recorder.status))
                 .frame(width: 9, height: 9)
             Text(recorder.vrcode)
-                .font(.title3)
+                .font(.title2)
                 .fontWeight(.semibold)
                 .lineLimit(1)
             Text(statusLabel(recorder.status))
+                .font(.title3)
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(recorder.status))
             RuntimeRecorderSourceBadge(version: recorder.version)
             Spacer()
-            Text(viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderManagement(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Visibility")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                Text(visibilityText(recorder.visibility))
+                    .font(.title3)
+                    .fontWeight(.semibold)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("Actions")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                recorderActionButtons(recorder)
+                    .controlSize(.large)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -595,7 +609,7 @@ struct RuntimeRecordersPanel: View {
             detailRow("Bed ID", reportedText(linkedBed(for: recorder)?.bedID ?? recorder.bedID, missing: "Bed ID not reported"))
             detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
             detailRow("First seen", viewModel.presentationFormatter.systemTimeText(recorder.firstSeenAt))
-            detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeTextWithAge(recorder.lastSeenAt))
+            detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
             detailRow("Latest anomaly", recorderAnomalyDetailText(recorder))
         }
         .padding(12)
@@ -605,12 +619,9 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func recorderRelationshipHistory(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        let assignments = viewModel.vitalRelationships.assignments
-            .filter { $0.vrcode == recorder.vrcode }
-            .prefix(8)
-        let events = viewModel.vitalRelationships.events
-            .filter { $0.vrcode == recorder.vrcode || $0.previousVrcode == recorder.vrcode }
-            .prefix(8)
+        let history = viewModel.relationshipPresentationHistory(vrcode: recorder.vrcode)
+        let assignments = history.assignments
+        let events = history.events
 
         return VStack(alignment: .leading, spacing: 10) {
             Text("Relationship history")
@@ -624,7 +635,7 @@ struct RuntimeRecordersPanel: View {
             } else if viewModel.vitalRelationships.state != .readFailed {
                 if !assignments.isEmpty {
                     relationshipSubsection("Assignments")
-                    ForEach(Array(assignments)) { assignment in
+                    ForEach(assignments) { assignment in
                         relationshipRow(
                             title: assignment.bedName ?? assignment.bedID,
                             detail: "\(viewModel.presentationFormatter.systemTimeText(assignment.startedAt)) - \(viewModel.presentationFormatter.systemTimeText(assignment.endedAt))",
@@ -634,7 +645,7 @@ struct RuntimeRecordersPanel: View {
                 }
                 if !events.isEmpty {
                     relationshipSubsection("Events")
-                    ForEach(Array(events)) { event in
+                    ForEach(events) { event in
                         relationshipRow(
                             title: "\(event.severity.rawValue.capitalized) · \(event.eventType.rawValue)",
                             detail: event.message,
@@ -704,11 +715,12 @@ struct RuntimeRecordersPanel: View {
                 .fontWeight(.semibold)
                 .textSelection(.enabled)
         }
+        .font(.title3)
     }
 
     private func tableHeader(_ text: String, minWidth: CGFloat) -> some View {
         Text(text)
-            .font(.caption)
+            .font(.body)
             .fontWeight(.semibold)
             .foregroundStyle(.secondary)
             .frame(minWidth: minWidth, alignment: .leading)
@@ -716,7 +728,7 @@ struct RuntimeRecordersPanel: View {
 
     private func tableValue(_ text: String, minWidth: CGFloat, weight: Font.Weight = .regular) -> some View {
         Text(text)
-            .font(.caption)
+            .font(.title3)
             .fontWeight(weight)
             .lineLimit(1)
             .truncationMode(.middle)
@@ -727,18 +739,35 @@ struct RuntimeRecordersPanel: View {
     private func tableIPValue(_ recorder: RuntimeVitalRecorderRecord, minWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(reportedText(recorder.lastIP, missing: "IP not reported"))
-                .font(.caption)
+                .font(.title3)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
             Text(recorderIPVerificationSummaryText(recorder.redisIPSync))
-                .font(.caption2)
+                .font(.body)
                 .foregroundStyle(recorderIPVerificationColor(recorder.redisIPSync))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
         .frame(minWidth: minWidth, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func recorderStatusValue(
+        _ status: RuntimeVitalRecorderStatus,
+        minWidth: CGFloat
+    ) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(statusColor(status))
+                .frame(width: 10, height: 10)
+            Text(statusLabel(status))
+                .font(.title3)
+                .fontWeight(.semibold)
+                .foregroundStyle(statusColor(status))
+                .lineLimit(1)
+        }
+        .frame(minWidth: minWidth, alignment: .leading)
     }
 
     private func count(_ status: RuntimeVitalRecorderStatus) -> Int {

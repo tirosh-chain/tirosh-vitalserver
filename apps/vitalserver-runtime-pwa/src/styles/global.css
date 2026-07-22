@@ -460,6 +460,34 @@
     @apply bg-app-accentSoft;
   }
 
+  .recorder-table .data-table {
+    @apply min-w-[1100px] text-lg;
+  }
+
+  .recorder-table .data-table th {
+    @apply text-base;
+  }
+
+  .recorder-table .data-table td {
+    @apply py-4;
+  }
+
+  .recorder-table .data-card {
+    @apply text-base;
+  }
+
+  .recorder-table .data-card-title {
+    @apply text-xl;
+  }
+
+  .recorder-metrics .metric span {
+    @apply text-lg;
+  }
+
+  .recorder-metrics .metric strong {
+    @apply text-3xl;
+  }
+
   .data-card-list {
     @apply grid gap-3 md:hidden;
   }
@@ -511,6 +539,30 @@
 
   .detail-heading > span:last-child {
     @apply text-base font-bold text-app-muted;
+  }
+
+  .recorder-details .key-value-row {
+    @apply text-lg;
+  }
+
+  .recorder-management {
+    @apply mb-[22px] flex flex-wrap items-center justify-between gap-4 rounded-panel border border-app-border bg-app-control/25 p-4 text-lg;
+  }
+
+  .recorder-management > div {
+    @apply grid gap-1;
+  }
+
+  .recorder-management span {
+    @apply font-bold text-app-muted;
+  }
+
+  .recorder-management strong {
+    @apply text-xl font-extrabold;
+  }
+
+  .recorder-management-actions {
+    @apply justify-items-end;
   }
 
   .subsection {

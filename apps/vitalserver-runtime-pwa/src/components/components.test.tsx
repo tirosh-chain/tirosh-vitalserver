@@ -108,6 +108,28 @@ describe("shared components", () => {
     expect(screen.getByText("No rows")).toBeInTheDocument();
   });
 
+  it("uses an explicit mobile card title without changing desktop column order", () => {
+    const { container } = render(
+      <DataTable
+        emptyText="No rows"
+        rows={[{ id: "recorder-a", status: "Online" }]}
+        getRowKey={(row) => row.id}
+        cardTitleColumnKey="id"
+        columns={[
+          { key: "status", header: "Status", render: (row) => row.status },
+          { key: "id", header: "VRecorder", render: (row) => row.id }
+        ]}
+      />
+    );
+
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent)
+    ).toEqual(["Status", "VRecorder"]);
+    expect(container.querySelector(".data-card-title")).toHaveTextContent(
+      "recorder-a"
+    );
+  });
+
   it("renders common layout primitives", () => {
     render(
       <Panel title="Panel title" actions={<Button>Action</Button>}>

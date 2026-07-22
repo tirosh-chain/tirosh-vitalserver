@@ -241,4 +241,18 @@ final class RuntimePresentationFormatterTests: XCTestCase {
             "not-a-date"
         )
     }
+
+    func testSystemTimeAgeTextReturnsOnlyRelativeAgeForRecorderColumn() {
+        let now = Date(timeIntervalSince1970: 1_779_000_000)
+        let observedAt = ISO8601DateFormatter().string(
+            from: now.addingTimeInterval(-3_600)
+        )
+
+        XCTAssertEqual(
+            formatter.systemTimeAgeText(observedAt, now: now),
+            "1h ago"
+        )
+        XCTAssertEqual(formatter.systemTimeAgeText(nil, now: now), "Unknown")
+        XCTAssertEqual(formatter.systemTimeAgeText("not-a-date", now: now), "not-a-date")
+    }
 }

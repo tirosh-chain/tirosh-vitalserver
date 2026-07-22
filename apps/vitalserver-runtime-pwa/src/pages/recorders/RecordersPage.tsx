@@ -20,7 +20,7 @@ import {
 } from "@/domain/runtime-control/formatting/status";
 import {
   formatLocalDateTime,
-  formatLocalDateTimeWithAge
+  formatRelativeAge
 } from "@/domain/runtime-control/formatting/time";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import { DataTable } from "@/components/DataTable";
@@ -121,6 +121,7 @@ export function RecordersPage() {
         }
       >
         <MetricStrip
+          className="recorder-metrics"
           metrics={[
             {
               label: "Known recorders",
@@ -165,115 +166,63 @@ export function RecordersPage() {
             }
           />
         ) : (
-          <DataTable
-            rows={recorders}
-            getRowKey={(recorder) => recorder.vrcode}
-            selectedKey={selectedRecorder?.vrcode}
-            onSelectRow={(recorder) => {
-              setSelectedVrcode(recorder.vrcode);
-              setSelectedLabRecorderID(null);
-            }}
-            emptyText="No VitalDB VRecorder observations found."
-            columns={[
-              {
-                key: "vrcode",
-                header: "VRecorder",
-                render: (recorder) => <strong>{recorder.vrcode}</strong>
-              },
-              {
-                key: "status",
-                header: "Status",
-                render: (recorder) => (
-                  <StatusBadge tone={recorderStatusTone(recorder.status)}>
-                    {formatRecorderStatus(recorder.status)}
-                  </StatusBadge>
-                )
-              },
-              {
-                key: "ip",
-                header: "IP",
-                render: (recorder) => (
-                  <div>
-                    <div>{recorder.lastIP ?? NOT_REPORTED}</div>
-                    <span className="muted">
-                      {formatIPVerificationSummary(recorder.redisIPSync)}
-                    </span>
-                  </div>
-                )
-              },
-              {
-                key: "bed",
-                header: "Bed",
-                render: (recorder) =>
-                  recorder.bedName ?? recorder.bedID ?? NOT_REPORTED
-              },
-              {
-                key: "lastSeen",
-                header: "Last seen",
-                render: (recorder) => formatLocalDateTimeWithAge(recorder.lastSeenAt)
-              },
-              {
-                key: "visibility",
-                header: "Visibility",
-                render: (recorder) => formatVisibility(recorder.visibility)
-              },
-              {
-                key: "anomaly",
-                header: "Anomaly",
-                render: (recorder) => formatAnomalySummary(recorder)
-              },
-              {
-                key: "actions",
-                header: "Actions",
-                render: (recorder) => (
-                  <div className="toolbar compact-toolbar">
-                    {recorder.visibility === "hidden" ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={visibilityMutationPending}
-                          onClick={() =>
-                            unhideRecorders.mutate({ vrcodes: [recorder.vrcode] })
-                          }
-                        >
-                          Unhide
-                        </button>
-                        {showHidden ? (
-                          <button
-                            type="button"
-                            disabled={visibilityMutationPending}
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Delete hidden VRecorder ${recorder.vrcode}?`
-                                )
-                              ) {
-                                deleteRecorders.mutate({
-                                  vrcodes: [recorder.vrcode]
-                                });
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
-                        ) : null}
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={visibilityMutationPending}
-                        onClick={() =>
-                          hideRecorders.mutate({ vrcodes: [recorder.vrcode] })
-                        }
-                      >
-                        Hide
-                      </button>
-                    )}
-                  </div>
-                )
-              }
-            ]}
-          />
+          <div className="recorder-table">
+            <DataTable
+              rows={recorders}
+              getRowKey={(recorder) => recorder.vrcode}
+              selectedKey={selectedRecorder?.vrcode}
+              onSelectRow={(recorder) => {
+                setSelectedVrcode(recorder.vrcode);
+                setSelectedLabRecorderID(null);
+              }}
+              emptyText="No VitalDB VRecorder observations found."
+              cardTitleColumnKey="vrcode"
+              columns={[
+                {
+                  key: "status",
+                  header: "Status",
+                  render: (recorder) => (
+                    <StatusBadge tone={recorderStatusTone(recorder.status)}>
+                      {formatRecorderStatus(recorder.status)}
+                    </StatusBadge>
+                  )
+                },
+                {
+                  key: "vrcode",
+                  header: "VRecorder",
+                  render: (recorder) => <strong>{recorder.vrcode}</strong>
+                },
+                {
+                  key: "bed",
+                  header: "Bed",
+                  render: (recorder) =>
+                    recorder.bedName ?? recorder.bedID ?? NOT_REPORTED
+                },
+                {
+                  key: "lastSeen",
+                  header: "Last seen",
+                  render: (recorder) => formatRelativeAge(recorder.lastSeenAt)
+                },
+                {
+                  key: "anomaly",
+                  header: "Anomaly",
+                  render: (recorder) => formatAnomalySummary(recorder)
+                },
+                {
+                  key: "ip",
+                  header: "IP",
+                  render: (recorder) => (
+                    <div>
+                      <div>{recorder.lastIP ?? NOT_REPORTED}</div>
+                      <span className="muted">
+                        {formatIPVerificationSummary(recorder.redisIPSync)}
+                      </span>
+                    </div>
+                  )
+                }
+              ]}
+            />
+          </div>
         )}
       </Panel>
 
@@ -282,6 +231,17 @@ export function RecordersPage() {
           recorder={selectedRecorder}
           relationships={relationshipsQuery.data}
           relationshipsError={relationshipsQuery.error}
+          showDelete={showHidden}
+          mutationPending={visibilityMutationPending}
+          onHide={() =>
+            hideRecorders.mutate({ vrcodes: [selectedRecorder.vrcode] })
+          }
+          onUnhide={() =>
+            unhideRecorders.mutate({ vrcodes: [selectedRecorder.vrcode] })
+          }
+          onDelete={() =>
+            deleteRecorders.mutate({ vrcodes: [selectedRecorder.vrcode] })
+          }
         />
       ) : null}
 
@@ -435,11 +395,21 @@ function LabRecorderDetails({ recorder }: { recorder: RuntimeLabRecorder }) {
 function RecorderDetails({
   recorder,
   relationships,
-  relationshipsError
+  relationshipsError,
+  showDelete,
+  mutationPending,
+  onHide,
+  onUnhide,
+  onDelete
 }: {
   recorder: VitalDBRecorderRecord;
   relationships: VitalDBRelationships | undefined;
   relationshipsError: unknown;
+  showDelete: boolean;
+  mutationPending: boolean;
+  onHide: () => void;
+  onUnhide: () => void;
+  onDelete: () => void;
 }) {
   const assignments = (relationships?.assignments ?? []).filter(
     (assignment) => assignment.vrcode === recorder.vrcode
@@ -450,14 +420,22 @@ function RecorderDetails({
   );
 
   return (
-    <Panel title="Recorder Details">
+    <Panel title="Recorder Details" className="recorder-details">
       <div className="detail-heading">
         <StatusBadge tone={recorderStatusTone(recorder.status)}>
           <strong>{recorder.vrcode}</strong>
           {formatRecorderStatus(recorder.status)}
         </StatusBadge>
-        <span>{formatLocalDateTime(recorder.lastSeenAt)}</span>
       </div>
+
+      <RecorderVisibilityManagement
+        recorder={recorder}
+        showDelete={showDelete}
+        mutationPending={mutationPending}
+        onHide={onHide}
+        onUnhide={onUnhide}
+        onDelete={onDelete}
+      />
 
       <KeyValueRows
         rows={[
@@ -473,7 +451,7 @@ function RecorderDetails({
           { label: "First seen", value: formatLocalDateTime(recorder.firstSeenAt) },
           {
             label: "Last seen",
-            value: formatLocalDateTimeWithAge(recorder.lastSeenAt)
+            value: formatLocalDateTime(recorder.lastSeenAt)
           },
           {
             label: "Latest anomaly",
@@ -523,6 +501,64 @@ function RecorderDetails({
         events={events}
       />
     </Panel>
+  );
+}
+
+function RecorderVisibilityManagement({
+  recorder,
+  showDelete,
+  mutationPending,
+  onHide,
+  onUnhide,
+  onDelete
+}: {
+  recorder: VitalDBRecorderRecord;
+  showDelete: boolean;
+  mutationPending: boolean;
+  onHide: () => void;
+  onUnhide: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="recorder-management">
+      <div>
+        <span>Visibility</span>
+        <strong>{formatVisibility(recorder.visibility)}</strong>
+      </div>
+      <div className="recorder-management-actions">
+        <span>Actions</span>
+        <div className="toolbar compact-toolbar">
+          {recorder.visibility === "hidden" ? (
+            <>
+              <button type="button" disabled={mutationPending} onClick={onUnhide}>
+                Unhide
+              </button>
+              {showDelete ? (
+                <button
+                  type="button"
+                  disabled={mutationPending}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Delete hidden VRecorder ${recorder.vrcode}?`
+                      )
+                    ) {
+                      onDelete();
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <button type="button" disabled={mutationPending} onClick={onHide}>
+              Hide
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

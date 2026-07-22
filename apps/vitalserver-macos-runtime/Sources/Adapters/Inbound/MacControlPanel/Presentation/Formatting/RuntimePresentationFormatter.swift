@@ -157,6 +157,16 @@ public struct RuntimePresentationFormatter {
         return "\(text) · \(ageText(since: date, now: now)) ago"
     }
 
+    public func systemTimeAgeText(_ timestamp: String?, now: Date = Date()) -> String {
+        guard let timestamp, !timestamp.isEmpty else {
+            return vocabulary.unknownText
+        }
+        guard let date = iso8601Date(timestamp) else {
+            return timestamp
+        }
+        return "\(ageText(since: date, now: now)) ago"
+    }
+
     public func logExportDefaultName(date: Date = Date()) -> String {
         "vitalserver-logs-\(logExportTimestamp(date: date)).zip"
     }
