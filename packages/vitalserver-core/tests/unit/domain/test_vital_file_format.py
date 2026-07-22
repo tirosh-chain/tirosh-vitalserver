@@ -8,9 +8,25 @@ import pytest
 from tirosh_vitalserver.core.domain.vital_file import (
     VitalFileFormatError,
     VitalFileFormatVersion,
+    VitalServerMonitorType,
     VitalTrackKind,
     probe_vital_header,
 )
+
+
+def test_vitalserver_monitor_types_match_upstream_wire_ids() -> None:
+    assert VitalServerMonitorType(8).name == "PLETH_WAV"
+    assert VitalServerMonitorType(12).name == "RESP_RR"
+    assert VitalServerMonitorType(14).name == "CO2_RR"
+    assert VitalServerMonitorType(21).name == "CVP_CVP"
+    assert VitalServerMonitorType(85).name == "TOF_RATIO"
+    assert VitalServerMonitorType["PLETH_SPO2"].value == 10
+    assert VitalServerMonitorType["CO2_RR"].value == 14
+
+
+def test_vitalserver_monitor_type_preserves_unknown_as_absent() -> None:
+    assert VitalServerMonitorType.from_id(0) is None
+    assert VitalServerMonitorType.from_wire_name("HCT") is None
 
 
 @pytest.mark.parametrize(

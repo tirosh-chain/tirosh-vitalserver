@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from tirosh_vitalserver.core.domain.vital_file import (
+    VitalServerMonitorType,
     VitalTrack,
     VitalTrackKind,
     VitalTrackRecord,
@@ -294,7 +295,8 @@ def vital_monitor_type_id(value: JsonValue) -> int:
     if montype is None:
         return 0
 
-    return VITALSERVER_MONITOR_TYPE_IDS[montype]
+    monitor_type = VitalServerMonitorType.from_wire_name(montype.value)
+    return monitor_type.value if monitor_type is not None else 0
 
 
 def string_value(value: JsonValue) -> str:
@@ -317,19 +319,3 @@ def float_value(value: JsonValue) -> float:
     if isinstance(value, int | float):
         return float(value)
     return 0.0
-
-
-VITALSERVER_MONITOR_TYPE_IDS = {
-    RecorderTrackMontype.ECG_WAVE: 1,
-    RecorderTrackMontype.ECG_HEART_RATE: 2,
-    RecorderTrackMontype.ARTERIAL_PRESSURE_WAVE: 4,
-    RecorderTrackMontype.ARTERIAL_SYSTOLIC_BP: 5,
-    RecorderTrackMontype.ARTERIAL_DIASTOLIC_BP: 6,
-    RecorderTrackMontype.ARTERIAL_MEAN_BP: 7,
-    RecorderTrackMontype.PLETH_WAVE: 8,
-    RecorderTrackMontype.PLETH_SPO2: 10,
-    RecorderTrackMontype.CO2_WAVE: 13,
-    RecorderTrackMontype.CO2_RESPIRATORY_RATE: 14,
-    RecorderTrackMontype.CO2_CONCENTRATION: 15,
-    RecorderTrackMontype.HCT: 0,
-}

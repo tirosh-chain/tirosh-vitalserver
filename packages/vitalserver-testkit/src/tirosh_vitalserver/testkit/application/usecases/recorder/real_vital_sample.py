@@ -10,6 +10,7 @@ from pathlib import Path
 
 from tirosh_vitalserver.core.domain.vital_file import (
     VitalFileFormatVersion,
+    VitalServerMonitorType,
     VitalTrackKind,
 )
 from tirosh_vitalserver.testkit.types.json import JsonArray, JsonObject
@@ -571,7 +572,8 @@ def selected_track(track: RealVitalTrackHeader) -> SelectedRealVitalTrack:
 def monitor_type_name(track: RealVitalTrackHeader) -> str:
     """Return a recorder montype name that preserves explicit source identity."""
 
-    return SOURCE_MONITOR_TYPE_NAMES.get(track.montype, str(track.montype))
+    monitor_type = VitalServerMonitorType.from_id(track.montype)
+    return monitor_type.name if monitor_type is not None else str(track.montype)
 
 
 def finite_wave_values(values: Sequence[object]) -> JsonArray:
@@ -760,43 +762,6 @@ BLOODBAG_TRACKS = (
     "Primus/ETCO2",
     "Primus/RR_CO2",
 )
-
-SOURCE_MONITOR_TYPE_NAMES = {
-    1: "ECG_WAV",
-    2: "ECG_HR",
-    4: "IABP_WAV",
-    5: "IABP_SBP",
-    6: "IABP_DBP",
-    7: "IABP_MBP",
-    8: "PLETH_WAV",
-    9: "PLETH_HR",
-    10: "PLETH_SPO2",
-    12: "CO2_RR",
-    13: "CO2_WAV",
-    15: "CO2_CONC",
-    16: "NIBP_SBP",
-    17: "NIBP_DBP",
-    18: "NIBP_MBP",
-    19: "BT",
-    21: "CVP",
-    23: "TV",
-    25: "PIP",
-    26: "GAS_AGENT",
-    27: "GAS_EXPIRED",
-    37: "AWP",
-    38: "PEEP",
-    39: "ST",
-    51: "PPV",
-    70: "PSI",
-    71: "PVI",
-    72: "SPHB",
-    73: "ORI",
-    82: "SEFL",
-    85: "NMT_T4_T1",
-    86: "NMT_TOF_CNT",
-    95: "EEG",
-}
-
 
 class SourceTrackHasNoFiniteSamplesError(ValueError):
     """Raised when a selected source track has no finite samples in the window."""

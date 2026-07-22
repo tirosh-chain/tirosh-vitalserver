@@ -22,6 +22,9 @@ from tirosh_vitalserver.core.domain.vital_file.format import (
     probe_vital_header,
 )
 from tirosh_vitalserver.core.domain.vital_file.models import PayloadFile
+from tirosh_vitalserver.core.domain.vital_file.monitor_type import (
+    VitalServerMonitorType,
+)
 from tirosh_vitalserver.core.domain.vital_file.policy import (
     VITAL_FILENAME_RE,
     assert_vital_filenames,
@@ -63,6 +66,7 @@ __all__ = [
     "VitalFileFormatVersion",
     "VitalFileHeader",
     "VitalFileManifest",
+    "VitalServerMonitorType",
     "VitalSessionMetadata",
     "VitalTrack",
     "VitalTrackDefinition",
