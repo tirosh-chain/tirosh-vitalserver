@@ -111,6 +111,7 @@ struct RuntimeBedsPanel: View {
                 summaryMetric(AppConstants.Labels.onlineBeds, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleBeds, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
+                summaryMetric("Events", relationshipEventPageText)
                 summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalBeds.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
                 summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalBeds.updatedAt))
             }
@@ -119,6 +120,7 @@ struct RuntimeBedsPanel: View {
                 summaryMetric(AppConstants.Labels.onlineBeds, "\(count(.online))")
                 summaryMetric(AppConstants.Labels.staleBeds, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
+                summaryMetric("Events", relationshipEventPageText)
                 summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalBeds.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
                 summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalBeds.updatedAt))
             }
@@ -286,12 +288,9 @@ struct RuntimeBedsPanel: View {
     }
 
     private func bedRelationshipHistory(_ bed: RuntimeVitalBedRecord) -> some View {
-        let assignments = viewModel.vitalRelationships.assignments
-            .filter { $0.bedID == bed.bedID }
-            .prefix(8)
-        let events = viewModel.vitalRelationships.events
-            .filter { $0.bedID == bed.bedID }
-            .prefix(8)
+        let history = viewModel.relationshipPresentationHistory(bedID: bed.bedID)
+        let assignments = history.assignments
+        let events = history.events
 
         return VStack(alignment: .leading, spacing: 10) {
             Text("Relationship history")
@@ -305,7 +304,7 @@ struct RuntimeBedsPanel: View {
             } else if viewModel.vitalRelationships.state != .readFailed {
                 if !assignments.isEmpty {
                     relationshipSubsection("Assignments")
-                    ForEach(Array(assignments)) { assignment in
+                    ForEach(assignments) { assignment in
                         relationshipRow(
                             title: assignment.vrcode,
                             detail: "\(viewModel.presentationFormatter.systemTimeText(assignment.startedAt)) - \(viewModel.presentationFormatter.systemTimeText(assignment.endedAt))",
@@ -315,7 +314,7 @@ struct RuntimeBedsPanel: View {
                 }
                 if !events.isEmpty {
                     relationshipSubsection("Events")
-                    ForEach(Array(events)) { event in
+                    ForEach(events) { event in
                         relationshipRow(
                             title: "\(event.severity.rawValue.capitalized) · \(event.eventType.rawValue)",
                             detail: event.message,
@@ -375,6 +374,10 @@ struct RuntimeBedsPanel: View {
                 .font(.title3)
                 .fontWeight(.semibold)
         }
+    }
+
+    private var relationshipEventPageText: String {
+        "\(viewModel.vitalRelationships.events.count) of \(viewModel.vitalRelationships.eventTotalCount)"
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

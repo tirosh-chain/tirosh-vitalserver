@@ -1280,16 +1280,20 @@ class GuestControlUseCases:
                 kind="vitaldb-delete-lab-cleanup-failed",
             ) from error
 
-    def get_vitaldb_relationships(self) -> dict[str, object]:
+    def get_vitaldb_relationships(self, *, event_limit: int) -> dict[str, object]:
         if self._vitaldb_read_model is None:
             return _vitaldb_relationship_unavailable_document(
-                "VitalDB relationship read model adapter is unavailable."
+                "VitalDB relationship read model adapter is unavailable.",
+                event_limit=event_limit,
             )
 
         try:
-            return self._vitaldb_read_model.relationships()
+            return self._vitaldb_read_model.relationships(event_limit=event_limit)
         except VitalDBReadModelDependencyError as error:
-            return _vitaldb_relationship_failed_document(error)
+            return _vitaldb_relationship_failed_document(
+                error,
+                event_limit=event_limit,
+            )
 
     def get_recorder_ingress_status(self) -> dict[str, object]:
         if self._recorder_ingress is None:
@@ -2016,17 +2020,25 @@ def _failed_bed_history(message: str) -> dict[str, object]:
     }
 
 
-def _vitaldb_relationship_unavailable_document(message: str) -> dict[str, object]:
+def _vitaldb_relationship_unavailable_document(
+    message: str,
+    *,
+    event_limit: int,
+) -> dict[str, object]:
     return {
         "state": "unavailable",
         "assignments": [],
         "events": [],
+        "eventTotalCount": 0,
+        "eventLimit": event_limit,
         "readError": message,
     }
 
 
 def _vitaldb_relationship_failed_document(
     error: VitalDBReadModelDependencyError,
+    *,
+    event_limit: int,
 ) -> dict[str, object]:
     state = (
         "unavailable" if error.kind == "vitaldb-read-model-unavailable" else "failed"
@@ -2035,6 +2047,8 @@ def _vitaldb_relationship_failed_document(
         "state": state,
         "assignments": [],
         "events": [],
+        "eventTotalCount": 0,
+        "eventLimit": event_limit,
         "readError": error.message,
     }
 

@@ -410,7 +410,14 @@ public struct ContentView: View {
     private func pollSelectedSection() async {
         while !Task.isCancelled {
             await refreshSelectedSection()
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            do {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+            } catch {
+                return
+            }
         }
     }
 

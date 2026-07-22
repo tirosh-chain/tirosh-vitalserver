@@ -1590,10 +1590,22 @@ export const vitalDBRelationshipsSchema = z
     state: z.enum(["loaded", "partiallyLoaded", "readFailed"]),
     assignments: z.array(vitalDBRelationshipAssignmentSchema),
     events: z.array(vitalDBRelationshipEventSchema),
+    eventTotalCount: z.number().int().nonnegative(),
+    eventLimit: z.number().int().positive(),
     readError: requiredNullableString
   })
   .passthrough()
   .superRefine((history, context) => {
+    if (
+      history.events.length > history.eventLimit ||
+      history.events.length > history.eventTotalCount
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["events"],
+        message: "relationship event page metadata is invalid"
+      });
+    }
     if (history.state === "partiallyLoaded" && isBlank(history.readError)) {
       context.addIssue({
         code: "custom",

@@ -148,6 +148,7 @@ def test_write_runtime_observation_document_updates_vitaldb_postgres_read_models
     assert writer.observation == observation
     assert writer.observation_observed_at == datetime(2026, 7, 1, tzinfo=UTC)
     assert writer.relationship_history == {
+        "projectionVersion": 2,
         "state": "loaded",
         "assignments": [
             {
@@ -167,6 +168,7 @@ def test_write_runtime_observation_document_updates_vitaldb_postgres_read_models
             }
         ],
         "events": [],
+        "activeIssueIDs": [],
         "readError": None,
     }
     assert writer.relationship_observed_at == datetime(2026, 7, 1, tzinfo=UTC)

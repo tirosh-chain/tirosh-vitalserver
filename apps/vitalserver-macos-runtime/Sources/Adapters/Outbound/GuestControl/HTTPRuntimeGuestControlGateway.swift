@@ -18,6 +18,20 @@ public protocol RuntimeGuestControlHTTPClient: Sendable {
         _ request: URLRequest,
         bodyFileURL: URL?
     ) throws -> RuntimeGuestControlHTTPResponse
+
+    func sendAsync(
+        _ request: URLRequest,
+        bodyFileURL: URL?
+    ) async throws -> RuntimeGuestControlHTTPResponse
+}
+
+public extension RuntimeGuestControlHTTPClient {
+    func sendAsync(
+        _ request: URLRequest,
+        bodyFileURL: URL?
+    ) async throws -> RuntimeGuestControlHTTPResponse {
+        try send(request, bodyFileURL: bodyFileURL)
+    }
 }
 
 public enum RuntimeGuestControlHTTPGatewayError: Error, Equatable, CustomStringConvertible, LocalizedError {
@@ -102,6 +116,42 @@ public struct URLSessionRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPCl
         }
         task.resume()
         return try resultBox.wait()
+    }
+
+    public func sendAsync(
+        _ request: URLRequest,
+        bodyFileURL: URL?
+    ) async throws -> RuntimeGuestControlHTTPResponse {
+        do {
+            let result: (Data, URLResponse)
+            if let bodyFileURL {
+                result = try await URLSession.shared.upload(
+                    for: request,
+                    fromFile: bodyFileURL
+                )
+            } else {
+                result = try await URLSession.shared.data(for: request)
+            }
+            guard let httpResponse = result.1 as? HTTPURLResponse else {
+                throw RuntimeGuestControlHTTPGatewayError.invalidHTTPResponse(
+                    "guest control API returned a non-HTTP response"
+                )
+            }
+            return RuntimeGuestControlHTTPResponse(
+                statusCode: httpResponse.statusCode,
+                data: result.0
+            )
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw error
+        } catch {
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+            throw RuntimeGuestControlHTTPGatewayError.transportFailed(
+                url: request.url?.absoluteString ?? "unknown",
+                reason: Self.transportFailureReason(error)
+            )
+        }
     }
 
     private static func transportFailureReason(_ error: Error) -> String {
@@ -617,7 +667,15 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         try decode(
             RuntimeGuestControlVitalDBRelationshipRead.self,
             method: "GET",
-            path: "/runtime/vitaldb/relationships"
+            path: "/runtime/vitaldb/relationships?eventLimit=100"
+        )
+    }
+
+    public func vitalDBRelationshipsAsync() async throws -> RuntimeGuestControlVitalDBRelationshipRead {
+        try await decodeAsync(
+            RuntimeGuestControlVitalDBRelationshipRead.self,
+            method: "GET",
+            path: "/runtime/vitaldb/relationships?eventLimit=100"
         )
     }
 
@@ -820,6 +878,18 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         path: String
     ) throws -> T {
         let response = try httpClient.send(
+            request(method: method, path: path, body: nil),
+            bodyFileURL: nil
+        )
+        return try decode(type, from: response)
+    }
+
+    private func decodeAsync<T: Decodable>(
+        _ type: T.Type,
+        method: String,
+        path: String
+    ) async throws -> T {
+        let response = try await httpClient.sendAsync(
             request(method: method, path: path, body: nil),
             bodyFileURL: nil
         )

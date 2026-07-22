@@ -109,11 +109,15 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
     public let state: RuntimeVitalRelationshipHistoryState
     public let assignments: [RuntimeVitalBedAssignmentRecord]
     public let events: [RuntimeVitalRelationshipEventRecord]
+    public let eventTotalCount: Int
+    public let eventLimit: Int
     public let readError: String?
 
     public init(
         assignments: [RuntimeVitalBedAssignmentRecord] = [],
         events: [RuntimeVitalRelationshipEventRecord] = [],
+        eventTotalCount: Int? = nil,
+        eventLimit: Int? = nil,
         state: RuntimeVitalRelationshipHistoryState? = nil,
         readError: String? = nil
     ) {
@@ -124,6 +128,8 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
         )
         self.assignments = assignments
         self.events = events
+        self.eventTotalCount = eventTotalCount ?? events.count
+        self.eventLimit = eventLimit ?? max(events.count, 100)
         self.readError = readError
     }
 
@@ -138,6 +144,8 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
         case state
         case assignments
         case events
+        case eventTotalCount
+        case eventLimit
         case readError
     }
 
@@ -146,7 +154,17 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
         state = try container.decode(RuntimeVitalRelationshipHistoryState.self, forKey: .state)
         assignments = try container.decode([RuntimeVitalBedAssignmentRecord].self, forKey: .assignments)
         events = try container.decode([RuntimeVitalRelationshipEventRecord].self, forKey: .events)
+        eventTotalCount = try container.decode(Int.self, forKey: .eventTotalCount)
+        eventLimit = try container.decode(Int.self, forKey: .eventLimit)
         readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        guard eventTotalCount >= events.count, eventLimit > 0, events.count <= eventLimit else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: [CodingKeys.events],
+                    debugDescription: "VitalDB relationship event page metadata is invalid"
+                )
+            )
+        }
         try Self.validateDecoded(state: state, readError: readError)
     }
 
@@ -155,6 +173,8 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
         try container.encode(state, forKey: .state)
         try container.encode(assignments, forKey: .assignments)
         try container.encode(events, forKey: .events)
+        try container.encode(eventTotalCount, forKey: .eventTotalCount)
+        try container.encode(eventLimit, forKey: .eventLimit)
         if let readError {
             try container.encode(readError, forKey: .readError)
         } else {

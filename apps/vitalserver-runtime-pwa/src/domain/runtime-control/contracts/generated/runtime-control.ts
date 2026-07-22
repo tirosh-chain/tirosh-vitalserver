@@ -1877,7 +1877,12 @@ export interface components {
         RuntimeVitalRelationshipHistory: {
             state: components["schemas"]["RuntimeVitalRelationshipHistoryState"];
             assignments: components["schemas"]["RuntimeVitalBedAssignmentRecord"][];
+            /** @description Newest relationship transition events in the requested page. */
             events: components["schemas"]["RuntimeVitalRelationshipEventRecord"][];
+            /** @description Total number of relationship transition events owned by the Guest read model. */
+            eventTotalCount: number;
+            /** @description Maximum number of newest relationship transition events included in this response. */
+            eventLimit: number;
             /** @description Relationship projection read issue. Present when assignments or relationship events could not be read completely. */
             readError: string | null;
         };

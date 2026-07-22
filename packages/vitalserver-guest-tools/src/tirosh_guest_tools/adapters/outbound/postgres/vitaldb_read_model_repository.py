@@ -128,8 +128,24 @@ class PostgresVitalDBReadModelRepository:
         self._mark_deleted_if_hidden(entity_kind="bed", entity_ids=ids)
         return self.beds()
 
-    def relationships(self) -> dict[str, Any]:
+    def relationships(self, *, event_limit: int) -> dict[str, Any]:
         relationship_history = self._latest_relationship_history_document()
+        document = self._visible_relationship_history(
+            relationship_history,
+            include_projection_state=False,
+        )
+        event_total_count = len(document["events"])
+        document["events"] = list(reversed(document["events"][-event_limit:]))
+        document["eventTotalCount"] = event_total_count
+        document["eventLimit"] = event_limit
+        return document
+
+    def _visible_relationship_history(
+        self,
+        relationship_history: dict[str, Any],
+        *,
+        include_projection_state: bool,
+    ) -> dict[str, Any]:
         document = self._relationship_history_response(relationship_history)
         deleted_vrcodes = {
             identity
@@ -165,11 +181,21 @@ class PostgresVitalDBReadModelRepository:
             and event.get("bedID") not in deleted_bed_ids
             and event.get("previousBedID") not in deleted_bed_ids
         ]
+        if include_projection_state:
+            if "projectionVersion" in relationship_history:
+                document["projectionVersion"] = relationship_history[
+                    "projectionVersion"
+                ]
+            if "activeIssueIDs" in relationship_history:
+                document["activeIssueIDs"] = relationship_history["activeIssueIDs"]
         return document
 
     def previous_relationship_history(self) -> dict[str, Any] | None:
         try:
-            return self.relationships()
+            return self._visible_relationship_history(
+                self._latest_relationship_history_document(),
+                include_projection_state=True,
+            )
         except VitalDBReadModelDependencyError as error:
             if (
                 error.kind == "vitaldb-read-model-unavailable"

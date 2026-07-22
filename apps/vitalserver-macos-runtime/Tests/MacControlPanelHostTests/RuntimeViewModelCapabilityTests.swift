@@ -1185,6 +1185,29 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertTrue(viewModel.vitalRecorders.beds.isEmpty)
     }
 
+    func testCancelledVitalRecorderRefreshDoesNotPublishItsResult() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.vitalRelationships = RuntimeVitalRelationshipHistory(
+            readError: "previous relationship state"
+        )
+
+        let refresh = Task { @MainActor in
+            await viewModel.refreshVitalRecorders()
+        }
+        refresh.cancel()
+        await refresh.value
+
+        XCTAssertEqual(
+            viewModel.vitalRelationships.readError,
+            "previous relationship state"
+        )
+    }
+
     func testVitalDBVisibilityActionsUseRuntimeControlClientAndUpdateReadModel() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(

@@ -201,11 +201,20 @@ public enum RuntimeVitalDBRelationshipHistoryAssembler {
     public static func makeHistory(
         read: RuntimeGuestControlVitalDBRelationshipRead
     ) -> RuntimeVitalRelationshipHistory {
+        guard read.eventLimit > 0,
+              read.events.count <= read.eventLimit,
+              read.events.count <= read.eventTotalCount else {
+            return .failed(
+                readError: "Guest VitalDB relationship event page metadata is invalid."
+            )
+        }
         switch read.state {
         case .loaded:
             return RuntimeVitalRelationshipHistory(
                 assignments: read.assignments,
                 events: read.events,
+                eventTotalCount: read.eventTotalCount,
+                eventLimit: read.eventLimit,
                 state: .loaded,
                 readError: read.readError
             )
@@ -213,6 +222,8 @@ public enum RuntimeVitalDBRelationshipHistoryAssembler {
             return RuntimeVitalRelationshipHistory(
                 assignments: read.assignments,
                 events: read.events,
+                eventTotalCount: read.eventTotalCount,
+                eventLimit: read.eventLimit,
                 state: .partiallyLoaded,
                 readError: read.readError
             )
@@ -220,6 +231,8 @@ public enum RuntimeVitalDBRelationshipHistoryAssembler {
             return RuntimeVitalRelationshipHistory(
                 assignments: read.assignments,
                 events: read.events,
+                eventTotalCount: read.eventTotalCount,
+                eventLimit: read.eventLimit,
                 state: .readFailed,
                 readError: read.readError ?? "Guest VitalDB relationship read model failed."
             )

@@ -1213,6 +1213,16 @@ describe("runtime control contract schemas", () => {
     ).toThrow();
     expect(() =>
       vitalDBRelationshipsSchema.parse(fullRelationships({
+        eventTotalCount: 0
+      }))
+    ).toThrow();
+    expect(() =>
+      vitalDBRelationshipsSchema.parse(fullRelationships({
+        eventLimit: 0
+      }))
+    ).toThrow();
+    expect(() =>
+      vitalDBRelationshipsSchema.parse(fullRelationships({
         state: "partiallyLoaded",
         readError: null
       }))
@@ -1543,6 +1553,8 @@ function fullRelationships(overrides: Record<string, unknown> = {}) {
         message: "Bed has no linked VRecorder."
       }
     ],
+    eventTotalCount: 1,
+    eventLimit: 100,
     readError: null,
     ...overrides
   };

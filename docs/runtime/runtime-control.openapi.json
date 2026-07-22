@@ -4367,6 +4367,8 @@
           "state",
           "assignments",
           "events",
+          "eventTotalCount",
+          "eventLimit",
           "readError"
         ],
         "properties": {
@@ -4381,9 +4383,20 @@
           },
           "events": {
             "type": "array",
+            "description": "Newest relationship transition events in the requested page.",
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalRelationshipEventRecord"
             }
+          },
+          "eventTotalCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total number of relationship transition events owned by the Guest read model."
+          },
+          "eventLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum number of newest relationship transition events included in this response."
           },
           "readError": {
             "type": [

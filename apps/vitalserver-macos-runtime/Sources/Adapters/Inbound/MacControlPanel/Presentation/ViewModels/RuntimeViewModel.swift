@@ -67,7 +67,14 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var vitalBeds = RuntimeVitalBedHistory()
     @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
-    @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
+    @Published var vitalRelationships = RuntimeVitalRelationshipHistory() {
+        didSet {
+            vitalRelationshipPresentationIndex = RuntimeVitalRelationshipPresentationIndex(
+                history: vitalRelationships
+            )
+        }
+    }
+    private var vitalRelationshipPresentationIndex = RuntimeVitalRelationshipPresentationIndex()
     @Published var redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
         readState: .notRead,
         document: nil,
@@ -343,10 +350,25 @@ public final class RuntimeViewModel: ObservableObject {
 
     func refreshVitalRecorders() async {
         let refreshed = await observabilityRefresher.refreshVitalObservability()
+        guard !Task.isCancelled else {
+            return
+        }
         vitalDBObservationSnapshot = refreshed.observationSnapshot
         vitalRecorders = refreshed.recorders
         vitalBeds = refreshed.beds
         vitalRelationships = refreshed.relationships
+    }
+
+    func relationshipPresentationHistory(
+        bedID: String
+    ) -> RuntimeVitalRelationshipPresentationHistory {
+        vitalRelationshipPresentationIndex.history(bedID: bedID)
+    }
+
+    func relationshipPresentationHistory(
+        vrcode: String
+    ) -> RuntimeVitalRelationshipPresentationHistory {
+        vitalRelationshipPresentationIndex.history(vrcode: vrcode)
     }
 
     func refreshVitalRecorderActivityWindow(

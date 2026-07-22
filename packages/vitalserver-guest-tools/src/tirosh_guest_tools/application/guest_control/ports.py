@@ -181,7 +181,7 @@ class VitalDBReadModelPort(Protocol):
     def delete_beds(self, request: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 
-    def relationships(self) -> dict[str, Any]:
+    def relationships(self, *, event_limit: int) -> dict[str, Any]:
         raise NotImplementedError
 
 

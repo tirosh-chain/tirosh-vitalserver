@@ -394,17 +394,23 @@ public struct RuntimeGuestControlVitalDBRelationshipRead: Codable, Equatable, Se
     public let state: RuntimeGuestControlVitalDBRelationshipReadState
     public let assignments: [RuntimeVitalBedAssignmentRecord]
     public let events: [RuntimeVitalRelationshipEventRecord]
+    public let eventTotalCount: Int
+    public let eventLimit: Int
     public let readError: String?
 
     public init(
         state: RuntimeGuestControlVitalDBRelationshipReadState,
         assignments: [RuntimeVitalBedAssignmentRecord] = [],
         events: [RuntimeVitalRelationshipEventRecord] = [],
+        eventTotalCount: Int? = nil,
+        eventLimit: Int? = nil,
         readError: String? = nil
     ) {
         self.state = state
         self.assignments = assignments
         self.events = events
+        self.eventTotalCount = eventTotalCount ?? events.count
+        self.eventLimit = eventLimit ?? max(events.count, 100)
         self.readError = readError
     }
 }

@@ -487,6 +487,8 @@ describe("RuntimeControlApiClient", () => {
         state: "loaded",
         assignments: [],
         events: [],
+        eventTotalCount: 0,
+        eventLimit: 100,
         readError: null
       },
       "/platform/logs/read": { text: "log" },

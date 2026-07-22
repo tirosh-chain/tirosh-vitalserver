@@ -683,7 +683,7 @@ class FakeVitalDBReadModel:
         self.deleted_beds.update(requested)
         return self.beds()
 
-    def relationships(self) -> dict[str, object]:
+    def relationships(self, *, event_limit: int) -> dict[str, object]:
         return {
             "state": "loaded",
             "assignments": [
@@ -702,6 +702,8 @@ class FakeVitalDBReadModel:
                 }
             ],
             "events": [],
+            "eventTotalCount": 0,
+            "eventLimit": event_limit,
             "readError": None,
         }
 
@@ -2750,7 +2752,23 @@ def test_vitaldb_relationships_route_returns_product_read_model(
     assert document["state"] == "loaded"
     assert document["assignments"][0]["assignmentID"] == "assignment-1"
     assert document["events"] == []
+    assert document["eventTotalCount"] == 0
+    assert document["eventLimit"] == 100
     assert document["readError"] is None
+
+
+def test_vitaldb_relationships_route_passes_explicit_event_limit(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="GET",
+        path="/runtime/vitaldb/relationships",
+        query={"eventLimit": ["7"]},
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document["eventLimit"] == 7
 
 
 def test_vitaldb_relationships_route_reports_unavailable_without_adapter() -> None:
@@ -2773,6 +2791,8 @@ def test_vitaldb_relationships_route_reports_unavailable_without_adapter() -> No
         "state": "unavailable",
         "assignments": [],
         "events": [],
+        "eventTotalCount": 0,
+        "eventLimit": 100,
         "readError": "VitalDB relationship read model adapter is unavailable.",
     }
 

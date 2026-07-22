@@ -276,9 +276,23 @@ def test_schema_migration_reads_existing_observations_in_bounded_batches(
 
 def test_sqlalchemy_repository_round_trips_relationship_history(tmp_path: Path) -> None:
     store = repository(tmp_path)
-    document = {"state": "loaded", "assignments": [], "events": [], "readError": None}
+    document = {
+        "projectionVersion": 2,
+        "state": "loaded",
+        "assignments": [],
+        "events": [],
+        "activeIssueIDs": ["issue:unlinkedBed:bed-a:-:Bed has no linked VRecorder."],
+        "readError": None,
+    }
     store.save_relationship_history(document, observed_at=datetime.now(UTC))
-    assert store.relationships() == document
+    assert store.relationships(event_limit=100) == {
+        "state": "loaded",
+        "assignments": [],
+        "events": [],
+        "eventTotalCount": 0,
+        "eventLimit": 100,
+        "readError": None,
+    }
     assert store.previous_relationship_history() == document
 
 
@@ -313,10 +327,38 @@ def test_sqlalchemy_repository_excludes_deleted_entities_from_relationships(
     store.hide_recorders({"vrcodes": ["VR-001"]})
     store.delete_recorders({"vrcodes": ["VR-001"]})
 
-    result = store.relationships()
+    result = store.relationships(event_limit=100)
 
     assert result["assignments"] == []
     assert result["events"] == []
+
+
+def test_sqlalchemy_repository_returns_recent_relationship_events_with_total(
+    tmp_path: Path,
+) -> None:
+    store = repository(tmp_path)
+    store.save_relationship_history(
+        {
+            "state": "loaded",
+            "assignments": [],
+            "events": [
+                {"eventID": "event-1"},
+                {"eventID": "event-2"},
+                {"eventID": "event-3"},
+            ],
+            "readError": None,
+        },
+        observed_at=datetime.now(UTC),
+    )
+
+    result = store.relationships(event_limit=2)
+
+    assert [event["eventID"] for event in result["events"]] == [
+        "event-3",
+        "event-2",
+    ]
+    assert result["eventTotalCount"] == 3
+    assert result["eventLimit"] == 2
 
 
 def test_sqlalchemy_repository_preserves_empty_as_unavailable(tmp_path: Path) -> None:

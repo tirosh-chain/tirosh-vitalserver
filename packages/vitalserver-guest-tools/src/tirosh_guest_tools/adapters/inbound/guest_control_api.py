@@ -727,7 +727,15 @@ def route_request(
         return HTTPStatus.ACCEPTED, usecases.delete_vitaldb_beds(_json_body(body))
 
     if method == "GET" and parts == ["runtime", "vitaldb", "relationships"]:
-        return HTTPStatus.OK, usecases.get_vitaldb_relationships()
+        return HTTPStatus.OK, usecases.get_vitaldb_relationships(
+            event_limit=_query_int(
+                query,
+                "eventLimit",
+                default=100,
+                minimum=1,
+                maximum=500,
+            )
+        )
 
     if method == "GET" and len(parts) == 3 and parts[:2] == ["runtime", "operations"]:
         requested_operation = usecases.get_operation(parts[2])

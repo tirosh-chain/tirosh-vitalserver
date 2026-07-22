@@ -1084,6 +1084,8 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
                 }
               ],
               "events": [],
+              "eventTotalCount": 0,
+              "eventLimit": 100,
               "readError": null
             }
             """
@@ -1102,7 +1104,36 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
-            ["http://127.0.0.1:18330/runtime/vitaldb/relationships"]
+            ["http://127.0.0.1:18330/runtime/vitaldb/relationships?eventLimit=100"]
+        )
+    }
+
+    func testVitalDBRelationshipsAsyncUsesCancellableHTTPClientPath() async throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state": "loaded",
+              "assignments": [],
+              "events": [],
+              "eventTotalCount": 0,
+              "eventLimit": 100,
+              "readError": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let read = try await gateway.vitalDBRelationshipsAsync()
+
+        XCTAssertEqual(read.state, .loaded)
+        XCTAssertEqual(client.asyncRequestCount, 1)
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/runtime/vitaldb/relationships?eventLimit=100"]
         )
     }
 
@@ -1628,6 +1659,7 @@ private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlH
     private var capturedRequests: [URLRequest] = []
     private var capturedBodyFileURLs: [URL] = []
     private var capturedBodyFileExistence: [Bool] = []
+    private var capturedAsyncRequestCount = 0
 
     var requests: [URLRequest] {
         lock.lock()
@@ -1645,6 +1677,12 @@ private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlH
         lock.lock()
         defer { lock.unlock() }
         return capturedBodyFileExistence
+    }
+
+    var asyncRequestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return capturedAsyncRequestCount
     }
 
     init(response: RuntimeGuestControlHTTPResponse) {
@@ -1669,6 +1707,20 @@ private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlH
         }
         lock.unlock()
         return response
+    }
+
+    func sendAsync(
+        _ request: URLRequest,
+        bodyFileURL: URL?
+    ) async throws -> RuntimeGuestControlHTTPResponse {
+        recordAsyncRequest()
+        return try send(request, bodyFileURL: bodyFileURL)
+    }
+
+    private func recordAsyncRequest() {
+        lock.lock()
+        capturedAsyncRequestCount += 1
+        lock.unlock()
     }
 }
 

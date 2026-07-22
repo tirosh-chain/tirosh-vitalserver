@@ -1293,6 +1293,8 @@ final class RuntimeControlContractsTests: XCTestCase {
         {
           "assignments": [],
           "events": [],
+          "eventTotalCount": 0,
+          "eventLimit": 100,
           "readError": "relationship read failed"
         }
         """.utf8)))
@@ -1301,6 +1303,8 @@ final class RuntimeControlContractsTests: XCTestCase {
           "state": "readFailed",
           "assignments": [],
           "events": [],
+          "eventTotalCount": 0,
+          "eventLimit": 100,
           "readError": null
         }
         """.utf8))) { error in
@@ -1311,6 +1315,8 @@ final class RuntimeControlContractsTests: XCTestCase {
           "state": "partiallyLoaded",
           "assignments": [],
           "events": [],
+          "eventTotalCount": 0,
+          "eventLimit": 100,
           "readError": ""
         }
         """.utf8))) { error in

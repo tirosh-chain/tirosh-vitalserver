@@ -12,9 +12,14 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
+    func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory
 }
 
 extension RuntimeObservabilityReading {
+    func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory {
+        loadVitalDBRelationships()
+    }
+
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         loadVitalDBRecorders()
     }
@@ -271,6 +276,15 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
         if let guestVitalDBRelationshipProvider {
             return guestVitalDBRelationshipProvider.load()
+        }
+        return .failed(
+            readError: "Guest VitalDB relationship read model is unavailable."
+        )
+    }
+
+    func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory {
+        if let guestVitalDBRelationshipProvider {
+            return await guestVitalDBRelationshipProvider.loadAsync()
         }
         return .failed(
             readError: "Guest VitalDB relationship read model is unavailable."

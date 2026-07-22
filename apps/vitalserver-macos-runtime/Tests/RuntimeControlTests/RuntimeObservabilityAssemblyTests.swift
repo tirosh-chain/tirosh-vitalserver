@@ -361,6 +361,36 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         XCTAssertEqual(unavailable.readError, "Guest VitalDB relationship read model is unavailable.")
     }
 
+    func testRelationshipHistoryAssemblerRejectsInvalidGuestEventPageMetadata() {
+        let event = RuntimeVitalRelationshipEventRecord(
+            eventID: "event-1",
+            observedAt: "2026-06-01T00:00:10Z",
+            eventType: .unlinkedBed,
+            severity: .warning,
+            bedID: "bed-a",
+            bedName: "A",
+            vrcode: nil,
+            previousVrcode: nil,
+            previousBedID: nil,
+            message: "Bed has no linked VRecorder."
+        )
+
+        let history = RuntimeVitalDBRelationshipHistoryAssembler.makeHistory(
+            read: RuntimeGuestControlVitalDBRelationshipRead(
+                state: .loaded,
+                events: [event],
+                eventTotalCount: 0,
+                eventLimit: 100
+            )
+        )
+
+        XCTAssertEqual(history.state, .readFailed)
+        XCTAssertEqual(
+            history.readError,
+            "Guest VitalDB relationship event page metadata is invalid."
+        )
+    }
+
     private func observation(
         _ observedAt: String,
         vrcode: String

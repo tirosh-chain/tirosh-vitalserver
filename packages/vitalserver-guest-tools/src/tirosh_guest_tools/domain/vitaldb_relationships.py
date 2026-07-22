@@ -12,6 +12,13 @@ RELATIONSHIP_EVENT_TYPES = {
 }
 RELATIONSHIP_SEVERITIES = {"info", "warning", "critical"}
 ASSIGNMENT_STATUSES = {"online", "stale", "offline"}
+RELATIONSHIP_PROJECTION_VERSION = 2
+CONDITION_EVENT_TYPES = {
+    "duplicateAssignment",
+    "unlinkedBed",
+    "unlinkedRecorder",
+    "staleLink",
+}
 
 
 class VitalDBRelationshipProjectionError(ValueError):
@@ -30,7 +37,12 @@ def relationship_history_from_observation(
     previous = (
         validated_previous_history(previous_history)
         if previous_history is not None
-        else {"assignments": [], "events": []}
+        else {
+            "assignments": [],
+            "events": [],
+            "activeIssueIDs": [],
+            "legacyIssueIDs": [],
+        }
     )
 
     assignments_by_id = {
@@ -109,12 +121,25 @@ def relationship_history_from_observation(
             "observationCount": 1,
         }
 
-    new_events.extend(planned_events(observation))
+    current_issue_events = planned_events(observation)
+    current_issue_ids = {
+        issue_id(event): event for event in current_issue_events
+    }
+    previously_active_issue_ids = set(previous["activeIssueIDs"])
+    legacy_issue_ids = set(previous["legacyIssueIDs"])
+    new_events.extend(
+        event
+        for identifier, event in current_issue_ids.items()
+        if identifier not in previously_active_issue_ids
+        and identifier not in legacy_issue_ids
+    )
 
     return {
+        "projectionVersion": RELATIONSHIP_PROJECTION_VERSION,
         "state": "partiallyLoaded" if read_error is not None else "loaded",
         "assignments": sorted(assignments_by_id.values(), key=assignment_sort_key),
         "events": merged_events(previous["events"], new_events),
+        "activeIssueIDs": sorted(current_issue_ids),
         "readError": read_error,
     }
 
@@ -284,6 +309,40 @@ def merged_events(
     return list(events_by_id.values())
 
 
+def issue_id(event: Mapping[str, object]) -> str:
+    event_type = required_relationship_string(event, "eventType")
+    if event_type not in CONDITION_EVENT_TYPES:
+        raise VitalDBRelationshipProjectionError(
+            "VitalDB relationship issue eventType field is invalid."
+        )
+    return ":".join(
+        [
+            "issue",
+            event_type,
+            optional_string(event, "bedID") or "-",
+            optional_string(event, "vrcode") or "-",
+            required_relationship_string(event, "message"),
+        ]
+    )
+
+
+def migrated_legacy_events(
+    events: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[str]]:
+    migrated: list[dict[str, object]] = []
+    condition_issue_ids: set[str] = set()
+    for event in events:
+        if event["eventType"] not in CONDITION_EVENT_TYPES:
+            migrated.append(event)
+            continue
+        identifier = issue_id(event)
+        if identifier in condition_issue_ids:
+            continue
+        condition_issue_ids.add(identifier)
+        migrated.append(event)
+    return migrated, sorted(condition_issue_ids)
+
+
 def recorder_index(items: list[object]) -> dict[str, Mapping[str, object]]:
     indexed: dict[str, Mapping[str, object]] = {}
     for item in items:
@@ -327,7 +386,7 @@ def read_issue_text(value: object) -> str | None:
 
 def validated_previous_history(
     history: Mapping[str, object],
-) -> dict[str, list[dict[str, object]]]:
+) -> dict[str, object]:
     state = history.get("state")
     assignments = history.get("assignments")
     events = history.get("events")
@@ -348,12 +407,46 @@ def validated_previous_history(
         raise VitalDBRelationshipProjectionError(
             "VitalDB relationship history readError field is invalid."
         )
+    validated_events = [validated_event(event) for event in events]
+    projection_version = history.get("projectionVersion")
+    if projection_version is None:
+        migrated_events, legacy_issue_ids = migrated_legacy_events(validated_events)
+        active_issue_ids: list[str] = []
+    else:
+        if projection_version != RELATIONSHIP_PROJECTION_VERSION:
+            raise VitalDBRelationshipProjectionError(
+                "VitalDB relationship history projectionVersion field is invalid."
+            )
+        active_issue_ids = validated_issue_ids(history.get("activeIssueIDs"))
+        migrated_events = validated_events
+        legacy_issue_ids = []
     return {
         "assignments": [
             validated_assignment(assignment) for assignment in assignments
         ],
-        "events": [validated_event(event) for event in events],
+        "events": migrated_events,
+        "activeIssueIDs": active_issue_ids,
+        "legacyIssueIDs": legacy_issue_ids,
     }
+
+
+def validated_issue_ids(value: object) -> list[str]:
+    if not isinstance(value, list):
+        raise VitalDBRelationshipProjectionError(
+            "VitalDB relationship history activeIssueIDs field is invalid."
+        )
+    issue_ids: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item:
+            raise VitalDBRelationshipProjectionError(
+                "VitalDB relationship history activeIssueIDs item is invalid."
+            )
+        issue_ids.append(item)
+    if len(issue_ids) != len(set(issue_ids)):
+        raise VitalDBRelationshipProjectionError(
+            "VitalDB relationship history activeIssueIDs field contains duplicates."
+        )
+    return issue_ids
 
 
 def validated_assignment(value: object) -> dict[str, object]:

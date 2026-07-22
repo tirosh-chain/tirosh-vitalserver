@@ -604,7 +604,7 @@ class FakeVitalDBReadModel:
         self.deleted_beds.update(requested)
         return self.beds()
 
-    def relationships(self) -> dict[str, object]:
+    def relationships(self, *, event_limit: int) -> dict[str, object]:
         if self.fail:
             raise VitalDBReadModelDependencyError(
                 "Postgres read model is unreachable.",
@@ -628,6 +628,8 @@ class FakeVitalDBReadModel:
                 }
             ],
             "events": [],
+            "eventTotalCount": 0,
+            "eventLimit": event_limit,
             "readError": None,
         }
 
@@ -2476,12 +2478,14 @@ def test_vitaldb_relationships_report_unavailable_without_adapter() -> None:
         clock=FakeClock(),
     )
 
-    response = usecases.get_vitaldb_relationships()
+    response = usecases.get_vitaldb_relationships(event_limit=100)
 
     assert response == {
         "state": "unavailable",
         "assignments": [],
         "events": [],
+        "eventTotalCount": 0,
+        "eventLimit": 100,
         "readError": "VitalDB relationship read model adapter is unavailable.",
     }
 
@@ -2495,7 +2499,7 @@ def test_vitaldb_relationships_return_read_model_document() -> None:
         vitaldb_read_model=FakeVitalDBReadModel(),
     )
 
-    response = usecases.get_vitaldb_relationships()
+    response = usecases.get_vitaldb_relationships(event_limit=100)
 
     assert response["state"] == "loaded"
     assert response["assignments"][0]["assignmentID"] == "assignment-1"
@@ -2512,12 +2516,14 @@ def test_vitaldb_relationships_preserve_dependency_failure() -> None:
         vitaldb_read_model=FakeVitalDBReadModel(fail=True),
     )
 
-    response = usecases.get_vitaldb_relationships()
+    response = usecases.get_vitaldb_relationships(event_limit=100)
 
     assert response == {
         "state": "unavailable",
         "assignments": [],
         "events": [],
+        "eventTotalCount": 0,
+        "eventLimit": 100,
         "readError": "Postgres read model is unreachable.",
     }
 
