@@ -176,6 +176,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-173 | Product Lab 세션의 archive finalization null 필드가 Host 응답에서 누락되어 PWA 계약 검증 실패 | Runtime Control PWA / macOS Runtime Control | resolved | [PWA rejects Product Lab sessions when archive finalization null fields disappear](173_pwa-lab-archive-finalization-null-contract.md) |
 | TS-174 | Vital File replay는 전송되지만 모든 트랙의 monitor type이 없어 VitalServer graph가 비어 있음 | Product Lab / Runtime Control PWA / Upstream integration | active | [Lab replay succeeds but VitalServer graph stays empty](174_lab-vital-replay-no-graph-compatible-tracks.md) |
 | TS-175 | Distribution review의 proxy readiness 테스트가 빈 stderr로 간헐 실패 | Packaging / Host proxy / Local development | resolved | [Distribution review proxy readiness test exits with empty stderr](175_distribution-review-proxy-run-readiness-test-timeout.md) |
+| TS-176 | Swift Beds 탭 장시간 사용 후 관계 이력 증가로 탭 전환이 느려짐 | macOS Helper / VitalDB relationships / Performance | resolved | [Swift Beds tab becomes slow after remaining open](176_swift_beds_tab_relationship_history_growth.md) |
+| TS-177 | 생성 완료된 Helper DMG를 orphan `diskimages-helper`가 점유해 검증이 `EAGAIN`으로 실패 | Packaging / Local development | resolved | [Release DMG verification fails while an orphaned helper holds the image](177_release_dmg_orphaned_diskimages_helper.md) |
 
 ## Follow-up 규칙
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 from dataclasses import replace
 from hashlib import sha256
@@ -162,6 +163,7 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
     pkg_output.parent.mkdir()
     pkg_output.write_text("installer", encoding="utf-8")
     commands: list[list[str]] = []
+    released_outputs: list[Path] = []
 
     def fake_stage_troubleshooting_tools(**kwargs: object) -> None:
         assert kwargs["runtime_cli"] == tmp_path / "bin/vitalserver-vm"
@@ -200,6 +202,11 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
     )
     monkeypatch.setattr(installer_package, "attached_disk_images", lambda: [])
     monkeypatch.setattr(installer_package, "run", fake_run)
+    monkeypatch.setattr(
+        installer_package,
+        "release_orphaned_dmg_output_helpers",
+        released_outputs.append,
+    )
 
     context = PackageContext(
         root=root,
@@ -261,6 +268,194 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
     assert commands[-1][:2] == ["hdiutil", "create"]
     assert str(staging) in commands[-1]
     assert str(dmg_output) in commands[-1]
+    assert released_outputs == [dmg_output]
+
+
+def test_release_orphaned_dmg_output_helpers_waits_for_normal_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg_output = tmp_path / "VitalServerHelper.dmg"
+    holder = installer_package.DmgOutputHolder(
+        pid=123,
+        parent_pid=77,
+        executable=Path("/usr/bin/hdiutil"),
+        open_dmg_paths=(dmg_output,),
+    )
+    observations = iter([[holder], []])
+    sent_signals: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(
+        installer_package,
+        "dmg_output_holders",
+        lambda _path: next(observations),
+    )
+    monkeypatch.setattr(installer_package.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        installer_package.os,
+        "kill",
+        lambda pid, requested_signal: sent_signals.append((pid, requested_signal)),
+    )
+
+    installer_package.release_orphaned_dmg_output_helpers(
+        dmg_output,
+        grace_attempts=2,
+        terminate_attempts=1,
+        kill_attempts=1,
+        poll_seconds=0,
+    )
+
+    assert sent_signals == []
+
+
+def test_dmg_output_holders_reads_explicit_process_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg_output = tmp_path / "VitalServerHelper.dmg"
+    helper = (
+        "/System/Library/PrivateFrameworks/DiskImages.framework/"
+        "Resources/diskimages-helper"
+    )
+    responses = iter(
+        [
+            subprocess.CompletedProcess([], 0, stdout="81947\n", stderr=""),
+            subprocess.CompletedProcess(
+                [],
+                0,
+                stdout=f"1 {helper}\n",
+                stderr="",
+            ),
+            subprocess.CompletedProcess(
+                [],
+                0,
+                stdout=f"p81947\nfcwd\nn{tmp_path}\nf5\nn{dmg_output}\n",
+                stderr="",
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(
+        installer_package.shutil,
+        "which",
+        lambda name: f"/usr/bin/{name}",
+    )
+    monkeypatch.setattr(
+        installer_package,
+        "run_inspection_command",
+        lambda *_args, **_kwargs: next(responses),
+    )
+
+    assert installer_package.dmg_output_holders(dmg_output) == [
+        installer_package.DmgOutputHolder(
+            pid=81947,
+            parent_pid=1,
+            executable=Path(helper),
+            open_dmg_paths=(dmg_output,),
+        )
+    ]
+
+
+def test_release_orphaned_dmg_output_helpers_terminates_exact_orphan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg_output = tmp_path / "VitalServerHelper.dmg"
+    holder = installer_package.DmgOutputHolder(
+        pid=81947,
+        parent_pid=1,
+        executable=Path(
+            "/System/Library/PrivateFrameworks/DiskImages.framework/"
+            "Resources/diskimages-helper"
+        ),
+        open_dmg_paths=(dmg_output,),
+    )
+    observations = iter([[holder], [holder], []])
+    sent_signals: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(
+        installer_package,
+        "dmg_output_holders",
+        lambda _path: next(observations),
+    )
+    monkeypatch.setattr(installer_package.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        installer_package.os,
+        "kill",
+        lambda pid, requested_signal: sent_signals.append((pid, requested_signal)),
+    )
+
+    installer_package.release_orphaned_dmg_output_helpers(
+        dmg_output,
+        grace_attempts=1,
+        terminate_attempts=1,
+        kill_attempts=1,
+        poll_seconds=0,
+    )
+
+    assert sent_signals == [
+        (81947, signal.SIGTERM),
+        (81947, signal.SIGKILL),
+    ]
+
+
+def test_release_orphaned_dmg_output_helpers_rejects_unowned_holder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg_output = tmp_path / "VitalServerHelper.dmg"
+    other_dmg = tmp_path / "OperatorMounted.dmg"
+    holder = installer_package.DmgOutputHolder(
+        pid=456,
+        parent_pid=1,
+        executable=Path(
+            "/System/Library/PrivateFrameworks/DiskImages.framework/"
+            "Resources/diskimages-helper"
+        ),
+        open_dmg_paths=(dmg_output, other_dmg),
+    )
+    sent_signals: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(
+        installer_package,
+        "dmg_output_holders",
+        lambda _path: [holder],
+    )
+    monkeypatch.setattr(installer_package.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        installer_package.os,
+        "kill",
+        lambda pid, requested_signal: sent_signals.append((pid, requested_signal)),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"refusing to signal.*pid=456.*OperatorMounted\.dmg",
+    ):
+        installer_package.release_orphaned_dmg_output_helpers(
+            dmg_output,
+            grace_attempts=1,
+            terminate_attempts=1,
+            kill_attempts=1,
+            poll_seconds=0,
+        )
+
+    assert sent_signals == []
+
+
+def test_attached_disk_images_reports_hdiutil_info_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        raise subprocess.TimeoutExpired(cmd=["hdiutil", "info", "-plist"], timeout=10)
+
+    monkeypatch.setattr(installer_package.subprocess, "run", timeout)
+
+    with pytest.raises(
+        RuntimeError,
+        match="timed out after 10 seconds",
+    ):
+        installer_package.attached_disk_images()
 
 
 def test_stage_reset_installer_command_renders_command_and_bundles_cli(
