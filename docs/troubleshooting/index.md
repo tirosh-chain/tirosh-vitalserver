@@ -173,6 +173,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-170 | Golden rootfs가 올바른 Guest Tools local wheel hash를 unexpected로 거부함 | Packaging / Guest bootstrap | fixed, package verification pending | [Golden rootfs Guest Tools local wheel hash closure failure](170_golden-rootfs-guest-tools-local-wheel-hash-closure.md) |
 | TS-171 | Golden rootfs APT 진행 후 manifest 생성 전에 600초 timeout으로 VM이 종료됨 | Packaging / Local development / Guest bootstrap | implemented | [Golden rootfs times out after APT progress but before manifest](171_golden-rootfs-apt-progress-timeout-before-manifest.md) |
 | TS-172 | Golden rootfs compose build가 local Python package 누락으로 실패함 | Packaging / Local development / Guest bootstrap | implemented | [Golden rootfs compose build cannot find a local package](172_golden-rootfs-compose-build-missing-local-package.md) |
+| TS-173 | Product Lab 세션의 archive finalization null 필드가 Host 응답에서 누락되어 PWA 계약 검증 실패 | Runtime Control PWA / macOS Runtime Control | resolved | [PWA rejects Product Lab sessions when archive finalization null fields disappear](173_pwa-lab-archive-finalization-null-contract.md) |
 
 ## Follow-up 규칙
 

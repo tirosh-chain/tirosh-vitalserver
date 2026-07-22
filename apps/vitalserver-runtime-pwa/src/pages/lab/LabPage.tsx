@@ -466,8 +466,8 @@ export function LabPage() {
             </button>
             <button type="button" disabled={!canFinishSession} onClick={finish}>
               {activeResponse?.session?.state === "finished"
-                ? "Retry upload"
-                : "Finish & upload"}
+                ? "Retry export"
+                : "Finish & export"}
             </button>
           </>
         }
@@ -808,7 +808,7 @@ function LabSessionList({
               { label: "Scenario", value: session.scenarioId },
               { label: "Recorders", value: session.recorderCount },
               {
-                label: "Archive upload",
+                label: "Recovery artifact export",
                 value: archiveFinalizationSummary(session)
               },
               { label: "Session ID", value: session.sessionId },
@@ -1025,7 +1025,7 @@ function LabResponseSummary({
         { label: "Recorders", value: session?.recorderCount ?? NOT_REPORTED },
         { label: "Target", value: session?.targetURL ?? NOT_REPORTED },
         {
-          label: "Archive upload",
+          label: "Recovery artifact export",
           value: archiveFinalizationSummary(session)
         },
         {
@@ -1060,7 +1060,8 @@ function archiveFinalizationTone(
   state: NonNullable<RuntimeLabSession["archiveFinalization"]>["state"]
 ): "success" | "warning" | "danger" | "neutral" {
   switch (state) {
-    case "uploaded":
+    case "exported":
+    case "published":
       return "success";
     case "queued":
     case "processing":

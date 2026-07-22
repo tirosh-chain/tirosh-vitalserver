@@ -70,6 +70,12 @@ public struct RuntimeLabArchiveFinalization: Codable, Equatable, Sendable {
     public let updatedAt: String?
     public let readError: String?
 
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case updatedAt
+        case readError
+    }
+
     public init(
         state: RuntimeLabArchiveFinalizationState,
         updatedAt: String? = nil,
@@ -78,6 +84,46 @@ public struct RuntimeLabArchiveFinalization: Codable, Equatable, Sendable {
         self.state = state
         self.updatedAt = updatedAt
         self.readError = readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(RuntimeLabArchiveFinalizationState.self, forKey: .state)
+        guard container.contains(.updatedAt) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.updatedAt,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "Runtime Lab archive finalization requires updatedAt."
+                )
+            )
+        }
+        guard container.contains(.readError) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.readError,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "Runtime Lab archive finalization requires readError."
+                )
+            )
+        }
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        readError = try container.decodeIfPresent(String.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let updatedAt {
+            try container.encode(updatedAt, forKey: .updatedAt)
+        } else {
+            try container.encodeNil(forKey: .updatedAt)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
     }
 }
 

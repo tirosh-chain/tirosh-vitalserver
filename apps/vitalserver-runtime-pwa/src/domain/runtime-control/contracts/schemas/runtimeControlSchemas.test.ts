@@ -8,6 +8,7 @@ import {
   runtimeGuestControlServiceOperationSchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
+  runtimeLabSessionListSchema,
   platformOperationStateSchema,
   platformWorkflowOperationSchema,
   platformWorkflowResourceSchema,
@@ -23,6 +24,55 @@ import {
 } from "./runtimeControlSchemas";
 
 describe("runtime control contract schemas", () => {
+  it("accepts explicit Lab archive export states and required nullable evidence", () => {
+    const response = (state: "exported" | "published") => ({
+      state: "loaded" as const,
+      sessions: [
+        {
+          sessionId: "lab-session-1",
+          state: "finished" as const,
+          scenarioId: "baseline-monitoring",
+          name: "Baseline Monitoring",
+          recorderCount: 1,
+          targetURL: null,
+          archiveFinalization: {
+            state,
+            updatedAt: null,
+            readError: null
+          },
+          createdAt: "2026-07-22T00:00:00Z",
+          updatedAt: "2026-07-22T00:05:00Z"
+        }
+      ],
+      readError: null
+    });
+
+    expect(runtimeLabSessionListSchema.parse(response("exported")))
+      .toMatchObject({ sessions: [{ archiveFinalization: { state: "exported" } }] });
+    expect(runtimeLabSessionListSchema.parse(response("published")))
+      .toMatchObject({ sessions: [{ archiveFinalization: { state: "published" } }] });
+
+    const missingUpdatedAt = response("exported");
+    delete (missingUpdatedAt.sessions[0].archiveFinalization as { updatedAt?: null }).updatedAt;
+    expect(() => runtimeLabSessionListSchema.parse(missingUpdatedAt)).toThrow(/updatedAt/);
+
+    expect(() =>
+      runtimeLabSessionListSchema.parse({
+        ...response("exported"),
+        sessions: [
+          {
+            ...response("exported").sessions[0],
+            archiveFinalization: {
+              state: "uploaded",
+              updatedAt: null,
+              readError: null
+            }
+          }
+        ]
+      })
+    ).toThrow(/state/);
+  });
+
   it("requires explicit null fields for missing workflows and unavailable Redis Relay settings", () => {
     expect(
       platformWorkflowResourceSchema.parse({

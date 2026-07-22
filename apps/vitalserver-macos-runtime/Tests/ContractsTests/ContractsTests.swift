@@ -4,6 +4,47 @@ import XCTest
 import Errors
 
 final class ContractsTests: XCTestCase {
+    func testLabArchiveFinalizationPreservesRequiredNullableFields() throws {
+        let finalization = RuntimeLabArchiveFinalization(
+            state: .exported,
+            updatedAt: nil,
+            readError: nil
+        )
+
+        let data = try JSONEncoder().encode(finalization)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["state"] as? String, "exported")
+        XCTAssertTrue(object["updatedAt"] is NSNull)
+        XCTAssertTrue(object["readError"] is NSNull)
+        XCTAssertEqual(
+            try JSONDecoder().decode(RuntimeLabArchiveFinalization.self, from: data),
+            finalization
+        )
+    }
+
+    func testLabArchiveFinalizationRejectsMissingRequiredNullableFields() throws {
+        let missingUpdatedAt = Data(
+            #"{"state":"exported","readError":null}"#.utf8
+        )
+        let missingReadError = Data(
+            #"{"state":"published","updatedAt":null}"#.utf8
+        )
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeLabArchiveFinalization.self,
+                from: missingUpdatedAt
+            )
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeLabArchiveFinalization.self,
+                from: missingReadError
+            )
+        )
+    }
+
     func testRecorderIngressStatusReadResultPreservesExplicitReadState() {
         XCTAssertEqual(
             RuntimeRecorderIngressStatusReadResult(

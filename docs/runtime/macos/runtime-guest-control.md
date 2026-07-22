@@ -366,7 +366,7 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 | Read session | `GET http://lab:8080/lab/sessions/{sessionId}` |
 | Start session | `POST http://lab:8080/lab/sessions/{sessionId}/start` |
 | Pause session | `POST http://lab:8080/lab/sessions/{sessionId}/stop` |
-| Finish session and upload archives | `POST http://lab:8080/lab/sessions/{sessionId}/finish` |
+| Finish session and export recovery artifacts | `POST http://lab:8080/lab/sessions/{sessionId}/finish` |
 | Delete session aggregate | `POST http://lab:8080/lab/sessions/{sessionId}/delete` |
 | Start recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/start` |
 | Stop recorder | `POST http://lab:8080/lab/sessions/{sessionId}/recorders/{recorderId}/stop` |
@@ -382,15 +382,15 @@ returns request IDs. Lab persists those IDs as a **private reference only** and 
 completion. The public Lab session projection contains only `archiveFinalization.state`, `updatedAt`, and `readError`;
 it never copies ingress jobs, checkpoints, files, or retry policy into the Lab/Guest/Host contracts. On subsequent
 session collection/detail reads, Lab asks recorder ingress for that one reference and projects `queued`, `processing`,
-`retrying`, `uploaded`, `failed`, `partial`, `missing`, or explicit `unavailable`. A dependency or contract failure is
+`retrying`, `exported`, `published`, `failed`, `partial`, `missing`, or explicit `unavailable`. A dependency or contract failure is
 therefore visible on the archive projection while the Lab session preserves its actual terminal `finished` state.
 Recorder ingress, not Product Lab or the UI, owns `.vital` export retry, upload result, and checkpoint state.
 
 The existing path is intentionally unchanged: `recorder-ingress → Lab session → Guest Control /runtime/lab/sessions
 → Runtime Control → Swift/PWA`. No UI calls recorder ingress and no new cross-service workflow endpoint is introduced.
 PWA refreshes the existing session query; Swift polls the same selected-session read only while the projected state is
-non-terminal. `uploaded` is the only successful archive-upload state; missing, partial, failed, and unavailable are
-not formatted as success.
+non-terminal. `exported` means the recovery artifact was created but not published to My Files; `published` means both
+export and publish completed. Missing, partial, failed, and unavailable are not formatted as success.
 
 Repeating Finish for an already `finished` session is an explicit finalization retry and never restarts execution.
 Starting a `finished` session is rejected.

@@ -1448,7 +1448,7 @@ describe("runtime console pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create session" }));
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
-    fireEvent.click(screen.getByRole("button", { name: "Finish & upload" }));
+    fireEvent.click(screen.getByRole("button", { name: "Finish & export" }));
     const selectedFiles = [
       new File(["first"], "first.vital"),
       new File(["second"], "second.vital")
@@ -1536,7 +1536,7 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("button", { name: "Create recorders" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Finish & upload" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Finish & export" })).toBeDisabled();
 
     expect(screen.getByRole("button", { name: "Replay" })).toBeDisabled();
   });
@@ -1563,7 +1563,7 @@ describe("runtime console pages", () => {
 
     renderPage(<LabPage />);
 
-    expect(screen.getAllByText("Archive upload").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Recovery artifact export").length).toBeGreaterThan(0);
     expect(screen.getAllByText("processing").length).toBeGreaterThan(0);
     expect(screen.getByText("2026-05-31T00:05:00Z")).toBeInTheDocument();
   });

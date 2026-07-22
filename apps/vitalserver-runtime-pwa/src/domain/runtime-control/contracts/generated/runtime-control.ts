@@ -1956,7 +1956,7 @@ export interface components {
         /** @enum {string} */
         RuntimeLabSessionState: "accepted" | "running" | "stopping" | "stopped" | "finished" | "failed" | "unavailable";
         /** @enum {string} */
-        RuntimeLabArchiveFinalizationState: "queued" | "processing" | "retrying" | "uploaded" | "failed" | "partial" | "missing" | "unavailable";
+        RuntimeLabArchiveFinalizationState: "queued" | "processing" | "retrying" | "exported" | "published" | "failed" | "partial" | "missing" | "unavailable";
         RuntimeLabArchiveFinalization: {
             state: components["schemas"]["RuntimeLabArchiveFinalizationState"];
             updatedAt: string | null;
