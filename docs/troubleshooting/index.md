@@ -175,6 +175,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-172 | Golden rootfs compose build가 local Python package 누락으로 실패함 | Packaging / Local development / Guest bootstrap | implemented | [Golden rootfs compose build cannot find a local package](172_golden-rootfs-compose-build-missing-local-package.md) |
 | TS-173 | Product Lab 세션의 archive finalization null 필드가 Host 응답에서 누락되어 PWA 계약 검증 실패 | Runtime Control PWA / macOS Runtime Control | resolved | [PWA rejects Product Lab sessions when archive finalization null fields disappear](173_pwa-lab-archive-finalization-null-contract.md) |
 | TS-174 | Vital File replay는 전송되지만 모든 트랙의 monitor type이 없어 VitalServer graph가 비어 있음 | Product Lab / Runtime Control PWA / Upstream integration | active | [Lab replay succeeds but VitalServer graph stays empty](174_lab-vital-replay-no-graph-compatible-tracks.md) |
+| TS-175 | Distribution review의 proxy readiness 테스트가 빈 stderr로 간헐 실패 | Packaging / Host proxy / Local development | resolved | [Distribution review proxy readiness test exits with empty stderr](175_distribution-review-proxy-run-readiness-test-timeout.md) |
 
 ## Follow-up 규칙
 

@@ -160,7 +160,12 @@ cleanup() {
   stop_nginx
 }
 
-trap cleanup EXIT INT TERM
+terminate() {
+  exit 0
+}
+
+trap cleanup EXIT
+trap terminate INT TERM
 
 last_upstream=""
 last_wait_message=""

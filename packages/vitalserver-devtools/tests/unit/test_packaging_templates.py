@@ -19,6 +19,8 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     settings_install_app_bundle,
 )
 
+PROXY_EVENT_TIMEOUT_SECONDS = 10
+
 
 def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     root = repo_root()
@@ -195,6 +197,8 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "waiting for VM runtime bootstrap" not in proxy_run_text
     assert "publish_runtime_endpoint()" not in proxy_run_text
     assert "clear_runtime_endpoint()" not in proxy_run_text
+    assert "trap cleanup EXIT\ntrap terminate INT TERM" in proxy_run_text
+    assert "trap cleanup EXIT INT TERM" not in proxy_run_text
     assert '"${runtime_logs}"' in proxy_run_text
     assert '"${nginx_prefix}/temp/client_body"' in proxy_run_text
     assert '"${nginx_prefix}/temp/proxy"' in proxy_run_text
@@ -428,7 +432,7 @@ esac
             },
             start_new_session=True,
         )
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + PROXY_EVENT_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             if "host proxy readiness failed after nginx configuration" in (
                 stderr_path.read_text(encoding="utf-8")
@@ -441,6 +445,7 @@ esac
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)
+        assert process.returncode == 0
 
     stdout = stdout_path.read_text(encoding="utf-8")
     stderr = stderr_path.read_text(encoding="utf-8")
@@ -548,7 +553,7 @@ esac
             },
             start_new_session=True,
         )
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + PROXY_EVENT_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             if "waiting for VM upstream readiness" in (
                 stderr_path.read_text(encoding="utf-8")
@@ -561,6 +566,7 @@ esac
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)
+        assert process.returncode == 0
 
     stdout = stdout_path.read_text(encoding="utf-8")
     stderr = stderr_path.read_text(encoding="utf-8")
@@ -656,7 +662,7 @@ exit 0
             },
             start_new_session=True,
         )
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + PROXY_EVENT_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             stdout = stdout_path.read_text(encoding="utf-8")
             if "started proxy:" in stdout:
@@ -668,6 +674,7 @@ exit 0
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)
+        assert process.returncode == 0
 
     calls = capture_file.read_text(encoding="utf-8")
     stdout = stdout_path.read_text(encoding="utf-8")
