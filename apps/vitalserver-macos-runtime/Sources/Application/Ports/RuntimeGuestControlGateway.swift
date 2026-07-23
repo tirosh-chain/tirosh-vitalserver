@@ -27,6 +27,7 @@ public protocol RuntimeGuestControlGateway {
     func operation(_ operationId: String) throws -> RuntimeGuestControlServiceOperation
     func latestVitalDBObservation() throws -> RuntimeGuestControlVitalDBObservationRead
     func vitalDBRecorderActivity(_ vrcode: String) throws -> RuntimeGuestControlVitalDBRecorderActivityRead
+    func vitalDBRecorderVitalFiles(_ vrcode: String) throws -> RuntimeVitalRecorderVitalFileHistory
     func vitalDBRelationships() throws -> RuntimeGuestControlVitalDBRelationshipRead
     func vitalDBRelationshipsAsync() async throws -> RuntimeGuestControlVitalDBRelationshipRead
     func recorderIngressStatus() throws -> RuntimeRecorderIngressStatusReadResult
@@ -117,6 +118,10 @@ public extension RuntimeGuestControlGateway {
 
     func vitalDBRecorderActivity(_: String) throws -> RuntimeGuestControlVitalDBRecorderActivityRead {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-recorder-activity")
+    }
+
+    func vitalDBRecorderVitalFiles(_: String) throws -> RuntimeVitalRecorderVitalFileHistory {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("vitaldb-recorder-vital-files")
     }
 
     func vitalDBRelationships() throws -> RuntimeGuestControlVitalDBRelationshipRead {

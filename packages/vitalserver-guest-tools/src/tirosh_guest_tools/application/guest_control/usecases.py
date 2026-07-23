@@ -11,6 +11,7 @@ from tirosh_guest_tools.application.guest_control.ports import (
     OperationRepository,
     ProductLabPort,
     RecorderIngressReadModelPort,
+    RecorderRecoveryReadModelPort,
     RedisBackupPort,
     RedisRelayReadModelPort,
     RedisRelaySettingsPort,
@@ -42,6 +43,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabRecorderResult,
     ProductLabSessionResult,
     RecorderIngressDependencyError,
+    RecorderRecoveryDependencyError,
     RedisBackupDependencyError,
     RedisRelayDependencyError,
     RedisRestoreDependencyError,
@@ -62,6 +64,11 @@ from tirosh_guest_tools.domain.guest_control.operation_policy import (
     finish_operation,
     interrupt_operation,
     start_operation,
+)
+from tirosh_guest_tools.domain.recorder_vital_files import (
+    RecorderVitalFileProjectionError,
+    native_uploads_for_recorder,
+    recovery_artifacts_for_recorder,
 )
 from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
     GuestServiceReconcileEffect,
@@ -88,6 +95,7 @@ class GuestControlUseCases:
         product_lab: ProductLabPort | None = None,
         vitaldb_read_model: VitalDBReadModelPort | None = None,
         recorder_ingress: RecorderIngressReadModelPort | None = None,
+        recorder_recovery: RecorderRecoveryReadModelPort | None = None,
         redis_relay: RedisRelayReadModelPort | None = None,
         runtime_settings: RuntimeSettingsPort | None = None,
         runtime_admin: RuntimeAdminPort | None = None,
@@ -102,6 +110,7 @@ class GuestControlUseCases:
         self._product_lab = product_lab
         self._vitaldb_read_model = vitaldb_read_model
         self._recorder_ingress = recorder_ingress
+        self._recorder_recovery = recorder_recovery
         self._redis_relay = redis_relay
         self._runtime_settings = runtime_settings
         self._runtime_admin = runtime_admin
@@ -235,6 +244,12 @@ class GuestControlUseCases:
 
         if self._recorder_ingress is not None:
             capabilities.append("recorder-ingress:status:get")
+        if (
+            self._recorder_ingress is not None
+            and self._recorder_recovery is not None
+            and self._vitaldb_read_model is not None
+        ):
+            capabilities.append("vitaldb:recorders:vital-files")
         if self._runtime_settings is not None:
             capabilities.extend(["settings:get", "settings:apply"])
         if self._runtime_admin is not None:
@@ -1170,6 +1185,133 @@ class GuestControlUseCases:
                 "buckets": [],
                 "readError": error.message,
             }
+
+    def get_vitaldb_recorder_vital_files(
+        self,
+        vrcode: str,
+    ) -> dict[str, object]:
+        native_files: list[dict[str, object]] = []
+        recovery_files: list[dict[str, object]] = []
+        native_state = "readFailed"
+        recovery_state = "readFailed"
+        native_error: str | None = None
+        recovery_error: str | None = None
+        unattributed_count = 0
+
+        if self._recorder_ingress is None:
+            native_error = "Recorder ingress native upload adapter is unavailable."
+        elif self._vitaldb_read_model is None:
+            native_error = "VitalDB relationship read model adapter is unavailable."
+        else:
+            try:
+                upload_document = self._recorder_ingress.native_vital_uploads()
+                if upload_document.get("state") != "loaded":
+                    raise RecorderVitalFileProjectionError(
+                        _required_read_error(
+                            upload_document,
+                            "Recorder ingress native upload read failed.",
+                        )
+                    )
+                uploads = upload_document.get("uploads")
+                if not isinstance(uploads, list):
+                    raise RecorderVitalFileProjectionError(
+                        "Recorder ingress native uploads field is invalid."
+                    )
+                try:
+                    relationships = self._vitaldb_read_model.relationships(
+                        event_limit=1
+                    )
+                except VitalDBReadModelDependencyError as error:
+                    relationships = {
+                        "state": "readFailed",
+                        "assignments": [],
+                        "events": [],
+                        "readError": error.message,
+                    }
+                native = native_uploads_for_recorder(
+                    vrcode,
+                    uploads=uploads,
+                    relationships=relationships,
+                )
+                native_state = str(native["state"])
+                native_files = list(native["files"])
+                unattributed_count = int(native["unattributedCount"])
+                native_error = (
+                    str(native["readError"])
+                    if native["readError"] is not None
+                    else None
+                )
+            except (
+                RecorderIngressDependencyError,
+                RecorderVitalFileProjectionError,
+            ) as error:
+                native_error = _dependency_message(error)
+
+        if self._recorder_recovery is None:
+            recovery_error = "Recorder recovery artifact adapter is unavailable."
+        else:
+            try:
+                artifact_document = self._recorder_recovery.list_artifacts()
+                if artifact_document.get("state") != "loaded":
+                    raise RecorderVitalFileProjectionError(
+                        _required_read_error(
+                            artifact_document,
+                            "Recorder recovery artifact read failed.",
+                        )
+                    )
+                artifacts = artifact_document.get("artifacts")
+                if not isinstance(artifacts, list):
+                    raise RecorderVitalFileProjectionError(
+                        "Recorder recovery artifacts field is invalid."
+                    )
+                recovery = recovery_artifacts_for_recorder(
+                    vrcode,
+                    artifacts=artifacts,
+                )
+                recovery_state = str(recovery["state"])
+                recovery_files = list(recovery["files"])
+            except (
+                RecorderRecoveryDependencyError,
+                RecorderVitalFileProjectionError,
+            ) as error:
+                recovery_error = _dependency_message(error)
+
+        states = {native_state, recovery_state}
+        if states == {"loaded"}:
+            state = "loaded"
+        elif states == {"readFailed"}:
+            state = "readFailed"
+        else:
+            state = "partiallyLoaded"
+        files = native_files + recovery_files
+        files.sort(
+            key=lambda item: _vital_file_sort_key(item),
+            reverse=True,
+        )
+        errors = [
+            f"nativeUpload={native_error}" if native_error else None,
+            f"coldPathRecovery={recovery_error}" if recovery_error else None,
+        ]
+        return {
+            "state": state,
+            "vrcode": vrcode,
+            "files": files,
+            "unattributedCount": unattributed_count,
+            "sources": {
+                "nativeUpload": {
+                    "state": native_state,
+                    "readError": native_error,
+                },
+                "coldPathRecovery": {
+                    "state": recovery_state,
+                    "readError": recovery_error,
+                },
+            },
+            "readError": "; ".join(
+                value for value in errors if value is not None
+            )
+            or None,
+        }
 
     def list_vitaldb_beds(self) -> dict[str, object]:
         if self._vitaldb_read_model is None:
@@ -2107,3 +2249,36 @@ def _redis_relay_read_state(kind: str) -> str:
     if kind == "redis-relay-status-missing":
         return "readFailed"
     return "readFailed"
+
+
+def _required_read_error(
+    document: dict[str, object],
+    default: str,
+) -> str:
+    value = document.get("readError")
+    return value if isinstance(value, str) and value else default
+
+
+def _dependency_message(error: Exception) -> str:
+    value = getattr(error, "message", None)
+    return value if isinstance(value, str) and value else str(error)
+
+
+def _vital_file_sort_key(
+    item: dict[str, object],
+) -> tuple[float, str]:
+    value = item.get("uploadedAt")
+    if value is None:
+        value = item.get("receivedAt")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        timestamp = float(value)
+    elif isinstance(value, str):
+        try:
+            timestamp = datetime.fromisoformat(
+                value.replace("Z", "+00:00")
+            ).timestamp()
+        except ValueError:
+            timestamp = 0.0
+    else:
+        timestamp = 0.0
+    return timestamp, str(item.get("fileID", ""))

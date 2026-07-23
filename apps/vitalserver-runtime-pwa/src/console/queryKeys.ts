@@ -33,6 +33,8 @@ export const consoleQueryKeys = {
     period: string;
     pageIndex?: number;
   }) => ["vitaldb", "recorders", query.vrcode, "activity", query] as const,
+  recorderVitalFiles: (vrcode: string) =>
+    ["vitaldb", "recorders", vrcode, "vital-files"] as const,
   releaseInfo: ["platform", "release"] as const,
   installInfo: ["platform", "installation"] as const,
   beds: ["vitaldb", "beds"] as const,

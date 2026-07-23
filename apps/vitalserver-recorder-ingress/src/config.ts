@@ -21,6 +21,8 @@ const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 function loadConfig(env) {
   const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.SPOOL_AND_REPLAY);
+  const upstreamHost = env.RECORDER_INGRESS_UPSTREAM_HOST || "app";
+  const upstreamPort = numberEnv(env, "RECORDER_INGRESS_UPSTREAM_PORT", 80);
   const replayMaxBytesPerSecond = numberEnv(
     env,
     "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND",
@@ -29,9 +31,35 @@ function loadConfig(env) {
   return {
     listenPort: numberEnv(env, "RECORDER_INGRESS_PORT", 8080),
     upstream: {
-      host: env.RECORDER_INGRESS_UPSTREAM_HOST || "app",
-      port: numberEnv(env, "RECORDER_INGRESS_UPSTREAM_PORT", 80),
+      host: upstreamHost,
+      port: upstreamPort,
       timeoutMs: numberEnv(env, "RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS", 30000),
+    },
+    nativeVitalUploads: {
+      statePath: env.RECORDER_INGRESS_NATIVE_UPLOAD_STATE_PATH
+        || "/var/lib/vitalserver-recorder-ingress/recovery/native-vital-uploads.json",
+      reconciliation: {
+        intervalMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_INTERVAL_MS",
+          5000
+        ),
+        maxAttempts: numberEnv(
+          env,
+          "RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_MAX_ATTEMPTS",
+          12
+        ),
+      },
+      vitalServerIndex: {
+        baseUrl: env.RECORDER_INGRESS_VITALSERVER_URL
+          || `http://${upstreamHost}:${upstreamPort}`,
+        adminPassword: env.VITALSERVER_ADMIN_PASSWORD || "",
+        timeoutMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_NATIVE_UPLOAD_INDEX_TIMEOUT_MS",
+          5000
+        ),
+      },
     },
     redis: {
       host: env.VITALSERVER_REDIS_HOST || env.RECORDER_INGRESS_REDIS_HOST || "redis",

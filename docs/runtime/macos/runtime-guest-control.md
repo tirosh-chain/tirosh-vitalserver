@@ -312,6 +312,18 @@ POST /runtime/lab/vital-files/replay
 POST /runtime/lab/vital-files/upload
 ```
 
+Recorder별 Vital-file 이력은 Product Lab library와 별도 read model입니다.
+
+```text
+GET /runtime/vitaldb/recorders/{vrcode}/vital-files
+```
+
+응답은 recorder-ingress의 `nativeRecorderUpload` 상태와 recorder-recovery의
+`coldPathRecovery` artifact만 합칩니다. Native upload에 vrcode가 선언되지
+않았으면 relationship owner가 upload 수신 시각의 exact bedName assignment를
+해결합니다. assignment가 없거나 복수이거나 relationship read가 실패하면
+unattributed로 남으며 filename에서 state를 만들지 않습니다.
+
 The Host contract explicitly returns `unavailable` when Guest Control or Product Lab is not reachable. Missing Lab backend, failed Lab reads, and empty scenario lists must remain different meanings.
 
 ### 2-7. Guest Control API mediates Product Lab execution

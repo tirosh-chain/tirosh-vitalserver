@@ -13,6 +13,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case vitalDBRecorders
     case vitalDBRecorder
     case vitalDBRecorderActivity
+    case vitalDBRecorderVitalFiles
     case vitalDBBeds
     case vitalDBBed
     case vitalDBRelationships

@@ -661,6 +661,22 @@ class FakeRecorderIngress:
             "readError": None,
         }
 
+    def native_vital_uploads(self) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "uploads": [_native_upload_receipt()],
+            "readError": None,
+        }
+
+
+class FakeRecorderRecovery:
+    def list_artifacts(self) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "artifacts": [],
+            "readError": None,
+        }
+
 
 class FakeRedisRelay:
     def __init__(self, *, fail: bool = False) -> None:
@@ -842,6 +858,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         product_lab=FakeProductLab(),
         vitaldb_read_model=FakeVitalDBReadModel(),
         recorder_ingress=FakeRecorderIngress(),
+        recorder_recovery=FakeRecorderRecovery(),
         redis_relay=FakeRedisRelay(),
         redis_backup=FakeRedisBackup(),
         datastore_repair=FakeDatastoreRepair(),
@@ -892,6 +909,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "maintenance:update-shutdown:create",
         "maintenance:guest-poweroff:create",
         "recorder-ingress:status:get",
+        "vitaldb:recorders:vital-files",
         "redis-relay:status:get",
         "vitaldb:observations:latest",
         "vitaldb:recorders:list",
@@ -905,6 +923,54 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "vitaldb:beds:delete",
         "vitaldb:relationships:get",
     ]
+
+
+def test_recorder_vital_files_resolve_native_upload_from_bed_assignment() -> None:
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        vitaldb_read_model=FakeVitalDBReadModel(),
+        recorder_ingress=FakeRecorderIngress(),
+        recorder_recovery=FakeRecorderRecovery(),
+    )
+
+    document = usecases.get_vitaldb_recorder_vital_files("VR-001")
+
+    assert document["state"] == "loaded"
+    assert document["readError"] is None
+    assert len(document["files"]) == 1
+    assert document["files"][0]["origin"] == "nativeRecorderUpload"
+    assert document["files"][0]["attribution"]["state"] == (
+        "bedAssignmentResolved"
+    )
+
+
+def _native_upload_receipt() -> dict[str, object]:
+    return {
+        "schemaVersion": 1,
+        "origin": "nativeRecorderUpload",
+        "uploadId": "upload-001",
+        "bedName": "OR-A",
+        "declaredVrcode": None,
+        "filename": "OR-A_260701_000000.vital",
+        "declaredSizeBytes": 100,
+        "state": "indexed",
+        "receivedAt": "2026-07-01T00:00:04+00:00",
+        "upstreamAcceptedAt": "2026-07-01T00:00:05+00:00",
+        "indexedAt": "2026-07-01T00:00:06+00:00",
+        "reconciliationAttempts": 1,
+        "lastReconciliationAt": "2026-07-01T00:00:06+00:00",
+        "indexEvidence": {
+            "filename": "OR-A_260701_000000.vital",
+            "sizeBytes": 100,
+            "recordingStartedAt": 1,
+            "recordingEndedAt": 2,
+            "uploadedAt": 3,
+        },
+        "failure": None,
+    }
 
 
 def test_capabilities_omit_unconfigured_adapter_features() -> None:

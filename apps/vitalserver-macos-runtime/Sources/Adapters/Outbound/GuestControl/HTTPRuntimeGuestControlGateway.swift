@@ -630,6 +630,14 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         )
     }
 
+    public func vitalDBRecorderVitalFiles(_ vrcode: String) throws -> RuntimeVitalRecorderVitalFileHistory {
+        try decode(
+            RuntimeVitalRecorderVitalFileHistory.self,
+            method: "GET",
+            path: "/runtime/vitaldb/recorders/\(pathSegment(vrcode))/vital-files"
+        )
+    }
+
     public func vitalDBBeds() throws -> RuntimeVitalBedHistory {
         try decode(
             RuntimeVitalBedHistory.self,

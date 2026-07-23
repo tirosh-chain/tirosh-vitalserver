@@ -109,3 +109,47 @@ def test_recorder_ingress_status_adapter_rejects_invalid_json(
     assert error.value.message.startswith(
         "Recorder ingress status returned invalid JSON:"
     )
+
+
+def test_recorder_ingress_adapter_reads_native_vital_upload_receipts(
+    monkeypatch: Any,
+) -> None:
+    requests: list[str] = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def read(self) -> bytes:
+            return (
+                b'{"state":"loaded","uploads":[{'
+                b'"origin":"nativeRecorderUpload","uploadId":"upload-001"'
+                b'}],"readError":null}'
+            )
+
+    def fake_urlopen(request: Any, *, timeout: float) -> Response:
+        assert timeout == 5.0
+        requests.append(request.full_url)
+        return Response()
+
+    monkeypatch.setattr(status_service, "urlopen", fake_urlopen)
+
+    response = RecorderIngressStatusServiceAdapter(
+        native_uploads_url=(
+            "http://recorder-ingress:8080/"
+            "recorder-ingress/vital-files/uploads"
+        )
+    ).native_vital_uploads()
+
+    assert requests == [
+        "http://recorder-ingress:8080/recorder-ingress/vital-files/uploads"
+    ]
+    assert response["state"] == "loaded"
+    assert response["uploads"] == [
+        {"origin": "nativeRecorderUpload", "uploadId": "upload-001"}
+    ]

@@ -118,3 +118,37 @@ struct RuntimeVitalDBGuestActivityProvider {
         }
     }
 }
+
+struct RuntimeVitalDBGuestVitalFileProvider {
+    private let loadHistory: (String) -> RuntimeVitalRecorderVitalFileHistory
+
+    init(load: @escaping (String) -> RuntimeVitalRecorderVitalFileHistory) {
+        self.loadHistory = load
+    }
+
+    func load(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory {
+        loadHistory(vrcode)
+    }
+
+    static func live(
+        guestControlBaseURL: @escaping @Sendable () -> String?,
+        guestControlGateway: @escaping @Sendable (String) throws -> any RuntimeGuestControlGateway = {
+            try HTTPRuntimeGuestControlGateway(
+                baseURL: $0,
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIProductReadModelTimeoutSeconds
+            )
+        }
+    ) -> RuntimeVitalDBGuestVitalFileProvider {
+        RuntimeVitalDBGuestVitalFileProvider { vrcode in
+            guard let baseURL = guestControlBaseURL()?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !baseURL.isEmpty else {
+                return .failed(vrcode: vrcode, readError: "guestControl=baseURLUnavailable")
+            }
+            do {
+                return try guestControlGateway(baseURL).vitalDBRecorderVitalFiles(vrcode)
+            } catch {
+                return .failed(vrcode: vrcode, readError: "guestControl=\(error)")
+            }
+        }
+    }
+}

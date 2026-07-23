@@ -34,6 +34,9 @@ from tirosh_guest_tools.adapters.outbound.product_lab import ProductLabServiceAd
 from tirosh_guest_tools.adapters.outbound.recorder_ingress import (
     RecorderIngressStatusServiceAdapter,
 )
+from tirosh_guest_tools.adapters.outbound.recorder_recovery import (
+    RecorderRecoveryArtifactServiceAdapter,
+)
 from tirosh_guest_tools.adapters.outbound.redis_relay_settings import (
     FileRedisRelaySettingsRepository,
 )
@@ -143,6 +146,7 @@ def build_default_usecases() -> GuestControlUseCases:
         service_control=ComposeGuestControlAdapter(),
         product_lab=ProductLabServiceAdapter(),
         recorder_ingress=RecorderIngressStatusServiceAdapter(),
+        recorder_recovery=RecorderRecoveryArtifactServiceAdapter(),
         redis_relay=operations,
         runtime_settings=FileRuntimeSettingsRepository(
             SETTINGS.paths.runtime_settings_file
@@ -699,6 +703,17 @@ def route_request(
         and parts[4] == "activity"
     ):
         return HTTPStatus.OK, usecases.get_vitaldb_recorder_activity(parts[3])
+
+    if (
+        method == "GET"
+        and len(parts) == 5
+        and parts[:3] == ["runtime", "vitaldb", "recorders"]
+        and parts[4] == "vital-files"
+    ):
+        return (
+            HTTPStatus.OK,
+            usecases.get_vitaldb_recorder_vital_files(parts[3]),
+        )
 
     if method == "GET" and parts == ["runtime", "vitaldb", "beds"]:
         return HTTPStatus.OK, usecases.list_vitaldb_beds()

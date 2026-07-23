@@ -476,6 +476,17 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/services/app/stop": guestServiceOperation("stop"),
       "/runtime/services/app/restart": guestServiceOperation("restart"),
       "/runtime/vitaldb/recorders": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/recorders/VR_A/vital-files": {
+        state: "loaded",
+        vrcode: "VR_A",
+        files: [],
+        unattributedCount: 0,
+        sources: {
+          nativeUpload: { state: "loaded", readError: null },
+          coldPathRecovery: { state: "loaded", readError: null }
+        },
+        readError: null
+      },
       "/runtime/vitaldb/recorders/hide": fullVitalRecorderHistory(),
       "/runtime/vitaldb/recorders/unhide": fullVitalRecorderHistory(),
       "/runtime/vitaldb/recorders/delete": fullVitalRecorderHistory(),
@@ -608,6 +619,15 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.stopGuestService({ service: "app" })).resolves.toMatchObject({ command: "stop" });
     await expect(client.restartGuestService({ service: "app" })).resolves.toMatchObject({ command: "restart" });
     await expect(client.getRecorders()).resolves.toMatchObject({ recorders: [] });
+    await expect(client.getRecorderVitalFiles("VR_A")).resolves.toMatchObject({
+      vrcode: "VR_A",
+      files: []
+    });
+    expect(requests.some(
+      (request) =>
+        new URL(request.url).pathname ===
+        "/runtime/vitaldb/recorders/VR_A/vital-files"
+    )).toBe(true);
     await expect(client.hideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
     await expect(client.unhideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
     await expect(client.deleteRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });

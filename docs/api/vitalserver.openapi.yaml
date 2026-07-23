@@ -213,6 +213,10 @@ paths:
           - Requires a real `.vital` file.
           - File names should follow `bedname_yymmdd_hhmmss.vital`.
           - The response can be `success` or an error text from the upstream parser.
+          - The upstream multipart contract contains only `vitalfile`; it does
+            not provide authoritative Recorder identity or bed assignment.
+          - Runtime attribution requires the recorder-ingress tracked-upload
+            headers. Filename-derived bed or Recorder identity is not state.
       requestBody:
         required: true
         content:

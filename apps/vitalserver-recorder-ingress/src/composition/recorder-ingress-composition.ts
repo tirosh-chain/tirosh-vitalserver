@@ -7,7 +7,9 @@ const { createAuditStdoutWriter } = require("../adapters/outbound/process/audit-
 const { createSendDataFailureLogWriter } = require("../adapters/outbound/file/send-data-failure-log-writer");
 const { createSendDataRawArchiveExportJobStore } = require("../adapters/outbound/file/send-data-raw-archive-export-job-store");
 const { createSendDataRawArchiveWriter } = require("../adapters/outbound/file/send-data-raw-archive-writer");
+const { createNativeVitalUploadRegistry } = require("../adapters/outbound/file/native-vital-upload-registry");
 const { createRawArchiveExporter } = require("../adapters/outbound/http/raw-archive-recovery-executor");
+const { createVitalServerFileIndex } = require("../adapters/outbound/http/vitalserver-file-index");
 const { createRedisAuditEventStore } = require("../adapters/outbound/redis/audit-event-store");
 const { createRedisClient } = require("../adapters/outbound/redis/client");
 const { createRedisSendDataSpoolStore } = require("../adapters/outbound/redis/send-data-spool-store");
@@ -17,6 +19,7 @@ const { createAuditRecorder } = require("../application/audit-recorder");
 const { createSendDataIngressService } = require("../application/send-data-ingress-service");
 const { createSendDataRawArchiveExportWorker } = require("../application/send-data-raw-archive-export-worker");
 const { createSendDataReplayWorker } = require("../application/send-data-replay-worker");
+const { createNativeVitalUploadService } = require("../application/native-vital-upload-service");
 const { createSocketIoAuditService } = require("../application/socketio-audit-service");
 const { configureSendDataRawArchive, configureSendDataSpool, createMetrics } = require("../observability/metrics");
 
@@ -35,6 +38,16 @@ function createRecorderIngressServer(config) {
   const sendDataRawArchive = createSendDataRawArchiveWriter(config.rawArchive);
   const sendDataRawArchiveExportJobStore = createSendDataRawArchiveExportJobStore(config);
   const sendDataRawArchiveExporter = createRawArchiveExporter(config);
+  const nativeVitalUploadRegistry = createNativeVitalUploadRegistry(
+    config.nativeVitalUploads
+  );
+  const nativeVitalUploads = createNativeVitalUploadService({
+    registry: nativeVitalUploadRegistry,
+    vitalServerIndex: createVitalServerFileIndex(
+      config.nativeVitalUploads.vitalServerIndex
+    ),
+    reconciliation: config.nativeVitalUploads.reconciliation,
+  });
   const audit = createAuditRecorder(config.audit, [auditLog, auditStdout, redisAudit]);
   const vrIdentityStore = createVrIdentityStore(identityRedis, metrics);
   const sendDataSpoolStore = createRedisSendDataSpoolStore(config.spool, sendDataRedis);
@@ -67,6 +80,7 @@ function createRecorderIngressServer(config) {
     clientIp,
     config,
     metrics,
+    nativeVitalUploads,
     sendDataRawArchiveExportWorker,
     sendDataReplayWorker,
     socketIoAudit,

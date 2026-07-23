@@ -992,6 +992,39 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
+    func testVitalDBRecorderVitalFilesRequestsGuestControlReadModelEndpoint() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state": "loaded",
+              "vrcode": "VR-001",
+              "files": [],
+              "unattributedCount": 0,
+              "sources": {
+                "nativeUpload": {"state": "loaded", "readError": null},
+                "coldPathRecovery": {"state": "loaded", "readError": null}
+              },
+              "readError": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let history = try gateway.vitalDBRecorderVitalFiles("VR/A")
+
+        XCTAssertEqual(history.state, .loaded)
+        XCTAssertEqual(history.vrcode, "VR-001")
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/runtime/vitaldb/recorders/VR%2FA/vital-files"]
+        )
+    }
+
     func testVitalDBBedsRequestsGuestControlReadModelEndpoint() throws {
         let responseDocument = RuntimeVitalBedHistory(
             updatedAt: "2026-07-01T00:00:00+00:00",

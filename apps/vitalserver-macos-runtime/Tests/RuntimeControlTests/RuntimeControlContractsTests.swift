@@ -236,6 +236,59 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.readError, "events unavailable")
     }
 
+    func testVitalRecorderVitalFileHistoryRequiresExplicitAttributionAndSourceReads() throws {
+        let data = Data("""
+        {
+          "state": "loaded",
+          "vrcode": "VR-001",
+          "files": [{
+            "fileID": "upload-1",
+            "origin": "nativeRecorderUpload",
+            "vrcode": "VR-001",
+            "bedName": "OR-A",
+            "filename": "OR-A_260723_100000.vital",
+            "sizeBytes": 2048,
+            "status": "indexed",
+            "receivedAt": "2026-07-23T10:00:00Z",
+            "recordingStartedAt": null,
+            "recordingEndedAt": null,
+            "uploadedAt": "2026-07-23T10:00:01Z",
+            "attribution": {
+              "state": "bedAssignmentResolved",
+              "assignmentID": "assignment-1",
+              "resolvedAt": "2026-07-23T10:00:00Z",
+              "readError": null
+            },
+            "failure": null
+          }],
+          "unattributedCount": 0,
+          "sources": {
+            "nativeUpload": {"state": "loaded", "readError": null},
+            "coldPathRecovery": {"state": "loaded", "readError": null}
+          },
+          "readError": null
+        }
+        """.utf8)
+
+        let history = try JSONDecoder().decode(
+            RuntimeVitalRecorderVitalFileHistory.self,
+            from: data
+        )
+
+        XCTAssertEqual(history.files.map(\.fileID), ["upload-1"])
+        XCTAssertEqual(history.files.first?.attribution.state, .bedAssignmentResolved)
+        XCTAssertEqual(history.sources.nativeUpload.state, .loaded)
+        XCTAssertThrowsError(try JSONDecoder().decode(
+            RuntimeVitalRecorderVitalFileHistory.self,
+            from: Data(String(decoding: data, as: UTF8.self)
+                .replacingOccurrences(
+                    of: #""nativeUpload": {"state": "loaded", "readError": null}"#,
+                    with: #""nativeUpload": {"state": "loaded"}"#
+                )
+                .utf8)
+        ))
+    }
+
     func testPlatformStateRoundTripsExplicitCurrentFieldsThroughJSON() throws {
         let status = PlatformState(
             runtimeInstallationState: .executable,

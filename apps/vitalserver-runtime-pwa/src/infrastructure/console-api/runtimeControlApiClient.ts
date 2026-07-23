@@ -55,6 +55,7 @@ import type {
   RuntimeVitalDBObservationSnapshot,
   RuntimeVitalRecorderActivityWindow,
   RuntimeVitalRecorderActivityWindowQuery,
+  RuntimeVitalRecorderVitalFileHistory,
   RuntimeReleaseInfo,
   RuntimeInstallInfo,
   RuntimeProductSettingsRead,
@@ -96,6 +97,7 @@ import {
   runtimeRedisRelaySettingsReadSchema,
   runtimeVitalDBObservationSnapshotSchema,
   recorderActivityWindowSchema,
+  recorderVitalFileHistorySchema,
   runtimeReleaseInfoSchema,
   runtimeInstallInfoSchema,
   runtimeProductSettingsReadSchema,
@@ -478,6 +480,13 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
         period: query.period,
         ...(pageIndex === undefined ? {} : { pageIndex })
       }
+    );
+  }
+
+  getRecorderVitalFiles(vrcode: string): Promise<RuntimeVitalRecorderVitalFileHistory> {
+    return this.get(
+      `/runtime/vitaldb/recorders/${encodeURIComponent(vrcode)}/vital-files`,
+      recorderVitalFileHistorySchema
     );
   }
 

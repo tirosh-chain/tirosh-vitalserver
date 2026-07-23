@@ -6,6 +6,104 @@ info:
 servers:
   - url: /
 paths:
+  /upload:
+    post:
+      operationId: uploadTrackedNativeVitalFile
+      summary: Stream one native Recorder Vital file to VitalServer
+      description: >
+        Proxies one complete multipart Vital file without buffering the request.
+        A request with no tracking headers remains a legacy passthrough and is
+        not attributed. If any tracking header is present, upload ID, bed name,
+        filename, and file size are all required. Recorder code is optional.
+        The ingress records upstream acceptance only when the upstream response
+        is 2xx with the exact body `success`, then independently reconciles the
+        file against VitalServer file-index evidence. bedName is explicit
+        metadata; it is never parsed from filename.
+      parameters:
+        - $ref: "#/components/parameters/VitalUploadID"
+        - $ref: "#/components/parameters/VitalBedName"
+        - $ref: "#/components/parameters/VitalRecorderCode"
+        - $ref: "#/components/parameters/VitalFilename"
+        - $ref: "#/components/parameters/VitalFileSize"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [vitalfile]
+              properties:
+                vitalfile:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Upstream upload result. `X-Vital-Upload-State` is `reconciling` or `indexed`.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [success]
+        "400":
+          description: Partial or invalid tracked-upload metadata.
+        "409":
+          description: The upload ID was reused with conflicting immutable metadata.
+        "502":
+          description: The upstream upload dependency failed.
+        "503":
+          description: Tracked-upload state ownership is unavailable or its registry failed.
+  /upload_vital.php:
+    post:
+      operationId: uploadTrackedNativeVitalFileLegacyAlias
+      summary: Alias of POST /upload
+      description: Uses the same streaming and tracked-upload contract as POST /upload.
+      parameters:
+        - $ref: "#/components/parameters/VitalUploadID"
+        - $ref: "#/components/parameters/VitalBedName"
+        - $ref: "#/components/parameters/VitalRecorderCode"
+        - $ref: "#/components/parameters/VitalFilename"
+        - $ref: "#/components/parameters/VitalFileSize"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [vitalfile]
+              properties:
+                vitalfile:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Upstream upload result.
+  /recorder-ingress/vital-files/uploads:
+    get:
+      operationId: getTrackedNativeVitalUploads
+      summary: Read recorder-ingress-owned native upload records
+      description: >
+        Returns explicit native upload state only. Records are not Recorder
+        identity and unresolved bed attribution does not create Recorder state.
+      parameters:
+        - name: bedName
+          in: query
+          schema:
+            type: string
+        - name: declaredVrcode
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Native upload records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativeVitalUploadList"
+        "503":
+          description: The native upload registry could not be read.
   /recorder-ingress/health:
     get:
       operationId: getRecorderIngressHealth
@@ -80,7 +178,119 @@ paths:
         "503":
           description: The finalization state dependency is unavailable.
 components:
+  parameters:
+    VitalUploadID:
+      name: X-Vital-Upload-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+    VitalBedName:
+      name: X-Vital-Bed-Name
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+    VitalRecorderCode:
+      name: X-Vital-Recorder-Code
+      in: header
+      required: false
+      schema:
+        type: string
+    VitalFilename:
+      name: X-Vital-Filename
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 255
+        pattern: '^[^/\\]+\.vital$'
+    VitalFileSize:
+      name: X-Vital-File-Size
+      in: header
+      required: false
+      schema:
+        type: integer
+        minimum: 1
   schemas:
+    NativeVitalUploadList:
+      type: object
+      additionalProperties: false
+      required: [state, uploads, readError]
+      properties:
+        state:
+          type: string
+          enum: [loaded]
+        uploads:
+          type: array
+          items:
+            $ref: "#/components/schemas/NativeVitalUpload"
+        readError:
+          type: string
+          nullable: true
+    NativeVitalUpload:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - origin
+        - uploadId
+        - bedName
+        - declaredVrcode
+        - filename
+        - declaredSizeBytes
+        - state
+        - receivedAt
+        - upstreamAcceptedAt
+        - indexedAt
+        - reconciliationAttempts
+        - lastReconciliationAt
+        - indexEvidence
+        - failure
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        origin:
+          type: string
+          enum: [nativeRecorderUpload]
+        uploadId:
+          type: string
+        bedName:
+          type: string
+        declaredVrcode:
+          type: string
+          nullable: true
+        filename:
+          type: string
+        declaredSizeBytes:
+          type: integer
+          minimum: 1
+        state:
+          type: string
+          enum: [receiving, reconciling, indexed, failed]
+        receivedAt:
+          type: string
+        upstreamAcceptedAt:
+          type: string
+          nullable: true
+        indexedAt:
+          type: string
+          nullable: true
+        reconciliationAttempts:
+          type: integer
+          minimum: 0
+        lastReconciliationAt:
+          type: string
+          nullable: true
+        indexEvidence:
+          type: object
+          nullable: true
+        failure:
+          type: object
+          nullable: true
     RecorderArchiveFinalizationRequest:
       type: object
       additionalProperties: false

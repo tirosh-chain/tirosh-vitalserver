@@ -13,6 +13,7 @@ import {
   platformWorkflowOperationSchema,
   platformWorkflowResourceSchema,
   runtimeProviderCommandResponseSchema,
+  recorderVitalFileHistorySchema,
   runtimeRedisRelaySettingsReadSchema,
   runtimeRedisRelayStatusReadResultSchema,
   platformStateSchema,
@@ -1278,6 +1279,48 @@ describe("runtime control contract schemas", () => {
       schemaVersion: 1,
       capabilities: ["services:list", "lab:scenarios"]
     });
+  });
+
+  it("requires explicit Recorder Vital-file attribution and source read states", () => {
+    const history = {
+      state: "loaded",
+      vrcode: "VR_TEST",
+      files: [{
+        fileID: "upload-1",
+        origin: "nativeRecorderUpload",
+        vrcode: "VR_TEST",
+        bedName: "OR-1",
+        filename: "case.vital",
+        sizeBytes: 2048,
+        status: "indexed",
+        receivedAt: "2026-07-23T01:00:00Z",
+        recordingStartedAt: null,
+        recordingEndedAt: null,
+        uploadedAt: "2026-07-23T01:00:01Z",
+        attribution: {
+          state: "bedAssignmentResolved",
+          assignmentID: "assignment-1",
+          resolvedAt: "2026-07-23T01:00:00Z",
+          readError: null
+        },
+        failure: null
+      }],
+      unattributedCount: 0,
+      sources: {
+        nativeUpload: { state: "loaded", readError: null },
+        coldPathRecovery: { state: "loaded", readError: null }
+      },
+      readError: null
+    };
+
+    expect(recorderVitalFileHistorySchema.parse(history)).toEqual(history);
+    expect(() => recorderVitalFileHistorySchema.parse({
+      ...history,
+      sources: {
+        nativeUpload: { state: "loaded" },
+        coldPathRecovery: { state: "loaded", readError: null }
+      }
+    })).toThrow();
   });
 
   it("requires the complete runtime settings contract", () => {

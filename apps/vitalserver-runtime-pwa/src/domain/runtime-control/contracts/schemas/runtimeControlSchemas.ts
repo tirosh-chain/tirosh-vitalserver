@@ -1516,6 +1516,85 @@ export const recorderActivityWindowSchema = z
     }
   });
 
+const recorderVitalFileHistoryStateSchema = z.enum([
+  "loaded",
+  "partiallyLoaded",
+  "readFailed"
+]);
+
+const recorderVitalFileSourceReadSchema = z
+  .object({
+    state: recorderVitalFileHistoryStateSchema,
+    readError: requiredNullableString
+  })
+  .strict();
+
+const recorderVitalFileAttributionSchema = z
+  .object({
+    state: z.enum([
+      "recorderDeclared",
+      "bedAssignmentResolved",
+      "recoveryReceipt"
+    ]),
+    assignmentID: requiredNullableString,
+    resolvedAt: z.string(),
+    readError: requiredNullableString
+  })
+  .strict();
+
+const recorderVitalFileFailureSchema = z
+  .object({
+    stage: z.string(),
+    code: z.string(),
+    message: z.string(),
+    failedAt: z.string()
+  })
+  .strict();
+
+const recorderVitalFileSchema = z
+  .object({
+    fileID: z.string(),
+    origin: z.enum(["nativeRecorderUpload", "coldPathRecovery"]),
+    vrcode: z.string(),
+    bedName: requiredNullableString,
+    filename: z.string(),
+    sizeBytes: z.number().int().nonnegative(),
+    status: z.enum([
+      "receiving",
+      "reconciling",
+      "indexed",
+      "failed",
+      "notRequested",
+      "publishRequested",
+      "publishing",
+      "published",
+      "unknownLegacy"
+    ]),
+    receivedAt: z.string(),
+    recordingStartedAt: requiredNullableString,
+    recordingEndedAt: requiredNullableString,
+    uploadedAt: requiredNullableString,
+    attribution: recorderVitalFileAttributionSchema,
+    failure: recorderVitalFileFailureSchema.nullable()
+  })
+  .strict();
+
+export const recorderVitalFileHistorySchema = z
+  .object({
+    state: recorderVitalFileHistoryStateSchema,
+    vrcode: z.string(),
+    files: z.array(recorderVitalFileSchema),
+    unattributedCount: z.number().int().nonnegative(),
+    sources: z
+      .object({
+        nativeUpload: recorderVitalFileSourceReadSchema,
+        coldPathRecovery: recorderVitalFileSourceReadSchema
+      })
+      .strict(),
+    readError: requiredNullableString
+  })
+  .strict();
+
 export const runtimeReleaseInfoSchema = z
   .object({
     helperVersion: z.string().optional(),

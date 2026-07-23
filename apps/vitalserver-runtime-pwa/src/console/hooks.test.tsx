@@ -500,6 +500,17 @@ function createGateway(): GatewayMock {
       latestSampleAt: null,
       readError: null
     }),
+    getRecorderVitalFiles: vi.fn().mockResolvedValue({
+      state: "loaded",
+      vrcode: "VR_A",
+      files: [],
+      unattributedCount: 0,
+      sources: {
+        nativeUpload: { state: "loaded", readError: null },
+        coldPathRecovery: { state: "loaded", readError: null }
+      },
+      readError: null
+    }),
     getReleaseInfo: vi.fn().mockResolvedValue({
       helperVersion: "1.0.0",
       minimumUpdaterVersion: "1.0.0",

@@ -463,6 +463,13 @@ class RecorderIngressDependencyError(RuntimeError):
         self.kind = kind
 
 
+class RecorderRecoveryDependencyError(RuntimeError):
+    def __init__(self, message: str, *, kind: str) -> None:
+        super().__init__(message)
+        self.message = message
+        self.kind = kind
+
+
 class RedisRelayDependencyError(RuntimeError):
     def __init__(self, message: str, *, kind: str) -> None:
         super().__init__(message)

@@ -93,6 +93,7 @@ Runtime capability identifier `services:start`, `services:stop`,
 | `GET` | `/runtime/lab/vital-files` |
 | `POST` | `/runtime/lab/vital-files/replay` |
 | `POST` | `/runtime/lab/vital-files/upload` |
+| `GET` | `/runtime/vitaldb/recorders/{vrcode}/vital-files` |
 | `POST` | `/runtime/health` |
 | `GET` | `/runtime/settings` |
 | `GET` | `/platform/settings` |
@@ -177,6 +178,7 @@ Runtime Lab is the product-facing boundary for virtual recorder scenarios and `.
 | `GET` | `/runtime/lab/vital-files` | list VitalServer-indexed `.vital` files available for Product Lab replay |
 | `POST` | `/runtime/lab/vital-files/replay` | create a virtual recorder session from a configured `.vital` file path |
 | `POST` | `/runtime/lab/vital-files/upload` | upload N Host-selected `.vital` files through VitalServer API and verify their file-list index entries |
+| `GET` | `/runtime/vitaldb/recorders/{vrcode}/vital-files` | lazily read native Recorder uploads and cold-path recovery artifacts attributed to one Recorder; Product Lab files are excluded |
 
 `RuntimeLabScenarioList.state`, `RuntimeLabSessionList.state`, `RuntimeLabSessionResponse.state`, and `RuntimeLabRecorderResponse.state` preserve `loaded`, `failed`, and `unavailable` as different meanings. The API must not convert a missing Lab backend, Product Lab HTTP failure, or invalid Lab response into an empty scenario/session list or a successful stopped session. Recorder commands require an explicitly running session and a recorder whose `sessionId` matches the path session; the UI must not infer either relationship from labels or IDs. Command-style Lab requests also preserve the Guest operation id when Guest Control accepts the command.
 

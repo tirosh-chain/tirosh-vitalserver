@@ -42,6 +42,7 @@ public protocol RuntimeControlClient {
     func loadVitalDBBeds() -> RuntimeVitalBedHistory
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
+    func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
@@ -92,6 +93,13 @@ public protocol RuntimeControlClient {
 }
 
 public extension RuntimeControlClient {
+    func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory {
+        .failed(
+            vrcode: vrcode,
+            readError: "runtime control client recorder vital-file capability is unavailable"
+        )
+    }
+
     func runtimeCapabilities() async throws -> RuntimeCapabilities {
         throw RuntimeControlClientUnsupportedError.unavailable("runtime-capabilities")
     }

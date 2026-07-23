@@ -201,6 +201,23 @@ public extension RuntimeControlHTTPRequest {
         return decoded
     }
 
+    func vitalDBRecorderVitalFilesCode() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 5,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty,
+              components[4] == "vital-files"
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
     func vitalDBBedID() throws -> String {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)

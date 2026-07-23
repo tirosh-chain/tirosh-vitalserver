@@ -11,6 +11,7 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadVitalDBBeds() -> RuntimeVitalBedHistory
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
+    func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory
 }
@@ -37,6 +38,10 @@ extension RuntimeObservabilityReading {
             records: [],
             readError: "recorder activity window reader is unavailable"
         )
+    }
+
+    func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory {
+        .failed(vrcode: vrcode, readError: "Guest VitalDB recorder vital-file read model is unavailable.")
     }
 }
 
@@ -91,6 +96,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     private let guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider?
     private let guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider?
     private let guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider?
+    private let guestVitalDBVitalFileProvider: RuntimeVitalDBGuestVitalFileProvider?
     private let guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider?
 
     init(
@@ -101,6 +107,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider? = nil,
         guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider? = nil,
         guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider? = nil,
+        guestVitalDBVitalFileProvider: RuntimeVitalDBGuestVitalFileProvider? = nil,
         guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider? = nil
     ) {
         self.eventHistoryReader = eventHistoryReader ?? SystemRuntimeObservabilityReader.liveEventHistoryReader(
@@ -111,6 +118,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         self.guestVitalDBReadModelProvider = guestVitalDBReadModelProvider
         self.guestVitalDBBedReadModelProvider = guestVitalDBBedReadModelProvider
         self.guestVitalDBActivityProvider = guestVitalDBActivityProvider
+        self.guestVitalDBVitalFileProvider = guestVitalDBVitalFileProvider
         self.guestVitalDBRelationshipProvider = guestVitalDBRelationshipProvider
     }
 
@@ -132,6 +140,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             guestVitalDBReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL),
             guestVitalDBBedReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL),
             guestVitalDBActivityProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBVitalFileProvider: .live(guestControlBaseURL: guestControlBaseURL),
             guestVitalDBRelationshipProvider: .live(guestControlBaseURL: guestControlBaseURL)
         )
     }
@@ -204,6 +213,14 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             records: [],
             readError: "Guest VitalDB activity read model is unavailable."
         )
+    }
+
+    func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory {
+        guestVitalDBVitalFileProvider?.load(vrcode: vrcode)
+            ?? .failed(
+                vrcode: vrcode,
+                readError: "Guest VitalDB recorder vital-file read model is unavailable."
+            )
     }
 
     private func guestActivityWindow(

@@ -30,6 +30,13 @@ Recovery artifact owner는 생성 시 다음 origin 중 하나를 명시한다.
 `nativeRecorder`로 추정하지 않는다. Recovery와 Product Lab artifact만 owner가
 명시한 receipt로 식별한다.
 
+Recorder ingress의 tracked native upload 계약을 사용하는 요청은 예외가 아니라
+새로운 명시 계약이다. Recorder는 upload ID, bedName, filename, size를 헤더로
+제공하고 vrcode는 선택적으로 제공한다. vrcode가 없으면 Guest의 relationship
+owner가 upload 수신 시각에 해당 bedName을 소유한 assignment가 정확히 하나일
+때만 Recorder에 귀속한다. 파일명에서 bedName 또는 vrcode를 파싱하지 않는다.
+기존 header 없는 `/upload`는 계속 전송되지만 귀속되지 않는다.
+
 ### Export and publish
 
 Export와 publish는 서로 다른 operation이다.
@@ -92,3 +99,8 @@ registry와 UI가 추가로 필요하지만 native file과 derived recovery file
 - raw archive decode는 bounded byte-window stream이며, track record는 operation-owned SQLite spool에
   저장한 뒤 source byte window와 vrcode마다 하나의 완전한 `.vital` artifact로 materialize한다.
   긴 녹화라는 이유로 waveform이나 artifact를 임의 시간 경계에서 분할하지 않는다.
+- recorder-ingress native upload registry는
+  `receiving -> reconciling -> indexed | failed` 상태와 immutable upload metadata를
+  보존한다. Upstream `success`와 file-index size proof가 모두 있어야 indexed다.
+- Runtime의 Recorder Vital-file read model은 `nativeRecorderUpload`와
+  `coldPathRecovery`만 합치며 `productLabGenerated`는 제외한다.

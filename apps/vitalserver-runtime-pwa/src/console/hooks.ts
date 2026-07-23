@@ -424,6 +424,15 @@ export function useVitalDBRecorderActivity(
   });
 }
 
+export function useVitalDBRecorderVitalFiles(vrcode: string | null) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderVitalFiles(vrcode ?? ""),
+    queryFn: () => runtimeControlGateway.getRecorderVitalFiles(vrcode ?? ""),
+    enabled: vrcode !== null
+  });
+}
+
 export function useReleaseInfo() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({

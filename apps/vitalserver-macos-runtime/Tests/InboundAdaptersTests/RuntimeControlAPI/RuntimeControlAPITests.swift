@@ -775,6 +775,13 @@ final class RuntimeControlAPITests: XCTestCase {
                 path: "/runtime/vitaldb/recorders/VR_A/activity?bucketSeconds=60&period=all&pageIndex=0"
             ))
         )
+        let vitalRecorderVitalFiles = try await decode(
+            RuntimeVitalRecorderVitalFileHistory.self,
+            from: router.route(.init(
+                method: .get,
+                path: "/runtime/vitaldb/recorders/VR_A/vital-files"
+            ))
+        )
         let vitalBeds = try await decode(
             RuntimeVitalBedHistory.self,
             from: router.route(.init(method: .get, path: "/runtime/vitaldb/beds"))
@@ -821,6 +828,12 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vitalRecorderActivity.query.period, .all)
         XCTAssertEqual(vitalRecorderActivity.query.pageIndex, 0)
         XCTAssertEqual(vitalRecorderActivity.buckets.first?.messageCount, 3)
+        XCTAssertEqual(vitalRecorderVitalFiles.vrcode, "VR_A")
+        XCTAssertEqual(vitalRecorderVitalFiles.files.map(\.fileID), ["upload-1"])
+        XCTAssertEqual(
+            vitalRecorderVitalFiles.files.first?.attribution.state,
+            .bedAssignmentResolved
+        )
         XCTAssertEqual(vitalBeds.beds.map(\.bedID), ["bed-a"])
         XCTAssertEqual(vitalBed.vrcode, "VR_A")
         XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
@@ -3491,6 +3504,48 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                 ),
             ],
             latestSampleAt: "2026-05-25T00:00:00Z"
+        )
+    }
+
+    func loadVitalDBRecorderVitalFiles(
+        vrcode: String
+    ) async throws -> RuntimeVitalRecorderVitalFileHistory {
+        RuntimeVitalRecorderVitalFileHistory(
+            state: .loaded,
+            vrcode: vrcode,
+            files: [
+                RuntimeVitalRecorderVitalFile(
+                    fileID: "upload-1",
+                    origin: .nativeRecorderUpload,
+                    vrcode: vrcode,
+                    bedName: "Bed A",
+                    filename: "Bed A_260525_000000.vital",
+                    sizeBytes: 2048,
+                    status: .indexed,
+                    receivedAt: "2026-05-25T00:00:00Z",
+                    recordingStartedAt: nil,
+                    recordingEndedAt: nil,
+                    uploadedAt: "2026-05-25T00:00:01Z",
+                    attribution: RuntimeVitalRecorderVitalFileAttribution(
+                        state: .bedAssignmentResolved,
+                        assignmentID: "bed-a:VR_A:2026-05-25T00:00:00Z",
+                        resolvedAt: "2026-05-25T00:00:00Z",
+                        readError: nil
+                    ),
+                    failure: nil
+                ),
+            ],
+            sources: RuntimeVitalRecorderVitalFileSources(
+                nativeUpload: RuntimeVitalRecorderVitalFileSourceRead(
+                    state: .loaded,
+                    readError: nil
+                ),
+                coldPathRecovery: RuntimeVitalRecorderVitalFileSourceRead(
+                    state: .loaded,
+                    readError: nil
+                )
+            ),
+            readError: nil
         )
     }
 

@@ -727,6 +727,46 @@ class FakeRecorderIngress:
             "readError": None,
         }
 
+    def native_vital_uploads(self) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "uploads": [
+                {
+                    "schemaVersion": 1,
+                    "origin": "nativeRecorderUpload",
+                    "uploadId": "upload-001",
+                    "bedName": "OR-A",
+                    "declaredVrcode": None,
+                    "filename": "OR-A_260701_000000.vital",
+                    "declaredSizeBytes": 100,
+                    "state": "indexed",
+                    "receivedAt": "2026-07-01T00:00:04+00:00",
+                    "upstreamAcceptedAt": "2026-07-01T00:00:05+00:00",
+                    "indexedAt": "2026-07-01T00:00:06+00:00",
+                    "reconciliationAttempts": 1,
+                    "lastReconciliationAt": "2026-07-01T00:00:06+00:00",
+                    "indexEvidence": {
+                        "filename": "OR-A_260701_000000.vital",
+                        "sizeBytes": 100,
+                        "recordingStartedAt": 1,
+                        "recordingEndedAt": 2,
+                        "uploadedAt": 3,
+                    },
+                    "failure": None,
+                }
+            ],
+            "readError": None,
+        }
+
+
+class FakeRecorderRecovery:
+    def list_artifacts(self) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "artifacts": [],
+            "readError": None,
+        }
+
 
 class FakeRedisRelay:
     def __init__(self) -> None:
@@ -912,6 +952,7 @@ def usecases() -> GuestControlUseCases:
         product_lab=FakeProductLab(),
         vitaldb_read_model=FakeVitalDBReadModel(),
         recorder_ingress=FakeRecorderIngress(),
+        recorder_recovery=FakeRecorderRecovery(),
         redis_relay=FakeRedisRelay(),
         runtime_settings=FakeRuntimeSettings(),
         runtime_admin=FakeRuntimeAdmin(),
@@ -2584,6 +2625,24 @@ def test_vitaldb_recorder_detail_distinguishes_loaded_and_missing(
         )
     assert error.value.status == HTTPStatus.NOT_FOUND
     assert error.value.code == "vitalDBRecorderNotFound"
+
+
+def test_vitaldb_recorder_vital_files_route_resolves_explicit_bed_assignment(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="GET",
+        path="/runtime/vitaldb/recorders/VR-001/vital-files",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document["state"] == "loaded"
+    assert document["vrcode"] == "VR-001"
+    assert document["files"][0]["origin"] == "nativeRecorderUpload"
+    assert document["files"][0]["attribution"]["state"] == (
+        "bedAssignmentResolved"
+    )
 
 
 def test_vitaldb_recorders_route_reports_unavailable_without_adapter() -> None:

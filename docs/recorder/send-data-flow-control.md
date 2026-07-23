@@ -561,15 +561,32 @@ VRecorder send_data
 
 idle/recovery
   -> raw archive
-  -> generated .vital file
-  -> VitalServer /upload
-  -> VitalServer storage + My Files Redis index
+  -> coldPathRecovery .vital artifact + receipt
+  -> private recovery registry
+  -> explicit publish request
+  -> VitalServer /upload + file-index proof
+
+native Recorder upload
+  -> one complete streaming POST /upload
+  -> explicit uploadId + bedName + filename + size headers
+  -> upstream `success`
+  -> VitalServer file-index proof
+  -> Recorder attribution by declared vrcode or exact bed assignment at receivedAt
 ```
 
 Cold path는 recorder ingress가 수신한 원본 compressed payload와 explicit metadata를 append-only로
 보존합니다. Raw archive write가 성공한 뒤에만 hot path의 sampling이나 drop을 성공 상태로 볼 수 있습니다.
 Raw archive write 실패, permission failure, disk full, decode failure는 실시간 drop과 다른 failure로
 남겨야 합니다.
+
+Native Recorder upload 추적은 cold path와 다른 ingress-owned registry를 사용합니다.
+Recorder가 `X-Vital-Upload-Id`, `X-Vital-Bed-Name`, `X-Vital-Filename`,
+`X-Vital-File-Size`를 모두 제공하면 ingress가 request를 그대로 streaming proxy하면서
+`receiving`, `reconciling`, `indexed`, `failed` 상태를 기록합니다.
+`X-Vital-Recorder-Code`는 선택 사항입니다. vrcode가 없으면 Guest relationship owner가
+upload 수신 시각의 bedName assignment를 조회해 정확히 하나인 경우에만 귀속합니다.
+기존 header 없는 upload는 legacy passthrough로 동작하고, filename이나 file absence로
+Recorder identity 또는 bed assignment를 만들지 않습니다.
 
 Hot path는 bounded realtime projection입니다. 이 projection은 VitalServer app OOM을 피하기 위해 최신성
 위주로 운영합니다. 현재 구현은 Redis pending list의 최신 window를 남기고 replay worker가 최신 item부터

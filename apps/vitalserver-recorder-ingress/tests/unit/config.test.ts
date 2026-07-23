@@ -38,6 +38,29 @@ test("config loads explicit redis availability policy", () => {
   });
 });
 
+test("config loads explicit native vital upload tracking settings", () => {
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_UPSTREAM_HOST: "vitalserver.test",
+    RECORDER_INGRESS_UPSTREAM_PORT: "8080",
+    RECORDER_INGRESS_NATIVE_UPLOAD_STATE_PATH: "/data/native-uploads.json",
+    RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_INTERVAL_MS: "2000",
+    RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_MAX_ATTEMPTS: "8",
+    RECORDER_INGRESS_NATIVE_UPLOAD_INDEX_TIMEOUT_MS: "3000",
+    VITALSERVER_ADMIN_PASSWORD: "secret",
+  }).nativeVitalUploads, {
+    statePath: "/data/native-uploads.json",
+    reconciliation: {
+      intervalMs: 2000,
+      maxAttempts: 8,
+    },
+    vitalServerIndex: {
+      baseUrl: "http://vitalserver.test:8080",
+      adminPassword: "secret",
+      timeoutMs: 3000,
+    },
+  });
+});
+
 test("config enables bounded spool and replay by default", () => {
   assert.deepStrictEqual(loadConfig({}).spool, {
     enabled: true,

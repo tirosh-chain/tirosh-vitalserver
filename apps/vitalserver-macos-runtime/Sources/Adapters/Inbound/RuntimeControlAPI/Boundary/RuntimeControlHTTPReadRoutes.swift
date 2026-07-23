@@ -57,6 +57,12 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.loadVitalDBRecorderActivityWindow(query: query)
             )
+        case .vitalDBRecorderVitalFiles:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadVitalDBRecorderVitalFiles(
+                    vrcode: try request.vitalDBRecorderVitalFilesCode()
+                )
+            )
         case .vitalDBBeds:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBBeds())
         case .vitalDBBed:

@@ -1357,6 +1357,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/vitaldb/recorders/{vrcode}/vital-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Vital files attributed to one Vital Recorder
+         * @description Lazy detail read that combines explicitly tracked native Recorder uploads with cold-path recovery artifacts. Native uploads are attributed by a declared vrcode or by an exact bedName assignment at the upload receive time. Product Lab files are excluded.
+         */
+        get: operations["getVitalDBRecorderVitalFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/vitaldb/beds": {
         parameters: {
             query?: never;
@@ -1768,6 +1788,57 @@ export interface components {
             page: components["schemas"]["RuntimeVitalRecorderActivityWindowPage"];
             buckets: components["schemas"]["RuntimeVitalRecorderActivityBucket"][];
             latestSampleAt: string | null;
+            readError: string | null;
+        };
+        /** @enum {string} */
+        RuntimeVitalRecorderVitalFileHistoryState: "loaded" | "partiallyLoaded" | "readFailed";
+        /** @enum {string} */
+        RuntimeVitalRecorderVitalFileOrigin: "nativeRecorderUpload" | "coldPathRecovery";
+        /** @enum {string} */
+        RuntimeVitalRecorderVitalFileStatus: "receiving" | "reconciling" | "indexed" | "failed" | "notRequested" | "publishRequested" | "publishing" | "published" | "unknownLegacy";
+        RuntimeVitalRecorderVitalFileAttribution: {
+            /** @enum {string} */
+            state: "recorderDeclared" | "bedAssignmentResolved" | "recoveryReceipt";
+            assignmentID: string | null;
+            resolvedAt: string;
+            readError: string | null;
+        };
+        RuntimeVitalRecorderVitalFileFailure: {
+            stage: string;
+            code: string;
+            message: string;
+            failedAt: string;
+        };
+        RuntimeVitalRecorderVitalFile: {
+            fileID: string;
+            origin: components["schemas"]["RuntimeVitalRecorderVitalFileOrigin"];
+            vrcode: string;
+            bedName: string | null;
+            filename: string;
+            sizeBytes: number;
+            status: components["schemas"]["RuntimeVitalRecorderVitalFileStatus"];
+            receivedAt: string;
+            recordingStartedAt: string | null;
+            recordingEndedAt: string | null;
+            uploadedAt: string | null;
+            attribution: components["schemas"]["RuntimeVitalRecorderVitalFileAttribution"];
+            failure: components["schemas"]["RuntimeVitalRecorderVitalFileFailure"] | null;
+        };
+        RuntimeVitalRecorderVitalFileSourceRead: {
+            state: components["schemas"]["RuntimeVitalRecorderVitalFileHistoryState"];
+            readError: string | null;
+        };
+        RuntimeVitalRecorderVitalFileSources: {
+            nativeUpload: components["schemas"]["RuntimeVitalRecorderVitalFileSourceRead"];
+            coldPathRecovery: components["schemas"]["RuntimeVitalRecorderVitalFileSourceRead"];
+        };
+        RuntimeVitalRecorderVitalFileHistory: {
+            state: components["schemas"]["RuntimeVitalRecorderVitalFileHistoryState"];
+            vrcode: string;
+            files: components["schemas"]["RuntimeVitalRecorderVitalFile"][];
+            /** @description Tracked native uploads that could not be attributed because no exact assignment was available. This count is diagnostic and does not create Recorder identity. */
+            unattributedCount: number;
+            sources: components["schemas"]["RuntimeVitalRecorderVitalFileSources"];
             readError: string | null;
         };
         RuntimeVitalRecorderRecord: {
@@ -4883,6 +4954,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimeVitalRecorderActivityWindow"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getVitalDBRecorderVitalFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vrcode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recorder Vital-file history with explicit source read states. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderVitalFileHistory"];
                 };
             };
             401: components["responses"]["Unauthorized"];

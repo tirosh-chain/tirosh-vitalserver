@@ -41,6 +41,7 @@ import type {
   RuntimeVitalDBObservationSnapshot,
   RuntimeVitalRecorderActivityWindow,
   RuntimeVitalRecorderActivityWindowQuery,
+  RuntimeVitalRecorderVitalFileHistory,
   RuntimeReleaseInfo,
   RuntimeInstallInfo,
   RuntimeProductSettingsRead,
@@ -142,6 +143,7 @@ export type RuntimeControlGateway = {
   getRecorderActivity(
     query: RuntimeVitalRecorderActivityWindowQuery
   ): Promise<RuntimeVitalRecorderActivityWindow>;
+  getRecorderVitalFiles(vrcode: string): Promise<RuntimeVitalRecorderVitalFileHistory>;
   getReleaseInfo(): Promise<RuntimeReleaseInfo>;
   getInstallInfo(): Promise<RuntimeInstallInfo>;
   hideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;

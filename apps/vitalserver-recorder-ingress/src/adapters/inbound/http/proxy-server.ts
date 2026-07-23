@@ -4,6 +4,7 @@ import type { AuditRecorderPort } from "../../../application/ports/inbound/audit
 import type { SendDataRawArchiveExportWorkerPort } from "../../../application/ports/inbound/send-data-raw-archive-export-worker-port";
 import type { SendDataReplayWorkerPort } from "../../../application/ports/inbound/send-data-replay-worker-port";
 import type { SocketIoAuditPort } from "../../../application/ports/inbound/socketio-audit-port";
+import type { NativeVitalUploadService } from "../../../application/native-vital-upload-service";
 
 "use strict";
 
@@ -14,6 +15,7 @@ const { auditEventTypes } = require("../../../domain/audit-event-contracts");
 const { metricsSnapshot, recordRecorderDisconnect } = require("../../../observability/metrics");
 const { createBodyMirror } = require("./body-mirror");
 const { createClientWebSocketRelay, shouldSuppressSendDataRelay } = require("./websocket-client-relay");
+const { nativeVitalUploadMetadataFromHeaders } = require("./native-vital-upload-http");
 const { createWebSocketParser } = require("./websocket-parser");
 
 type ClientIpSelectorPort = {
@@ -48,6 +50,7 @@ type RecorderIngressHttpServerDependencies = {
   sendDataRawArchiveExportWorker: SendDataRawArchiveExportWorkerPort;
   sendDataReplayWorker: SendDataReplayWorkerPort;
   socketIoAudit: SocketIoAuditPort;
+  nativeVitalUploads?: NativeVitalUploadService;
 };
 
 export type RecorderIngressHttpServer = Server & {
@@ -62,8 +65,17 @@ function createRecorderIngressHttpServer({
   sendDataRawArchiveExportWorker,
   sendDataReplayWorker,
   socketIoAudit,
+  nativeVitalUploads,
 }: RecorderIngressHttpServerDependencies): RecorderIngressHttpServer {
-  const dependencies = { audit, clientIp, config, metrics, sendDataRawArchiveExportWorker, socketIoAudit };
+  const dependencies = {
+    audit,
+    clientIp,
+    config,
+    metrics,
+    nativeVitalUploads,
+    sendDataRawArchiveExportWorker,
+    socketIoAudit,
+  };
   const activeSockets = new Set<Socket>();
   const server: RecorderIngressHttpServer = http.createServer((req, res) => proxyHttp(req, res, dependencies));
   server.on("connection", (socket) => {
@@ -72,14 +84,17 @@ function createRecorderIngressHttpServer({
   });
   server.on("upgrade", (req, socket, head) => proxyUpgrade(req, socket, head, dependencies));
   server.on("listening", () => {
+    nativeVitalUploads?.start();
     sendDataReplayWorker.start();
     sendDataRawArchiveExportWorker.start();
   });
   server.on("close", () => {
+    nativeVitalUploads?.stop();
     sendDataReplayWorker.stop();
     sendDataRawArchiveExportWorker.stop();
   });
   server.prepareShutdown = async () => {
+    nativeVitalUploads?.stop();
     sendDataReplayWorker.stop();
     sendDataRawArchiveExportWorker.stop();
     for (const socket of activeSockets) {
@@ -125,6 +140,47 @@ function proxyHttp(req, res, dependencies) {
     readRawArchiveFinalizationStatus(req, res, dependencies.sendDataRawArchiveExportWorker);
     return;
   }
+  if (req.method === "GET" && nativeVitalUploadListRequest(req.url)) {
+    readNativeVitalUploads(req, res, dependencies.nativeVitalUploads);
+    return;
+  }
+  if (
+    req.method === "POST"
+    && (requestPath(req.url) === "/upload" || requestPath(req.url) === "/upload_vital.php")
+  ) {
+    let metadata;
+    try {
+      metadata = nativeVitalUploadMetadataFromHeaders(req.headers);
+    } catch (error) {
+      req.resume();
+      writeJson(res, 400, {
+        ok: false,
+        state: "rejected",
+        reason: "native_upload_metadata_invalid",
+        message: errorMessage(error),
+      });
+      return;
+    }
+    if (metadata) {
+      if (!dependencies.nativeVitalUploads) {
+        req.resume();
+        writeJson(res, 503, {
+          ok: false,
+          state: "failed",
+          reason: "native_upload_tracking_unavailable",
+          message: "Native vital upload tracking is unavailable.",
+        });
+        return;
+      }
+      proxyTrackedNativeVitalUpload(
+        req,
+        res,
+        metadata,
+        dependencies,
+      );
+      return;
+    }
+  }
 
   const context = createRequestContext(req, dependencies.clientIp);
   dependencies.metrics.httpRequests += 1;
@@ -153,6 +209,208 @@ function proxyHttp(req, res, dependencies) {
     });
     upstream.destroy(error);
   });
+}
+
+function nativeVitalUploadListRequest(requestURL) {
+  return requestPath(requestURL)
+    === "/recorder-ingress/vital-files/uploads";
+}
+
+function requestPath(requestURL) {
+  return new URL(requestURL || "/", "http://recorder-ingress").pathname;
+}
+
+function readNativeVitalUploads(req, res, service) {
+  if (!service) {
+    writeJson(res, 503, {
+      state: "readFailed",
+      uploads: [],
+      readError: "Native vital upload registry is unavailable.",
+    });
+    return;
+  }
+  try {
+    const requestURL = new URL(req.url || "/", "http://recorder-ingress");
+    const bedName = requestURL.searchParams.get("bedName");
+    const declaredVrcode = requestURL.searchParams.get("declaredVrcode");
+    const uploads = service.list().filter((upload) => (
+      (bedName === null || upload.bedName === bedName)
+      && (
+        declaredVrcode === null
+        || upload.declaredVrcode === declaredVrcode
+      )
+    ));
+    writeJson(res, 200, {
+      state: "loaded",
+      uploads,
+      readError: null,
+    });
+  } catch (error) {
+    writeJson(res, 503, {
+      state: "readFailed",
+      uploads: [],
+      readError: errorMessage(error),
+    });
+  }
+}
+
+function proxyTrackedNativeVitalUpload(
+  req,
+  res,
+  metadata,
+  { audit, clientIp, config, metrics, nativeVitalUploads },
+) {
+  let beginResult;
+  try {
+    beginResult = nativeVitalUploads.begin(metadata);
+  } catch (error) {
+    req.resume();
+    writeJson(res, errorMessage(error).includes("conflict") ? 409 : 503, {
+      ok: false,
+      state: "rejected",
+      reason: "native_upload_not_started",
+      message: errorMessage(error),
+    });
+    return;
+  }
+  if (beginResult.kind === "alreadyIndexed") {
+    req.resume();
+    res.writeHead(200, {
+      "content-type": "text/plain",
+      "x-vital-upload-state": "indexed",
+    });
+    res.end("success");
+    return;
+  }
+
+  const context = createRequestContext(req, clientIp);
+  metrics.httpRequests += 1;
+  const headers = {
+    ...req.headers,
+    host: req.headers.host || config.upstream.host,
+  };
+  let settled = false;
+  const upstream = http.request(
+    {
+      host: config.upstream.host,
+      port: config.upstream.port,
+      method: req.method,
+      path: req.url,
+      headers,
+    },
+    (upstreamRes) => {
+      const chunks: Buffer[] = [];
+      let responseBytes = 0;
+      upstreamRes.on("data", (chunk) => {
+        responseBytes += chunk.length;
+        if (responseBytes <= 65536) chunks.push(chunk);
+      });
+      upstreamRes.on("error", (error) => {
+        completeUpstreamFailure(error);
+      });
+      upstreamRes.on("end", () => {
+        if (settled) return;
+        settled = true;
+        if (responseBytes > 65536) {
+          nativeVitalUploads.recordUpstreamFailure(
+            metadata.uploadId,
+            new Error("VitalServer upload response exceeds 65536 bytes"),
+          );
+          writeJson(res, 502, {
+            ok: false,
+            state: "failed",
+            reason: "upstream_response_too_large",
+            message: "VitalServer upload response exceeds 65536 bytes.",
+          });
+          return;
+        }
+        const responseBody = Buffer.concat(chunks).toString("utf8");
+        try {
+          const record = nativeVitalUploads.recordUpstreamResult(
+            metadata.uploadId,
+            {
+              statusCode: upstreamRes.statusCode || 502,
+              responseBody,
+            },
+          );
+          res.writeHead(upstreamRes.statusCode || 502, {
+            ...upstreamRes.headers,
+            "x-vital-upload-state": record.state,
+          });
+          res.end(responseBody);
+          if (record.state === "reconciling") {
+            nativeVitalUploads.runReconciliationOnce().catch((error) => {
+              console.error(
+                "[recorder-ingress] immediate native upload reconciliation failed:",
+                errorMessage(error),
+              );
+            });
+          }
+        } catch (error) {
+          writeJson(res, 503, {
+            ok: false,
+            state: "failed",
+            reason: "native_upload_registry_failed",
+            message: errorMessage(error),
+          });
+        }
+      });
+    },
+  );
+  upstream.setTimeout(
+    config.upstream.timeoutMs,
+    () => upstream.destroy(new Error("upstream timeout")),
+  );
+  upstream.on("error", completeUpstreamFailure);
+  req.on("aborted", () => {
+    if (settled) return;
+    settled = true;
+    nativeVitalUploads.recordClientFailure(
+      metadata.uploadId,
+      new Error("Recorder upload request was aborted"),
+    );
+    upstream.destroy();
+  });
+  req.on("error", (error) => {
+    if (settled) return;
+    settled = true;
+    nativeVitalUploads.recordClientFailure(metadata.uploadId, error);
+    audit.record(auditEventTypes.PROXY_ERROR, {
+      request_id: context.request_id,
+      message: error.message,
+      side: "client-request",
+    });
+    upstream.destroy(error);
+  });
+  req.pipe(upstream);
+
+  function completeUpstreamFailure(error) {
+    if (settled) return;
+    settled = true;
+    try {
+      nativeVitalUploads.recordUpstreamFailure(metadata.uploadId, error);
+    } catch (registryError) {
+      console.error(
+        "[recorder-ingress] native upload failure persistence failed:",
+        errorMessage(registryError),
+      );
+    }
+    audit.record(auditEventTypes.PROXY_ERROR, {
+      request_id: context.request_id,
+      message: errorMessage(error),
+      side: "upstream-upload",
+    });
+    if (!res.headersSent) {
+      writeJson(res, 502, {
+        ok: false,
+        state: "failed",
+        reason: "upstream_upload_failed",
+        message: errorMessage(error),
+      });
+    } else {
+      res.end();
+    }
+  }
 }
 
 function rawArchiveFinalizationStatusRequest(requestURL) {
@@ -212,6 +470,10 @@ function writeJson(res, statusCode, document) {
   const body = JSON.stringify(document);
   res.writeHead(statusCode, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
   res.end(body);
+}
+
+function errorMessage(error) {
+  return error && error.message ? error.message : String(error);
 }
 
 function createUpstreamRequest(req, res, context, responseMirror, { audit, config }) {

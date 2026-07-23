@@ -2605,6 +2605,41 @@
         }
       }
     },
+    "/runtime/vitaldb/recorders/{vrcode}/vital-files": {
+      "get": {
+        "operationId": "getVitalDBRecorderVitalFiles",
+        "summary": "Read Vital files attributed to one Vital Recorder",
+        "description": "Lazy detail read that combines explicitly tracked native Recorder uploads with cold-path recovery artifacts. Native uploads are attributed by a declared vrcode or by an exact bedName assignment at the upload receive time. Product Lab files are excluded.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "vrcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorder Vital-file history with explicit source read states.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/vitaldb/beds": {
       "get": {
         "operationId": "getVitalDBBeds",
@@ -3857,6 +3892,249 @@
               "string",
               "null"
             ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderVitalFileHistoryState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "partiallyLoaded",
+          "readFailed"
+        ]
+      },
+      "RuntimeVitalRecorderVitalFileOrigin": {
+        "type": "string",
+        "enum": [
+          "nativeRecorderUpload",
+          "coldPathRecovery"
+        ]
+      },
+      "RuntimeVitalRecorderVitalFileStatus": {
+        "type": "string",
+        "enum": [
+          "receiving",
+          "reconciling",
+          "indexed",
+          "failed",
+          "notRequested",
+          "publishRequested",
+          "publishing",
+          "published",
+          "unknownLegacy"
+        ]
+      },
+      "RuntimeVitalRecorderVitalFileAttribution": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "assignmentID",
+          "resolvedAt",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "recorderDeclared",
+              "bedAssignmentResolved",
+              "recoveryReceipt"
+            ]
+          },
+          "assignmentID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedAt": {
+            "type": "string"
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderVitalFileFailure": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "code",
+          "message",
+          "failedAt"
+        ],
+        "properties": {
+          "stage": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "failedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeVitalRecorderVitalFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fileID",
+          "origin",
+          "vrcode",
+          "bedName",
+          "filename",
+          "sizeBytes",
+          "status",
+          "receivedAt",
+          "recordingStartedAt",
+          "recordingEndedAt",
+          "uploadedAt",
+          "attribution",
+          "failure"
+        ],
+        "properties": {
+          "fileID": {
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileOrigin"
+          },
+          "vrcode": {
+            "type": "string"
+          },
+          "bedName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filename": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileStatus"
+          },
+          "receivedAt": {
+            "type": "string"
+          },
+          "recordingStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recordingEndedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uploadedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attribution": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileAttribution"
+          },
+          "failure": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderVitalFileSourceRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileHistoryState"
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderVitalFileSources": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "nativeUpload",
+          "coldPathRecovery"
+        ],
+        "properties": {
+          "nativeUpload": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileSourceRead"
+          },
+          "coldPathRecovery": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileSourceRead"
+          }
+        }
+      },
+      "RuntimeVitalRecorderVitalFileHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "vrcode",
+          "files",
+          "unattributedCount",
+          "sources",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileHistoryState"
+          },
+          "vrcode": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFile"
+            }
+          },
+          "unattributedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tracked native uploads that could not be attributed because no exact assignment was available. This count is diagnostic and does not create Recorder identity."
+          },
+          "sources": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderVitalFileSources"
           },
           "readError": {
             "type": [

@@ -18,6 +18,7 @@ import {
   runtimeProductSettingsSchema,
   runtimeSettingsSchema,
   runtimeVitalDBObservationSnapshotSchema,
+  recorderVitalFileHistorySchema,
   platformStateSchema,
   vitalDBBedsSchema,
   vitalDBRecordersSchema,
@@ -192,6 +193,9 @@ export type RuntimeVitalRecorderActivityWindowQuery = {
   period: components["schemas"]["RuntimeVitalRecorderActivityWindowPeriod"];
   pageIndex?: number;
 };
+
+export type RuntimeVitalRecorderVitalFileHistory =
+  z.infer<typeof recorderVitalFileHistorySchema>;
 
 export type RuntimeReleaseInfo = components["schemas"]["RuntimeReleaseInfo"];
 

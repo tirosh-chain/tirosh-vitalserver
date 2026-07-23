@@ -374,6 +374,307 @@ public struct RuntimeGuestControlVitalDBRecorderActivityRead: Codable, Equatable
     }
 }
 
+public enum RuntimeVitalRecorderVitalFileHistoryState: String, Codable, Equatable, Sendable {
+    case loaded
+    case partiallyLoaded
+    case readFailed
+}
+
+public enum RuntimeVitalRecorderVitalFileOrigin: String, Codable, Equatable, Sendable {
+    case nativeRecorderUpload
+    case coldPathRecovery
+}
+
+public enum RuntimeVitalRecorderVitalFileStatus: String, Codable, Equatable, Sendable {
+    case receiving
+    case reconciling
+    case indexed
+    case failed
+    case notRequested
+    case publishRequested
+    case publishing
+    case published
+    case unknownLegacy
+}
+
+public enum RuntimeVitalRecorderVitalFileAttributionState: String, Codable, Equatable, Sendable {
+    case recorderDeclared
+    case bedAssignmentResolved
+    case recoveryReceipt
+}
+
+public struct RuntimeVitalRecorderVitalFileAttribution: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case assignmentID
+        case resolvedAt
+        case readError
+    }
+
+    public let state: RuntimeVitalRecorderVitalFileAttributionState
+    public let assignmentID: String?
+    public let resolvedAt: String
+    public let readError: String?
+
+    public init(
+        state: RuntimeVitalRecorderVitalFileAttributionState,
+        assignmentID: String?,
+        resolvedAt: String,
+        readError: String?
+    ) {
+        self.state = state
+        self.assignmentID = assignmentID
+        self.resolvedAt = resolvedAt
+        self.readError = readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(RuntimeVitalRecorderVitalFileAttributionState.self, forKey: .state)
+        assignmentID = try container.decode(String?.self, forKey: .assignmentID)
+        resolvedAt = try container.decode(String.self, forKey: .resolvedAt)
+        readError = try container.decode(String?.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encode(assignmentID, forKey: .assignmentID)
+        try container.encode(resolvedAt, forKey: .resolvedAt)
+        try container.encode(readError, forKey: .readError)
+    }
+}
+
+public struct RuntimeVitalRecorderVitalFileFailure: Codable, Equatable, Sendable {
+    public let stage: String
+    public let code: String
+    public let message: String
+    public let failedAt: String
+
+    public init(
+        stage: String,
+        code: String,
+        message: String,
+        failedAt: String
+    ) {
+        self.stage = stage
+        self.code = code
+        self.message = message
+        self.failedAt = failedAt
+    }
+}
+
+public struct RuntimeVitalRecorderVitalFile: Codable, Equatable, Identifiable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case fileID
+        case origin
+        case vrcode
+        case bedName
+        case filename
+        case sizeBytes
+        case status
+        case receivedAt
+        case recordingStartedAt
+        case recordingEndedAt
+        case uploadedAt
+        case attribution
+        case failure
+    }
+
+    public var id: String { fileID }
+
+    public let fileID: String
+    public let origin: RuntimeVitalRecorderVitalFileOrigin
+    public let vrcode: String
+    public let bedName: String?
+    public let filename: String
+    public let sizeBytes: Int
+    public let status: RuntimeVitalRecorderVitalFileStatus
+    public let receivedAt: String
+    public let recordingStartedAt: String?
+    public let recordingEndedAt: String?
+    public let uploadedAt: String?
+    public let attribution: RuntimeVitalRecorderVitalFileAttribution
+    public let failure: RuntimeVitalRecorderVitalFileFailure?
+
+    public init(
+        fileID: String,
+        origin: RuntimeVitalRecorderVitalFileOrigin,
+        vrcode: String,
+        bedName: String?,
+        filename: String,
+        sizeBytes: Int,
+        status: RuntimeVitalRecorderVitalFileStatus,
+        receivedAt: String,
+        recordingStartedAt: String?,
+        recordingEndedAt: String?,
+        uploadedAt: String?,
+        attribution: RuntimeVitalRecorderVitalFileAttribution,
+        failure: RuntimeVitalRecorderVitalFileFailure?
+    ) {
+        self.fileID = fileID
+        self.origin = origin
+        self.vrcode = vrcode
+        self.bedName = bedName
+        self.filename = filename
+        self.sizeBytes = sizeBytes
+        self.status = status
+        self.receivedAt = receivedAt
+        self.recordingStartedAt = recordingStartedAt
+        self.recordingEndedAt = recordingEndedAt
+        self.uploadedAt = uploadedAt
+        self.attribution = attribution
+        self.failure = failure
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fileID = try container.decode(String.self, forKey: .fileID)
+        origin = try container.decode(RuntimeVitalRecorderVitalFileOrigin.self, forKey: .origin)
+        vrcode = try container.decode(String.self, forKey: .vrcode)
+        bedName = try container.decode(String?.self, forKey: .bedName)
+        filename = try container.decode(String.self, forKey: .filename)
+        sizeBytes = try container.decode(Int.self, forKey: .sizeBytes)
+        status = try container.decode(RuntimeVitalRecorderVitalFileStatus.self, forKey: .status)
+        receivedAt = try container.decode(String.self, forKey: .receivedAt)
+        recordingStartedAt = try container.decode(String?.self, forKey: .recordingStartedAt)
+        recordingEndedAt = try container.decode(String?.self, forKey: .recordingEndedAt)
+        uploadedAt = try container.decode(String?.self, forKey: .uploadedAt)
+        attribution = try container.decode(RuntimeVitalRecorderVitalFileAttribution.self, forKey: .attribution)
+        failure = try container.decode(RuntimeVitalRecorderVitalFileFailure?.self, forKey: .failure)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(fileID, forKey: .fileID)
+        try container.encode(origin, forKey: .origin)
+        try container.encode(vrcode, forKey: .vrcode)
+        try container.encode(bedName, forKey: .bedName)
+        try container.encode(filename, forKey: .filename)
+        try container.encode(sizeBytes, forKey: .sizeBytes)
+        try container.encode(status, forKey: .status)
+        try container.encode(receivedAt, forKey: .receivedAt)
+        try container.encode(recordingStartedAt, forKey: .recordingStartedAt)
+        try container.encode(recordingEndedAt, forKey: .recordingEndedAt)
+        try container.encode(uploadedAt, forKey: .uploadedAt)
+        try container.encode(attribution, forKey: .attribution)
+        try container.encode(failure, forKey: .failure)
+    }
+}
+
+public struct RuntimeVitalRecorderVitalFileSourceRead: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case readError
+    }
+
+    public let state: RuntimeVitalRecorderVitalFileHistoryState
+    public let readError: String?
+
+    public init(
+        state: RuntimeVitalRecorderVitalFileHistoryState,
+        readError: String?
+    ) {
+        self.state = state
+        self.readError = readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(RuntimeVitalRecorderVitalFileHistoryState.self, forKey: .state)
+        readError = try container.decode(String?.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encode(readError, forKey: .readError)
+    }
+}
+
+public struct RuntimeVitalRecorderVitalFileSources: Codable, Equatable, Sendable {
+    public let nativeUpload: RuntimeVitalRecorderVitalFileSourceRead
+    public let coldPathRecovery: RuntimeVitalRecorderVitalFileSourceRead
+
+    public init(
+        nativeUpload: RuntimeVitalRecorderVitalFileSourceRead,
+        coldPathRecovery: RuntimeVitalRecorderVitalFileSourceRead
+    ) {
+        self.nativeUpload = nativeUpload
+        self.coldPathRecovery = coldPathRecovery
+    }
+}
+
+public struct RuntimeVitalRecorderVitalFileHistory: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case vrcode
+        case files
+        case unattributedCount
+        case sources
+        case readError
+    }
+
+    public let state: RuntimeVitalRecorderVitalFileHistoryState
+    public let vrcode: String
+    public let files: [RuntimeVitalRecorderVitalFile]
+    public let unattributedCount: Int
+    public let sources: RuntimeVitalRecorderVitalFileSources
+    public let readError: String?
+
+    public init(
+        state: RuntimeVitalRecorderVitalFileHistoryState,
+        vrcode: String,
+        files: [RuntimeVitalRecorderVitalFile] = [],
+        unattributedCount: Int = 0,
+        sources: RuntimeVitalRecorderVitalFileSources,
+        readError: String?
+    ) {
+        self.state = state
+        self.vrcode = vrcode
+        self.files = files
+        self.unattributedCount = unattributedCount
+        self.sources = sources
+        self.readError = readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(RuntimeVitalRecorderVitalFileHistoryState.self, forKey: .state)
+        vrcode = try container.decode(String.self, forKey: .vrcode)
+        files = try container.decode([RuntimeVitalRecorderVitalFile].self, forKey: .files)
+        unattributedCount = try container.decode(Int.self, forKey: .unattributedCount)
+        sources = try container.decode(RuntimeVitalRecorderVitalFileSources.self, forKey: .sources)
+        readError = try container.decode(String?.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encode(vrcode, forKey: .vrcode)
+        try container.encode(files, forKey: .files)
+        try container.encode(unattributedCount, forKey: .unattributedCount)
+        try container.encode(sources, forKey: .sources)
+        try container.encode(readError, forKey: .readError)
+    }
+
+    public static func failed(vrcode: String, readError: String) -> Self {
+        let failedSource = RuntimeVitalRecorderVitalFileSourceRead(
+            state: .readFailed,
+            readError: readError
+        )
+        return Self(
+            state: .readFailed,
+            vrcode: vrcode,
+            sources: RuntimeVitalRecorderVitalFileSources(
+                nativeUpload: failedSource,
+                coldPathRecovery: failedSource
+            ),
+            readError: readError
+        )
+    }
+}
+
 public struct RuntimeVitalDBBedVisibilityRequest: Codable, Equatable, Sendable {
     public let bedIDs: [String]
 

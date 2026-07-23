@@ -189,6 +189,14 @@ class RecorderIngressReadModelPort(Protocol):
     def status(self) -> dict[str, Any]:
         raise NotImplementedError
 
+    def native_vital_uploads(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+
+class RecorderRecoveryReadModelPort(Protocol):
+    def list_artifacts(self) -> dict[str, Any]:
+        raise NotImplementedError
+
 
 class RedisRelayReadModelPort(Protocol):
     def status(self) -> dict[str, Any]:
