@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from threading import Thread
 
+from tirosh_guest_tools.adapters.outbound.maintenance.postgres_backup import (
+    create_postgres_backup_archive,
+)
 from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
 from tirosh_guest_tools.application.update_shutdown import (
     request_guest_poweroff,
@@ -51,12 +54,14 @@ class UpdateShutdownMaintenanceAdapter:
         try:
             run_prepare_until_poweroff_ready(
                 context,
+                create_postgres_backup=create_postgres_backup_archive,
                 on_poweroff_ready=lambda ready_context: on_ready(
                     UpdateShutdownResult(
                         request_id=ready_context.request_id,
                         version=ready_context.version,
                         shutdown_phase="poweroff-ready",
                         redis_backup_path=ready_context.redis_backup_path,
+                        postgres_backup_path=ready_context.postgres_backup_path,
                     )
                 ),
             )

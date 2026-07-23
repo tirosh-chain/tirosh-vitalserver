@@ -21,8 +21,8 @@ final class RuntimeUninstallWorkflowOperationStateProjectionPolicyTests: XCTestC
 
     func testExplicitStepsRemainDistinct() throws {
         let cases: [(RuntimeUninstallState, RuntimeWorkflowStep, RuntimeProgressStepStatus)] = [
-            (.redisBackupRequested, .uninstallCreateRedisBackup, .started),
-            (.redisBackupCompleted, .uninstallCreateRedisBackup, .completed),
+            (.vitalServerBackupRequested, .uninstallCreateVitalServerBackup, .started),
+            (.vitalServerBackupCompleted, .uninstallCreateVitalServerBackup, .completed),
             (.stopServicesRequested, .uninstallStopRuntimeServices, .started),
             (.filesRemovalStarted, .uninstallRemoveFiles, .started),
             (.receiptsForgetStarted, .uninstallForgetPackageReceipts, .started),

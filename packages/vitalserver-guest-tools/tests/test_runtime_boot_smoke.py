@@ -191,7 +191,9 @@ def test_runtime_boot_smoke_rejects_inactive_systemd_unit(tmp_path: Path) -> Non
     with pytest.raises(SystemExit):
         run_runtime_boot_smoke(
             context=context,
-            operations=fake_operations(inactive_service="tirosh-runtime-observation.service"),
+            operations=fake_operations(
+                inactive_service="tirosh-runtime-observation.service"
+            ),
         )
 
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
@@ -237,19 +239,19 @@ def test_runtime_boot_smoke_rejects_unready_guest_control_api(
         url: str,
         timeout_seconds: float,
         body: dict[str, Any] | None,
-        ) -> dict[str, Any]:
-            del method
-            del timeout_seconds
-            del body
-            if url.endswith("/runtime/stack"):
-                return {
-                    "state": "loaded",
-                    "observedAt": timestamp(NOW),
-                    "services": default_stack_status_services(),
-                }
-            if url.endswith("/ready"):
-                return {"status": "starting"}
-            raise AssertionError(f"unexpected URL after failed ready probe: {url}")
+    ) -> dict[str, Any]:
+        del method
+        del timeout_seconds
+        del body
+        if url.endswith("/runtime/stack"):
+            return {
+                "state": "loaded",
+                "observedAt": timestamp(NOW),
+                "services": default_stack_status_services(),
+            }
+        if url.endswith("/ready"):
+            return {"status": "starting"}
+        raise AssertionError(f"unexpected URL after failed ready probe: {url}")
 
     with pytest.raises(SystemExit):
         run_runtime_boot_smoke(
@@ -694,6 +696,8 @@ def default_guest_control_capabilities() -> list[str]:
         "operations:get",
         "maintenance:redis-backup:create",
         "maintenance:redis-restore:create",
+        "maintenance:postgres-backup:create",
+        "maintenance:postgres-restore:create",
         "maintenance:datastore-repair:create",
         "maintenance:update-activation:create",
         "maintenance:update-shutdown:create",
@@ -708,7 +712,8 @@ def fake_operations(
     http_json: Callable[
         [str, str, float, dict[str, Any] | None],
         dict[str, Any],
-    ] | None = None,
+    ]
+    | None = None,
     sleep: Callable[[float], None] | None = None,
     docker_root: str = "/mnt/runtime/docker",
 ) -> RuntimeBootSmokeOperations:
@@ -856,12 +861,16 @@ def fake_guest_control_http_json(
             )
         if method == "GET" and url.endswith("/runtime/lab/sessions/lab-session-1"):
             return lab_session_response(operation_id=None, state="accepted")
-        if method == "POST" and url.endswith("/runtime/lab/sessions/lab-session-1/start"):
+        if method == "POST" and url.endswith(
+            "/runtime/lab/sessions/lab-session-1/start"
+        ):
             return lab_session_response(
                 operation_id="op_lab_start_smoke",
                 state="running",
             )
-        if method == "POST" and url.endswith("/runtime/lab/sessions/lab-session-1/stop"):
+        if method == "POST" and url.endswith(
+            "/runtime/lab/sessions/lab-session-1/stop"
+        ):
             return lab_session_response(
                 operation_id="op_lab_stop_smoke",
                 state="stopped",

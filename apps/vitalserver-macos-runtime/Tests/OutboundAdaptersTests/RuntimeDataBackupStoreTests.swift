@@ -22,6 +22,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
 
         let store = RuntimeDataBackupStore(
@@ -42,6 +43,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backup = try store.createBackup(
             reason: "manual backup",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
 
@@ -72,6 +74,10 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             $0.state == .archived && $0.sizeBytes != nil && $0.sha256?.isEmpty == false
         })
         XCTAssertEqual(manifest.artifacts.first?.volumeName, "vitalserver_redis-data")
+        XCTAssertEqual(
+            manifest.artifacts.first { $0.id == .postgresDatabase }?.volumeName,
+            "vitalserver_postgres-data"
+        )
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: backup.appendingPathComponent("artifacts/redis-data.tar.gz").path
         ))
@@ -87,6 +93,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
     func testCreateBackupFailsWhenRequiredArtifactIsMissing() throws {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("missing-redis.tar.gz")
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
 
         let store = RuntimeDataBackupStore(
@@ -107,6 +114,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: Data()
         )) { error in
             XCTAssertEqual(
@@ -123,6 +131,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
         try FileManager.default.removeItem(at: paths.runtimeStatus)
         try FileManager.default.removeItem(at: paths.runtimeEvents)
@@ -146,6 +155,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backup = try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
 
@@ -170,6 +180,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
         try FileManager.default.removeItem(at: paths.runtimeStatus)
         try FileManager.default.removeItem(at: paths.runtimeEvents)
@@ -192,6 +203,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backup = try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
 
@@ -212,6 +224,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
         let store = RuntimeDataBackupStore(
             paths: paths,
@@ -230,6 +243,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backup = try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
 
@@ -255,6 +269,10 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.runtimeObservabilityDatabase.path + "-wal"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.runtimeObservabilityDatabase.path + "-shm"))
         XCTAssertEqual(result.redisArchive.lastPathComponent, "redis-data.tar.gz")
+        XCTAssertEqual(
+            result.postgresArchive.lastPathComponent,
+            "postgres-database.tar.gz"
+        )
         XCTAssertEqual(result.startOnBootState.services, [
             RuntimeDataBackupStartOnBootServiceState(label: "ai.tirosh.service", disabled: true)
         ])
@@ -274,6 +292,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backupPath = try XCTUnwrap(runtimeEventsArtifact.backupPath)
         let artifactURL = backup.appendingPathComponent(backupPath)
         try FileManager.default.removeItem(at: artifactURL)
+        try Data("current-vm-config".utf8).write(to: paths.vmConfig)
 
         XCTAssertThrowsError(try store.restoreBackup(backup)) { error in
             XCTAssertEqual(
@@ -285,6 +304,10 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
                 )
             )
         }
+        XCTAssertEqual(
+            try String(contentsOf: paths.vmConfig),
+            "current-vm-config"
+        )
     }
 
     func testRestoreBackupRejectsMissingRestoreCompatibilityVersion() throws {
@@ -339,7 +362,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
                 error as? RuntimeDataBackupStoreError,
                 .manifestInvalid(
                     path: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest).path,
-                    errors: ["restoreCompatibilityVersion must be 1"]
+                    errors: ["restoreCompatibilityVersion must be 2"]
                 )
             )
         }
@@ -403,10 +426,12 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let redisArchive = temporaryRoot.appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
         return try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
     }
@@ -423,6 +448,13 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(transform(manifest)).write(to: manifestURL)
+    }
+
+    private func makePostgresArchive() throws -> URL {
+        let archive = temporaryRoot.appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("tar.gz")
+        try Data("postgres".utf8).write(to: archive)
+        return archive
     }
 
     private func writeRequiredSources(_ paths: RuntimeDataBackupStorePaths) throws {

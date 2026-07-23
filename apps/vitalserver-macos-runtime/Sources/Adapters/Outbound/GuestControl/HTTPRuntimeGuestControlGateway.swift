@@ -347,8 +347,13 @@ private final class RuntimeGuestControlHTTPResultBox: @unchecked Sendable {
     }
 }
 
-private struct RuntimeGuestControlRedisRestoreRequest: Encodable {
+private struct RuntimeGuestControlArchiveRestoreRequest: Encodable {
     let archive: String
+}
+
+private struct RuntimeGuestControlPostgresRestoreRequest: Encodable {
+    let archive: String
+    let restartRuntime: Bool
 }
 
 private struct RuntimeGuestControlUpdateActivationRequest: Encodable {
@@ -526,12 +531,35 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         )
     }
 
+    public func createPostgresBackup() throws -> RuntimeGuestControlServiceOperation {
+        try decode(
+            RuntimeGuestControlServiceOperation.self,
+            method: "POST",
+            path: "/runtime/maintenance/postgres-backup"
+        )
+    }
+
+    public func restorePostgresBackup(
+        archive: String,
+        restartRuntime: Bool
+    ) throws -> RuntimeGuestControlServiceOperation {
+        try decode(
+            RuntimeGuestControlServiceOperation.self,
+            method: "POST",
+            path: "/runtime/maintenance/postgres-restore",
+            body: RuntimeGuestControlPostgresRestoreRequest(
+                archive: archive,
+                restartRuntime: restartRuntime
+            )
+        )
+    }
+
     public func restoreRedisBackup(archive: String) throws -> RuntimeGuestControlServiceOperation {
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
             path: "/runtime/maintenance/redis-restore",
-            body: RuntimeGuestControlRedisRestoreRequest(archive: archive)
+            body: RuntimeGuestControlArchiveRestoreRequest(archive: archive)
         )
     }
 

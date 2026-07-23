@@ -1,6 +1,16 @@
 import Contracts
 
 public protocol RuntimeGuestMaintenanceCommandControlling: Sendable {
+    func createPostgresBackup(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+
+    func restorePostgresBackup(
+        archive: String,
+        restartRuntime: Bool,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+
     func createRedisBackup(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation

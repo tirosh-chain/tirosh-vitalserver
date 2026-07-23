@@ -55,7 +55,7 @@ public enum UninstallRuntimeReceiptForgetDecision: Equatable, Sendable {
 }
 
 public enum UninstallRuntimeWorkflowLogStep: String, Sendable {
-    case createRedisBackup = "create-redis-backup"
+    case createVitalServerBackup = "create-vitalserver-backup"
     case stopLaunchdServices = "stop-launchd-services"
     case removePlists = "remove-plists"
     case removeInstalledFiles = "remove-installed-files"
@@ -92,7 +92,7 @@ public struct UninstallRuntimeUseCase {
         )
     }
 
-    public func shouldCreateRedisBackup(clean: Bool) -> Bool {
+    public func shouldCreateVitalServerBackup(clean: Bool) -> Bool {
         !clean
     }
 
@@ -107,8 +107,8 @@ public struct UninstallRuntimeUseCase {
         temporaryDirectory.appendingPathComponent("tirosh-vitalserver-uninstall-\(uniqueID)")
     }
 
-    public func redisBackupAbortLogMessage(reason: String) -> String {
-        "standard uninstall aborted because Redis backup did not complete error=\(reason)"
+    public func vitalServerBackupAbortLogMessage(reason: String) -> String {
+        "standard uninstall aborted because VitalServer backup did not complete error=\(reason)"
     }
 
     public func preservePlan(

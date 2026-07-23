@@ -26,16 +26,16 @@ public enum RuntimeUninstallWorkflowOperationStateProjectionPolicy {
                 operation: .uninstall,
                 message: explicitMessage
             )
-        case .redisBackupRequested:
+        case .vitalServerBackupRequested:
             return progress(
-                step: .uninstallCreateRedisBackup,
+                step: .uninstallCreateVitalServerBackup,
                 status: .started,
                 message: explicitMessage,
                 blockers: blockers
             )
-        case .redisBackupCompleted:
+        case .vitalServerBackupCompleted:
             return progress(
-                step: .uninstallCreateRedisBackup,
+                step: .uninstallCreateVitalServerBackup,
                 status: .completed,
                 message: explicitMessage,
                 blockers: blockers

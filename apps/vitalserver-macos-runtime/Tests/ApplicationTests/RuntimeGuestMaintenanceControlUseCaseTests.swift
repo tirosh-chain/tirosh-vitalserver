@@ -4,6 +4,55 @@ import Application
 import XCTest
 
 final class RuntimeGuestMaintenanceControlUseCaseTests: XCTestCase {
+    func testCreatePostgresBackupReturnsDatabaseProof() throws {
+        let gateway = GuestMaintenanceGateway(
+            operation: postgresBackupOperation(
+                result: RuntimeGuestControlOperationResult(
+                    archive: "/mnt/tirosh/backups/postgres/postgres.tar.gz",
+                    databaseId: "cluster:vitalserver",
+                    alembicRevisions: ["0002_recorder_observability_expectations"]
+                )
+            )
+        )
+
+        let operation = try RuntimeGuestMaintenanceControlUseCase()
+            .createPostgresBackup(gateway: gateway)
+
+        XCTAssertEqual(operation.operationId, "postgres-backup-1")
+        XCTAssertEqual(operation.command, .postgresBackup)
+        XCTAssertEqual(operation.result?.databaseId, "cluster:vitalserver")
+        XCTAssertEqual(
+            operation.result?.alembicRevisions,
+            ["0002_recorder_observability_expectations"]
+        )
+    }
+
+    func testRestorePostgresBackupReturnsCompletedGuestOperation() throws {
+        let archive = "/mnt/tirosh/backups/postgres/postgres.tar.gz"
+        let gateway = GuestMaintenanceGateway(
+            operation: postgresRestoreOperation(
+                result: RuntimeGuestControlOperationResult(
+                    restoredArchive: archive,
+                    databaseId: "cluster:vitalserver",
+                    alembicRevisions: ["0002_recorder_observability_expectations"],
+                    runtimeRestarted: false
+                )
+            )
+        )
+
+        let operation = try RuntimeGuestMaintenanceControlUseCase()
+            .restorePostgresBackup(
+                archive: archive,
+                restartRuntime: false,
+                gateway: gateway
+            )
+
+        XCTAssertEqual(operation.operationId, "postgres-restore-1")
+        XCTAssertEqual(operation.command, .postgresRestore)
+        XCTAssertEqual(operation.result?.restoredArchive, archive)
+        XCTAssertEqual(operation.result?.runtimeRestarted, false)
+    }
+
     func testCreateRedisBackupReturnsCompletedGuestOperation() throws {
         let gateway = GuestMaintenanceGateway(
             operation: redisBackupOperation(
@@ -286,6 +335,17 @@ private final class GuestMaintenanceGateway: RuntimeGuestControlGateway {
         operation
     }
 
+    func createPostgresBackup() throws -> RuntimeGuestControlServiceOperation {
+        operation
+    }
+
+    func restorePostgresBackup(
+        archive: String,
+        restartRuntime: Bool
+    ) throws -> RuntimeGuestControlServiceOperation {
+        operation
+    }
+
     func restoreRedisBackup(archive: String) throws -> RuntimeGuestControlServiceOperation {
         operation
     }
@@ -307,6 +367,46 @@ private func datastoreRepairOperation(
     operationId: String = "datastore-repair-1",
     service: String = "datastore-repair",
     command: RuntimeGuestControlServiceCommand = .repairDatastore,
+    state: RuntimeGuestControlOperationState = .completed,
+    failure: RuntimeGuestControlOperationFailure? = nil,
+    result: RuntimeGuestControlOperationResult? = nil
+) -> RuntimeGuestControlServiceOperation {
+    RuntimeGuestControlServiceOperation(
+        operationId: operationId,
+        service: service,
+        command: command,
+        state: state,
+        createdAt: "2026-07-01T00:00:00+00:00",
+        updatedAt: "2026-07-01T00:00:01+00:00",
+        failure: failure,
+        result: result
+    )
+}
+
+private func postgresBackupOperation(
+    operationId: String = "postgres-backup-1",
+    service: String = "postgres-backup",
+    command: RuntimeGuestControlServiceCommand = .postgresBackup,
+    state: RuntimeGuestControlOperationState = .completed,
+    failure: RuntimeGuestControlOperationFailure? = nil,
+    result: RuntimeGuestControlOperationResult? = nil
+) -> RuntimeGuestControlServiceOperation {
+    RuntimeGuestControlServiceOperation(
+        operationId: operationId,
+        service: service,
+        command: command,
+        state: state,
+        createdAt: "2026-07-01T00:00:00+00:00",
+        updatedAt: "2026-07-01T00:00:01+00:00",
+        failure: failure,
+        result: result
+    )
+}
+
+private func postgresRestoreOperation(
+    operationId: String = "postgres-restore-1",
+    service: String = "postgres-restore",
+    command: RuntimeGuestControlServiceCommand = .postgresRestore,
     state: RuntimeGuestControlOperationState = .completed,
     failure: RuntimeGuestControlOperationFailure? = nil,
     result: RuntimeGuestControlOperationResult? = nil

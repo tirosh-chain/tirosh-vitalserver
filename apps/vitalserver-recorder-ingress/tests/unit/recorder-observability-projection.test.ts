@@ -3,6 +3,7 @@
 const assert = require("assert");
 const test = require("node:test");
 const {
+  evaluateRecorderObservability,
   mergeCurrentProjection,
   reportStateAt,
   shouldReplaceCurrent,
@@ -84,7 +85,7 @@ test("boot aggregate preserves start and shutdown and restart uses start only", 
   assert.strictEqual(document.bootEvent.started.recordId, "30");
   assert.strictEqual(document.bootEvent.shutdown.recordId, "31");
   assert.strictEqual(
-    summarizeCurrentProjection(document).recentRestartAt,
+    summarizeCurrentProjection(document).lastBootStartedAt,
     "2026-07-23T01:00:00Z",
   );
 });
@@ -101,9 +102,100 @@ test("summary separates collection state and does not infer severity", () => {
     reportState: "missing",
     collectionState: "partial",
     severity: "unknown",
-    recentRestartAt: null,
-    activeSignalCount: 1,
+    lastBootStartedAt: null,
+    readIssueCount: 1,
   });
+});
+
+test("support and report state do not infer legacy support from absence", () => {
+  assert.deepStrictEqual(evaluateRecorderObservability({
+    currentReportState: null,
+    expectation: null,
+    now: "2026-07-23T01:00:00Z",
+    firstReportGraceSeconds: 300,
+  }), {
+    supportState: "unknown",
+    supportSource: null,
+    reportState: "notEvaluated",
+  });
+  assert.deepStrictEqual(evaluateRecorderObservability({
+    currentReportState: null,
+    expectation: {
+      supportState: "unsupported",
+      source: "version_catalog",
+      recorderVersion: "1.18.43",
+      producerVersion: null,
+      protocolVersion: null,
+      catalogRevision: "2026-07-23",
+      expectedSince: null,
+    },
+    now: "2026-07-23T01:00:00Z",
+    firstReportGraceSeconds: 300,
+  }), {
+    supportState: "unsupported",
+    supportSource: "version_catalog",
+    reportState: "notEvaluated",
+  });
+});
+
+test("accepted report is direct support evidence and invalid expectation is visible", () => {
+  const expectation = {
+    supportState: "supported",
+    source: "manual",
+    recorderVersion: null,
+    producerVersion: null,
+    protocolVersion: "v1",
+    catalogRevision: null,
+    expectedSince: "invalid",
+  };
+  assert.deepStrictEqual(evaluateRecorderObservability({
+    currentReportState: "stale",
+    expectation: {
+      ...expectation,
+      supportState: "unsupported",
+      expectedSince: null,
+    },
+    now: "2026-07-23T01:00:00Z",
+    firstReportGraceSeconds: 300,
+  }), {
+    supportState: "supported",
+    supportSource: "accepted_report",
+    reportState: "stale",
+  });
+  assert.deepStrictEqual(evaluateRecorderObservability({
+    currentReportState: null,
+    expectation,
+    now: "2026-07-23T01:00:00Z",
+    firstReportGraceSeconds: 300,
+  }), {
+    supportState: "supported",
+    supportSource: "manual",
+    reportState: "readFailed",
+  });
+});
+
+test("supported expectation waits before reporting a missing first report", () => {
+  const expectation = {
+    supportState: "supported",
+    source: "deployment_assignment",
+    recorderVersion: null,
+    producerVersion: "1.0.0",
+    protocolVersion: "v1",
+    catalogRevision: null,
+    expectedSince: "2026-07-23T01:00:00Z",
+  };
+  assert.strictEqual(evaluateRecorderObservability({
+    currentReportState: null,
+    expectation,
+    now: "2026-07-23T01:04:59Z",
+    firstReportGraceSeconds: 300,
+  }).reportState, "awaitingFirstReport");
+  assert.strictEqual(evaluateRecorderObservability({
+    currentReportState: null,
+    expectation,
+    now: "2026-07-23T01:05:00Z",
+    firstReportGraceSeconds: 300,
+  }).reportState, "missing");
 });
 
 test("freshness uses associated Profile interval and no guessed default", () => {

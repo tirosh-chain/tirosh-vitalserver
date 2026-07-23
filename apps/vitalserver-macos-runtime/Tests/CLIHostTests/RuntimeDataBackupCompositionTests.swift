@@ -41,15 +41,23 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
 
         let backup = try lifecycle.runtimeDataBackupComposition().createBackup()
         let archivedRedis = backup.appendingPathComponent("artifacts/redis-data.tar.gz")
+        let archivedPostgres = backup.appendingPathComponent(
+            "artifacts/postgres-database.tar.gz"
+        )
         let manifest = try JSONDecoder().decode(
             RuntimeDataBackupManifest.self,
             from: try fileStore.readData(backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest))
         )
 
         XCTAssertEqual(try fileStore.readData(archivedRedis), Data("redis-archive".utf8))
+        XCTAssertEqual(
+            try fileStore.readData(archivedPostgres),
+            Data("postgres-archive".utf8)
+        )
         XCTAssertEqual(manifest.artifacts.first { $0.id == .redisData }?.sourcePath, hostRedisArchive.path)
         XCTAssertNil(fileStore.files[legacyRequestURL])
         XCTAssertEqual(guestControlGateway.createdBackups, 1)
+        XCTAssertEqual(guestControlGateway.createdPostgresBackups, 1)
     }
 
     func testAutomaticBackupRejectsInvalidRetentionBeforeGuestControlOperation() throws {
@@ -203,6 +211,10 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
         fileStore.files[paths.guestRuntimeConfig] = Data("{}".utf8)
         fileStore.files[paths.guestRuntimeSettings] = Data("{}".utf8)
         fileStore.files[paths.proxyLaunchDaemon] = Data("plist".utf8)
+        fileStore.files[
+            paths.postgresBackupsDirectory
+                .appendingPathComponent("postgres-20260610T094159Z.tar.gz")
+        ] = Data("postgres-archive".utf8)
     }
 
     private func writeGuestRuntimeSettings(
@@ -324,6 +336,7 @@ private final class RuntimeDataBackupOperationLeaseOwner: RuntimeOperationLeaseO
 private final class RuntimeDataBackupGuestControlGateway: RuntimeGuestControlGateway {
     private let backupArchive: String
     private(set) var createdBackups = 0
+    private(set) var createdPostgresBackups = 0
     private(set) var restoredArchives: [String] = []
 
     init(backupArchive: String) {
@@ -373,6 +386,34 @@ private final class RuntimeDataBackupGuestControlGateway: RuntimeGuestControlGat
             service: "redis-backup",
             command: .redisBackup,
             result: RuntimeGuestControlOperationResult(archive: backupArchive)
+        )
+    }
+
+    func createPostgresBackup() throws -> RuntimeGuestControlServiceOperation {
+        createdPostgresBackups += 1
+        return serviceOperation(
+            service: "postgres-backup",
+            command: .postgresBackup,
+            result: RuntimeGuestControlOperationResult(
+                archive: "/mnt/tirosh/backups/postgres/postgres-20260610T094159Z.tar.gz",
+                databaseId: "cluster:vitalserver",
+                alembicRevisions: ["0002_recorder_observability_expectations"]
+            )
+        )
+    }
+
+    func restorePostgresBackup(
+        archive: String,
+        restartRuntime: Bool
+    ) throws -> RuntimeGuestControlServiceOperation {
+        restoredArchives.append(archive)
+        return serviceOperation(
+            service: "postgres-restore",
+            command: .postgresRestore,
+            result: RuntimeGuestControlOperationResult(
+                restoredArchive: archive,
+                runtimeRestarted: restartRuntime
+            )
         )
     }
 

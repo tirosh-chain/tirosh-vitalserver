@@ -1873,6 +1873,32 @@ export interface components {
             activityTimeline: components["schemas"]["RuntimeVitalRecorderActivityPoint"][] | null;
             /** @description Recorder-specific Redis ip_<vrcode> synchronization state reported by the recorder ingress. */
             redisIPSync: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
+            /** @description Explicit Recorder health-report support and report state. Null means the provider contract did not include observability. */
+            observability: components["schemas"]["RuntimeRecorderObservability"] | null;
+        };
+        RuntimeRecorderObservability: {
+            /** @enum {string} */
+            state: "loaded" | "notReported" | "unavailable";
+            vrcode: string;
+            /** @enum {string} */
+            supportState: "supported" | "unsupported" | "unknown";
+            supportSource: string | null;
+            /** @enum {string} */
+            reportState: "notEvaluated" | "awaitingFirstReport" | "current" | "stale" | "missing" | "readFailed";
+            profileState: string | null;
+            collectionState: string | null;
+            latestObservationReceivedAt: string | null;
+            lastBootStartedAt: string | null;
+            readIssueCount: number | null;
+            /** @description Time from which a first health report is explicitly expected for a supported Recorder deployment. */
+            expectedSince: string | null;
+            /** @description Recorder application version captured by the explicit support expectation. */
+            recorderVersion: string | null;
+            /** @description Observability producer version captured by the explicit support expectation. */
+            producerVersion: string | null;
+            /** @description Observability protocol version captured by the explicit support expectation. */
+            protocolVersion: string | null;
+            readError: string | null;
         };
         /** @enum {string} */
         RuntimeRecorderRedisIPSyncStatus: "unknown" | "unavailable" | "disabled" | "pending" | "written" | "correcting" | "corrected" | "verified" | "mismatch" | "write_failed" | "verify_failed";
@@ -2231,7 +2257,7 @@ export interface components {
             operationId: string;
             service: string;
             /** @enum {string} */
-            command: "start" | "stop" | "restart" | "reconcile" | "lab-create-session" | "lab-start-session" | "lab-stop-session" | "lab-finish-session" | "lab-replay-vital-file" | "lab-upload-vital-file" | "lab-create-beds" | "lab-delete-beds" | "lab-reset-beds" | "lab-create-recorders" | "lab-delete-recorders" | "lab-reset-recorders" | "redis-backup" | "redis-restore" | "repair-datastore" | "activate-update" | "prepare-update-shutdown" | "request-guest-poweroff" | "apply-settings" | "apply-admin-password" | "apply-redis-relay-settings";
+            command: "start" | "stop" | "restart" | "reconcile" | "lab-create-session" | "lab-start-session" | "lab-stop-session" | "lab-finish-session" | "lab-replay-vital-file" | "lab-upload-vital-file" | "lab-create-beds" | "lab-delete-beds" | "lab-reset-beds" | "lab-create-recorders" | "lab-delete-recorders" | "lab-reset-recorders" | "postgres-backup" | "postgres-restore" | "redis-backup" | "redis-restore" | "repair-datastore" | "activate-update" | "prepare-update-shutdown" | "request-guest-poweroff" | "apply-settings" | "apply-admin-password" | "apply-redis-relay-settings";
             /** @enum {string} */
             state: "accepted" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
             createdAt: string;

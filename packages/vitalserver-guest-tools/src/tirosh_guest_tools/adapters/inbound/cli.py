@@ -20,6 +20,9 @@ from tirosh_guest_tools.adapters.inbound.guest_control_api import (
 from tirosh_guest_tools.adapters.inbound.observability_daemon import (
     run_observability_daemon,
 )
+from tirosh_guest_tools.adapters.outbound.maintenance.postgres_backup import (
+    create_postgres_backup_archive,
+)
 from tirosh_guest_tools.adapters.outbound.observability.container_logs import (
     run_container_log_action,
 )
@@ -323,6 +326,7 @@ def vitalserver_prepare_update_shutdown() -> int:
     run_prepare_update_shutdown_for_request(
         request_id=args.request_id,
         version=args.version,
+        create_postgres_backup=create_postgres_backup_archive,
     )
     return 0
 

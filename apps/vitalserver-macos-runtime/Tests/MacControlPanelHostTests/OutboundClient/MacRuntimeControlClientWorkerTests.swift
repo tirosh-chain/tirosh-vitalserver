@@ -731,6 +731,38 @@ private struct AdapterFakeGuestMaintenanceController: RuntimeGuestMaintenanceCom
         self.datastoreRepairOperation = datastoreRepairOperation
     }
 
+    func createPostgresBackup(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "postgres-backup-1",
+            service: "postgres-backup",
+            command: .postgresBackup,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            result: RuntimeGuestControlOperationResult(
+                archive: "/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz"
+            )
+        )
+    }
+
+    func restorePostgresBackup(
+        archive: String,
+        restartRuntime: Bool,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "postgres-restore-1",
+            service: "postgres-restore",
+            command: .postgresRestore,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            result: RuntimeGuestControlOperationResult(restoredArchive: archive)
+        )
+    }
+
     func createRedisBackup(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation {
@@ -810,7 +842,9 @@ private struct AdapterFakeGuestMaintenanceController: RuntimeGuestMaintenanceCom
             result: RuntimeGuestControlOperationResult(
                 requestId: requestId,
                 version: version,
-                shutdownPhase: "poweroff-ready"
+                shutdownPhase: "poweroff-ready",
+                redisBackupPath: "/mnt/tirosh/backups/redis/update.tar.gz",
+                postgresBackupPath: "/mnt/tirosh/backups/postgres/update.tar.gz"
             )
         )
     }

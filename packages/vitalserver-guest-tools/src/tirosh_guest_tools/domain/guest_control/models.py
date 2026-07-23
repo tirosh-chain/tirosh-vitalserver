@@ -29,6 +29,8 @@ class ServiceCommand(StrEnum):
     LAB_RESET_RECORDERS = "lab-reset-recorders"
     LAB_START_RECORDER = "lab-start-recorder"
     LAB_STOP_RECORDER = "lab-stop-recorder"
+    POSTGRES_BACKUP = "postgres-backup"
+    POSTGRES_RESTORE = "postgres-restore"
     REDIS_BACKUP = "redis-backup"
     REDIS_RESTORE = "redis-restore"
     REPAIR_DATASTORE = "repair-datastore"
@@ -406,7 +408,9 @@ class VitalFileUploadResult:
         if self.state is VitalFileUploadState.PARTIAL and (
             not self.files or not self.failed_files
         ):
-            raise ValueError("partial vital file upload requires successes and failures")
+            raise ValueError(
+                "partial vital file upload requires successes and failures"
+            )
         if self.state is VitalFileUploadState.FAILED and (
             self.files or not self.failed_files
         ):
@@ -419,9 +423,7 @@ class VitalFileUploadResult:
     ) -> VitalFileUploadResult:
         if failed_files:
             state = (
-                VitalFileUploadState.PARTIAL
-                if files
-                else VitalFileUploadState.FAILED
+                VitalFileUploadState.PARTIAL if files else VitalFileUploadState.FAILED
             )
         else:
             state = VitalFileUploadState.COMPLETED
@@ -632,6 +634,50 @@ class RedisRestoreResult:
         }
 
 
+class PostgresBackupDependencyError(RuntimeError):
+    def __init__(self, message: str, *, kind: str) -> None:
+        super().__init__(message)
+        self.message = message
+        self.kind = kind
+
+
+@dataclass(frozen=True)
+class PostgresBackupResult:
+    archive: str
+    database_id: str
+    alembic_revisions: tuple[str, ...]
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "archive": self.archive,
+            "databaseId": self.database_id,
+            "alembicRevisions": list(self.alembic_revisions),
+        }
+
+
+class PostgresRestoreDependencyError(RuntimeError):
+    def __init__(self, message: str, *, kind: str) -> None:
+        super().__init__(message)
+        self.message = message
+        self.kind = kind
+
+
+@dataclass(frozen=True)
+class PostgresRestoreResult:
+    restored_archive: str
+    database_id: str
+    alembic_revisions: tuple[str, ...]
+    runtime_restarted: bool
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "restoredArchive": self.restored_archive,
+            "databaseId": self.database_id,
+            "alembicRevisions": list(self.alembic_revisions),
+            "runtimeRestarted": self.runtime_restarted,
+        }
+
+
 class DatastoreRepairDependencyError(RuntimeError):
     def __init__(self, message: str, *, kind: str) -> None:
         super().__init__(message)
@@ -671,6 +717,7 @@ class UpdateShutdownResult:
     version: str
     shutdown_phase: str
     redis_backup_path: str = ""
+    postgres_backup_path: str = ""
 
     def as_json(self) -> dict[str, Any]:
         document = {
@@ -680,4 +727,6 @@ class UpdateShutdownResult:
         }
         if self.redis_backup_path:
             document["redisBackupPath"] = self.redis_backup_path
+        if self.postgres_backup_path:
+            document["postgresBackupPath"] = self.postgres_backup_path
         return document

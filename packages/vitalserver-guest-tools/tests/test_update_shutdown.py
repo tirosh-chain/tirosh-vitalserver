@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from tirosh_guest_tools.application import update_shutdown
-from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
+from tirosh_guest_tools.application.contexts import (
+    PostgresBackupOutcome,
+    PrepareUpdateShutdownContext,
+)
 from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction
@@ -25,7 +29,7 @@ def test_prepare_update_shutdown_for_request_uses_explicit_context(
     monkeypatch.setattr(
         update_shutdown,
         "run_prepare",
-        lambda context: events.append(
+        lambda context, *, create_postgres_backup: events.append(
             f"prepare:{context.request_id}:{context.version}"
         ),
     )
@@ -33,6 +37,7 @@ def test_prepare_update_shutdown_for_request_uses_explicit_context(
     update_shutdown.run_prepare_update_shutdown_for_request(
         request_id="req-1",
         version="1.2.3",
+        create_postgres_backup=_postgres_backup_outcome,
     )
 
     assert events == ["mount", "prepare:req-1:1.2.3"]
@@ -52,7 +57,12 @@ def test_run_prepare_records_poweroff_ready_before_poweroff(
     monkeypatch.setattr(
         update_shutdown,
         "backup_redis",
-        lambda context: _record_backup(context, events),
+        lambda context: _record_redis_backup(context, events),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "backup_postgres",
+        lambda context, *, create_backup: _record_postgres_backup(context, events),
     )
     monkeypatch.setattr(
         update_shutdown,
@@ -82,6 +92,7 @@ def test_run_prepare_records_poweroff_ready_before_poweroff(
 
     update_shutdown.run_prepare(
         context,
+        create_postgres_backup=_postgres_backup_outcome,
         on_poweroff_ready=lambda ready_context: events.append(
             f"ready:{ready_context.redis_backup_path}"
         ),
@@ -90,7 +101,8 @@ def test_run_prepare_records_poweroff_ready_before_poweroff(
     assert events == [
         "observe:shutdown-pre-stop",
         "quiesce",
-        "backup",
+        "redis-backup",
+        "postgres-backup",
         "stop-services",
         "observe:shutdown-post-sync",
         "sync",
@@ -114,7 +126,12 @@ def test_prepare_update_shutdown_reports_poweroff_request_failure_after_ready_ha
     monkeypatch.setattr(
         update_shutdown,
         "backup_redis",
-        lambda context: _record_backup(context, events),
+        lambda context: _record_redis_backup(context, events),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "backup_postgres",
+        lambda context, *, create_backup: _record_postgres_backup(context, events),
     )
     monkeypatch.setattr(
         update_shutdown,
@@ -145,6 +162,7 @@ def test_prepare_update_shutdown_reports_poweroff_request_failure_after_ready_ha
     with pytest.raises(update_shutdown.GuestPoweroffRequestError):
         update_shutdown.run_prepare(
             context,
+            create_postgres_backup=_postgres_backup_outcome,
             on_poweroff_ready=lambda ready_context: events.append(
                 f"ready:{ready_context.redis_backup_path}"
             ),
@@ -179,6 +197,11 @@ def test_run_prepare_until_poweroff_ready_stops_before_sync_on_backup_failure(
     )
     monkeypatch.setattr(
         update_shutdown,
+        "backup_postgres",
+        lambda context, *, create_backup: events.append("postgres-backup"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
         "stop_runtime_services",
         lambda: events.append("stop-services"),
     )
@@ -189,7 +212,10 @@ def test_run_prepare_until_poweroff_ready_stops_before_sync_on_backup_failure(
     )
 
     with pytest.raises(GuestDependencyError):
-        update_shutdown.run_prepare_until_poweroff_ready(context)
+        update_shutdown.run_prepare_until_poweroff_ready(
+            context,
+            create_postgres_backup=_postgres_backup_outcome,
+        )
 
     assert events == [
         "observe:shutdown-pre-stop",
@@ -308,12 +334,28 @@ def test_stop_runtime_services_stops_compose_stack(monkeypatch: Any) -> None:
     assert events == ["compose:stop"]
 
 
-def _record_backup(
+def _record_redis_backup(
     context: PrepareUpdateShutdownContext,
     events: list[str],
 ) -> None:
     context.redis_backup_path = "/tmp/redis.tar.gz"
-    events.append("backup")
+    events.append("redis-backup")
+
+
+def _record_postgres_backup(
+    context: PrepareUpdateShutdownContext,
+    events: list[str],
+) -> None:
+    context.postgres_backup_path = "/tmp/postgres.tar.gz"
+    events.append("postgres-backup")
+
+
+def _postgres_backup_outcome() -> PostgresBackupOutcome:
+    return PostgresBackupOutcome(
+        archive=Path("/tmp/postgres.tar.gz"),
+        database_id="database-id",
+        alembic_revisions=("revision-1",),
+    )
 
 
 def _record_systemctl(

@@ -10,7 +10,10 @@ from tirosh_guest_tools.adapters.outbound.observability.collectors import (
     OBSERVABILITY_DIR,
 )
 from tirosh_guest_tools.application.compose import run_compose_action
-from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
+from tirosh_guest_tools.application.contexts import (
+    PostgresBackupOutcome,
+    PrepareUpdateShutdownContext,
+)
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
 )
@@ -44,11 +47,15 @@ def run_prepare_update_shutdown_for_request(
     *,
     request_id: str,
     version: str,
+    create_postgres_backup: Callable[[], PostgresBackupOutcome],
 ) -> None:
     mount_runtime_share()
     context = PrepareUpdateShutdownContext(request_id=request_id, version=version)
     try:
-        run_prepare(context)
+        run_prepare(
+            context,
+            create_postgres_backup=create_postgres_backup,
+        )
     except Exception:
         logger.exception("guest update shutdown preparation failed")
         collect_guest_observability(ObservationPhase.SHUTDOWN_FAILURE)
@@ -58,9 +65,14 @@ def run_prepare_update_shutdown_for_request(
 def run_prepare(
     context: PrepareUpdateShutdownContext,
     *,
+    create_postgres_backup: Callable[[], PostgresBackupOutcome],
     on_poweroff_ready: Callable[[PrepareUpdateShutdownContext], None] | None = None,
 ) -> None:
-    run_prepare_until_poweroff_ready(context, on_poweroff_ready=on_poweroff_ready)
+    run_prepare_until_poweroff_ready(
+        context,
+        create_postgres_backup=create_postgres_backup,
+        on_poweroff_ready=on_poweroff_ready,
+    )
     request_guest_poweroff()
     collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
 
@@ -68,11 +80,16 @@ def run_prepare(
 def run_prepare_until_poweroff_ready(
     context: PrepareUpdateShutdownContext,
     *,
+    create_postgres_backup: Callable[[], PostgresBackupOutcome],
     on_poweroff_ready: Callable[[PrepareUpdateShutdownContext], None] | None = None,
 ) -> None:
     collect_guest_observability(ObservationPhase.SHUTDOWN_PRE_STOP)
     quiesce_shutdown_sidecars()
     backup_redis(context)
+    backup_postgres(
+        context,
+        create_backup=create_postgres_backup,
+    )
     stop_runtime_services()
     collect_guest_observability(ObservationPhase.SHUTDOWN_POST_SYNC)
     logger.info("final sync started before guest poweroff")
@@ -132,6 +149,36 @@ def backup_redis(
         "redis backup completed",
         extra={
             "fields": {"step": "redis-backup", "archive": redis_backup_path}
+        },
+    )
+
+
+def backup_postgres(
+    context: PrepareUpdateShutdownContext,
+    *,
+    create_backup: Callable[[], PostgresBackupOutcome],
+) -> None:
+    logger.info(
+        "postgres backup started",
+        extra={"fields": {"step": "postgres-backup"}},
+    )
+    outcome = create_backup()
+    postgres_backup_path = str(outcome.archive)
+    if not postgres_backup_path:
+        raise GuestDependencyError(
+            "PostgreSQL backup archive was not created",
+            code="postgres-backup-archive-missing",
+        )
+    context.postgres_backup_path = postgres_backup_path
+    logger.info(
+        "postgres backup completed",
+        extra={
+            "fields": {
+                "step": "postgres-backup",
+                "archive": postgres_backup_path,
+                "databaseId": outcome.database_id,
+                "alembicRevisions": list(outcome.alembic_revisions),
+            }
         },
     )
 

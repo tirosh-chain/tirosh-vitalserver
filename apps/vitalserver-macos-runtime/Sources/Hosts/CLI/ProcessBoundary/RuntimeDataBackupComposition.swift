@@ -57,16 +57,33 @@ struct RuntimeDataBackupComposition {
         return "automatic backup completed: \(backup.path)"
     }
 
-    private func createBackup(reason: String) throws -> URL {
-        let operation = try lifecycle.createRedisBackupThroughGuestControl()
-        guard let archive = operation.result?.archive?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !archive.isEmpty else {
+    func createBackup(reason: String) throws -> URL {
+        let redisOperation = try lifecycle.createRedisBackupThroughGuestControl()
+        guard let redisArchivePath = redisOperation.result?.archive?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !redisArchivePath.isEmpty else {
             throw LauncherError.runtimeOperationFailed("runtime data backup requires a redis archive")
         }
-        let redisArchive = try hostSharedDataURL(forGuestArchivePath: archive)
+        let postgresOperation = try lifecycle.createPostgresBackupThroughGuestControl()
+        guard let postgresArchivePath = postgresOperation.result?.archive?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !postgresArchivePath.isEmpty else {
+            throw LauncherError.runtimeOperationFailed(
+                "runtime data backup requires a PostgreSQL archive"
+            )
+        }
+        let redisArchive = try hostSharedDataURL(
+            forGuestArchivePath: redisArchivePath,
+            label: "Redis backup"
+        )
+        let postgresArchive = try hostSharedDataURL(
+            forGuestArchivePath: postgresArchivePath,
+            label: "PostgreSQL backup"
+        )
         let backup = try runtimeDataBackupStore().createBackup(
             reason: reason,
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: try startOnBootStateData()
         )
         try validateManifest(backup)
@@ -121,14 +138,27 @@ struct RuntimeDataBackupComposition {
     func restoreBackup(_ backup: URL) throws {
         let restore = try runtimeDataBackupStore().restoreBackup(backup)
         let stagedRedisArchive = try stageRedisArchiveForGuestRestore(restore.redisArchive)
+        let stagedPostgresArchive = try stagePostgresArchiveForGuestRestore(
+            restore.postgresArchive
+        )
         defer {
             try? lifecycle.fileStore.removeItem(at: stagedRedisArchive.hostURL)
+            try? lifecycle.fileStore.removeItem(at: stagedPostgresArchive.hostURL)
         }
         try restoreStartOnBootState(restore.startOnBootState)
-        let operation = try lifecycle.restoreRedisBackupThroughGuestControl(
+        let postgresOperation = try lifecycle.restorePostgresBackupThroughGuestControl(
+            guestArchivePath: stagedPostgresArchive.guestPath,
+            restartRuntime: false
+        )
+        try requireRestoredArchiveResult(
+            postgresOperation,
+            label: "PostgreSQL",
+            expectedRuntimeRestarted: false
+        )
+        let redisOperation = try lifecycle.restoreRedisBackupThroughGuestControl(
             guestArchivePath: stagedRedisArchive.guestPath
         )
-        try requireRestoredArchiveResult(operation)
+        try requireRestoredArchiveResult(redisOperation, label: "Redis")
         lifecycle.log("runtime data backup restored backup=\(backup.path)")
     }
 
@@ -140,7 +170,7 @@ struct RuntimeDataBackupComposition {
         let operation = try lifecycle.restoreRedisBackupThroughGuestControl(
             guestArchivePath: stagedRedisArchive.guestPath
         )
-        try requireRestoredArchiveResult(operation)
+        try requireRestoredArchiveResult(operation, label: "Redis")
         lifecycle.log("redis backup restored archive=\(archive.path)")
     }
 
@@ -161,7 +191,8 @@ struct RuntimeDataBackupComposition {
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: Constants.Product.identifier,
                 manifestName: RuntimePackageArtifactFileNames.backupManifest,
-                redisVolumeName: "vitalserver_redis-data"
+                redisVolumeName: "vitalserver_redis-data",
+                postgresVolumeName: "vitalserver_postgres-data"
             ),
             timestamp: lifecycle.backupTimestamp,
             isoTimestamp: lifecycle.isoTimestamp,
@@ -182,18 +213,51 @@ struct RuntimeDataBackupComposition {
         return (destination, "/mnt/tirosh\(relative)")
     }
 
-    private func requireRestoredArchiveResult(_ operation: RuntimeGuestControlServiceOperation) throws {
+    func stagePostgresArchiveForGuestRestore(
+        _ archive: URL
+    ) throws -> (hostURL: URL, guestPath: String) {
+        let fileName = "postgres-restore-\(lifecycle.backupTimestamp()).tar.gz"
+        let destination = lifecycle.installedPaths.postgresBackupsDirectory
+            .appendingPathComponent(fileName)
+        try removeFileIfPresent(destination, label: "PostgreSQL restore staging archive")
+        try lifecycle.fileStore.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try lifecycle.fileStore.copyItem(at: archive, to: destination)
+        let relative = destination.path.dropFirst(
+            lifecycle.installedPaths.dataDirectory.path.count
+        )
+        return (destination, "/mnt/tirosh\(relative)")
+    }
+
+    private func requireRestoredArchiveResult(
+        _ operation: RuntimeGuestControlServiceOperation,
+        label: String,
+        expectedRuntimeRestarted: Bool? = nil
+    ) throws {
         guard let restoredArchive = operation.result?.restoredArchive?.trimmingCharacters(in: .whitespacesAndNewlines),
               !restoredArchive.isEmpty else {
-            throw LauncherError.runtimeOperationFailed("runtime data restore requires a restored redis archive")
+            throw LauncherError.runtimeOperationFailed(
+                "runtime data restore requires a restored \(label) archive"
+            )
+        }
+        if let expectedRuntimeRestarted,
+           operation.result?.runtimeRestarted != expectedRuntimeRestarted {
+            throw LauncherError.runtimeOperationFailed(
+                "\(label) restore did not preserve the required runtime restart state"
+            )
         }
     }
 
-    private func hostSharedDataURL(forGuestArchivePath archive: String) throws -> URL {
+    private func hostSharedDataURL(
+        forGuestArchivePath archive: String,
+        label: String
+    ) throws -> URL {
         let guestDataPrefix = "/mnt/tirosh/"
         guard archive.hasPrefix(guestDataPrefix) else {
             throw LauncherError.runtimeOperationFailed(
-                "redis backup archive path is outside guest shared data mount archive=\(archive)"
+                "\(label) archive path is outside guest shared data mount archive=\(archive)"
             )
         }
 
@@ -201,7 +265,7 @@ struct RuntimeDataBackupComposition {
         let components = relativePath.split(separator: "/").map(String.init)
         guard !components.isEmpty, !components.contains("..") else {
             throw LauncherError.runtimeOperationFailed(
-                "redis backup archive path is invalid archive=\(archive)"
+                "\(label) archive path is invalid archive=\(archive)"
             )
         }
 

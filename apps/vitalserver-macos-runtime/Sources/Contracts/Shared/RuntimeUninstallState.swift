@@ -2,8 +2,8 @@ import Foundation
 
 public enum RuntimeUninstallState: Codable, Equatable, Sendable {
     case started
-    case redisBackupRequested
-    case redisBackupCompleted
+    case vitalServerBackupRequested
+    case vitalServerBackupCompleted
     case stopServicesRequested
     case serviceStopBlocked
     case filesRemovalStarted
@@ -17,8 +17,8 @@ public enum RuntimeUninstallState: Codable, Equatable, Sendable {
     public init(rawValue: String) {
         switch rawValue {
         case "started": self = .started
-        case "redis-backup-requested": self = .redisBackupRequested
-        case "redis-backup-completed": self = .redisBackupCompleted
+        case "vitalserver-backup-requested": self = .vitalServerBackupRequested
+        case "vitalserver-backup-completed": self = .vitalServerBackupCompleted
         case "stop-services-requested": self = .stopServicesRequested
         case "service-stop-blocked": self = .serviceStopBlocked
         case "files-removal-started": self = .filesRemovalStarted
@@ -34,8 +34,8 @@ public enum RuntimeUninstallState: Codable, Equatable, Sendable {
     public var rawValue: String {
         switch self {
         case .started: return "started"
-        case .redisBackupRequested: return "redis-backup-requested"
-        case .redisBackupCompleted: return "redis-backup-completed"
+        case .vitalServerBackupRequested: return "vitalserver-backup-requested"
+        case .vitalServerBackupCompleted: return "vitalserver-backup-completed"
         case .stopServicesRequested: return "stop-services-requested"
         case .serviceStopBlocked: return "service-stop-blocked"
         case .filesRemovalStarted: return "files-removal-started"

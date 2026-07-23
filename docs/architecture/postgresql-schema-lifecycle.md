@@ -35,6 +35,7 @@ product_lab.recorders
 recorder_observability.requests
 recorder_observability.records
 recorder_observability.current
+recorder_observability.expectations
 ```
 
 Every application query or ORM record names its PostgreSQL schema explicitly.
@@ -77,6 +78,69 @@ states:
   it is not hidden inside repository readiness.
 - A schema change ships with empty-database, repeated-upgrade, invalid-state,
   consumer, Compose-order, and delivery tests.
+
+## Read-only installed-state inventory
+
+`vitalserver-postgres-inventory` captures the database part of the installed
+state proof before another schema or recovery change is made. It opens an
+explicit read-only transaction and reports:
+
+- the installed Alembic revision and the packaged migration head;
+- whether `0002_recorder_observability_expectations` belongs to the applied
+  revision lineage;
+- missing expected objects and unexpected user schemas/relations;
+- database, relation, table, and index sizes;
+- PostgreSQL planner row estimates, explicitly marked `estimated`, or
+  `unavailable` when PostgreSQL has not produced an estimate.
+
+It does not run `COUNT(*)`, modify schema/data, or convert a read/decode failure
+into an empty database. Its JSON document is written to standard output unless
+`--output` names a file whose parent directory already exists.
+
+From a repository checkout:
+
+```bash
+VITALSERVER_DATABASE_URL='postgresql://…' \
+  vitalserver-postgres-inventory --output ./postgres-inventory.json
+```
+
+Against the Compose runtime, the packaged migrator image provides the same
+command:
+
+```bash
+docker compose \
+  -f apps/vitalserver-macos-runtime/Support/Guest/compose.yaml \
+  run --rm postgres-migrate vitalserver-postgres-inventory \
+  > postgres-inventory.json
+```
+
+This proof covers PostgreSQL only. PostgreSQL volume paths, managed backup
+artifacts, Redis, and `.vital` files are different owner states and require
+separate Host/Guest inventory contracts; their absence must not be inferred
+from this database report.
+
+## Managed backup and restore
+
+VitalServer backup compatibility version 2 requires one Guest-owned PostgreSQL
+archive in addition to Redis and Host artifacts. Guest Control creates a
+custom-format dump of the whole `vitalserver` database so all owner schemas and
+`public.alembic_version` belong to one PostgreSQL snapshot. The archive
+manifest records database identity, server version, Alembic revisions,
+included schemas/relations, size, and checksum.
+
+Restore validates that manifest, checksum, and `pg_restore --list` proof before
+stopping writers. It then stops the observation service and Compose product
+stack, restores the database with PostgreSQL as the only running container,
+and verifies revisions and managed objects. In a coordinated VitalServer
+restore the operation explicitly leaves runtime writers stopped; Redis restore
+is the final operation that starts the full runtime. A missing proof or failed
+step remains a failed operation and must not be converted into a usable empty
+database.
+
+See [VitalServer Backup](../runtime/macos/runtime-data-backup.md) for the
+cross-store product contract. Redis and PostgreSQL receipts are independently
+consistent snapshots; the current workflow does not claim cross-datastore
+transactional atomicity.
 
 ## Clean database transition
 

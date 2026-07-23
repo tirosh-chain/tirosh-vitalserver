@@ -80,15 +80,15 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         XCTAssertEqual(Array(harness.events.prefix(5)), [
             "log:uninstall started clean=false",
             "state:started:uninstall started:",
-            "log:step=create-redis-backup status=started",
-            "state:redis-backup-requested:redis backup requested:",
+            "log:step=create-vitalserver-backup status=started",
+            "state:vitalserver-backup-requested:VitalServer backup requested:",
             "backup",
         ])
         XCTAssertTrue(harness.events.contains {
-            $0.hasPrefix("log:standard uninstall aborted because Redis backup did not complete error=")
+            $0.hasPrefix("log:standard uninstall aborted because VitalServer backup did not complete error=")
         })
         XCTAssertTrue(harness.events.contains {
-            $0.hasPrefix("state:failed:redis backup failed:redis-backup-failed:reason=")
+            $0.hasPrefix("state:failed:VitalServer backup failed:vitalserver-backup-failed:reason=")
         })
     }
 
@@ -495,7 +495,7 @@ private final class RuntimeUninstallWorkflowHarness {
                 }
             ),
             effects: RuntimeUninstallEffects(
-                createRedisBackup: {
+                createVitalServerBackup: {
                     self.events.append("backup")
                     if let backupError = self.backupError {
                         throw backupError

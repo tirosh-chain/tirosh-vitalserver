@@ -145,6 +145,10 @@ paths:
       responses:
         "200":
           description: Current PostgreSQL-backed Recorder summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityList"
         "503":
           description: PostgreSQL current projection is unavailable.
   /runtime/vitaldb/recorders/{vrcode}/observability:
@@ -158,8 +162,14 @@ paths:
           description: >
             The one-row current aggregate, including latest and associated
             Profile state, health, boot start/shutdown, and retained evidence.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityDetail"
         "404":
-          description: The VRCODE has no projected observability.
+          description: >
+            The VRCODE has neither projected observability nor an explicit
+            support expectation.
         "503":
           description: PostgreSQL current projection is unavailable.
   /upload:
@@ -468,6 +478,62 @@ components:
         The PostgreSQL transaction could not confirm the admission result. The client
         may retry the whole chunk.
   schemas:
+    RecorderObservabilitySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - vrcode
+        - supportState
+        - supportSource
+        - reportState
+        - profileState
+        - collectionState
+        - latestObservationReceivedAt
+        - lastBootStartedAt
+        - readIssueCount
+        - expectedSince
+        - recorderVersion
+        - producerVersion
+        - protocolVersion
+      properties:
+        vrcode: {type: string}
+        supportState:
+          type: string
+          enum: [supported, unsupported, unknown]
+        supportSource: {type: string, nullable: true}
+        reportState:
+          type: string
+          enum: [notEvaluated, awaitingFirstReport, current, stale, missing, readFailed]
+        profileState: {type: string, nullable: true}
+        collectionState: {type: string, nullable: true}
+        latestObservationReceivedAt: {type: string, nullable: true}
+        lastBootStartedAt: {type: string, nullable: true}
+        readIssueCount: {type: integer, minimum: 0}
+        expectedSince: {type: string, nullable: true}
+        recorderVersion: {type: string, nullable: true}
+        producerVersion: {type: string, nullable: true}
+        protocolVersion: {type: string, nullable: true}
+    RecorderObservabilityList:
+      type: object
+      additionalProperties: false
+      required: [state, recorders]
+      properties:
+        state: {type: string, enum: [loaded]}
+        recorders:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecorderObservabilitySummary"
+    RecorderObservabilityDetail:
+      allOf:
+        - $ref: "#/components/schemas/RecorderObservabilitySummary"
+        - type: object
+          required: [state, resources]
+          properties:
+            state: {type: string, enum: [loaded]}
+            resources:
+              type: object
+              nullable: true
+              additionalProperties: true
     RecorderObservabilityAdmission:
       type: object
       additionalProperties: false

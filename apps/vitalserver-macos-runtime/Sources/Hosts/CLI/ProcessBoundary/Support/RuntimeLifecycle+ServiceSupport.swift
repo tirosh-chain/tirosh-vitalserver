@@ -255,6 +255,37 @@ extension RuntimeLifecycle {
         }
     }
 
+    func createPostgresBackupThroughGuestControl() throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .createPostgresBackup(gateway: gateway)
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func restorePostgresBackupThroughGuestControl(
+        guestArchivePath: String,
+        restartRuntime: Bool
+    ) throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .restorePostgresBackup(
+                    archive: guestArchivePath,
+                    restartRuntime: restartRuntime,
+                    gateway: gateway
+                )
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
     func restoreRedisBackupThroughGuestControl(
         guestArchivePath: String
     ) throws -> RuntimeGuestControlServiceOperation {

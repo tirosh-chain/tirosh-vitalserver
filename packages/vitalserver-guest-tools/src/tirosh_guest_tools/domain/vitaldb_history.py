@@ -211,6 +211,94 @@ def attach_recorder_ingress_status(
     return result
 
 
+def attach_recorder_observability(
+    history: Mapping[str, Any],
+    observability_read: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = dict(history)
+    read_state = observability_read.get("state")
+    read_error = observability_read.get("readError")
+    summaries = observability_read.get("recorders")
+    by_vrcode: dict[str, dict[str, Any]] = {}
+    if read_state == "loaded" and isinstance(summaries, list):
+        for summary in summaries:
+            if not isinstance(summary, Mapping):
+                continue
+            vrcode = summary.get("vrcode")
+            if isinstance(vrcode, str):
+                by_vrcode[vrcode] = dict(summary)
+
+    result["recorderObservabilityRead"] = {
+        "state": read_state,
+        "readError": read_error,
+    }
+    if read_state != "loaded":
+        result["state"] = (
+            "partiallyLoaded" if result.get("recorders") else "readFailed"
+        )
+        issue = (
+            read_error
+            if isinstance(read_error, str)
+            else f"Recorder observability read state is {read_state}."
+        )
+        existing_error = result.get("readError")
+        result["readError"] = (
+            f"{existing_error}; recorderObservability={issue}"
+            if isinstance(existing_error, str)
+            else f"recorderObservability={issue}"
+        )
+    enriched: list[dict[str, Any]] = []
+    for source in result.get("recorders", []):
+        recorder = dict(source)
+        vrcode = recorder.get("vrcode")
+        summary = by_vrcode.get(vrcode) if isinstance(vrcode, str) else None
+        if summary is not None:
+            recorder["observability"] = {
+                "state": "loaded",
+                **summary,
+                "readError": None,
+            }
+        elif read_state == "loaded":
+            recorder["observability"] = {
+                "state": "notReported",
+                "vrcode": vrcode,
+                "supportState": "unknown",
+                "supportSource": None,
+                "reportState": "notEvaluated",
+                "profileState": None,
+                "collectionState": None,
+                "latestObservationReceivedAt": None,
+                "lastBootStartedAt": None,
+                "readIssueCount": None,
+                "expectedSince": None,
+                "recorderVersion": None,
+                "producerVersion": None,
+                "protocolVersion": None,
+                "readError": None,
+            }
+        else:
+            recorder["observability"] = {
+                "state": "unavailable",
+                "vrcode": vrcode,
+                "supportState": "unknown",
+                "supportSource": None,
+                "reportState": "readFailed",
+                "profileState": None,
+                "collectionState": None,
+                "latestObservationReceivedAt": None,
+                "lastBootStartedAt": None,
+                "readIssueCount": None,
+                "expectedSince": None,
+                "recorderVersion": None,
+                "producerVersion": None,
+                "protocolVersion": None,
+                "readError": read_error,
+            }
+        enriched.append(recorder)
+    result["recorders"] = enriched
+    return result
+
+
 def bed_history_from_recorder_history(history: Mapping[str, Any]) -> dict[str, Any]:
     summary = history.get("summary")
     if not isinstance(summary, Mapping):

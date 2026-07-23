@@ -28,6 +28,7 @@ test("config loads bounded Recorder observability admission settings", () => {
   });
   assert.strictEqual(defaults.freshnessToleranceMultiplier, 3);
   assert.strictEqual(defaults.freshnessAllowanceSeconds, 30);
+  assert.strictEqual(defaults.firstReportGraceSeconds, 300);
   const configured = loadConfig({
     RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY: "/data/observability",
     RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES: "7340032",

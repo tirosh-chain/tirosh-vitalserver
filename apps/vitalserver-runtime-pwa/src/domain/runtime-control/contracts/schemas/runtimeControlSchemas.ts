@@ -311,6 +311,8 @@ export const runtimeGuestControlServiceOperationSchema = z
       "lab-create-recorders",
       "lab-delete-recorders",
       "lab-reset-recorders",
+      "postgres-backup",
+      "postgres-restore",
       "redis-backup",
       "redis-restore",
       "repair-datastore",
@@ -1363,6 +1365,33 @@ const recorderRedisIPSyncObservationSchema = z
   })
   .passthrough();
 
+const recorderObservabilitySchema = z
+  .object({
+    state: z.enum(["loaded", "notReported", "unavailable"]),
+    vrcode: z.string(),
+    supportState: z.enum(["supported", "unsupported", "unknown"]),
+    supportSource: requiredNullableString,
+    reportState: z.enum([
+      "notEvaluated",
+      "awaitingFirstReport",
+      "current",
+      "stale",
+      "missing",
+      "readFailed"
+    ]),
+    profileState: requiredNullableString.optional(),
+    collectionState: requiredNullableString.optional(),
+    latestObservationReceivedAt: requiredNullableString.optional(),
+    lastBootStartedAt: requiredNullableString.optional(),
+    readIssueCount: z.number().int().nonnegative().nullable().optional(),
+    expectedSince: requiredNullableString.optional(),
+    recorderVersion: requiredNullableString.optional(),
+    producerVersion: requiredNullableString.optional(),
+    protocolVersion: requiredNullableString.optional(),
+    readError: requiredNullableString.optional()
+  })
+  .passthrough();
+
 const vitalDBRecorderRecordSchema = z
   .object({
     vrcode: z.string(),
@@ -1384,7 +1413,8 @@ const vitalDBRecorderRecordSchema = z
     presentInLatestObservation: z.boolean(),
     visibility: vitalDBRecordVisibilitySchema,
     activityTimeline: z.array(recorderActivityPointSchema).nullable(),
-    redisIPSync: recorderRedisIPSyncObservationSchema.nullable()
+    redisIPSync: recorderRedisIPSyncObservationSchema.nullable(),
+    observability: recorderObservabilitySchema.optional()
   })
   .passthrough();
 

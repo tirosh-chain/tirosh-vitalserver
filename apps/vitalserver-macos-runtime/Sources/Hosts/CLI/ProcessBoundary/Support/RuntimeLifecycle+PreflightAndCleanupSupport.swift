@@ -21,7 +21,11 @@ extension RuntimeLifecycle {
                 serviceState: { service in
                     healthChecker.launchdState(service)
                 },
-                createRedisBackup: createRedisBackup,
+                createVitalServerBackup: {
+                    _ = try runtimeDataBackupComposition().createBackup(
+                        reason: "uninstall"
+                    )
+                },
                 disableAutomaticBackupScheduler: {
                     try setAutomaticBackupSchedule(enabled: false, scheduleTimes: [])
                 },

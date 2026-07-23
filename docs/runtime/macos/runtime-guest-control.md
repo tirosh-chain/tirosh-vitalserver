@@ -151,7 +151,7 @@ Platform Agent does not advertise those product capabilities on behalf of the
 Runtime Controller.
 
 Guest maintenance capability checks also consume Guest Control API directly.
-Host update, Redis backup/restore, and datastore repair preflight checks read
+Host update, Redis/PostgreSQL backup/restore, and datastore repair preflight checks read
 `GET /runtime/capabilities` and map `RuntimeGuestCapabilityRequirement` to explicit
 Guest Control capability names such as `maintenance:update-shutdown:create`.
 They must not read `runtime-observation.json.capabilities` as the current capability
@@ -597,14 +597,16 @@ PWA Advanced API catalog, and Swift Advanced API catalog expose the same v2
 support specs and do not reintroduce `/dev/testkit` or TestKit API catalog
 entries.
 
-### 3-5. Redis backup has a Guest Control maintenance operation API
+### 3-5. Datastore backup has Guest Control maintenance operation APIs
 
-Runtime v2 now exposes Redis backup and restore through Guest Control API as
+Runtime v2 exposes Redis and PostgreSQL backup/restore through Guest Control API as
 maintenance operations:
 
 ```text
 POST /runtime/maintenance/redis-backup
 POST /runtime/maintenance/redis-restore
+POST /runtime/maintenance/postgres-backup
+POST /runtime/maintenance/postgres-restore
 POST /runtime/maintenance/datastore/repair
 POST /runtime/maintenance/update-activation
 POST /runtime/maintenance/update-shutdown
@@ -626,6 +628,22 @@ dependency failures are recorded as typed operation failures. The legacy
 `redis-restore.request` / `redis-restore-result.json` contract and no-argument
 restore systemd service are removed; CLI restore requires an explicit
 `--archive` argument.
+
+The PostgreSQL backup API creates a whole-database custom-format dump and a
+manifest that proves database identity, Alembic revisions, included owner
+schemas/relations, size, and checksum. Its completed result carries `archive`,
+`databaseId`, and `alembicRevisions`. A failed dump, unreadable custom archive,
+or incomplete schema proof is a typed failed operation.
+
+The PostgreSQL restore request requires both `archive` and the boolean
+`restartRuntime`; omission or a non-boolean value is an invalid request rather
+than a default. Archive structure, manifest, checksum, and `pg_restore --list`
+are validated before writers stop. A completed result carries
+`restoredArchive`, `databaseId`, `alembicRevisions`, and `runtimeRestarted`.
+VitalServer backup restore sends `restartRuntime=false`, verifies that result,
+and leaves writers stopped until the following Redis restore starts the full
+runtime. This prevents product writers from running between the two datastore
+restores.
 
 The legacy Redis backup request/result file contract has been removed from the
 Guest Redis backup usecase and diagnostics artifact writer. Redis backup execution
@@ -670,7 +688,7 @@ methods. Guest Control API is the update activation command boundary; old
 `activate-update.request` artifacts are older-install evidence, not a v2
 runtime contract.
 
-### 3-6. Host Redis backup create and restore consume Guest Control API
+### 3-6. Host datastore backup create and restore consume Guest Control API
 
 Host Runtime Control no longer creates or restores Redis backups by launching
 `vitalserver-vm runtime redis-backup` or `vitalserver-vm runtime redis-restore`
@@ -692,12 +710,13 @@ owner to the Guest SQLite ledger. `RuntimeGuestControlServiceOperation` now carr
 `result` contract so Redis backup `result.archive` and Redis restore
 `result.restoredArchive` are preserved when Host reads or returns the operation.
 
-Runtime-data backup and restore now use the same Guest Control maintenance API
-for Redis archive creation and restore execution. Host still owns local backup
+Runtime-data backup and restore use the Guest Control maintenance API for
+Redis and PostgreSQL archive creation and restore execution. Host still owns local backup
 manifest assembly, host file copying, start-on-boot state capture, and
-host-selected archive staging, but Redis operation state comes from Guest
-SQLite control documents rather than Redis backup/restore
-request/result files.
+host-selected archive staging, but datastore operation state comes from Guest
+SQLite control documents. Redis and PostgreSQL each produce an explicit
+receipt. These are independently consistent datastore snapshots; the workflow
+does not claim cross-datastore transaction atomicity.
 
 Swift Runtime Control's datastore-repair HTTP path consumes the Guest Control
 maintenance API through the dedicated Guest-maintenance operation boundary and
@@ -712,7 +731,9 @@ Update shutdown now uses a two-step Guest Control maintenance API. First,
 `version`, persists `accepted` and `running`, starts the Guest shutdown
 preparation in a background thread, and persists a completed operation when the
 Guest reaches `poweroff-ready`. The result preserves
-`shutdownPhase=poweroff-ready` and the Redis backup archive path when available.
+`shutdownPhase=poweroff-ready` plus required Redis and PostgreSQL backup
+archive paths. Host rejects a completed operation that omits either datastore
+receipt and does not request poweroff.
 Second, Host calls `POST /runtime/maintenance/guest-poweroff` after it has read the
 completed `poweroff-ready` operation.
 

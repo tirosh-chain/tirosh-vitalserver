@@ -56,13 +56,16 @@ public enum RuntimeDataBackupStoreError: Error, Equatable, CustomStringConvertib
 
 public struct RuntimeDataBackupRestoreResult: Equatable, Sendable {
     public let redisArchive: URL
+    public let postgresArchive: URL
     public let startOnBootState: RuntimeDataBackupStartOnBootStateDocument
 
     public init(
         redisArchive: URL,
+        postgresArchive: URL,
         startOnBootState: RuntimeDataBackupStartOnBootStateDocument
     ) {
         self.redisArchive = redisArchive
+        self.postgresArchive = postgresArchive
         self.startOnBootState = startOnBootState
     }
 }
@@ -96,6 +99,7 @@ public struct RuntimeDataBackupStore {
     public func createBackup(
         reason: String,
         redisArchive: URL,
+        postgresArchive: URL,
         startOnBootState: Data
     ) throws -> URL {
         let stamp = timestamp()
@@ -124,6 +128,16 @@ public struct RuntimeDataBackupStore {
                 source: redisArchive,
                 sourceVolumeName: metadata.redisVolumeName,
                 destination: artifactsDirectory.appendingPathComponent(RuntimeDataBackupArtifactID.redisData.defaultBackupName)
+            ))
+            artifacts.append(try archiveRequiredFile(
+                id: .postgresDatabase,
+                owner: .guest,
+                sourceKind: .postgresBackupArchive,
+                source: postgresArchive,
+                sourceVolumeName: metadata.postgresVolumeName,
+                destination: artifactsDirectory.appendingPathComponent(
+                    RuntimeDataBackupArtifactID.postgresDatabase.defaultBackupName
+                )
             ))
             artifacts.append(try archiveRequiredFile(
                 id: .runtimeVMConfig,
@@ -203,8 +217,29 @@ public struct RuntimeDataBackupStore {
         }
 
         let artifacts = Dictionary(uniqueKeysWithValues: manifest.artifacts.map { ($0.id, $0) })
-        let redisArtifact = try requiredVerifiedArtifact(.redisData, artifacts: artifacts, backup: backup)
-        let startOnBootArtifact = try requiredVerifiedArtifact(.startOnBootState, artifacts: artifacts, backup: backup)
+        var verifiedRequired: [RuntimeDataBackupArtifactID: URL] = [:]
+        for id in RuntimeDataBackupArtifactID.requiredForRecovery {
+            verifiedRequired[id] = try requiredVerifiedArtifact(
+                id,
+                artifacts: artifacts,
+                backup: backup
+            )
+        }
+        for id in RuntimeDataBackupArtifactID.optionalForDiagnosticsContinuity {
+            _ = try optionalVerifiedArtifact(id, artifacts: artifacts, backup: backup)
+        }
+        guard let redisArtifact = verifiedRequired[.redisData],
+              let postgresArtifact = verifiedRequired[.postgresDatabase],
+              let startOnBootArtifact = verifiedRequired[.startOnBootState] else {
+            throw RuntimeDataBackupStoreError.manifestInvalid(
+                path: manifestURL.path,
+                errors: ["verified required artifact index is incomplete"]
+            )
+        }
+        let startOnBootState = try JSONDecoder().decode(
+            RuntimeDataBackupStartOnBootStateDocument.self,
+            from: fileStore.readData(startOnBootArtifact)
+        )
 
         try restoreRequiredFile(.runtimeVMConfig, artifacts: artifacts, backup: backup, destination: paths.vmConfig)
         try restoreRequiredFile(.guestRuntimeConfig, artifacts: artifacts, backup: backup, destination: paths.guestRuntimeConfig)
@@ -218,12 +253,9 @@ public struct RuntimeDataBackupStore {
         try restoreOptionalFile(.runtimeEventsDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeEvents)
         try restoreOptionalSQLiteSnapshot(artifacts: artifacts, backup: backup, destination: paths.runtimeObservabilityDatabase)
 
-        let startOnBootState = try JSONDecoder().decode(
-            RuntimeDataBackupStartOnBootStateDocument.self,
-            from: fileStore.readData(startOnBootArtifact)
-        )
         return RuntimeDataBackupRestoreResult(
             redisArchive: redisArtifact,
+            postgresArchive: postgresArtifact,
             startOnBootState: startOnBootState
         )
     }
@@ -525,6 +557,11 @@ public struct RuntimeDataBackupStore {
             errors.append("product mismatch expected=\(metadata.productIdentifier) actual=\(manifest.product)")
         }
         let artifactsByID = Dictionary(grouping: manifest.artifacts, by: \.id)
+        for (id, artifacts) in artifactsByID where artifacts.count != 1 {
+            errors.append(
+                "artifact must appear exactly once id=\(id.rawValue) count=\(artifacts.count)"
+            )
+        }
         for id in RuntimeDataBackupArtifactID.requiredForRecovery {
             guard let artifacts = artifactsByID[id], artifacts.count == 1, let artifact = artifacts.first else {
                 errors.append("missing required artifact id=\(id.rawValue)")

@@ -1,6 +1,8 @@
 public enum RuntimeGuestCapabilityRequirement: String, Sendable {
     case prepareUpdateShutdown = "prepare-update-shutdown"
     case activateUpdate = "activate-update"
+    case postgresBackup = "postgres-backup"
+    case postgresRestore = "postgres-restore"
     case redisBackup = "redis-backup"
     case redisRestore = "redis-restore"
     case repairDatastore = "repair-datastore"
@@ -11,6 +13,10 @@ public enum RuntimeGuestCapabilityRequirement: String, Sendable {
             return "maintenance:update-shutdown:create"
         case .activateUpdate:
             return "maintenance:update-activation:create"
+        case .postgresBackup:
+            return "maintenance:postgres-backup:create"
+        case .postgresRestore:
+            return "maintenance:postgres-restore:create"
         case .redisBackup:
             return "maintenance:redis-backup:create"
         case .redisRestore:

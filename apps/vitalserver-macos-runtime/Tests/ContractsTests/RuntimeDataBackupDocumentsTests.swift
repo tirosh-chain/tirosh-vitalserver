@@ -10,11 +10,14 @@ final class RuntimeDataBackupDocumentsTests: XCTestCase {
             runtimeVersion: "0.1.13",
             sourceRuntimeHome: "/Library/Application Support/VitalServerHelper",
             artifacts: RuntimeDataBackupArtifactID.manifestArtifactOrder.map { id in
-                RuntimeDataBackupArtifact(
+                let guestOwned = id == .redisData || id == .postgresDatabase
+                return RuntimeDataBackupArtifact(
                     id: id,
                     role: RuntimeDataBackupArtifactID.optionalForDiagnosticsContinuity.contains(id) ? .optional : .required,
-                    owner: id == .redisData ? .guest : .host,
-                    sourceKind: id == .redisData ? .dockerVolumeArchive : .file,
+                    owner: guestOwned ? .guest : .host,
+                    sourceKind: id == .redisData
+                        ? .dockerVolumeArchive
+                        : (id == .postgresDatabase ? .postgresBackupArchive : .file),
                     sourcePath: "/source/\(id.rawValue)",
                     backupPath: "artifacts/\(id.defaultBackupName)",
                     state: .archived,

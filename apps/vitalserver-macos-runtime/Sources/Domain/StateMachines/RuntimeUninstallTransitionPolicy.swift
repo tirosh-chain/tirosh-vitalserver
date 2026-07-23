@@ -4,8 +4,8 @@ import Foundation
 public enum RuntimeUninstallWorkflowState: Equatable, Sendable {
     case notStarted
     case started
-    case redisBackupRequested
-    case redisBackupCompleted
+    case vitalServerBackupRequested
+    case vitalServerBackupCompleted
     case stopServicesRequested
     case serviceStopBlocked
     case stoppedVerified
@@ -20,9 +20,9 @@ public enum RuntimeUninstallWorkflowState: Equatable, Sendable {
 
 public enum RuntimeUninstallWorkflowEvent: Equatable, Sendable {
     case start(clean: Bool)
-    case redisBackupRequested
-    case redisBackupSucceeded
-    case redisBackupFailed(reason: String)
+    case vitalServerBackupRequested
+    case vitalServerBackupSucceeded
+    case vitalServerBackupFailed(reason: String)
     case stopServicesRequested
     case stopServicesFailed(input: RuntimeUninstallReadinessInput, commandFailureReason: String)
     case stoppedStateObserved(RuntimeUninstallReadinessInput)
@@ -34,7 +34,7 @@ public enum RuntimeUninstallWorkflowEvent: Equatable, Sendable {
 }
 
 public enum RuntimeUninstallWorkflowCommand: Equatable, Sendable {
-    case createRedisBackup
+    case createVitalServerBackup
     case stopRuntimeServices
     case removeFiles
     case forgetPackageReceipts
@@ -76,31 +76,31 @@ public enum RuntimeUninstallTransitionPolicy {
                 message: "uninstall started"
             )
 
-        case (.started, .redisBackupRequested):
+        case (.started, .vitalServerBackupRequested):
             return RuntimeUninstallTransitionDecision(
-                state: .redisBackupRequested,
-                persistedState: .redisBackupRequested,
-                commands: [.createRedisBackup],
-                message: "redis backup requested"
+                state: .vitalServerBackupRequested,
+                persistedState: .vitalServerBackupRequested,
+                commands: [.createVitalServerBackup],
+                message: "VitalServer backup requested"
             )
 
-        case (.redisBackupRequested, .redisBackupSucceeded):
+        case (.vitalServerBackupRequested, .vitalServerBackupSucceeded):
             return RuntimeUninstallTransitionDecision(
-                state: .redisBackupCompleted,
-                persistedState: .redisBackupCompleted,
-                message: "redis backup completed"
+                state: .vitalServerBackupCompleted,
+                persistedState: .vitalServerBackupCompleted,
+                message: "VitalServer backup completed"
             )
 
-        case (.redisBackupRequested, .redisBackupFailed(reason: let reason)):
+        case (.vitalServerBackupRequested, .vitalServerBackupFailed(reason: let reason)):
             return RuntimeUninstallTransitionDecision(
                 state: .failed,
                 persistedState: .failed,
-                blockers: ["redis-backup-failed:reason=\(reason)"],
-                message: "redis backup failed"
+                blockers: ["vitalserver-backup-failed:reason=\(reason)"],
+                message: "VitalServer backup failed"
             )
 
         case (.started, .stopServicesRequested),
-             (.redisBackupCompleted, .stopServicesRequested):
+             (.vitalServerBackupCompleted, .stopServicesRequested):
             return RuntimeUninstallTransitionDecision(
                 state: .stopServicesRequested,
                 persistedState: .stopServicesRequested,

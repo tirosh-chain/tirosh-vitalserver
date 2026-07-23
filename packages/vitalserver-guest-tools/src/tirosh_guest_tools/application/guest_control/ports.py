@@ -7,6 +7,8 @@ from typing import Any, BinaryIO, Protocol
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceResource,
     OperationLease,
+    PostgresBackupResult,
+    PostgresRestoreResult,
     ProductLabReadModelResult,
     ProductLabRecorderResult,
     ProductLabSessionResult,
@@ -192,6 +194,12 @@ class RecorderIngressReadModelPort(Protocol):
     def native_vital_uploads(self) -> dict[str, Any]:
         raise NotImplementedError
 
+    def recorder_observability(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def recorder_observability_detail(self, vrcode: str) -> dict[str, Any]:
+        raise NotImplementedError
+
 
 class RecorderRecoveryReadModelPort(Protocol):
     def list_artifacts(self) -> dict[str, Any]:
@@ -232,6 +240,19 @@ class RedisBackupPort(Protocol):
         raise NotImplementedError
 
     def restore_backup(self, archive: str) -> RedisRestoreResult:
+        raise NotImplementedError
+
+
+class PostgresBackupPort(Protocol):
+    def create_backup(self) -> PostgresBackupResult:
+        raise NotImplementedError
+
+    def restore_backup(
+        self,
+        archive: str,
+        *,
+        restart_runtime: bool,
+    ) -> PostgresRestoreResult:
         raise NotImplementedError
 
 

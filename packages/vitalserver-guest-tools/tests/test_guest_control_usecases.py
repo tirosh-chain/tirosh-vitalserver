@@ -18,6 +18,10 @@ from tirosh_guest_tools.domain.guest_control.models import (
     OperationFailure,
     OperationLease,
     OperationState,
+    PostgresBackupDependencyError,
+    PostgresBackupResult,
+    PostgresRestoreDependencyError,
+    PostgresRestoreResult,
     ProductLabDependencyError,
     ProductLabReadModelResult,
     ProductLabRecorderResult,
@@ -668,6 +672,32 @@ class FakeRecorderIngress:
             "readError": None,
         }
 
+    def recorder_observability(self) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "recorders": [],
+            "readError": None,
+        }
+
+    def recorder_observability_detail(self, vrcode: str) -> dict[str, object]:
+        return {
+            "state": "notReported",
+            "vrcode": vrcode,
+            "supportState": "unknown",
+            "supportSource": None,
+            "reportState": "notEvaluated",
+            "profileState": None,
+            "collectionState": None,
+            "latestObservationReceivedAt": None,
+            "lastBootStartedAt": None,
+            "readIssueCount": None,
+            "expectedSince": None,
+            "recorderVersion": None,
+            "producerVersion": None,
+            "protocolVersion": None,
+            "readError": None,
+        }
+
 
 class FakeRecorderRecovery:
     def list_artifacts(self) -> dict[str, object]:
@@ -709,7 +739,7 @@ class FakeRedisBackup:
         self.fail = fail
         self.fail_restore = fail_restore
         self.created = 0
-        self.restored: list[str] = []
+        self.restored: list[tuple[str, bool]] = []
 
     def create_backup(self) -> RedisBackupResult:
         self.created += 1
@@ -730,6 +760,46 @@ class FakeRedisBackup:
                 kind="redis-restore-archive-missing",
             )
         return RedisRestoreResult(restored_archive=archive)
+
+
+class FakePostgresBackup:
+    def __init__(self, *, fail: bool = False, fail_restore: bool = False) -> None:
+        self.fail = fail
+        self.fail_restore = fail_restore
+        self.created = 0
+        self.restored: list[str] = []
+
+    def create_backup(self) -> PostgresBackupResult:
+        self.created += 1
+        if self.fail:
+            raise PostgresBackupDependencyError(
+                "pg_dump failed",
+                kind="postgres-backup-pg-dump-failed",
+            )
+        return PostgresBackupResult(
+            archive="/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz",
+            database_id="cluster:vitalserver",
+            alembic_revisions=("0002_recorder_observability_expectations",),
+        )
+
+    def restore_backup(
+        self,
+        archive: str,
+        *,
+        restart_runtime: bool,
+    ) -> PostgresRestoreResult:
+        self.restored.append((archive, restart_runtime))
+        if self.fail_restore:
+            raise PostgresRestoreDependencyError(
+                "archive is missing",
+                kind="postgres-restore-archive-missing",
+            )
+        return PostgresRestoreResult(
+            restored_archive=archive,
+            database_id="cluster:vitalserver",
+            alembic_revisions=("0002_recorder_observability_expectations",),
+            runtime_restarted=restart_runtime,
+        )
 
 
 class FakeDatastoreRepair:
@@ -799,6 +869,7 @@ class FakeUpdateShutdown:
                     version=version,
                     shutdown_phase="poweroff-ready",
                     redis_backup_path="/mnt/tirosh-runtime/backups/redis/update.tar.gz",
+                    postgres_backup_path="/mnt/tirosh/backups/postgres/update.tar.gz",
                 )
             )
 
@@ -861,6 +932,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         recorder_recovery=FakeRecorderRecovery(),
         redis_relay=FakeRedisRelay(),
         redis_backup=FakeRedisBackup(),
+        postgres_backup=FakePostgresBackup(),
         datastore_repair=FakeDatastoreRepair(),
         update_activation=FakeUpdateActivation(),
         update_shutdown=FakeUpdateShutdown(),
@@ -904,6 +976,8 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "lab:vital-files:upload",
         "maintenance:redis-backup:create",
         "maintenance:redis-restore:create",
+        "maintenance:postgres-backup:create",
+        "maintenance:postgres-restore:create",
         "maintenance:datastore-repair:create",
         "maintenance:update-activation:create",
         "maintenance:update-shutdown:create",
@@ -942,9 +1016,7 @@ def test_recorder_vital_files_resolve_native_upload_from_bed_assignment() -> Non
     assert document["readError"] is None
     assert len(document["files"]) == 1
     assert document["files"][0]["origin"] == "nativeRecorderUpload"
-    assert document["files"][0]["attribution"]["state"] == (
-        "bedAssignmentResolved"
-    )
+    assert document["files"][0]["attribution"]["state"] == ("bedAssignmentResolved")
 
 
 def _native_upload_receipt() -> dict[str, object]:
@@ -1766,6 +1838,99 @@ def test_create_redis_backup_failure_is_persisted_as_failed_operation() -> None:
     ]
 
 
+def test_create_postgres_backup_persists_database_proof() -> None:
+    operations = FakeOperations()
+    postgres_backup = FakePostgresBackup()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        postgres_backup=postgres_backup,
+    )
+
+    operation = usecases.create_postgres_backup()
+
+    assert postgres_backup.created == 1
+    assert operation.state == OperationState.COMPLETED
+    assert operation.service == "postgres-backup"
+    assert operation.command == ServiceCommand.POSTGRES_BACKUP
+    assert operation.result == {
+        "archive": "/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz",
+        "databaseId": "cluster:vitalserver",
+        "alembicRevisions": ["0002_recorder_observability_expectations"],
+    }
+    assert operations.events[-1].result == operation.result
+
+
+def test_create_postgres_backup_failure_is_persisted_as_failed_operation() -> None:
+    operations = FakeOperations()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        postgres_backup=FakePostgresBackup(fail=True),
+    )
+
+    operation = usecases.create_postgres_backup()
+
+    assert operation.state == OperationState.FAILED
+    assert operation.failure is not None
+    assert operation.failure.kind == "postgres-backup-pg-dump-failed"
+    assert operation.result is None
+
+
+def test_restore_postgres_backup_persists_database_proof() -> None:
+    operations = FakeOperations()
+    postgres_backup = FakePostgresBackup()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        postgres_backup=postgres_backup,
+    )
+    archive = "/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz"
+
+    operation = usecases.restore_postgres_backup(
+        archive,
+        restart_runtime=False,
+    )
+
+    assert postgres_backup.restored == [(archive, False)]
+    assert operation.state == OperationState.COMPLETED
+    assert operation.service == "postgres-restore"
+    assert operation.command == ServiceCommand.POSTGRES_RESTORE
+    assert operation.result == {
+        "restoredArchive": archive,
+        "databaseId": "cluster:vitalserver",
+        "alembicRevisions": ["0002_recorder_observability_expectations"],
+        "runtimeRestarted": False,
+    }
+
+
+def test_restore_postgres_backup_failure_is_persisted_as_failed_operation() -> None:
+    operations = FakeOperations()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        postgres_backup=FakePostgresBackup(fail_restore=True),
+    )
+
+    operation = usecases.restore_postgres_backup(
+        "/mnt/tirosh/backups/postgres/missing.tar.gz",
+        restart_runtime=False,
+    )
+
+    assert operation.state == OperationState.FAILED
+    assert operation.failure is not None
+    assert operation.failure.kind == "postgres-restore-archive-missing"
+    assert operation.result is None
+
+
 def test_restore_redis_backup_persists_completed_operation_result() -> None:
     operations = FakeOperations()
     redis_backup = FakeRedisBackup()
@@ -1997,6 +2162,7 @@ def test_prepare_update_shutdown_ready_callback_persists_completed_result() -> N
         "version": "0.2.0",
         "shutdownPhase": "poweroff-ready",
         "redisBackupPath": "/mnt/tirosh-runtime/backups/redis/update.tar.gz",
+        "postgresBackupPath": "/mnt/tirosh/backups/postgres/update.tar.gz",
     }
     assert [saved.state for saved in operations.saved] == [
         OperationState.ACCEPTED,
@@ -2269,6 +2435,7 @@ def test_vitaldb_recorders_return_read_model_document() -> None:
         operation_ids=FakeOperationIds(),
         clock=FakeClock(),
         vitaldb_read_model=FakeVitalDBReadModel(),
+        recorder_ingress=FakeRecorderIngress(),
     )
 
     response = usecases.list_vitaldb_recorders()
@@ -2311,6 +2478,7 @@ def test_vitaldb_lab_recorder_delete_removes_owning_lab_session() -> None:
         clock=FakeClock(),
         product_lab=product_lab,
         vitaldb_read_model=FakeVitalDBReadModel(lab_owned=True),
+        recorder_ingress=FakeRecorderIngress(),
     )
 
     vrcode = "LAB-lab-session-1-1"

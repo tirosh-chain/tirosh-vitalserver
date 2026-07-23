@@ -78,6 +78,8 @@ public enum RuntimeGuestControlServiceCommand: String, CaseIterable, Codable, Eq
     case labCreateRecorders = "lab-create-recorders"
     case labDeleteRecorders = "lab-delete-recorders"
     case labResetRecorders = "lab-reset-recorders"
+    case postgresBackup = "postgres-backup"
+    case postgresRestore = "postgres-restore"
     case redisBackup = "redis-backup"
     case redisRestore = "redis-restore"
     case repairDatastore = "repair-datastore"
@@ -299,6 +301,10 @@ public struct RuntimeGuestControlOperationResult: Codable, Equatable, Sendable {
     public let version: String?
     public let shutdownPhase: String?
     public let redisBackupPath: String?
+    public let postgresBackupPath: String?
+    public let databaseId: String?
+    public let alembicRevisions: [String]?
+    public let runtimeRestarted: Bool?
 
     public init(
         archive: String? = nil,
@@ -306,7 +312,11 @@ public struct RuntimeGuestControlOperationResult: Codable, Equatable, Sendable {
         requestId: String? = nil,
         version: String? = nil,
         shutdownPhase: String? = nil,
-        redisBackupPath: String? = nil
+        redisBackupPath: String? = nil,
+        postgresBackupPath: String? = nil,
+        databaseId: String? = nil,
+        alembicRevisions: [String]? = nil,
+        runtimeRestarted: Bool? = nil
     ) {
         self.archive = archive
         self.restoredArchive = restoredArchive
@@ -314,6 +324,10 @@ public struct RuntimeGuestControlOperationResult: Codable, Equatable, Sendable {
         self.version = version
         self.shutdownPhase = shutdownPhase
         self.redisBackupPath = redisBackupPath
+        self.postgresBackupPath = postgresBackupPath
+        self.databaseId = databaseId
+        self.alembicRevisions = alembicRevisions
+        self.runtimeRestarted = runtimeRestarted
     }
 }
 

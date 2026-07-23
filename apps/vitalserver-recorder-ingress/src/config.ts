@@ -77,6 +77,11 @@ function loadConfig(env) {
         "RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_ALLOWANCE_SECONDS",
         30
       ),
+      firstReportGraceSeconds: numberEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_FIRST_REPORT_GRACE_SECONDS",
+        300
+      ),
     },
     upstream: {
       host: upstreamHost,

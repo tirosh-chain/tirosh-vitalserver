@@ -56,6 +56,84 @@ export type CurrentProjection = ProjectionCandidate & {
 
 export type CurrentProjectionDocument = Record<string, any>;
 
+export type RecorderObservabilitySupportState =
+  | "supported"
+  | "unsupported"
+  | "unknown";
+
+export type RecorderObservabilityReportState =
+  | "notEvaluated"
+  | "awaitingFirstReport"
+  | "current"
+  | "stale"
+  | "missing"
+  | "readFailed";
+
+export type RecorderObservabilityExpectation = {
+  supportState: "supported" | "unsupported";
+  source: "deployment_assignment" | "version_catalog" | "manual";
+  recorderVersion: string | null;
+  producerVersion: string | null;
+  protocolVersion: string | null;
+  catalogRevision: string | null;
+  expectedSince: string | null;
+};
+
+export type RecorderObservabilityEvaluation = {
+  supportState: RecorderObservabilitySupportState;
+  supportSource: "accepted_report" | RecorderObservabilityExpectation["source"] | null;
+  reportState: RecorderObservabilityReportState;
+};
+
+export function evaluateRecorderObservability(input: {
+  currentReportState: "current" | "stale" | "missing" | "readFailed" | null;
+  expectation: RecorderObservabilityExpectation | null;
+  now: string;
+  firstReportGraceSeconds: number;
+}): RecorderObservabilityEvaluation {
+  if (input.currentReportState !== null) {
+    return {
+      supportState: "supported",
+      supportSource: "accepted_report",
+      reportState: input.currentReportState,
+    };
+  }
+  if (!input.expectation) {
+    return {
+      supportState: "unknown",
+      supportSource: null,
+      reportState: "notEvaluated",
+    };
+  }
+  if (input.expectation.supportState === "unsupported") {
+    return {
+      supportState: "unsupported",
+      supportSource: input.expectation.source,
+      reportState: "notEvaluated",
+    };
+  }
+  const expectedSince = input.expectation.expectedSince
+    ? Date.parse(input.expectation.expectedSince)
+    : Number.NaN;
+  const evaluatedAt = Date.parse(input.now);
+  if (!Number.isFinite(expectedSince) || !Number.isFinite(evaluatedAt)) {
+    return {
+      supportState: "supported",
+      supportSource: input.expectation.source,
+      reportState: "readFailed",
+    };
+  }
+  return {
+    supportState: "supported",
+    supportSource: input.expectation.source,
+    reportState: evaluatedAt < (
+      expectedSince + input.firstReportGraceSeconds * 1000
+    )
+      ? "awaitingFirstReport"
+      : "missing",
+  };
+}
+
 export function mergeCurrentProjection(
   current: CurrentProjectionDocument,
   candidate: ProjectionCandidate,
@@ -88,8 +166,8 @@ export function summarizeCurrentProjection(
   reportState: "current" | "missing" | "readFailed";
   collectionState: string | null;
   severity: "unknown";
-  recentRestartAt: string | null;
-  activeSignalCount: number;
+  lastBootStartedAt: string | null;
+  readIssueCount: number;
 } {
   const health = document.observation;
   const profile = document.recorderProfile?.associated;
@@ -112,8 +190,8 @@ export function summarizeCurrentProjection(
     // Incident evidence is not an active alarm without an approved recency
     // and clearing policy.
     severity: "unknown",
-    recentRestartAt: document.bootEvent?.started?.deviceObservedAt || null,
-    activeSignalCount: Array.isArray(readIssues) ? readIssues.length : 0,
+    lastBootStartedAt: document.bootEvent?.started?.deviceObservedAt || null,
+    readIssueCount: Array.isArray(readIssues) ? readIssues.length : 0,
   };
 }
 

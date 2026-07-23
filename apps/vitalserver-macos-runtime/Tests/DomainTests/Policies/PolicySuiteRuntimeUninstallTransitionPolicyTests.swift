@@ -27,26 +27,26 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         XCTAssertEqual(standardStart.message, "uninstall started")
     }
 
-    func testRedisBackupRequestAndCompletionAreExplicitTransitions() throws {
+    func testVitalServerBackupRequestAndCompletionAreExplicitTransitions() throws {
         let requested = try RuntimeUninstallTransitionPolicy.transition(
             from: .started,
-            event: .redisBackupRequested
+            event: .vitalServerBackupRequested
         )
 
-        XCTAssertEqual(requested.state, .redisBackupRequested)
-        XCTAssertEqual(requested.persistedState, .redisBackupRequested)
-        XCTAssertEqual(requested.commands, [.createRedisBackup])
-        XCTAssertEqual(requested.message, "redis backup requested")
+        XCTAssertEqual(requested.state, .vitalServerBackupRequested)
+        XCTAssertEqual(requested.persistedState, .vitalServerBackupRequested)
+        XCTAssertEqual(requested.commands, [.createVitalServerBackup])
+        XCTAssertEqual(requested.message, "VitalServer backup requested")
 
         let completed = try RuntimeUninstallTransitionPolicy.transition(
             from: requested.state,
-            event: .redisBackupSucceeded
+            event: .vitalServerBackupSucceeded
         )
 
-        XCTAssertEqual(completed.state, .redisBackupCompleted)
-        XCTAssertEqual(completed.persistedState, .redisBackupCompleted)
+        XCTAssertEqual(completed.state, .vitalServerBackupCompleted)
+        XCTAssertEqual(completed.persistedState, .vitalServerBackupCompleted)
         XCTAssertEqual(completed.commands, [])
-        XCTAssertEqual(completed.message, "redis backup completed")
+        XCTAssertEqual(completed.message, "VitalServer backup completed")
     }
 
     func testStopRequestMustFollowStartedOrCompletedBackupState() throws {
@@ -60,7 +60,7 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         XCTAssertEqual(cleanStopRequest.commands, [.stopRuntimeServices])
 
         let standardStopRequest = try RuntimeUninstallTransitionPolicy.transition(
-            from: .redisBackupCompleted,
+            from: .vitalServerBackupCompleted,
             event: .stopServicesRequested
         )
 

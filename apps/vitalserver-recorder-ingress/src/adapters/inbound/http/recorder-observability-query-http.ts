@@ -64,15 +64,7 @@ export async function readRecorderObservabilityQuery(
     const row = rows[0];
     writeJson(res, 200, {
       state: "loaded",
-      vrcode: route.vrcode,
-      reportState: row.report_state,
-      severity: row.severity,
-      profileState: row.profile_state,
-      collectionState: row.collection_state,
-      latestReceivedAt: iso(row.latest_received_at),
-      recentRestartAt: iso(row.recent_restart_at),
-      activeSignalCount: row.active_signal_count,
-      resources: row.document,
+      ...row,
     });
   } catch (error) {
     writeJson(res, 503, {
@@ -94,11 +86,6 @@ function writeJson(
     "content-length": Buffer.byteLength(body),
   });
   res.end(body);
-}
-
-function iso(value: unknown): string | null {
-  if (!value) return null;
-  return value instanceof Date ? value.toISOString() : String(value);
 }
 
 function errorMessage(error: unknown): string {

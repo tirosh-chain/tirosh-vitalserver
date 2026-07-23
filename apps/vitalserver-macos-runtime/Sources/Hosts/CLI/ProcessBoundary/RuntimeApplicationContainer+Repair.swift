@@ -16,7 +16,7 @@ public struct RuntimeRepairCompositionActions {
     public let backupTimestamp: () -> String
     public let requireFreeSpace: (URL, UInt64, String) throws -> Void
     public let createReplacementVMDisk: (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void
-    public let createRedisBackup: () -> RuntimeBestEffortOperationResult
+    public let createVitalServerBackup: () -> RuntimeBestEffortOperationResult
     public let stopRuntimeServicesForVMDiskReplacement: () -> RuntimeBestEffortOperationResult
     public let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public let log: (String) -> Void
@@ -33,7 +33,7 @@ public struct RuntimeRepairCompositionActions {
         backupTimestamp: @escaping () -> String,
         requireFreeSpace: @escaping (URL, UInt64, String) throws -> Void,
         createReplacementVMDisk: @escaping (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void,
-        createRedisBackup: @escaping () -> RuntimeBestEffortOperationResult,
+        createVitalServerBackup: @escaping () -> RuntimeBestEffortOperationResult,
         stopRuntimeServicesForVMDiskReplacement: @escaping () -> RuntimeBestEffortOperationResult,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         log: @escaping (String) -> Void
@@ -49,7 +49,7 @@ public struct RuntimeRepairCompositionActions {
         self.backupTimestamp = backupTimestamp
         self.requireFreeSpace = requireFreeSpace
         self.createReplacementVMDisk = createReplacementVMDisk
-        self.createRedisBackup = createRedisBackup
+        self.createVitalServerBackup = createVitalServerBackup
         self.stopRuntimeServicesForVMDiskReplacement = stopRuntimeServicesForVMDiskReplacement
         self.startRuntimeServices = startRuntimeServices
         self.log = log
@@ -86,7 +86,7 @@ public extension RuntimeApplicationContainer {
                 fileStore: fileStore,
                 requireFreeSpace: actions.requireFreeSpace,
                 createReplacementVMDisk: actions.createReplacementVMDisk,
-                createRedisBackup: actions.createRedisBackup,
+                createVitalServerBackup: actions.createVitalServerBackup,
                 stopRuntimeServicesForVMDiskReplacement: actions.stopRuntimeServicesForVMDiskReplacement,
                 startRuntimeServices: actions.startRuntimeServices,
                 waitForHealth: actions.waitForHealth,

@@ -4,6 +4,35 @@ import Errors
 public struct RuntimeGuestMaintenanceControlUseCase {
     public init() {}
 
+    public func createPostgresBackup(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        let operation = try gateway.createPostgresBackup()
+        return try validateOperation(
+            operation,
+            expectedService: "postgres-backup",
+            expectedCommand: .postgresBackup,
+            operationName: "guest PostgreSQL backup"
+        )
+    }
+
+    public func restorePostgresBackup(
+        archive: String,
+        restartRuntime: Bool,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        let operation = try gateway.restorePostgresBackup(
+            archive: archive,
+            restartRuntime: restartRuntime
+        )
+        return try validateOperation(
+            operation,
+            expectedService: "postgres-restore",
+            expectedCommand: .postgresRestore,
+            operationName: "guest PostgreSQL restore"
+        )
+    }
+
     public func createRedisBackup(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation {

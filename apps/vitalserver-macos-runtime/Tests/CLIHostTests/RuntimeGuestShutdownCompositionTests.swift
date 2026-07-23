@@ -92,7 +92,11 @@ private func updateShutdownOperation(
         createdAt: "2026-07-01T00:00:00+00:00",
         updatedAt: "2026-07-01T00:00:01+00:00",
         result: shutdownPhase.map {
-            RuntimeGuestControlOperationResult(shutdownPhase: $0)
+            RuntimeGuestControlOperationResult(
+                shutdownPhase: $0,
+                redisBackupPath: "/mnt/tirosh/backups/redis/update.tar.gz",
+                postgresBackupPath: "/mnt/tirosh/backups/postgres/update.tar.gz"
+            )
         }
     )
 }

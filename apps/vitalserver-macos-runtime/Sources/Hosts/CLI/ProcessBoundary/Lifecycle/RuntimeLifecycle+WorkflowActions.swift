@@ -45,9 +45,11 @@ extension RuntimeLifecycle {
                 )
             },
             createReplacementVMDisk: createReplacementVMDisk,
-            createRedisBackup: {
+            createVitalServerBackup: {
                 do {
-                    try createRedisBackup()
+                    _ = try runtimeDataBackupComposition().createBackup(
+                        reason: "vm-disk-repair"
+                    )
                     return .completed
                 } catch {
                     return .failed(reason: RuntimeErrorDescription.describe(error))

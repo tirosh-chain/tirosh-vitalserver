@@ -23,7 +23,7 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
                     RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
                 },
                 serviceState: { _ in .notLoaded },
-                createRedisBackup: {
+                createVitalServerBackup: {
                     events.append("backup")
                 },
                 disableAutomaticBackupScheduler: {
@@ -84,7 +84,7 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
                     RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
                 },
                 serviceState: { _ in .notLoaded },
-                createRedisBackup: {
+                createVitalServerBackup: {
                     events.append("backup")
                 },
                 disableAutomaticBackupScheduler: {

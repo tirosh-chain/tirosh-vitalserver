@@ -671,6 +671,20 @@ private struct UnavailableRuntimeGuestProductServiceController: RuntimeGuestProd
 }
 
 private struct UnavailableRuntimeGuestMaintenanceController: RuntimeGuestMaintenanceCommandControlling {
+    func createPostgresBackup(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    func restorePostgresBackup(
+        archive: String,
+        restartRuntime: Bool,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
     func createRedisBackup(
         gateway: RuntimeGuestControlGateway
     ) throws -> RuntimeGuestControlServiceOperation {

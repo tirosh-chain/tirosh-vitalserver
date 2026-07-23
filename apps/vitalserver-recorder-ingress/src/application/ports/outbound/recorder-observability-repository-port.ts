@@ -4,6 +4,31 @@ import type {
   RecorderObservabilityDocumentIdentity,
   RecorderObservabilityResourceType,
 } from "../../../domain/recorder-observability";
+import type {
+  RecorderObservabilityReportState,
+  RecorderObservabilitySupportState,
+} from "../../../domain/recorder-observability";
+
+export type RecorderObservabilitySummaryReadModel = {
+  vrcode: string;
+  supportState: RecorderObservabilitySupportState;
+  supportSource: string | null;
+  reportState: RecorderObservabilityReportState;
+  profileState: string | null;
+  collectionState: string | null;
+  latestObservationReceivedAt: string | null;
+  lastBootStartedAt: string | null;
+  readIssueCount: number;
+  expectedSince: string | null;
+  recorderVersion: string | null;
+  producerVersion: string | null;
+  protocolVersion: string | null;
+};
+
+export type RecorderObservabilityDetailReadModel =
+  RecorderObservabilitySummaryReadModel & {
+    resources: Record<string, unknown> | null;
+  };
 
 export type PreparedRecorderObservabilityLine = {
   lineNumber: number;
@@ -48,9 +73,9 @@ export interface RecorderObservabilityRepositoryPort {
     replaceCurrent: boolean,
   ): Promise<void>;
   failProjection(recordId: string, error: string): Promise<void>;
-  listCurrentRecorders(): Promise<Array<Record<string, unknown>>>;
+  listCurrentRecorders(): Promise<RecorderObservabilitySummaryReadModel[]>;
   readRecorderObservability(
     vrcode: string,
-  ): Promise<Array<Record<string, unknown>>>;
+  ): Promise<RecorderObservabilityDetailReadModel[]>;
   close(): Promise<void>;
 }

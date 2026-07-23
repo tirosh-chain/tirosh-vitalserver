@@ -240,33 +240,33 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         )
     }
 
-    func testVMDiskRedisBackupBestEffortPlansReportDegradedContinuationExplicitly() {
+    func testVMDiskVitalServerBackupBestEffortPlansReportDegradedContinuationExplicitly() {
         let useCase = RuntimeVMDiskRepairUseCase()
 
         XCTAssertEqual(
-            useCase.redisBackupStartedStatusPlan(),
+            useCase.vitalServerBackupStartedStatusPlan(),
             RepairRuntimeStatusPlan(
                 status: .recovering,
                 operation: .repairVMDisk,
-                message: "Creating Redis backup before VM disk repair"
+                message: "Creating VitalServer backup before VM disk repair"
             )
         )
         XCTAssertEqual(
-            useCase.redisBackupCompletedPlan(),
+            useCase.vitalServerBackupCompletedPlan(),
             RepairRuntimeLoggedStatusPlan(
-                logMessage: "redis backup before vm disk repair completed",
+                logMessage: "VitalServer backup before VM disk repair completed",
                 status: .recovering,
                 operation: .repairVMDisk,
-                statusMessage: "Redis backup completed before VM disk repair"
+                statusMessage: "VitalServer backup completed before VM disk repair"
             )
         )
         XCTAssertEqual(
-            useCase.redisBackupFailedPlan(reason: "permission denied"),
+            useCase.vitalServerBackupFailedPlan(reason: "permission denied"),
             RepairRuntimeLoggedStatusPlan(
-                logMessage: "redis backup before vm disk repair failed error=permission denied; continuing with VM disk archive",
+                logMessage: "VitalServer backup before VM disk repair failed error=permission denied; continuing with VM disk archive",
                 status: .recovering,
                 operation: .repairVMDisk,
-                statusMessage: "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
+                statusMessage: "VitalServer backup before VM disk repair failed; current VM disk will be archived before replacement"
             )
         )
     }

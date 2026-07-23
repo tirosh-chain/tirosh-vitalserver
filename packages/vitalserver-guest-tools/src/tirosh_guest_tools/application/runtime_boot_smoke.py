@@ -26,9 +26,9 @@ from tirosh_guest_tools.contracts import (
     ComposeService,
     RootfsSmokeStatus,
     RuntimeConfigKey,
+    RuntimeDiagnosticsArtifactFileName,
     RuntimeFileName,
     RuntimeService,
-    RuntimeDiagnosticsArtifactFileName,
 )
 from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
@@ -77,6 +77,8 @@ REQUIRED_GUEST_CONTROL_CAPABILITIES = (
     "operations:get",
     "maintenance:redis-backup:create",
     "maintenance:redis-restore:create",
+    "maintenance:postgres-backup:create",
+    "maintenance:postgres-restore:create",
     "maintenance:datastore-repair:create",
     "maintenance:update-activation:create",
     "maintenance:update-shutdown:create",
@@ -748,8 +750,7 @@ def validate_runtime_data(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]
     )
     if completed.returncode != 0 or not completed.stdout.strip():
         raise RuntimeError(
-            "runtime data disk is not mounted: "
-            f"mountPath={contract.mount_path}"
+            f"runtime data disk is not mounted: mountPath={contract.mount_path}"
         )
     try:
         mount_document = json.loads(completed.stdout)
@@ -781,13 +782,10 @@ def validate_runtime_data(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]
         timeout_seconds=SYSTEMD_TIMEOUT_SECONDS,
     )
     if docker_root_completed.returncode != 0:
-        reason = (
-            docker_root_completed.stderr.strip()
-            or str(docker_root_completed.returncode)
+        reason = docker_root_completed.stderr.strip() or str(
+            docker_root_completed.returncode
         )
-        raise RuntimeError(
-            f"failed to read Docker root dir: {reason}"
-        )
+        raise RuntimeError(f"failed to read Docker root dir: {reason}")
     try:
         docker_root = json.loads(docker_root_completed.stdout.strip())
     except json.JSONDecodeError as error:
@@ -881,9 +879,7 @@ def validate_capabilities(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]
 def require_guest_control_capabilities(capabilities: list[Any]) -> None:
     for capability in REQUIRED_GUEST_CONTROL_CAPABILITIES:
         if capability not in capabilities:
-            raise RuntimeError(
-                f"guest control API capability is missing: {capability}"
-            )
+            raise RuntimeError(f"guest control API capability is missing: {capability}")
 
 
 def validate_runtime_share(
@@ -994,8 +990,7 @@ def expected_compose_service_requirements(
 ) -> tuple[ComposeServiceRequirement, ...]:
     del dev_build
     expected = [
-        ComposeServiceRequirement(name=name)
-        for name in BASE_REQUIRED_COMPOSE_SERVICES
+        ComposeServiceRequirement(name=name) for name in BASE_REQUIRED_COMPOSE_SERVICES
     ]
     return tuple(expected)
 

@@ -255,6 +255,15 @@ export function RecordersPage() {
                   render: (recorder) => formatRelativeAge(recorder.lastSeenAt)
                 },
                 {
+                  key: "healthReport",
+                  header: "Health report",
+                  render: (recorder) => (
+                    <StatusBadge tone={observabilityTone(recorder.observability)}>
+                      {formatObservabilityReport(recorder.observability)}
+                    </StatusBadge>
+                  )
+                },
+                {
                   key: "anomaly",
                   header: "Anomaly",
                   render: (recorder) => formatAnomalySummary(recorder)
@@ -574,6 +583,53 @@ function RecorderDetails({
       </div>
 
       <div className="detail-section">
+        <h3>Health report</h3>
+        <KeyValueRows
+          rows={[
+            {
+              label: "Support",
+              value: formatObservabilitySupport(recorder.observability)
+            },
+            {
+              label: "Report",
+              value: formatObservabilityReport(recorder.observability)
+            },
+            {
+              label: "Last report",
+              value: formatLocalDateTime(
+                recorder.observability?.latestObservationReceivedAt
+              )
+            },
+            {
+              label: "Collection",
+              value: recorder.observability?.collectionState ?? NOT_REPORTED
+            },
+            {
+              label: "Profile",
+              value: recorder.observability?.profileState ?? NOT_REPORTED
+            },
+            {
+              label: "Read issues",
+              value: recorder.observability?.readIssueCount ?? NOT_REPORTED
+            },
+            {
+              label: "Last boot",
+              value: formatLocalDateTime(recorder.observability?.lastBootStartedAt)
+            }
+          ]}
+        />
+        {recorder.observability?.supportState === "unsupported" ? (
+          <p className="muted">
+            Health reporting is not available on this Recorder or Observer version.
+          </p>
+        ) : recorder.observability?.supportState === "unknown" ? (
+          <p className="muted">
+            No explicit deployment or version capability evidence is available.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="detail-section">
         <h3>Activity</h3>
         <RecorderActivityChart recorder={recorder} />
       </div>
@@ -644,6 +700,60 @@ function RecorderDetails({
       ) : null}
     </Panel>
   );
+}
+
+function formatObservabilitySupport(
+  observability: VitalDBRecorderRecord["observability"]
+): string {
+  switch (observability?.supportState) {
+    case "supported":
+      return "Supported";
+    case "unsupported":
+      return "Not available on this version";
+    case "unknown":
+    default:
+      return "Support unknown";
+  }
+}
+
+function formatObservabilityReport(
+  observability: VitalDBRecorderRecord["observability"]
+): string {
+  if (observability?.supportState === "unsupported") {
+    return "Not applicable";
+  }
+  switch (observability?.reportState) {
+    case "awaitingFirstReport":
+      return "Waiting for first report";
+    case "current":
+      return "Current";
+    case "stale":
+      return "Stale";
+    case "missing":
+      return "Missing";
+    case "readFailed":
+      return "Unavailable";
+    case "notEvaluated":
+    default:
+      return "Not evaluated";
+  }
+}
+
+function observabilityTone(
+  observability: VitalDBRecorderRecord["observability"]
+): "success" | "warning" | "danger" | "neutral" {
+  switch (observability?.reportState) {
+    case "current":
+      return "success";
+    case "awaitingFirstReport":
+    case "stale":
+      return "warning";
+    case "missing":
+    case "readFailed":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
 function RecorderVitalFiles({

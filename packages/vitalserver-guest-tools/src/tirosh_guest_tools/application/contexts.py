@@ -9,6 +9,7 @@ class PrepareUpdateShutdownContext:
     request_id: str
     version: str
     redis_backup_path: str = ""
+    postgres_backup_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -19,3 +20,18 @@ class RedisBackupOutcome:
 @dataclass(frozen=True)
 class RedisRestoreOutcome:
     restored_archive: Path
+
+
+@dataclass(frozen=True)
+class PostgresBackupOutcome:
+    archive: Path
+    database_id: str
+    alembic_revisions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PostgresRestoreOutcome:
+    restored_archive: Path
+    database_id: str
+    alembic_revisions: tuple[str, ...]
+    runtime_restarted: bool

@@ -6,17 +6,20 @@
 PostgreSQL에 보존하고, Recorder별 조회 모델로 투영해 Swift와 PWA에 제공하기
 위한 전체 구현 계획입니다.
 
-현재 recorder ingress에는 다음 세 POST endpoint와 일별 NDJSON ledger가
-있습니다.
+현재 recorder ingress에는 다음 다섯 POST endpoint와 PostgreSQL admission
+store가 있습니다.
 
 - `POST /api/v1/recorders/{vrcode}/observations`
 - `POST /api/v1/recorders/{vrcode}/diagnostic-events`
 - `POST /api/v1/recorders/{vrcode}/kernel-incidents`
+- `POST /api/v1/recorders/{vrcode}/profiles`
+- `POST /api/v1/recorders/{vrcode}/boot-events`
 
-이 구현은 HTTP framing, VRCODE path, `X-Device-ID`, 요청 크기 제한과
-accepted/quarantined 파일 기록의 기초를 제공합니다. 그러나 Recorder가 소유한
-전체 JSON Schema 검증, 모든 line disposition의 영속화, PostgreSQL event store,
-조회 projection, retention, read API와 profile 계약은 아직 완성되지 않았습니다.
+현재 구현은 HTTP framing, VRCODE path, `X-Device-ID`, 요청 크기 제한,
+authoritative contract 검증, 모든 line disposition의 PostgreSQL 영속화와
+Recorder별 current projection/read API를 제공합니다. Timeline/incident 전용
+projection, retention release proof와 승인된 support expectation provider는
+후속 범위입니다.
 
 UI는 이 문서의 storage와 read contract가 완성된 뒤 설계합니다. Swift와 PWA는
 Recorder 원본 JSON을 직접 해석하거나 missing state에서 장비 상태를 추정하지
@@ -75,15 +78,17 @@ signals = zero or more explicit signal documents
 `missing`과 `readFailed`에서 severity를 정상으로 만들지 않습니다.
 `restarted recently`는 health severity가 아니라 boot transition evidence입니다.
 
-### 2-3. Profile은 별도 resource와 별도 current table로 관리합니다
+### 2-3. Profile은 별도 resource로 받고 current aggregate에서 연관을 보존합니다
 
 Profile은 주기적인 health sample이 아닙니다. 장비에 설치된 software, 실제 수집
 주기, 지원 capability와 관측 설정처럼 부팅 또는 설정 변경 때만 달라지는
 정보입니다.
 
 Recorder는 profile을 부팅 후와 profile content가 변경됐을 때 POST합니다.
-Profile 원문 이력은 공통 event store에 저장하고, 현재 profile은 Recorder당 한
-행인 `recorder_profile_current` projection으로 관리합니다.
+Profile 원문 이력은 공통 event store에 저장합니다. Product read model은
+Recorder당 한 행인 `recorder_observability.current`에 latest Profile과 현재
+observation의 boot/device identity에 맞는 associated Profile을 함께 보존합니다.
+Profile이 없거나 연관되지 않은 상태는 `profile_state`로 명시합니다.
 
 ### 2-4. PostgreSQL이 admission과 product read model의 Guest owner store입니다
 
@@ -94,6 +99,32 @@ buffer에서 요청을 재시도합니다.
 
 기존 NDJSON ledger는 명시적 migration input과 diagnostics artifact일 뿐,
 PostgreSQL과 동시에 유지하는 두 번째 source of truth가 아닙니다.
+
+### 2-5. POST 미지원 Recorder를 missing report로 판정하지 않습니다
+
+Recorder/Observer 구버전은 observability POST 기능이 없을 수 있습니다. 보고가
+없다는 사실만으로 지원 여부를 추정하지 않습니다. Product read contract는
+지원 여부와 보고 상태를 독립 축으로 제공합니다.
+
+```text
+supportState = supported | unsupported | unknown
+reportState = notEvaluated | awaitingFirstReport
+            | current | stale | missing | readFailed
+```
+
+- accepted POST가 있으면 `supported`가 명시적으로 증명됩니다.
+- deployment assignment, 승인된 version catalog 또는 manual evidence는
+  `recorder_observability.expectations`가 소유합니다.
+- expectation과 accepted POST가 모두 없으면 `unknown/notEvaluated`입니다.
+- 명시적인 `unsupported` 장비는 `notEvaluated`이며 missing/stale 장애로
+  표시하지 않습니다.
+- 명시적인 `supported` expectation은 `expectedSince`부터 서버 설정의
+  first-report grace period 동안 `awaitingFirstReport`입니다.
+- grace period가 지난 뒤에만 `missing`으로 전이합니다.
+
+Vital Recorder 앱 버전과 Observer producer 버전이 독립적으로 배포된다면 앱
+버전만으로 support state를 만들지 않습니다. Version catalog는 두 artifact의
+호환 관계가 release evidence로 고정된 경우에만 사용합니다.
 
 ## 3. 책임과 데이터 흐름
 
@@ -176,7 +207,7 @@ panic, Oops, watchdog와 lockup에 대한 bounded summary입니다. pstore 원�
 HTTP payload로 전송하지 않고 Recorder `/data` 보존 위치, 크기, hash와 제한된
 excerpt를 전송합니다.
 
-### 4-2. 새 Recorder profile 계약
+### 4-2. Recorder profile 계약
 
 새 endpoint는 다음으로 정의합니다.
 
@@ -214,7 +245,7 @@ content conflict와 request-level failure 규칙을 사용합니다.
     "kernelRelease": {"state": "ok", "value": "6.1.0-rpi"}
   },
   "collection": {
-    "healthIntervalSeconds": 60,
+    "observationIntervalSeconds": 60,
     "powerIntervalSeconds": 1,
     "telemetryIntervalSeconds": 10
   },
@@ -237,8 +268,10 @@ content conflict와 request-level failure 규칙을 사용합니다.
 }
 ```
 
-위 JSON은 설계 예시이며 구현 전에 Recorder 저장소에서 authoritative
-`profile.schema.json`과 Go document model로 확정해야 합니다.
+위 JSON은 설명용 축약 예시입니다. 실제 admission의 source of truth는
+`apps/vitalserver-recorder-ingress/contracts/recorder-observability/schemas/profile-v1.schema.json`
+및 같은 manifest의 digest입니다. Recorder producer 변경은 이 artifact와 golden
+document를 함께 갱신해야 합니다.
 
 Profile에는 다음을 넣지 않습니다.
 
@@ -296,17 +329,21 @@ recorder ingress writer는 admission table만 씁니다. Projection worker는 ac
 event를 읽고 projection table을 씁니다. Guest Control API는 projection을
 read-only로 읽습니다.
 
-초기 구현은 아래 논리 모델을 세 물리 table로 합쳐 시작합니다.
+현재 구현은 아래 네 물리 table을 사용합니다.
 
 ```text
 recorder_observability.requests  = admission batch
 recorder_observability.records   = accepted, duplicate, quarantine line evidence
 recorder_observability.current   = Recorder current projection
+recorder_observability.expectations = explicit support/deployment evidence
 ```
 
 DDL의 source of truth는
 `apps/vitalserver-postgres-migrator/migrations/versions/`입니다. Recorder ingress는
 schema를 생성하거나 변경하지 않습니다.
+
+아래 admission/accepted/quarantine 절은 물리 table을 추가로 뜻하지 않습니다.
+`requests`와 `records` 안에서 보존되는 논리 상태를 설명합니다.
 
 ### 5-2. Admission batch
 
@@ -399,60 +436,59 @@ raw_sha256
 JSON parse failure도 저장할 수 있도록 원문은 JSONB가 아니라 bounded TEXT로
 보존합니다. Request size limit과 line size limit을 모두 적용합니다.
 
-### 5-6. Profile current projection
+### 5-6. Recorder current projection
 
-`recorder_profile_current`는 Recorder당 한 행입니다.
-
-```text
-vrcode primary key
-source_event_key unique
-source_event_id
-profile_digest
-device_id
-boot_id
-device_observed_at
-received_at
-projection_version
-projected_at
-document JSONB
-```
-
-Profile history를 별도 중복 table로 만들지 않습니다. 모든 과거 profile은
-`events`의 `resource_type=profile`로 조회할 수 있습니다.
-
-### 5-7. Health current projection
-
-`recorder_health_current`도 Recorder당 한 행의 versioned JSONB read model입니다.
+`recorder_observability.current`는 Recorder당 한 행의 versioned JSONB
+aggregate입니다.
 
 ```text
 vrcode primary key
-source_event_key unique
-source_event_id
 device_id
 boot_id
-sequence
+profile_record_id nullable
+health_record_id nullable
+boot_record_id nullable
 latest_received_at
 report_state
 severity
 active_signal_count
 recent_restart_at nullable
 profile_state
-profile_event_key nullable
-policy_version
 projection_version
-projected_at
 document JSONB
 ```
 
-`document`는 원본 observation의 복사본이 아니라 product read contract입니다.
-각 값의 `ok`, `missing`, `invalid`, `failed`, `unsupported` state를 보존합니다.
-Profile이 없으면 profile field를 기본값으로 채우지 않고 명시적인
-`profileState=missing`을 제공합니다.
+`document`는 accepted resource별 latest evidence와 Profile association을
+보존합니다. Product summary는 이 aggregate와 완전한 정책 입력을 사용해
+계산합니다. Profile이 없으면 기본 수집 주기를 추정하지 않고
+`profileState=missing`과 `reportState=missing`을 제공합니다.
 
-Recorder 목록에서 반복해서 사용하는 `report_state`, `severity`,
-`latest_received_at`, `active_signal_count`, `recent_restart_at`과
-`profile_state`는 typed column으로 둡니다. 세부 signal, reading
-state/value/detail과 source evidence는 JSONB document에 둡니다.
+`severity`와 `active_signal_count`는 기존 projection column이지만 승인된
+alarm/clearing 정책 전에는 UI health condition으로 사용하지 않습니다. 현재
+사용자 계약은 `supportState`, `reportState`, `collectionState`,
+`profileState`, `latestObservationReceivedAt`, `lastBootStartedAt`과
+`readIssueCount`를 제공합니다.
+
+### 5-7. Support expectation
+
+`recorder_observability.expectations`는 accepted report가 아직 없는 Recorder의
+지원 여부를 추정하지 않고 명시적으로 제공하는 owner table입니다.
+
+```text
+vrcode primary key
+support_state = supported | unsupported
+source = deployment_assignment | version_catalog | manual
+recorder_version nullable
+producer_version nullable
+protocol_version nullable
+catalog_revision nullable
+expected_since nullable
+evidence_document JSONB
+updated_at
+```
+
+행이 없으면 `unknown`입니다. `supported`는 `expected_since`를 요구하며,
+`unsupported`는 report freshness 평가 대상이 아닙니다.
 
 ### 5-8. Timeline과 incident projection
 
@@ -605,12 +641,19 @@ UI 구현 전에 다음 Guest Control read contract를 정의합니다.
 추가합니다.
 
 ```text
+observability.supportState
+observability.supportSource
 observability.reportState
-observability.latestReceivedAt
-observability.severity
-observability.activeSignalCount
+observability.expectedSince
+observability.latestObservationReceivedAt
+observability.collectionState
 observability.profileState
+observability.lastBootStartedAt
+observability.readIssueCount
 ```
+
+`notReported`는 support state가 아닙니다. 조회가 성공했지만 expectation과
+accepted report가 모두 없는 Recorder는 `unknown/notEvaluated`로 표시합니다.
 
 Guest/PostgreSQL read failure를 empty 또는 `No health report`로 바꾸지 않습니다.
 
@@ -693,6 +736,25 @@ File write 실패 시 PostgreSQL로, PostgreSQL 실패 시 file로 전환하는 
 fallback은 두 owner를 만들기 때문에 사용하지 않습니다.
 
 ## 12. 단계별 구현
+
+### 현재 구현 checkpoint
+
+완료:
+
+- authoritative v1 contract admission과 PostgreSQL durable disposition
+- Profile/Observation/Boot current aggregate와 freshness policy
+- support expectation schema와 first-report grace policy
+- Ingress -> Guest Control -> Runtime Control summary contract
+- Swift/PWA Recorder 목록 및 Detail의 support/report 표시
+
+남음:
+
+- deployment assignment 또는 승인된 version catalog가 expectation을 기록하는
+  application workflow
+- Profile/resource 세부 정보를 위한 작은 typed Detail DTO
+- Timeline/incident bounded query와 projection
+- PostgreSQL migration을 적용한 실제 DB 통합 검증
+- capacity, retention, backup/restore와 release proof
 
 ### Phase 0. 계약과 ADR
 
@@ -855,3 +917,440 @@ VitalServer 저장소:
 - diagnostic message pattern만으로 reboot root cause를 확정하지 않습니다.
 - PostgreSQL failure를 file fallback success로 숨기지 않습니다.
 - 모든 JSONB path에 선제적으로 index를 만들지 않습니다.
+
+## 15. 후속 범위 실행 계획
+
+이 절은 current summary 이후 작업을 두 workstream과 하나의 release
+gate로 나눕니다. PostgreSQL backup이 Detail 코드 작성의 선행 조건은 아니지만,
+전체 database backup/restore proof 없이는 새 schema를 포함한 정식 패키지를
+배포하지 않습니다.
+
+```text
+Phase 0: explicit baseline
+  |
+  +-- Workstream A: Recorder product
+  |     expectation owner
+  |       -> typed Detail
+  |       -> Swift/PWA lazy Detail
+  |       -> bounded timeline/incidents
+  |
+  +-- Workstream B: Guest PostgreSQL platform
+        full backup/restore
+          -> capacity measurement
+          -> owner-specific retention decision
+
+Workstream A + Workstream B
+  -> install/update/reboot/restore release gate
+```
+
+### 15-0. Phase 0: explicit baseline
+
+구현을 시작하기 전에 다음 state를 read-only proof로 남깁니다.
+
+- 설치 DB의 `alembic_version`
+- `0002_recorder_observability_expectations` 적용 여부
+- schema/table별 PostgreSQL estimated row count와 total/index size
+- PostgreSQL volume과 현재 backup artifact 존재 여부
+- Redis, PostgreSQL, `.vital` file과 recovery artifact의 현재 backup 포함/제외
+- Guest observation writer, Product Lab과 Recorder Ingress의 write pause 방법
+- Recorder deployment owner가 제공할 assignment document와 version evidence
+
+이 proof 없이 migration file을 수정하거나 기존 설치가 clean이라고 가정하지
+않습니다.
+
+DB 내부 상태는 `vitalserver-postgres-inventory`의 read-only JSON proof로
+수집합니다. 이 명령은 row estimate를 정확한 count로 표현하지 않으며, DB query
+실패를 empty state로 바꾸지 않습니다. PostgreSQL volume/backup artifact,
+Redis와 `.vital` 파일은 DB 명령이 소유하지 않으므로 후속 Host/Guest inventory
+proof에서 별도로 수집합니다.
+
+Phase 0 결과로 다음 결정을 기록합니다.
+
+1. `0002` 미적용이면 unreleased migration을 정리할지
+2. `0002` 적용이면 additive migration을 만들지
+3. 정식 backup에 포함되는 store와 명시적으로 제외되는 store
+4. 첫 production rollout의 Recorder 수와 관측 주기
+
+### 15-1. Workstream A1: support expectation owner와 command workflow
+
+#### 결정
+
+- 배포 assignment를 primary provider로 사용합니다.
+- 승인된 version catalog는 Recorder 앱과 Observer producer의 결합 관계가
+  release artifact와 digest로 고정된 경우에만 사용합니다.
+- VitalDB 목록의 `version` 문자열 하나만으로 POST 지원 여부를 계산하지
+  않습니다.
+- accepted report는 계속 `supported`의 직접 증거입니다.
+- provider도 accepted report도 없으면 `unknown/notEvaluated`입니다.
+- manual 입력은 자동 판정 fallback이 아니라 actor와 reason을 요구하는 명시적
+  command입니다.
+
+#### 도메인 계약
+
+```text
+ExpectationCommand
+  commandId
+  vrcode
+  expectedRevision
+  action = set | clear
+  supportState = supported | unsupported       # action=set only
+  source = deployment_assignment | version_catalog | manual
+  recorderVersion nullable
+  producerVersion nullable
+  protocolVersion nullable
+  catalogRevision nullable
+  expectedSince nullable                        # supported requires value
+  evidenceDocument
+  decidedAt
+
+ExpectationDecision
+  accepted | idempotent | revisionConflict | rejected
+  currentRevision
+  eventId nullable
+  failure nullable
+```
+
+Domain/Core의 pure transition policy가 command, current revision과 invariant를
+받아 event와 current projection command를 반환합니다. HTTP adapter나 repository가
+revision 충돌, clear 또는 source precedence를 결정하지 않습니다.
+
+#### PostgreSQL
+
+current `0002` migration이 어떤 설치에도 적용되지 않았다는 proof가 있으면
+unreleased migration을 수정합니다. 적용 이력이 있으면 기존 revision을 바꾸지
+않고 새 migration을 추가합니다.
+
+```text
+recorder_observability.expectation_events
+  event_id UUID primary key
+  command_id UUID unique
+  vrcode
+  previous_revision
+  revision
+  action = set | clear
+  support_state nullable
+  source
+  version/evidence fields
+  decided_at
+  received_at
+  unique (vrcode, revision)
+
+recorder_observability.expectations
+  vrcode primary key
+  revision
+  lifecycle_state = active | cleared
+  source_event_id unique
+  support/version/evidence fields
+  updated_at
+```
+
+`clear` event도 삭제하지 않습니다. current row의 `cleared` 상태는 repository가
+domain expectation 부재로 전달하므로 제품 응답은 `unknown/notEvaluated`가
+됩니다. DB row 부재, cleared, DB read failure는 repository result에서 서로
+구분합니다.
+
+#### API와 경계
+
+1. recorder ingress application port에 expectation command를 추가합니다.
+2. PostgreSQL adapter가 event append와 current CAS update를 한 transaction으로
+   수행합니다.
+3. ingress internal command endpoint를 추가합니다.
+4. Guest Control adapter/usecase가 이 command를 명시적으로 전달합니다.
+5. Runtime Control에는 authenticated admin/deployment endpoint만 노출합니다.
+6. Recorder 사용자 화면에는 manual support editor를 넣지 않습니다. 필요하면
+   Advanced 운영 화면에서만 별도 설계합니다.
+
+Ingress control endpoint에는 별도 control credential을 사용합니다. credential이
+missing/unreadable이면 command capability가 unavailable이어야 하며 일반
+observability POST credential이나 빈 값으로 대체하지 않습니다.
+
+#### 완료 조건
+
+- 같은 `commandId` 재전송이 같은 receipt를 반환합니다.
+- stale `expectedRevision`은 `409 revisionConflict`입니다.
+- `supported`의 `expectedSince` 누락은 저장 전에 거절됩니다.
+- `clear` 이후 read contract는 `unknown/notEvaluated`입니다.
+- delayed old command가 새 assignment를 덮어쓰지 못합니다.
+- DB transaction 실패는 success receipt를 만들지 않습니다.
+- accepted POST가 존재하면 stale catalog보다 직접 evidence가 우선합니다.
+
+### 15-2. Workstream A2: typed Recorder observability Detail
+
+현재 ingress Detail의 raw `resources`는 내부 evidence이며 Swift/PWA contract로
+전파하지 않습니다. Application query mapper가 다음 typed DTO를 만듭니다.
+
+```text
+RecorderObservabilityDetail
+  state = loaded | notReported | unavailable
+  vrcode
+  support
+    state, source, expectedSince
+    recorderVersion, producerVersion, protocolVersion
+  report
+    state, receivedAt, deviceObservedAt
+    collectionState, readIssueCount
+  profile
+    state = associated | unassociated | missing | invalid | readFailed
+    receivedAt, deviceId, bootId
+    software
+    collection intervals
+    capabilities
+  boot
+    state
+    bootId, startedAt, cleanShutdownAt
+  readings
+    temperature
+    memory available/total
+    root/data storage used
+    Recorder service state
+    publisher state and buffer usage
+    network interface summaries
+  readIssues
+  readError
+```
+
+각 reading은 `state`, nullable `value`, nullable `detail`, source timestamp를
+가집니다. `missing`, `invalid`, `failed`, `unsupported`를 `0`, `false` 또는
+정상으로 바꾸지 않습니다. Memory/storage/buffer percentage는 모든 분자와
+분모가 `ok`일 때만 pure mapper가 계산합니다.
+
+구현 순서:
+
+1. ingress domain mapper와 golden contract test
+2. ingress typed Detail query endpoint
+3. Guest adapter의 strict decoder
+4. Runtime Guest gateway/provider와
+   `GET /runtime/vitaldb/recorders/{vrcode}/observability`
+5. Runtime OpenAPI 및 generated TypeScript
+6. PWA query key/hook와 선택된 Recorder 기준 lazy load
+7. Swift async detail provider와 선택된 Recorder 기준 lazy load
+
+Detail 실패는 Recorder 목록 전체를 실패시키지 않고 해당 section의
+`unavailable/readFailed`로 남깁니다. 목록 summary와 Detail의 support/report
+field가 다르면 contract mismatch로 표시하고 UI가 하나를 임의 선택하지 않습니다.
+
+#### 완료 조건
+
+- raw JSONB field가 Runtime public response에 노출되지 않습니다.
+- Profile association 실패와 Profile 부재가 구분됩니다.
+- PWA/Swift가 같은 fixture에서 같은 label과 값 상태를 표시합니다.
+- Detail을 열기 전에는 Detail 요청이 발생하지 않습니다.
+- Recorder 선택 변경 시 이전 Recorder 응답을 새 Recorder에 표시하지 않습니다.
+
+PWA/Swift lazy Detail은 별도 commit으로 분리하되 A2 public contract가 확정된
+직후 수행합니다.
+
+### 15-3. Workstream A3: bounded timeline과 incident query
+
+초기에는 새 시계열 table을 선제적으로 만들지 않습니다.
+`recorder_observability.records_history_idx`와 accepted JSONB evidence를 사용해
+query proof를 먼저 만듭니다.
+
+```text
+GET /runtime/vitaldb/recorders/{vrcode}/observability/timeline
+  from, until, bucketSeconds
+
+GET /runtime/vitaldb/recorders/{vrcode}/observability/incidents
+  from, until, type, cursor, limit
+```
+
+- `from`, `until`과 최대 window를 필수 검증합니다.
+- `bucketSeconds`는 server가 허용한 enum만 받습니다.
+- PostgreSQL `date_bin`과 explicit JSON reading state로 집계합니다.
+- temperature, memory availability, root/data used percent와 publisher buffer
+  사용량처럼 직접 설명 가능한 값만 1차 chart metric으로 제공합니다.
+- `Stable`, `Critical` 같은 condition은 승인된 threshold/clearing policy 전에는
+  만들지 않습니다.
+- device time이 trusted인 row와 server receipt time을 섞지 않고 time basis를
+  response metadata로 제공합니다.
+- incident cursor는 `(received_at, record_id)` opaque encoding을 사용합니다.
+
+Explain analyze 결과나 payload 크기가 목표를 넘을 때만 bucket/incident
+projection migration을 추가합니다. GIN index도 실제 JSON containment query가
+확정된 path에만 만듭니다.
+
+#### 완료 조건
+
+- 한 Recorder 24시간 기본 window가 bounded row/payload 제한 안에 들어옵니다.
+- 여러 boot의 uptime/counter를 이어 붙이지 않습니다.
+- unsupported/notReported Recorder는 빈 성공 chart가 아니라 명시적 상태를
+  반환합니다.
+- cursor 재요청에서 누락과 중복이 없습니다.
+
+### 15-4. Workstream B1: VitalServer PostgreSQL 전체 backup/restore
+
+이 단계는 Recorder observability 전용 기능이 아니라 Guest platform 공통
+maintenance 범위입니다. 현재 PostgreSQL에는 다음 owner schema가 함께 있습니다.
+
+```text
+vitaldb_read_model
+  observation_snapshots
+  recorder_activity_buckets
+  relationship_history_snapshots
+  entity_visibility
+
+product_lab
+  sessions
+  beds
+  recorders
+
+recorder_observability
+  requests
+  records
+  current
+  expectations / expectation_events
+
+public
+  alembic_version
+```
+
+Retention보다 전체 database backup을 먼저 구현합니다. 현재 Redis-only
+maintenance operation을 PostgreSQL 성공으로 간주하지 않습니다. Schema별
+부분 dump를 기본 backup으로 사용하지 않고 한 database snapshot으로 owner
+schema와 migration revision의 일관성을 유지합니다.
+
+```text
+PostgreSQLBackupManifest
+  schemaVersion
+  databaseId
+  serverVersion
+  alembicRevisions
+  createdAt
+  dumpFormat
+  dumpSha256
+  dumpSizeBytes
+  includedSchemas
+  includedRelations
+```
+
+- Guest maintenance adapter가 `pg_dump --format=custom`을 실행합니다.
+- dump와 manifest를 같은 managed backup directory에 저장합니다.
+- manifest/dump write, checksum 또는 `pg_dump` 실패는 operation failure입니다.
+- restore는 maintenance state에서만 수행합니다.
+- restore 동안 Guest observation writer, Product Lab과 Recorder Ingress writer를
+  정지하거나 명시적인 maintenance write barrier에 진입시킵니다.
+- `pg_restore` 전 manifest, checksum, database ID policy와 migration revision을
+  검증합니다.
+- restore 후 migrator, schema readiness와 representative read proof를
+  실행한 뒤에만 completed로 전이합니다.
+- update, repair와 uninstall 보존 workflow가 PostgreSQL backup receipt를
+  명시적으로 요구하도록 확장합니다.
+
+백업 실패 시 Redis backup이나 기존 volume이 있다는 이유로 PostgreSQL backup
+성공으로 진행하지 않습니다. Redis와 PostgreSQL은 서로 다른 owner store이므로
+각각의 receipt를 유지합니다.
+
+#### 구현 checkpoint
+
+현재 Guest Control의 PostgreSQL backup/restore operation, custom dump
+manifest/checksum 검증, restore write barrier, Host VitalServer backup의 required
+`postgres-database` artifact와 compatibility version 2까지 구현되었습니다.
+제품 restore는 PostgreSQL 복원에 `restartRuntime=false`를 명시하고 Redis
+복원이 끝날 때까지 writer를 재기동하지 않습니다.
+Update shutdown은 Redis와 PostgreSQL receipt가 모두 있어야
+`poweroff-ready`로 승인되며, standard uninstall과 VM disk repair의 보존
+작업도 Redis-only가 아니라 VitalServer backup을 생성합니다. VM disk repair의
+backup은 기존 disk archive가 별도로 남기 때문에 명시적인 best-effort
+degraded operation으로 유지합니다.
+
+남은 release work는 다음과 같습니다.
+
+- 실제 패키지 Compose/PostgreSQL을 사용한 backup -> 새 database restore ->
+  schema별 representative read equality proof
+- PostgreSQL maintenance archive retention과 diagnostics inventory
+
+Redis와 PostgreSQL snapshot은 각각 내부적으로 일관되지만 서로 다른 시점에
+순차 생성됩니다. 현재 구현은 cross-datastore distributed transaction을
+제공하거나 주장하지 않습니다.
+
+#### 완료 조건
+
+- VitalDB history/visibility, Product Lab session/bed/recorder와 Recorder
+  observability evidence/current/expectation이 모두 restore됩니다.
+- checksum mismatch와 incompatible revision이 restore 전에 중단됩니다.
+- restore 실패가 기존 DB를 부분 성공 상태로 표시하지 않습니다.
+- 새 VM에서 backup restore 후 각 schema의 representative read가 동일합니다.
+
+### 15-5. Workstream B2: capacity 측정과 owner별 retention/rebuild
+
+먼저 schema/table별 row 증가량, 평균/p95 document 크기, index 비율과 대표 query
+latency를 측정합니다. 측정 결과가 retention 필요성을 증명한 resource에만
+정책을 추가합니다.
+
+하나의 공통 TTL로 전체 PostgreSQL을 정리하지 않습니다. 각 schema owner가
+자신의 삭제 의미와 rebuild 조건을 정의합니다.
+
+- `vitaldb_read_model`: observation/relationship snapshot과 activity bucket 기간
+- `product_lab`: 일반 TTL 없음, 명시적인 session/bed/recorder 삭제만 적용
+- `recorder_observability`: accepted/duplicate/quarantine evidence와 current
+  source 보호
+
+실제 row 증가량, payload 크기와 제품 조회 기간을 측정한 뒤 owner별 설정 값을
+확정합니다.
+
+```text
+RetentionPolicy
+  owner
+  resource
+  retentionDays or retainForever
+  batchSize
+  dryRun
+
+RetentionRun
+  runId
+  policyReceipt
+  state
+  candidate/removed/blocked counts
+  oldest/newest boundary
+  failure
+```
+
+- 설정 missing/decode failure는 disabled가 아니라 unavailable입니다.
+- dry-run과 execute를 별도 command로 둡니다.
+- current source record, duplicate pointer 대상과 projection pending/failed row는
+  삭제 대상에서 제외합니다.
+- 삭제 순서와 foreign-key blocker를 domain plan으로 먼저 계산합니다.
+- expectation audit event는 별도 승인 없이 일반 observation retention과 함께
+  삭제하지 않습니다.
+- Product Lab current state는 observability evidence retention job이 접근하지
+  않습니다.
+- rebuild는 accepted evidence, projection version과 checkpoint를 명시적으로
+  입력받습니다.
+
+#### 완료 조건
+
+- dry-run count와 실제 삭제 count가 설명 가능합니다.
+- 같은 retention run 재실행이 안전합니다.
+- current projection을 재생성할 source가 사라지지 않습니다.
+- retention 도중 실패가 성공이나 zero removal로 기록되지 않습니다.
+
+### 15-6. Release gate: proof와 cutover
+
+필수 proof:
+
+1. 빈 PostgreSQL에서 전체 Alembic upgrade
+2. 기존 revision에서 upgrade 후 데이터 보존
+3. expectation set/idempotent/conflict/clear
+4. observation/profile/boot out-of-order projection
+5. actual PostgreSQL summary/Detail/timeline integration
+6. PWA/Swift generated contract parity
+7. 전체 PostgreSQL backup -> 새 DB restore -> schema별 read equality
+8. clean install, in-place update와 재부팅 후 read equality
+9. 1/10/100 Recorder sustained admission과 query latency
+10. DMG distribution review와 runtime smoke
+
+권장 commit 단위:
+
+1. Phase 0 installed-state/capacity baseline 문서와 proof tool
+2. PostgreSQL backup domain/workflow와 manifest
+3. PostgreSQL restore workflow, Guest/Host maintenance integration과 restore proof
+4. expectation event/current migration과 pure transition policy
+5. expectation command workflow, internal adapter와 Guest/Runtime forwarding
+6. typed Detail backend와 public Runtime contract
+7. PWA/Swift lazy Detail
+8. bounded timeline/incidents
+9. schema별 capacity report와 retention decision
+10. 필요성이 증명된 owner의 retention/rebuild
+11. install/update/reboot release proof와 troubleshooting
+
+각 commit은 해당 계층의 focused test와 contract 문서를 함께 포함합니다.

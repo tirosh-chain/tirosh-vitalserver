@@ -22,6 +22,8 @@ from tirosh_guest_tools.domain.guest_control.models import (
     OperationEvent,
     OperationLease,
     OperationState,
+    PostgresBackupResult,
+    PostgresRestoreResult,
     ProductLabReadModelResult,
     ProductLabRecorderResult,
     ProductLabSessionResult,
@@ -758,6 +760,16 @@ class FakeRecorderIngress:
             "readError": None,
         }
 
+    def recorder_observability(self) -> dict[str, object]:
+        return _recorder_observability_list()
+
+    def recorder_observability_detail(self, vrcode: str) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            **_recorder_observability_list()["recorders"][0],
+            "resources": {},
+        }
+
 
 class FakeRecorderRecovery:
     def list_artifacts(self) -> dict[str, object]:
@@ -766,6 +778,30 @@ class FakeRecorderRecovery:
             "artifacts": [],
             "readError": None,
         }
+
+
+def _recorder_observability_list() -> dict[str, object]:
+    return {
+        "state": "loaded",
+        "recorders": [
+            {
+                "vrcode": "VR-001",
+                "supportState": "supported",
+                "supportSource": "accepted_report",
+                "reportState": "current",
+                "profileState": "associated",
+                "collectionState": "ok",
+                "latestObservationReceivedAt": "2026-07-01T00:00:00+00:00",
+                "lastBootStartedAt": "2026-07-01T00:00:00+00:00",
+                "readIssueCount": 0,
+                "expectedSince": None,
+                "recorderVersion": None,
+                "producerVersion": None,
+                "protocolVersion": None,
+            }
+        ],
+        "readError": None,
+    }
 
 
 class FakeRedisRelay:
@@ -791,6 +827,28 @@ class FakeRedisBackup:
 
     def restore_backup(self, archive: str) -> RedisRestoreResult:
         return RedisRestoreResult(restored_archive=archive)
+
+
+class FakePostgresBackup:
+    def create_backup(self) -> PostgresBackupResult:
+        return PostgresBackupResult(
+            archive="/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz",
+            database_id="cluster:vitalserver",
+            alembic_revisions=("0002_recorder_observability_expectations",),
+        )
+
+    def restore_backup(
+        self,
+        archive: str,
+        *,
+        restart_runtime: bool,
+    ) -> PostgresRestoreResult:
+        return PostgresRestoreResult(
+            restored_archive=archive,
+            database_id="cluster:vitalserver",
+            alembic_revisions=("0002_recorder_observability_expectations",),
+            runtime_restarted=restart_runtime,
+        )
 
 
 class FakeDatastoreRepair:
@@ -876,6 +934,7 @@ class FakeUpdateShutdown:
                 version=version,
                 shutdown_phase="poweroff-ready",
                 redis_backup_path="/mnt/tirosh-runtime/backups/redis/update.tar.gz",
+                postgres_backup_path="/mnt/tirosh/backups/postgres/update.tar.gz",
             )
         )
 
@@ -958,6 +1017,7 @@ def usecases() -> GuestControlUseCases:
         runtime_admin=FakeRuntimeAdmin(),
         redis_relay_settings=FakeRedisRelaySettings(),
         redis_backup=FakeRedisBackup(),
+        postgres_backup=FakePostgresBackup(),
         datastore_repair=FakeDatastoreRepair(),
         update_activation=FakeUpdateActivation(),
         update_shutdown=FakeUpdateShutdown(),
@@ -1260,6 +1320,8 @@ def test_capabilities_route_advertises_vitaldb_read_model(
     assert "vitaldb:observations:latest" in document["capabilities"]
     assert "maintenance:redis-backup:create" in document["capabilities"]
     assert "maintenance:redis-restore:create" in document["capabilities"]
+    assert "maintenance:postgres-backup:create" in document["capabilities"]
+    assert "maintenance:postgres-restore:create" in document["capabilities"]
     assert "maintenance:datastore-repair:create" in document["capabilities"]
     assert "maintenance:update-activation:create" in document["capabilities"]
     assert "maintenance:update-shutdown:create" in document["capabilities"]
@@ -1593,6 +1655,77 @@ def test_redis_backup_route_returns_operation_with_archive_result(
     }
 
 
+def test_postgres_backup_route_returns_operation_with_database_proof(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="POST",
+        path="/runtime/maintenance/postgres-backup",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.ACCEPTED
+    assert document["operationId"] == "op_postgres-backup_postgres-backup_1"
+    assert document["service"] == "postgres-backup"
+    assert document["command"] == "postgres-backup"
+    assert document["state"] == "completed"
+    assert document["result"] == {
+        "archive": "/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz",
+        "databaseId": "cluster:vitalserver",
+        "alembicRevisions": ["0002_recorder_observability_expectations"],
+    }
+
+
+def test_postgres_restore_route_returns_operation_with_database_proof(
+    usecases: GuestControlUseCases,
+) -> None:
+    archive = "/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz"
+    status, document = route_request(
+        method="POST",
+        path="/runtime/maintenance/postgres-restore",
+        body=json.dumps(
+            {
+                "archive": archive,
+                "restartRuntime": False,
+            }
+        ).encode(),
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.ACCEPTED
+    assert document["operationId"] == "op_postgres-restore_postgres-restore_1"
+    assert document["service"] == "postgres-restore"
+    assert document["command"] == "postgres-restore"
+    assert document["state"] == "completed"
+    assert document["result"] == {
+        "restoredArchive": archive,
+        "databaseId": "cluster:vitalserver",
+        "alembicRevisions": ["0002_recorder_observability_expectations"],
+        "runtimeRestarted": False,
+    }
+
+
+def test_postgres_restore_route_requires_explicit_restart_runtime(
+    usecases: GuestControlUseCases,
+) -> None:
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="POST",
+            path="/runtime/maintenance/postgres-restore",
+            body=json.dumps(
+                {
+                    "archive": (
+                        "/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz"
+                    )
+                }
+            ).encode(),
+            usecases=usecases,
+        )
+
+    assert error.value.status == HTTPStatus.BAD_REQUEST
+    assert error.value.code == "requestFieldInvalid"
+
+
 def test_redis_restore_route_returns_operation_with_restored_archive_result(
     usecases: GuestControlUseCases,
 ) -> None:
@@ -1698,6 +1831,7 @@ def test_update_shutdown_route_returns_operation_with_ready_result(
         "version": "0.2.0",
         "shutdownPhase": "poweroff-ready",
         "redisBackupPath": "/mnt/tirosh-runtime/backups/redis/update.tar.gz",
+        "postgresBackupPath": "/mnt/tirosh/backups/postgres/update.tar.gz",
     }
 
 
@@ -2572,8 +2706,25 @@ def test_vitaldb_recorders_route_returns_product_read_model(
     assert document["state"] == "loaded"
     assert document["recorders"][0]["vrcode"] == "VR-001"
     assert document["recorders"][0]["visibility"] == "visible"
+    assert document["recorders"][0]["observability"]["supportState"] == "supported"
+    assert document["recorders"][0]["observability"]["reportState"] == "current"
     assert document["observedAt"] == "2026-07-01T00:00:00+00:00"
     assert document["readError"] is None
+
+
+def test_vitaldb_recorder_observability_route_preserves_support_axes(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="GET",
+        path="/runtime/vitaldb/recorders/VR-001/observability",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document["state"] == "loaded"
+    assert document["supportState"] == "supported"
+    assert document["reportState"] == "current"
 
 
 def test_vitaldb_recorders_visibility_routes_require_hidden_before_delete(
@@ -2640,9 +2791,7 @@ def test_vitaldb_recorder_vital_files_route_resolves_explicit_bed_assignment(
     assert document["state"] == "loaded"
     assert document["vrcode"] == "VR-001"
     assert document["files"][0]["origin"] == "nativeRecorderUpload"
-    assert document["files"][0]["attribution"]["state"] == (
-        "bedAssignmentResolved"
-    )
+    assert document["files"][0]["attribution"]["state"] == ("bedAssignmentResolved")
 
 
 def test_vitaldb_recorders_route_reports_unavailable_without_adapter() -> None:

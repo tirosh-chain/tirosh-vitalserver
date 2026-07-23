@@ -23,6 +23,7 @@ from tirosh_guest_tools.adapters.inbound.vital_file_multipart import (
 from tirosh_guest_tools.adapters.outbound.compose import ComposeGuestControlAdapter
 from tirosh_guest_tools.adapters.outbound.maintenance import (
     DatastoreRepairMaintenanceAdapter,
+    PostgresDatabaseMaintenanceAdapter,
     RedisBackupMaintenanceAdapter,
     UpdateActivationMaintenanceAdapter,
     UpdateShutdownMaintenanceAdapter,
@@ -158,6 +159,7 @@ def build_default_usecases() -> GuestControlUseCases:
         ),
         vitaldb_read_model=vitaldb_read_model,
         redis_backup=RedisBackupMaintenanceAdapter(),
+        postgres_backup=PostgresDatabaseMaintenanceAdapter(),
         datastore_repair=DatastoreRepairMaintenanceAdapter(),
         update_activation=UpdateActivationMaintenanceAdapter(),
         update_shutdown=UpdateShutdownMaintenanceAdapter(),
@@ -608,6 +610,16 @@ def route_request(
     if method == "POST" and parts == ["runtime", "maintenance", "redis-backup"]:
         return HTTPStatus.ACCEPTED, usecases.create_redis_backup().as_json()
 
+    if method == "POST" and parts == ["runtime", "maintenance", "postgres-backup"]:
+        return HTTPStatus.ACCEPTED, usecases.create_postgres_backup().as_json()
+
+    if method == "POST" and parts == ["runtime", "maintenance", "postgres-restore"]:
+        request = _json_body(body)
+        return HTTPStatus.ACCEPTED, usecases.restore_postgres_backup(
+            _required_string(request, "archive"),
+            restart_runtime=_required_boolean(request, "restartRuntime"),
+        ).as_json()
+
     if method == "POST" and parts == ["runtime", "maintenance", "redis-restore"]:
         return HTTPStatus.ACCEPTED, usecases.restore_redis_backup(
             _required_string(_json_body(body), "archive")
@@ -672,6 +684,14 @@ def route_request(
 
     if method == "GET" and parts == ["runtime", "vitaldb", "recorders"]:
         return HTTPStatus.OK, usecases.list_vitaldb_recorders()
+
+    if (
+        method == "GET"
+        and len(parts) == 5
+        and parts[:3] == ["runtime", "vitaldb", "recorders"]
+        and parts[4] == "observability"
+    ):
+        return HTTPStatus.OK, usecases.get_recorder_observability(parts[3])
 
     if (
         method == "GET"
@@ -894,6 +914,17 @@ def _required_string(document: dict[str, Any], field: str) -> str:
             HTTPStatus.BAD_REQUEST,
             detail=f"JSON request field is required: {field}",
             code="requestFieldRequired",
+        )
+    return value
+
+
+def _required_boolean(document: dict[str, Any], field: str) -> bool:
+    value = document.get(field)
+    if not isinstance(value, bool):
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail=f"JSON request field must be a boolean: {field}",
+            code="requestFieldInvalid",
         )
     return value
 

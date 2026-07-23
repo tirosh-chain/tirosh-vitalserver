@@ -78,8 +78,8 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
 
         XCTAssertEqual(start.startedLogMessage, "uninstall started clean=true")
         XCTAssertEqual(start.configuredDirectoryReadFailureLogMessage, "configured vital files directory unavailable reason=permission denied")
-        XCTAssertFalse(useCase.shouldCreateRedisBackup(clean: true))
-        XCTAssertTrue(useCase.shouldCreateRedisBackup(clean: false))
+        XCTAssertFalse(useCase.shouldCreateVitalServerBackup(clean: true))
+        XCTAssertTrue(useCase.shouldCreateVitalServerBackup(clean: false))
         XCTAssertEqual(preserve.candidates.map(\.token), ["logs", "backups", "redis-backups", "vital-files"])
         XCTAssertEqual(
             preserve.configuredDirectoryReadFailureLogMessage,
@@ -172,7 +172,7 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         let useCase = UninstallRuntimeUseCase()
 
         XCTAssertEqual(useCase.stepLogMessage(step: .removePlists, status: .started), "step=remove-plists status=started")
-        XCTAssertEqual(useCase.stepLogMessage(step: .createRedisBackup, status: .completed), "step=create-redis-backup status=completed")
+        XCTAssertEqual(useCase.stepLogMessage(step: .createVitalServerBackup, status: .completed), "step=create-vitalserver-backup status=completed")
         XCTAssertEqual(
             useCase.preserveRootDirectory(
                 temporaryDirectory: URL(fileURLWithPath: "/tmp"),
@@ -181,8 +181,8 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
             URL(fileURLWithPath: "/tmp/tirosh-vitalserver-uninstall-id-1")
         )
         XCTAssertEqual(
-            useCase.redisBackupAbortLogMessage(reason: "backup failed"),
-            "standard uninstall aborted because Redis backup did not complete error=backup failed"
+            useCase.vitalServerBackupAbortLogMessage(reason: "backup failed"),
+            "standard uninstall aborted because VitalServer backup did not complete error=backup failed"
         )
         XCTAssertEqual(useCase.restoringPreservedUserDataAfterFailureLogMessage(), "restoring preserved user data after uninstall failure")
         XCTAssertEqual(

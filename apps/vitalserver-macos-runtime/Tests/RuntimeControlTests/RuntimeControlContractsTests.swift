@@ -2610,7 +2610,8 @@ final class RuntimeControlContractsTests: XCTestCase {
             presentInLatestObservation: false,
             visibility: .visible,
             activityTimeline: nil,
-            redisIPSync: nil
+            redisIPSync: nil,
+            observability: nil
         )
 
         let encoded = try JSONEncoder().encode(record)
@@ -2643,12 +2644,41 @@ final class RuntimeControlContractsTests: XCTestCase {
             "latestAnomalyObservedAt",
             "activityTimeline",
             "redisIPSync",
+            "observability",
         ] {
             XCTAssertTrue(json[field] is NSNull, field)
         }
         XCTAssertEqual(legacy.vrcode, "VR_LEGACY")
         XCTAssertNil(legacy.activityTimeline)
         XCTAssertNil(legacy.redisIPSync)
+        XCTAssertNil(legacy.observability)
+    }
+
+    func testVitalRecorderObservabilityKeepsSupportAndReportAxesDistinct() throws {
+        let data = Data("""
+        {
+          "state": "notReported",
+          "vrcode": "VR_LEGACY",
+          "supportState": "unknown",
+          "supportSource": null,
+          "reportState": "notEvaluated",
+          "profileState": null,
+          "collectionState": null,
+          "latestObservationReceivedAt": null,
+          "lastBootStartedAt": null,
+          "readIssueCount": 0,
+          "expectedSince": null,
+          "recorderVersion": null,
+          "producerVersion": null,
+          "protocolVersion": null,
+          "readError": null
+        }
+        """.utf8)
+
+        let value = try JSONDecoder().decode(RuntimeRecorderObservability.self, from: data)
+
+        XCTAssertEqual(value.supportState, .unknown)
+        XCTAssertEqual(value.reportState, .notEvaluated)
     }
 
     func testVitalBedRecordEncodesNullableFieldsAsExplicitNull() throws {

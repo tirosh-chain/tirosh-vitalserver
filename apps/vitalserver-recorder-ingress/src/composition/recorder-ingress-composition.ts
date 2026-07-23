@@ -59,6 +59,8 @@ function createRecorderIngressServer(config) {
         config.observability.freshnessToleranceMultiplier,
       freshnessAllowanceSeconds:
         config.observability.freshnessAllowanceSeconds,
+      firstReportGraceSeconds:
+        config.observability.firstReportGraceSeconds,
     })
     : undefined;
   const recorderObservability = recorderObservabilityRepository

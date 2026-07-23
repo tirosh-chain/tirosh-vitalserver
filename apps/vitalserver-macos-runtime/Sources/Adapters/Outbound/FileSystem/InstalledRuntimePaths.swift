@@ -129,6 +129,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         dataDirectory.appendingPathComponent("backups/redis")
     }
 
+    public var postgresBackupsDirectory: URL {
+        dataDirectory.appendingPathComponent("backups/postgres")
+    }
+
     public var bundlesDirectory: URL {
         productRoot.appendingPathComponent("bundles")
     }

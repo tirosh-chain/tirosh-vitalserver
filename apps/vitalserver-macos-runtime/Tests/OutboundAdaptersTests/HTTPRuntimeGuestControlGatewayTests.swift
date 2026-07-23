@@ -524,6 +524,86 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
+    func testPostgresBackupPostsMaintenanceEndpointAndDecodesDatabaseProof() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: """
+            {
+              "operationId": "postgres-backup-1",
+              "service": "postgres-backup",
+              "command": "postgres-backup",
+              "state": "completed",
+              "createdAt": "2026-07-01T00:00:00+00:00",
+              "updatedAt": "2026-07-01T00:00:01+00:00",
+              "result": {
+                "archive": "/mnt/tirosh/backups/postgres/postgres.tar.gz",
+                "databaseId": "cluster:vitalserver",
+                "alembicRevisions": ["0002_recorder_observability_expectations"]
+              }
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330/",
+            httpClient: client
+        )
+
+        let operation = try gateway.createPostgresBackup()
+
+        XCTAssertEqual(operation.command, .postgresBackup)
+        XCTAssertEqual(operation.result?.databaseId, "cluster:vitalserver")
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/runtime/maintenance/postgres-backup"]
+        )
+    }
+
+    func testPostgresRestorePostsArchiveToMaintenanceEndpoint() throws {
+        let archive = "/mnt/tirosh/backups/postgres/postgres.tar.gz"
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: """
+            {
+              "operationId": "postgres-restore-1",
+              "service": "postgres-restore",
+              "command": "postgres-restore",
+              "state": "completed",
+              "createdAt": "2026-07-01T00:00:00+00:00",
+              "updatedAt": "2026-07-01T00:00:01+00:00",
+              "result": {
+                "restoredArchive": "\(archive)",
+                "databaseId": "cluster:vitalserver",
+                "alembicRevisions": ["0002_recorder_observability_expectations"],
+                "runtimeRestarted": false
+              }
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330/",
+            httpClient: client
+        )
+
+        let operation = try gateway.restorePostgresBackup(
+            archive: archive,
+            restartRuntime: false
+        )
+
+        XCTAssertEqual(operation.command, .postgresRestore)
+        XCTAssertEqual(operation.result?.restoredArchive, archive)
+        XCTAssertEqual(operation.result?.runtimeRestarted, false)
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/runtime/maintenance/postgres-restore"]
+        )
+        let requestBody = try XCTUnwrap(client.requests.first?.httpBody)
+        let requestDocument = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: requestBody) as? [String: Any]
+        )
+        XCTAssertEqual(requestDocument["archive"] as? String, archive)
+        XCTAssertEqual(requestDocument["restartRuntime"] as? Bool, false)
+    }
+
     func testRedisRestorePostsMaintenanceEndpointAndDecodesResult() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 202,

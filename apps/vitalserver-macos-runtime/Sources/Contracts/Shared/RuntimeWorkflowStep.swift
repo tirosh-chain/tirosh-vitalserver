@@ -14,7 +14,7 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
     case applyStartOnBootPolicy
     case waitInstallRuntimeHealth
     case cleanupInstallSettings
-    case uninstallCreateRedisBackup
+    case uninstallCreateVitalServerBackup
     case uninstallStopRuntimeServices
     case uninstallRemoveFiles
     case uninstallForgetPackageReceipts
@@ -68,8 +68,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             self = .waitInstallRuntimeHealth
         case "cleanup-install-settings":
             self = .cleanupInstallSettings
-        case "uninstall-create-redis-backup":
-            self = .uninstallCreateRedisBackup
+        case "uninstall-create-vitalserver-backup":
+            self = .uninstallCreateVitalServerBackup
         case "uninstall-stop-runtime-services":
             self = .uninstallStopRuntimeServices
         case "uninstall-remove-files":
@@ -145,8 +145,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             return "wait-install-runtime-health"
         case .cleanupInstallSettings:
             return "cleanup-install-settings"
-        case .uninstallCreateRedisBackup:
-            return "uninstall-create-redis-backup"
+        case .uninstallCreateVitalServerBackup:
+            return "uninstall-create-vitalserver-backup"
         case .uninstallStopRuntimeServices:
             return "uninstall-stop-runtime-services"
         case .uninstallRemoveFiles:
@@ -208,7 +208,7 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
              .waitInstallRuntimeHealth,
              .cleanupInstallSettings:
             return .install
-        case .uninstallCreateRedisBackup,
+        case .uninstallCreateVitalServerBackup,
              .uninstallStopRuntimeServices,
              .uninstallRemoveFiles,
              .uninstallForgetPackageReceipts:

@@ -5,6 +5,7 @@ import type {
   RecorderObservabilityRepositoryPort,
 } from "../../../application/ports/outbound/recorder-observability-repository-port";
 import {
+  evaluateRecorderObservability,
   mergeCurrentProjection,
   summarizeCurrentProjection,
 } from "../../../domain/recorder-observability";
@@ -41,6 +42,7 @@ export function createRecorderObservabilityRepository(config: {
   maxConnections: number;
   freshnessToleranceMultiplier?: number;
   freshnessAllowanceSeconds?: number;
+  firstReportGraceSeconds?: number;
 }): RecorderObservabilityRepositoryPort {
   const pool = new Pool({
     host: config.host,
@@ -53,6 +55,7 @@ export function createRecorderObservabilityRepository(config: {
   const freshnessToleranceMultiplier =
     config.freshnessToleranceMultiplier || 3;
   const freshnessAllowanceSeconds = config.freshnessAllowanceSeconds ?? 30;
+  const firstReportGraceSeconds = config.firstReportGraceSeconds ?? 300;
 
   return {
     async ping() {
@@ -70,7 +73,10 @@ export function createRecorderObservabilityRepository(config: {
              ('current', 'vrcode'),
              ('current', 'document'),
              ('current', 'report_state'),
-             ('current', 'latest_received_at')
+             ('current', 'latest_received_at'),
+             ('expectations', 'vrcode'),
+             ('expectations', 'support_state'),
+             ('expectations', 'source')
          )
          SELECT required.table_name, required.column_name
            FROM required
@@ -166,7 +172,8 @@ export function createRecorderObservabilityRepository(config: {
     },
     async listCurrentRecorders() {
       const result = await pool.query(
-        `SELECT vrcode,
+        `WITH current_summary AS (
+           SELECT vrcode,
                 CASE
                   WHEN health_record_id IS NULL THEN 'missing'
                   WHEN profile_record_id IS NULL
@@ -189,26 +196,44 @@ export function createRecorderObservabilityRepository(config: {
                     THEN 'stale'
                   ELSE 'current'
                 END AS report_state,
-                severity, profile_state, collection_state,
-                latest_received_at, recent_restart_at, active_signal_count
+                profile_state, collection_state,
+                document->'observation'->>'receivedAt'
+                  AS latest_observation_received_at,
+                recent_restart_at, active_signal_count,
+                document
            FROM recorder_observability.current
-          ORDER BY vrcode`,
+        )
+        SELECT COALESCE(current_summary.vrcode, expectation.vrcode) AS vrcode,
+               current_summary.report_state,
+               current_summary.profile_state,
+               current_summary.collection_state,
+               current_summary.latest_observation_received_at,
+               current_summary.recent_restart_at,
+               current_summary.active_signal_count,
+               current_summary.document,
+               expectation.support_state,
+               expectation.source,
+               expectation.recorder_version,
+               expectation.producer_version,
+               expectation.protocol_version,
+               expectation.catalog_revision,
+               expectation.expected_since,
+               CURRENT_TIMESTAMP AS evaluated_at
+          FROM current_summary
+          FULL OUTER JOIN recorder_observability.expectations AS expectation
+            ON expectation.vrcode = current_summary.vrcode
+         ORDER BY vrcode`,
         [freshnessToleranceMultiplier, freshnessAllowanceSeconds],
       );
-      return result.rows.map((row) => ({
-        vrcode: row.vrcode,
-        reportState: row.report_state,
-        severity: row.severity,
-        profileState: row.profile_state,
-        collectionState: row.collection_state,
-        latestReceivedAt: iso(row.latest_received_at),
-        recentRestartAt: iso(row.recent_restart_at),
-        activeSignalCount: row.active_signal_count,
-      }));
+      return result.rows.map((row) => summaryFromRow(
+        row,
+        firstReportGraceSeconds,
+      ));
     },
     async readRecorderObservability(vrcode) {
       const result = await pool.query(
-        `SELECT vrcode,
+        `WITH current_summary AS (
+           SELECT vrcode,
                 CASE
                   WHEN health_record_id IS NULL THEN 'missing'
                   WHEN profile_record_id IS NULL
@@ -231,18 +256,45 @@ export function createRecorderObservabilityRepository(config: {
                     THEN 'stale'
                   ELSE 'current'
                 END AS report_state,
-                severity, profile_state, collection_state,
-                latest_received_at, recent_restart_at, active_signal_count,
+                profile_state, collection_state,
+                document->'observation'->>'receivedAt'
+                  AS latest_observation_received_at,
+                recent_restart_at, active_signal_count,
                 document
            FROM recorder_observability.current
-          WHERE vrcode = $1`,
+          WHERE vrcode = $1
+        )
+        SELECT COALESCE(current_summary.vrcode, expectation.vrcode) AS vrcode,
+               current_summary.report_state,
+               current_summary.profile_state,
+               current_summary.collection_state,
+               current_summary.latest_observation_received_at,
+               current_summary.recent_restart_at,
+               current_summary.active_signal_count,
+               current_summary.document,
+               expectation.support_state,
+               expectation.source,
+               expectation.recorder_version,
+               expectation.producer_version,
+               expectation.protocol_version,
+               expectation.catalog_revision,
+               expectation.expected_since,
+               CURRENT_TIMESTAMP AS evaluated_at
+          FROM current_summary
+          FULL OUTER JOIN (
+            SELECT * FROM recorder_observability.expectations WHERE vrcode = $1
+          ) AS expectation
+            ON expectation.vrcode = current_summary.vrcode`,
         [
           vrcode,
           freshnessToleranceMultiplier,
           freshnessAllowanceSeconds,
         ],
       );
-      return result.rows;
+      return result.rows.map((row) => ({
+        ...summaryFromRow(row, firstReportGraceSeconds),
+        resources: row.document || null,
+      }));
     },
     async close() {
       await pool.end();
@@ -603,8 +655,8 @@ async function upsertCurrent(
         : "missing",
       summary.collectionState,
       latestReceivedAt,
-      summary.recentRestartAt,
-      summary.activeSignalCount,
+      summary.lastBootStartedAt,
+      summary.readIssueCount,
     ],
   );
 }
@@ -630,6 +682,42 @@ async function withTransaction<T>(
 function iso(value: unknown): string | null {
   if (!value) return null;
   return value instanceof Date ? value.toISOString() : String(value);
+}
+
+function summaryFromRow(
+  row: Record<string, any>,
+  firstReportGraceSeconds: number,
+) {
+  const expectation = row.support_state
+    ? {
+      supportState: row.support_state,
+      source: row.source,
+      recorderVersion: row.recorder_version || null,
+      producerVersion: row.producer_version || null,
+      protocolVersion: row.protocol_version || null,
+      catalogRevision: row.catalog_revision || null,
+      expectedSince: iso(row.expected_since),
+    }
+    : null;
+  const evaluation = evaluateRecorderObservability({
+    currentReportState: row.report_state || null,
+    expectation,
+    now: iso(row.evaluated_at) || "",
+    firstReportGraceSeconds,
+  });
+  return {
+    vrcode: String(row.vrcode),
+    ...evaluation,
+    profileState: row.profile_state || null,
+    collectionState: row.collection_state || null,
+    latestObservationReceivedAt: iso(row.latest_observation_received_at),
+    lastBootStartedAt: iso(row.recent_restart_at),
+    readIssueCount: Number(row.active_signal_count || 0),
+    expectedSince: expectation?.expectedSince || null,
+    recorderVersion: expectation?.recorderVersion || null,
+    producerVersion: expectation?.producerVersion || null,
+    protocolVersion: expectation?.protocolVersion || null,
+  };
 }
 
 module.exports = { createRecorderObservabilityRepository };

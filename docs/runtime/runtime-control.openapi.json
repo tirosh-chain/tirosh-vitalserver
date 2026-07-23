@@ -4167,6 +4167,7 @@
           "latestAnomalyObservedAt",
           "activityTimeline",
           "redisIPSync",
+          "observability",
           "presentInLatestObservation"
         ],
         "properties": {
@@ -4302,6 +4303,100 @@
               }
             ],
             "description": "Recorder-specific Redis ip_<vrcode> synchronization state reported by the recorder ingress."
+          },
+          "observability": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeRecorderObservability"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit Recorder health-report support and report state. Null means the provider contract did not include observability."
+          }
+        }
+      },
+      "RuntimeRecorderObservability": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "vrcode",
+          "supportState",
+          "supportSource",
+          "reportState",
+          "profileState",
+          "collectionState",
+          "latestObservationReceivedAt",
+          "lastBootStartedAt",
+          "readIssueCount",
+          "expectedSince",
+          "recorderVersion",
+          "producerVersion",
+          "protocolVersion",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["loaded", "notReported", "unavailable"]
+          },
+          "vrcode": {
+            "type": "string"
+          },
+          "supportState": {
+            "type": "string",
+            "enum": ["supported", "unsupported", "unknown"]
+          },
+          "supportSource": {
+            "type": ["string", "null"]
+          },
+          "reportState": {
+            "type": "string",
+            "enum": [
+              "notEvaluated",
+              "awaitingFirstReport",
+              "current",
+              "stale",
+              "missing",
+              "readFailed"
+            ]
+          },
+          "profileState": {
+            "type": ["string", "null"]
+          },
+          "collectionState": {
+            "type": ["string", "null"]
+          },
+          "latestObservationReceivedAt": {
+            "type": ["string", "null"]
+          },
+          "lastBootStartedAt": {
+            "type": ["string", "null"]
+          },
+          "readIssueCount": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "expectedSince": {
+            "type": ["string", "null"],
+            "description": "Time from which a first health report is explicitly expected for a supported Recorder deployment."
+          },
+          "recorderVersion": {
+            "type": ["string", "null"],
+            "description": "Recorder application version captured by the explicit support expectation."
+          },
+          "producerVersion": {
+            "type": ["string", "null"],
+            "description": "Observability producer version captured by the explicit support expectation."
+          },
+          "protocolVersion": {
+            "type": ["string", "null"],
+            "description": "Observability protocol version captured by the explicit support expectation."
+          },
+          "readError": {
+            "type": ["string", "null"]
           }
         }
       },
@@ -5933,6 +6028,8 @@
               "lab-create-recorders",
               "lab-delete-recorders",
               "lab-reset-recorders",
+              "postgres-backup",
+              "postgres-restore",
               "redis-backup",
               "redis-restore",
               "repair-datastore",

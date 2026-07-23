@@ -83,7 +83,7 @@ struct RuntimeRecordersPanel: View {
                             recorderRow(recorder)
                         }
                     }
-                    .frame(minWidth: 1100, alignment: .leading)
+                    .frame(minWidth: 1280, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -101,6 +101,8 @@ struct RuntimeRecordersPanel: View {
                     selectedRecorderSummary(recorder)
                     Divider()
                     recorderMetadata(recorder)
+                    Divider()
+                    recorderObservability(recorder)
                     Divider()
                     recorderActivity(recorder)
                     Divider()
@@ -253,6 +255,7 @@ struct RuntimeRecordersPanel: View {
             tableHeader("VRecorder", minWidth: 170)
             tableHeader(AppConstants.Labels.bed, minWidth: 180)
             tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 140)
+            tableHeader("Health report", minWidth: 180)
             tableHeader(AppConstants.Labels.anomaly, minWidth: 190)
             tableHeader("IP", minWidth: 230)
         }
@@ -270,6 +273,7 @@ struct RuntimeRecordersPanel: View {
                     tableRecorderIdentity(recorder, minWidth: 170)
                     tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 180)
                     tableValue(viewModel.presentationFormatter.systemTimeAgeText(recorder.lastSeenAt), minWidth: 140)
+                    tableValue(recorderObservabilityReportText(recorder.observability), minWidth: 180)
                     tableValue(recorderAnomalyText(recorder), minWidth: 190)
                     tableIPValue(recorder, minWidth: 230)
                 }
@@ -736,6 +740,74 @@ struct RuntimeRecordersPanel: View {
         }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func recorderObservability(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        let observability = recorder.observability
+        return VStack(alignment: .leading, spacing: 10) {
+            detailSectionTitle("Health report")
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
+                detailRow("Support", recorderObservabilitySupportText(observability))
+                detailRow("Report", recorderObservabilityReportText(observability))
+                detailRow(
+                    "Last report",
+                    viewModel.presentationFormatter.systemTimeText(
+                        observability?.latestObservationReceivedAt
+                    )
+                )
+                detailRow("Collection", reportedText(observability?.collectionState, missing: "Not reported"))
+                detailRow("Profile", reportedText(observability?.profileState, missing: "Not reported"))
+                detailRow("Read issues", observability?.readIssueCount.map(String.init) ?? "Not reported")
+                detailRow(
+                    "Last boot",
+                    viewModel.presentationFormatter.systemTimeText(observability?.lastBootStartedAt)
+                )
+            }
+            if observability?.supportState == .unsupported {
+                Text("Health reporting is not available on this Recorder or Observer version.")
+                    .foregroundStyle(.secondary)
+            } else if observability?.supportState == .unknown || observability == nil {
+                Text("No explicit deployment or version capability evidence is available.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func recorderObservabilitySupportText(
+        _ observability: RuntimeRecorderObservability?
+    ) -> String {
+        switch observability?.supportState {
+        case .supported:
+            return "Supported"
+        case .unsupported:
+            return "Not available on this version"
+        case .unknown, nil:
+            return "Support unknown"
+        }
+    }
+
+    private func recorderObservabilityReportText(
+        _ observability: RuntimeRecorderObservability?
+    ) -> String {
+        if observability?.supportState == .unsupported {
+            return "Not applicable"
+        }
+        switch observability?.reportState {
+        case .awaitingFirstReport:
+            return "Waiting for first report"
+        case .current:
+            return "Current"
+        case .stale:
+            return "Stale"
+        case .missing:
+            return "Missing"
+        case .readFailed:
+            return "Unavailable"
+        case .notEvaluated, nil:
+            return "Not evaluated"
+        }
     }
 
     private func recorderRelationshipHistory(_ recorder: RuntimeVitalRecorderRecord) -> some View {

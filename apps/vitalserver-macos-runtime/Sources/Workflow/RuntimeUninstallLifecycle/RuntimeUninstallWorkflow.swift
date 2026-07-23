@@ -75,7 +75,7 @@ private struct RuntimeUninstallRemovalResult {
 }
 
 public struct RuntimeUninstallEffects {
-    public var createRedisBackup: () throws -> Void
+    public var createVitalServerBackup: () throws -> Void
     public var stopRuntimeServices: (Bool, Bool) throws -> Void
     public var clearLaunchdDisabledOverrides: () throws -> Void
     public var describeError: (Error) -> String
@@ -90,7 +90,7 @@ public struct RuntimeUninstallEffects {
     public var forgetPackageReceipt: (String) -> RuntimeProcessResult
 
     public init(
-        createRedisBackup: @escaping () throws -> Void,
+        createVitalServerBackup: @escaping () throws -> Void,
         stopRuntimeServices: @escaping (Bool, Bool) throws -> Void,
         clearLaunchdDisabledOverrides: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
@@ -104,7 +104,7 @@ public struct RuntimeUninstallEffects {
         openFilesInDirectory: @escaping (URL) -> RuntimeProcessResult,
         forgetPackageReceipt: @escaping (String) -> RuntimeProcessResult
     ) {
-        self.createRedisBackup = createRedisBackup
+        self.createVitalServerBackup = createVitalServerBackup
         self.stopRuntimeServices = stopRuntimeServices
         self.clearLaunchdDisabledOverrides = clearLaunchdDisabledOverrides
         self.describeError = describeError
@@ -245,24 +245,24 @@ public struct RuntimeUninstallWorkflow {
         effects: RuntimeUninstallEffects,
         diagnostics: RuntimeUninstallDiagnostics
     ) throws -> RuntimeUninstallWorkflowState {
-        guard uninstallUseCase().shouldCreateRedisBackup(clean: command.clean) else {
+        guard uninstallUseCase().shouldCreateVitalServerBackup(clean: command.clean) else {
             return state
         }
 
-        log(stepLogMessage(step: .createRedisBackup, status: .started), diagnostics: diagnostics)
+        log(stepLogMessage(step: .createVitalServerBackup, status: .started), diagnostics: diagnostics)
         let backupRequestDecision = try transitionAndPersist(
             from: state,
-            event: .redisBackupRequested,
+            event: .vitalServerBackupRequested,
             clean: command.clean,
-            expectedCommands: [.createRedisBackup],
+            expectedCommands: [.createVitalServerBackup],
             writer: writer
         )
         do {
-            try effects.createRedisBackup()
-            log(stepLogMessage(step: .createRedisBackup, status: .completed), diagnostics: diagnostics)
+            try effects.createVitalServerBackup()
+            log(stepLogMessage(step: .createVitalServerBackup, status: .completed), diagnostics: diagnostics)
             let backupCompletedDecision = try transitionAndPersist(
                 from: backupRequestDecision.state,
-                event: .redisBackupSucceeded,
+                event: .vitalServerBackupSucceeded,
                 clean: command.clean,
                 expectedCommands: [],
                 writer: writer
@@ -270,10 +270,10 @@ public struct RuntimeUninstallWorkflow {
             return backupCompletedDecision.state
         } catch {
             let reason = effects.describeError(error)
-            log(uninstallUseCase().redisBackupAbortLogMessage(reason: reason), diagnostics: diagnostics)
+            log(uninstallUseCase().vitalServerBackupAbortLogMessage(reason: reason), diagnostics: diagnostics)
             let decision = try transitionAndPersist(
                 from: backupRequestDecision.state,
-                event: .redisBackupFailed(reason: reason),
+                event: .vitalServerBackupFailed(reason: reason),
                 clean: command.clean,
                 expectedCommands: [],
                 writer: writer

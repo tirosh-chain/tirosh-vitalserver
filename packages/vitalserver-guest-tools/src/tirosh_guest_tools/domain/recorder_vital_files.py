@@ -2,11 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 
 class RecorderVitalFileProjectionError(ValueError):
     pass
+
+
+class RecorderVitalFileProjection(TypedDict):
+    state: str
+    vrcode: str
+    files: list[dict[str, object]]
+    readError: str | None
+    unattributedCount: NotRequired[int]
 
 
 def native_uploads_for_recorder(
@@ -14,7 +22,7 @@ def native_uploads_for_recorder(
     *,
     uploads: Sequence[Mapping[str, object]],
     relationships: Mapping[str, object],
-) -> dict[str, object]:
+) -> RecorderVitalFileProjection:
     if not isinstance(vrcode, str) or not vrcode:
         raise RecorderVitalFileProjectionError("Recorder vrcode is invalid.")
     relationship_state = _required_string(relationships, "state")
@@ -72,7 +80,7 @@ def recovery_artifacts_for_recorder(
     vrcode: str,
     *,
     artifacts: Sequence[Mapping[str, object]],
-) -> dict[str, object]:
+) -> RecorderVitalFileProjection:
     if not isinstance(vrcode, str) or not vrcode:
         raise RecorderVitalFileProjectionError("Recorder vrcode is invalid.")
     files: list[dict[str, object]] = []

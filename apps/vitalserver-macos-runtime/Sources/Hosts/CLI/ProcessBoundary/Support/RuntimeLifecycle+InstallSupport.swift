@@ -23,6 +23,7 @@ extension RuntimeLifecycle {
                     installedPaths.updateRollbackBackupsDirectory,
                     installedPaths.vmDiskRepairBackupsDirectory,
                     installedPaths.redisBackupsDirectory,
+                    installedPaths.postgresBackupsDirectory,
                     installedPaths.productLogsDirectory,
                     installedPaths.centralRuntimeLogsDirectory,
                     installedPaths.centralGuestLogsDirectory,

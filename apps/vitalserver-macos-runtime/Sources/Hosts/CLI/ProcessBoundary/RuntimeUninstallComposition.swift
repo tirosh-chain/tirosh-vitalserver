@@ -23,7 +23,7 @@ public struct RuntimeUninstallCompositionOperations {
     let fileStore: RuntimeFileStore
     let configuredExternalVitalFilesDirectory: () -> RuntimeConfiguredExternalVitalFilesDirectoryRead
     let serviceState: (RuntimeManagedService) -> RuntimeServiceState
-    let createRedisBackup: () throws -> Void
+    let createVitalServerBackup: () throws -> Void
     let disableAutomaticBackupScheduler: () throws -> Void
     let disableRuntimeServicesForUninstall: () throws -> Void
     let stopRuntimeServicesForUninstall: () throws -> Void
@@ -42,7 +42,7 @@ public struct RuntimeUninstallCompositionOperations {
         fileStore: RuntimeFileStore,
         configuredExternalVitalFilesDirectory: @escaping () -> RuntimeConfiguredExternalVitalFilesDirectoryRead,
         serviceState: @escaping (RuntimeManagedService) -> RuntimeServiceState,
-        createRedisBackup: @escaping () throws -> Void,
+        createVitalServerBackup: @escaping () throws -> Void,
         disableAutomaticBackupScheduler: @escaping () throws -> Void,
         disableRuntimeServicesForUninstall: @escaping () throws -> Void,
         stopRuntimeServicesForUninstall: @escaping () throws -> Void,
@@ -60,7 +60,7 @@ public struct RuntimeUninstallCompositionOperations {
         self.fileStore = fileStore
         self.configuredExternalVitalFilesDirectory = configuredExternalVitalFilesDirectory
         self.serviceState = serviceState
-        self.createRedisBackup = createRedisBackup
+        self.createVitalServerBackup = createVitalServerBackup
         self.disableAutomaticBackupScheduler = disableAutomaticBackupScheduler
         self.disableRuntimeServicesForUninstall = disableRuntimeServicesForUninstall
         self.stopRuntimeServicesForUninstall = stopRuntimeServicesForUninstall
@@ -185,7 +185,7 @@ public enum RuntimeUninstallComposition {
                 }
             ),
             effects: RuntimeUninstallEffects(
-                createRedisBackup: operations.createRedisBackup,
+                createVitalServerBackup: operations.createVitalServerBackup,
                 stopRuntimeServices: { clean, forceClean in
                     try operations.disableAutomaticBackupScheduler()
                     try operations.disableRuntimeServicesForUninstall()

@@ -139,6 +139,20 @@ public struct RuntimeGuestShutdownWorkflow {
                 "guest update shutdown completed without poweroff-ready operationId=\(operation.operationId)"
             )
         }
+        guard let redisBackupPath = operation.result?.redisBackupPath?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !redisBackupPath.isEmpty else {
+            throw RuntimeGuestUpdateUseCaseError.operationFailed(
+                "guest update shutdown completed without Redis backup receipt operationId=\(operation.operationId)"
+            )
+        }
+        guard let postgresBackupPath = operation.result?.postgresBackupPath?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !postgresBackupPath.isEmpty else {
+            throw RuntimeGuestUpdateUseCaseError.operationFailed(
+                "guest update shutdown completed without PostgreSQL backup receipt operationId=\(operation.operationId)"
+            )
+        }
     }
 
     private func operationFailureMessage(

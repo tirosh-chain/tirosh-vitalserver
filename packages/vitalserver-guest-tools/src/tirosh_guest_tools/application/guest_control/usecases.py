@@ -9,6 +9,7 @@ from tirosh_guest_tools.application.guest_control.ports import (
     GuestServiceResourceRepository,
     OperationIdFactory,
     OperationRepository,
+    PostgresBackupPort,
     ProductLabPort,
     RecorderIngressReadModelPort,
     RecorderRecoveryReadModelPort,
@@ -38,6 +39,8 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceStatusRead,
     OperationFailure,
     OperationLease,
+    PostgresBackupDependencyError,
+    PostgresRestoreDependencyError,
     ProductLabDependencyError,
     ProductLabReadModelResult,
     ProductLabRecorderResult,
@@ -65,21 +68,24 @@ from tirosh_guest_tools.domain.guest_control.operation_policy import (
     interrupt_operation,
     start_operation,
 )
+from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
+    GuestServiceReconcileEffect,
+    reconcile_guest_service,
+)
 from tirosh_guest_tools.domain.recorder_vital_files import (
     RecorderVitalFileProjectionError,
     native_uploads_for_recorder,
     recovery_artifacts_for_recorder,
-)
-from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
-    GuestServiceReconcileEffect,
-    reconcile_guest_service,
 )
 from tirosh_guest_tools.domain.vitaldb_deletion import (
     VitalDBDeletionPolicyError,
     plan_bed_deletion,
     plan_recorder_deletion,
 )
-from tirosh_guest_tools.domain.vitaldb_history import attach_recorder_ingress_status
+from tirosh_guest_tools.domain.vitaldb_history import (
+    attach_recorder_ingress_status,
+    attach_recorder_observability,
+)
 
 
 class GuestControlUseCases:
@@ -101,6 +107,7 @@ class GuestControlUseCases:
         runtime_admin: RuntimeAdminPort | None = None,
         redis_relay_settings: RedisRelaySettingsPort | None = None,
         redis_backup: RedisBackupPort | None = None,
+        postgres_backup: PostgresBackupPort | None = None,
         datastore_repair: DatastoreRepairPort | None = None,
         update_activation: UpdateActivationPort | None = None,
         update_shutdown: UpdateShutdownPort | None = None,
@@ -116,6 +123,7 @@ class GuestControlUseCases:
         self._runtime_admin = runtime_admin
         self._redis_relay_settings = redis_relay_settings
         self._redis_backup = redis_backup
+        self._postgres_backup = postgres_backup
         self._datastore_repair = datastore_repair
         self._update_activation = update_activation
         self._update_shutdown = update_shutdown
@@ -225,6 +233,14 @@ class GuestControlUseCases:
                 [
                     "maintenance:redis-backup:create",
                     "maintenance:redis-restore:create",
+                ]
+            )
+
+        if self._postgres_backup is not None:
+            capabilities.extend(
+                [
+                    "maintenance:postgres-backup:create",
+                    "maintenance:postgres-restore:create",
                 ]
             )
 
@@ -1307,9 +1323,7 @@ class GuestControlUseCases:
                     "readError": recovery_error,
                 },
             },
-            "readError": "; ".join(
-                value for value in errors if value is not None
-            )
+            "readError": "; ".join(value for value in errors if value is not None)
             or None,
         }
 
@@ -1448,6 +1462,46 @@ class GuestControlUseCases:
         except RecorderIngressDependencyError as error:
             return _recorder_ingress_failed_document(error)
 
+    def get_recorder_observability(self, vrcode: str) -> dict[str, object]:
+        if self._recorder_ingress is None:
+            return {
+                "state": "unavailable",
+                "vrcode": vrcode,
+                "supportState": "unknown",
+                "supportSource": None,
+                "reportState": "readFailed",
+                "profileState": None,
+                "collectionState": None,
+                "latestObservationReceivedAt": None,
+                "lastBootStartedAt": None,
+                "readIssueCount": None,
+                "expectedSince": None,
+                "recorderVersion": None,
+                "producerVersion": None,
+                "protocolVersion": None,
+                "readError": "Recorder ingress observability adapter is unavailable.",
+            }
+        try:
+            return self._recorder_ingress.recorder_observability_detail(vrcode)
+        except RecorderIngressDependencyError as error:
+            return {
+                "state": "unavailable",
+                "vrcode": vrcode,
+                "supportState": "unknown",
+                "supportSource": None,
+                "reportState": "readFailed",
+                "profileState": None,
+                "collectionState": None,
+                "latestObservationReceivedAt": None,
+                "lastBootStartedAt": None,
+                "readIssueCount": None,
+                "expectedSince": None,
+                "recorderVersion": None,
+                "producerVersion": None,
+                "protocolVersion": None,
+                "readError": error.message,
+            }
+
     def get_redis_relay_status(self) -> dict[str, object]:
         if self._redis_relay is None:
             return _redis_relay_unavailable_document(
@@ -1502,6 +1556,82 @@ class GuestControlUseCases:
             running,
             now=self._clock.now(),
             result=backup_result.as_json(),
+        )
+        self._save_operation_transition(completed)
+        return completed
+
+    def create_postgres_backup(self) -> ServiceOperation:
+        operation = accept_service_operation(
+            operation_id=self._operation_ids.new_operation_id(
+                service="postgres-backup",
+                command=ServiceCommand.POSTGRES_BACKUP.value,
+            ),
+            service="postgres-backup",
+            command=ServiceCommand.POSTGRES_BACKUP,
+            now=self._clock.now(),
+        )
+        self._create_operation(operation)
+
+        running = start_operation(operation, now=self._clock.now())
+        self._save_operation_transition(running)
+
+        try:
+            backup_result = self._require_postgres_backup().create_backup()
+        except PostgresBackupDependencyError as error:
+            failed = fail_operation(
+                running,
+                failure=OperationFailure(kind=error.kind, message=error.message),
+                now=self._clock.now(),
+            )
+            self._save_operation_transition(failed)
+            return failed
+
+        completed = finish_operation(
+            running,
+            now=self._clock.now(),
+            result=backup_result.as_json(),
+        )
+        self._save_operation_transition(completed)
+        return completed
+
+    def restore_postgres_backup(
+        self,
+        archive: str,
+        *,
+        restart_runtime: bool,
+    ) -> ServiceOperation:
+        operation = accept_service_operation(
+            operation_id=self._operation_ids.new_operation_id(
+                service="postgres-restore",
+                command=ServiceCommand.POSTGRES_RESTORE.value,
+            ),
+            service="postgres-restore",
+            command=ServiceCommand.POSTGRES_RESTORE,
+            now=self._clock.now(),
+        )
+        self._create_operation(operation)
+
+        running = start_operation(operation, now=self._clock.now())
+        self._save_operation_transition(running)
+
+        try:
+            restore_result = self._require_postgres_backup().restore_backup(
+                archive,
+                restart_runtime=restart_runtime,
+            )
+        except PostgresRestoreDependencyError as error:
+            failed = fail_operation(
+                running,
+                failure=OperationFailure(kind=error.kind, message=error.message),
+                now=self._clock.now(),
+            )
+            self._save_operation_transition(failed)
+            return failed
+
+        completed = finish_operation(
+            running,
+            now=self._clock.now(),
+            result=restore_result.as_json(),
         )
         self._save_operation_transition(completed)
         return completed
@@ -1716,6 +1846,14 @@ class GuestControlUseCases:
             )
         return self._redis_backup
 
+    def _require_postgres_backup(self) -> PostgresBackupPort:
+        if self._postgres_backup is None:
+            raise PostgresBackupDependencyError(
+                "PostgreSQL backup adapter is unavailable",
+                kind="postgres-backup-adapter-unavailable",
+            )
+        return self._postgres_backup
+
     def _require_datastore_repair(self) -> DatastoreRepairPort:
         if self._datastore_repair is None:
             raise DatastoreRepairDependencyError(
@@ -1864,10 +2002,26 @@ class GuestControlUseCases:
             return _vitaldb_read_model_failed_document(error, collection=collection)
 
     def _with_recorder_ingress(self, history: dict[str, object]) -> dict[str, object]:
-        return attach_recorder_ingress_status(
+        with_status = attach_recorder_ingress_status(
             history,
             self.get_recorder_ingress_status(),
         )
+        if self._recorder_ingress is None:
+            observability = {
+                "state": "failed",
+                "recorders": [],
+                "readError": "Recorder ingress observability adapter is unavailable.",
+            }
+        else:
+            try:
+                observability = self._recorder_ingress.recorder_observability()
+            except RecorderIngressDependencyError as error:
+                observability = {
+                    "state": "failed",
+                    "recorders": [],
+                    "readError": error.message,
+                }
+        return attach_recorder_observability(with_status, observability)
 
     def _create_operation(self, operation: ServiceOperation) -> None:
         self._operations.record_accepted(
@@ -2274,9 +2428,7 @@ def _vital_file_sort_key(
         timestamp = float(value)
     elif isinstance(value, str):
         try:
-            timestamp = datetime.fromisoformat(
-                value.replace("Z", "+00:00")
-            ).timestamp()
+            timestamp = datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
         except ValueError:
             timestamp = 0.0
     else:

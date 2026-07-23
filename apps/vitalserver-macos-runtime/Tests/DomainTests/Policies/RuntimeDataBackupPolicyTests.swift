@@ -125,11 +125,14 @@ final class RuntimeDataBackupPolicyTests: XCTestCase {
             let role = RuntimeDataBackupArtifactID.optionalForDiagnosticsContinuity.contains(id)
                 ? RuntimeDataBackupArtifactRole.optional
                 : .required
+            let guestOwned = id == .redisData || id == .postgresDatabase
             return RuntimeDataBackupArtifact(
                 id: id,
                 role: role,
-                owner: id == .redisData ? .guest : .host,
-                sourceKind: id == .redisData ? .dockerVolumeArchive : .file,
+                owner: guestOwned ? .guest : .host,
+                sourceKind: id == .redisData
+                    ? .dockerVolumeArchive
+                    : (id == .postgresDatabase ? .postgresBackupArchive : .file),
                 sourcePath: "/source/\(id.rawValue)",
                 backupPath: "artifacts/\(id.defaultBackupName)",
                 state: .archived,

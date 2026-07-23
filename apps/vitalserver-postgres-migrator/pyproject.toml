@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 vitalserver-postgres-migrate = "vitalserver_postgres_migrator.cli:main"
+vitalserver-postgres-inventory = "vitalserver_postgres_migrator.inventory_cli:main"
 
 [build-system]
 requires = ["hatchling"]

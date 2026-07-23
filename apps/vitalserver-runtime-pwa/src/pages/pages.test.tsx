@@ -441,10 +441,19 @@ describe("runtime console pages", () => {
       within(recorderTable)
         .getAllByRole("columnheader")
         .map((header) => header.textContent)
-    ).toEqual(["Status", "VRecorder", "Bed", "Last seen", "Anomaly", "IP"]);
+    ).toEqual([
+      "Status",
+      "VRecorder",
+      "Bed",
+      "Last seen",
+      "Health report",
+      "Anomaly",
+      "IP"
+    ]);
     expect(within(recorderTable).queryByText("Visibility")).not.toBeInTheDocument();
     expect(within(recorderTable).queryByRole("button", { name: "Hide" })).not.toBeInTheDocument();
     expect(within(recorderTable).getByText("30s ago")).toBeInTheDocument();
+    expect(within(recorderTable).getByText("Current")).toBeInTheDocument();
 
     fireEvent.click(within(recorderTable).getByText("VR_A").closest("tr")!);
     expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith("VR_A");
@@ -454,6 +463,8 @@ describe("runtime console pages", () => {
       .closest("section")!;
     expect(within(recorderDetails).queryByText("Visibility")).not.toBeInTheDocument();
     expect(within(recorderDetails).getByText("Network access")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Health report")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Supported")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("Active IP")).toBeInTheDocument();
     expect(within(recorderDetails).queryByText("Redis key")).not.toBeInTheDocument();
     expect(within(recorderDetails).queryByText("x-forwarded-for")).not.toBeInTheDocument();
@@ -2328,6 +2339,19 @@ function recorders() {
           lastWriteAt: "2026-05-31T01:00:01Z",
           lastVerifiedAt: "2026-05-31T01:00:02Z",
           lastFailure: null
+        },
+        observability: {
+          state: "loaded",
+          vrcode: "VR_A",
+          supportState: "supported",
+          supportSource: "accepted_report",
+          reportState: "current",
+          profileState: "associated",
+          collectionState: "ok",
+          latestObservationReceivedAt: "2026-05-31T00:59:30Z",
+          lastBootStartedAt: "2026-05-30T00:00:00Z",
+          readIssueCount: 0,
+          readError: null
         },
         activityTimeline: [
           {

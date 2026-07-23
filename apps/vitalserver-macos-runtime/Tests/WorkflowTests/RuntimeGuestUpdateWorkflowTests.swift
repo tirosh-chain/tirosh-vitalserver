@@ -108,6 +108,36 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
         })
     }
 
+    func testShutdownRejectsPoweroffReadyWithoutPostgresBackupReceipt() {
+        let completedWithoutPostgres = RuntimeGuestControlServiceOperation(
+            operationId: "update-shutdown-1",
+            service: "update-shutdown",
+            command: .updateShutdown,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            result: RuntimeGuestControlOperationResult(
+                shutdownPhase: "poweroff-ready",
+                redisBackupPath: "/mnt/tirosh/backups/redis/update.tar.gz"
+            )
+        )
+        let harness = ShutdownHarness(initialOperation: completedWithoutPostgres)
+
+        XCTAssertThrowsError(try harness.workflow.prepareForUpdate(
+            version: "1.2.3",
+            context: harness.context,
+            actions: harness.operations
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestUpdateUseCaseError,
+                .operationFailed(
+                    "guest update shutdown completed without PostgreSQL backup receipt operationId=update-shutdown-1"
+                )
+            )
+        }
+        XCTAssertFalse(harness.events.contains("poweroff"))
+    }
+
     func testShutdownPreservesGuestFailureAndTimeoutMeanings() {
         let guestFailure = ShutdownHarness(
             initialOperation: updateShutdownOperation(
@@ -244,7 +274,11 @@ private func updateShutdownOperation(
         updatedAt: "2026-07-01T00:00:01+00:00",
         failure: failure,
         result: shutdownPhase.map {
-            RuntimeGuestControlOperationResult(shutdownPhase: $0)
+            RuntimeGuestControlOperationResult(
+                shutdownPhase: $0,
+                redisBackupPath: "/mnt/tirosh/backups/redis/update.tar.gz",
+                postgresBackupPath: "/mnt/tirosh/backups/postgres/update.tar.gz"
+            )
         }
     )
 }

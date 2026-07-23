@@ -23,12 +23,14 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
     maxConnections: 4,
     freshnessToleranceMultiplier: 3,
     freshnessAllowanceSeconds: 30,
+    firstReportGraceSeconds: 300,
   };
   const repository = createRecorderObservabilityRepository(config);
   const inspect = new Pool(config);
   await repository.ping();
   await inspect.query(
-    `TRUNCATE recorder_observability.current,
+    `TRUNCATE recorder_observability.expectations,
+              recorder_observability.current,
               recorder_observability.records,
               recorder_observability.requests
        RESTART IDENTITY`,
@@ -103,6 +105,44 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
     severity: "unknown",
   }]);
 
+  await inspect.query(
+    `INSERT INTO recorder_observability.expectations (
+       vrcode, support_state, source, recorder_version, expected_since
+     ) VALUES
+       ('BRMH-OR2', 'supported', 'deployment_assignment', '1.19.0',
+        CURRENT_TIMESTAMP - INTERVAL '10 minutes'),
+       ('BRMH-OR3', 'unsupported', 'version_catalog', '1.18.43', NULL)`,
+  );
+  const summaries = await repository.listCurrentRecorders();
+  assert.deepStrictEqual(
+    summaries.map((summary) => ({
+      vrcode: summary.vrcode,
+      supportState: summary.supportState,
+      supportSource: summary.supportSource,
+      reportState: summary.reportState,
+    })),
+    [
+      {
+        vrcode: "BRMH-OR1",
+        supportState: "supported",
+        supportSource: "accepted_report",
+        reportState: "missing",
+      },
+      {
+        vrcode: "BRMH-OR2",
+        supportState: "supported",
+        supportSource: "deployment_assignment",
+        reportState: "missing",
+      },
+      {
+        vrcode: "BRMH-OR3",
+        supportState: "unsupported",
+        supportSource: "version_catalog",
+        reportState: "notEvaluated",
+      },
+    ],
+  );
+
   const tables = await inspect.query(
     `SELECT tablename
        FROM pg_catalog.pg_tables
@@ -111,6 +151,7 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
   );
   assert.deepStrictEqual(tables.rows.map((row) => row.tablename), [
     "current",
+    "expectations",
     "records",
     "requests",
   ]);

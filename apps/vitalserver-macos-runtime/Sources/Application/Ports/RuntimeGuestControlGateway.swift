@@ -18,6 +18,11 @@ public protocol RuntimeGuestControlGateway {
     func stopService(_ service: String) throws -> RuntimeGuestControlServiceOperation
     func restartService(_ service: String) throws -> RuntimeGuestControlServiceOperation
     func reconcileServices() throws -> RuntimeGuestControlServiceOperation
+    func createPostgresBackup() throws -> RuntimeGuestControlServiceOperation
+    func restorePostgresBackup(
+        archive: String,
+        restartRuntime: Bool
+    ) throws -> RuntimeGuestControlServiceOperation
     func createRedisBackup() throws -> RuntimeGuestControlServiceOperation
     func restoreRedisBackup(archive: String) throws -> RuntimeGuestControlServiceOperation
     func repairDatastore() throws -> RuntimeGuestControlServiceOperation
@@ -142,6 +147,17 @@ public extension RuntimeGuestControlGateway {
 
     func createRedisBackup() throws -> RuntimeGuestControlServiceOperation {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("redis-backup")
+    }
+
+    func createPostgresBackup() throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("postgres-backup")
+    }
+
+    func restorePostgresBackup(
+        archive _: String,
+        restartRuntime _: Bool
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("postgres-restore")
     }
 
     func restoreRedisBackup(archive: String) throws -> RuntimeGuestControlServiceOperation {

@@ -945,6 +945,39 @@ public struct RuntimeVitalRecorderActivityPoint: Codable, Equatable, Identifiabl
     }
 }
 
+public enum RuntimeRecorderObservabilitySupportState: String, Codable, Equatable, Sendable {
+    case supported
+    case unsupported
+    case unknown
+}
+
+public enum RuntimeRecorderObservabilityReportState: String, Codable, Equatable, Sendable {
+    case notEvaluated
+    case awaitingFirstReport
+    case current
+    case stale
+    case missing
+    case readFailed
+}
+
+public struct RuntimeRecorderObservability: Codable, Equatable, Sendable {
+    public let state: String
+    public let vrcode: String
+    public let supportState: RuntimeRecorderObservabilitySupportState
+    public let supportSource: String?
+    public let reportState: RuntimeRecorderObservabilityReportState
+    public let profileState: String?
+    public let collectionState: String?
+    public let latestObservationReceivedAt: String?
+    public let lastBootStartedAt: String?
+    public let readIssueCount: Int?
+    public let expectedSince: String?
+    public let recorderVersion: String?
+    public let producerVersion: String?
+    public let protocolVersion: String?
+    public let readError: String?
+}
+
 public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Sendable {
     public var id: String { vrcode }
     public let vrcode: String
@@ -967,6 +1000,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
     public let visibility: RuntimeVitalRecordVisibility
     public let activityTimeline: [RuntimeVitalRecorderActivityPoint]?
     public let redisIPSync: RuntimeRecorderRedisIPSyncObservation?
+    public let observability: RuntimeRecorderObservability?
 
     public init(
         vrcode: String,
@@ -987,7 +1021,8 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         latestAnomalyObservedAt: String? = nil,
         presentInLatestObservation: Bool = true,
         visibility: RuntimeVitalRecordVisibility = .visible,
-        redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
+        redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil,
+        observability: RuntimeRecorderObservability? = nil
     ) {
         self.init(
             vrcode: vrcode,
@@ -1009,7 +1044,8 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
             presentInLatestObservation: presentInLatestObservation,
             visibility: visibility,
             activityTimeline: nil,
-            redisIPSync: redisIPSync
+            redisIPSync: redisIPSync,
+            observability: observability
         )
     }
 
@@ -1033,7 +1069,8 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         presentInLatestObservation: Bool,
         visibility: RuntimeVitalRecordVisibility = .visible,
         activityTimeline: [RuntimeVitalRecorderActivityPoint]?,
-        redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
+        redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil,
+        observability: RuntimeRecorderObservability? = nil
     ) {
         self.vrcode = vrcode
         self.status = status
@@ -1055,6 +1092,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         self.visibility = visibility
         self.activityTimeline = activityTimeline
         self.redisIPSync = redisIPSync
+        self.observability = observability
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1078,6 +1116,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         case visibility
         case activityTimeline
         case redisIPSync
+        case observability
     }
 
     public init(from decoder: Decoder) throws {
@@ -1111,6 +1150,10 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
             redisIPSync: try container.decodeIfPresent(
                 RuntimeRecorderRedisIPSyncObservation.self,
                 forKey: .redisIPSync
+            ),
+            observability: try container.decodeIfPresent(
+                RuntimeRecorderObservability.self,
+                forKey: .observability
             )
         )
     }
@@ -1137,6 +1180,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         try container.encode(visibility, forKey: .visibility)
         try container.encodeExplicitOptional(activityTimeline, forKey: .activityTimeline)
         try container.encodeExplicitOptional(redisIPSync, forKey: .redisIPSync)
+        try container.encodeExplicitOptional(observability, forKey: .observability)
     }
 }
 
