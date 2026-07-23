@@ -2,10 +2,95 @@ openapi: 3.0.3
 info:
   title: VitalServer Recorder Ingress API
   version: 0.1.0
-  description: Operational endpoints exposed by the VitalServer recorder ingress sidecar.
+  description: >
+    Operational endpoints exposed by the VitalServer recorder ingress
+    sidecar, including durable Recorder observability admission.
 servers:
   - url: /
 paths:
+  /api/v1/recorders/{vrcode}/observations:
+    post:
+      operationId: admitRecorderObservations
+      summary: Durably admit Recorder observation documents
+      description: >
+        Accepts the existing Recorder `v1` / `device-health` NDJSON documents.
+        The path VRCODE is the manufacturer-assigned Recorder identity;
+        `X-Device-ID` and each document `deviceId` identify the Observer
+        deployment that produced the evidence. Permanent line-level validation
+        failures and event-ID content conflicts are durably quarantined so that
+        a mixed Fluent Bit chunk can still receive 202. A previously accepted
+        `(vrcode,eventId)` with the same content is an idempotent duplicate.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderObservationNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "404":
+          $ref: "#/components/responses/ObservabilityRouteNotFound"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /api/v1/recorders/{vrcode}/diagnostic-events:
+    post:
+      operationId: admitRecorderDiagnosticEvents
+      summary: Durably admit Recorder diagnostic events
+      description: >
+        Accepts the existing Recorder `v1` / `diagnostic-log` NDJSON
+        documents. Permanent line-level failures are quarantined rather than
+        rejecting a mixed Fluent Bit chunk.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderDiagnosticEventNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "404":
+          $ref: "#/components/responses/ObservabilityRouteNotFound"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /api/v1/recorders/{vrcode}/kernel-incidents:
+    post:
+      operationId: admitRecorderKernelIncidents
+      summary: Durably admit Recorder kernel incident summaries
+      description: >
+        Accepts the existing Recorder `v1` / `kernel-incident` NDJSON
+        documents. These documents contain pstore artifact paths, hashes, and
+        bounded excerpts retained on the Raspberry Pi; this API does not upload
+        the artifact file contents.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderKernelIncidentNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "404":
+          $ref: "#/components/responses/ObservabilityRouteNotFound"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
   /upload:
     post:
       operationId: uploadTrackedNativeVitalFile
@@ -116,7 +201,10 @@ paths:
     get:
       operationId: getRecorderIngressStatus
       summary: Read recorder ingress counters
-      description: Returns in-memory counters for proxy traffic, Socket.IO parsing, audit sink failures, send_data spool status, and planned replay status fields.
+      description: >
+        Returns in-memory counters for proxy traffic, Socket.IO parsing, audit
+        sink failures, send_data spool status, replay status, and Recorder
+        observability durable admission.
       responses:
         "200":
           description: Recorder ingress status counters.
@@ -179,6 +267,29 @@ paths:
           description: The finalization state dependency is unavailable.
 components:
   parameters:
+    RecorderVrcode:
+      name: vrcode
+      in: path
+      required: true
+      description: >
+        Manufacturer-assigned Recorder identity. Case is preserved and never
+        normalized.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+    ObserverDeviceID:
+      name: X-Device-ID
+      in: header
+      required: true
+      description: >
+        Observer deployment identity. Every document in the NDJSON request
+        must carry the same `deviceId`; a mismatch is durably quarantined.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
     VitalUploadID:
       name: X-Vital-Upload-Id
       in: header
@@ -214,7 +325,88 @@ components:
       schema:
         type: integer
         minimum: 1
+  requestBodies:
+    RecorderObservationNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: >
+              One complete Recorder v1 device-health JSON object per non-empty
+              line.
+    RecorderDiagnosticEventNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: >
+              One complete Recorder v1 diagnostic-log JSON object per
+              non-empty line.
+    RecorderKernelIncidentNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: >
+              One complete Recorder v1 kernel-incident summary JSON object per
+              non-empty line.
+  responses:
+    ObservabilityAdmitted:
+      description: >
+        Every line reached a durable terminal admission state: accepted,
+        duplicate, or quarantined.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecorderObservabilityAdmission"
+    ObservabilityRequestInvalid:
+      description: >
+        Request-level contract failure: invalid path identity, required header,
+        media type, or NDJSON framing. Document schema failures are not returned
+        as 400; they are quarantined and included in a 202 result.
+    ObservabilityRouteNotFound:
+      description: >
+        The Recorder observability path is unsafe, malformed, or names an
+        unsupported resource.
+    ObservabilityRequestTooLarge:
+      description: >
+        Request exceeds the configurable admission limit, 5 MiB by default to
+        accommodate Fluent Bit chunks.
+    ObservabilityMediaTypeUnsupported:
+      description: >
+        The request media type is not `application/x-ndjson`.
+    ObservabilityAdmissionUnavailable:
+      description: >
+        The durable ledger could not confirm the admission result. The client
+        may retry the whole chunk.
   schemas:
+    RecorderObservabilityAdmission:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+        - requestId
+        - accepted
+        - duplicates
+        - quarantined
+      properties:
+        state:
+          type: string
+          enum: [admitted]
+        requestId:
+          type: string
+        accepted:
+          type: integer
+          minimum: 0
+        duplicates:
+          type: integer
+          minimum: 0
+        quarantined:
+          type: integer
+          minimum: 0
     NativeVitalUploadList:
       type: object
       additionalProperties: false
@@ -432,6 +624,7 @@ components:
         - spool
         - replay
         - realtimeCoverage
+        - recorderObservability
       properties:
         startedAt:
           type: string
@@ -506,6 +699,48 @@ components:
             - $ref: "#/components/schemas/RecorderIngressReplayStatus"
         realtimeCoverage:
           $ref: "#/components/schemas/RecorderIngressRealtimeCoverageStatus"
+        recorderObservability:
+          $ref: "#/components/schemas/RecorderObservabilityStatus"
+    RecorderObservabilityStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - requests
+        - accepted
+        - duplicates
+        - quarantined
+        - admissionFailures
+        - lastAdmittedAt
+        - lastFailure
+      properties:
+        requests:
+          type: integer
+          minimum: 0
+        accepted:
+          type: integer
+          minimum: 0
+        duplicates:
+          type: integer
+          minimum: 0
+        quarantined:
+          type: integer
+          minimum: 0
+        admissionFailures:
+          type: integer
+          minimum: 0
+        lastAdmittedAt:
+          type: string
+          nullable: true
+        lastFailure:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required: [occurredAt, reason]
+          properties:
+            occurredAt:
+              type: string
+            reason:
+              type: string
     RecorderConnection:
       type: object
       additionalProperties: false
