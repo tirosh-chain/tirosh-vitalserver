@@ -82,6 +82,15 @@ struct RuntimePresentationSnapshotLoader {
         return controlClient.loadVitalDBRecorderActivityWindow(query: query)
     }
 
+    func loadVitalRecorderVitalFiles(
+        vrcode: String
+    ) async -> RuntimeVitalRecorderVitalFileHistory {
+        if let snapshotReader {
+            return await snapshotReader.loadVitalDBRecorderVitalFiles(vrcode: vrcode)
+        }
+        return controlClient.loadVitalDBRecorderVitalFiles(vrcode: vrcode)
+    }
+
     func loadVitalRelationships() async -> RuntimeVitalRelationshipHistory {
         if let snapshotReader {
             return await snapshotReader.loadVitalDBRelationships()

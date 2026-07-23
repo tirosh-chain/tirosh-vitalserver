@@ -19,6 +19,8 @@ struct RuntimeRecordersPanel: View {
     @State private var activityBucketInterval = RecorderActivityBucketInterval.oneMinute
     @State private var activityPeriod = RecorderActivityPeriod.lastHour
     @State private var activityAllSamplesPageIndex: Int?
+    @State private var recentlyHiddenVrcode: String?
+    @State private var recorderVrcodePendingDeletion: String?
     private let activityChartDataBuilder = RuntimeRecorderActivityChartDataBuilder()
     private let displayPolicy = RuntimeVitalRecorderDisplayPolicy()
 
@@ -95,12 +97,49 @@ struct RuntimeRecordersPanel: View {
             Text(AppConstants.Labels.recorderDetails)
                 .font(.headline)
             if let recorder = selectedRecorder {
-                selectedRecorderSummary(recorder)
-                recorderManagement(recorder)
-                recorderNetworkAccess(recorder)
-                recorderActivity(recorder)
-                recorderMetadata(recorder)
-                recorderRelationshipHistory(recorder)
+                VStack(alignment: .leading, spacing: 0) {
+                    selectedRecorderSummary(recorder)
+                    Divider()
+                    recorderMetadata(recorder)
+                    Divider()
+                    recorderActivity(recorder)
+                    Divider()
+                    recorderNetworkAccess(recorder)
+                    Divider()
+                    recorderRelationshipHistory(recorder)
+                    Divider()
+                    recorderVitalFiles(recorder)
+                    if recorder.visibility == .hidden, showingHiddenRecorders {
+                        Divider()
+                        recorderDataManagement(recorder)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .alert(
+                    "Delete hidden recorder?",
+                    isPresented: recorderDeletionConfirmationPresented
+                ) {
+                    Button("Cancel", role: .cancel) {
+                        recorderVrcodePendingDeletion = nil
+                    }
+                    Button("Delete", role: .destructive) {
+                        guard let vrcode = recorderVrcodePendingDeletion else {
+                            return
+                        }
+                        recorderVrcodePendingDeletion = nil
+                        Task {
+                            recentlyHiddenVrcode = nil
+                            if await viewModel.deleteVitalDBRecorder(vrcode: vrcode) {
+                                selectedVrcode = nil
+                            }
+                        }
+                    }
+                } message: {
+                    Text("This removes the hidden recorder from retained recorder history.")
+                }
             } else {
                 Text("Select a VRecorder to view details.")
                     .foregroundStyle(.secondary)
@@ -202,11 +241,10 @@ struct RuntimeRecordersPanel: View {
     }
 
     private var selectedRecorder: RuntimeVitalRecorderRecord? {
-        if let selectedVrcode,
-           let recorder = visibleRecorders.first(where: { $0.vrcode == selectedVrcode }) {
-            return recorder
+        guard let selectedVrcode else {
+            return nil
         }
-        return filteredRecorders.first ?? visibleRecorders.first
+        return filteredRecorders.first(where: { $0.vrcode == selectedVrcode })
     }
 
     private var recorderHeaderRow: some View {
@@ -229,7 +267,7 @@ struct RuntimeRecordersPanel: View {
             } label: {
                 HStack(spacing: 12) {
                     recorderStatusValue(recorder.status, minWidth: 110)
-                    tableValue(recorder.vrcode, minWidth: 170, weight: .semibold)
+                    tableRecorderIdentity(recorder, minWidth: 170)
                     tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 180)
                     tableValue(viewModel.presentationFormatter.systemTimeAgeText(recorder.lastSeenAt), minWidth: 140)
                     tableValue(recorderAnomalyText(recorder), minWidth: 190)
@@ -247,37 +285,22 @@ struct RuntimeRecordersPanel: View {
     private var visibilityActionMessage: some View {
         Group {
             if !viewModel.vitalDBVisibilityActionMessage.isEmpty {
-                Text(viewModel.vitalDBVisibilityActionMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func recorderActionButtons(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        HStack(spacing: 6) {
-            if recorder.visibility == .hidden {
-                Button("Unhide") {
-                    Task {
-                        await viewModel.unhideVitalDBRecorder(vrcode: recorder.vrcode)
-                    }
-                }
-                .disabled(viewModel.isRunningVitalDBVisibilityAction)
-                if showingHiddenRecorders {
-                    Button("Delete") {
-                        Task {
-                            await viewModel.deleteVitalDBRecorder(vrcode: recorder.vrcode)
+                HStack(spacing: 8) {
+                    Text(viewModel.vitalDBVisibilityActionMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let recentlyHiddenVrcode {
+                        Button("Undo") {
+                            Task {
+                                if await viewModel.unhideVitalDBRecorder(vrcode: recentlyHiddenVrcode) {
+                                    selectedVrcode = recentlyHiddenVrcode
+                                    self.recentlyHiddenVrcode = nil
+                                }
+                            }
                         }
-                    }
-                    .disabled(viewModel.isRunningVitalDBVisibilityAction)
-                }
-            } else {
-                Button("Hide") {
-                    Task {
-                        await viewModel.hideVitalDBRecorder(vrcode: recorder.vrcode)
+                        .disabled(viewModel.isRunningVitalDBVisibilityAction)
                     }
                 }
-                .disabled(viewModel.isRunningVitalDBVisibilityAction)
             }
         }
     }
@@ -294,6 +317,22 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func selectedRecorderSummary(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                recorderDetailIdentity(recorder)
+                Spacer()
+                recorderListVisibilityAction(recorder)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                recorderDetailIdentity(recorder)
+                recorderListVisibilityAction(recorder)
+            }
+        }
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func recorderDetailIdentity(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Circle()
                 .fill(statusColor(recorder.status))
@@ -307,51 +346,137 @@ struct RuntimeRecordersPanel: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(recorder.status))
             RuntimeRecorderSourceBadge(version: recorder.version)
-            Spacer()
+            if recorder.visibility == .hidden {
+                Text("Hidden from list")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .clipShape(Capsule())
+            }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func recorderManagement(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Visibility")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                Text(visibilityText(recorder.visibility))
-                    .font(.title3)
-                    .fontWeight(.semibold)
+    @ViewBuilder
+    private func recorderListVisibilityAction(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        if recorder.visibility == .hidden {
+            Button("Show in list") {
+                Task {
+                    recentlyHiddenVrcode = nil
+                    _ = await viewModel.unhideVitalDBRecorder(vrcode: recorder.vrcode)
+                }
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("Actions")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                recorderActionButtons(recorder)
-                    .controlSize(.large)
+            .disabled(viewModel.isRunningVitalDBVisibilityAction)
+            .help("Include this recorder in the default recorder list.")
+        } else {
+            Button("Hide from list") {
+                Task {
+                    recentlyHiddenVrcode = nil
+                    if await viewModel.hideVitalDBRecorder(vrcode: recorder.vrcode) {
+                        selectedVrcode = nil
+                        recentlyHiddenVrcode = recorder.vrcode
+                    }
+                }
             }
+            .disabled(viewModel.isRunningVitalDBVisibilityAction)
+            .help("Removes this recorder from the default list. Recorder data is not deleted.")
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func recorderNetworkAccess(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-            detailRow("Connection IP", reportedText(recorder.lastIP, missing: "IP not reported"))
-            detailRow("IP verification", recorderIPVerificationDetailText(recorder.redisIPSync))
-            detailRow("Active IP", reportedText(recorder.redisIPSync?.selectedIp, missing: "Active IP not reported"))
-            detailRow("Last checked", recorderIPVerificationCheckedAtText(recorder.redisIPSync))
-            detailRow("Last issue", reportedText(recorder.redisIPSync?.lastFailure, missing: "-"))
+        VStack(alignment: .leading, spacing: 10) {
+            detailSectionTitle("Network access")
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
+                detailRow("Connection IP", reportedText(recorder.lastIP, missing: "IP not reported"))
+                detailRow("IP verification", recorderIPVerificationDetailText(recorder.redisIPSync))
+                detailRow("Active IP", reportedText(recorder.redisIPSync?.selectedIp, missing: "Active IP not reported"))
+                detailRow("Last checked", recorderIPVerificationCheckedAtText(recorder.redisIPSync))
+                detailRow("Last issue", reportedText(recorder.redisIPSync?.lastFailure, missing: "-"))
+            }
         }
-        .padding(12)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderVitalFiles(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            detailSectionTitle("Vital files")
+            if let history = viewModel.recorderVitalFileHistories[recorder.vrcode] {
+                if history.files.isEmpty {
+                    Text(recorderVitalFilesEmptyText(history))
+                        .foregroundStyle(history.state == .readFailed ? .red : .secondary)
+                } else {
+                    ForEach(history.files) { file in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(spacing: 8) {
+                                Text(file.filename)
+                                    .font(.body)
+                                    .fontWeight(.semibold)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Text(recorderVitalFileOriginText(file.origin))
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(Color(nsColor: .windowBackgroundColor))
+                                    .clipShape(Capsule())
+                                Text(file.status.rawValue)
+                                    .font(.caption)
+                                    .foregroundStyle(file.status == .failed ? .red : .secondary)
+                            }
+                            Text(
+                                "\(ByteCountFormatter.string(fromByteCount: Int64(file.sizeBytes), countStyle: .file))"
+                                + " · received \(viewModel.presentationFormatter.systemTimeText(file.receivedAt))"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            if let bedName = file.bedName {
+                                Text("Bed \(bedName) · attribution \(file.attribution.state.rawValue)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let failure = file.failure {
+                                Text("\(failure.stage) / \(failure.code): \(failure.message)")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            } else {
+                Text("Loading Vital files...")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task(id: recorder.vrcode) {
+            await viewModel.refreshVitalRecorderVitalFiles(vrcode: recorder.vrcode)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func recorderVitalFilesEmptyText(
+        _ history: RuntimeVitalRecorderVitalFileHistory
+    ) -> String {
+        if let readError = history.readError {
+            return "Vital file history read issue: \(readError)"
+        }
+        return "No tracked Vital files are attributed to this VRecorder."
+    }
+
+    private func recorderVitalFileOriginText(
+        _ origin: RuntimeVitalRecorderVitalFileOrigin
+    ) -> String {
+        switch origin {
+        case .nativeRecorderUpload:
+            return "Recorder upload"
+        case .coldPathRecovery:
+            return "Cold-path recovery"
+        }
     }
 
     private func recorderActivity(_ recorder: RuntimeVitalRecorderRecord) -> some View {
@@ -361,9 +486,7 @@ struct RuntimeRecordersPanel: View {
         return VStack(alignment: .leading, spacing: 10) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
-                    Text("Activity")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                    detailSectionTitle("Activity")
                     Spacer()
                     if activityDisplay.state.showsControls || activityWindow == nil {
                         activityControls
@@ -377,9 +500,7 @@ struct RuntimeRecordersPanel: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Activity")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                    detailSectionTitle("Activity")
                     HStack(spacing: 12) {
                         if activityDisplay.state.showsControls || activityWindow == nil {
                             activityControls
@@ -455,10 +576,8 @@ struct RuntimeRecordersPanel: View {
         .task(id: recorderActivityWindowTaskID(activityQuery)) {
             await viewModel.pollVitalRecorderActivityWindow(query: activityQuery)
         }
-        .padding(12)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func recorderActivityWindowQuery(
@@ -602,20 +721,21 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func recorderMetadata(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-            detailRow(AppConstants.Labels.recorderSource, displayPolicy.recorderSourceText(recorder.version))
-            detailRow(AppConstants.Labels.recorderVersion, reportedText(recorder.version, missing: "Version not reported"))
-            detailRow(AppConstants.Labels.bed, reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"))
-            detailRow("Bed ID", reportedText(linkedBed(for: recorder)?.bedID ?? recorder.bedID, missing: "Bed ID not reported"))
-            detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
-            detailRow("First seen", viewModel.presentationFormatter.systemTimeText(recorder.firstSeenAt))
-            detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
-            detailRow("Latest anomaly", recorderAnomalyDetailText(recorder))
+        VStack(alignment: .leading, spacing: 10) {
+            detailSectionTitle("Overview")
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
+                detailRow(AppConstants.Labels.recorderSource, displayPolicy.recorderSourceText(recorder.version))
+                detailRow(AppConstants.Labels.recorderVersion, reportedText(recorder.version, missing: "Version not reported"))
+                detailRow(AppConstants.Labels.bed, reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"))
+                detailRow("Bed ID", reportedText(linkedBed(for: recorder)?.bedID ?? recorder.bedID, missing: "Bed ID not reported"))
+                detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
+                detailRow("First seen", viewModel.presentationFormatter.systemTimeText(recorder.firstSeenAt))
+                detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
+                detailRow("Latest anomaly", recorderAnomalyDetailText(recorder))
+            }
         }
-        .padding(12)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func recorderRelationshipHistory(_ recorder: RuntimeVitalRecorderRecord) -> some View {
@@ -624,9 +744,7 @@ struct RuntimeRecordersPanel: View {
         let events = history.events
 
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Relationship history")
-                .font(.subheadline)
-                .fontWeight(.semibold)
+            detailSectionTitle("Relationship history")
             relationshipReadIssue
             if assignments.isEmpty, events.isEmpty, viewModel.vitalRelationships.state == .loaded {
                 Text("No recorder relationship history has been observed.")
@@ -655,10 +773,40 @@ struct RuntimeRecordersPanel: View {
                 }
             }
         }
-        .padding(12)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderDataManagement(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            detailSectionTitle("Data management")
+            Text("Deleting removes this hidden recorder from retained recorder history.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Delete hidden recorder", role: .destructive) {
+                recorderVrcodePendingDeletion = recorder.vrcode
+            }
+            .disabled(viewModel.isRunningVitalDBVisibilityAction)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func detailSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline)
+            .fontWeight(.semibold)
+    }
+
+    private var recorderDeletionConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: { recorderVrcodePendingDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    recorderVrcodePendingDeletion = nil
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -753,6 +901,31 @@ struct RuntimeRecordersPanel: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    private func tableRecorderIdentity(
+        _ recorder: RuntimeVitalRecorderRecord,
+        minWidth: CGFloat
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(recorder.vrcode)
+                .font(.title3)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            if recorder.visibility == .hidden {
+                Text("Hidden")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(Capsule())
+            }
+        }
+        .frame(minWidth: minWidth, alignment: .leading)
+    }
+
     private func recorderStatusValue(
         _ status: RuntimeVitalRecorderStatus,
         minWidth: CGFloat
@@ -800,15 +973,6 @@ struct RuntimeRecordersPanel: View {
 
     private func statusLabel(_ status: RuntimeVitalRecorderStatus) -> String {
         displayPolicy.statusText(status)
-    }
-
-    private func visibilityText(_ visibility: RuntimeVitalRecordVisibility) -> String {
-        switch visibility {
-        case .visible:
-            return "Visible"
-        case .hidden:
-            return "Hidden"
-        }
     }
 
     private func recorderIPVerificationSummaryText(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> String {

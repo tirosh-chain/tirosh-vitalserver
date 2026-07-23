@@ -67,6 +67,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var vitalBeds = RuntimeVitalBedHistory()
     @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
+    @Published var recorderVitalFileHistories: [String: RuntimeVitalRecorderVitalFileHistory] = [:]
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory() {
         didSet {
             vitalRelationshipPresentationIndex = RuntimeVitalRelationshipPresentationIndex(
@@ -401,20 +402,31 @@ public final class RuntimeViewModel: ObservableObject {
         recorderActivityWindows[recorderActivityWindowKey(query)]
     }
 
-    func hideVitalDBRecorder(vrcode: String) async {
-        await runVitalDBVisibilityAction(successMessage: "VRecorder hidden.") {
+    func refreshVitalRecorderVitalFiles(vrcode: String) async {
+        let history = await snapshots.loadVitalRecorderVitalFiles(vrcode: vrcode)
+        guard !Task.isCancelled else {
+            return
+        }
+        recorderVitalFileHistories[vrcode] = history
+    }
+
+    @discardableResult
+    func hideVitalDBRecorder(vrcode: String) async -> Bool {
+        await runVitalDBVisibilityAction(successMessage: "\(vrcode) hidden from recorder list.") {
             try await controlClient.hideVitalDBRecorders(.init(vrcodes: [vrcode]))
         }
     }
 
-    func unhideVitalDBRecorder(vrcode: String) async {
-        await runVitalDBVisibilityAction(successMessage: "VRecorder visible.") {
+    @discardableResult
+    func unhideVitalDBRecorder(vrcode: String) async -> Bool {
+        await runVitalDBVisibilityAction(successMessage: "\(vrcode) shown in recorder list.") {
             try await controlClient.unhideVitalDBRecorders(.init(vrcodes: [vrcode]))
         }
     }
 
-    func deleteVitalDBRecorder(vrcode: String) async {
-        await runVitalDBVisibilityAction(successMessage: "Hidden VRecorder deleted.") {
+    @discardableResult
+    func deleteVitalDBRecorder(vrcode: String) async -> Bool {
+        await runVitalDBVisibilityAction(successMessage: "\(vrcode) deleted from recorder history.") {
             try await controlClient.deleteVitalDBRecorders(.init(vrcodes: [vrcode]))
         }
     }
@@ -440,15 +452,17 @@ public final class RuntimeViewModel: ObservableObject {
     private func runVitalDBVisibilityAction(
         successMessage: String,
         action: () async throws -> RuntimeVitalRecorderHistory
-    ) async {
+    ) async -> Bool {
         isRunningVitalDBVisibilityAction = true
         vitalDBVisibilityActionMessage = "Updating VitalDB visibility..."
         defer { isRunningVitalDBVisibilityAction = false }
         do {
             vitalRecorders = try await action()
             vitalDBVisibilityActionMessage = successMessage
+            return true
         } catch {
             vitalDBVisibilityActionMessage = error.localizedDescription
+            return false
         }
     }
 

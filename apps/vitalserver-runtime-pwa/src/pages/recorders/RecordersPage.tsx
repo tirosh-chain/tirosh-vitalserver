@@ -5,12 +5,14 @@ import {
   useHideVitalDBRecorders,
   useLabRecorders,
   useUnhideVitalDBRecorders,
+  useVitalDBRecorderVitalFiles,
   useVitalDBRecorders,
   useVitalDBRelationships
 } from "@/console/hooks";
 import type {
   RuntimeLabRecorder,
   VitalDBRecorderRecord,
+  RuntimeVitalRecorderVitalFileHistory,
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
@@ -23,7 +25,9 @@ import {
   formatRelativeAge
 } from "@/domain/runtime-control/formatting/time";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
+import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import { DataTable } from "@/components/DataTable";
+import { Button } from "@/components/Button";
 import { ErrorState } from "@/components/ErrorState";
 import { KeyValueRows } from "@/components/KeyValueRows";
 import { MetricStrip } from "@/components/MetricStrip";
@@ -31,6 +35,11 @@ import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { RecorderActivityChart } from "./RecorderActivityChart";
 import { RelationshipHistory } from "@/pages/relationships/RelationshipHistory";
+
+type RecorderVisibilityNotice = {
+  message: string;
+  undoVrcode: string | null;
+};
 
 export function RecordersPage() {
   const recordersQuery = useVitalDBRecorders();
@@ -48,6 +57,8 @@ export function RecordersPage() {
   const [showHidden, setShowHidden] = useState(false);
   const [selectedVrcode, setSelectedVrcode] = useState<string | null>(null);
   const [selectedLabRecorderID, setSelectedLabRecorderID] = useState<string | null>(null);
+  const [visibilityNotice, setVisibilityNotice] =
+    useState<RecorderVisibilityNotice | null>(null);
   const hideRecorders = useHideVitalDBRecorders();
   const unhideRecorders = useUnhideVitalDBRecorders();
   const deleteRecorders = useDeleteVitalDBRecorders();
@@ -72,10 +83,11 @@ export function RecordersPage() {
   const visibilityMutationError =
     hideRecorders.error ?? unhideRecorders.error ?? deleteRecorders.error;
   const selectedRecorder = selectedLabRecorderID === null
-    ? recorders?.find((recorder) => recorder.vrcode === selectedVrcode) ??
-      recorders?.[0] ??
-      null
+    ? recorders?.find((recorder) => recorder.vrcode === selectedVrcode) ?? null
     : null;
+  const recorderVitalFilesQuery = useVitalDBRecorderVitalFiles(
+    selectedRecorder?.vrcode ?? null
+  );
   const selectedLabRecorder =
     labRecordersQuery.data?.recorders.find(
       (recorder) => recorder.recorderId === selectedLabRecorderID
@@ -151,6 +163,38 @@ export function RecordersPage() {
           <p className="form-error">{mutationErrorMessage(visibilityMutationError)}</p>
         ) : null}
 
+        {visibilityNotice ? (
+          <div className="recorder-visibility-notice" role="status" aria-live="polite">
+            <span>{visibilityNotice.message}</span>
+            {visibilityNotice.undoVrcode ? (
+              <button
+                type="button"
+                disabled={visibilityMutationPending}
+                onClick={() => {
+                  const vrcode = visibilityNotice.undoVrcode;
+                  if (!vrcode) {
+                    return;
+                  }
+                  unhideRecorders.mutate(
+                    { vrcodes: [vrcode] },
+                    {
+                      onSuccess: () => {
+                        setSelectedVrcode(vrcode);
+                        setVisibilityNotice({
+                          message: `${vrcode} shown in recorder list.`,
+                          undoVrcode: null
+                        });
+                      }
+                    }
+                  );
+                }}
+              >
+                Undo
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         {recordersQuery.isPending ? (
           <p className="empty-state">Loading VRecorders...</p>
         ) : recordersQuery.isError ? (
@@ -190,7 +234,14 @@ export function RecordersPage() {
                 {
                   key: "vrcode",
                   header: "VRecorder",
-                  render: (recorder) => <strong>{recorder.vrcode}</strong>
+                  render: (recorder) => (
+                    <span className="recorder-identity">
+                      <strong>{recorder.vrcode}</strong>
+                      {recorder.visibility === "hidden" ? (
+                        <span className="visibility-badge">Hidden</span>
+                      ) : null}
+                    </span>
+                  )
                 },
                 {
                   key: "bed",
@@ -231,17 +282,58 @@ export function RecordersPage() {
           recorder={selectedRecorder}
           relationships={relationshipsQuery.data}
           relationshipsError={relationshipsQuery.error}
+          vitalFiles={recorderVitalFilesQuery.data}
+          vitalFilesError={recorderVitalFilesQuery.error}
+          vitalFilesLoading={recorderVitalFilesQuery.isPending}
           showDelete={showHidden}
           mutationPending={visibilityMutationPending}
-          onHide={() =>
-            hideRecorders.mutate({ vrcodes: [selectedRecorder.vrcode] })
-          }
-          onUnhide={() =>
-            unhideRecorders.mutate({ vrcodes: [selectedRecorder.vrcode] })
-          }
-          onDelete={() =>
-            deleteRecorders.mutate({ vrcodes: [selectedRecorder.vrcode] })
-          }
+          onHide={() => {
+            const vrcode = selectedRecorder.vrcode;
+            setVisibilityNotice(null);
+            hideRecorders.mutate(
+              { vrcodes: [vrcode] },
+              {
+                onSuccess: () => {
+                  setSelectedVrcode(null);
+                  setVisibilityNotice({
+                    message: `${vrcode} hidden from recorder list.`,
+                    undoVrcode: vrcode
+                  });
+                }
+              }
+            );
+          }}
+          onUnhide={() => {
+            const vrcode = selectedRecorder.vrcode;
+            setVisibilityNotice(null);
+            unhideRecorders.mutate(
+              { vrcodes: [vrcode] },
+              {
+                onSuccess: () => {
+                  setVisibilityNotice({
+                    message: `${vrcode} shown in recorder list.`,
+                    undoVrcode: null
+                  });
+                }
+              }
+            );
+          }}
+          onDelete={() => {
+            const vrcode = selectedRecorder.vrcode;
+            setVisibilityNotice(null);
+            deleteRecorders.mutate(
+              { vrcodes: [vrcode] },
+              {
+                onSuccess: () => {
+                  setSelectedVrcode(null);
+                  setVisibilityNotice({
+                    message: `${vrcode} deleted from recorder history.`,
+                    undoVrcode: null
+                  });
+                }
+              }
+            );
+          }}
         />
       ) : null}
 
@@ -396,6 +488,9 @@ function RecorderDetails({
   recorder,
   relationships,
   relationshipsError,
+  vitalFiles,
+  vitalFilesError,
+  vitalFilesLoading,
   showDelete,
   mutationPending,
   onHide,
@@ -405,6 +500,9 @@ function RecorderDetails({
   recorder: VitalDBRecorderRecord;
   relationships: VitalDBRelationships | undefined;
   relationshipsError: unknown;
+  vitalFiles: RuntimeVitalRecorderVitalFileHistory | undefined;
+  vitalFilesError: unknown;
+  vitalFilesLoading: boolean;
   showDelete: boolean;
   mutationPending: boolean;
   onHide: () => void;
@@ -422,45 +520,65 @@ function RecorderDetails({
   return (
     <Panel title="Recorder Details" className="recorder-details">
       <div className="detail-heading">
-        <StatusBadge tone={recorderStatusTone(recorder.status)}>
-          <strong>{recorder.vrcode}</strong>
-          {formatRecorderStatus(recorder.status)}
-        </StatusBadge>
+        <div className="recorder-detail-identity">
+          <StatusBadge tone={recorderStatusTone(recorder.status)}>
+            <strong>{recorder.vrcode}</strong>
+            {formatRecorderStatus(recorder.status)}
+          </StatusBadge>
+          {recorder.visibility === "hidden" ? (
+            <span className="visibility-badge">Hidden from list</span>
+          ) : null}
+        </div>
+        <div className="toolbar compact-toolbar recorder-detail-actions">
+          {recorder.visibility === "hidden" ? (
+            <button type="button" disabled={mutationPending} onClick={onUnhide}>
+              Show in list
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={mutationPending}
+              onClick={onHide}
+              title="Removes this recorder from the default list. Recorder data is not deleted."
+            >
+              Hide from list
+            </button>
+          )}
+        </div>
       </div>
 
-      <RecorderVisibilityManagement
-        recorder={recorder}
-        showDelete={showDelete}
-        mutationPending={mutationPending}
-        onHide={onHide}
-        onUnhide={onUnhide}
-        onDelete={onDelete}
-      />
+      <div className="detail-section detail-section-first">
+        <h3>Overview</h3>
+        <KeyValueRows
+          rows={[
+            { label: "Version", value: recorder.version ?? NOT_REPORTED },
+            {
+              label: "Bed",
+              value: recorder.bedName ?? recorder.bedID ?? NOT_REPORTED
+            },
+            {
+              label: "Patient status",
+              value: formatPatientStatus(recorder.patientConnected)
+            },
+            { label: "First seen", value: formatLocalDateTime(recorder.firstSeenAt) },
+            {
+              label: "Last seen",
+              value: formatLocalDateTime(recorder.lastSeenAt)
+            },
+            {
+              label: "Latest anomaly",
+              value: formatAnomalySummary(recorder)
+            }
+          ]}
+        />
+      </div>
 
-      <KeyValueRows
-        rows={[
-          { label: "Version", value: recorder.version ?? NOT_REPORTED },
-          {
-            label: "Bed",
-            value: recorder.bedName ?? recorder.bedID ?? NOT_REPORTED
-          },
-          {
-            label: "Patient status",
-            value: formatPatientStatus(recorder.patientConnected)
-          },
-          { label: "First seen", value: formatLocalDateTime(recorder.firstSeenAt) },
-          {
-            label: "Last seen",
-            value: formatLocalDateTime(recorder.lastSeenAt)
-          },
-          {
-            label: "Latest anomaly",
-            value: formatAnomalySummary(recorder)
-          }
-        ]}
-      />
+      <div className="detail-section">
+        <h3>Activity</h3>
+        <RecorderActivityChart recorder={recorder} />
+      </div>
 
-      <div className="subsection">
+      <div className="detail-section">
         <h3>Network access</h3>
         <KeyValueRows
           rows={[
@@ -488,11 +606,6 @@ function RecorderDetails({
         />
       </div>
 
-      <div className="subsection">
-        <h3>Activity</h3>
-        <RecorderActivityChart recorder={recorder} />
-      </div>
-
       <RelationshipHistory
         title="recorder"
         relationships={relationships}
@@ -500,64 +613,93 @@ function RecorderDetails({
         assignments={assignments}
         events={events}
       />
+
+      <div className="detail-section">
+        <h3>Vital files</h3>
+        <RecorderVitalFiles
+          history={vitalFiles}
+          error={vitalFilesError}
+          loading={vitalFilesLoading}
+        />
+      </div>
+
+      {recorder.visibility === "hidden" && showDelete ? (
+        <div className="detail-section recorder-data-management">
+          <h3>Data management</h3>
+          <p className="muted">
+            Deleting removes this hidden recorder from the retained recorder history.
+          </p>
+          <Button
+            tone="danger"
+            disabled={mutationPending}
+            onClick={() => {
+              if (window.confirm(`Delete hidden VRecorder ${recorder.vrcode}?`)) {
+                onDelete();
+              }
+            }}
+          >
+            Delete hidden recorder
+          </Button>
+        </div>
+      ) : null}
     </Panel>
   );
 }
 
-function RecorderVisibilityManagement({
-  recorder,
-  showDelete,
-  mutationPending,
-  onHide,
-  onUnhide,
-  onDelete
+function RecorderVitalFiles({
+  history,
+  error,
+  loading
 }: {
-  recorder: VitalDBRecorderRecord;
-  showDelete: boolean;
-  mutationPending: boolean;
-  onHide: () => void;
-  onUnhide: () => void;
-  onDelete: () => void;
+  history: RuntimeVitalRecorderVitalFileHistory | undefined;
+  error: unknown;
+  loading: boolean;
 }) {
+  if (error) {
+    return <ErrorState error={error} />;
+  }
+  if (loading || history === undefined) {
+    return <p className="muted">Loading tracked Vital files...</p>;
+  }
+  if (history.files.length === 0) {
+    return (
+      <p className={history.state === "readFailed" ? "error-text" : "muted"}>
+        {history.readError === null
+          ? "No tracked Vital files are attributed to this VRecorder."
+          : `Vital file history read issue: ${history.readError}`}
+      </p>
+    );
+  }
   return (
-    <div className="recorder-management">
-      <div>
-        <span>Visibility</span>
-        <strong>{formatVisibility(recorder.visibility)}</strong>
-      </div>
-      <div className="recorder-management-actions">
-        <span>Actions</span>
-        <div className="toolbar compact-toolbar">
-          {recorder.visibility === "hidden" ? (
-            <>
-              <button type="button" disabled={mutationPending} onClick={onUnhide}>
-                Unhide
-              </button>
-              {showDelete ? (
-                <button
-                  type="button"
-                  disabled={mutationPending}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `Delete hidden VRecorder ${recorder.vrcode}?`
-                      )
-                    ) {
-                      onDelete();
-                    }
-                  }}
-                >
-                  Delete
-                </button>
-              ) : null}
-            </>
-          ) : (
-            <button type="button" disabled={mutationPending} onClick={onHide}>
-              Hide
-            </button>
+    <div className="recorder-vital-file-list">
+      {history.files.map((file) => (
+        <div className="recorder-vital-file" key={file.fileID}>
+          <div className="detail-heading">
+            <strong>{file.filename}</strong>
+            <div className="toolbar compact-toolbar">
+              <span className="visibility-badge">
+                {file.origin === "nativeRecorderUpload"
+                  ? "Recorder upload"
+                  : "Cold-path recovery"}
+              </span>
+              <StatusBadge tone={file.status === "failed" ? "danger" : "neutral"}>
+                {file.status}
+              </StatusBadge>
+            </div>
+          </div>
+          <p className="muted">
+            {formatBytes(file.sizeBytes)} · received {formatLocalDateTime(file.receivedAt)}
+          </p>
+          <p className="muted">
+            Bed {file.bedName ?? NOT_REPORTED} · attribution {file.attribution.state}
+          </p>
+          {file.failure === null ? null : (
+            <p className="error-text">
+              {file.failure.stage} / {file.failure.code}: {file.failure.message}
+            </p>
           )}
         </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -634,10 +776,6 @@ function formatAnomalyKind(value: string | null | undefined): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function formatVisibility(value: VitalDBRecorderRecord["visibility"]): string {
-  return value === "hidden" ? "Hidden" : "Visible";
 }
 
 function mutationErrorMessage(error: unknown): string {

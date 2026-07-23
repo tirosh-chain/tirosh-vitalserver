@@ -545,24 +545,59 @@
     @apply text-lg;
   }
 
-  .recorder-management {
-    @apply mb-[22px] flex flex-wrap items-center justify-between gap-4 rounded-panel border border-app-border bg-app-control/25 p-4 text-lg;
+  .recorder-identity,
+  .recorder-detail-identity {
+    @apply inline-flex min-w-0 flex-wrap items-center gap-2;
   }
 
-  .recorder-management > div {
-    @apply grid gap-1;
+  .visibility-badge {
+    @apply inline-flex rounded-full border border-app-border bg-app-control/40 px-2 py-0.5 text-xs font-extrabold text-app-muted;
   }
 
-  .recorder-management span {
-    @apply font-bold text-app-muted;
+  .recorder-detail-actions {
+    @apply ml-auto;
   }
 
-  .recorder-management strong {
-    @apply text-xl font-extrabold;
+  .recorder-visibility-notice {
+    @apply mb-4 flex flex-wrap items-center gap-3 rounded-panel border border-app-border bg-app-control/25 px-4 py-3 font-bold;
   }
 
-  .recorder-management-actions {
-    @apply justify-items-end;
+  .detail-section {
+    @apply mt-[26px] border-t border-app-border pt-[22px];
+  }
+
+  .detail-section-first {
+    @apply mt-0 border-t-0 pt-0;
+  }
+
+  .detail-section h3 {
+    @apply mb-4 mt-0 text-lg font-extrabold;
+  }
+
+  .recorder-data-management p {
+    @apply mb-3 mt-0;
+  }
+
+  .recorder-vital-file-list {
+    @apply grid gap-3;
+  }
+
+  .recorder-vital-file {
+    @apply rounded-panel border border-app-border bg-app-bg px-4 py-3;
+    min-width: 0;
+  }
+
+  .recorder-vital-file .detail-heading {
+    @apply mb-2 text-base;
+  }
+
+  .recorder-vital-file strong,
+  .recorder-vital-file p {
+    overflow-wrap: anywhere;
+  }
+
+  .recorder-vital-file p {
+    @apply my-1;
   }
 
   .subsection {

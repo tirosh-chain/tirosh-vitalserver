@@ -1222,13 +1222,16 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             healthNotifications: NoopHealthNotifications()
         )
 
-        await viewModel.hideVitalDBRecorder(vrcode: "VR_A")
-        await viewModel.unhideVitalDBRecorder(vrcode: "VR_A")
-        await viewModel.deleteVitalDBRecorder(vrcode: "VR_A")
+        let hideSucceeded = await viewModel.hideVitalDBRecorder(vrcode: "VR_A")
+        let unhideSucceeded = await viewModel.unhideVitalDBRecorder(vrcode: "VR_A")
+        let deleteSucceeded = await viewModel.deleteVitalDBRecorder(vrcode: "VR_A")
         await viewModel.hideVitalDBBed(bedID: "bed-a")
         await viewModel.unhideVitalDBBed(bedID: "bed-a")
         await viewModel.deleteVitalDBBed(bedID: "bed-a")
 
+        XCTAssertTrue(hideSucceeded)
+        XCTAssertTrue(unhideSucceeded)
+        XCTAssertTrue(deleteSucceeded)
         XCTAssertEqual(client.hiddenRecorderRequests, [.init(vrcodes: ["VR_A"])])
         XCTAssertEqual(client.unhiddenRecorderRequests, [.init(vrcodes: ["VR_A"])])
         XCTAssertEqual(client.deletedRecorderRequests, [.init(vrcodes: ["VR_A"])])
@@ -1238,6 +1241,34 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.vitalRecorders.updatedAt, "2026-07-01T00:00:00+00:00")
         XCTAssertEqual(viewModel.vitalBeds.updatedAt, "2026-07-01T00:00:00+00:00")
         XCTAssertEqual(viewModel.vitalDBVisibilityActionMessage, "Hidden bed deleted.")
+        XCTAssertFalse(viewModel.isRunningVitalDBVisibilityAction)
+    }
+
+    func testVitalDBRecorderVisibilityFailureDoesNotReportSuccess() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.vitalDBVisibilityError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "visibility owner unavailable"]
+        )
+        let originalHistory = RuntimeVitalRecorderHistory(
+            updatedAt: "2026-06-30T00:00:00+00:00"
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.vitalRecorders = originalHistory
+
+        let succeeded = await viewModel.hideVitalDBRecorder(vrcode: "VR_A")
+
+        XCTAssertFalse(succeeded)
+        XCTAssertEqual(viewModel.vitalRecorders, originalHistory)
+        XCTAssertEqual(
+            viewModel.vitalDBVisibilityActionMessage,
+            "visibility owner unavailable"
+        )
         XCTAssertFalse(viewModel.isRunningVitalDBVisibilityAction)
     }
 
@@ -1924,6 +1955,25 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.vitalDBRecorderActivityQueries.last, query)
     }
 
+    func testRecorderVitalFilesLoadOnlyWhenExplicitlyRequested() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(client.loadVitalDBRecorderVitalFilesCount, 0)
+        await viewModel.refreshVitalRecorderVitalFiles(vrcode: "06311eba")
+
+        XCTAssertEqual(client.loadVitalDBRecorderVitalFilesCount, 1)
+        XCTAssertEqual(client.vitalDBRecorderVitalFileVrcodes, ["06311eba"])
+        XCTAssertEqual(
+            viewModel.recorderVitalFileHistories["06311eba"]?.vrcode,
+            "06311eba"
+        )
+    }
+
     func testRuntimeControlRecoveryRelaunchesHelperForFreshLocalSession() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
@@ -2178,6 +2228,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var loadVitalDBBedsCount = 0
     var loadVitalDBRecorderActivityWindowCount = 0
     var vitalDBRecorderActivityQueries: [RuntimeVitalRecorderActivityWindowQuery] = []
+    var loadVitalDBRecorderVitalFilesCount = 0
+    var vitalDBRecorderVitalFileVrcodes: [String] = []
     var loadRedisRelayStatusCount = 0
     var runtimeStackStatusCount = 0
     var serviceResourceRequests: [String] = []
@@ -2213,6 +2265,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var backupLoadError: Error?
     var redisRelayStatusError: Error?
     var runtimeStackError: Error?
+    var vitalDBVisibilityError: Error?
     var serviceResourceErrorsByService: [String: Error] = [:]
     var serviceResourcesByService: [String: RuntimeGuestServiceResource] = [:]
     var labScenariosToLoad = RuntimeLabScenarioList(state: .loaded, scenarios: [])
@@ -2334,6 +2387,28 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         )
     }
 
+    func loadVitalDBRecorderVitalFiles(
+        vrcode: String
+    ) -> RuntimeVitalRecorderVitalFileHistory {
+        loadVitalDBRecorderVitalFilesCount += 1
+        vitalDBRecorderVitalFileVrcodes.append(vrcode)
+        return RuntimeVitalRecorderVitalFileHistory(
+            state: .loaded,
+            vrcode: vrcode,
+            sources: RuntimeVitalRecorderVitalFileSources(
+                nativeUpload: RuntimeVitalRecorderVitalFileSourceRead(
+                    state: .loaded,
+                    readError: nil
+                ),
+                coldPathRecovery: RuntimeVitalRecorderVitalFileSourceRead(
+                    state: .loaded,
+                    readError: nil
+                )
+            ),
+            readError: nil
+        )
+    }
+
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
         RuntimeVitalRelationshipHistory()
     }
@@ -2387,6 +2462,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         _ request: RuntimeVitalDBRecorderVisibilityRequest
     ) async throws -> RuntimeVitalRecorderHistory {
         hiddenRecorderRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
         return vitalDBVisibilityHistory
     }
 
@@ -2394,6 +2472,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         _ request: RuntimeVitalDBRecorderVisibilityRequest
     ) async throws -> RuntimeVitalRecorderHistory {
         unhiddenRecorderRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
         return vitalDBVisibilityHistory
     }
 
@@ -2401,6 +2482,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         _ request: RuntimeVitalDBRecorderVisibilityRequest
     ) async throws -> RuntimeVitalRecorderHistory {
         deletedRecorderRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
         return vitalDBVisibilityHistory
     }
 

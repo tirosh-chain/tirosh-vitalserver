@@ -70,6 +70,7 @@ const hooks = vi.hoisted(() => ({
   useVerifyUpdateBundle: vi.fn(),
   useVitalDBBeds: vi.fn(),
   useVitalDBRecorderActivity: vi.fn(),
+  useVitalDBRecorderVitalFiles: vi.fn(),
   useVitalDBRelationships: vi.fn(),
   useVitalDBRecorders: vi.fn(),
   useReleaseInfo: vi.fn(),
@@ -123,6 +124,14 @@ function Wrapper({ children }: PropsWithChildren) {
 
 function renderPage(element: ReactElement) {
   return render(element, { wrapper: Wrapper });
+}
+
+function selectVitalRecorder(vrcode: string) {
+  const recorderPanel = screen
+    .getByRole("heading", { name: "Recorders" })
+    .closest("section")!;
+  const recorderTable = within(recorderPanel).getByRole("table");
+  fireEvent.click(within(recorderTable).getByText(vrcode).closest("tr")!);
 }
 
 function query<T>(data: T) {
@@ -410,27 +419,21 @@ describe("runtime console pages", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-31T01:00:30Z"));
     const hideRecorder = mutation({});
+    const unhideRecorder = mutation({});
     hooks.useHideVitalDBRecorders.mockReturnValue(hideRecorder);
+    hooks.useUnhideVitalDBRecorders.mockReturnValue(unhideRecorder);
 
     renderPage(<RecordersPage />);
 
     expect(screen.getByText("Known recorders")).toBeInTheDocument();
     expect(screen.getAllByText("VR_A").length).toBeGreaterThan(0);
     expect(screen.getAllByText("IP verified").length).toBeGreaterThan(0);
-    expect(screen.getByText("Network access")).toBeInTheDocument();
-    expect(screen.getByText("Active IP")).toBeInTheDocument();
-    expect(screen.queryByText("Redis key")).not.toBeInTheDocument();
-    expect(screen.queryByText("x-forwarded-for")).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
-    expect(screen.getByText("34 B/s")).toBeInTheDocument();
-    expect(screen.queryByText("Room entries")).not.toBeInTheDocument();
     expect(screen.getAllByText("Recorder anomalies").length).toBeGreaterThan(0);
     expect(screen.getByText("Data updated")).toBeInTheDocument();
-    expect(screen.getAllByText(/Stale Recorder · warning/).length).toBeGreaterThan(0);
-    expect(screen.getByText("Relationship history")).toBeInTheDocument();
-    expect(screen.getAllByText("Assignments").length).toBeGreaterThan(0);
-    expect(screen.getByText("Events")).toBeInTheDocument();
-    expect(screen.getByText("Bed has no linked VRecorder.")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Recorder Details" })
+    ).not.toBeInTheDocument();
+    expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith(null);
 
     const recorderPanel = screen.getByRole("heading", { name: "Recorders" }).closest("section")!;
     const recorderTable = within(recorderPanel).getByRole("table");
@@ -443,18 +446,58 @@ describe("runtime console pages", () => {
     expect(within(recorderTable).queryByRole("button", { name: "Hide" })).not.toBeInTheDocument();
     expect(within(recorderTable).getByText("30s ago")).toBeInTheDocument();
 
+    fireEvent.click(within(recorderTable).getByText("VR_A").closest("tr")!);
+    expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith("VR_A");
+
     const recorderDetails = screen
       .getByRole("heading", { name: "Recorder Details" })
       .closest("section")!;
-    expect(within(recorderDetails).getByText("Visibility")).toBeInTheDocument();
-    const hideButton = within(recorderDetails).getByRole("button", { name: "Hide" });
-    fireEvent.click(hideButton);
-    expect(hideRecorder.mutate).toHaveBeenCalledWith({ vrcodes: ["VR_A"] });
+    expect(within(recorderDetails).queryByText("Visibility")).not.toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Network access")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Active IP")).toBeInTheDocument();
+    expect(within(recorderDetails).queryByText("Redis key")).not.toBeInTheDocument();
+    expect(within(recorderDetails).queryByText("x-forwarded-for")).not.toBeInTheDocument();
+    expect(within(recorderDetails).getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("34 B/s")).toBeInTheDocument();
+    expect(within(recorderDetails).queryByText("Room entries")).not.toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Relationship history")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Assignments")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Events")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Vital files")).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByText(
+        "No tracked Vital files are attributed to this VRecorder."
+      )
+    ).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Bed has no linked VRecorder.")).toBeInTheDocument();
     const lastSeenRow = within(recorderDetails)
       .getByText("Last seen")
       .closest(".key-value-row");
     expect(lastSeenRow).toHaveTextContent("2026-05-31");
     expect(lastSeenRow).not.toHaveTextContent("ago");
+
+    fireEvent.click(
+      within(recorderDetails).getByRole("button", { name: "Hide from list" })
+    );
+    expect(hideRecorder.mutate).toHaveBeenCalledWith(
+      { vrcodes: ["VR_A"] },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Recorder Details" })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "VR_A hidden from recorder list."
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(unhideRecorder.mutate).toHaveBeenCalledWith(
+      { vrcodes: ["VR_A"] },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
+    expect(
+      screen.getByRole("heading", { name: "Recorder Details" })
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("Search VRecorders"), {
       target: { value: "missing" }
@@ -462,6 +505,76 @@ describe("runtime console pages", () => {
     expect(
       screen.getByText("No VitalDB VRecorder observations found.")
     ).toBeInTheDocument();
+  });
+
+  it("labels hidden recorders and keeps destructive management secondary", () => {
+    const hiddenRecorders = recorders();
+    hiddenRecorders.recorders[0].visibility = "hidden";
+    const unhideRecorder = mutation({});
+    const deleteRecorder = mutation({});
+    hooks.useVitalDBRecorders.mockReturnValue(query(hiddenRecorders));
+    hooks.useUnhideVitalDBRecorders.mockReturnValue(unhideRecorder);
+    hooks.useDeleteVitalDBRecorders.mockReturnValue(deleteRecorder);
+
+    renderPage(<RecordersPage />);
+
+    expect(screen.queryByText("VR_A")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show hidden" }));
+
+    const recorderPanel = screen.getByRole("heading", { name: "Recorders" }).closest("section")!;
+    const recorderTable = within(recorderPanel).getByRole("table");
+    expect(within(recorderTable).getByText("Hidden")).toBeInTheDocument();
+    fireEvent.click(within(recorderTable).getByText("VR_A").closest("tr")!);
+
+    const recorderDetails = screen
+      .getByRole("heading", { name: "Recorder Details" })
+      .closest("section")!;
+    expect(within(recorderDetails).getByText("Hidden from list")).toBeInTheDocument();
+    expect(within(recorderDetails).queryByText("Visibility")).not.toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByRole("button", { name: "Show in list" })
+    ).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Data management")).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByRole("button", { name: "Delete hidden recorder" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(recorderDetails).getByRole("button", { name: "Show in list" })
+    );
+    expect(unhideRecorder.mutate).toHaveBeenCalledWith(
+      { vrcodes: ["VR_A"] },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
+  });
+
+  it("keeps recorder details selected when hiding fails", () => {
+    const hideRecorder = {
+      ...pendingMutation(),
+      error: new Error("visibility owner unavailable"),
+      isError: true
+    };
+    hooks.useHideVitalDBRecorders.mockReturnValue(hideRecorder);
+
+    renderPage(<RecordersPage />);
+    selectVitalRecorder("VR_A");
+
+    const recorderDetails = screen
+      .getByRole("heading", { name: "Recorder Details" })
+      .closest("section")!;
+    fireEvent.click(
+      within(recorderDetails).getByRole("button", { name: "Hide from list" })
+    );
+
+    expect(hideRecorder.mutate).toHaveBeenCalledWith(
+      { vrcodes: ["VR_A"] },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
+    expect(
+      screen.getByRole("heading", { name: "Recorder Details" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("visibility owner unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("shows Product Lab recorders separately from VitalDB recorder observations", () => {
@@ -510,6 +623,7 @@ describe("runtime console pages", () => {
     );
 
     renderPage(<RecordersPage />);
+    selectVitalRecorder("VR_A");
 
     expect(screen.queryByLabelText("Window")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Bucket")).toHaveValue("60");
@@ -555,6 +669,7 @@ describe("runtime console pages", () => {
     );
 
     renderPage(<RecordersPage />);
+    selectVitalRecorder("VR_A");
 
     expect(screen.getAllByText("Not observed").length).toBeGreaterThan(0);
     expect(
@@ -584,6 +699,7 @@ describe("runtime console pages", () => {
     );
 
     renderPage(<RecordersPage />);
+    selectVitalRecorder("VR_A");
 
     expect(
       screen.getByText("Recorder activity data is unavailable")
@@ -1778,6 +1894,17 @@ function setupDefaultHooks() {
   }));
   hooks.useVitalDBRecorders.mockReturnValue(query(recorders()));
   hooks.useVitalDBRecorderActivity.mockReturnValue(query(recorderActivityWindow()));
+  hooks.useVitalDBRecorderVitalFiles.mockReturnValue(query({
+    state: "loaded",
+    vrcode: "VR_A",
+    files: [],
+    unattributedCount: 0,
+    sources: {
+      nativeUpload: { state: "loaded", readError: null },
+      coldPathRecovery: { state: "loaded", readError: null }
+    },
+    readError: null
+  }));
   hooks.useVitalDBBeds.mockReturnValue(query(bedHistory()));
   hooks.useVitalDBRelationships.mockReturnValue(query(relationships()));
   hooks.useRuntimeEvents.mockReturnValue(query(events()));
