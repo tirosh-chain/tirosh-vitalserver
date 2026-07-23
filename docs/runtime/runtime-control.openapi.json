@@ -2605,6 +2605,41 @@
         }
       }
     },
+    "/runtime/vitaldb/recorders/{vrcode}/observability": {
+      "get": {
+        "operationId": "getRecorderObservabilityDetail",
+        "summary": "Read typed Recorder observability detail",
+        "description": "Lazy detail read for one Recorder. The response preserves support, report, profile, boot, reading, and dependency-failure states without exposing the ingress JSONB aggregate.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "vrcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit Recorder observability detail read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeRecorderObservabilityDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/vitaldb/recorders/{vrcode}/observability/expectation": {
       "post": {
         "operationId": "applyRecorderObservabilityExpectation",
@@ -3970,6 +4005,290 @@
               "null"
             ]
           }
+        }
+      },
+      "RuntimeRecorderObservabilityReading": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "value",
+          "detail",
+          "observedAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "missing",
+              "invalid",
+              "failed",
+              "unsupported"
+            ]
+          },
+          "value": {},
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeRecorderObservabilitySupport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "source",
+          "expectedSince",
+          "recorderVersion",
+          "producerVersion",
+          "protocolVersion"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "unsupported",
+              "unknown"
+            ]
+          },
+          "source": {"type": ["string", "null"]},
+          "expectedSince": {"type": ["string", "null"]},
+          "recorderVersion": {"type": ["string", "null"]},
+          "producerVersion": {"type": ["string", "null"]},
+          "protocolVersion": {"type": ["string", "null"]}
+        }
+      },
+      "RuntimeRecorderObservabilityReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "receivedAt",
+          "deviceObservedAt",
+          "collectionState",
+          "readIssueCount"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "notEvaluated",
+              "awaitingFirstReport",
+              "current",
+              "stale",
+              "missing",
+              "readFailed"
+            ]
+          },
+          "receivedAt": {"type": ["string", "null"]},
+          "deviceObservedAt": {"type": ["string", "null"]},
+          "collectionState": {"type": ["string", "null"]},
+          "readIssueCount": {"type": "integer", "minimum": 0}
+        }
+      },
+      "RuntimeRecorderObservabilityProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "receivedAt",
+          "deviceObservedAt",
+          "deviceId",
+          "bootId",
+          "software",
+          "collection",
+          "capabilities"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "associated",
+              "unassociated",
+              "missing",
+              "invalid"
+            ]
+          },
+          "receivedAt": {"type": ["string", "null"]},
+          "deviceObservedAt": {"type": ["string", "null"]},
+          "deviceId": {"type": ["string", "null"]},
+          "bootId": {"type": ["string", "null"]},
+          "software": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"
+            }
+          },
+          "collection": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "powerIntervalSeconds",
+                  "telemetryIntervalSeconds",
+                  "observationIntervalSeconds"
+                ],
+                "properties": {
+                  "powerIntervalSeconds": {"type": ["integer", "null"]},
+                  "telemetryIntervalSeconds": {"type": ["integer", "null"]},
+                  "observationIntervalSeconds": {"type": ["integer", "null"]}
+                }
+              },
+              {"type": "null"}
+            ]
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "state",
+                "source",
+                "detail"
+              ],
+              "properties": {
+                "state": {"type": "string"},
+                "source": {"type": ["string", "null"]},
+                "detail": {"type": ["string", "null"]}
+              }
+            }
+          }
+        }
+      },
+      "RuntimeRecorderObservabilityBoot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "bootId",
+          "startedAt",
+          "cleanShutdownAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "notReported",
+              "started",
+              "shutdownClean"
+            ]
+          },
+          "bootId": {"type": ["string", "null"]},
+          "startedAt": {"type": ["string", "null"]},
+          "cleanShutdownAt": {"type": ["string", "null"]}
+        }
+      },
+      "RuntimeRecorderObservabilityNetworkInterface": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "operState",
+          "carrier",
+          "rxErrors",
+          "txErrors"
+        ],
+        "properties": {
+          "name": {"type": "string"},
+          "operState": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "carrier": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "rxErrors": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "txErrors": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"}
+        }
+      },
+      "RuntimeRecorderObservabilityReadings": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "temperatureCelsius",
+          "memoryAvailableBytes",
+          "memoryTotalBytes",
+          "rootUsedPercent",
+          "dataUsedPercent",
+          "recorderActiveState",
+          "publisherActiveState",
+          "publisherBufferBytes",
+          "publisherBufferLimitBytes",
+          "networkInterfaces"
+        ],
+        "properties": {
+          "temperatureCelsius": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "memoryAvailableBytes": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "memoryTotalBytes": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "rootUsedPercent": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "dataUsedPercent": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "recorderActiveState": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "publisherActiveState": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "publisherBufferBytes": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "publisherBufferLimitBytes": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"},
+          "networkInterfaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeRecorderObservabilityNetworkInterface"
+            }
+          }
+        }
+      },
+      "RuntimeRecorderObservabilityDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "vrcode",
+          "support",
+          "report",
+          "profile",
+          "boot",
+          "readings",
+          "readIssues",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "loaded",
+              "notReported",
+              "unavailable"
+            ]
+          },
+          "vrcode": {"type": "string"},
+          "support": {"$ref": "#/components/schemas/RuntimeRecorderObservabilitySupport"},
+          "report": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReport"},
+          "profile": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityProfile"},
+          "boot": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityBoot"},
+          "readings": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReadings"},
+          "readIssues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "field",
+                "state",
+                "detail"
+              ],
+              "properties": {
+                "field": {"type": "string"},
+                "state": {"type": "string"},
+                "detail": {"type": "string"}
+              }
+            }
+          },
+          "readError": {"type": ["string", "null"]}
         }
       },
       "RuntimeVitalRecorderVitalFileHistoryState": {

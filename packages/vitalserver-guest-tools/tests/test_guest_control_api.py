@@ -764,11 +764,7 @@ class FakeRecorderIngress:
         return _recorder_observability_list()
 
     def recorder_observability_detail(self, vrcode: str) -> dict[str, object]:
-        return {
-            "state": "loaded",
-            **_recorder_observability_list()["recorders"][0],
-            "resources": {},
-        }
+        return _recorder_observability_detail(vrcode)
 
     def apply_recorder_observability_expectation(
         self,
@@ -813,6 +809,64 @@ def _recorder_observability_list() -> dict[str, object]:
                 "protocolVersion": None,
             }
         ],
+        "readError": None,
+    }
+
+
+def _recorder_observability_detail(vrcode: str) -> dict[str, object]:
+    missing = {
+        "state": "missing",
+        "value": None,
+        "detail": "health observation is absent",
+        "observedAt": None,
+    }
+    return {
+        "state": "loaded",
+        "vrcode": vrcode,
+        "support": {
+            "state": "supported",
+            "source": "accepted_report",
+            "expectedSince": None,
+            "recorderVersion": None,
+            "producerVersion": None,
+            "protocolVersion": None,
+        },
+        "report": {
+            "state": "current",
+            "receivedAt": "2026-07-01T00:00:00+00:00",
+            "deviceObservedAt": "2026-07-01T00:00:00+00:00",
+            "collectionState": "ok",
+            "readIssueCount": 0,
+        },
+        "profile": {
+            "state": "associated",
+            "receivedAt": None,
+            "deviceObservedAt": None,
+            "deviceId": None,
+            "bootId": None,
+            "software": {},
+            "collection": None,
+            "capabilities": {},
+        },
+        "boot": {
+            "state": "notReported",
+            "bootId": None,
+            "startedAt": None,
+            "cleanShutdownAt": None,
+        },
+        "readings": {
+            "temperatureCelsius": dict(missing),
+            "memoryAvailableBytes": dict(missing),
+            "memoryTotalBytes": dict(missing),
+            "rootUsedPercent": dict(missing),
+            "dataUsedPercent": dict(missing),
+            "recorderActiveState": dict(missing),
+            "publisherActiveState": dict(missing),
+            "publisherBufferBytes": dict(missing),
+            "publisherBufferLimitBytes": dict(missing),
+            "networkInterfaces": [],
+        },
+        "readIssues": [],
         "readError": None,
     }
 
@@ -2736,8 +2790,9 @@ def test_vitaldb_recorder_observability_route_preserves_support_axes(
 
     assert status == HTTPStatus.OK
     assert document["state"] == "loaded"
-    assert document["supportState"] == "supported"
-    assert document["reportState"] == "current"
+    assert document["support"]["state"] == "supported"
+    assert document["report"]["state"] == "current"
+    assert "resources" not in document
 
 
 def test_vitaldb_recorders_visibility_routes_require_hidden_before_delete(

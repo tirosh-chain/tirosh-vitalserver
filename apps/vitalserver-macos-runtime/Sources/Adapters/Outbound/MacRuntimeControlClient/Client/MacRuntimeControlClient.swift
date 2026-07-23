@@ -176,6 +176,12 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         observabilityReader.loadVitalDBRecorderVitalFiles(vrcode: vrcode)
     }
 
+    public func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        observabilityReader.loadRecorderObservabilityDetail(vrcode: vrcode)
+    }
+
     public func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
         observabilityReader.loadVitalDBRelationships()
     }

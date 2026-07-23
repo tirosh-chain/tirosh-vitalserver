@@ -63,6 +63,12 @@ struct RuntimeControlHTTPReadRoutes {
                     vrcode: try request.vitalDBRecorderVitalFilesCode()
                 )
             )
+        case .vitalDBRecorderObservability:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadRecorderObservabilityDetail(
+                    vrcode: try request.recorderObservabilityDetailCode()
+                )
+            )
         case .vitalDBBeds:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBBeds())
         case .vitalDBBed:

@@ -12,6 +12,9 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory
 }
@@ -42,6 +45,15 @@ extension RuntimeObservabilityReading {
 
     func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory {
         .failed(vrcode: vrcode, readError: "Guest VitalDB recorder vital-file read model is unavailable.")
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        .unavailable(
+            vrcode: vrcode,
+            readError: "Guest Recorder observability detail is unavailable."
+        )
     }
 }
 
@@ -97,6 +109,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     private let guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider?
     private let guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider?
     private let guestVitalDBVitalFileProvider: RuntimeVitalDBGuestVitalFileProvider?
+    private let recorderObservabilityDetailProvider: RuntimeRecorderObservabilityDetailProvider?
     private let guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider?
 
     init(
@@ -108,6 +121,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider? = nil,
         guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider? = nil,
         guestVitalDBVitalFileProvider: RuntimeVitalDBGuestVitalFileProvider? = nil,
+        recorderObservabilityDetailProvider: RuntimeRecorderObservabilityDetailProvider? = nil,
         guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider? = nil
     ) {
         self.eventHistoryReader = eventHistoryReader ?? SystemRuntimeObservabilityReader.liveEventHistoryReader(
@@ -119,6 +133,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         self.guestVitalDBBedReadModelProvider = guestVitalDBBedReadModelProvider
         self.guestVitalDBActivityProvider = guestVitalDBActivityProvider
         self.guestVitalDBVitalFileProvider = guestVitalDBVitalFileProvider
+        self.recorderObservabilityDetailProvider = recorderObservabilityDetailProvider
         self.guestVitalDBRelationshipProvider = guestVitalDBRelationshipProvider
     }
 
@@ -141,6 +156,9 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             guestVitalDBBedReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL),
             guestVitalDBActivityProvider: .live(guestControlBaseURL: guestControlBaseURL),
             guestVitalDBVitalFileProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            recorderObservabilityDetailProvider: .live(
+                guestControlBaseURL: guestControlBaseURL
+            ),
             guestVitalDBRelationshipProvider: .live(guestControlBaseURL: guestControlBaseURL)
         )
     }
@@ -220,6 +238,16 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             ?? .failed(
                 vrcode: vrcode,
                 readError: "Guest VitalDB recorder vital-file read model is unavailable."
+            )
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        recorderObservabilityDetailProvider?.load(vrcode: vrcode)
+            ?? .unavailable(
+                vrcode: vrcode,
+                readError: "Guest Recorder observability detail is unavailable."
             )
     }
 

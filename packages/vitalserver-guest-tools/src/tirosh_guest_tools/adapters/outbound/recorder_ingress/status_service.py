@@ -110,10 +110,9 @@ class RecorderIngressStatusServiceAdapter:
             return _validated_observability_detail(document, vrcode)
         except RecorderIngressDependencyError as error:
             if error.kind == "recorder-ingress-not-found":
-                return _empty_observability(
+                return _empty_observability_detail(
                     state="notReported",
                     vrcode=vrcode,
-                    report_state="notEvaluated",
                     read_error=None,
                 )
             raise
@@ -326,13 +325,95 @@ def _validated_observability_detail(
 ) -> dict[str, Any]:
     if document.get("state") != "loaded" or document.get("vrcode") != vrcode:
         raise _observability_contract_error("detail state or VRCODE is invalid")
-    _validate_observability_summary(document)
-    if "resources" not in document or (
-        document["resources"] is not None
-        and not isinstance(document["resources"], dict)
-    ):
-        raise _observability_contract_error("detail resources is invalid")
+    support = document.get("support")
+    report = document.get("report")
+    profile = document.get("profile")
+    boot = document.get("boot")
+    readings = document.get("readings")
+    read_issues = document.get("readIssues")
+    if not isinstance(support, dict) or support.get("state") not in {
+        "supported",
+        "unsupported",
+        "unknown",
+    }:
+        raise _observability_contract_error("detail support is invalid")
+    if not isinstance(report, dict) or report.get("state") not in {
+        "notEvaluated",
+        "awaitingFirstReport",
+        "current",
+        "stale",
+        "missing",
+        "readFailed",
+    }:
+        raise _observability_contract_error("detail report is invalid")
+    if not isinstance(profile, dict) or profile.get("state") not in {
+        "associated",
+        "unassociated",
+        "missing",
+        "invalid",
+    }:
+        raise _observability_contract_error("detail profile is invalid")
+    if not isinstance(boot, dict) or boot.get("state") not in {
+        "notReported",
+        "started",
+        "shutdownClean",
+    }:
+        raise _observability_contract_error("detail boot is invalid")
+    if not isinstance(readings, dict):
+        raise _observability_contract_error("detail readings is invalid")
+    required_readings = {
+        "temperatureCelsius",
+        "memoryAvailableBytes",
+        "memoryTotalBytes",
+        "rootUsedPercent",
+        "dataUsedPercent",
+        "recorderActiveState",
+        "publisherActiveState",
+        "publisherBufferBytes",
+        "publisherBufferLimitBytes",
+        "networkInterfaces",
+    }
+    if not required_readings.issubset(readings):
+        raise _observability_contract_error("detail readings are incomplete")
+    for name in required_readings - {"networkInterfaces"}:
+        _validate_observability_reading(readings[name], name)
+    if not isinstance(readings["networkInterfaces"], list):
+        raise _observability_contract_error(
+            "detail networkInterfaces is invalid"
+        )
+    for index, network_interface in enumerate(readings["networkInterfaces"]):
+        if (
+            not isinstance(network_interface, dict)
+            or not isinstance(network_interface.get("name"), str)
+        ):
+            raise _observability_contract_error(
+                f"detail networkInterfaces[{index}] is invalid"
+            )
+        for field in ("operState", "carrier", "rxErrors", "txErrors"):
+            _validate_observability_reading(
+                network_interface.get(field),
+                f"networkInterfaces[{index}].{field}",
+            )
+    if not isinstance(read_issues, list) or document.get("readError") is not None:
+        raise _observability_contract_error("detail read result is invalid")
+    if "resources" in document:
+        raise _observability_contract_error("detail exposes raw resources")
     return document
+
+
+def _validate_observability_reading(value: object, name: str) -> None:
+    if not isinstance(value, dict) or value.get("state") not in {
+        "ok",
+        "missing",
+        "invalid",
+        "failed",
+        "unsupported",
+    }:
+        raise _observability_contract_error(f"detail reading {name} is invalid")
+    if not {"value", "detail", "observedAt"}.issubset(value):
+        raise _observability_contract_error(
+            f"detail reading {name} is incomplete"
+        )
 
 
 def _validate_observability_summary(summary: object) -> None:
@@ -396,6 +477,69 @@ def _empty_observability(
         "recorderVersion": None,
         "producerVersion": None,
         "protocolVersion": None,
+        "readError": read_error,
+    }
+
+
+def _empty_observability_detail(
+    *,
+    state: str,
+    vrcode: str,
+    read_error: str | None,
+) -> dict[str, Any]:
+    missing = {
+        "state": "missing",
+        "value": None,
+        "detail": "health observation is absent",
+        "observedAt": None,
+    }
+    return {
+        "state": state,
+        "vrcode": vrcode,
+        "support": {
+            "state": "unknown",
+            "source": None,
+            "expectedSince": None,
+            "recorderVersion": None,
+            "producerVersion": None,
+            "protocolVersion": None,
+        },
+        "report": {
+            "state": "notEvaluated" if read_error is None else "readFailed",
+            "receivedAt": None,
+            "deviceObservedAt": None,
+            "collectionState": None,
+            "readIssueCount": 0,
+        },
+        "profile": {
+            "state": "missing",
+            "receivedAt": None,
+            "deviceObservedAt": None,
+            "deviceId": None,
+            "bootId": None,
+            "software": {},
+            "collection": None,
+            "capabilities": {},
+        },
+        "boot": {
+            "state": "notReported",
+            "bootId": None,
+            "startedAt": None,
+            "cleanShutdownAt": None,
+        },
+        "readings": {
+            "temperatureCelsius": dict(missing),
+            "memoryAvailableBytes": dict(missing),
+            "memoryTotalBytes": dict(missing),
+            "rootUsedPercent": dict(missing),
+            "dataUsedPercent": dict(missing),
+            "recorderActiveState": dict(missing),
+            "publisherActiveState": dict(missing),
+            "publisherBufferBytes": dict(missing),
+            "publisherBufferLimitBytes": dict(missing),
+            "networkInterfaces": [],
+        },
+        "readIssues": [],
         "readError": read_error,
     }
 

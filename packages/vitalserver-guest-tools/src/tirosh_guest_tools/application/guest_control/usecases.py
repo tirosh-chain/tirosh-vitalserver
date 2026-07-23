@@ -1469,43 +1469,17 @@ class GuestControlUseCases:
 
     def get_recorder_observability(self, vrcode: str) -> dict[str, object]:
         if self._recorder_ingress is None:
-            return {
-                "state": "unavailable",
-                "vrcode": vrcode,
-                "supportState": "unknown",
-                "supportSource": None,
-                "reportState": "readFailed",
-                "profileState": None,
-                "collectionState": None,
-                "latestObservationReceivedAt": None,
-                "lastBootStartedAt": None,
-                "readIssueCount": None,
-                "expectedSince": None,
-                "recorderVersion": None,
-                "producerVersion": None,
-                "protocolVersion": None,
-                "readError": "Recorder ingress observability adapter is unavailable.",
-            }
+            return _recorder_observability_detail_unavailable_document(
+                vrcode,
+                "Recorder ingress observability adapter is unavailable.",
+            )
         try:
             return self._recorder_ingress.recorder_observability_detail(vrcode)
         except RecorderIngressDependencyError as error:
-            return {
-                "state": "unavailable",
-                "vrcode": vrcode,
-                "supportState": "unknown",
-                "supportSource": None,
-                "reportState": "readFailed",
-                "profileState": None,
-                "collectionState": None,
-                "latestObservationReceivedAt": None,
-                "lastBootStartedAt": None,
-                "readIssueCount": None,
-                "expectedSince": None,
-                "recorderVersion": None,
-                "producerVersion": None,
-                "protocolVersion": None,
-                "readError": error.message,
-            }
+            return _recorder_observability_detail_unavailable_document(
+                vrcode,
+                error.message,
+            )
 
     def apply_recorder_observability_expectation(
         self,
@@ -2380,6 +2354,67 @@ def _recorder_ingress_unavailable_document(message: str) -> dict[str, object]:
         "readState": "readFailed",
         "httpStatus": "unavailable",
         "document": None,
+        "readError": message,
+    }
+
+
+def _recorder_observability_detail_unavailable_document(
+    vrcode: str,
+    message: str,
+) -> dict[str, object]:
+    missing: dict[str, object] = {
+        "state": "missing",
+        "value": None,
+        "detail": "health observation is unavailable",
+        "observedAt": None,
+    }
+    return {
+        "state": "unavailable",
+        "vrcode": vrcode,
+        "support": {
+            "state": "unknown",
+            "source": None,
+            "expectedSince": None,
+            "recorderVersion": None,
+            "producerVersion": None,
+            "protocolVersion": None,
+        },
+        "report": {
+            "state": "readFailed",
+            "receivedAt": None,
+            "deviceObservedAt": None,
+            "collectionState": None,
+            "readIssueCount": 0,
+        },
+        "profile": {
+            "state": "missing",
+            "receivedAt": None,
+            "deviceObservedAt": None,
+            "deviceId": None,
+            "bootId": None,
+            "software": {},
+            "collection": None,
+            "capabilities": {},
+        },
+        "boot": {
+            "state": "notReported",
+            "bootId": None,
+            "startedAt": None,
+            "cleanShutdownAt": None,
+        },
+        "readings": {
+            "temperatureCelsius": dict(missing),
+            "memoryAvailableBytes": dict(missing),
+            "memoryTotalBytes": dict(missing),
+            "rootUsedPercent": dict(missing),
+            "dataUsedPercent": dict(missing),
+            "recorderActiveState": dict(missing),
+            "publisherActiveState": dict(missing),
+            "publisherBufferBytes": dict(missing),
+            "publisherBufferLimitBytes": dict(missing),
+            "networkInterfaces": [],
+        },
+        "readIssues": [],
         "readError": message,
     }
 

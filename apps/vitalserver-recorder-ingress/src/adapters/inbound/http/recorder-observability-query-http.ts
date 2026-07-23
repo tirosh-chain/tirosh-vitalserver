@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { RecorderObservabilityRepositoryPort } from "../../../application/ports/outbound/recorder-observability-repository-port";
+import { mapRecorderObservabilityDetail } from "../../../domain/recorder-observability-detail";
 
 export function recorderObservabilityQueryRoute(
   requestURL: string | undefined,
@@ -62,10 +63,7 @@ export async function readRecorderObservabilityQuery(
       return;
     }
     const row = rows[0];
-    writeJson(res, 200, {
-      state: "loaded",
-      ...row,
-    });
+    writeJson(res, 200, mapRecorderObservabilityDetail(row));
   } catch (error) {
     writeJson(res, 503, {
       state: "failed",

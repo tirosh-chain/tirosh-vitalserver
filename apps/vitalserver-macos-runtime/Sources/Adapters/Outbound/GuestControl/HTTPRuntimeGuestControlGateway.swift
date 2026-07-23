@@ -700,6 +700,16 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         )
     }
 
+    public func recorderObservabilityDetail(
+        _ vrcode: String
+    ) throws -> RuntimeRecorderObservabilityDetail {
+        try decode(
+            RuntimeRecorderObservabilityDetail.self,
+            method: "GET",
+            path: "/runtime/vitaldb/recorders/\(pathSegment(vrcode))/observability"
+        )
+    }
+
     public func vitalDBBeds() throws -> RuntimeVitalBedHistory {
         try decode(
             RuntimeVitalBedHistory.self,

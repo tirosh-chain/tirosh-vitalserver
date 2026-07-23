@@ -178,6 +178,12 @@ public actor MacRuntimeControlReadWorker {
         observabilityReader.loadVitalDBRecorderVitalFiles(vrcode: vrcode)
     }
 
+    public func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        observabilityReader.loadRecorderObservabilityDetail(vrcode: vrcode)
+    }
+
     public func loadVitalDBRelationships() async -> RuntimeVitalRelationshipHistory {
         await observabilityReader.loadVitalDBRelationshipsAsync()
     }

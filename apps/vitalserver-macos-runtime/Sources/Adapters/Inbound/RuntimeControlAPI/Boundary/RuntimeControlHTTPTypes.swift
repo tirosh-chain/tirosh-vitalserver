@@ -119,6 +119,9 @@ public protocol RuntimeControlAPIReadHandler {
     func loadVitalDBBeds() async throws -> RuntimeVitalBedHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async throws -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRecorderVitalFiles(vrcode: String) async throws -> RuntimeVitalRecorderVitalFileHistory
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) async throws -> RuntimeRecorderObservabilityDetail
     func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
     func loadHealthStatus() async throws -> PlatformState
     func loadRuntimePlatformSettings() async throws -> RuntimePlatformSettingsRead
@@ -505,6 +508,15 @@ public extension RuntimeControlAPIReadHandler {
         .failed(
             vrcode: vrcode,
             readError: "recorder vital-file reader is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) async throws -> RuntimeRecorderObservabilityDetail {
+        .unavailable(
+            vrcode: vrcode,
+            readError: "recorder observability detail reader is unavailable"
         )
     }
 }

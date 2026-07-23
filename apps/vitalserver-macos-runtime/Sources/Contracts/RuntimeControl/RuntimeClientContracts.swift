@@ -43,6 +43,7 @@ public protocol RuntimeControlClient {
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory
+    func loadRecorderObservabilityDetail(vrcode: String) -> RuntimeRecorderObservabilityDetail
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
@@ -100,6 +101,15 @@ public extension RuntimeControlClient {
         .failed(
             vrcode: vrcode,
             readError: "runtime control client recorder vital-file capability is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        .unavailable(
+            vrcode: vrcode,
+            readError: "runtime control client recorder observability capability is unavailable"
         )
     }
 

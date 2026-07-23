@@ -152,3 +152,44 @@ struct RuntimeVitalDBGuestVitalFileProvider {
         }
     }
 }
+
+struct RuntimeRecorderObservabilityDetailProvider {
+    private let loadDetail: (String) -> RuntimeRecorderObservabilityDetail
+
+    init(load: @escaping (String) -> RuntimeRecorderObservabilityDetail) {
+        self.loadDetail = load
+    }
+
+    func load(vrcode: String) -> RuntimeRecorderObservabilityDetail {
+        loadDetail(vrcode)
+    }
+
+    static func live(
+        guestControlBaseURL: @escaping @Sendable () -> String?,
+        guestControlGateway: @escaping @Sendable (String) throws -> any RuntimeGuestControlGateway = {
+            try HTTPRuntimeGuestControlGateway(
+                baseURL: $0,
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIProductReadModelTimeoutSeconds
+            )
+        }
+    ) -> RuntimeRecorderObservabilityDetailProvider {
+        RuntimeRecorderObservabilityDetailProvider { vrcode in
+            guard let baseURL = guestControlBaseURL()?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !baseURL.isEmpty else {
+                return .unavailable(
+                    vrcode: vrcode,
+                    readError: "guestControl=baseURLUnavailable"
+                )
+            }
+            do {
+                return try guestControlGateway(baseURL)
+                    .recorderObservabilityDetail(vrcode)
+            } catch {
+                return .unavailable(
+                    vrcode: vrcode,
+                    readError: "guestControl=\(error)"
+                )
+            }
+        }
+    }
+}

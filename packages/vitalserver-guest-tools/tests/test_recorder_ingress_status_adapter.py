@@ -202,23 +202,14 @@ def test_recorder_ingress_adapter_reads_observability_and_preserves_legacy_unkno
 
     monkeypatch.setattr(status_service, "urlopen", not_found)
     detail = adapter.recorder_observability_detail("VR legacy")
-    assert detail == {
-        "state": "notReported",
-        "vrcode": "VR legacy",
-        "supportState": "unknown",
-        "supportSource": None,
-        "reportState": "notEvaluated",
-        "profileState": None,
-        "collectionState": None,
-        "latestObservationReceivedAt": None,
-        "lastBootStartedAt": None,
-        "readIssueCount": None,
-        "expectedSince": None,
-        "recorderVersion": None,
-        "producerVersion": None,
-        "protocolVersion": None,
-        "readError": None,
-    }
+    assert detail["state"] == "notReported"
+    assert detail["vrcode"] == "VR legacy"
+    assert detail["support"]["state"] == "unknown"
+    assert detail["report"]["state"] == "notEvaluated"
+    assert detail["profile"]["state"] == "missing"
+    assert detail["boot"]["state"] == "notReported"
+    assert detail["readings"]["temperatureCelsius"]["state"] == "missing"
+    assert detail["readError"] is None
 
 
 def test_recorder_ingress_adapter_rejects_incomplete_observability_summary(
@@ -252,6 +243,91 @@ def test_recorder_ingress_adapter_rejects_incomplete_observability_summary(
 
     assert error.value.kind == "recorder-ingress-contract-invalid"
     assert "profileState" in error.value.message
+
+
+def test_recorder_ingress_adapter_accepts_typed_observability_detail(
+    monkeypatch: Any,
+) -> None:
+    missing = {
+        "state": "missing",
+        "value": None,
+        "detail": "absent",
+        "observedAt": None,
+    }
+    document = {
+        "state": "loaded",
+        "vrcode": "VR-001",
+        "support": {
+            "state": "supported",
+            "source": "accepted_report",
+            "expectedSince": None,
+            "recorderVersion": None,
+            "producerVersion": None,
+            "protocolVersion": None,
+        },
+        "report": {
+            "state": "current",
+            "receivedAt": "2026-07-24T00:00:01Z",
+            "deviceObservedAt": "2026-07-24T00:00:00Z",
+            "collectionState": "ok",
+            "readIssueCount": 0,
+        },
+        "profile": {
+            "state": "associated",
+            "receivedAt": None,
+            "deviceObservedAt": None,
+            "deviceId": "observer-001",
+            "bootId": "boot-001",
+            "software": {},
+            "collection": None,
+            "capabilities": {},
+        },
+        "boot": {
+            "state": "started",
+            "bootId": "boot-001",
+            "startedAt": "2026-07-23T23:00:00Z",
+            "cleanShutdownAt": None,
+        },
+        "readings": {
+            "temperatureCelsius": missing,
+            "memoryAvailableBytes": missing,
+            "memoryTotalBytes": missing,
+            "rootUsedPercent": missing,
+            "dataUsedPercent": missing,
+            "recorderActiveState": missing,
+            "publisherActiveState": missing,
+            "publisherBufferBytes": missing,
+            "publisherBufferLimitBytes": missing,
+            "networkInterfaces": [],
+        },
+        "readIssues": [],
+        "readError": None,
+    }
+
+    class Response:
+        status = 200
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def read(self) -> bytes:
+            return json.dumps(document).encode()
+
+    monkeypatch.setattr(
+        status_service,
+        "urlopen",
+        lambda *args, **kwargs: Response(),
+    )
+
+    result = RecorderIngressStatusServiceAdapter().recorder_observability_detail(
+        "VR-001"
+    )
+
+    assert result == document
+    assert "resources" not in result
 
 
 def test_recorder_ingress_adapter_posts_authenticated_expectation_command(

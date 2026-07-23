@@ -1090,7 +1090,7 @@ RecorderObservabilityDetail
     state, receivedAt, deviceObservedAt
     collectionState, readIssueCount
   profile
-    state = associated | unassociated | missing | invalid | readFailed
+    state = associated | unassociated | missing | invalid
     receivedAt, deviceId, bootId
     software
     collection intervals
@@ -1111,8 +1111,9 @@ RecorderObservabilityDetail
 
 각 reading은 `state`, nullable `value`, nullable `detail`, source timestamp를
 가집니다. `missing`, `invalid`, `failed`, `unsupported`를 `0`, `false` 또는
-정상으로 바꾸지 않습니다. Memory/storage/buffer percentage는 모든 분자와
-분모가 `ok`일 때만 pure mapper가 계산합니다.
+정상으로 바꾸지 않습니다. Observer가 제공한 memory/storage/buffer reading은
+그 상태와 값을 그대로 typed mapper에 전달하며, 누락된 분자나 분모를 UI가
+추정해 percentage로 만들지 않습니다.
 
 구현 순서:
 
@@ -1139,6 +1140,13 @@ field가 다르면 contract mismatch로 표시하고 UI가 하나를 임의 선�
 
 PWA/Swift lazy Detail은 별도 commit으로 분리하되 A2 public contract가 확정된
 직후 수행합니다.
+
+2026-07-24 기준 1~5단계 public contract는 구현되었습니다. Ingress는 내부
+aggregate JSONB를 typed DTO로 투영하고, Guest strict decoder와 Runtime Guest
+gateway/Runtime Control GET route가 같은 계약을 사용합니다. 서로 다른 boot의
+start/shutdown evidence는 합치지 않으며 저장 projection의
+`latest_unassociated`는 공개 계약의 `unassociated`로 정규화합니다. PWA/Swift
+lazy presentation은 다음 별도 변경으로 남깁니다.
 
 ### 15-3. Workstream A3: bounded timeline과 incident query
 

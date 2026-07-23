@@ -1083,6 +1083,69 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
+    func testRecorderObservabilityDetailDecodesTypedReadings() throws {
+        let missing = #"{"state":"missing","value":null,"detail":"absent","observedAt":null}"#
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state":"loaded",
+              "vrcode":"VR/A",
+              "support":{
+                "state":"supported","source":"accepted_report",
+                "expectedSince":null,"recorderVersion":"4.0.1",
+                "producerVersion":"1.0.0","protocolVersion":"1"
+              },
+              "report":{
+                "state":"current","receivedAt":"2026-07-24T00:00:01Z",
+                "deviceObservedAt":"2026-07-24T00:00:00Z",
+                "collectionState":"complete","readIssueCount":0
+              },
+              "profile":{
+                "state":"associated","receivedAt":null,"deviceObservedAt":null,
+                "deviceId":"observer-001","bootId":"boot-001","software":{},
+                "collection":null,"capabilities":{}
+              },
+              "boot":{
+                "state":"started","bootId":"boot-001",
+                "startedAt":"2026-07-23T23:00:00Z","cleanShutdownAt":null
+              },
+              "readings":{
+                "temperatureCelsius":{
+                  "state":"ok","value":52.5,"detail":null,
+                  "observedAt":"2026-07-24T00:00:00Z"
+                },
+                "memoryAvailableBytes":\(missing),
+                "memoryTotalBytes":\(missing),
+                "rootUsedPercent":\(missing),
+                "dataUsedPercent":\(missing),
+                "recorderActiveState":\(missing),
+                "publisherActiveState":\(missing),
+                "publisherBufferBytes":\(missing),
+                "publisherBufferLimitBytes":\(missing),
+                "networkInterfaces":[]
+              },
+              "readIssues":[],
+              "readError":null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let detail = try gateway.recorderObservabilityDetail("VR/A")
+
+        XCTAssertEqual(detail.profile.state, .associated)
+        XCTAssertEqual(detail.readings.temperatureCelsius.value, .double(52.5))
+        XCTAssertEqual(detail.readings.memoryAvailableBytes.state, .missing)
+        XCTAssertEqual(
+            client.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/vitaldb/recorders/VR%2FA/observability"
+        )
+    }
+
     func testVitalDBRecorderActivityRequestsGuestControlReadModelEndpoint() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,

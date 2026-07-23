@@ -681,21 +681,59 @@ class FakeRecorderIngress:
         }
 
     def recorder_observability_detail(self, vrcode: str) -> dict[str, object]:
+        missing = {
+            "state": "missing",
+            "value": None,
+            "detail": "health observation is absent",
+            "observedAt": None,
+        }
         return {
             "state": "notReported",
             "vrcode": vrcode,
-            "supportState": "unknown",
-            "supportSource": None,
-            "reportState": "notEvaluated",
-            "profileState": None,
-            "collectionState": None,
-            "latestObservationReceivedAt": None,
-            "lastBootStartedAt": None,
-            "readIssueCount": None,
-            "expectedSince": None,
-            "recorderVersion": None,
-            "producerVersion": None,
-            "protocolVersion": None,
+            "support": {
+                "state": "unknown",
+                "source": None,
+                "expectedSince": None,
+                "recorderVersion": None,
+                "producerVersion": None,
+                "protocolVersion": None,
+            },
+            "report": {
+                "state": "notEvaluated",
+                "receivedAt": None,
+                "deviceObservedAt": None,
+                "collectionState": None,
+                "readIssueCount": 0,
+            },
+            "profile": {
+                "state": "missing",
+                "receivedAt": None,
+                "deviceObservedAt": None,
+                "deviceId": None,
+                "bootId": None,
+                "software": {},
+                "collection": None,
+                "capabilities": {},
+            },
+            "boot": {
+                "state": "notReported",
+                "bootId": None,
+                "startedAt": None,
+                "cleanShutdownAt": None,
+            },
+            "readings": {
+                "temperatureCelsius": dict(missing),
+                "memoryAvailableBytes": dict(missing),
+                "memoryTotalBytes": dict(missing),
+                "rootUsedPercent": dict(missing),
+                "dataUsedPercent": dict(missing),
+                "recorderActiveState": dict(missing),
+                "publisherActiveState": dict(missing),
+                "publisherBufferBytes": dict(missing),
+                "publisherBufferLimitBytes": dict(missing),
+                "networkInterfaces": [],
+            },
+            "readIssues": [],
             "readError": None,
         }
 

@@ -624,16 +624,129 @@ components:
           items:
             $ref: "#/components/schemas/RecorderObservabilitySummary"
     RecorderObservabilityDetail:
-      allOf:
-        - $ref: "#/components/schemas/RecorderObservabilitySummary"
-        - type: object
-          required: [state, resources]
+      type: object
+      additionalProperties: false
+      required:
+        - state
+        - vrcode
+        - support
+        - report
+        - profile
+        - boot
+        - readings
+        - readIssues
+        - readError
+      properties:
+        state: {type: string, enum: [loaded]}
+        vrcode: {type: string}
+        support:
+          type: object
+          additionalProperties: false
+          required: [state, source, expectedSince, recorderVersion, producerVersion, protocolVersion]
           properties:
-            state: {type: string, enum: [loaded]}
-            resources:
+            state: {type: string, enum: [supported, unsupported, unknown]}
+            source: {type: string, nullable: true}
+            expectedSince: {type: string, nullable: true}
+            recorderVersion: {type: string, nullable: true}
+            producerVersion: {type: string, nullable: true}
+            protocolVersion: {type: string, nullable: true}
+        report:
+          type: object
+          additionalProperties: false
+          required: [state, receivedAt, deviceObservedAt, collectionState, readIssueCount]
+          properties:
+            state: {type: string, enum: [notEvaluated, awaitingFirstReport, current, stale, missing, readFailed]}
+            receivedAt: {type: string, nullable: true}
+            deviceObservedAt: {type: string, nullable: true}
+            collectionState: {type: string, nullable: true}
+            readIssueCount: {type: integer, minimum: 0}
+        profile:
+          type: object
+          additionalProperties: false
+          required: [state, receivedAt, deviceObservedAt, deviceId, bootId, software, collection, capabilities]
+          properties:
+            state: {type: string, enum: [associated, unassociated, missing, invalid]}
+            receivedAt: {type: string, nullable: true}
+            deviceObservedAt: {type: string, nullable: true}
+            deviceId: {type: string, nullable: true}
+            bootId: {type: string, nullable: true}
+            software:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/RecorderObservabilityReading"
+            collection:
               type: object
               nullable: true
-              additionalProperties: true
+              additionalProperties: false
+              required: [powerIntervalSeconds, telemetryIntervalSeconds, observationIntervalSeconds]
+              properties:
+                powerIntervalSeconds: {type: integer, nullable: true}
+                telemetryIntervalSeconds: {type: integer, nullable: true}
+                observationIntervalSeconds: {type: integer, nullable: true}
+            capabilities:
+              type: object
+              additionalProperties:
+                type: object
+                required: [state, source, detail]
+                properties:
+                  state: {type: string}
+                  source: {type: string, nullable: true}
+                  detail: {type: string, nullable: true}
+        boot:
+          type: object
+          additionalProperties: false
+          required: [state, bootId, startedAt, cleanShutdownAt]
+          properties:
+            state: {type: string, enum: [notReported, started, shutdownClean]}
+            bootId: {type: string, nullable: true}
+            startedAt: {type: string, nullable: true}
+            cleanShutdownAt: {type: string, nullable: true}
+        readings:
+          type: object
+          additionalProperties: false
+          required: [temperatureCelsius, memoryAvailableBytes, memoryTotalBytes, rootUsedPercent, dataUsedPercent, recorderActiveState, publisherActiveState, publisherBufferBytes, publisherBufferLimitBytes, networkInterfaces]
+          properties:
+            temperatureCelsius: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            memoryAvailableBytes: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            memoryTotalBytes: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            rootUsedPercent: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            dataUsedPercent: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            recorderActiveState: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            publisherActiveState: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            publisherBufferBytes: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            publisherBufferLimitBytes: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            networkInterfaces:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [name, operState, carrier, rxErrors, txErrors]
+                properties:
+                  name: {type: string}
+                  operState: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+                  carrier: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+                  rxErrors: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+                  txErrors: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+        readIssues:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, state, detail]
+            properties:
+              field: {type: string}
+              state: {type: string}
+              detail: {type: string}
+        readError: {type: string, nullable: true}
+    RecorderObservabilityReading:
+      type: object
+      additionalProperties: false
+      required: [state, value, detail, observedAt]
+      properties:
+        state: {type: string, enum: [ok, missing, invalid, failed, unsupported]}
+        value: {nullable: true}
+        detail: {type: string, nullable: true}
+        observedAt: {type: string, nullable: true}
     RecorderObservabilityAdmission:
       type: object
       additionalProperties: false

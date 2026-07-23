@@ -73,6 +73,29 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(client.recorderExpectationCommands, [command])
     }
 
+    @MainActor
+    func testRecorderObservabilityEndpointReturnsExplicitUnavailableDetail() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(
+            handler: RuntimeControlClientAPIReadHandler(client: client)
+        )
+
+        let response = await router.route(.init(
+            method: .get,
+            path: "/runtime/vitaldb/recorders/VR%2FA/observability"
+        ))
+
+        XCTAssertEqual(response.status, .ok)
+        let detail = try JSONDecoder().decode(
+            RuntimeRecorderObservabilityDetail.self,
+            from: try XCTUnwrap(response.body)
+        )
+        XCTAssertEqual(detail.state, .unavailable)
+        XCTAssertEqual(detail.vrcode, "VR/A")
+        XCTAssertEqual(detail.profile.state, .missing)
+        XCTAssertEqual(client.recorderObservabilityDetailCodes, ["VR/A"])
+    }
+
     func testPlatformAffordanceRoutesAreExplicitlySeparated() {
         let hostRoutes = RuntimeControlAPIEndpoint.allCases
             .map(\.route)
@@ -3850,6 +3873,7 @@ private final class FakeRuntimeControlClient:
     var recorderExpectationCommands: [
         RuntimeRecorderObservabilityExpectationCommand
     ] = []
+    var recorderObservabilityDetailCodes: [String] = []
     var backupLatestPaths: [String?] = []
     var loadBackupsError: Error?
     var exportLogsError: Error?
@@ -4014,6 +4038,16 @@ private final class FakeRuntimeControlClient:
             vrcode: command.vrcode,
             currentRevision: 2,
             failure: "revisionConflict"
+        )
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        recorderObservabilityDetailCodes.append(vrcode)
+        return .unavailable(
+            vrcode: vrcode,
+            readError: "recorder observability detail is unavailable"
         )
     }
 

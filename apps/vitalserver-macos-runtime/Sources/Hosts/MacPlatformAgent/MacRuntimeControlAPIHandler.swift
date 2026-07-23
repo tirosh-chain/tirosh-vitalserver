@@ -273,6 +273,12 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         await readWorker.loadVitalDBRecorderVitalFiles(vrcode: vrcode)
     }
 
+    public func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) async throws -> RuntimeRecorderObservabilityDetail {
+        await readWorker.loadRecorderObservabilityDetail(vrcode: vrcode)
+    }
+
     public func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
         await readWorker.loadVitalDBRelationships()
     }
