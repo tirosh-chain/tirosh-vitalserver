@@ -36,6 +36,8 @@ import {
   useLatestVitalDBObservation,
   useRepairDatastore,
   useRecorderObservabilityDetail,
+  useRecorderObservabilityIncidents,
+  useRecorderObservabilityTimeline,
   useRestartRuntimeProvider,
   useRestartGuestService,
   useStartLabSession,
@@ -196,6 +198,42 @@ describe("console hooks", () => {
     await waitFor(() =>
       expect(gateway.getRecorderObservability).toHaveBeenCalledWith("VR_A")
     );
+  });
+
+  it("loads bounded Recorder history only after an explicit query exists", async () => {
+    const gateway = createGateway();
+    const wrapper = createWrapper(gateway);
+    const timeline = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useRecorderObservabilityTimeline(enabled ? {
+          vrcode: "VR_A",
+          from: "2026-07-23T00:00:00Z",
+          until: "2026-07-24T00:00:00Z",
+          bucketSeconds: 900
+        } : null),
+      { wrapper, initialProps: { enabled: false } }
+    );
+    const incidents = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useRecorderObservabilityIncidents(enabled ? {
+          vrcode: "VR_A",
+          from: "2026-07-23T00:00:00Z",
+          until: "2026-07-24T00:00:00Z",
+          limit: 20
+        } : null),
+      { wrapper, initialProps: { enabled: false } }
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(gateway.getRecorderObservabilityTimeline).not.toHaveBeenCalled();
+    expect(gateway.getRecorderObservabilityIncidents).not.toHaveBeenCalled();
+
+    timeline.rerender({ enabled: true });
+    incidents.rerender({ enabled: true });
+    await waitFor(() => {
+      expect(gateway.getRecorderObservabilityTimeline).toHaveBeenCalledTimes(1);
+      expect(gateway.getRecorderObservabilityIncidents).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("runs runtime, update, backup, and repair mutations through the gateway", async () => {
@@ -533,6 +571,23 @@ function createGateway(): GatewayMock {
     getRecorderObservability: vi.fn().mockResolvedValue({
       state: "loaded",
       vrcode: "VR_A"
+    }),
+    getRecorderObservabilityTimeline: vi.fn().mockResolvedValue({
+      state: "notReported",
+      vrcode: "VR_A",
+      supportState: "supported",
+      timeBasis: "receivedAt",
+      query: null,
+      buckets: [],
+      readError: null
+    }),
+    getRecorderObservabilityIncidents: vi.fn().mockResolvedValue({
+      state: "loaded",
+      vrcode: "VR_A",
+      timeBasis: "receivedAt",
+      incidents: [],
+      nextCursor: null,
+      readError: null
     }),
     getReleaseInfo: vi.fn().mockResolvedValue({
       helperVersion: "1.0.0",

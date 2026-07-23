@@ -2640,6 +2640,82 @@
         }
       }
     },
+    "/runtime/vitaldb/recorders/{vrcode}/observability/timeline": {
+      "get": {
+        "operationId": "getRecorderObservabilityTimeline",
+        "summary": "Read a bounded Recorder health timeline",
+        "description": "Uses ingress receipt time as the only timeline axis. The maximum window is 24 hours and an unsupported Recorder remains distinct from a supported Recorder that has not reported.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {"name": "vrcode", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "from", "in": "query", "required": true, "schema": {"type": "string", "format": "date-time"}},
+          {"name": "until", "in": "query", "required": true, "schema": {"type": "string", "format": "date-time"}},
+          {
+            "name": "bucketSeconds",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "integer", "enum": [300, 900, 3600]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit bounded timeline result.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityTimeline"}
+              }
+            }
+          },
+          "400": {"description": "The requested window, bucket, or query contract is invalid."},
+          "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      }
+    },
+    "/runtime/vitaldb/recorders/{vrcode}/observability/incidents": {
+      "get": {
+        "operationId": "getRecorderObservabilityIncidents",
+        "summary": "Read bounded Recorder kernel incidents",
+        "description": "Returns a receipt-time ordered page from at most a 30-day window. The cursor is an opaque provider token.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {"name": "vrcode", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "from", "in": "query", "required": true, "schema": {"type": "string", "format": "date-time"}},
+          {"name": "until", "in": "query", "required": true, "schema": {"type": "string", "format": "date-time"}},
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["panic", "oops", "watchdog", "lockup", "unknown"]
+            }
+          },
+          {"name": "cursor", "in": "query", "required": false, "schema": {"type": "string"}},
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit bounded incident page.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityIncidents"}
+              }
+            }
+          },
+          "400": {"description": "The requested window, filter, cursor, or limit is invalid."},
+          "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      }
+    },
     "/runtime/vitaldb/recorders/{vrcode}/observability/expectation": {
       "post": {
         "operationId": "applyRecorderObservabilityExpectation",
@@ -4288,6 +4364,119 @@
               }
             }
           },
+          "readError": {"type": ["string", "null"]}
+        }
+      },
+      "RuntimeRecorderObservabilityMetricBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["average", "stateCounts"],
+        "properties": {
+          "average": {"type": ["number", "null"]},
+          "stateCounts": {
+            "type": "object",
+            "additionalProperties": {"type": "integer", "minimum": 0}
+          }
+        }
+      },
+      "RuntimeRecorderObservabilityTimelineBucket": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["bucketStartedAt", "sampleCount", "metrics"],
+        "properties": {
+          "bucketStartedAt": {"type": "string", "format": "date-time"},
+          "sampleCount": {"type": "integer", "minimum": 0},
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RuntimeRecorderObservabilityMetricBucket"
+            }
+          }
+        }
+      },
+      "RuntimeRecorderObservabilityTimeline": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state", "vrcode", "supportState", "timeBasis", "query",
+          "buckets", "readError"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["loaded", "notReported", "unsupported", "unavailable"]
+          },
+          "vrcode": {"type": "string"},
+          "supportState": {
+            "type": ["string", "null"],
+            "enum": ["supported", "unsupported", "unknown", null]
+          },
+          "timeBasis": {"type": "string", "enum": ["receivedAt"]},
+          "query": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["from", "until", "bucketSeconds"],
+                "properties": {
+                  "from": {"type": "string", "format": "date-time"},
+                  "until": {"type": "string", "format": "date-time"},
+                  "bucketSeconds": {"type": "integer", "enum": [300, 900, 3600]}
+                }
+              },
+              {"type": "null"}
+            ]
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeRecorderObservabilityTimelineBucket"
+            }
+          },
+          "readError": {"type": ["string", "null"]}
+        }
+      },
+      "RuntimeRecorderObservabilityIncident": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "recordId", "eventId", "receivedAt", "capturedAt",
+          "captureTimeState", "incidentType", "incidentBootId",
+          "messageExcerpt", "truncated"
+        ],
+        "properties": {
+          "recordId": {"type": "string"},
+          "eventId": {"type": "string"},
+          "receivedAt": {"type": "string", "format": "date-time"},
+          "capturedAt": {"type": "string", "format": "date-time"},
+          "captureTimeState": {"type": "string"},
+          "incidentType": {
+            "type": "string",
+            "enum": ["panic", "oops", "watchdog", "lockup", "unknown"]
+          },
+          "incidentBootId": {"type": ["string", "null"]},
+          "messageExcerpt": {"type": "string"},
+          "truncated": {"type": "boolean"}
+        }
+      },
+      "RuntimeRecorderObservabilityIncidents": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state", "vrcode", "timeBasis", "incidents",
+          "nextCursor", "readError"
+        ],
+        "properties": {
+          "state": {"type": "string", "enum": ["loaded", "unavailable"]},
+          "vrcode": {"type": "string"},
+          "timeBasis": {"type": "string", "enum": ["receivedAt"]},
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeRecorderObservabilityIncident"
+            }
+          },
+          "nextCursor": {"type": ["string", "null"]},
           "readError": {"type": ["string", "null"]}
         }
       },

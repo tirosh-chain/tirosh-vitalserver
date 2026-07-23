@@ -67,6 +67,18 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadRecorderObservabilityDetail(vrcode: vrcode)
     }
 
+    public func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) async throws -> RuntimeRecorderObservabilityTimeline {
+        client.loadRecorderObservabilityTimeline(query: query)
+    }
+
+    public func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async throws -> RuntimeRecorderObservabilityIncidents {
+        client.loadRecorderObservabilityIncidents(query: query)
+    }
+
     public func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
         client.loadVitalDBRelationships()
     }

@@ -1760,6 +1760,78 @@ export const recorderObservabilityDetailSchema = z
     }
   });
 
+const recorderObservabilityMetricBucketSchema = z
+  .object({
+    average: z.number().nullable(),
+    stateCounts: z.record(z.string(), z.number().int().nonnegative())
+  })
+  .strict();
+
+export const recorderObservabilityTimelineSchema = z
+  .object({
+    state: z.enum(["loaded", "notReported", "unsupported", "unavailable"]),
+    vrcode: z.string(),
+    supportState: z.enum(["supported", "unsupported", "unknown"]).nullable(),
+    timeBasis: z.literal("receivedAt"),
+    query: z
+      .object({
+        from: z.string(),
+        until: z.string(),
+        bucketSeconds: z.union([z.literal(300), z.literal(900), z.literal(3600)])
+      })
+      .strict()
+      .nullable(),
+    buckets: z.array(
+      z
+        .object({
+          bucketStartedAt: z.string(),
+          sampleCount: z.number().int().nonnegative(),
+          metrics: z.record(z.string(), recorderObservabilityMetricBucketSchema)
+        })
+        .strict()
+    ),
+    readError: requiredNullableString
+  })
+  .strict()
+  .superRefine((timeline, context) => {
+    if (timeline.state === "unavailable" && isBlank(timeline.readError)) {
+      context.addIssue({ code: "custom", path: ["readError"], message: "required" });
+    }
+    if (timeline.state !== "unavailable" && timeline.query === null) {
+      context.addIssue({ code: "custom", path: ["query"], message: "required" });
+    }
+  });
+
+export const recorderObservabilityIncidentsSchema = z
+  .object({
+    state: z.enum(["loaded", "unavailable"]),
+    vrcode: z.string(),
+    timeBasis: z.literal("receivedAt"),
+    incidents: z.array(
+      z
+        .object({
+          recordId: z.string(),
+          eventId: z.string(),
+          receivedAt: z.string(),
+          capturedAt: z.string(),
+          captureTimeState: z.string(),
+          incidentType: z.enum(["panic", "oops", "watchdog", "lockup", "unknown"]),
+          incidentBootId: requiredNullableString,
+          messageExcerpt: z.string(),
+          truncated: z.boolean()
+        })
+        .strict()
+    ),
+    nextCursor: requiredNullableString,
+    readError: requiredNullableString
+  })
+  .strict()
+  .superRefine((incidents, context) => {
+    if (incidents.state === "unavailable" && isBlank(incidents.readError)) {
+      context.addIssue({ code: "custom", path: ["readError"], message: "required" });
+    }
+  });
+
 export const runtimeReleaseInfoSchema = z
   .object({
     helperVersion: z.string().optional(),

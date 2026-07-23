@@ -54,6 +54,52 @@ describe("RuntimeControlApiClient", () => {
     });
   });
 
+  it("forwards bounded Recorder observability history queries", async () => {
+    const { client, requests } = clientWithResponses({
+      "/runtime/vitaldb/recorders/VR_A/observability/timeline": {
+        state: "notReported",
+        vrcode: "VR_A",
+        supportState: "supported",
+        timeBasis: "receivedAt",
+        query: {
+          from: "2026-07-23T00:00:00Z",
+          until: "2026-07-24T00:00:00Z",
+          bucketSeconds: 900
+        },
+        buckets: [],
+        readError: null
+      },
+      "/runtime/vitaldb/recorders/VR_A/observability/incidents": {
+        state: "loaded",
+        vrcode: "VR_A",
+        timeBasis: "receivedAt",
+        incidents: [],
+        nextCursor: null,
+        readError: null
+      }
+    });
+
+    await client.getRecorderObservabilityTimeline({
+      vrcode: "VR_A",
+      from: "2026-07-23T00:00:00Z",
+      until: "2026-07-24T00:00:00Z",
+      bucketSeconds: 900
+    });
+    await client.getRecorderObservabilityIncidents({
+      vrcode: "VR_A",
+      from: "2026-07-01T00:00:00Z",
+      until: "2026-07-24T00:00:00Z",
+      type: "panic",
+      cursor: "opaque",
+      limit: 25
+    });
+
+    expect(new URL(requests[0]!.url).searchParams.get("bucketSeconds")).toBe("900");
+    expect(new URL(requests[1]!.url).searchParams.get("type")).toBe("panic");
+    expect(new URL(requests[1]!.url).searchParams.get("cursor")).toBe("opaque");
+    expect(new URL(requests[1]!.url).searchParams.get("limit")).toBe("25");
+  });
+
   it("preserves a Guest operation-ledger 503 response", async () => {
     const { client } = clientWithResponses(
       {

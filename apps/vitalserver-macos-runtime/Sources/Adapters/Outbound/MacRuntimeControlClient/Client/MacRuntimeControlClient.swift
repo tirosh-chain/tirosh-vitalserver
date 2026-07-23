@@ -182,6 +182,18 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         observabilityReader.loadRecorderObservabilityDetail(vrcode: vrcode)
     }
 
+    public func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        observabilityReader.loadRecorderObservabilityTimeline(query: query)
+    }
+
+    public func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        observabilityReader.loadRecorderObservabilityIncidents(query: query)
+    }
+
     public func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
         observabilityReader.loadVitalDBRelationships()
     }

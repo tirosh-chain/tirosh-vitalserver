@@ -5,6 +5,8 @@ import {
   useHideVitalDBRecorders,
   useLabRecorders,
   useRecorderObservabilityDetail,
+  useRecorderObservabilityIncidents,
+  useRecorderObservabilityTimeline,
   useUnhideVitalDBRecorders,
   useVitalDBRecorderVitalFiles,
   useVitalDBRecorders,
@@ -13,6 +15,8 @@ import {
 import type {
   RuntimeLabRecorder,
   RuntimeRecorderObservabilityDetail,
+  RuntimeRecorderObservabilityIncidents,
+  RuntimeRecorderObservabilityTimeline,
   VitalDBRecorderRecord,
   RuntimeVitalRecorderVitalFileHistory,
   VitalDBRelationships
@@ -92,6 +96,28 @@ export function RecordersPage() {
   );
   const recorderObservabilityQuery = useRecorderObservabilityDetail(
     selectedRecorder?.vrcode ?? null
+  );
+  const observabilityHistoryWindow = useMemo(() => {
+    if (selectedRecorder === null) {
+      return null;
+    }
+    const until = new Date();
+    until.setSeconds(0, 0);
+    return {
+      vrcode: selectedRecorder.vrcode,
+      from: new Date(until.getTime() - 24 * 60 * 60 * 1_000).toISOString(),
+      until: until.toISOString()
+    };
+  }, [selectedRecorder?.vrcode]);
+  const recorderObservabilityTimelineQuery = useRecorderObservabilityTimeline(
+    observabilityHistoryWindow === null
+      ? null
+      : { ...observabilityHistoryWindow, bucketSeconds: 900 }
+  );
+  const recorderObservabilityIncidentsQuery = useRecorderObservabilityIncidents(
+    observabilityHistoryWindow === null
+      ? null
+      : { ...observabilityHistoryWindow, limit: 20 }
   );
   const selectedLabRecorder =
     labRecordersQuery.data?.recorders.find(
@@ -302,6 +328,12 @@ export function RecordersPage() {
           observabilityDetail={recorderObservabilityQuery.data}
           observabilityDetailError={recorderObservabilityQuery.error}
           observabilityDetailLoading={recorderObservabilityQuery.isPending}
+          observabilityTimeline={recorderObservabilityTimelineQuery.data}
+          observabilityTimelineError={recorderObservabilityTimelineQuery.error}
+          observabilityTimelineLoading={recorderObservabilityTimelineQuery.isPending}
+          observabilityIncidents={recorderObservabilityIncidentsQuery.data}
+          observabilityIncidentsError={recorderObservabilityIncidentsQuery.error}
+          observabilityIncidentsLoading={recorderObservabilityIncidentsQuery.isPending}
           showDelete={showHidden}
           mutationPending={visibilityMutationPending}
           onHide={() => {
@@ -511,6 +543,12 @@ function RecorderDetails({
   observabilityDetail,
   observabilityDetailError,
   observabilityDetailLoading,
+  observabilityTimeline,
+  observabilityTimelineError,
+  observabilityTimelineLoading,
+  observabilityIncidents,
+  observabilityIncidentsError,
+  observabilityIncidentsLoading,
   showDelete,
   mutationPending,
   onHide,
@@ -526,6 +564,12 @@ function RecorderDetails({
   observabilityDetail: RuntimeRecorderObservabilityDetail | undefined;
   observabilityDetailError: unknown;
   observabilityDetailLoading: boolean;
+  observabilityTimeline: RuntimeRecorderObservabilityTimeline | undefined;
+  observabilityTimelineError: unknown;
+  observabilityTimelineLoading: boolean;
+  observabilityIncidents: RuntimeRecorderObservabilityIncidents | undefined;
+  observabilityIncidentsError: unknown;
+  observabilityIncidentsLoading: boolean;
   showDelete: boolean;
   mutationPending: boolean;
   onHide: () => void;
@@ -603,6 +647,15 @@ function RecorderDetails({
           detail={observabilityDetail}
           error={observabilityDetailError}
           loading={observabilityDetailLoading}
+        />
+        <RecorderObservabilityHistory
+          recorder={recorder}
+          timeline={observabilityTimeline}
+          timelineError={observabilityTimelineError}
+          timelineLoading={observabilityTimelineLoading}
+          incidents={observabilityIncidents}
+          incidentsError={observabilityIncidentsError}
+          incidentsLoading={observabilityIncidentsLoading}
         />
       </div>
 
@@ -786,6 +839,150 @@ function RecorderObservabilityDetailSection({
         </div>
       ) : null}
     </>
+  );
+}
+
+function RecorderObservabilityHistory({
+  recorder,
+  timeline,
+  timelineError,
+  timelineLoading,
+  incidents,
+  incidentsError,
+  incidentsLoading
+}: {
+  recorder: VitalDBRecorderRecord;
+  timeline: RuntimeRecorderObservabilityTimeline | undefined;
+  timelineError: unknown;
+  timelineLoading: boolean;
+  incidents: RuntimeRecorderObservabilityIncidents | undefined;
+  incidentsError: unknown;
+  incidentsLoading: boolean;
+}) {
+  const identityMismatch =
+    (timeline !== undefined && timeline.vrcode !== recorder.vrcode) ||
+    (incidents !== undefined && incidents.vrcode !== recorder.vrcode);
+  return (
+    <div className="recorder-observability-history">
+      <h4>Last 24 hours</h4>
+      {identityMismatch ? (
+        <p className="error-text">
+          Health history identity does not match the selected Recorder.
+        </p>
+      ) : null}
+      {timelineError ? (
+        <ErrorState title="Health timeline request failed" error={timelineError} />
+      ) : timelineLoading ? (
+        <p className="muted">Loading health timeline...</p>
+      ) : timeline?.state === "unavailable" ? (
+        <p className="error-text">
+          Health timeline read failed: {timeline.readError ?? "No failure detail was provided."}
+        </p>
+      ) : timeline?.state === "unsupported" ? (
+        <p className="muted">This Recorder explicitly does not support health reports.</p>
+      ) : timeline?.state === "notReported" ? (
+        <p className="muted">No health report was received during this window.</p>
+      ) : timeline?.state === "loaded" && timeline.buckets.length > 0 ? (
+        <ObservabilityStorageChart timeline={timeline} />
+      ) : (
+        <p className="muted">Health timeline is not available.</p>
+      )}
+
+      <h4>Recent incidents</h4>
+      {incidentsError ? (
+        <ErrorState title="Incident history request failed" error={incidentsError} />
+      ) : incidentsLoading ? (
+        <p className="muted">Loading incidents...</p>
+      ) : incidents?.state === "unavailable" ? (
+        <p className="error-text">
+          Incident history read failed: {incidents.readError ?? "No failure detail was provided."}
+        </p>
+      ) : incidents?.incidents.length ? (
+        <ul className="recorder-observability-issues">
+          {incidents.incidents.map((incident) => (
+            <li key={incident.recordId}>
+              <strong>{incident.incidentType}</strong>{" "}
+              {formatLocalDateTime(incident.receivedAt)} — {incident.messageExcerpt}
+              {incident.truncated ? " (truncated)" : ""}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">No kernel incident was received during this window.</p>
+      )}
+    </div>
+  );
+}
+
+function ObservabilityStorageChart({
+  timeline
+}: {
+  timeline: RuntimeRecorderObservabilityTimeline;
+}) {
+  const width = 720;
+  const height = 180;
+  const inset = 28;
+  const points = timeline.buckets.map((bucket, index) => ({
+    x:
+      timeline.buckets.length === 1
+        ? width / 2
+        : inset + (index / (timeline.buckets.length - 1)) * (width - inset * 2),
+    root: bucket.metrics.rootUsedPercent?.average ?? null,
+    data: bucket.metrics.dataUsedPercent?.average ?? null
+  }));
+  if (!points.some((point) => point.root !== null || point.data !== null)) {
+    return (
+      <p className="muted">
+        Health reports were received, but storage usage was not reported in this window.
+      </p>
+    );
+  }
+  const y = (value: number) =>
+    height - inset - (Math.max(0, Math.min(100, value)) / 100) * (height - inset * 2);
+  return (
+    <div>
+      <svg
+        className="activity-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="Root and data storage usage over the last 24 hours"
+      >
+        <line
+          className="activity-axis-line"
+          x1={inset}
+          y1={inset}
+          x2={inset}
+          y2={height - inset}
+        />
+        <line
+          className="activity-axis-line"
+          x1={inset}
+          y1={height - inset}
+          x2={width - inset}
+          y2={height - inset}
+        />
+        {(["root", "data"] as const).flatMap((metric, seriesIndex) =>
+          points.slice(1).flatMap((point, index) => {
+            const previous = points[index];
+            const previousValue = previous[metric];
+            const value = point[metric];
+            return previousValue === null || value === null
+              ? []
+              : [
+                  <line
+                    key={`${metric}-${index}`}
+                    x1={previous.x}
+                    y1={y(previousValue)}
+                    x2={point.x}
+                    y2={y(value)}
+                    className={seriesIndex === 0 ? "chart-series-primary" : "chart-series-secondary"}
+                  />
+                ];
+          })
+        )}
+      </svg>
+      <p className="muted">Storage used: root (blue), data (orange). Receipt time, 15-minute buckets.</p>
+    </div>
   );
 }
 

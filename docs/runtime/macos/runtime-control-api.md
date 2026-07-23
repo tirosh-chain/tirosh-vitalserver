@@ -76,6 +76,9 @@ Runtime capability identifier `services:start`, `services:stop`,
 | `GET` | `/runtime/vitaldb/recorders` |
 | `GET` | `/runtime/vitaldb/recorders/{vrcode}` |
 | `GET` | `/runtime/vitaldb/recorders/{vrcode}/activity` |
+| `GET` | `/runtime/vitaldb/recorders/{vrcode}/observability` |
+| `GET` | `/runtime/vitaldb/recorders/{vrcode}/observability/timeline` |
+| `GET` | `/runtime/vitaldb/recorders/{vrcode}/observability/incidents` |
 | `POST` | `/runtime/vitaldb/recorders/{vrcode}/observability/expectation` |
 | `GET` | `/runtime/vitaldb/beds` |
 | `GET` | `/runtime/vitaldb/beds/{bedID}` |
@@ -268,6 +271,17 @@ Provider `start|stop|restart` command는 Platform effect와 Provider state를 �
 `GET /runtime/vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
 
 `GET /runtime/vitaldb/recorders/{vrcode}/activity`는 recorder activity chart용 lazy window read model입니다. Query는 `bucketSeconds=60|300`, `period=last15Minutes|lastHour|last6Hours|last12Hours|all`, `pageIndex=<non-negative integer>`를 지원합니다. `period=all`일 때 page 하나는 12시간이며, `pageIndex`가 없으면 최신 page를 반환합니다. Runtime v2 server는 Guest Control API의 `GET /runtime/vitaldb/recorders/{vrcode}/activity`를 소비하고, Guest/Postgres read model에서 해당 `vrcode`의 first/latest bucket boundary와 선택된 window의 `since/until` 범위만 조회합니다. Host SQLite projection은 Guest provider가 없는 transitional diagnostics path일 뿐 product state owner가 아닙니다. UI는 응답의 `page.count`, `page.index`, `page.windowStartedAt`, `page.windowEndedAt`, `buckets`만 표시하고 전체 history gap을 브라우저나 SwiftUI 메모리에서 materialize하면 안 됩니다.
+
+`GET /runtime/vitaldb/recorders/{vrcode}/observability/timeline`은
+`from`, `until`, `bucketSeconds=300|900|3600`을 필수로 받고 최대 24시간만
+조회합니다. `GET .../observability/incidents`는 최대 30일, page당 1...100개,
+선택적 `type`, opaque `cursor`를 지원합니다. 둘 다 ingress `receivedAt`을
+유일한 시간축으로 사용하고 Runtime Control과 Guest는 범위를 각각 검증합니다.
+Timeline의 `loaded`, `notReported`, `unsupported`, `unavailable`은 서로 다른
+상태입니다. UI는 빈 bucket에서 상태를 추정하거나 unsupported를 빈 chart로
+표시하면 안 됩니다. Incident empty collection은 조회가 성공했고 해당 구간에
+incident가 없다는 뜻이며 dependency failure는 `unavailable/readError`로
+보존됩니다.
 
 `POST /runtime/vitaldb/recorders/{vrcode}/observability/expectation`은 운영자
 control plane의 명시적 command 경로입니다. Runtime Control은 body의 `vrcode`가

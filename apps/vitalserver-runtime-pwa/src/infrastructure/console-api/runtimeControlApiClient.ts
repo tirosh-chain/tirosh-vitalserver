@@ -54,6 +54,10 @@ import type {
   RuntimeRedisRelaySettingsApplyRequest,
   RuntimeVitalDBObservationSnapshot,
   RuntimeRecorderObservabilityDetail,
+  RuntimeRecorderObservabilityIncidentQuery,
+  RuntimeRecorderObservabilityIncidents,
+  RuntimeRecorderObservabilityTimeline,
+  RuntimeRecorderObservabilityTimelineQuery,
   RuntimeVitalRecorderActivityWindow,
   RuntimeVitalRecorderActivityWindowQuery,
   RuntimeVitalRecorderVitalFileHistory,
@@ -98,6 +102,8 @@ import {
   runtimeRedisRelaySettingsReadSchema,
   runtimeVitalDBObservationSnapshotSchema,
   recorderObservabilityDetailSchema,
+  recorderObservabilityIncidentsSchema,
+  recorderObservabilityTimelineSchema,
   recorderActivityWindowSchema,
   recorderVitalFileHistorySchema,
   runtimeReleaseInfoSchema,
@@ -496,6 +502,36 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get(
       `/runtime/vitaldb/recorders/${encodeURIComponent(vrcode)}/observability`,
       recorderObservabilityDetailSchema
+    );
+  }
+
+  getRecorderObservabilityTimeline(
+    query: RuntimeRecorderObservabilityTimelineQuery
+  ): Promise<RuntimeRecorderObservabilityTimeline> {
+    return this.get(
+      `/runtime/vitaldb/recorders/${encodeURIComponent(query.vrcode)}/observability/timeline`,
+      recorderObservabilityTimelineSchema,
+      {
+        from: query.from,
+        until: query.until,
+        bucketSeconds: query.bucketSeconds
+      }
+    );
+  }
+
+  getRecorderObservabilityIncidents(
+    query: RuntimeRecorderObservabilityIncidentQuery
+  ): Promise<RuntimeRecorderObservabilityIncidents> {
+    return this.get(
+      `/runtime/vitaldb/recorders/${encodeURIComponent(query.vrcode)}/observability/incidents`,
+      recorderObservabilityIncidentsSchema,
+      {
+        from: query.from,
+        until: query.until,
+        limit: query.limit ?? 20,
+        ...(query.type === undefined ? {} : { type: query.type }),
+        ...(query.cursor === undefined ? {} : { cursor: query.cursor })
+      }
     );
   }
 

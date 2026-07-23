@@ -1180,6 +1180,22 @@ Explain analyze 결과나 payload 크기가 목표를 넘을 때만 bucket/incid
 projection migration을 추가합니다. GIN index도 실제 JSON containment query가
 확정된 path에만 만듭니다.
 
+2026-07-24 기준 1차 bounded query가 구현되었습니다. 별도 timeline/incident
+table 없이 accepted `records`와 기존 history index를 사용하며, timeline은
+최대 24시간과 `300|900|3600`초 bucket, incident는 최대 30일과 100개 page로
+제한합니다. 모든 시간축은 `receivedAt`이고 incident cursor는
+`(received_at, record_id)`를 opaque하게 인코딩합니다. 활성 expectation이
+`unsupported`이고 해당 구간의 accepted observation도 없으면
+`state=unsupported`를 반환하며, expectation이나 report가 없는 경우의
+`notReported`와 분리합니다. accepted observation은 support의 직접 evidence라서
+같은 구간에 row가 있으면 expectation보다 우선해 `supported/loaded`입니다.
+
+Guest와 Runtime Control은 query를 재검증하고 결과 state를 그대로 전달합니다.
+PWA Recorder Detail은 Recorder를 선택한 뒤에만 24시간/15분 timeline과 최근
+20개 incident를 lazy read합니다. 현재 chart는 직접 설명 가능한 root/data
+storage percent만 표시하며 condition label이나 임계값을 추론하지 않습니다.
+Swift와 다른 client도 동일한 Runtime Control endpoint를 사용할 수 있습니다.
+
 #### 완료 조건
 
 - 한 Recorder 24시간 기본 window가 bounded row/payload 제한 안에 들어옵니다.
@@ -1346,7 +1362,7 @@ RetentionRun
 2. 기존 revision에서 upgrade 후 데이터 보존
 3. expectation set/idempotent/conflict/clear
 4. observation/profile/boot out-of-order projection
-5. actual PostgreSQL summary/Detail/timeline integration
+5. actual PostgreSQL summary/Detail/timeline integration (integration DB 필요)
 6. PWA/Swift generated contract parity
 7. 전체 PostgreSQL backup -> 새 DB restore -> schema별 read equality
 8. clean install, in-place update와 재부팅 후 read equality
@@ -1362,7 +1378,7 @@ RetentionRun
 5. expectation command workflow, internal adapter와 Guest/Runtime forwarding
 6. typed Detail backend와 public Runtime contract
 7. PWA/Swift lazy Detail
-8. bounded timeline/incidents
+8. bounded timeline/incidents — 구현됨, actual PostgreSQL integration proof 남음
 9. schema별 capacity report와 retention decision
 10. 필요성이 증명된 owner의 retention/rebuild
 11. install/update/reboot release proof와 troubleshooting

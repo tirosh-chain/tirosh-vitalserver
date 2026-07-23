@@ -193,3 +193,73 @@ struct RuntimeRecorderObservabilityDetailProvider {
         }
     }
 }
+
+struct RuntimeRecorderObservabilityHistoryProvider {
+    private let loadTimeline: (
+        RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline
+    private let loadIncidents: (
+        RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents
+
+    func timeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        loadTimeline(query)
+    }
+
+    func incidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        loadIncidents(query)
+    }
+
+    static func live(
+        guestControlBaseURL: @escaping @Sendable () -> String?,
+        guestControlGateway: @escaping @Sendable (String) throws -> any RuntimeGuestControlGateway = {
+            try HTTPRuntimeGuestControlGateway(
+                baseURL: $0,
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIProductReadModelTimeoutSeconds
+            )
+        }
+    ) -> Self {
+        Self(
+            loadTimeline: { query in
+                guard let baseURL = guestControlBaseURL()?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !baseURL.isEmpty else {
+                    return .unavailable(
+                        vrcode: query.vrcode,
+                        readError: "guestControl=baseURLUnavailable"
+                    )
+                }
+                do {
+                    return try guestControlGateway(baseURL)
+                        .recorderObservabilityTimeline(query)
+                } catch {
+                    return .unavailable(
+                        vrcode: query.vrcode,
+                        readError: "guestControl=\(error)"
+                    )
+                }
+            },
+            loadIncidents: { query in
+                guard let baseURL = guestControlBaseURL()?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !baseURL.isEmpty else {
+                    return .unavailable(
+                        vrcode: query.vrcode,
+                        readError: "guestControl=baseURLUnavailable"
+                    )
+                }
+                do {
+                    return try guestControlGateway(baseURL)
+                        .recorderObservabilityIncidents(query)
+                } catch {
+                    return .unavailable(
+                        vrcode: query.vrcode,
+                        readError: "guestControl=\(error)"
+                    )
+                }
+            }
+        )
+    }
+}

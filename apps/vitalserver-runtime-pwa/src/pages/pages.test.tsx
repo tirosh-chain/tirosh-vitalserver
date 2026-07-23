@@ -42,6 +42,8 @@ const hooks = vi.hoisted(() => ({
   useRedisBackups: vi.fn(),
   useRepairDatastore: vi.fn(),
   useRecorderObservabilityDetail: vi.fn(),
+  useRecorderObservabilityTimeline: vi.fn(),
+  useRecorderObservabilityIncidents: vi.fn(),
   useRestartRuntimeProvider: vi.fn(),
   useRestartGuestService: vi.fn(),
   useRollbackBackup: vi.fn(),
@@ -436,6 +438,8 @@ describe("runtime console pages", () => {
     ).not.toBeInTheDocument();
     expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith(null);
     expect(hooks.useRecorderObservabilityDetail).toHaveBeenLastCalledWith(null);
+    expect(hooks.useRecorderObservabilityTimeline).toHaveBeenLastCalledWith(null);
+    expect(hooks.useRecorderObservabilityIncidents).toHaveBeenLastCalledWith(null);
 
     const recorderPanel = screen.getByRole("heading", { name: "Recorders" }).closest("section")!;
     const recorderTable = within(recorderPanel).getByRole("table");
@@ -460,6 +464,12 @@ describe("runtime console pages", () => {
     fireEvent.click(within(recorderTable).getByText("VR_A").closest("tr")!);
     expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith("VR_A");
     expect(hooks.useRecorderObservabilityDetail).toHaveBeenLastCalledWith("VR_A");
+    expect(hooks.useRecorderObservabilityTimeline).toHaveBeenLastCalledWith(
+      expect.objectContaining({ vrcode: "VR_A", bucketSeconds: 900 })
+    );
+    expect(hooks.useRecorderObservabilityIncidents).toHaveBeenLastCalledWith(
+      expect.objectContaining({ vrcode: "VR_A", limit: 20 })
+    );
 
     const recorderDetails = screen
       .getByRole("heading", { name: "Recorder Details" })
@@ -470,6 +480,11 @@ describe("runtime console pages", () => {
     expect(within(recorderDetails).getByText("Supported")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("52.5 °C")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("Publisher buffer")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Last 24 hours")).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByText("No health report was received during this window.")
+    ).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Recent incidents")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("Active IP")).toBeInTheDocument();
     expect(within(recorderDetails).queryByText("Redis key")).not.toBeInTheDocument();
     expect(within(recorderDetails).queryByText("x-forwarded-for")).not.toBeInTheDocument();
@@ -1924,6 +1939,27 @@ function setupDefaultHooks() {
   hooks.useRecorderObservabilityDetail.mockReturnValue(
     query(recorderObservabilityDetail())
   );
+  hooks.useRecorderObservabilityTimeline.mockReturnValue(query({
+    state: "notReported",
+    vrcode: "VR_A",
+    supportState: "supported",
+    timeBasis: "receivedAt",
+    query: {
+      from: "2026-07-23T00:00:00Z",
+      until: "2026-07-24T00:00:00Z",
+      bucketSeconds: 900
+    },
+    buckets: [],
+    readError: null
+  }));
+  hooks.useRecorderObservabilityIncidents.mockReturnValue(query({
+    state: "loaded",
+    vrcode: "VR_A",
+    timeBasis: "receivedAt",
+    incidents: [],
+    nextCursor: null,
+    readError: null
+  }));
   hooks.useVitalDBBeds.mockReturnValue(query(bedHistory()));
   hooks.useVitalDBRelationships.mockReturnValue(query(relationships()));
   hooks.useRuntimeEvents.mockReturnValue(query(events()));

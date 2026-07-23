@@ -23,6 +23,8 @@ import type {
   RuntimeLabVitalFileUploadRequest,
   RuntimeLabVitalFileReplayRequest,
   RuntimeLogSource,
+  RuntimeRecorderObservabilityIncidentQuery,
+  RuntimeRecorderObservabilityTimelineQuery,
   RuntimeVitalRecorderActivityWindowQuery,
   VitalDBBedVisibilityRequest,
   VitalDBRecorderVisibilityRequest,
@@ -440,6 +442,28 @@ export function useRecorderObservabilityDetail(vrcode: string | null) {
     queryFn: () => runtimeControlGateway.getRecorderObservability(vrcode ?? ""),
     enabled: vrcode !== null,
     refetchInterval: 5_000
+  });
+}
+
+export function useRecorderObservabilityTimeline(
+  query: RuntimeRecorderObservabilityTimelineQuery | null
+) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderObservabilityTimeline(query ?? {}),
+    queryFn: () => runtimeControlGateway.getRecorderObservabilityTimeline(query!),
+    enabled: query !== null
+  });
+}
+
+export function useRecorderObservabilityIncidents(
+  query: RuntimeRecorderObservabilityIncidentQuery | null
+) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderObservabilityIncidents(query ?? {}),
+    queryFn: () => runtimeControlGateway.getRecorderObservabilityIncidents(query!),
+    enabled: query !== null
   });
 }
 

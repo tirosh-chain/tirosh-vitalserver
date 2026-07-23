@@ -1377,6 +1377,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/vitaldb/recorders/{vrcode}/observability/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a bounded Recorder health timeline
+         * @description Uses ingress receipt time as the only timeline axis. The maximum window is 24 hours and an unsupported Recorder remains distinct from a supported Recorder that has not reported.
+         */
+        get: operations["getRecorderObservabilityTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/vitaldb/recorders/{vrcode}/observability/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read bounded Recorder kernel incidents
+         * @description Returns a receipt-time ordered page from at most a 30-day window. The cursor is an opaque provider token.
+         */
+        get: operations["getRecorderObservabilityIncidents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/vitaldb/recorders/{vrcode}/observability/expectation": {
         parameters: {
             query?: never;
@@ -1917,6 +1957,63 @@ export interface components {
                 state: string;
                 detail: string;
             }[];
+            readError: string | null;
+        };
+        RuntimeRecorderObservabilityMetricBucket: {
+            average: number | null;
+            stateCounts: {
+                [key: string]: number;
+            };
+        };
+        RuntimeRecorderObservabilityTimelineBucket: {
+            /** Format: date-time */
+            bucketStartedAt: string;
+            sampleCount: number;
+            metrics: {
+                [key: string]: components["schemas"]["RuntimeRecorderObservabilityMetricBucket"];
+            };
+        };
+        RuntimeRecorderObservabilityTimeline: {
+            /** @enum {string} */
+            state: "loaded" | "notReported" | "unsupported" | "unavailable";
+            vrcode: string;
+            /** @enum {string|null} */
+            supportState: "supported" | "unsupported" | "unknown" | null;
+            /** @enum {string} */
+            timeBasis: "receivedAt";
+            query: {
+                /** Format: date-time */
+                from: string;
+                /** Format: date-time */
+                until: string;
+                /** @enum {integer} */
+                bucketSeconds: 300 | 900 | 3600;
+            } | null;
+            buckets: components["schemas"]["RuntimeRecorderObservabilityTimelineBucket"][];
+            readError: string | null;
+        };
+        RuntimeRecorderObservabilityIncident: {
+            recordId: string;
+            eventId: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: date-time */
+            capturedAt: string;
+            captureTimeState: string;
+            /** @enum {string} */
+            incidentType: "panic" | "oops" | "watchdog" | "lockup" | "unknown";
+            incidentBootId: string | null;
+            messageExcerpt: string;
+            truncated: boolean;
+        };
+        RuntimeRecorderObservabilityIncidents: {
+            /** @enum {string} */
+            state: "loaded" | "unavailable";
+            vrcode: string;
+            /** @enum {string} */
+            timeBasis: "receivedAt";
+            incidents: components["schemas"]["RuntimeRecorderObservabilityIncident"][];
+            nextCursor: string | null;
             readError: string | null;
         };
         /** @enum {string} */
@@ -5163,6 +5260,76 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RuntimeRecorderObservabilityDetail"];
                 };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getRecorderObservabilityTimeline: {
+        parameters: {
+            query: {
+                from: string;
+                until: string;
+                bucketSeconds: 300 | 900 | 3600;
+            };
+            header?: never;
+            path: {
+                vrcode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Explicit bounded timeline result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeRecorderObservabilityTimeline"];
+                };
+            };
+            /** @description The requested window, bucket, or query contract is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getRecorderObservabilityIncidents: {
+        parameters: {
+            query: {
+                from: string;
+                until: string;
+                type?: "panic" | "oops" | "watchdog" | "lockup" | "unknown";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                vrcode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Explicit bounded incident page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeRecorderObservabilityIncidents"];
+                };
+            };
+            /** @description The requested window, filter, cursor, or limit is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Unauthorized"];
         };

@@ -29,6 +29,18 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .get, path: "/runtime/vitaldb/recorders/{vrcode}/vital-files", scope: .runtimeControl)
         case .vitalDBRecorderObservability:
             return .init(method: .get, path: "/runtime/vitaldb/recorders/{vrcode}/observability", scope: .runtimeControl)
+        case .vitalDBRecorderObservabilityTimeline:
+            return .init(
+                method: .get,
+                path: "/runtime/vitaldb/recorders/{vrcode}/observability/timeline",
+                scope: .runtimeControl
+            )
+        case .vitalDBRecorderObservabilityIncidents:
+            return .init(
+                method: .get,
+                path: "/runtime/vitaldb/recorders/{vrcode}/observability/incidents",
+                scope: .runtimeControl
+            )
         case .applyRecorderObservabilityExpectation:
             return .init(
                 method: .post,
@@ -218,6 +230,20 @@ public extension RuntimeControlAPIEndpoint {
 
     private func matches(path: String) -> Bool {
         switch self {
+        case .vitalDBRecorderObservabilityTimeline,
+             .vitalDBRecorderObservabilityIncidents:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 6
+                && components[0] == "runtime"
+                && components[1] == "vitaldb"
+                && components[2] == "recorders"
+                && !components[3].isEmpty
+                && components[4] == "observability"
+                && components[5] == (
+                    self == .vitalDBRecorderObservabilityTimeline
+                        ? "timeline"
+                        : "incidents"
+                )
         case .applyRecorderObservabilityExpectation:
             let components = path.split(separator: "/", omittingEmptySubsequences: true)
             return components.count == 6

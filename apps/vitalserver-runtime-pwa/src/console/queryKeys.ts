@@ -37,6 +37,10 @@ export const consoleQueryKeys = {
     ["vitaldb", "recorders", vrcode, "vital-files"] as const,
   recorderObservability: (vrcode: string) =>
     ["vitaldb", "recorders", vrcode, "observability"] as const,
+  recorderObservabilityTimeline: (query: object) =>
+    ["vitaldb", "recorders", "observability", "timeline", query] as const,
+  recorderObservabilityIncidents: (query: object) =>
+    ["vitaldb", "recorders", "observability", "incidents", query] as const,
   releaseInfo: ["platform", "release"] as const,
   installInfo: ["platform", "installation"] as const,
   beds: ["vitaldb", "beds"] as const,

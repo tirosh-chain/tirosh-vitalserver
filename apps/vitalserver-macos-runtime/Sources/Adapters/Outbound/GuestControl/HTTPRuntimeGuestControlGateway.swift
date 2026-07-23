@@ -710,6 +710,49 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         )
     }
 
+    public func recorderObservabilityTimeline(
+        _ query: RuntimeRecorderObservabilityTimelineQuery
+    ) throws -> RuntimeRecorderObservabilityTimeline {
+        try decode(
+            RuntimeRecorderObservabilityTimeline.self,
+            method: "GET",
+            path: try recorderObservabilityHistoryPath(
+                vrcode: query.vrcode,
+                resource: "timeline",
+                items: [
+                    ("from", query.from),
+                    ("until", query.until),
+                    ("bucketSeconds", String(query.bucketSeconds)),
+                ]
+            )
+        )
+    }
+
+    public func recorderObservabilityIncidents(
+        _ query: RuntimeRecorderObservabilityIncidentQuery
+    ) throws -> RuntimeRecorderObservabilityIncidents {
+        var items = [
+            ("from", query.from),
+            ("until", query.until),
+            ("limit", String(query.limit)),
+        ]
+        if let type = query.type {
+            items.append(("type", type))
+        }
+        if let cursor = query.cursor {
+            items.append(("cursor", cursor))
+        }
+        return try decode(
+            RuntimeRecorderObservabilityIncidents.self,
+            method: "GET",
+            path: try recorderObservabilityHistoryPath(
+                vrcode: query.vrcode,
+                resource: "incidents",
+                items: items
+            )
+        )
+    }
+
     public func vitalDBBeds() throws -> RuntimeVitalBedHistory {
         try decode(
             RuntimeVitalBedHistory.self,
@@ -1048,6 +1091,17 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
             return "\(item.name)=\(encodedValue)"
         }
         return "/runtime/events?\(encodedItems.joined(separator: "&"))"
+    }
+
+    private func recorderObservabilityHistoryPath(
+        vrcode: String,
+        resource: String,
+        items: [(String, String)]
+    ) throws -> String {
+        let query = try runtimeEventQueryPath(items.map { (name: $0.0, value: $0.1) })
+            .dropFirst("/runtime/events?".count)
+        return "/runtime/vitaldb/recorders/\(pathSegment(vrcode))"
+            + "/observability/\(resource)?\(query)"
     }
 
     private static let runtimeEventQueryValueAllowedCharacters: CharacterSet = {

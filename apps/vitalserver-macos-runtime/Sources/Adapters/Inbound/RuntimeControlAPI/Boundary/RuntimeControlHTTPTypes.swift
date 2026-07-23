@@ -122,6 +122,12 @@ public protocol RuntimeControlAPIReadHandler {
     func loadRecorderObservabilityDetail(
         vrcode: String
     ) async throws -> RuntimeRecorderObservabilityDetail
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) async throws -> RuntimeRecorderObservabilityTimeline
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async throws -> RuntimeRecorderObservabilityIncidents
     func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
     func loadHealthStatus() async throws -> PlatformState
     func loadRuntimePlatformSettings() async throws -> RuntimePlatformSettingsRead
@@ -517,6 +523,24 @@ public extension RuntimeControlAPIReadHandler {
         .unavailable(
             vrcode: vrcode,
             readError: "recorder observability detail reader is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) async throws -> RuntimeRecorderObservabilityTimeline {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "recorder observability timeline reader is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async throws -> RuntimeRecorderObservabilityIncidents {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "recorder observability incidents reader is unavailable"
         )
     }
 }

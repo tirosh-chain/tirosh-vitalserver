@@ -44,6 +44,12 @@ public protocol RuntimeControlClient {
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory
     func loadRecorderObservabilityDetail(vrcode: String) -> RuntimeRecorderObservabilityDetail
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
@@ -110,6 +116,24 @@ public extension RuntimeControlClient {
         .unavailable(
             vrcode: vrcode,
             readError: "runtime control client recorder observability capability is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "runtime control client recorder observability timeline is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "runtime control client recorder observability incidents are unavailable"
         )
     }
 

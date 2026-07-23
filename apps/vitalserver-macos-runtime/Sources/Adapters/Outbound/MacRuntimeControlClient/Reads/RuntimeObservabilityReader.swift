@@ -15,6 +15,12 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadRecorderObservabilityDetail(
         vrcode: String
     ) -> RuntimeRecorderObservabilityDetail
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory
 }
@@ -53,6 +59,24 @@ extension RuntimeObservabilityReading {
         .unavailable(
             vrcode: vrcode,
             readError: "Guest Recorder observability detail is unavailable."
+        )
+    }
+
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "Guest Recorder observability timeline is unavailable."
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "Guest Recorder observability incidents are unavailable."
         )
     }
 }
@@ -110,6 +134,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     private let guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider?
     private let guestVitalDBVitalFileProvider: RuntimeVitalDBGuestVitalFileProvider?
     private let recorderObservabilityDetailProvider: RuntimeRecorderObservabilityDetailProvider?
+    private let recorderObservabilityHistoryProvider: RuntimeRecorderObservabilityHistoryProvider?
     private let guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider?
 
     init(
@@ -122,6 +147,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider? = nil,
         guestVitalDBVitalFileProvider: RuntimeVitalDBGuestVitalFileProvider? = nil,
         recorderObservabilityDetailProvider: RuntimeRecorderObservabilityDetailProvider? = nil,
+        recorderObservabilityHistoryProvider: RuntimeRecorderObservabilityHistoryProvider? = nil,
         guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider? = nil
     ) {
         self.eventHistoryReader = eventHistoryReader ?? SystemRuntimeObservabilityReader.liveEventHistoryReader(
@@ -134,6 +160,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         self.guestVitalDBActivityProvider = guestVitalDBActivityProvider
         self.guestVitalDBVitalFileProvider = guestVitalDBVitalFileProvider
         self.recorderObservabilityDetailProvider = recorderObservabilityDetailProvider
+        self.recorderObservabilityHistoryProvider = recorderObservabilityHistoryProvider
         self.guestVitalDBRelationshipProvider = guestVitalDBRelationshipProvider
     }
 
@@ -157,6 +184,9 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             guestVitalDBActivityProvider: .live(guestControlBaseURL: guestControlBaseURL),
             guestVitalDBVitalFileProvider: .live(guestControlBaseURL: guestControlBaseURL),
             recorderObservabilityDetailProvider: .live(
+                guestControlBaseURL: guestControlBaseURL
+            ),
+            recorderObservabilityHistoryProvider: .live(
                 guestControlBaseURL: guestControlBaseURL
             ),
             guestVitalDBRelationshipProvider: .live(guestControlBaseURL: guestControlBaseURL)
@@ -248,6 +278,26 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             ?? .unavailable(
                 vrcode: vrcode,
                 readError: "Guest Recorder observability detail is unavailable."
+            )
+    }
+
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        recorderObservabilityHistoryProvider?.timeline(query: query)
+            ?? .unavailable(
+                vrcode: query.vrcode,
+                readError: "Guest Recorder observability timeline is unavailable."
+            )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        recorderObservabilityHistoryProvider?.incidents(query: query)
+            ?? .unavailable(
+                vrcode: query.vrcode,
+                readError: "Guest Recorder observability incidents are unavailable."
             )
     }
 

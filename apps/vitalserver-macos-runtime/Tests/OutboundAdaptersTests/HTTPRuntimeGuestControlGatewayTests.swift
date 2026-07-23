@@ -1146,6 +1146,72 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
+    func testRecorderObservabilityHistoryForwardsBoundedQueries() throws {
+        let timelineClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state":"notReported","vrcode":"VR/A","supportState":"supported",
+              "timeBasis":"receivedAt",
+              "query":{
+                "from":"2026-07-23T00:00:00Z",
+                "until":"2026-07-24T00:00:00Z",
+                "bucketSeconds":900
+              },
+              "buckets":[],"readError":null
+            }
+            """
+        ))
+        let timelineGateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: timelineClient
+        )
+        let timeline = try timelineGateway.recorderObservabilityTimeline(.init(
+            vrcode: "VR/A",
+            from: "2026-07-23T00:00:00Z",
+            until: "2026-07-24T00:00:00Z",
+            bucketSeconds: 900
+        ))
+
+        XCTAssertEqual(timeline.state, .notReported)
+        XCTAssertEqual(
+            timelineClient.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/vitaldb/recorders/VR%2FA/"
+                + "observability/timeline?from=2026-07-23T00%3A00%3A00Z"
+                + "&until=2026-07-24T00%3A00%3A00Z&bucketSeconds=900"
+        )
+
+        let incidentClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state":"loaded","vrcode":"VR/A","timeBasis":"receivedAt",
+              "incidents":[],"nextCursor":null,"readError":null
+            }
+            """
+        ))
+        let incidentGateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: incidentClient
+        )
+        _ = try incidentGateway.recorderObservabilityIncidents(.init(
+            vrcode: "VR/A",
+            from: "2026-07-01T00:00:00Z",
+            until: "2026-07-24T00:00:00Z",
+            type: "panic",
+            cursor: "opaque-token",
+            limit: 25
+        ))
+
+        XCTAssertEqual(
+            incidentClient.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/vitaldb/recorders/VR%2FA/"
+                + "observability/incidents?from=2026-07-01T00%3A00%3A00Z"
+                + "&until=2026-07-24T00%3A00%3A00Z&limit=25"
+                + "&type=panic&cursor=opaque-token"
+        )
+    }
+
     func testVitalDBRecorderActivityRequestsGuestControlReadModelEndpoint() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,

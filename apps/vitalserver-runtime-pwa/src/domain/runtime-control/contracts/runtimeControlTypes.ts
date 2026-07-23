@@ -19,6 +19,8 @@ import {
   runtimeSettingsSchema,
   runtimeVitalDBObservationSnapshotSchema,
   recorderObservabilityDetailSchema,
+  recorderObservabilityIncidentsSchema,
+  recorderObservabilityTimelineSchema,
   recorderVitalFileHistorySchema,
   platformStateSchema,
   vitalDBBedsSchema,
@@ -200,6 +202,28 @@ export type RuntimeVitalRecorderVitalFileHistory =
 
 export type RuntimeRecorderObservabilityDetail =
   z.infer<typeof recorderObservabilityDetailSchema>;
+
+export type RuntimeRecorderObservabilityTimeline =
+  z.infer<typeof recorderObservabilityTimelineSchema>;
+
+export type RuntimeRecorderObservabilityIncidents =
+  z.infer<typeof recorderObservabilityIncidentsSchema>;
+
+export type RuntimeRecorderObservabilityTimelineQuery = {
+  vrcode: string;
+  from: string;
+  until: string;
+  bucketSeconds: 300 | 900 | 3600;
+};
+
+export type RuntimeRecorderObservabilityIncidentQuery = {
+  vrcode: string;
+  from: string;
+  until: string;
+  type?: "panic" | "oops" | "watchdog" | "lockup" | "unknown";
+  cursor?: string;
+  limit?: number;
+};
 
 export type RuntimeReleaseInfo = components["schemas"]["RuntimeReleaseInfo"];
 

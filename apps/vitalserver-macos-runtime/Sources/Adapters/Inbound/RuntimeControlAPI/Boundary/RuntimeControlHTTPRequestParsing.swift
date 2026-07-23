@@ -219,6 +219,111 @@ public extension RuntimeControlHTTPRequest {
         return decoded
     }
 
+    func recorderObservabilityTimelineQuery() throws
+        -> RuntimeRecorderObservabilityTimelineQuery {
+        try requireOnlyQueryParameters(["from", "until", "bucketSeconds"])
+        let vrcode = try recorderObservabilityHistoryCode(resource: "timeline")
+        let (from, until) = try recorderObservabilityWindow(
+            maximumSeconds: 24 * 60 * 60
+        )
+        guard let rawBucket = try queryValue(named: "bucketSeconds"),
+              let bucket = Int(rawBucket),
+              [300, 900, 3_600].contains(bucket) else {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter(
+                "bucketSeconds",
+                (try queryValue(named: "bucketSeconds")) ?? "missing"
+            )
+        }
+        return .init(
+            vrcode: vrcode,
+            from: from,
+            until: until,
+            bucketSeconds: bucket
+        )
+    }
+
+    func recorderObservabilityIncidentQuery() throws
+        -> RuntimeRecorderObservabilityIncidentQuery {
+        try requireOnlyQueryParameters(["from", "until", "type", "cursor", "limit"])
+        let vrcode = try recorderObservabilityHistoryCode(resource: "incidents")
+        let (from, until) = try recorderObservabilityWindow(
+            maximumSeconds: 30 * 24 * 60 * 60
+        )
+        let type = try queryValue(named: "type")
+        if let type, !["panic", "oops", "watchdog", "lockup", "unknown"].contains(type) {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter("type", type)
+        }
+        let rawLimit = try queryValue(named: "limit")
+        let limit = rawLimit.flatMap(Int.init) ?? 50
+        guard (1...100).contains(limit) else {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter(
+                "limit",
+                rawLimit ?? "missing"
+            )
+        }
+        return .init(
+            vrcode: vrcode,
+            from: from,
+            until: until,
+            type: type,
+            cursor: try queryValue(named: "cursor"),
+            limit: limit
+        )
+    }
+
+    private func recorderObservabilityHistoryCode(resource: String) throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 6,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              components[4] == "observability",
+              components[5] == Substring(resource),
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
+    private func recorderObservabilityWindow(
+        maximumSeconds: TimeInterval
+    ) throws -> (String, String) {
+        guard let from = try queryValue(named: "from") else {
+            throw RuntimeControlHTTPQueryError.missingQueryParameterValue("from")
+        }
+        guard let until = try queryValue(named: "until") else {
+            throw RuntimeControlHTTPQueryError.missingQueryParameterValue("until")
+        }
+        guard let fromDate = Self.recorderObservabilityDate(from),
+              let untilDate = Self.recorderObservabilityDate(until),
+              untilDate > fromDate,
+              untilDate.timeIntervalSince(fromDate) <= maximumSeconds else {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter(
+                "from/until",
+                "\(from)/\(until)"
+            )
+        }
+        return (from, until)
+    }
+
+    private func requireOnlyQueryParameters(_ allowed: Set<String>) throws {
+        for item in try queryItems() where !allowed.contains(item.name) {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter(
+                item.name,
+                item.value ?? "missing"
+            )
+        }
+    }
+
+    private static func recorderObservabilityDate(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
     private func vitalDBRecorderActivityCode() throws -> String {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)

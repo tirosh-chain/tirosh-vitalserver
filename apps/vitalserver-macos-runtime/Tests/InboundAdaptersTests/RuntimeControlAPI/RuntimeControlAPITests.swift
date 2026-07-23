@@ -96,6 +96,59 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(client.recorderObservabilityDetailCodes, ["VR/A"])
     }
 
+    @MainActor
+    func testRecorderObservabilityHistoryEndpointsValidateAndForwardQueries() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(
+            handler: RuntimeControlClientAPIReadHandler(client: client)
+        )
+
+        let timelineResponse = await router.route(.init(
+            method: .get,
+            path: (
+                "/runtime/vitaldb/recorders/VR%2FA/observability/timeline"
+                + "?from=2026-07-23T00%3A00%3A00Z"
+                + "&until=2026-07-24T00%3A00%3A00Z"
+                + "&bucketSeconds=900"
+            )
+        ))
+        XCTAssertEqual(timelineResponse.status, .ok)
+        XCTAssertEqual(client.recorderObservabilityTimelineQueries, [
+            .init(
+                vrcode: "VR/A",
+                from: "2026-07-23T00:00:00Z",
+                until: "2026-07-24T00:00:00Z",
+                bucketSeconds: 900
+            ),
+        ])
+
+        let incidentResponse = await router.route(.init(
+            method: .get,
+            path: (
+                "/runtime/vitaldb/recorders/VR%2FA/observability/incidents"
+                + "?from=2026-07-01T00%3A00%3A00Z"
+                + "&until=2026-07-24T00%3A00%3A00Z"
+                + "&type=panic&limit=25"
+            )
+        ))
+        XCTAssertEqual(incidentResponse.status, .ok)
+        XCTAssertEqual(client.recorderObservabilityIncidentQueries.first?.vrcode, "VR/A")
+        XCTAssertEqual(client.recorderObservabilityIncidentQueries.first?.type, "panic")
+        XCTAssertEqual(client.recorderObservabilityIncidentQueries.first?.limit, 25)
+
+        let invalidResponse = await router.route(.init(
+            method: .get,
+            path: (
+                "/runtime/vitaldb/recorders/VR%2FA/observability/timeline"
+                + "?from=2026-07-22T00%3A00%3A00Z"
+                + "&until=2026-07-24T00%3A00%3A01Z"
+                + "&bucketSeconds=900"
+            )
+        ))
+        XCTAssertEqual(invalidResponse.status, .badRequest)
+        XCTAssertEqual(client.recorderObservabilityTimelineQueries.count, 1)
+    }
+
     func testPlatformAffordanceRoutesAreExplicitlySeparated() {
         let hostRoutes = RuntimeControlAPIEndpoint.allCases
             .map(\.route)
@@ -3874,6 +3927,12 @@ private final class FakeRuntimeControlClient:
         RuntimeRecorderObservabilityExpectationCommand
     ] = []
     var recorderObservabilityDetailCodes: [String] = []
+    var recorderObservabilityTimelineQueries: [
+        RuntimeRecorderObservabilityTimelineQuery
+    ] = []
+    var recorderObservabilityIncidentQueries: [
+        RuntimeRecorderObservabilityIncidentQuery
+    ] = []
     var backupLatestPaths: [String?] = []
     var loadBackupsError: Error?
     var exportLogsError: Error?
@@ -4049,6 +4108,20 @@ private final class FakeRuntimeControlClient:
             vrcode: vrcode,
             readError: "recorder observability detail is unavailable"
         )
+    }
+
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        recorderObservabilityTimelineQueries.append(query)
+        return .unavailable(vrcode: query.vrcode, readError: "not reported")
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        recorderObservabilityIncidentQueries.append(query)
+        return .unavailable(vrcode: query.vrcode, readError: "not reported")
     }
 
     func unhideVitalDBRecorders(

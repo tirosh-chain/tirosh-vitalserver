@@ -672,6 +672,29 @@
     height: auto;
   }
 
+  .recorder-observability-history {
+    @apply mt-6 border-t border-app-border pt-5;
+  }
+
+  .recorder-observability-history h4 {
+    @apply mb-3 mt-5 text-lg font-bold;
+  }
+
+  .chart-series-primary,
+  .chart-series-secondary {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+
+  .chart-series-primary {
+    stroke: #1677d2;
+  }
+
+  .chart-series-secondary {
+    stroke: #e67e22;
+  }
+
   .activity-axis {
     @apply fill-app-muted text-[13px] font-bold;
   }

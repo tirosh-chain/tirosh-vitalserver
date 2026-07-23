@@ -36,6 +36,12 @@ public protocol RuntimeGuestControlGateway {
     func recorderObservabilityDetail(
         _ vrcode: String
     ) throws -> RuntimeRecorderObservabilityDetail
+    func recorderObservabilityTimeline(
+        _ query: RuntimeRecorderObservabilityTimelineQuery
+    ) throws -> RuntimeRecorderObservabilityTimeline
+    func recorderObservabilityIncidents(
+        _ query: RuntimeRecorderObservabilityIncidentQuery
+    ) throws -> RuntimeRecorderObservabilityIncidents
     func vitalDBRelationships() throws -> RuntimeGuestControlVitalDBRelationshipRead
     func vitalDBRelationshipsAsync() async throws -> RuntimeGuestControlVitalDBRelationshipRead
     func recorderIngressStatus() throws -> RuntimeRecorderIngressStatusReadResult
@@ -133,6 +139,22 @@ public extension RuntimeGuestControlGateway {
     ) throws -> RuntimeRecorderObservabilityDetail {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable(
             "vitaldb-recorder-observability-detail"
+        )
+    }
+
+    func recorderObservabilityTimeline(
+        _: RuntimeRecorderObservabilityTimelineQuery
+    ) throws -> RuntimeRecorderObservabilityTimeline {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable(
+            "vitaldb-recorder-observability-timeline"
+        )
+    }
+
+    func recorderObservabilityIncidents(
+        _: RuntimeRecorderObservabilityIncidentQuery
+    ) throws -> RuntimeRecorderObservabilityIncidents {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable(
+            "vitaldb-recorder-observability-incidents"
         )
     }
 
