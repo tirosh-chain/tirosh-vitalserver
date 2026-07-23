@@ -23,7 +23,7 @@ from tirosh_guest_tools.domain.vitaldb_relationships import (
 
 
 class VitalDBReadModelWriter(Protocol):
-    def ensure_schema(self) -> None:
+    def verify_schema(self) -> None:
         raise NotImplementedError
 
     def previous_relationship_history(self) -> dict[str, object] | None:
@@ -131,7 +131,7 @@ def save_vitaldb_read_models(
     vitaldb_read_model: VitalDBReadModelWriter | None = None,
 ) -> None:
     repository = vitaldb_read_model or PostgresVitalDBReadModelRepository()
-    repository.ensure_schema()
+    repository.verify_schema()
     if observation is None:
         return
     observed_at = observed_at_datetime(observation)

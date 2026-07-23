@@ -1,20 +1,22 @@
 import { createHash, randomUUID } from "crypto";
 import type {
-  RecorderObservabilityLedgerBatch,
-  RecorderObservabilityLedgerPort,
-  RecorderObservabilityLedgerRecord,
-} from "./ports/outbound/recorder-observability-ledger-port";
-import {
-  validateRecorderObservabilityDocument,
-  type RecorderObservabilityResourceType,
-} from "../domain/recorder-observability";
+  PreparedRecorderObservabilityLine,
+  RecorderObservabilityRepositoryPort,
+} from "./ports/outbound/recorder-observability-repository-port";
+import type { RecorderObservabilitySchemaPort } from "./ports/outbound/recorder-observability-schema-port";
+import type { RecorderObservabilityResourceType } from "../domain/recorder-observability";
 
 "use strict";
+
+const canonicalize = require("canonicalize") as (
+  value: unknown,
+) => string | undefined;
 
 export type RecorderObservabilityInputLine = {
   lineNumber: number;
   rawDocument: string;
   document: unknown;
+  parseFailure?: string;
 };
 
 export type RecorderObservabilityAdmissionInput = {
@@ -37,139 +39,124 @@ type RecorderObservabilityClock = {
   now(): string;
 };
 
-type RecorderObservabilityIdentity = {
-  contentHash: string;
-};
-
 export function createRecorderObservabilityIngressService({
-  ledger,
+  repository,
+  schemas,
   clock = { now: () => new Date().toISOString() },
   createRequestId = randomUUID,
 }: {
-  ledger: RecorderObservabilityLedgerPort;
+  repository: RecorderObservabilityRepositoryPort;
+  schemas: RecorderObservabilitySchemaPort;
   clock?: RecorderObservabilityClock;
   createRequestId?: () => string;
 }) {
   return {
-    admit(
+    async admit(
       input: RecorderObservabilityAdmissionInput,
-    ): RecorderObservabilityAdmissionResult {
+    ): Promise<RecorderObservabilityAdmissionResult> {
       const requestId = createRequestId();
-      const receivedAt = clock.now();
-      const records: RecorderObservabilityLedgerRecord[] = [];
-      const stagedAccepted = new Map<string, RecorderObservabilityIdentity>();
-      let accepted = 0;
-      let duplicates = 0;
-      let quarantined = 0;
-
-      for (const line of input.lines) {
-        const contentHash = sha256(line.rawDocument);
-        const validation = validateRecorderObservabilityDocument(
-          input.resourceType,
-          line.document,
-          input.requestDeviceId,
-        );
-        if (validation.kind === "invalid") {
-          quarantined += 1;
-          records.push(record({
-            input,
-            line,
-            requestId,
-            receivedAt,
-            contentHash,
-            disposition: "quarantined",
-            eventId: validation.eventId,
-            documentDeviceId: validation.documentDeviceId,
-            quarantineReason: validation.reason,
-          }));
-          continue;
-        }
-
-        const { eventId, deviceId } = validation.candidate;
-        const key = `${input.vrcode}\u0000${eventId}`;
-        const existing = stagedAccepted.get(key)
-          || ledger.findAccepted(input.vrcode, eventId);
-        if (existing && existing.contentHash === contentHash) {
-          duplicates += 1;
-          continue;
-        }
-        if (existing) {
-          quarantined += 1;
-          records.push(record({
-            input,
-            line,
-            requestId,
-            receivedAt,
-            contentHash,
-            disposition: "quarantined",
-            eventId,
-            documentDeviceId: deviceId,
-            quarantineReason: "event_id_content_conflict",
-          }));
-          continue;
-        }
-        accepted += 1;
-        stagedAccepted.set(key, { contentHash });
-        records.push(record({
-          input,
-          line,
-          requestId,
-          receivedAt,
-          contentHash,
-          disposition: "accepted",
-          eventId,
-          documentDeviceId: deviceId,
-          quarantineReason: null,
-        }));
-      }
-
-      if (records.length > 0) {
-        const batch: RecorderObservabilityLedgerBatch = {
-          schemaVersion: 1,
-          requestId,
-          receivedAt,
-          records,
-        };
-        ledger.persist(batch);
-      }
-      return {
-        state: "admitted",
+      const lines = input.lines.map((line) => prepareLine(input, line, schemas));
+      const counts = await repository.admit({
         requestId,
-        accepted,
-        duplicates,
-        quarantined,
-      };
+        resourceType: input.resourceType,
+        vrcode: input.vrcode,
+        requestDeviceId: input.requestDeviceId,
+        sourceIp: input.sourceIp,
+        receivedAt: clock.now(),
+        lines,
+      });
+      return { state: "admitted", requestId, ...counts };
     },
   };
 }
 
-function record({
-  input,
-  line,
-  requestId,
-  receivedAt,
-  contentHash,
-  disposition,
-  eventId,
-  documentDeviceId,
-  quarantineReason,
-}): RecorderObservabilityLedgerRecord {
+function prepareLine(
+  input: RecorderObservabilityAdmissionInput,
+  line: RecorderObservabilityInputLine,
+  schemas: RecorderObservabilitySchemaPort,
+): PreparedRecorderObservabilityLine {
+  const rawSha256 = sha256(line.rawDocument);
+  if (line.parseFailure) {
+    return {
+      lineNumber: line.lineNumber,
+      rawDocument: line.rawDocument,
+      rawSha256,
+      document: null,
+      canonicalSha256: null,
+      identity: {},
+      contractReceipt: null,
+      failureCode: "json_parse_failed",
+      failureDetail: line.parseFailure,
+    };
+  }
+  const validation = schemas.validate(
+    input.resourceType,
+    line.document,
+    input.requestDeviceId,
+  );
+  const document = isObject(line.document) ? line.document : null;
+  const canonical = document ? canonicalize(document) : undefined;
+  const canonicalSha256 = canonical ? sha256(canonical) : null;
+  if (validation.kind === "invalid") {
+    return {
+      lineNumber: line.lineNumber,
+      rawDocument: line.rawDocument,
+      rawSha256,
+      document,
+      canonicalSha256,
+      identity: validation.identity,
+      contractReceipt: validation.contractReceipt,
+      failureCode: validation.reason,
+      failureDetail: validation.detail,
+    };
+  }
+  if (
+    input.resourceType === "recorderProfile"
+    && document
+    && isObject(document.identity)
+    && document.identity.vrcode !== input.vrcode
+  ) {
+    return {
+      lineNumber: line.lineNumber,
+      rawDocument: line.rawDocument,
+      rawSha256,
+      document,
+      canonicalSha256,
+      identity: validation.identity,
+      contractReceipt: validation.contractReceipt,
+      failureCode: "profile_vrcode_mismatch",
+      failureDetail:
+        `path=${input.vrcode}; profile=${String(document.identity.vrcode)}`,
+    };
+  }
+  if (!canonicalSha256) {
+    return {
+      lineNumber: line.lineNumber,
+      rawDocument: line.rawDocument,
+      rawSha256,
+      document,
+      canonicalSha256: null,
+      identity: validation.identity,
+      contractReceipt: validation.contractReceipt,
+      failureCode: "canonicalization_failed",
+      failureDetail: null,
+    };
+  }
   return {
-    schemaVersion: 1,
-    requestId,
     lineNumber: line.lineNumber,
-    disposition,
-    resourceType: input.resourceType,
-    vrcode: input.vrcode,
-    requestDeviceId: input.requestDeviceId,
-    documentDeviceId,
-    eventId,
-    contentHash,
     rawDocument: line.rawDocument,
-    receivedAt,
-    sourceIp: input.sourceIp,
-    quarantineReason,
+    rawSha256,
+    document,
+    canonicalSha256,
+    identity: validation.identity,
+    contractReceipt: validation.contractReceipt,
+    failureCode: null,
+    failureDetail: null,
   };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function sha256(value: string): string {

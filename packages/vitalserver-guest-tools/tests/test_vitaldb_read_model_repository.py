@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import json
-import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import event
 
 from tirosh_guest_tools.adapters.outbound.postgres import (
     PostgresVitalDBReadModelRepository,
 )
-from tirosh_guest_tools.adapters.outbound.postgres import (
-    vitaldb_read_model_repository as repository_module,
+from tirosh_guest_tools.adapters.outbound.postgres.records import (
+    VITALDB_READ_MODEL_SCHEMA,
+    VitalDBRecordBase,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
     VitalDBReadModelDependencyError,
@@ -21,9 +19,11 @@ from tirosh_guest_tools.domain.guest_control.models import (
 
 def repository(tmp_path: Path) -> PostgresVitalDBReadModelRepository:
     value = PostgresVitalDBReadModelRepository(
-        f"sqlite:///{tmp_path / 'vitaldb.sqlite'}"
+        f"sqlite:///{tmp_path / 'vitaldb.sqlite'}",
+        schema_translate_map={VITALDB_READ_MODEL_SCHEMA: None},
     )
-    value.ensure_schema()
+    VitalDBRecordBase.metadata.create_all(value._engine)
+    value.verify_schema()
     return value
 
 
@@ -65,6 +65,21 @@ def test_sqlalchemy_repository_round_trips_observation_on_sqlite(
     }
     assert store.recorders()["recorders"][0]["vrcode"] == "VR-001"
     assert store.beds()["beds"][0]["bedID"] == "bed-a"
+
+
+def test_sqlalchemy_repository_reports_missing_managed_schema(
+    tmp_path: Path,
+) -> None:
+    store = PostgresVitalDBReadModelRepository(
+        f"sqlite:///{tmp_path / 'missing.sqlite'}",
+        schema_translate_map={VITALDB_READ_MODEL_SCHEMA: None},
+    )
+
+    with pytest.raises(VitalDBReadModelDependencyError) as error:
+        store.verify_schema()
+
+    assert error.value.kind == "vitaldb-read-model-unavailable"
+    assert "schema verification failed" in error.value.message
 
 
 def test_sqlalchemy_repository_applies_visibility_policy(tmp_path: Path) -> None:
@@ -178,100 +193,6 @@ def test_sqlalchemy_repository_keeps_activity_beyond_observation_read_limit(
 
     assert len(result["buckets"]) == 1001
     assert result["buckets"][0]["bucketStartedAt"] == "2026-07-01T00:00:00Z"
-
-
-def test_schema_migration_backfills_activity_from_existing_observations(
-    tmp_path: Path,
-) -> None:
-    database = tmp_path / "vitaldb.sqlite"
-    with sqlite3.connect(database) as connection:
-        connection.execute(
-            """
-            CREATE TABLE vitaldb_observation_snapshots(
-              snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-              document JSON NOT NULL,
-              observed_at DATETIME NOT NULL
-            )
-            """
-        )
-        connection.execute(
-            """
-            INSERT INTO vitaldb_observation_snapshots(document, observed_at)
-            VALUES (?, ?)
-            """,
-            (json.dumps(observation()), "2026-07-01 00:00:00+00:00"),
-        )
-
-    store = PostgresVitalDBReadModelRepository(f"sqlite:///{database}")
-    store.ensure_schema()
-
-    assert store.recorder_activity("VR-001")["buckets"][0]["messageCount"] == 2
-
-
-def test_schema_migration_reads_existing_observations_in_bounded_batches(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    database = tmp_path / "vitaldb.sqlite"
-    documents: list[tuple[str, str]] = []
-    for message_count in range(1, 6):
-        document = observation()
-        document["activityBuckets"][0]["messageCount"] = message_count
-        documents.append((json.dumps(document), "2026-07-01 00:00:00+00:00"))
-    with sqlite3.connect(database) as connection:
-        connection.execute(
-            """
-            CREATE TABLE vitaldb_observation_snapshots(
-              snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-              document JSON NOT NULL,
-              observed_at DATETIME NOT NULL
-            )
-            """
-        )
-        connection.executemany(
-            """
-            INSERT INTO vitaldb_observation_snapshots(document, observed_at)
-            VALUES (?, ?)
-            """,
-            documents,
-        )
-
-    monkeypatch.setattr(repository_module, "ACTIVITY_BUCKET_MIGRATION_BATCH_SIZE", 2)
-    store = PostgresVitalDBReadModelRepository(f"sqlite:///{database}")
-    statements: list[str] = []
-
-    def record_statement(
-        _connection: object,
-        _cursor: object,
-        statement: str,
-        _parameters: object,
-        _context: object,
-        _executemany: bool,
-    ) -> None:
-        statements.append(statement)
-
-    event.listen(store._engine, "before_cursor_execute", record_statement)
-
-    store.ensure_schema()
-
-    migration_reads = [
-        statement
-        for statement in statements
-        if "FROM vitaldb_observation_snapshots" in statement
-        and "ORDER BY vitaldb_observation_snapshots.snapshot_id" in statement
-    ]
-    assert len(migration_reads) == 4
-    assert all("LIMIT" in statement for statement in migration_reads)
-    assert store.recorder_activity("VR-001")["buckets"][0]["messageCount"] == 5
-    output = capsys.readouterr().out
-    assert (
-        "activity bucket projection migration batch completed "
-        "batch=3 rows=1 totalRows=5 lastSnapshotID=5"
-    ) in output
-    assert (
-        "activity bucket projection migration completed batches=3 totalRows=5"
-    ) in output
 
 
 def test_sqlalchemy_repository_round_trips_relationship_history(tmp_path: Path) -> None:

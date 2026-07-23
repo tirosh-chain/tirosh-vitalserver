@@ -18,6 +18,11 @@
       "image": "vitalserver:2.3.4",
       "version": "2.3.4"
     },
+    "postgresMigrator": {
+      "displayName": "PostgreSQL schema migrator",
+      "image": "vitalserver-postgres-migrator:0.2.0",
+      "version": "0.2.0"
+    },
     "recorderIngress": {
       "displayName": "Recorder ingress",
       "image": "vitalserver-recorder-ingress:0.2.0",

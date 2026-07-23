@@ -20,6 +20,21 @@ services:
       retries: 30
     restart: unless-stopped
 
+  postgres-migrate:
+    build:
+      context: .
+      dockerfile: apps/vitalserver-postgres-migrator/Dockerfile
+    image: vitalserver-postgres-migrator:0.2.0
+    security_opt:
+      - seccomp=unconfined
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      VITALSERVER_DATABASE_URL: "postgresql://vitalserver@postgres:5432/vitalserver"
+      PGPASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
+    restart: "no"
+
   redis:
     image: redis:3.2.12-alpine
     security_opt:
@@ -162,6 +177,10 @@ services:
     depends_on:
       app:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      postgres-migrate:
+        condition: service_completed_successfully
       recorder-recovery:
         condition: service_healthy
       redis:
@@ -175,6 +194,17 @@ services:
       RECORDER_INGRESS_NATIVE_UPLOAD_STATE_PATH: "${RECORDER_INGRESS_NATIVE_UPLOAD_STATE_PATH:-/var/lib/vitalserver-recorder-ingress/recovery/native-vital-uploads.json}"
       RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY: "${RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY:-/var/lib/vitalserver-recorder-ingress/observability}"
       RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES: "${RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES:-5242880}"
+      RECORDER_INGRESS_OBSERVABILITY_ENABLED: "${RECORDER_INGRESS_OBSERVABILITY_ENABLED:-1}"
+      RECORDER_INGRESS_POSTGRES_HOST: "${RECORDER_INGRESS_POSTGRES_HOST:-postgres}"
+      RECORDER_INGRESS_POSTGRES_PORT: "${RECORDER_INGRESS_POSTGRES_PORT:-5432}"
+      RECORDER_INGRESS_POSTGRES_DATABASE: "${RECORDER_INGRESS_POSTGRES_DATABASE:-vitalserver}"
+      RECORDER_INGRESS_POSTGRES_USER: "${RECORDER_INGRESS_POSTGRES_USER:-vitalserver}"
+      RECORDER_INGRESS_POSTGRES_PASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
+      RECORDER_INGRESS_POSTGRES_MAX_CONNECTIONS: "${RECORDER_INGRESS_POSTGRES_MAX_CONNECTIONS:-10}"
+      RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_INTERVAL_MS: "${RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_INTERVAL_MS:-1000}"
+      RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_BATCH_SIZE: "${RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_BATCH_SIZE:-100}"
+      RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_MULTIPLIER: "${RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_MULTIPLIER:-3}"
+      RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_ALLOWANCE_SECONDS: "${RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_ALLOWANCE_SECONDS:-30}"
       RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_INTERVAL_MS: "${RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_INTERVAL_MS:-5000}"
       RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_MAX_ATTEMPTS: "${RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_MAX_ATTEMPTS:-12}"
       RECORDER_INGRESS_NATIVE_UPLOAD_INDEX_TIMEOUT_MS: "${RECORDER_INGRESS_NATIVE_UPLOAD_INDEX_TIMEOUT_MS:-5000}"
@@ -344,6 +374,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-migrate:
+        condition: service_completed_successfully
       recorder-ingress:
         condition: service_healthy
     ports:

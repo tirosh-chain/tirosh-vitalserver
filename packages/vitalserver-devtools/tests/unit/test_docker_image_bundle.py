@@ -106,6 +106,8 @@ def test_build_docker_image_bundle_exports_only_the_guest_platform(
         pull_images=[],
         app_image=IMAGE,
         app_dockerfile=tmp_path / "Dockerfile",
+        postgres_migrator_image="postgres-migrator:1.0.0",
+        postgres_migrator_dockerfile=tmp_path / "migrator.Dockerfile",
         recorder_ingress_image="recorder-ingress:1.0.0",
         recorder_ingress_dockerfile=tmp_path / "ingress.Dockerfile",
         recorder_recovery_image="recorder-recovery:1.0.0",

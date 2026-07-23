@@ -94,6 +94,7 @@
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update와 VM Image Update 계약 결정 |
 | [ADR 0005](adr/0005-vital-file-versioned-compatibility-and-canonical-model.md) | Vital File v1/v2/v3 입력 호환성과 canonical 최신 writer 결정 |
 | [ADR 0006](adr/0006-recovery-artifact-origin-and-publish-boundary.md) | cold-path recovery artifact origin, receipt, export와 publish 책임 분리 결정 |
+| [PostgreSQL schema lifecycle](architecture/postgresql-schema-lifecycle.md) | 중앙 Alembic migrator, bounded-context schema, clean database 전환과 Runtime 기동 gate |
 
 ### VRecorder와 데이터
 
@@ -102,6 +103,8 @@
 | [Vital Recorder integration contract](recorder/vital-recorder-integration.md) | Socket.IO 접속 흐름, VRecorder 식별 기준, Web Monitoring 상태 표시 기준 |
 | [Recorder ingress audit contract](recorder/ingress-audit-contract.md) | recorder ingress 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
 | [Recorder ingress send_data flow control contract](recorder/send-data-flow-control.md) | upstream 수정 없이 `send_data` 유입을 제어하고 저장, 재생, backpressure 상태를 노출하는 계약 |
+| [Recorder observability persistence and API implementation plan](recorder/observability-persistence-and-api-plan.md) | Recorder 관측 JSONB admission, profile, PostgreSQL projection, read API와 단계별 구현 계획 |
+| [Recorder observability API and database handoff](recorder/observability-recorder-handoff.md) | Recorder 팀 공유용 POST 계약, profile 초안, PostgreSQL schema와 역할 분담 |
 | [VitalServer recorder Redis key model](recorder/redis-key-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](api/vitalserver.openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
 | [Recorder Ingress OpenAPI](api/recorder-ingress.openapi.yaml) | recorder ingress sidecar 운영 endpoint spec |

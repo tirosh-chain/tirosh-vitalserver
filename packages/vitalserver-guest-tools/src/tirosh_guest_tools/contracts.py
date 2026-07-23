@@ -46,6 +46,10 @@ class ComposeService(StrEnum):
     EDGE = "edge"
 
 
+class ComposeJob(StrEnum):
+    POSTGRES_MIGRATION = "postgres-migrate"
+
+
 class RuntimeCommand(StrEnum):
     GUEST_OBSERVED = "tirosh-guest-observed"
     GUEST_OBSERVE = "tirosh-guest-observe"

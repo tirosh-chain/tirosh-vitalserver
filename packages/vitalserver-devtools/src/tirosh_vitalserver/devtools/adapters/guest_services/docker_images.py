@@ -42,6 +42,13 @@ def build_docker_image_bundle(
         dockerfile=plan.app_dockerfile,
         context=plan.build_context,
     )
+    if plan.postgres_migrator_image in plan.images:
+        run_docker_build(
+            platform=plan.platform,
+            image=plan.postgres_migrator_image,
+            dockerfile=plan.postgres_migrator_dockerfile,
+            context=plan.build_context,
+        )
     if plan.recorder_ingress_image in plan.images:
         run_docker_build(
             platform=plan.platform,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from threading import RLock
+from typing import TypeVar
 
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -29,28 +30,43 @@ from .mappers import (
     session_domain,
     session_record,
 )
-from .records import LabBedRecord, LabRecordBase, LabRecorderRecord, LabSessionRecord
+from .records import LabBedRecord, LabRecorderRecord, LabSessionRecord
+
+T = TypeVar("T")
 
 
 class SQLAlchemyLabSessionStore(InMemoryLabSessionStore):
     """Persistent Lab store whose domain contract is independent of SQL dialect."""
 
     def __init__(
-        self, database_url: str, *, id_factory: Callable[[], str] | None = None
+        self,
+        database_url: str,
+        *,
+        id_factory: Callable[[], str] | None = None,
+        schema_translate_map: dict[str, str | None] | None = None,
     ) -> None:
         super().__init__()
         if id_factory is not None:
             self.id_factory = id_factory
-        self._engine = create_engine(_sqlalchemy_url(database_url), pool_pre_ping=True)
+        engine = create_engine(_sqlalchemy_url(database_url), pool_pre_ping=True)
+        self._engine = (
+            engine.execution_options(schema_translate_map=schema_translate_map)
+            if schema_translate_map is not None
+            else engine
+        )
         self._lock = RLock()
 
     def ensure_ready(self) -> None:
         try:
-            LabRecordBase.metadata.create_all(self._engine)
             with self._engine.connect() as connection:
-                connection.exec_driver_sql("SELECT 1")
+                for record_type in (
+                    LabSessionRecord,
+                    LabBedRecord,
+                    LabRecorderRecord,
+                ):
+                    connection.execute(select(record_type).limit(0))
         except SQLAlchemyError as error:
-            raise _unavailable("schema migration", error) from error
+            raise _unavailable("schema verification", error) from error
 
     def create(self, request: LabSessionCreateInput) -> LabSession:
         return self._mutate(
@@ -173,12 +189,12 @@ class SQLAlchemyLabSessionStore(InMemoryLabSessionStore):
             ).save_recorder_execution_results(results)
         )
 
-    def _read(self, operation):
+    def _read(self, operation: Callable[[], T]) -> T:
         with self._lock:
             self._load()
             return operation()
 
-    def _mutate(self, operation):
+    def _mutate(self, operation: Callable[[], T]) -> T:
         with self._lock:
             self._load()
             result = operation()

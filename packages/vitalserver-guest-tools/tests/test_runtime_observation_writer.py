@@ -387,7 +387,7 @@ class VitalDBReadModelWriterSpy:
         self._previous_relationship_history = previous_relationship_history
         self.previous_relationship_history_read = False
 
-    def ensure_schema(self) -> None:
+    def verify_schema(self) -> None:
         self.schema_ensured = True
 
     def previous_relationship_history(self) -> dict[str, object] | None:

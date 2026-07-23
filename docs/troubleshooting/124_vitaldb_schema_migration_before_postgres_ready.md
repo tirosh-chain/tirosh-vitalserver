@@ -45,7 +45,10 @@ rg -n -C 8 'schema migration|Connection refused|runtime-observation' \
 
 ## Actions
 
-Bootstrap의 ordered Compose start를 완료합니다. 이 operation은 Postgres container를 먼저 시작하고 readiness를 확인한 뒤 나머지 product service를 시작합니다. 그 다음 초기 runtime observation을 실행해 schema migration과 explicit read model state를 기록합니다.
+Bootstrap의 ordered Compose start를 완료합니다. 이 operation은 Postgres
+container를 먼저 시작하고 readiness를 확인한 뒤 중앙 `postgres-migrate` job을
+실행합니다. Alembic head가 확인된 뒤에만 Redis와 나머지 product service를
+시작하고 초기 runtime observation을 기록합니다.
 
 Workflow 순서는 다음 invariant를 가져야 합니다.
 
@@ -54,7 +57,8 @@ prepare runtime data
 → migrate control SQLite
 → start Docker
 → start ordered Compose and wait for Postgres
-→ write initial runtime observation and migrate VitalDB schema
+→ run central PostgreSQL migration and require Alembic head
+→ write initial runtime observation against the managed schema
 → wait for edge readiness
 ```
 
@@ -64,7 +68,7 @@ Bootstrap state machine은 `write-initial-runtime-observation`이 `start-compose
 
 Schema lifecycle에는 두 조건이 모두 필요합니다.
 
-- observation payload가 아직 없어도 schema owner는 migration을 수행해야 합니다.
+- observation payload가 아직 없어도 중앙 migration owner는 schema를 준비해야 합니다.
 - Product Postgres readiness가 확인되기 전에는 migration transition을 시작하지 않아야 합니다.
 
 ## Operational Notes

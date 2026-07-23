@@ -11,10 +11,8 @@ from sqlalchemy.orm import Session
 from tirosh_guest_tools.adapters.outbound.postgres.mappings import domain_document
 from tirosh_guest_tools.adapters.outbound.postgres.records import (
     VitalDBObservationRecord,
-    VitalDBRecordBase,
     VitalDBRecorderActivityBucketRecord,
     VitalDBRelationshipRecord,
-    VitalDBSchemaMigrationRecord,
     VitalDBVisibilityRecord,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
@@ -30,12 +28,15 @@ RELATIONSHIP_HISTORY_STATES = {"loaded", "partiallyLoaded", "readFailed"}
 VISIBLE = "visible"
 HIDDEN = "hidden"
 DELETED = "deleted"
-ACTIVITY_BUCKET_PROJECTION_MIGRATION = "20260720_activity_bucket_projection_v1"
-ACTIVITY_BUCKET_MIGRATION_BATCH_SIZE = 256
 
 
 class PostgresVitalDBReadModelRepository:
-    def __init__(self, database_url: str | None = None) -> None:
+    def __init__(
+        self,
+        database_url: str | None = None,
+        *,
+        schema_translate_map: dict[str, str | None] | None = None,
+    ) -> None:
         raw_url = database_url or os.environ.get(
             "VITALSERVER_DATABASE_URL",
             "postgresql://vitalserver:vitalserver@127.0.0.1:15432/vitalserver",
@@ -45,14 +46,25 @@ class PostgresVitalDBReadModelRepository:
             if raw_url.startswith("postgresql://")
             else raw_url
         )
-        self._engine = create_engine(url, pool_pre_ping=True)
+        engine = create_engine(url, pool_pre_ping=True)
+        self._engine = (
+            engine.execution_options(schema_translate_map=schema_translate_map)
+            if schema_translate_map is not None
+            else engine
+        )
 
-    def ensure_schema(self) -> None:
+    def verify_schema(self) -> None:
         try:
-            VitalDBRecordBase.metadata.create_all(self._engine)
-            self._migrate_activity_bucket_projection()
+            with self._engine.connect() as connection:
+                for record_type in (
+                    VitalDBObservationRecord,
+                    VitalDBRecorderActivityBucketRecord,
+                    VitalDBRelationshipRecord,
+                    VitalDBVisibilityRecord,
+                ):
+                    connection.execute(select(record_type).limit(0))
         except SQLAlchemyError as error:
-            raise _database_error(error, stage="schema migration") from error
+            raise _database_error(error, stage="schema verification") from error
 
     def latest_observation(self) -> dict[str, Any]:
         observation = self._latest_observation_document()
@@ -460,86 +472,6 @@ class PostgresVitalDBReadModelRepository:
         except SQLAlchemyError as error:
             raise _database_error(error, stage="latest observation save") from error
 
-    def _migrate_activity_bucket_projection(self) -> None:
-        try:
-            with Session(self._engine) as session:
-                if (
-                    session.get(
-                        VitalDBSchemaMigrationRecord,
-                        ACTIVITY_BUCKET_PROJECTION_MIGRATION,
-                    )
-                    is not None
-                ):
-                    return
-
-            last_snapshot_id = 0
-            batch_number = 0
-            total_rows = 0
-            while True:
-                with Session(self._engine) as session, session.begin():
-                    observations = list(
-                        session.execute(
-                            select(
-                                VitalDBObservationRecord.snapshot_id,
-                                VitalDBObservationRecord.document,
-                            )
-                            .where(
-                                VitalDBObservationRecord.snapshot_id > last_snapshot_id
-                            )
-                            .order_by(VitalDBObservationRecord.snapshot_id)
-                            .limit(ACTIVITY_BUCKET_MIGRATION_BATCH_SIZE)
-                        )
-                    )
-                    if not observations:
-                        break
-                    projected_buckets: dict[tuple[str, str, int], dict[str, Any]] = {}
-                    for snapshot_id, raw_document in observations:
-                        document = domain_document(
-                            raw_document,
-                            label="activity bucket projection migration",
-                        )
-                        for bucket in _validated_activity_buckets(document):
-                            _merge_activity_bucket(projected_buckets, bucket)
-                        last_snapshot_id = snapshot_id
-                    self._project_activity_buckets(
-                        session,
-                        list(projected_buckets.values()),
-                    )
-                    batch_number += 1
-                    total_rows += len(observations)
-                    print(
-                        "activity bucket projection migration batch completed "
-                        f"batch={batch_number} rows={len(observations)} "
-                        f"totalRows={total_rows} lastSnapshotID={last_snapshot_id}",
-                        flush=True,
-                    )
-
-            with Session(self._engine) as session, session.begin():
-                if (
-                    session.get(
-                        VitalDBSchemaMigrationRecord,
-                        ACTIVITY_BUCKET_PROJECTION_MIGRATION,
-                    )
-                    is not None
-                ):
-                    return
-                session.add(
-                    VitalDBSchemaMigrationRecord(
-                        migration_id=ACTIVITY_BUCKET_PROJECTION_MIGRATION,
-                        applied_at=datetime.now(UTC),
-                    )
-                )
-            print(
-                "activity bucket projection migration completed "
-                f"batches={batch_number} totalRows={total_rows}",
-                flush=True,
-            )
-        except SQLAlchemyError as error:
-            raise _database_error(
-                error,
-                stage="activity bucket projection migration",
-            ) from error
-
     def _project_activity_buckets(
         self,
         session: Session,
@@ -671,32 +603,6 @@ def _validated_activity_buckets(
             )
         validated.append(_validated_activity_bucket(bucket, vrcode=vrcode))
     return validated
-
-
-def _merge_activity_bucket(
-    projected: dict[tuple[str, str, int], dict[str, Any]],
-    bucket: dict[str, Any],
-) -> None:
-    identity = (
-        bucket["vrcode"],
-        bucket["bucketStartedAt"],
-        bucket["bucketSeconds"],
-    )
-    current = projected.get(identity)
-    if current is None:
-        projected[identity] = dict(bucket)
-        return
-    current["messageCount"] = max(current["messageCount"], bucket["messageCount"])
-    current["byteCount"] = max(current["byteCount"], bucket["byteCount"])
-    current["roomCount"] = max(current["roomCount"], bucket["roomCount"])
-    current["firstObservedAt"] = min(
-        current["firstObservedAt"],
-        bucket["firstObservedAt"],
-    )
-    current["lastObservedAt"] = max(
-        current["lastObservedAt"],
-        bucket["lastObservedAt"],
-    )
 
 
 def _activity_bucket_document(

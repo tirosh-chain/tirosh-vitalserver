@@ -6,15 +6,16 @@ const {
   createRecorderObservabilityIngressService,
 } = require("../../src/application/recorder-observability-ingress-service");
 
-test("mixed permanent failures are quarantined without rejecting valid lines", () => {
-  const ledger = memoryLedger();
+test("mixed permanent failures are prepared for one durable transaction", async () => {
+  const repository = memoryRepository();
   const service = createRecorderObservabilityIngressService({
-    ledger,
+    repository,
+    schemas: testSchemas(),
     clock: { now: () => "2026-07-23T02:00:00.000Z" },
-    createRequestId: () => "request-1",
+    createRequestId: () => "00000000-0000-4000-8000-000000000001",
   });
 
-  const result = service.admit({
+  const result = await service.admit({
     resourceType: "observation",
     vrcode: "BRMH-OR1",
     requestDeviceId: "vr-brmh-15",
@@ -26,86 +27,97 @@ test("mixed permanent failures are quarantined without rejecting valid lines", (
         sequence: 43,
         deviceId: "vr-brmh-03",
       })),
+      {
+        lineNumber: 3,
+        rawDocument: "{broken",
+        document: null,
+        parseFailure: "Unexpected token",
+      },
     ],
   });
 
   assert.deepStrictEqual(result, {
     state: "admitted",
-    requestId: "request-1",
+    requestId: "00000000-0000-4000-8000-000000000001",
     accepted: 1,
     duplicates: 0,
-    quarantined: 1,
+    quarantined: 2,
   });
-  assert.strictEqual(ledger.batches.length, 1);
+  assert.strictEqual(repository.batches.length, 1);
   assert.deepStrictEqual(
-    ledger.batches[0].records.map((record) => [
-      record.disposition,
-      record.vrcode,
-      record.requestDeviceId,
-      record.quarantineReason,
-    ]),
-    [
-      ["accepted", "BRMH-OR1", "vr-brmh-15", null],
-      ["quarantined", "BRMH-OR1", "vr-brmh-15", "device_id_mismatch"],
-    ],
+    repository.batches[0].lines.map((record) => record.failureCode),
+    [null, "device_id_mismatch", "json_parse_failed"],
   );
+  assert.strictEqual(repository.batches[0].lines[0].rawDocument, JSON.stringify(
+    observation(),
+  ));
 });
 
-test("duplicate succeeds and conflicting content is durably quarantined", () => {
-  const ledger = memoryLedger();
+test("RFC 8785 canonical hash ignores JSON object key order", async () => {
+  const repository = memoryRepository();
   const service = createRecorderObservabilityIngressService({
-    ledger,
-    clock: { now: () => "2026-07-23T02:00:00.000Z" },
-    createRequestId: (() => {
-      let value = 0;
-      return () => `request-${++value}`;
-    })(),
+    repository,
+    schemas: testSchemas(),
+    createRequestId: () => "00000000-0000-4000-8000-000000000002",
   });
-  const input = {
+  const left = observation();
+  const right = Object.fromEntries(Object.entries(left).reverse());
+
+  await service.admit({
     resourceType: "observation",
     vrcode: "BRMH-OR1",
     requestDeviceId: "vr-brmh-15",
     sourceIp: "172.31.0.157",
-    lines: [line(1, observation())],
-  };
-
-  assert.strictEqual(service.admit(input).accepted, 1);
-  assert.deepStrictEqual(service.admit(input), {
-    state: "admitted",
-    requestId: "request-2",
-    accepted: 0,
-    duplicates: 1,
-    quarantined: 0,
-  });
-  const conflict = service.admit({
-    ...input,
-    lines: [line(1, observation({ collectionState: "partial" }))],
+    lines: [line(1, left), line(2, right)],
   });
 
-  assert.strictEqual(conflict.accepted, 0);
-  assert.strictEqual(conflict.quarantined, 1);
   assert.strictEqual(
-    ledger.batches[1].records[0].quarantineReason,
-    "event_id_content_conflict",
+    repository.batches[0].lines[0].canonicalSha256,
+    repository.batches[0].lines[1].canonicalSha256,
+  );
+  assert.notStrictEqual(
+    repository.batches[0].lines[0].rawSha256,
+    repository.batches[0].lines[1].rawSha256,
   );
 });
 
-function memoryLedger() {
-  const accepted = new Map();
+function memoryRepository() {
   return {
     batches: [],
-    findAccepted(vrcode, eventId) {
-      return accepted.get(`${vrcode}\u0000${eventId}`) || null;
-    },
-    persist(batch) {
+    async admit(batch) {
       this.batches.push(batch);
-      for (const record of batch.records) {
-        if (record.disposition === "accepted") {
-          accepted.set(`${record.vrcode}\u0000${record.eventId}`, {
-            contentHash: record.contentHash,
-          });
-        }
-      }
+      return batch.lines.reduce((counts, item) => {
+        if (item.failureCode) counts.quarantined += 1;
+        else counts.accepted += 1;
+        return counts;
+      }, { accepted: 0, duplicates: 0, quarantined: 0 });
+    },
+  };
+}
+
+function testSchemas() {
+  return {
+    validate(_resourceType, document, requestDeviceId) {
+      const identity = {
+        eventId: document.eventId,
+        deviceId: document.deviceId,
+        schemaVersion: document.schemaVersion,
+        kind: document.kind,
+        siteId: null,
+        bootId: document.bootId,
+        sequence: document.sequence,
+        deviceObservedAt: document.deviceObservedAt,
+        deviceTimeState: null,
+      };
+      return document.deviceId === requestDeviceId
+        ? { kind: "valid", identity, contractReceipt: "a".repeat(64) }
+        : {
+          kind: "invalid",
+          identity,
+          reason: "device_id_mismatch",
+          detail: null,
+          contractReceipt: "a".repeat(64),
+        };
     },
   };
 }

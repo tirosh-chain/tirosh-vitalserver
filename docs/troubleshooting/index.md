@@ -165,7 +165,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-162 | Finder metadata가 compiled Guest deploy에 들어가 rootfs receipt mismatch 발생 | Packaging / Rootfs compile / Guest deploy | fixed and verified | [Rootfs receipt mismatch after Finder metadata enters compiled deploy](162_rootfs_receipt_mismatch_from_finder_metadata.md) |
 | TS-163 | Finder가 macOS artifact staging 정리 중 metadata를 다시 만들어 PKG/update build가 `Directory not empty`로 실패 | Packaging / Local development | fixed and verified | [macOS artifact staging cleanup fails when Finder recreates metadata](163_pkg-staging-cleanup-finder-metadata-race.md) |
 | TS-164 | 기존 설치 위 PKG 재설치 후 Guest Docker stop timeout으로 VM이 `Starting`에 머묾 | Packaging / Guest bootstrap / Guest containers | resolved | [PKG reinstall leaves VM Starting after Guest Docker stop timeout](164_pkg-reinstall-guest-docker-stop-timeout.md) |
-| TS-165 | 다일치 이력을 보존한 PKG 재설치 후 activity migration OOM으로 VM이 `Starting`에 머묾 | Packaging / Guest bootstrap / Data store / Observability | active | [PKG reinstall leaves VM Starting after activity projection migration OOM](165_pkg-reinstall-activity-migration-oom.md) |
+| TS-165 | 다일치 이력을 보존한 PKG 재설치 후 activity migration OOM으로 VM이 `Starting`에 머묾 | Packaging / Guest bootstrap / Data store / Observability | superseded by clean PostgreSQL schema line | [PKG reinstall leaves VM Starting after activity projection migration OOM](165_pkg-reinstall-activity-migration-oom.md) |
 | TS-166 | PKG 재설치 시 교체 bootstrap보다 구버전 Guest consumer가 먼저 기동해 OOM/Compose stop race가 발생함 | Packaging / Guest bootstrap / Guest containers / Observability | active | [PKG reinstall boots old Guest consumers before replacement bootstrap](166_pkg-reinstall-pre-bootstrap-consumer-race.md) |
 | TS-167 | 정상적인 VitalDB numeric `srate=0` 트랙이 Lab 재생 검증에서 거부됨 | Product Lab / Guest containers / Runtime Control PWA | active | [Lab replay rejects valid VitalDB numeric tracks with zero sample rate](167_lab-vital-numeric-zero-srate-replay-failure.md) |
 | TS-168 | canonical Vital v3 artifact가 고정 offset parser에서 비어 있거나 손상된 파일로 처리됨 | Vital Files / Guest containers / TestKit | active | [Canonical Vital v3 artifact is misindexed by a fixed-offset parser](168_vital-v3-header-fixed-offset-parser.md) |
@@ -179,6 +179,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-176 | Swift Beds 탭 장시간 사용 후 관계 이력 증가로 탭 전환이 느려짐 | macOS Helper / VitalDB relationships / Performance | resolved | [Swift Beds tab becomes slow after remaining open](176_swift_beds_tab_relationship_history_growth.md) |
 | TS-177 | 생성 완료된 Helper DMG를 orphan `diskimages-helper`가 점유해 검증이 `EAGAIN`으로 실패 | Packaging / Local development | resolved | [Release DMG verification fails while an orphaned helper holds the image](177_release_dmg_orphaned_diskimages_helper.md) |
 | TS-178 | VitalServer upload는 성공했지만 native Recorder `.vital` 파일이 Recorder Details에 귀속되지 않음 | Recorder streaming / Runtime Control PWA | active | [Native Recorder Vital upload is not attributed to a Recorder](178_native-recorder-vital-upload-not-attributed.md) |
+| TS-179 | 중앙 PostgreSQL 마이그레이션이 기존 비관리 relation 또는 revision/DDL 오류로 기동을 차단함 | Guest bootstrap / Data store | active | [PostgreSQL schema migration failed](179_postgres_schema_migration_failed.md) |
 
 ## Follow-up 규칙
 

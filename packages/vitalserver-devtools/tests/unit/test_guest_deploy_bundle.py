@@ -92,6 +92,7 @@ def runtime_product_minimal_compose(
 ) -> str:
     services = {
         "postgres": "postgres:16-alpine",
+        "postgres-migrate": "vitalserver-postgres-migrator:0.2.0",
         "redis": "redis:3.2.12-alpine",
         "app": "vitalserver:2.3.4",
         "recorder-recovery": "vitalserver-recorder-recovery:0.2.0",

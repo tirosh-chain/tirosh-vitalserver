@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
-from tirosh_guest_tools.contracts import ComposeService
+from tirosh_guest_tools.contracts import ComposeJob, ComposeService
 from tirosh_guest_tools.domain.errors import (
     GuestContractError,
     GuestDependencyError,
@@ -930,12 +930,31 @@ def wait_for_app() -> None:
     raise SystemExit(1)
 
 
+def run_postgres_migration() -> None:
+    checked_compose(
+        [
+            "up",
+            "--pull",
+            "never",
+            "--no-build",
+            "--no-deps",
+            "--force-recreate",
+            "--abort-on-container-exit",
+            "--exit-code-from",
+            ComposeJob.POSTGRES_MIGRATION.value,
+            ComposeJob.POSTGRES_MIGRATION.value,
+        ],
+        stage="postgres schema migration",
+    )
+
+
 def start_ordered() -> None:
     checked_compose(
         ["up", "--pull", "never", "--no-build", "-d", ComposeService.POSTGRES.value],
         stage="postgres startup",
     )
     wait_for_postgres()
+    run_postgres_migration()
     checked_compose(
         ["up", "--pull", "never", "--no-build", "-d", ComposeService.REDIS.value],
         stage="redis startup",

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "v1",
+  "eventId": "vr-brmh-15:boot-a:profile:1",
+  "deviceId": "vr-brmh-15",
+  "siteId": "brmh",
+  "bootId": "boot-a",
+  "sequence": 1,
+  "profileDigest": "c883998ce34989f0e5691a666a01276442cd36cf4a5ba43f83fc8b781e8a944e",
+  "kind": "recorder-profile",
+  "deviceObservedAt": "2026-07-23T01:02:03Z",
+  "ntpState": "synchronized",
+  "identity": {
+    "vrcode": "BRMH-OR1"
+  },
+  "software": {
+    "observerPackageVersion": {"state": "ok", "value": "0.2.4"},
+    "observerArtifactSha256": {
+      "state": "ok",
+      "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "vitalRecorderVersion": {"state": "ok", "value": "4.0.1"},
+    "osImageVersion": {"state": "ok", "value": "PiVR Bookworm 2026-07"},
+    "kernelRelease": {"state": "ok", "value": "6.12.25+rpt-rpi-v8"}
+  },
+  "contracts": {
+    "observation": {
+      "schemaVersion": "v1",
+      "sha256": "84f3d071c837f57347f46aacd6467b933161843e20ae7843b0853f96979d783f"
+    },
+    "profile": {
+      "schemaVersion": "v1",
+      "sha256": "8c3c0b2b2686ee993d6e86202140e8fb3c931ef5487b0f295f34afad285d78aa"
+    },
+    "bootEvent": {
+      "schemaVersion": "v1",
+      "sha256": "079497384d1fbaa87846197df88ff7c279a20df1685149a455023d878974644f"
+    },
+    "diagnosticLog": {
+      "schemaVersion": "v2",
+      "sha256": "fe0eb2e9a17844efd18ddc41b12affa51663cf286c61b3c85742b62f023dc2ba"
+    },
+    "kernelIncident": {
+      "schemaVersion": "v2",
+      "sha256": "0ddc7ba83e0cfb7369f4d313ea350736c7a4e360617e78057ff55de711d85175"
+    }
+  },
+  "collection": {
+    "powerIntervalSeconds": 1,
+    "telemetryIntervalSeconds": 10,
+    "observationIntervalSeconds": 60
+  },
+  "capabilities": {
+    "firmwarePower": {"state": "available", "source": "vcgencmd get_throttled"},
+    "voltage": {"state": "available", "source": "vcgencmd measure_volts core"},
+    "inputCurrent": {
+      "state": "unsupported",
+      "detail": "Raspberry Pi 4 firmware exposes no calibrated board input-current reading"
+    },
+    "powerConsumption": {
+      "state": "unsupported",
+      "detail": "Power cannot be calculated without a same-grain input-current reading"
+    },
+    "pstore": {"state": "available", "source": "ramoops"}
+  },
+  "configuration": {
+    "dataPath": "/data",
+    "networkInterfaces": ["eth0", "wlan1"],
+    "serialDevices": ["/dev/ttyAMA2", "/dev/ttyAMA3"]
+  },
+  "publishing": {
+    "enabled": true,
+    "persistentBuffer": true,
+    "limitsByResource": {
+      "observations": 8388608,
+      "profiles": 8388608,
+      "bootEvents": 8388608,
+      "diagnosticEvents": 8388608,
+      "kernelIncidents": 8388608
+    }
+  },
+  "readIssues": []
+}

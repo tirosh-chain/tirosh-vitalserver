@@ -7,6 +7,7 @@ from pathlib import Path
 
 RELEASE_SERVICE_KEYS = (
     "vitalServer",
+    "postgresMigrator",
     "recorderIngress",
     "recorderRecovery",
     "vitalDBObserver",
@@ -21,6 +22,7 @@ RELEASE_SERVICE_KEYS = (
 )
 GUEST_COMPOSE_SERVICE_RELEASE_KEYS = (
     ("postgres", "postgres"),
+    ("postgres-migrate", "postgresMigrator"),
     ("redis", "redis"),
     ("app", "vitalServer"),
     ("recorder-recovery", "recorderRecovery"),
@@ -34,6 +36,7 @@ GUEST_COMPOSE_SERVICE_RELEASE_KEYS = (
 )
 GUEST_DOCKER_BUNDLE_RELEASE_KEYS = (
     "vitalServer",
+    "postgresMigrator",
     "recorderIngress",
     "recorderRecovery",
     "vitalDBObserver",
@@ -46,6 +49,7 @@ GUEST_DOCKER_BUNDLE_RELEASE_KEYS = (
     "guestEdge",
 )
 GUEST_DOCKER_IMAGE_FIELD_RELEASE_KEYS = (
+    ("postgres_migrator_image", "postgresMigrator"),
     ("recorder_ingress_image", "recorderIngress"),
     ("recorder_recovery_image", "recorderRecovery"),
     ("vitaldb_observer_image", "vitalDBObserver"),

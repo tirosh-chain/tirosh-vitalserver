@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tirosh.local/contracts/vitalrecorder-profile-v1.schema.json",
+  "title": "Vital Recorder observability profile v1",
+  "description": "Recorder identity, installed software, active contract digests, collection policy, capabilities, configuration, and publishing limits. The document must not contain credentials, secrets, patient identifiers, or clinical payloads.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "deviceId",
+    "bootId",
+    "sequence",
+    "profileDigest",
+    "kind",
+    "deviceObservedAt",
+    "ntpState",
+    "identity",
+    "software",
+    "contracts",
+    "collection",
+    "capabilities",
+    "configuration",
+    "publishing",
+    "readIssues"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "v1"},
+    "eventId": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._-]{1,128}:[^:]{1,128}:profile:[1-9][0-9]*$",
+      "description": "${deviceId}:${bootId}:profile:${sequence}. The producer must also verify component equality."
+    },
+    "deviceId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"},
+    "siteId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"},
+    "bootId": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^:]+$"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "profileDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of compact UTF-8 JSON for the semantic source object (deviceId, optional siteId, identity, software, contracts, collection, capabilities, configuration, publishing, readIssues), with object keys recursively sorted and no insignificant whitespace. Delivery envelope fields and profileDigest itself are excluded."
+    },
+    "kind": {"const": "recorder-profile"},
+    "deviceObservedAt": {"type": "string", "format": "date-time"},
+    "ntpState": {"$ref": "#/$defs/ntpState"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vrcode"],
+      "properties": {
+        "vrcode": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "description": "Manufacturer-issued recorder code. It must equal the vrcode in the request path."
+        }
+      }
+    },
+    "software": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observerPackageVersion",
+        "observerArtifactSha256",
+        "vitalRecorderVersion",
+        "osImageVersion",
+        "kernelRelease"
+      ],
+      "properties": {
+        "observerPackageVersion": {"$ref": "#/$defs/stringReading"},
+        "observerArtifactSha256": {"$ref": "#/$defs/sha256Reading"},
+        "vitalRecorderVersion": {"$ref": "#/$defs/stringReading"},
+        "osImageVersion": {"$ref": "#/$defs/stringReading"},
+        "kernelRelease": {"$ref": "#/$defs/stringReading"}
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation", "profile", "bootEvent", "diagnosticLog", "kernelIncident"],
+      "properties": {
+        "observation": {"$ref": "#/$defs/contractDigest"},
+        "profile": {"$ref": "#/$defs/contractDigest"},
+        "bootEvent": {"$ref": "#/$defs/contractDigest"},
+        "diagnosticLog": {"$ref": "#/$defs/contractDigest"},
+        "kernelIncident": {"$ref": "#/$defs/contractDigest"}
+      }
+    },
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["powerIntervalSeconds", "telemetryIntervalSeconds", "observationIntervalSeconds"],
+      "properties": {
+        "powerIntervalSeconds": {"type": "integer", "minimum": 1, "maximum": 60},
+        "telemetryIntervalSeconds": {"type": "integer", "minimum": 5, "maximum": 300},
+        "observationIntervalSeconds": {"type": "integer", "minimum": 10, "maximum": 3600}
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firmwarePower", "voltage", "inputCurrent", "powerConsumption", "pstore"],
+      "properties": {
+        "firmwarePower": {"$ref": "#/$defs/capability"},
+        "voltage": {"$ref": "#/$defs/capability"},
+        "inputCurrent": {"$ref": "#/$defs/capability"},
+        "powerConsumption": {"$ref": "#/$defs/capability"},
+        "pstore": {"$ref": "#/$defs/capability"}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataPath", "networkInterfaces", "serialDevices"],
+      "properties": {
+        "dataPath": {"type": "string", "pattern": "^/[A-Za-z0-9._/-]+$"},
+        "networkInterfaces": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"}
+        },
+        "serialDevices": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^/dev/[A-Za-z0-9._/-]+$"}
+        }
+      }
+    },
+    "publishing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "persistentBuffer", "limitsByResource"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "persistentBuffer": {"type": "boolean"},
+        "limitsByResource": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Persistent buffer limits in bytes for each HTTP resource.",
+          "required": ["observations", "profiles", "bootEvents", "diagnosticEvents", "kernelIncidents"],
+          "properties": {
+            "observations": {"$ref": "#/$defs/byteLimit"},
+            "profiles": {"$ref": "#/$defs/byteLimit"},
+            "bootEvents": {"$ref": "#/$defs/byteLimit"},
+            "diagnosticEvents": {"$ref": "#/$defs/byteLimit"},
+            "kernelIncidents": {"$ref": "#/$defs/byteLimit"}
+          }
+        }
+      }
+    },
+    "readIssues": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {"$ref": "#/$defs/readIssue"}
+    }
+  },
+  "$defs": {
+    "ntpState": {
+      "enum": ["synchronized", "host-clock-only", "unsynchronized", "invalid", "read-failed", "unsupported"]
+    },
+    "unavailableReadState": {
+      "enum": ["missing", "invalid", "failed", "unsupported"]
+    },
+    "stringReading": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "value"],
+          "properties": {
+            "state": {"const": "ok"},
+            "value": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "detail"],
+          "properties": {
+            "state": {"$ref": "#/$defs/unavailableReadState"},
+            "detail": {"type": "string", "minLength": 1, "maxLength": 2048}
+          }
+        }
+      ]
+    },
+    "sha256Reading": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "value"],
+          "properties": {
+            "state": {"const": "ok"},
+            "value": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "detail"],
+          "properties": {
+            "state": {"$ref": "#/$defs/unavailableReadState"},
+            "detail": {"type": "string", "minLength": 1, "maxLength": 2048}
+          }
+        }
+      ]
+    },
+    "contractDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "sha256"],
+      "properties": {
+        "schemaVersion": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "capability": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "source"],
+          "properties": {
+            "state": {"const": "available"},
+            "source": {"type": "string", "minLength": 1, "maxLength": 256}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "detail"],
+          "properties": {
+            "state": {"enum": ["degraded", "unavailable", "unsupported", "read-failed"]},
+            "source": {"type": "string", "minLength": 1, "maxLength": 256},
+            "detail": {"type": "string", "minLength": 1, "maxLength": 2048}
+          }
+        }
+      ]
+    },
+    "byteLimit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 536870912
+    },
+    "readIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "state", "detail"],
+      "properties": {
+        "field": {"type": "string", "minLength": 1, "maxLength": 256},
+        "state": {"$ref": "#/$defs/unavailableReadState"},
+        "detail": {"type": "string", "minLength": 1, "maxLength": 2048}
+      }
+    }
+  }
+}

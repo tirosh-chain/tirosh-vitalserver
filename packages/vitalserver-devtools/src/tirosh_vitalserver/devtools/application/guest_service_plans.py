@@ -30,6 +30,8 @@ def docker_image_bundle_build_plan(
         platform=platform or docker_config.platform,
         images=docker_config.images,
         app_dockerfile=docker_config.app_dockerfile,
+        postgres_migrator_image=docker_config.postgres_migrator_image,
+        postgres_migrator_dockerfile=docker_config.postgres_migrator_dockerfile,
         recorder_ingress_image=docker_config.recorder_ingress_image,
         recorder_ingress_dockerfile=docker_config.recorder_ingress_dockerfile,
         recorder_recovery_image=docker_config.recorder_recovery_image,

@@ -60,6 +60,8 @@ class DockerImagePlan:
     pull_images: list[str]
     app_image: str
     app_dockerfile: Path
+    postgres_migrator_image: str
+    postgres_migrator_dockerfile: Path
     recorder_ingress_image: str
     recorder_ingress_dockerfile: Path
     recorder_recovery_image: str
@@ -80,6 +82,8 @@ class DockerImagesConfig:
     images: list[str]
     optional_images: list[str]
     app_dockerfile: str
+    postgres_migrator_image: str
+    postgres_migrator_dockerfile: str
     recorder_ingress_image: str
     recorder_ingress_dockerfile: str
     recorder_recovery_image: str
@@ -254,6 +258,8 @@ def docker_image_plan(
     platform: str,
     images: list[str],
     app_dockerfile: str,
+    postgres_migrator_image: str,
+    postgres_migrator_dockerfile: str,
     recorder_ingress_image: str,
     recorder_ingress_dockerfile: str,
     recorder_recovery_image: str,
@@ -269,6 +275,7 @@ def docker_image_plan(
         raise DomainError("error: guest.docker_images.images must not be empty")
     app_image = images[0]
     local_build_images = {
+        postgres_migrator_image,
         recorder_ingress_image,
         recorder_recovery_image,
         vitaldb_observer_image,
@@ -282,6 +289,8 @@ def docker_image_plan(
         pull_images=[image for image in images[1:] if image not in local_build_images],
         app_image=app_image,
         app_dockerfile=root / app_dockerfile,
+        postgres_migrator_image=postgres_migrator_image,
+        postgres_migrator_dockerfile=root / postgres_migrator_dockerfile,
         recorder_ingress_image=recorder_ingress_image,
         recorder_ingress_dockerfile=root / recorder_ingress_dockerfile,
         recorder_recovery_image=recorder_recovery_image,
@@ -355,6 +364,7 @@ def compose_service_image_references(
 REQUIRED_RUNTIME_PRODUCT_COMPOSE_SERVICES = frozenset(
     {
         "postgres",
+        "postgres-migrate",
         "redis",
         "app",
         "recorder-recovery",
@@ -451,6 +461,7 @@ def guest_compose_contract_errors(
 def _dockerfiles_by_image(plan: DockerImagePlan) -> dict[str, Path]:
     return {
         plan.app_image: plan.app_dockerfile,
+        plan.postgres_migrator_image: plan.postgres_migrator_dockerfile,
         plan.recorder_ingress_image: plan.recorder_ingress_dockerfile,
         plan.recorder_recovery_image: plan.recorder_recovery_dockerfile,
         plan.vitaldb_observer_image: plan.vitaldb_observer_dockerfile,

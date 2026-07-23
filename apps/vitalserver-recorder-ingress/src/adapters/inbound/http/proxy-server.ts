@@ -8,6 +8,7 @@ import type { NativeVitalUploadService } from "../../../application/native-vital
 import type {
   createRecorderObservabilityIngressService,
 } from "../../../application/recorder-observability-ingress-service";
+import type { RecorderObservabilityRepositoryPort } from "../../../application/ports/outbound/recorder-observability-repository-port";
 
 "use strict";
 
@@ -23,6 +24,10 @@ const {
   receiveRecorderObservability,
   recorderObservabilityRoute,
 } = require("./recorder-observability-http");
+const {
+  readRecorderObservabilityQuery,
+  recorderObservabilityQueryRoute,
+} = require("./recorder-observability-query-http");
 const { createWebSocketParser } = require("./websocket-parser");
 
 type ClientIpSelectorPort = {
@@ -64,9 +69,16 @@ type RecorderIngressHttpServerDependencies = {
   recorderObservability?: ReturnType<
     typeof createRecorderObservabilityIngressService
   >;
+  recorderObservabilityRepository?: RecorderObservabilityRepositoryPort;
+  recorderObservabilityProjector?: {
+    start(): void;
+    stop(): Promise<void>;
+    runOnce(): Promise<number>;
+  };
 };
 
 export type RecorderIngressHttpServer = Server & {
+  prepareStartup?: () => Promise<unknown>;
   prepareShutdown?: () => Promise<unknown>;
 };
 
@@ -80,7 +92,10 @@ function createRecorderIngressHttpServer({
   socketIoAudit,
   nativeVitalUploads,
   recorderObservability,
+  recorderObservabilityRepository,
+  recorderObservabilityProjector,
 }: RecorderIngressHttpServerDependencies): RecorderIngressHttpServer {
+  let ready = !recorderObservabilityRepository;
   const dependencies = {
     audit,
     clientIp,
@@ -88,6 +103,8 @@ function createRecorderIngressHttpServer({
     metrics,
     nativeVitalUploads,
     recorderObservability,
+    recorderObservabilityRepository,
+    ready: () => ready,
     sendDataRawArchiveExportWorker,
     socketIoAudit,
   };
@@ -102,21 +119,35 @@ function createRecorderIngressHttpServer({
     nativeVitalUploads?.start();
     sendDataReplayWorker.start();
     sendDataRawArchiveExportWorker.start();
+    recorderObservabilityProjector?.start();
   });
   server.on("close", () => {
     nativeVitalUploads?.stop();
     sendDataReplayWorker.stop();
     sendDataRawArchiveExportWorker.stop();
   });
+  server.prepareStartup = async () => {
+    if (!recorderObservabilityRepository) return { state: "disabled" };
+    await recorderObservabilityRepository.ping();
+    await recorderObservabilityProjector?.runOnce();
+    ready = true;
+    return { state: "ready" };
+  };
   server.prepareShutdown = async () => {
     nativeVitalUploads?.stop();
     sendDataReplayWorker.stop();
     sendDataRawArchiveExportWorker.stop();
+    await recorderObservabilityProjector?.stop();
     for (const socket of activeSockets) {
       socket.destroy();
     }
     await waitForActiveSocketsToClose(activeSockets, 250);
-    return sendDataRawArchiveExportWorker.runOnce({ trigger: "shutdown" });
+    const exportResult = await sendDataRawArchiveExportWorker.runOnce({
+      trigger: "shutdown",
+    });
+    await recorderObservabilityRepository?.close();
+    ready = false;
+    return exportResult;
   };
   return server;
 }
@@ -136,6 +167,16 @@ function waitForActiveSocketsToClose(activeSockets: Set<Socket>, timeoutMs: numb
 }
 
 function proxyHttp(req, res, dependencies) {
+  const queryRoute = recorderObservabilityQueryRoute(req.url);
+  if (queryRoute) {
+    void readRecorderObservabilityQuery(
+      req,
+      res,
+      queryRoute,
+      dependencies.recorderObservabilityRepository,
+    );
+    return;
+  }
   const observabilityRoute = recorderObservabilityRoute(req.url);
   if (observabilityRoute) {
     const selectedIp = dependencies.clientIp.select(req);
@@ -151,7 +192,7 @@ function proxyHttp(req, res, dependencies) {
     return;
   }
   if (req.url === "/recorder-ingress/health") {
-    res.writeHead(204);
+    res.writeHead(dependencies.ready?.() === false ? 503 : 204);
     res.end();
     return;
   }

@@ -31,12 +31,51 @@ function loadConfig(env) {
   return {
     listenPort: numberEnv(env, "RECORDER_INGRESS_PORT", 8080),
     observability: {
+      enabled: booleanEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_ENABLED",
+        true
+      ),
       ledgerDirectory: env.RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY
         || "/var/lib/vitalserver-recorder-ingress/observability",
       maxRequestBytes: numberEnv(
         env,
         "RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES",
         5 * MIB
+      ),
+      database: {
+        host: env.RECORDER_INGRESS_POSTGRES_HOST || "postgres",
+        port: numberEnv(env, "RECORDER_INGRESS_POSTGRES_PORT", 5432),
+        database: env.RECORDER_INGRESS_POSTGRES_DATABASE || "vitalserver",
+        user: env.RECORDER_INGRESS_POSTGRES_USER || "vitalserver",
+        password: env.RECORDER_INGRESS_POSTGRES_PASSWORD || "vitalserver",
+        maxConnections: numberEnv(
+          env,
+          "RECORDER_INGRESS_POSTGRES_MAX_CONNECTIONS",
+          10
+        ),
+      },
+      projector: {
+        intervalMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_INTERVAL_MS",
+          1000
+        ),
+        batchSize: numberEnv(
+          env,
+          "RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_BATCH_SIZE",
+          100
+        ),
+      },
+      freshnessToleranceMultiplier: numberEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_MULTIPLIER",
+        3
+      ),
+      freshnessAllowanceSeconds: numberEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_ALLOWANCE_SECONDS",
+        30
       ),
     },
     upstream: {

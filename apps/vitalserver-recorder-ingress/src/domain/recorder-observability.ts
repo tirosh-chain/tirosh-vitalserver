@@ -2,331 +2,203 @@ export const recorderObservabilityResourceTypes = {
   observations: "observation",
   "diagnostic-events": "diagnosticEvent",
   "kernel-incidents": "kernelIncident",
+  profiles: "recorderProfile",
+  "boot-events": "bootEvent",
 } as const;
 
 export type RecorderObservabilityResourceType =
   (typeof recorderObservabilityResourceTypes)[keyof typeof recorderObservabilityResourceTypes];
 
-export type RecorderObservabilityCandidate = {
+export type RecorderObservabilityDocumentIdentity = {
   eventId: string;
   deviceId: string;
+  schemaVersion: string;
+  kind: string;
+  siteId: string | null;
+  bootId: string | null;
+  sequence: number | null;
+  deviceObservedAt: string | null;
+  deviceTimeState: string | null;
 };
 
 export type RecorderObservabilityValidation =
   | {
       kind: "valid";
-      candidate: RecorderObservabilityCandidate;
+      identity: RecorderObservabilityDocumentIdentity;
+      contractReceipt: string;
     }
   | {
       kind: "invalid";
-      eventId: string | null;
-      documentDeviceId: string | null;
+      identity: Partial<RecorderObservabilityDocumentIdentity>;
       reason: string;
+      detail: string | null;
+      contractReceipt: string | null;
     };
 
-export function validateRecorderObservabilityDocument(
-  resourceType: RecorderObservabilityResourceType,
-  value: unknown,
-  requestDeviceId: string,
-): RecorderObservabilityValidation {
-  if (!isObject(value)) {
-    return invalid(null, null, "document_must_be_object");
-  }
-  const eventId = optionalString(value.eventId);
-  const deviceId = optionalString(value.deviceId);
-  if (value.schemaVersion !== "v1") {
-    return invalid(eventId, deviceId, "unsupported_schema_version");
-  }
-  if (!eventId) {
-    return invalid(null, deviceId, "event_id_required");
-  }
-  if (!deviceId) {
-    return invalid(eventId, null, "device_id_required");
-  }
-  if (deviceId !== requestDeviceId) {
-    return invalid(eventId, deviceId, "device_id_mismatch");
-  }
+export type ProjectionCandidate = {
+  recordId: string;
+  vrcode: string;
+  resourceType: RecorderObservabilityResourceType;
+  document: Record<string, unknown>;
+  deviceId: string;
+  siteId: string | null;
+  bootId: string | null;
+  sequence: number | null;
+  deviceObservedAt: string | null;
+  deviceTimeState: string | null;
+  receivedAt: string;
+  projectionVersion: number;
+};
 
-  switch (resourceType) {
-    case "observation":
-      return validateObservation(value, eventId, deviceId);
-    case "diagnosticEvent":
-      return validateDiagnosticEvent(value, eventId, deviceId);
-    case "kernelIncident":
-      return validateKernelIncident(value, eventId, deviceId);
+export type CurrentProjection = ProjectionCandidate & {
+  associatedProfileRecordId: string | null;
+};
+
+export type CurrentProjectionDocument = Record<string, any>;
+
+export function mergeCurrentProjection(
+  current: CurrentProjectionDocument,
+  candidate: ProjectionCandidate,
+): CurrentProjectionDocument {
+  const next = { ...current };
+  if (candidate.resourceType === "recorderProfile") {
+    next.recorderProfile = {
+      ...(next.recorderProfile || {}),
+      latest: { ...candidate },
+    };
+    return next;
   }
+  if (candidate.resourceType !== "bootEvent") {
+    next[candidate.resourceType] = { ...candidate };
+    return next;
+  }
+  const key = candidate.document.eventType === "boot-started"
+    ? "started"
+    : "shutdown";
+  next.bootEvent = {
+    ...(next.bootEvent || {}),
+    [key]: { ...candidate },
+  };
+  return next;
 }
 
-function validateObservation(
-  value: Record<string, unknown>,
-  eventId: string,
-  deviceId: string,
-): RecorderObservabilityValidation {
-  const bootId = optionalString(value.bootId);
-  if (!hasOnlyKeys(value, [
-    "schemaVersion",
-    "eventId",
-    "deviceId",
-    "siteId",
-    "bootId",
-    "sequence",
-    "kind",
-    "collectionState",
-    "deviceObservedAt",
-    "uptimeSeconds",
-    "ntpState",
-    "payload",
-    "readIssues",
-  ])) {
-    return invalid(eventId, deviceId, "observation_fields_invalid");
-  }
-  if (value.kind !== "device-health") {
-    return invalid(eventId, deviceId, "observation_kind_invalid");
-  }
-  if (!bootId) {
-    return invalid(eventId, deviceId, "boot_id_required");
-  }
-  if (!Number.isSafeInteger(value.sequence) || Number(value.sequence) < 1) {
-    return invalid(eventId, deviceId, "sequence_invalid");
-  }
-  if (eventId !== `${deviceId}:${bootId}:${value.sequence}`) {
-    return invalid(eventId, deviceId, "event_id_invalid");
-  }
-  if (!["ok", "partial"].includes(String(value.collectionState))) {
-    return invalid(eventId, deviceId, "collection_state_invalid");
-  }
-  if (!validTimestamp(value.deviceObservedAt)) {
-    return invalid(eventId, deviceId, "device_observed_at_invalid");
-  }
-  if (!isObject(value.uptimeSeconds) || !isObject(value.payload)) {
-    return invalid(eventId, deviceId, "observation_payload_invalid");
-  }
-  if (!Array.isArray(value.readIssues)) {
-    return invalid(eventId, deviceId, "read_issues_invalid");
-  }
-  if (![
-    "synchronized",
-    "host-clock-only",
-    "unsynchronized",
-    "invalid",
-    "read-failed",
-    "unsupported",
-  ].includes(String(value.ntpState))) {
-    return invalid(eventId, deviceId, "ntp_state_invalid");
-  }
-  return valid(eventId, deviceId);
-}
-
-function validateDiagnosticEvent(
-  value: Record<string, unknown>,
-  eventId: string,
-  deviceId: string,
-): RecorderObservabilityValidation {
-  if (!hasOnlyKeys(value, [
-    "schemaVersion",
-    "eventId",
-    "deviceId",
-    "bootId",
-    "kind",
-    "source",
-    "deviceObservedAt",
-    "monotonicTimestampMicroseconds",
-    "priority",
-    "category",
-    "code",
-    "interface",
-    "message",
-  ])) {
-    return invalid(eventId, deviceId, "diagnostic_fields_invalid");
-  }
-  if (value.kind !== "diagnostic-log") {
-    return invalid(eventId, deviceId, "diagnostic_kind_invalid");
-  }
-  if (
-    !optionalString(value.bootId)
-    || !optionalString(value.message)
-  ) {
-    return invalid(eventId, deviceId, "diagnostic_identity_or_message_invalid");
-  }
-  if (!validTimestamp(value.deviceObservedAt)) {
-    return invalid(eventId, deviceId, "device_observed_at_invalid");
-  }
-  if (![
-    "kernel",
-    "chrony",
-    "systemd",
-    "auth",
-    "recovery-script",
-    "reboot-intent",
-    "vital-recorder",
-    "heartbeat",
-    "boot",
-    "power",
-    "observer",
-    "maintenance",
-  ].includes(String(value.source))) {
-    return invalid(eventId, deviceId, "diagnostic_source_invalid");
-  }
-  if (!String(eventId).startsWith(`${deviceId}:${value.bootId}:`)) {
-    return invalid(eventId, deviceId, "event_id_invalid");
-  }
-  return valid(eventId, deviceId);
-}
-
-function validateKernelIncident(
-  value: Record<string, unknown>,
-  eventId: string,
-  deviceId: string,
-): RecorderObservabilityValidation {
-  if (!hasOnlyKeys(value, [
-    "schemaVersion",
-    "eventId",
-    "deviceId",
-    "siteId",
-    "captureBootId",
-    "kind",
-    "capturedAt",
-    "source",
-    "incidentType",
-    "kernelRelease",
-    "model",
-    "kernelCommandLine",
-    "firmwareThrottleFlags",
-    "artifacts",
-    "previousBootJournal",
-    "messageExcerpt",
-    "truncated",
-  ])) {
-    return invalid(eventId, deviceId, "kernel_incident_fields_invalid");
-  }
-  if (value.kind !== "kernel-incident") {
-    return invalid(eventId, deviceId, "kernel_incident_kind_invalid");
-  }
-  if (
-    !optionalString(value.captureBootId)
-    || value.source !== "pstore"
-    || !optionalString(value.messageExcerpt)
-  ) {
-    return invalid(eventId, deviceId, "kernel_incident_identity_invalid");
-  }
-  if (!validTimestamp(value.capturedAt)) {
-    return invalid(eventId, deviceId, "captured_at_invalid");
-  }
-  const incidentFingerprint = eventId.slice(
-    `${deviceId}:kernel-incident:`.length,
+export function summarizeCurrentProjection(
+  document: CurrentProjectionDocument,
+): {
+  reportState: "current" | "missing" | "readFailed";
+  collectionState: string | null;
+  severity: "unknown";
+  recentRestartAt: string | null;
+  activeSignalCount: number;
+} {
+  const health = document.observation;
+  const profile = document.recorderProfile?.associated;
+  const readIssues = health?.document?.readIssues;
+  const associated = Boolean(
+    health
+    && profile
+    && health.associatedProfileRecordId === profile.recordId,
   );
-  if (
-    !eventId.startsWith(`${deviceId}:kernel-incident:`)
-    || !/^[a-f0-9]{64}$/.test(incidentFingerprint)
-  ) {
-    return invalid(eventId, deviceId, "event_id_invalid");
-  }
-  if (
-    !["panic", "oops", "watchdog", "lockup", "unknown"].includes(
-      String(value.incidentType),
-    )
-    || !optionalString(value.kernelRelease)
-    || !optionalString(value.model)
-    || typeof value.kernelCommandLine !== "string"
-    || !Array.isArray(value.artifacts)
-    || value.artifacts.length < 1
-    || value.artifacts.length > 32
-    || !isObject(value.previousBootJournal)
-    || typeof value.truncated !== "boolean"
-  ) {
-    return invalid(eventId, deviceId, "kernel_incident_payload_invalid");
-  }
-  for (const artifact of value.artifacts) {
-    if (
-      !isObject(artifact)
-      || !hasOnlyKeys(artifact, [
-        "name",
-        "sourcePath",
-        "sourceRoot",
-        "storedPath",
-        "sizeBytes",
-        "sha256",
-      ])
-      || !optionalString(artifact.name)
-      || !absolutePath(artifact.sourcePath)
-      || !absolutePath(artifact.sourceRoot)
-      || !storedIncidentPath(artifact.storedPath)
-      || !Number.isSafeInteger(artifact.sizeBytes)
-      || Number(artifact.sizeBytes) < 1
-      || !/^[a-f0-9]{64}$/.test(String(artifact.sha256))
-    ) {
-      return invalid(eventId, deviceId, "kernel_incident_artifact_invalid");
-    }
-  }
-  if (
-    !hasOnlyKeys(value.previousBootJournal, [
-      "available",
-      "storedPath",
-      "sizeBytes",
-      "sha256",
-    ])
-    || typeof value.previousBootJournal.available !== "boolean"
-  ) {
-    return invalid(eventId, deviceId, "previous_boot_journal_invalid");
-  }
-  if (
-    value.previousBootJournal.available
-    && (
-      !storedIncidentPath(value.previousBootJournal.storedPath)
-      || !Number.isSafeInteger(value.previousBootJournal.sizeBytes)
-      || Number(value.previousBootJournal.sizeBytes) < 1
-      || !/^[a-f0-9]{64}$/.test(String(value.previousBootJournal.sha256))
-    )
-  ) {
-    return invalid(eventId, deviceId, "previous_boot_journal_invalid");
-  }
-  return valid(eventId, deviceId);
+  const interval = profile?.document?.collection?.observationIntervalSeconds;
+  return {
+    reportState: !health || !associated
+      ? "missing"
+      : typeof interval === "number" && interval > 0
+        ? "current"
+        : "readFailed",
+    collectionState: health
+      ? String(health.document.collectionState)
+      : null,
+    // Incident evidence is not an active alarm without an approved recency
+    // and clearing policy.
+    severity: "unknown",
+    recentRestartAt: document.bootEvent?.started?.deviceObservedAt || null,
+    activeSignalCount: Array.isArray(readIssues) ? readIssues.length : 0,
+  };
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+export function reportStateAt(
+  document: CurrentProjectionDocument,
+  now: string,
+  {
+    toleranceMultiplier,
+    allowanceSeconds,
+  }: {
+    toleranceMultiplier: number;
+    allowanceSeconds: number;
+  },
+): "current" | "stale" | "missing" | "readFailed" {
+  const health = document.observation;
+  if (!health) return "missing";
+  const profile = document.recorderProfile?.associated;
+  if (
+    !profile
+    || health.associatedProfileRecordId !== profile.recordId
+  ) {
+    return "missing";
+  }
+  const interval = profile.document?.collection?.observationIntervalSeconds;
+  const receivedAt = Date.parse(health.receivedAt);
+  const evaluatedAt = Date.parse(now);
+  if (
+    typeof interval !== "number"
+    || !Number.isFinite(interval)
+    || interval <= 0
+    || !Number.isFinite(receivedAt)
+    || !Number.isFinite(evaluatedAt)
+  ) {
+    return "readFailed";
+  }
+  const toleranceMs = (
+    interval * toleranceMultiplier + allowanceSeconds
+  ) * 1000;
+  return evaluatedAt > receivedAt + toleranceMs ? "stale" : "current";
 }
 
-function optionalString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : null;
-}
-
-function validTimestamp(value: unknown): boolean {
-  return Boolean(optionalString(value)) && !Number.isNaN(Date.parse(String(value)));
-}
-
-function hasOnlyKeys(
-  value: Record<string, unknown>,
-  allowed: string[],
+export function shouldReplaceCurrent(
+  candidate: ProjectionCandidate,
+  current: CurrentProjection | null,
 ): boolean {
-  const allowedKeys = new Set(allowed);
-  return Object.keys(value).every((key) => allowedKeys.has(key));
-}
-
-function absolutePath(value: unknown): boolean {
-  return typeof value === "string" && value.startsWith("/");
-}
-
-function storedIncidentPath(value: unknown): boolean {
-  return (
-    typeof value === "string"
-    && value.startsWith("/data/vitalrecorder-observer/kernel-incidents/")
+  if (!current) return true;
+  if (
+    (
+      candidate.resourceType === "observation"
+      || candidate.resourceType === "recorderProfile"
+    )
+    && candidate.bootId
+    && candidate.bootId === current.bootId
+    && candidate.sequence !== null
+    && current.sequence !== null
+  ) {
+    return candidate.sequence > current.sequence;
+  }
+  const sameBoot = Boolean(
+    candidate.bootId
+    && current.bootId
+    && candidate.bootId === current.bootId,
   );
+  const candidateObserved = candidate.deviceObservedAt
+    ? Date.parse(candidate.deviceObservedAt)
+    : Number.NaN;
+  const currentObserved = current.deviceObservedAt
+    ? Date.parse(current.deviceObservedAt)
+    : Number.NaN;
+  if (
+    sameBoot
+    && trustworthyDeviceTime(candidate.deviceTimeState)
+    && trustworthyDeviceTime(current.deviceTimeState)
+    && Number.isFinite(candidateObserved)
+    && Number.isFinite(currentObserved)
+    && candidateObserved !== currentObserved
+  ) {
+    return candidateObserved > currentObserved;
+  }
+  if (candidate.receivedAt !== current.receivedAt) {
+    return candidate.receivedAt > current.receivedAt;
+  }
+  return BigInt(candidate.recordId) > BigInt(current.recordId);
 }
 
-function valid(
-  eventId: string,
-  deviceId: string,
-): RecorderObservabilityValidation {
-  return { kind: "valid", candidate: { eventId, deviceId } };
-}
-
-function invalid(
-  eventId: string | null,
-  documentDeviceId: string | null,
-  reason: string,
-): RecorderObservabilityValidation {
-  return { kind: "invalid", eventId, documentDeviceId, reason };
+function trustworthyDeviceTime(state: string | null): boolean {
+  return state === "synchronized" || state === "trusted";
 }

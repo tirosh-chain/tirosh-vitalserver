@@ -75,7 +75,7 @@ test("HTTP adapter rejects request-level contract failures", async () => {
       body: `${JSON.stringify(observation())}\n`,
     },
   );
-  const invalidNDJSON = await fetch(
+  const emptyNDJSON = await fetch(
     url(server, "/api/v1/recorders/BRMH-OR1/observations"),
     {
       method: "POST",
@@ -83,14 +83,14 @@ test("HTTP adapter rejects request-level contract failures", async () => {
         "content-type": "application/x-ndjson",
         "x-device-id": "vr-brmh-15",
       },
-      body: "{broken\n",
+      body: "\n",
     },
   );
   await close(server);
 
   assert.strictEqual(invalidVrcode.status, 404);
   assert.strictEqual(invalidContentType.status, 415);
-  assert.strictEqual(invalidNDJSON.status, 400);
+  assert.strictEqual(emptyNDJSON.status, 400);
 });
 
 test("HTTP adapter returns 413 above the configured chunk limit", async () => {

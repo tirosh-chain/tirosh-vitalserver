@@ -106,6 +106,8 @@ platform = "linux/arm64"
 bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
 optional_bundle_path = ".tmp/vitalserver-vm-pkg/optional-docker-images/vitalserver-optional-images.tar.gz"
 app_dockerfile = "apps/vitalserver/docker/Dockerfile"
+postgres_migrator_image = "vitalserver-postgres-migrator:0.2.0"
+postgres_migrator_dockerfile = "apps/vitalserver-postgres-migrator/Dockerfile"
 recorder_ingress_image = "vitalserver-recorder-ingress:0.2.0"
 recorder_ingress_dockerfile = "apps/vitalserver-recorder-ingress/Dockerfile"
 recorder_recovery_image = "vitalserver-recorder-recovery:0.2.0"
@@ -118,6 +120,7 @@ lab_image = "vitalserver-lab:0.2.0"
 lab_dockerfile = "apps/vitalserver-lab/Dockerfile"
 images = [
   "vitalserver:2.3.4",
+  "vitalserver-postgres-migrator:0.2.0",
   "vitalserver-recorder-ingress:0.2.0",
   "vitalserver-recorder-recovery:0.2.0",
   "vitaldb-observer:0.2.0",
@@ -139,6 +142,7 @@ python_wheel_projects = [
 include = [
   "apps/vitalserver/docker",
   "apps/vitalserver/runtime",
+  "apps/vitalserver-postgres-migrator",
   "apps/vitalserver-recorder-ingress",
   "apps/vitalserver-recorder-recovery",
   "packages/vitalserver-core",

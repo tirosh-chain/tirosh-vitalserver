@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "v2",
+  "eventId": "vr-brmh-15:kernel-incident:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "deviceId": "vr-brmh-15",
+  "siteId": "brmh",
+  "captureBootId": "boot-b",
+  "incidentBootId": null,
+  "kind": "kernel-incident",
+  "capturedAt": "2026-07-23T01:02:03Z",
+  "captureTimeState": "unsynchronized",
+  "source": "pstore",
+  "incidentType": "panic",
+  "kernelRelease": "6.12.25+rpt-rpi-v8",
+  "model": "Raspberry Pi 4 Model B Rev 1.2",
+  "kernelCommandLine": "console=tty1 root=/dev/mmcblk0p2",
+  "firmwareThrottleFlags": "throttled=0x50005",
+  "artifacts": [
+    {
+      "name": "console-ramoops-0",
+      "sourcePath": "/sys/fs/pstore/console-ramoops-0",
+      "sourceRoot": "/sys/fs/pstore",
+      "storedPath": "/data/vitalrecorder-observer/kernel-incidents/abc/pstore-01-console-ramoops-0",
+      "sizeBytes": 4096,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "previousBootJournal": {
+    "available": true,
+    "storedPath": "/data/vitalrecorder-observer/kernel-incidents/abc/previous-boot-kernel.log",
+    "sizeBytes": 8192,
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "messageExcerpt": "Kernel panic - not syncing",
+  "truncated": false
+}

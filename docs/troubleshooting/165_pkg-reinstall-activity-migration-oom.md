@@ -3,7 +3,15 @@
 > ID: TS-165
 > Category: Packaging / Guest bootstrap / Data store / Observability
 > Owner: Guest read model
-> Status: active
+> Status: superseded by clean PostgreSQL schema line
+
+> Historical note: the activity backfill and
+> `vitaldb_schema_migrations` marker described below are no longer part of the
+> runtime. The clean schema line introduced by
+> [TS-179](179_postgres_schema_migration_failed.md) requires an explicitly
+> recreated PostgreSQL data volume and runs only central Alembic revisions.
+> This entry remains as failure history and as guidance for any future bounded
+> data-conversion job.
 
 ## Symptoms
 

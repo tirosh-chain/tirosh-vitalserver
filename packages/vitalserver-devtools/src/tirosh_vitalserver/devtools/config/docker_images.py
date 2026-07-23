@@ -35,6 +35,16 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             path=path,
         ),
         app_dockerfile=required_string(docker_images, "app_dockerfile", path=path),
+        postgres_migrator_image=required_string(
+            docker_images,
+            "postgres_migrator_image",
+            path=path,
+        ),
+        postgres_migrator_dockerfile=required_string(
+            docker_images,
+            "postgres_migrator_dockerfile",
+            path=path,
+        ),
         recorder_ingress_image=required_string(
             docker_images,
             "recorder_ingress_image",

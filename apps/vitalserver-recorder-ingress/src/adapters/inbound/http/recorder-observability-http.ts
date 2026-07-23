@@ -26,8 +26,9 @@ type RecorderObservabilityIngress = {
       lineNumber: number;
       rawDocument: string;
       document: unknown;
+      parseFailure?: string;
     }>;
-  }): unknown;
+  }): Promise<unknown>;
 };
 
 type RecorderObservabilityMetrics = {
@@ -51,7 +52,7 @@ export function recorderObservabilityRoute(
     "http://recorder-ingress",
   ).pathname;
   const match = pathname.match(
-    /^\/api\/v1\/recorders\/([^/]+)\/(observations|diagnostic-events|kernel-incidents)$/,
+    /^\/api\/v1\/recorders\/([^/]+)\/(observations|diagnostic-events|kernel-incidents|profiles|boot-events)$/,
   );
   if (!match) {
     return pathname.startsWith("/api/v1/recorders/")
@@ -163,7 +164,7 @@ export function receiveRecorderObservability(
       message: errorMessage(error),
     });
   });
-  req.on("end", () => {
+  req.on("end", async () => {
     if (res.writableEnded) return;
     if (tooLarge) {
       recordAdmissionFailure(metrics, "request_too_large");
@@ -187,7 +188,7 @@ export function receiveRecorderObservability(
       return;
     }
     try {
-      const result = ingress.admit({
+      const result = await ingress.admit({
         resourceType: route.resourceType,
         vrcode: route.vrcode,
         requestDeviceId,
@@ -218,18 +219,25 @@ export function parseNDJSON(value: string): Array<{
   lineNumber: number;
   rawDocument: string;
   document: unknown;
+  parseFailure?: string;
 }> {
   const records = [];
   for (const [index, line] of value.split(/\r?\n/).entries()) {
     const rawDocument = line.trim();
     if (!rawDocument) continue;
-    let document;
+    let document: unknown = null;
+    let parseFailure: string | undefined;
     try {
       document = JSON.parse(rawDocument);
-    } catch (_error) {
-      throw new TypeError(`line ${index + 1} is not valid JSON`);
+    } catch (error) {
+      parseFailure = errorMessage(error);
     }
-    records.push({ lineNumber: index + 1, rawDocument, document });
+    records.push({
+      lineNumber: index + 1,
+      rawDocument,
+      document,
+      ...(parseFailure ? { parseFailure } : {}),
+    });
   }
   if (records.length === 0) {
     throw new TypeError("request contains no JSON documents");

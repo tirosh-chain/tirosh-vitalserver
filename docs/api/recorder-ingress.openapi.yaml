@@ -91,6 +91,77 @@ paths:
           $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
         "503":
           $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /api/v1/recorders/{vrcode}/profiles:
+    post:
+      operationId: admitRecorderProfiles
+      summary: Durably admit Recorder profile documents
+      description: >
+        Accepts Recorder v1 recorder-profile NDJSON. The authoritative schema,
+        profileDigest, and path VRCODE identity are validated before a line is
+        accepted; permanent line failures are quarantined.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderProfileNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /api/v1/recorders/{vrcode}/boot-events:
+    post:
+      operationId: admitRecorderBootEvents
+      summary: Durably admit Recorder boot events
+      description: >
+        Accepts Recorder v1 boot-event NDJSON. boot-started and shutdown-clean
+        remain separate immutable events and are projected together.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderBootEventNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /runtime/vitaldb/recorders:
+    get:
+      operationId: listRecorderObservabilityCurrent
+      summary: List current Recorder observability summaries
+      responses:
+        "200":
+          description: Current PostgreSQL-backed Recorder summaries.
+        "503":
+          description: PostgreSQL current projection is unavailable.
+  /runtime/vitaldb/recorders/{vrcode}/observability:
+    get:
+      operationId: getRecorderObservabilityCurrent
+      summary: Read one Recorder current observability aggregate
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+      responses:
+        "200":
+          description: >
+            The one-row current aggregate, including latest and associated
+            Profile state, health, boot start/shutdown, and retained evidence.
+        "404":
+          description: The VRCODE has no projected observability.
+        "503":
+          description: PostgreSQL current projection is unavailable.
   /upload:
     post:
       operationId: uploadTrackedNativeVitalFile
@@ -353,6 +424,20 @@ components:
             description: >
               One complete Recorder v1 kernel-incident summary JSON object per
               non-empty line.
+    RecorderProfileNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: One Recorder v1 recorder-profile object per line.
+    RecorderBootEventNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: One Recorder v1 boot-event object per line.
   responses:
     ObservabilityAdmitted:
       description: >
@@ -380,7 +465,7 @@ components:
         The request media type is not `application/x-ndjson`.
     ObservabilityAdmissionUnavailable:
       description: >
-        The durable ledger could not confirm the admission result. The client
+        The PostgreSQL transaction could not confirm the admission result. The client
         may retry the whole chunk.
   schemas:
     RecorderObservabilityAdmission:

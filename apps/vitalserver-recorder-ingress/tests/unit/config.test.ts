@@ -7,17 +7,37 @@ const { loadConfig } = require("../../src/config");
 const MIB = 1024 * 1024;
 
 test("config loads bounded Recorder observability admission settings", () => {
-  assert.deepStrictEqual(loadConfig({}).observability, {
-    ledgerDirectory: "/var/lib/vitalserver-recorder-ingress/observability",
-    maxRequestBytes: 5 * MIB,
+  const defaults = loadConfig({}).observability;
+  assert.strictEqual(defaults.enabled, true);
+  assert.strictEqual(
+    defaults.ledgerDirectory,
+    "/var/lib/vitalserver-recorder-ingress/observability",
+  );
+  assert.strictEqual(defaults.maxRequestBytes, 5 * MIB);
+  assert.deepStrictEqual(defaults.database, {
+    host: "postgres",
+    port: 5432,
+    database: "vitalserver",
+    user: "vitalserver",
+    password: "vitalserver",
+    maxConnections: 10,
   });
-  assert.deepStrictEqual(loadConfig({
+  assert.deepStrictEqual(defaults.projector, {
+    intervalMs: 1000,
+    batchSize: 100,
+  });
+  assert.strictEqual(defaults.freshnessToleranceMultiplier, 3);
+  assert.strictEqual(defaults.freshnessAllowanceSeconds, 30);
+  const configured = loadConfig({
     RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY: "/data/observability",
     RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES: "7340032",
-  }).observability, {
-    ledgerDirectory: "/data/observability",
-    maxRequestBytes: 7 * MIB,
-  });
+    RECORDER_INGRESS_POSTGRES_HOST: "db.internal",
+    RECORDER_INGRESS_POSTGRES_MAX_CONNECTIONS: "4",
+  }).observability;
+  assert.strictEqual(configured.ledgerDirectory, "/data/observability");
+  assert.strictEqual(configured.maxRequestBytes, 7 * MIB);
+  assert.strictEqual(configured.database.host, "db.internal");
+  assert.strictEqual(configured.database.maxConnections, 4);
 });
 
 test("config loads explicit redis ip rewrite policy", () => {

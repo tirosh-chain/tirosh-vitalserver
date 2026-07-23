@@ -116,6 +116,31 @@ def test_runtime_compose_includes_postgres_service() -> None:
     assert "postgres-data" in volumes
 
 
+def test_runtime_compose_gates_products_on_postgres_migration() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    services = document["services"]
+
+    migration = services["postgres-migrate"]
+    assert migration["image"] == "vitalserver-postgres-migrator:0.2.0"
+    assert migration["restart"] == "no"
+    assert migration["depends_on"]["postgres"]["condition"] == "service_healthy"
+    assert migration["environment"]["VITALSERVER_DATABASE_URL"] == (
+        "postgresql://vitalserver@postgres:5432/vitalserver"
+    )
+    assert (
+        services["recorder-ingress"]["depends_on"]["postgres-migrate"]["condition"]
+        == "service_completed_successfully"
+    )
+    assert (
+        services["lab"]["depends_on"]["postgres-migrate"]["condition"]
+        == "service_completed_successfully"
+    )
+
+
 def test_runtime_compose_includes_lab_product_service() -> None:
     compose_path = (
         Path(__file__).resolve().parents[3]
@@ -848,9 +873,12 @@ def test_start_ordered_starts_postgres_before_product_services(
 
     compose.start_ordered()
 
-    assert events[:4] == [
+    assert events[:5] == [
         "checked-compose:up --pull never --no-build -d postgres:stage=postgres startup",
         "wait-for-postgres",
+        "checked-compose:up --pull never --no-build --no-deps --force-recreate "
+        "--abort-on-container-exit --exit-code-from postgres-migrate "
+        "postgres-migrate:stage=postgres schema migration",
         "checked-compose:up --pull never --no-build -d redis:stage=redis startup",
         "wait-for-redis",
     ]
