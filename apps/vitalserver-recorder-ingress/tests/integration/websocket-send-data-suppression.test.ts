@@ -99,9 +99,23 @@ async function startProxyFixture(mode) {
 }
 
 function configFor(mode, upstreamPort, redisPort) {
+  const fixtureId = crypto.randomUUID();
   return {
     listenPort: 0,
+    observability: {
+      ledgerDirectory: `/tmp/recorder-observability-${fixtureId}`,
+      maxRequestBytes: 5 * 1024 * 1024,
+    },
     upstream: { host: "127.0.0.1", port: upstreamPort, timeoutMs: 1000 },
+    nativeVitalUploads: {
+      statePath: `/tmp/native-vital-uploads-${fixtureId}.json`,
+      reconciliation: { intervalMs: 1000, maxAttempts: 1 },
+      vitalServerIndex: {
+        baseUrl: `http://127.0.0.1:${upstreamPort}`,
+        adminPassword: "test-admin",
+        timeoutMs: 1000,
+      },
+    },
     redis: { host: "127.0.0.1", port: redisPort, timeoutMs: 1000 },
     audit: {
       enabled: false,

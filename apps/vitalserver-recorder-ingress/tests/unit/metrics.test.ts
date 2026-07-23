@@ -44,6 +44,33 @@ test("metrics snapshot reports failure log write failures distinctly", () => {
   assert.strictEqual(metricsSnapshot(metrics).failureLogWriteFailures, 2);
 });
 
+test("metrics snapshot exposes Recorder observability admission state", () => {
+  const metrics = createMetrics();
+  metrics.recorderObservability.requests = 3;
+  metrics.recorderObservability.accepted = 2;
+  metrics.recorderObservability.duplicates = 1;
+  metrics.recorderObservability.quarantined = 4;
+  metrics.recorderObservability.admissionFailures = 1;
+  metrics.recorderObservability.lastAdmittedAt = "2026-07-23T02:00:00.000Z";
+  metrics.recorderObservability.lastFailure = {
+    occurredAt: "2026-07-23T02:01:00.000Z",
+    reason: "durable_admission_failed",
+  };
+
+  assert.deepStrictEqual(metricsSnapshot(metrics).recorderObservability, {
+    requests: 3,
+    accepted: 2,
+    duplicates: 1,
+    quarantined: 4,
+    admissionFailures: 1,
+    lastAdmittedAt: "2026-07-23T02:00:00.000Z",
+    lastFailure: {
+      occurredAt: "2026-07-23T02:01:00.000Z",
+      reason: "durable_admission_failed",
+    },
+  });
+});
+
 test("metrics snapshot clears pending bytes when replay consumes final pending item", () => {
   const metrics = createMetrics();
   const item = {

@@ -30,6 +30,15 @@ function loadConfig(env) {
   );
   return {
     listenPort: numberEnv(env, "RECORDER_INGRESS_PORT", 8080),
+    observability: {
+      ledgerDirectory: env.RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY
+        || "/var/lib/vitalserver-recorder-ingress/observability",
+      maxRequestBytes: numberEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES",
+        5 * MIB
+      ),
+    },
     upstream: {
       host: upstreamHost,
       port: upstreamPort,

@@ -8,6 +8,7 @@ const { createSendDataFailureLogWriter } = require("../adapters/outbound/file/se
 const { createSendDataRawArchiveExportJobStore } = require("../adapters/outbound/file/send-data-raw-archive-export-job-store");
 const { createSendDataRawArchiveWriter } = require("../adapters/outbound/file/send-data-raw-archive-writer");
 const { createNativeVitalUploadRegistry } = require("../adapters/outbound/file/native-vital-upload-registry");
+const { createRecorderObservabilityLedger } = require("../adapters/outbound/file/recorder-observability-ledger");
 const { createRawArchiveExporter } = require("../adapters/outbound/http/raw-archive-recovery-executor");
 const { createVitalServerFileIndex } = require("../adapters/outbound/http/vitalserver-file-index");
 const { createRedisAuditEventStore } = require("../adapters/outbound/redis/audit-event-store");
@@ -20,6 +21,7 @@ const { createSendDataIngressService } = require("../application/send-data-ingre
 const { createSendDataRawArchiveExportWorker } = require("../application/send-data-raw-archive-export-worker");
 const { createSendDataReplayWorker } = require("../application/send-data-replay-worker");
 const { createNativeVitalUploadService } = require("../application/native-vital-upload-service");
+const { createRecorderObservabilityIngressService } = require("../application/recorder-observability-ingress-service");
 const { createSocketIoAuditService } = require("../application/socketio-audit-service");
 const { configureSendDataRawArchive, configureSendDataSpool, createMetrics } = require("../observability/metrics");
 
@@ -47,6 +49,11 @@ function createRecorderIngressServer(config) {
       config.nativeVitalUploads.vitalServerIndex
     ),
     reconciliation: config.nativeVitalUploads.reconciliation,
+  });
+  const recorderObservability = createRecorderObservabilityIngressService({
+    ledger: createRecorderObservabilityLedger({
+      directory: config.observability.ledgerDirectory,
+    }),
   });
   const audit = createAuditRecorder(config.audit, [auditLog, auditStdout, redisAudit]);
   const vrIdentityStore = createVrIdentityStore(identityRedis, metrics);
@@ -81,6 +88,7 @@ function createRecorderIngressServer(config) {
     config,
     metrics,
     nativeVitalUploads,
+    recorderObservability,
     sendDataRawArchiveExportWorker,
     sendDataReplayWorker,
     socketIoAudit,

@@ -5,6 +5,9 @@ import type { SendDataRawArchiveExportWorkerPort } from "../../../application/po
 import type { SendDataReplayWorkerPort } from "../../../application/ports/inbound/send-data-replay-worker-port";
 import type { SocketIoAuditPort } from "../../../application/ports/inbound/socketio-audit-port";
 import type { NativeVitalUploadService } from "../../../application/native-vital-upload-service";
+import type {
+  createRecorderObservabilityIngressService,
+} from "../../../application/recorder-observability-ingress-service";
 
 "use strict";
 
@@ -16,6 +19,10 @@ const { metricsSnapshot, recordRecorderDisconnect } = require("../../../observab
 const { createBodyMirror } = require("./body-mirror");
 const { createClientWebSocketRelay, shouldSuppressSendDataRelay } = require("./websocket-client-relay");
 const { nativeVitalUploadMetadataFromHeaders } = require("./native-vital-upload-http");
+const {
+  receiveRecorderObservability,
+  recorderObservabilityRoute,
+} = require("./recorder-observability-http");
 const { createWebSocketParser } = require("./websocket-parser");
 
 type ClientIpSelectorPort = {
@@ -30,6 +37,9 @@ type RecorderIngressHttpConfig = {
   };
   audit: {
     maxBodyBytes: number;
+  };
+  observability: {
+    maxRequestBytes: number;
   };
   spool: {
     mode: string;
@@ -51,6 +61,9 @@ type RecorderIngressHttpServerDependencies = {
   sendDataReplayWorker: SendDataReplayWorkerPort;
   socketIoAudit: SocketIoAuditPort;
   nativeVitalUploads?: NativeVitalUploadService;
+  recorderObservability?: ReturnType<
+    typeof createRecorderObservabilityIngressService
+  >;
 };
 
 export type RecorderIngressHttpServer = Server & {
@@ -66,6 +79,7 @@ function createRecorderIngressHttpServer({
   sendDataReplayWorker,
   socketIoAudit,
   nativeVitalUploads,
+  recorderObservability,
 }: RecorderIngressHttpServerDependencies): RecorderIngressHttpServer {
   const dependencies = {
     audit,
@@ -73,6 +87,7 @@ function createRecorderIngressHttpServer({
     config,
     metrics,
     nativeVitalUploads,
+    recorderObservability,
     sendDataRawArchiveExportWorker,
     socketIoAudit,
   };
@@ -121,6 +136,20 @@ function waitForActiveSocketsToClose(activeSockets: Set<Socket>, timeoutMs: numb
 }
 
 function proxyHttp(req, res, dependencies) {
+  const observabilityRoute = recorderObservabilityRoute(req.url);
+  if (observabilityRoute) {
+    const selectedIp = dependencies.clientIp.select(req);
+    receiveRecorderObservability(req, res, {
+      route: observabilityRoute,
+      ingress: dependencies.recorderObservability,
+      maxRequestBytes: dependencies.config.observability.maxRequestBytes,
+      metrics: dependencies.metrics.recorderObservability,
+      sourceIp: typeof selectedIp.selected_ip === "string"
+        ? selectedIp.selected_ip
+        : "",
+    });
+    return;
+  }
   if (req.url === "/recorder-ingress/health") {
     res.writeHead(204);
     res.end();

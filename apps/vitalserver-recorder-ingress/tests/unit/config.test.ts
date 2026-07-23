@@ -6,6 +6,20 @@ const { loadConfig } = require("../../src/config");
 
 const MIB = 1024 * 1024;
 
+test("config loads bounded Recorder observability admission settings", () => {
+  assert.deepStrictEqual(loadConfig({}).observability, {
+    ledgerDirectory: "/var/lib/vitalserver-recorder-ingress/observability",
+    maxRequestBytes: 5 * MIB,
+  });
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY: "/data/observability",
+    RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES: "7340032",
+  }).observability, {
+    ledgerDirectory: "/data/observability",
+    maxRequestBytes: 7 * MIB,
+  });
+});
+
 test("config loads explicit redis ip rewrite policy", () => {
   assert.deepStrictEqual(loadConfig({
     RECORDER_INGRESS_VR_IP_REWRITE_ENABLED: "0",

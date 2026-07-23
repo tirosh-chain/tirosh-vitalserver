@@ -25,6 +25,7 @@ function createMetrics() {
     sendDataRawArchive: defaultRawArchiveStatus(),
     sendDataSpool: defaultSpoolStatus(),
     sendDataReplay: defaultReplayStatus(),
+    recorderObservability: defaultRecorderObservabilityStatus(),
   };
 }
 
@@ -68,6 +69,24 @@ function metricsSnapshot(metrics) {
     spool: spoolSnapshot(metrics.sendDataSpool),
     replay: replaySnapshot(metrics.sendDataReplay),
     realtimeCoverage: realtimeCoverageSnapshot(metrics.recorders),
+    recorderObservability: {
+      ...metrics.recorderObservability,
+      lastFailure: metrics.recorderObservability.lastFailure
+        ? { ...metrics.recorderObservability.lastFailure }
+        : null,
+    },
+  };
+}
+
+function defaultRecorderObservabilityStatus() {
+  return {
+    requests: 0,
+    accepted: 0,
+    duplicates: 0,
+    quarantined: 0,
+    admissionFailures: 0,
+    lastAdmittedAt: null,
+    lastFailure: null,
   };
 }
 
