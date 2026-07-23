@@ -433,6 +433,16 @@ export function useVitalDBRecorderVitalFiles(vrcode: string | null) {
   });
 }
 
+export function useRecorderObservabilityDetail(vrcode: string | null) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderObservability(vrcode ?? ""),
+    queryFn: () => runtimeControlGateway.getRecorderObservability(vrcode ?? ""),
+    enabled: vrcode !== null,
+    refetchInterval: 5_000
+  });
+}
+
 export function useReleaseInfo() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({

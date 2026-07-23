@@ -4,6 +4,7 @@ import {
   useDeleteVitalDBRecorders,
   useHideVitalDBRecorders,
   useLabRecorders,
+  useRecorderObservabilityDetail,
   useUnhideVitalDBRecorders,
   useVitalDBRecorderVitalFiles,
   useVitalDBRecorders,
@@ -11,6 +12,7 @@ import {
 } from "@/console/hooks";
 import type {
   RuntimeLabRecorder,
+  RuntimeRecorderObservabilityDetail,
   VitalDBRecorderRecord,
   RuntimeVitalRecorderVitalFileHistory,
   VitalDBRelationships
@@ -86,6 +88,9 @@ export function RecordersPage() {
     ? recorders?.find((recorder) => recorder.vrcode === selectedVrcode) ?? null
     : null;
   const recorderVitalFilesQuery = useVitalDBRecorderVitalFiles(
+    selectedRecorder?.vrcode ?? null
+  );
+  const recorderObservabilityQuery = useRecorderObservabilityDetail(
     selectedRecorder?.vrcode ?? null
   );
   const selectedLabRecorder =
@@ -294,6 +299,9 @@ export function RecordersPage() {
           vitalFiles={recorderVitalFilesQuery.data}
           vitalFilesError={recorderVitalFilesQuery.error}
           vitalFilesLoading={recorderVitalFilesQuery.isPending}
+          observabilityDetail={recorderObservabilityQuery.data}
+          observabilityDetailError={recorderObservabilityQuery.error}
+          observabilityDetailLoading={recorderObservabilityQuery.isPending}
           showDelete={showHidden}
           mutationPending={visibilityMutationPending}
           onHide={() => {
@@ -500,6 +508,9 @@ function RecorderDetails({
   vitalFiles,
   vitalFilesError,
   vitalFilesLoading,
+  observabilityDetail,
+  observabilityDetailError,
+  observabilityDetailLoading,
   showDelete,
   mutationPending,
   onHide,
@@ -512,6 +523,9 @@ function RecorderDetails({
   vitalFiles: RuntimeVitalRecorderVitalFileHistory | undefined;
   vitalFilesError: unknown;
   vitalFilesLoading: boolean;
+  observabilityDetail: RuntimeRecorderObservabilityDetail | undefined;
+  observabilityDetailError: unknown;
+  observabilityDetailLoading: boolean;
   showDelete: boolean;
   mutationPending: boolean;
   onHide: () => void;
@@ -584,49 +598,12 @@ function RecorderDetails({
 
       <div className="detail-section">
         <h3>Health report</h3>
-        <KeyValueRows
-          rows={[
-            {
-              label: "Support",
-              value: formatObservabilitySupport(recorder.observability)
-            },
-            {
-              label: "Report",
-              value: formatObservabilityReport(recorder.observability)
-            },
-            {
-              label: "Last report",
-              value: formatLocalDateTime(
-                recorder.observability?.latestObservationReceivedAt
-              )
-            },
-            {
-              label: "Collection",
-              value: recorder.observability?.collectionState ?? NOT_REPORTED
-            },
-            {
-              label: "Profile",
-              value: recorder.observability?.profileState ?? NOT_REPORTED
-            },
-            {
-              label: "Read issues",
-              value: recorder.observability?.readIssueCount ?? NOT_REPORTED
-            },
-            {
-              label: "Last boot",
-              value: formatLocalDateTime(recorder.observability?.lastBootStartedAt)
-            }
-          ]}
+        <RecorderObservabilityDetailSection
+          recorder={recorder}
+          detail={observabilityDetail}
+          error={observabilityDetailError}
+          loading={observabilityDetailLoading}
         />
-        {recorder.observability?.supportState === "unsupported" ? (
-          <p className="muted">
-            Health reporting is not available on this Recorder or Observer version.
-          </p>
-        ) : recorder.observability?.supportState === "unknown" ? (
-          <p className="muted">
-            No explicit deployment or version capability evidence is available.
-          </p>
-        ) : null}
       </div>
 
       <div className="detail-section">
@@ -702,17 +679,180 @@ function RecorderDetails({
   );
 }
 
-function formatObservabilitySupport(
-  observability: VitalDBRecorderRecord["observability"]
-): string {
-  switch (observability?.supportState) {
+function RecorderObservabilityDetailSection({
+  recorder,
+  detail,
+  error,
+  loading
+}: {
+  recorder: VitalDBRecorderRecord;
+  detail: RuntimeRecorderObservabilityDetail | undefined;
+  error: unknown;
+  loading: boolean;
+}) {
+  if (error) {
+    return <ErrorState title="Health detail is not available" error={error} />;
+  }
+  if (loading || detail === undefined) {
+    return <p className="muted">Loading health detail...</p>;
+  }
+  if (detail.vrcode !== recorder.vrcode) {
+    return (
+      <p className="error-text">
+        Health detail identity does not match the selected Recorder.
+      </p>
+    );
+  }
+  if (detail.state === "unavailable") {
+    return (
+      <p className="error-text">
+        Health detail read failed: {detail.readError ?? "No failure detail was provided."}
+      </p>
+    );
+  }
+  const summaryMismatch =
+    recorder.observability !== undefined &&
+    (recorder.observability.supportState !== detail.support.state ||
+      recorder.observability.reportState !== detail.report.state);
+
+  return (
+    <>
+      {summaryMismatch ? (
+        <p className="error-text">
+          Recorder list and health detail report different support or report states.
+        </p>
+      ) : null}
+      <KeyValueRows
+        rows={[
+          { label: "Support", value: formatDetailSupport(detail) },
+          { label: "Report", value: formatDetailReport(detail) },
+          { label: "Last report", value: formatLocalDateTime(detail.report.receivedAt) },
+          { label: "Temperature", value: formatReading(detail.readings.temperatureCelsius, " °C") },
+          {
+            label: "Memory available",
+            value: formatByteReading(detail.readings.memoryAvailableBytes)
+          },
+          {
+            label: "Memory total",
+            value: formatByteReading(detail.readings.memoryTotalBytes)
+          },
+          {
+            label: "Root storage used",
+            value: formatReading(detail.readings.rootUsedPercent, "%")
+          },
+          {
+            label: "Data storage used",
+            value: formatReading(detail.readings.dataUsedPercent, "%")
+          },
+          {
+            label: "Recorder service",
+            value: formatReading(detail.readings.recorderActiveState)
+          },
+          {
+            label: "Publisher",
+            value: formatReading(detail.readings.publisherActiveState)
+          },
+          {
+            label: "Publisher buffer",
+            value: `${formatByteReading(detail.readings.publisherBufferBytes)} / ${formatByteReading(
+              detail.readings.publisherBufferLimitBytes
+            )}`
+          },
+          { label: "Profile", value: detail.profile.state },
+          { label: "Boot", value: formatBoot(detail) },
+          { label: "Read issues", value: detail.report.readIssueCount }
+        ]}
+      />
+      {detail.readIssues.length > 0 ? (
+        <ul className="recorder-observability-issues">
+          {detail.readIssues.map((issue, index) => (
+            <li key={`${issue.field}-${index}`}>
+              <strong>{issue.field}</strong>: {issue.state} — {issue.detail}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {detail.readings.networkInterfaces.length > 0 ? (
+        <div className="recorder-observability-network">
+          <h4>Network interfaces</h4>
+          {detail.readings.networkInterfaces.map((networkInterface) => (
+            <p key={networkInterface.name} className="muted">
+              {networkInterface.name}: {formatReading(networkInterface.operState)},
+              carrier {formatReading(networkInterface.carrier)}, RX errors{" "}
+              {formatReading(networkInterface.rxErrors)}, TX errors{" "}
+              {formatReading(networkInterface.txErrors)}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function formatDetailSupport(detail: RuntimeRecorderObservabilityDetail): string {
+  switch (detail.support.state) {
     case "supported":
       return "Supported";
     case "unsupported":
       return "Not available on this version";
     case "unknown":
-    default:
       return "Support unknown";
+  }
+}
+
+function formatDetailReport(detail: RuntimeRecorderObservabilityDetail): string {
+  if (detail.support.state === "unsupported") {
+    return "Not applicable";
+  }
+  switch (detail.report.state) {
+    case "awaitingFirstReport":
+      return "Waiting for first report";
+    case "current":
+      return "Current";
+    case "stale":
+      return "Stale";
+    case "missing":
+      return "Missing";
+    case "readFailed":
+      return "Unavailable";
+    case "notEvaluated":
+      return "Not evaluated";
+  }
+}
+
+function formatReading(
+  reading: RuntimeRecorderObservabilityDetail["readings"]["temperatureCelsius"],
+  suffix = ""
+): string {
+  if (reading.state !== "ok") {
+    return `${reading.state}${reading.detail ? ` — ${reading.detail}` : ""}`;
+  }
+  if (
+    typeof reading.value !== "string" &&
+    typeof reading.value !== "number" &&
+    typeof reading.value !== "boolean"
+  ) {
+    return "invalid — scalar value expected";
+  }
+  return `${String(reading.value)}${suffix}`;
+}
+
+function formatByteReading(
+  reading: RuntimeRecorderObservabilityDetail["readings"]["memoryAvailableBytes"]
+): string {
+  return reading.state === "ok" && typeof reading.value === "number"
+    ? formatBytes(reading.value)
+    : formatReading(reading);
+}
+
+function formatBoot(detail: RuntimeRecorderObservabilityDetail): string {
+  switch (detail.boot.state) {
+    case "started":
+      return `Started ${formatLocalDateTime(detail.boot.startedAt)}`;
+    case "shutdownClean":
+      return `Clean shutdown ${formatLocalDateTime(detail.boot.cleanShutdownAt)}`;
+    case "notReported":
+      return "Not reported";
   }
 }
 

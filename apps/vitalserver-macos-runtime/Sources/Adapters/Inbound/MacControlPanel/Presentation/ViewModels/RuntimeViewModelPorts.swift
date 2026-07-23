@@ -15,6 +15,7 @@ public protocol RuntimeViewModelSnapshotReading: Sendable {
     func loadVitalDBRecorderSummaries() async -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRecorderVitalFiles(vrcode: String) async -> RuntimeVitalRecorderVitalFileHistory
+    func loadRecorderObservabilityDetail(vrcode: String) async -> RuntimeRecorderObservabilityDetail
     func loadVitalDBRelationships() async -> RuntimeVitalRelationshipHistory
     func loadBackups(latestBackupPath: String?) async throws -> [RuntimeBackup]
     func loadRedisBackups() async throws -> [RuntimeBackup]
@@ -32,6 +33,15 @@ public extension RuntimeViewModelSnapshotReading {
 
     func loadVitalDBRecorderVitalFiles(vrcode: String) async -> RuntimeVitalRecorderVitalFileHistory {
         .failed(vrcode: vrcode, readError: "vitaldb-recorder-vital-files reader is unavailable")
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) async -> RuntimeRecorderObservabilityDetail {
+        .unavailable(
+            vrcode: vrcode,
+            readError: "recorder-observability-detail reader is unavailable"
+        )
     }
 }
 

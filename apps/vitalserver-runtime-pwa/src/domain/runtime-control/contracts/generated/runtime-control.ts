@@ -1357,6 +1357,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/vitaldb/recorders/{vrcode}/observability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read typed Recorder observability detail
+         * @description Lazy detail read for one Recorder. The response preserves support, report, profile, boot, reading, and dependency-failure states without exposing the ingress JSONB aggregate.
+         */
+        get: operations["getRecorderObservabilityDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/vitaldb/recorders/{vrcode}/observability/expectation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply one Recorder support expectation command
+         * @description Authenticated Runtime Control forwarding boundary. The Guest and recorder-ingress preserve accepted, idempotent, revision-conflict, rejected, and dependency-failure meanings.
+         */
+        post: operations["applyRecorderObservabilityExpectation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/vitaldb/recorders/{vrcode}/vital-files": {
         parameters: {
             query?: never;
@@ -1790,6 +1830,95 @@ export interface components {
             latestSampleAt: string | null;
             readError: string | null;
         };
+        RuntimeRecorderObservabilityReading: {
+            /** @enum {string} */
+            state: "ok" | "missing" | "invalid" | "failed" | "unsupported";
+            value: unknown;
+            detail: string | null;
+            observedAt: string | null;
+        };
+        RuntimeRecorderObservabilitySupport: {
+            /** @enum {string} */
+            state: "supported" | "unsupported" | "unknown";
+            source: string | null;
+            expectedSince: string | null;
+            recorderVersion: string | null;
+            producerVersion: string | null;
+            protocolVersion: string | null;
+        };
+        RuntimeRecorderObservabilityReport: {
+            /** @enum {string} */
+            state: "notEvaluated" | "awaitingFirstReport" | "current" | "stale" | "missing" | "readFailed";
+            receivedAt: string | null;
+            deviceObservedAt: string | null;
+            collectionState: string | null;
+            readIssueCount: number;
+        };
+        RuntimeRecorderObservabilityProfile: {
+            /** @enum {string} */
+            state: "associated" | "unassociated" | "missing" | "invalid";
+            receivedAt: string | null;
+            deviceObservedAt: string | null;
+            deviceId: string | null;
+            bootId: string | null;
+            software: {
+                [key: string]: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            };
+            collection: {
+                powerIntervalSeconds: number | null;
+                telemetryIntervalSeconds: number | null;
+                observationIntervalSeconds: number | null;
+            } | null;
+            capabilities: {
+                [key: string]: {
+                    state: string;
+                    source: string | null;
+                    detail: string | null;
+                };
+            };
+        };
+        RuntimeRecorderObservabilityBoot: {
+            /** @enum {string} */
+            state: "notReported" | "started" | "shutdownClean";
+            bootId: string | null;
+            startedAt: string | null;
+            cleanShutdownAt: string | null;
+        };
+        RuntimeRecorderObservabilityNetworkInterface: {
+            name: string;
+            operState: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            carrier: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            rxErrors: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            txErrors: components["schemas"]["RuntimeRecorderObservabilityReading"];
+        };
+        RuntimeRecorderObservabilityReadings: {
+            temperatureCelsius: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            memoryAvailableBytes: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            memoryTotalBytes: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            rootUsedPercent: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            dataUsedPercent: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            recorderActiveState: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            publisherActiveState: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            publisherBufferBytes: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            publisherBufferLimitBytes: components["schemas"]["RuntimeRecorderObservabilityReading"];
+            networkInterfaces: components["schemas"]["RuntimeRecorderObservabilityNetworkInterface"][];
+        };
+        RuntimeRecorderObservabilityDetail: {
+            /** @enum {string} */
+            state: "loaded" | "notReported" | "unavailable";
+            vrcode: string;
+            support: components["schemas"]["RuntimeRecorderObservabilitySupport"];
+            report: components["schemas"]["RuntimeRecorderObservabilityReport"];
+            profile: components["schemas"]["RuntimeRecorderObservabilityProfile"];
+            boot: components["schemas"]["RuntimeRecorderObservabilityBoot"];
+            readings: components["schemas"]["RuntimeRecorderObservabilityReadings"];
+            readIssues: {
+                field: string;
+                state: string;
+                detail: string;
+            }[];
+            readError: string | null;
+        };
         /** @enum {string} */
         RuntimeVitalRecorderVitalFileHistoryState: "loaded" | "partiallyLoaded" | "readFailed";
         /** @enum {string} */
@@ -1899,6 +2028,36 @@ export interface components {
             /** @description Observability protocol version captured by the explicit support expectation. */
             protocolVersion: string | null;
             readError: string | null;
+        };
+        RuntimeRecorderObservabilityExpectationCommand: {
+            /** Format: uuid */
+            commandId: string;
+            vrcode: string;
+            expectedRevision: number;
+            /** @enum {string} */
+            action: "set" | "clear";
+            /** @enum {string|null} */
+            supportState: "supported" | "unsupported" | null;
+            /** @enum {string|null} */
+            source: "deployment_assignment" | "version_catalog" | "manual" | null;
+            recorderVersion: string | null;
+            producerVersion: string | null;
+            protocolVersion: string | null;
+            catalogRevision: string | null;
+            expectedSince: string | null;
+            evidenceDocument: {
+                [key: string]: unknown;
+            };
+            decidedAt: string;
+        };
+        RuntimeRecorderObservabilityExpectationReceipt: {
+            /** @enum {string} */
+            state: "accepted" | "idempotent" | "revisionConflict" | "rejected";
+            commandId: string;
+            eventId: string | null;
+            vrcode: string;
+            currentRevision: number;
+            failure: string | null;
         };
         /** @enum {string} */
         RuntimeRecorderRedisIPSyncStatus: "unknown" | "unavailable" | "disabled" | "pending" | "written" | "correcting" | "corrected" | "verified" | "mismatch" | "write_failed" | "verify_failed";
@@ -4983,6 +5142,88 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getRecorderObservabilityDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vrcode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Explicit Recorder observability detail read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeRecorderObservabilityDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    applyRecorderObservabilityExpectation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vrcode: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeRecorderObservabilityExpectationCommand"];
+            };
+        };
+        responses: {
+            /** @description Command accepted or idempotently replayed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeRecorderObservabilityExpectationReceipt"];
+                };
+            };
+            /** @description The command contract is invalid or its vrcode differs from the path. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The expected revision conflicts with the current projection. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeRecorderObservabilityExpectationReceipt"];
+                };
+            };
+            /** @description The complete command was rejected by domain policy. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeRecorderObservabilityExpectationReceipt"];
+                };
+            };
+            /** @description Guest, credential, or PostgreSQL command persistence is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getVitalDBRecorderVitalFiles: {

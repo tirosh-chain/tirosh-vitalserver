@@ -1141,12 +1141,15 @@ field가 다르면 contract mismatch로 표시하고 UI가 하나를 임의 선�
 PWA/Swift lazy Detail은 별도 commit으로 분리하되 A2 public contract가 확정된
 직후 수행합니다.
 
-2026-07-24 기준 1~5단계 public contract는 구현되었습니다. Ingress는 내부
+2026-07-24 기준 1~7단계 public contract와 lazy presentation은
+구현되었습니다. Ingress는 내부
 aggregate JSONB를 typed DTO로 투영하고, Guest strict decoder와 Runtime Guest
 gateway/Runtime Control GET route가 같은 계약을 사용합니다. 서로 다른 boot의
 start/shutdown evidence는 합치지 않으며 저장 projection의
-`latest_unassociated`는 공개 계약의 `unassociated`로 정규화합니다. PWA/Swift
-lazy presentation은 다음 별도 변경으로 남깁니다.
+`latest_unassociated`는 공개 계약의 `unassociated`로 정규화합니다. PWA와
+Swift는 Recorder가 선택되기 전에는 Detail을 읽지 않고, vrcode별 결과를
+분리해 이전 Recorder 응답을 현재 선택에 표시하지 않습니다. 목록 summary와
+Detail의 support/report가 다르면 mismatch를 명시적으로 표시합니다.
 
 ### 15-3. Workstream A3: bounded timeline과 incident query
 

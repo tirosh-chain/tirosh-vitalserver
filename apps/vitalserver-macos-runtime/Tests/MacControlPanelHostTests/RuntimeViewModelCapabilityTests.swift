@@ -1974,6 +1974,25 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
     }
 
+    func testRecorderObservabilityDetailLoadsOnlyWhenExplicitlyRequested() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(client.loadRecorderObservabilityDetailCount, 0)
+        await viewModel.refreshRecorderObservabilityDetail(vrcode: "06311eba")
+
+        XCTAssertEqual(client.loadRecorderObservabilityDetailCount, 1)
+        XCTAssertEqual(client.recorderObservabilityDetailVrcodes, ["06311eba"])
+        XCTAssertEqual(
+            viewModel.recorderObservabilityDetails["06311eba"]?.vrcode,
+            "06311eba"
+        )
+    }
+
     func testRuntimeControlRecoveryRelaunchesHelperForFreshLocalSession() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
@@ -2230,6 +2249,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var vitalDBRecorderActivityQueries: [RuntimeVitalRecorderActivityWindowQuery] = []
     var loadVitalDBRecorderVitalFilesCount = 0
     var vitalDBRecorderVitalFileVrcodes: [String] = []
+    var loadRecorderObservabilityDetailCount = 0
+    var recorderObservabilityDetailVrcodes: [String] = []
     var loadRedisRelayStatusCount = 0
     var runtimeStackStatusCount = 0
     var serviceResourceRequests: [String] = []
@@ -2406,6 +2427,17 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
                 )
             ),
             readError: nil
+        )
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        loadRecorderObservabilityDetailCount += 1
+        recorderObservabilityDetailVrcodes.append(vrcode)
+        return .unavailable(
+            vrcode: vrcode,
+            readError: "fixture observability detail is unavailable"
         )
     }
 

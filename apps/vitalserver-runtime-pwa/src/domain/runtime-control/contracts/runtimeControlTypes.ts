@@ -18,6 +18,7 @@ import {
   runtimeProductSettingsSchema,
   runtimeSettingsSchema,
   runtimeVitalDBObservationSnapshotSchema,
+  recorderObservabilityDetailSchema,
   recorderVitalFileHistorySchema,
   platformStateSchema,
   vitalDBBedsSchema,
@@ -196,6 +197,9 @@ export type RuntimeVitalRecorderActivityWindowQuery = {
 
 export type RuntimeVitalRecorderVitalFileHistory =
   z.infer<typeof recorderVitalFileHistorySchema>;
+
+export type RuntimeRecorderObservabilityDetail =
+  z.infer<typeof recorderObservabilityDetailSchema>;
 
 export type RuntimeReleaseInfo = components["schemas"]["RuntimeReleaseInfo"];
 

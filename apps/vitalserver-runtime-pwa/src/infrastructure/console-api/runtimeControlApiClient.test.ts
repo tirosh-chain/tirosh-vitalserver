@@ -487,6 +487,8 @@ describe("RuntimeControlApiClient", () => {
         },
         readError: null
       },
+      "/runtime/vitaldb/recorders/VR_A/observability":
+        unavailableRecorderObservability(),
       "/runtime/vitaldb/recorders/hide": fullVitalRecorderHistory(),
       "/runtime/vitaldb/recorders/unhide": fullVitalRecorderHistory(),
       "/runtime/vitaldb/recorders/delete": fullVitalRecorderHistory(),
@@ -627,6 +629,16 @@ describe("RuntimeControlApiClient", () => {
       (request) =>
         new URL(request.url).pathname ===
         "/runtime/vitaldb/recorders/VR_A/vital-files"
+    )).toBe(true);
+    await expect(client.getRecorderObservability("VR_A")).resolves.toMatchObject({
+      state: "unavailable",
+      vrcode: "VR_A",
+      report: { state: "readFailed" }
+    });
+    expect(requests.some(
+      (request) =>
+        new URL(request.url).pathname ===
+        "/runtime/vitaldb/recorders/VR_A/observability"
     )).toBe(true);
     await expect(client.hideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
     await expect(client.unhideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
@@ -1089,6 +1101,64 @@ function fullVitalRecorderHistory() {
     },
     recorderIngressStatusRead: null,
     readError: null
+  };
+}
+
+function unavailableRecorderObservability() {
+  const missing = {
+    state: "missing",
+    value: null,
+    detail: "health observation is unavailable",
+    observedAt: null
+  };
+  return {
+    state: "unavailable",
+    vrcode: "VR_A",
+    support: {
+      state: "unknown",
+      source: null,
+      expectedSince: null,
+      recorderVersion: null,
+      producerVersion: null,
+      protocolVersion: null
+    },
+    report: {
+      state: "readFailed",
+      receivedAt: null,
+      deviceObservedAt: null,
+      collectionState: null,
+      readIssueCount: 0
+    },
+    profile: {
+      state: "missing",
+      receivedAt: null,
+      deviceObservedAt: null,
+      deviceId: null,
+      bootId: null,
+      software: {},
+      collection: null,
+      capabilities: {}
+    },
+    boot: {
+      state: "notReported",
+      bootId: null,
+      startedAt: null,
+      cleanShutdownAt: null
+    },
+    readings: {
+      temperatureCelsius: missing,
+      memoryAvailableBytes: missing,
+      memoryTotalBytes: missing,
+      rootUsedPercent: missing,
+      dataUsedPercent: missing,
+      recorderActiveState: missing,
+      publisherActiveState: missing,
+      publisherBufferBytes: missing,
+      publisherBufferLimitBytes: missing,
+      networkInterfaces: []
+    },
+    readIssues: [],
+    readError: "Recorder observability owner is unavailable."
   };
 }
 

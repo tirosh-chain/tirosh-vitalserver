@@ -1625,6 +1625,141 @@ export const recorderVitalFileHistorySchema = z
   })
   .strict();
 
+const recorderObservabilityReadingSchema = z
+  .object({
+    state: z.enum(["ok", "missing", "invalid", "failed", "unsupported"]),
+    value: z.union([
+      z.null(),
+      z.boolean(),
+      z.number(),
+      z.string(),
+      z.array(z.unknown()),
+      z.record(z.string(), z.unknown())
+    ]),
+    detail: requiredNullableString,
+    observedAt: requiredNullableString
+  })
+  .strict();
+
+export const recorderObservabilityDetailSchema = z
+  .object({
+    state: z.enum(["loaded", "notReported", "unavailable"]),
+    vrcode: z.string(),
+    support: z
+      .object({
+        state: z.enum(["supported", "unsupported", "unknown"]),
+        source: requiredNullableString,
+        expectedSince: requiredNullableString,
+        recorderVersion: requiredNullableString,
+        producerVersion: requiredNullableString,
+        protocolVersion: requiredNullableString
+      })
+      .strict(),
+    report: z
+      .object({
+        state: z.enum([
+          "notEvaluated",
+          "awaitingFirstReport",
+          "current",
+          "stale",
+          "missing",
+          "readFailed"
+        ]),
+        receivedAt: requiredNullableString,
+        deviceObservedAt: requiredNullableString,
+        collectionState: requiredNullableString,
+        readIssueCount: z.number().int().nonnegative()
+      })
+      .strict(),
+    profile: z
+      .object({
+        state: z.enum(["associated", "unassociated", "missing", "invalid"]),
+        receivedAt: requiredNullableString,
+        deviceObservedAt: requiredNullableString,
+        deviceId: requiredNullableString,
+        bootId: requiredNullableString,
+        software: z.record(z.string(), recorderObservabilityReadingSchema),
+        collection: z
+          .object({
+            powerIntervalSeconds: z.number().int().nullable(),
+            telemetryIntervalSeconds: z.number().int().nullable(),
+            observationIntervalSeconds: z.number().int().nullable()
+          })
+          .strict()
+          .nullable(),
+        capabilities: z.record(
+          z.string(),
+          z
+            .object({
+              state: z.string(),
+              source: requiredNullableString,
+              detail: requiredNullableString
+            })
+            .strict()
+        )
+      })
+      .strict(),
+    boot: z
+      .object({
+        state: z.enum(["notReported", "started", "shutdownClean"]),
+        bootId: requiredNullableString,
+        startedAt: requiredNullableString,
+        cleanShutdownAt: requiredNullableString
+      })
+      .strict(),
+    readings: z
+      .object({
+        temperatureCelsius: recorderObservabilityReadingSchema,
+        memoryAvailableBytes: recorderObservabilityReadingSchema,
+        memoryTotalBytes: recorderObservabilityReadingSchema,
+        rootUsedPercent: recorderObservabilityReadingSchema,
+        dataUsedPercent: recorderObservabilityReadingSchema,
+        recorderActiveState: recorderObservabilityReadingSchema,
+        publisherActiveState: recorderObservabilityReadingSchema,
+        publisherBufferBytes: recorderObservabilityReadingSchema,
+        publisherBufferLimitBytes: recorderObservabilityReadingSchema,
+        networkInterfaces: z.array(
+          z
+            .object({
+              name: z.string(),
+              operState: recorderObservabilityReadingSchema,
+              carrier: recorderObservabilityReadingSchema,
+              rxErrors: recorderObservabilityReadingSchema,
+              txErrors: recorderObservabilityReadingSchema
+            })
+            .strict()
+        )
+      })
+      .strict(),
+    readIssues: z.array(
+      z
+        .object({
+          field: z.string(),
+          state: z.string(),
+          detail: z.string()
+        })
+        .strict()
+    ),
+    readError: requiredNullableString
+  })
+  .strict()
+  .superRefine((detail, context) => {
+    if (detail.state === "unavailable" && isBlank(detail.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: "unavailable Recorder observability detail must include readError"
+      });
+    }
+    if (detail.state !== "unavailable" && detail.readError !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: "successful Recorder observability detail cannot include readError"
+      });
+    }
+  });
+
 export const runtimeReleaseInfoSchema = z
   .object({
     helperVersion: z.string().optional(),

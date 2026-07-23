@@ -68,6 +68,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var vitalBeds = RuntimeVitalBedHistory()
     @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
     @Published var recorderVitalFileHistories: [String: RuntimeVitalRecorderVitalFileHistory] = [:]
+    @Published var recorderObservabilityDetails: [String: RuntimeRecorderObservabilityDetail] = [:]
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory() {
         didSet {
             vitalRelationshipPresentationIndex = RuntimeVitalRelationshipPresentationIndex(
@@ -408,6 +409,14 @@ public final class RuntimeViewModel: ObservableObject {
             return
         }
         recorderVitalFileHistories[vrcode] = history
+    }
+
+    func refreshRecorderObservabilityDetail(vrcode: String) async {
+        let detail = await snapshots.loadRecorderObservabilityDetail(vrcode: vrcode)
+        guard !Task.isCancelled else {
+            return
+        }
+        recorderObservabilityDetails[vrcode] = detail
     }
 
     @discardableResult

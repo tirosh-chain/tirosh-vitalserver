@@ -743,36 +743,230 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func recorderObservability(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        let observability = recorder.observability
         return VStack(alignment: .leading, spacing: 10) {
             detailSectionTitle("Health report")
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-                detailRow("Support", recorderObservabilitySupportText(observability))
-                detailRow("Report", recorderObservabilityReportText(observability))
-                detailRow(
-                    "Last report",
-                    viewModel.presentationFormatter.systemTimeText(
-                        observability?.latestObservationReceivedAt
-                    )
-                )
-                detailRow("Collection", reportedText(observability?.collectionState, missing: "Not reported"))
-                detailRow("Profile", reportedText(observability?.profileState, missing: "Not reported"))
-                detailRow("Read issues", observability?.readIssueCount.map(String.init) ?? "Not reported")
-                detailRow(
-                    "Last boot",
-                    viewModel.presentationFormatter.systemTimeText(observability?.lastBootStartedAt)
-                )
-            }
-            if observability?.supportState == .unsupported {
-                Text("Health reporting is not available on this Recorder or Observer version.")
-                    .foregroundStyle(.secondary)
-            } else if observability?.supportState == .unknown || observability == nil {
-                Text("No explicit deployment or version capability evidence is available.")
+            if let detail = viewModel.recorderObservabilityDetails[recorder.vrcode] {
+                recorderObservabilityDetail(detail, recorder: recorder)
+            } else {
+                Text("Loading health detail...")
                     .foregroundStyle(.secondary)
             }
         }
+        .task(id: recorder.vrcode) {
+            await viewModel.refreshRecorderObservabilityDetail(vrcode: recorder.vrcode)
+        }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func recorderObservabilityDetail(
+        _ detail: RuntimeRecorderObservabilityDetail,
+        recorder: RuntimeVitalRecorderRecord
+    ) -> some View {
+        if detail.vrcode != recorder.vrcode {
+            Text("Health detail identity does not match the selected Recorder.")
+                .foregroundStyle(.red)
+        } else if detail.state == .unavailable {
+            Text("Health detail read failed: \(detail.readError ?? "No failure detail was provided.")")
+                .foregroundStyle(.red)
+        } else {
+            if recorderObservabilitySummaryMismatch(detail, recorder: recorder) {
+                Text("Recorder list and health detail report different support or report states.")
+                    .foregroundStyle(.red)
+            }
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
+                detailRow("Support", recorderObservabilityDetailSupportText(detail))
+                detailRow("Report", recorderObservabilityDetailReportText(detail))
+                detailRow(
+                    "Last report",
+                    viewModel.presentationFormatter.systemTimeText(detail.report.receivedAt)
+                )
+                detailRow(
+                    "Temperature",
+                    recorderObservabilityReadingText(
+                        detail.readings.temperatureCelsius,
+                        suffix: " °C"
+                    )
+                )
+                detailRow(
+                    "Memory available",
+                    recorderObservabilityByteReadingText(detail.readings.memoryAvailableBytes)
+                )
+                detailRow(
+                    "Memory total",
+                    recorderObservabilityByteReadingText(detail.readings.memoryTotalBytes)
+                )
+                detailRow(
+                    "Root storage used",
+                    recorderObservabilityReadingText(
+                        detail.readings.rootUsedPercent,
+                        suffix: "%"
+                    )
+                )
+                detailRow(
+                    "Data storage used",
+                    recorderObservabilityReadingText(
+                        detail.readings.dataUsedPercent,
+                        suffix: "%"
+                    )
+                )
+                detailRow(
+                    "Recorder service",
+                    recorderObservabilityReadingText(detail.readings.recorderActiveState)
+                )
+                detailRow(
+                    "Publisher",
+                    recorderObservabilityReadingText(detail.readings.publisherActiveState)
+                )
+                detailRow(
+                    "Publisher buffer",
+                    recorderObservabilityByteReadingText(detail.readings.publisherBufferBytes)
+                        + " / "
+                        + recorderObservabilityByteReadingText(
+                            detail.readings.publisherBufferLimitBytes
+                        )
+                )
+                detailRow("Profile", detail.profile.state.rawValue)
+                detailRow("Boot", recorderObservabilityBootText(detail))
+                detailRow("Read issues", String(detail.report.readIssueCount))
+            }
+            ForEach(Array(detail.readIssues.enumerated()), id: \.offset) { _, issue in
+                Text("\(issue.field): \(issue.state) — \(issue.detail)")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            if !detail.readings.networkInterfaces.isEmpty {
+                Text("Network interfaces")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                ForEach(detail.readings.networkInterfaces, id: \.name) { networkInterface in
+                    Text(recorderObservabilityNetworkText(networkInterface))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func recorderObservabilitySummaryMismatch(
+        _ detail: RuntimeRecorderObservabilityDetail,
+        recorder: RuntimeVitalRecorderRecord
+    ) -> Bool {
+        guard let summary = recorder.observability else {
+            return false
+        }
+        return summary.supportState.rawValue != detail.support.state
+            || summary.reportState.rawValue != detail.report.state
+    }
+
+    private func recorderObservabilityDetailSupportText(
+        _ detail: RuntimeRecorderObservabilityDetail
+    ) -> String {
+        switch detail.support.state {
+        case "supported":
+            return "Supported"
+        case "unsupported":
+            return "Not available on this version"
+        default:
+            return "Support unknown"
+        }
+    }
+
+    private func recorderObservabilityDetailReportText(
+        _ detail: RuntimeRecorderObservabilityDetail
+    ) -> String {
+        if detail.support.state == "unsupported" {
+            return "Not applicable"
+        }
+        switch detail.report.state {
+        case "awaitingFirstReport":
+            return "Waiting for first report"
+        case "current":
+            return "Current"
+        case "stale":
+            return "Stale"
+        case "missing":
+            return "Missing"
+        case "readFailed":
+            return "Unavailable"
+        default:
+            return "Not evaluated"
+        }
+    }
+
+    private func recorderObservabilityReadingText(
+        _ reading: RuntimeRecorderObservabilityReading,
+        suffix: String = ""
+    ) -> String {
+        guard reading.state == .ok else {
+            return reading.state.rawValue
+                + (reading.detail.map { " — \($0)" } ?? "")
+        }
+        guard let value = reading.value else {
+            return "invalid — scalar value expected"
+        }
+        switch value {
+        case .bool(let value):
+            return "\(value)\(suffix)"
+        case .int(let value):
+            return "\(value)\(suffix)"
+        case .double(let value):
+            return "\(value)\(suffix)"
+        case .string(let value):
+            return "\(value)\(suffix)"
+        case .null, .array, .object:
+            return "invalid — scalar value expected"
+        }
+    }
+
+    private func recorderObservabilityByteReadingText(
+        _ reading: RuntimeRecorderObservabilityReading
+    ) -> String {
+        guard reading.state == .ok, let value = reading.value else {
+            return recorderObservabilityReadingText(reading)
+        }
+        let bytes: Int64?
+        switch value {
+        case .int(let value):
+            bytes = Int64(value)
+        case .double(let value) where value.isFinite:
+            bytes = Int64(value)
+        default:
+            bytes = nil
+        }
+        guard let bytes, bytes >= 0 else {
+            return "invalid — byte value expected"
+        }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private func recorderObservabilityNetworkText(
+        _ networkInterface: RuntimeRecorderObservabilityNetworkInterface
+    ) -> String {
+        let state = recorderObservabilityReadingText(networkInterface.operState)
+        let carrier = recorderObservabilityReadingText(networkInterface.carrier)
+        let rxErrors = recorderObservabilityReadingText(networkInterface.rxErrors)
+        let txErrors = recorderObservabilityReadingText(networkInterface.txErrors)
+        return "\(networkInterface.name): \(state), carrier \(carrier), "
+            + "RX errors \(rxErrors), TX errors \(txErrors)"
+    }
+
+    private func recorderObservabilityBootText(
+        _ detail: RuntimeRecorderObservabilityDetail
+    ) -> String {
+        switch detail.boot.state {
+        case "started":
+            return "Started "
+                + viewModel.presentationFormatter.systemTimeText(detail.boot.startedAt)
+        case "shutdownClean":
+            return "Clean shutdown "
+                + viewModel.presentationFormatter.systemTimeText(
+                    detail.boot.cleanShutdownAt
+                )
+        default:
+            return "Not reported"
+        }
     }
 
     private func recorderObservabilitySupportText(

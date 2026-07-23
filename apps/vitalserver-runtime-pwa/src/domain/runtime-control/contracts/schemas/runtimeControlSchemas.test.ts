@@ -14,6 +14,7 @@ import {
   platformWorkflowResourceSchema,
   runtimeProviderCommandResponseSchema,
   recorderVitalFileHistorySchema,
+  recorderObservabilityDetailSchema,
   runtimeRedisRelaySettingsReadSchema,
   runtimeRedisRelayStatusReadResultSchema,
   platformStateSchema,
@@ -25,6 +26,25 @@ import {
 } from "./runtimeControlSchemas";
 
 describe("runtime control contract schemas", () => {
+  it("preserves explicit Recorder observability read states and rejects raw aggregate fields", () => {
+    const detail = fullRecorderObservabilityDetail();
+
+    expect(recorderObservabilityDetailSchema.parse(detail)).toEqual(detail);
+    expect(
+      recorderObservabilityDetailSchema.safeParse({
+        ...detail,
+        resources: {}
+      }).success
+    ).toBe(false);
+    expect(
+      recorderObservabilityDetailSchema.safeParse({
+        ...detail,
+        state: "unavailable",
+        readError: null
+      }).success
+    ).toBe(false);
+  });
+
   it("requires complete Product Lab session failure evidence", () => {
     const failedSession = {
       state: "loaded" as const,
@@ -1617,6 +1637,69 @@ function fullRuntimeEvent(overrides: Record<string, unknown> = {}) {
     message: "runtime-settings apply-settings completed",
     failure: null,
     ...overrides
+  };
+}
+
+function fullRecorderObservabilityDetail() {
+  const missing = {
+    state: "missing",
+    value: null,
+    detail: "health observation is absent",
+    observedAt: null
+  };
+  return {
+    state: "loaded",
+    vrcode: "VR_TEST",
+    support: {
+      state: "supported",
+      source: "accepted_report",
+      expectedSince: null,
+      recorderVersion: null,
+      producerVersion: null,
+      protocolVersion: null
+    },
+    report: {
+      state: "current",
+      receivedAt: "2026-07-24T00:00:01Z",
+      deviceObservedAt: "2026-07-24T00:00:00Z",
+      collectionState: "complete",
+      readIssueCount: 0
+    },
+    profile: {
+      state: "associated",
+      receivedAt: null,
+      deviceObservedAt: null,
+      deviceId: "observer-1",
+      bootId: "boot-1",
+      software: {},
+      collection: null,
+      capabilities: {}
+    },
+    boot: {
+      state: "started",
+      bootId: "boot-1",
+      startedAt: "2026-07-23T00:00:00Z",
+      cleanShutdownAt: null
+    },
+    readings: {
+      temperatureCelsius: {
+        state: "ok",
+        value: 51.5,
+        detail: null,
+        observedAt: "2026-07-24T00:00:00Z"
+      },
+      memoryAvailableBytes: missing,
+      memoryTotalBytes: missing,
+      rootUsedPercent: missing,
+      dataUsedPercent: missing,
+      recorderActiveState: missing,
+      publisherActiveState: missing,
+      publisherBufferBytes: missing,
+      publisherBufferLimitBytes: missing,
+      networkInterfaces: []
+    },
+    readIssues: [],
+    readError: null
   };
 }
 

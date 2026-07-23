@@ -41,6 +41,7 @@ const hooks = vi.hoisted(() => ({
   useResetLabRecorders: vi.fn(),
   useRedisBackups: vi.fn(),
   useRepairDatastore: vi.fn(),
+  useRecorderObservabilityDetail: vi.fn(),
   useRestartRuntimeProvider: vi.fn(),
   useRestartGuestService: vi.fn(),
   useRollbackBackup: vi.fn(),
@@ -434,6 +435,7 @@ describe("runtime console pages", () => {
       screen.queryByRole("heading", { name: "Recorder Details" })
     ).not.toBeInTheDocument();
     expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith(null);
+    expect(hooks.useRecorderObservabilityDetail).toHaveBeenLastCalledWith(null);
 
     const recorderPanel = screen.getByRole("heading", { name: "Recorders" }).closest("section")!;
     const recorderTable = within(recorderPanel).getByRole("table");
@@ -457,6 +459,7 @@ describe("runtime console pages", () => {
 
     fireEvent.click(within(recorderTable).getByText("VR_A").closest("tr")!);
     expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith("VR_A");
+    expect(hooks.useRecorderObservabilityDetail).toHaveBeenLastCalledWith("VR_A");
 
     const recorderDetails = screen
       .getByRole("heading", { name: "Recorder Details" })
@@ -465,6 +468,8 @@ describe("runtime console pages", () => {
     expect(within(recorderDetails).getByText("Network access")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("Health report")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("Supported")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("52.5 °C")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Publisher buffer")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("Active IP")).toBeInTheDocument();
     expect(within(recorderDetails).queryByText("Redis key")).not.toBeInTheDocument();
     expect(within(recorderDetails).queryByText("x-forwarded-for")).not.toBeInTheDocument();
@@ -1916,6 +1921,9 @@ function setupDefaultHooks() {
     },
     readError: null
   }));
+  hooks.useRecorderObservabilityDetail.mockReturnValue(
+    query(recorderObservabilityDetail())
+  );
   hooks.useVitalDBBeds.mockReturnValue(query(bedHistory()));
   hooks.useVitalDBRelationships.mockReturnValue(query(relationships()));
   hooks.useRuntimeEvents.mockReturnValue(query(events()));
@@ -2303,6 +2311,108 @@ function recorderIngressSettings() {
     rawArchiveAutoExportRetryDelaySeconds: 60,
     rawArchiveAutoExportMaxAttempts: 3,
     rawArchiveAutoExportRequestTimeoutSeconds: 300
+  };
+}
+
+function recorderObservabilityDetail() {
+  const missing = {
+    state: "missing" as const,
+    value: null,
+    detail: "health observation is absent",
+    observedAt: null
+  };
+  return {
+    state: "loaded" as const,
+    vrcode: "VR_A",
+    support: {
+      state: "supported" as const,
+      source: "accepted_report",
+      expectedSince: null,
+      recorderVersion: "1.0",
+      producerVersion: "1.0",
+      protocolVersion: "1"
+    },
+    report: {
+      state: "current" as const,
+      receivedAt: "2026-05-31T00:59:30Z",
+      deviceObservedAt: "2026-05-31T00:59:29Z",
+      collectionState: "complete",
+      readIssueCount: 0
+    },
+    profile: {
+      state: "associated" as const,
+      receivedAt: "2026-05-31T00:58:00Z",
+      deviceObservedAt: "2026-05-31T00:57:59Z",
+      deviceId: "observer-1",
+      bootId: "boot-1",
+      software: {},
+      collection: {
+        powerIntervalSeconds: 1,
+        telemetryIntervalSeconds: 10,
+        observationIntervalSeconds: 60
+      },
+      capabilities: {}
+    },
+    boot: {
+      state: "started" as const,
+      bootId: "boot-1",
+      startedAt: "2026-05-30T00:00:00Z",
+      cleanShutdownAt: null
+    },
+    readings: {
+      temperatureCelsius: {
+        state: "ok" as const,
+        value: 52.5,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      memoryAvailableBytes: {
+        state: "ok" as const,
+        value: 4_294_967_296,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      memoryTotalBytes: {
+        state: "ok" as const,
+        value: 8_589_934_592,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      rootUsedPercent: {
+        state: "ok" as const,
+        value: 41.2,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      dataUsedPercent: { ...missing },
+      recorderActiveState: {
+        state: "ok" as const,
+        value: "active",
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      publisherActiveState: {
+        state: "ok" as const,
+        value: "active",
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      publisherBufferBytes: {
+        state: "ok" as const,
+        value: 2048,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      publisherBufferLimitBytes: {
+        state: "ok" as const,
+        value: 8_388_608,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      networkInterfaces: []
+    },
+    readIssues: [],
+    readError: null
   };
 }
 

@@ -53,6 +53,7 @@ import type {
   RuntimeRedisRelaySettingsRead,
   RuntimeRedisRelaySettingsApplyRequest,
   RuntimeVitalDBObservationSnapshot,
+  RuntimeRecorderObservabilityDetail,
   RuntimeVitalRecorderActivityWindow,
   RuntimeVitalRecorderActivityWindowQuery,
   RuntimeVitalRecorderVitalFileHistory,
@@ -96,6 +97,7 @@ import {
   runtimeRedisRelayStatusReadResultSchema,
   runtimeRedisRelaySettingsReadSchema,
   runtimeVitalDBObservationSnapshotSchema,
+  recorderObservabilityDetailSchema,
   recorderActivityWindowSchema,
   recorderVitalFileHistorySchema,
   runtimeReleaseInfoSchema,
@@ -487,6 +489,13 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get(
       `/runtime/vitaldb/recorders/${encodeURIComponent(vrcode)}/vital-files`,
       recorderVitalFileHistorySchema
+    );
+  }
+
+  getRecorderObservability(vrcode: string): Promise<RuntimeRecorderObservabilityDetail> {
+    return this.get(
+      `/runtime/vitaldb/recorders/${encodeURIComponent(vrcode)}/observability`,
+      recorderObservabilityDetailSchema
     );
   }
 

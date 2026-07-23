@@ -35,6 +35,7 @@ import {
   useRedisRelayStatus,
   useLatestVitalDBObservation,
   useRepairDatastore,
+  useRecorderObservabilityDetail,
   useRestartRuntimeProvider,
   useRestartGuestService,
   useStartLabSession,
@@ -177,6 +178,24 @@ describe("console hooks", () => {
     expect(gateway.listHostBackups).not.toHaveBeenCalled();
     expect(gateway.listRedisBackups).not.toHaveBeenCalled();
     expect(gateway.listRuntimeDataBackups).not.toHaveBeenCalled();
+  });
+
+  it("loads Recorder observability detail only after a Recorder is selected", async () => {
+    const gateway = createGateway();
+    const wrapper = createWrapper(gateway);
+    const detail = renderHook(
+      ({ vrcode }: { vrcode: string | null }) =>
+        useRecorderObservabilityDetail(vrcode),
+      { wrapper, initialProps: { vrcode: null as string | null } }
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(gateway.getRecorderObservability).not.toHaveBeenCalled();
+
+    detail.rerender({ vrcode: "VR_A" });
+    await waitFor(() =>
+      expect(gateway.getRecorderObservability).toHaveBeenCalledWith("VR_A")
+    );
   });
 
   it("runs runtime, update, backup, and repair mutations through the gateway", async () => {
@@ -510,6 +529,10 @@ function createGateway(): GatewayMock {
         coldPathRecovery: { state: "loaded", readError: null }
       },
       readError: null
+    }),
+    getRecorderObservability: vi.fn().mockResolvedValue({
+      state: "loaded",
+      vrcode: "VR_A"
     }),
     getReleaseInfo: vi.fn().mockResolvedValue({
       helperVersion: "1.0.0",
