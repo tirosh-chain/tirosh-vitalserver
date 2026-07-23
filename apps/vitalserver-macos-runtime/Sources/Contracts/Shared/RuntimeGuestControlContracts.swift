@@ -302,8 +302,7 @@ public struct RuntimeGuestControlOperationResult: Codable, Equatable, Sendable {
     public let shutdownPhase: String?
     public let redisBackupPath: String?
     public let postgresBackupPath: String?
-    public let databaseId: String?
-    public let alembicRevisions: [String]?
+    public let alembicRevision: String?
     public let runtimeRestarted: Bool?
 
     public init(
@@ -314,8 +313,7 @@ public struct RuntimeGuestControlOperationResult: Codable, Equatable, Sendable {
         shutdownPhase: String? = nil,
         redisBackupPath: String? = nil,
         postgresBackupPath: String? = nil,
-        databaseId: String? = nil,
-        alembicRevisions: [String]? = nil,
+        alembicRevision: String? = nil,
         runtimeRestarted: Bool? = nil
     ) {
         self.archive = archive
@@ -325,8 +323,7 @@ public struct RuntimeGuestControlOperationResult: Codable, Equatable, Sendable {
         self.shutdownPhase = shutdownPhase
         self.redisBackupPath = redisBackupPath
         self.postgresBackupPath = postgresBackupPath
-        self.databaseId = databaseId
-        self.alembicRevisions = alembicRevisions
+        self.alembicRevision = alembicRevision
         self.runtimeRestarted = runtimeRestarted
     }
 }

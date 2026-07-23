@@ -39,7 +39,8 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             fileStore: fileStore
         )
 
-        let backup = try lifecycle.runtimeDataBackupComposition().createBackup()
+        let result = try lifecycle.runtimeDataBackupComposition().createBackup()
+        let backup = result.backup
         let archivedRedis = backup.appendingPathComponent("artifacts/redis-data.tar.gz")
         let archivedPostgres = backup.appendingPathComponent(
             "artifacts/postgres-database.tar.gz"
@@ -55,9 +56,53 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             Data("postgres-archive".utf8)
         )
         XCTAssertEqual(manifest.artifacts.first { $0.id == .redisData }?.sourcePath, hostRedisArchive.path)
+        XCTAssertTrue(result.cleanupFailures.isEmpty)
+        XCTAssertNil(fileStore.files[hostRedisArchive])
+        XCTAssertNil(
+            fileStore.files[
+                installedPaths.postgresBackupsDirectory
+                    .appendingPathComponent("postgres-20260610T094159Z.tar.gz")
+            ]
+        )
         XCTAssertNil(fileStore.files[legacyRequestURL])
         XCTAssertEqual(guestControlGateway.createdBackups, 1)
         XCTAssertEqual(guestControlGateway.createdPostgresBackups, 1)
+    }
+
+    func testCreateBackupCleansMaintenanceArchivesWhenPackagingFails() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let installedPaths = InstalledRuntimePaths(
+            productRoot: URL(fileURLWithPath: "/product")
+        )
+        let redisArchive = installedPaths.redisBackupsDirectory
+            .appendingPathComponent("redis-20260610T094159Z.tar.gz")
+        let postgresArchive = installedPaths.postgresBackupsDirectory
+            .appendingPathComponent("postgres-20260610T094159Z.tar.gz")
+        let guestControlGateway = RuntimeDataBackupGuestControlGateway(
+            backupArchive: "/mnt/tirosh/backups/redis/redis-20260610T094159Z.tar.gz"
+        )
+        fileStore.files[redisArchive] = Data("redis-archive".utf8)
+        fileStore.files[postgresArchive] = Data("postgres-archive".utf8)
+
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installedPaths.runtimeHome,
+                installed: installedPaths,
+                config: installedPaths.vmConfig,
+                pidFile: installedPaths.pidFile
+            ),
+            clock: RuntimeDataBackupFixedClock(),
+            sleeper: RuntimeDataBackupResultSleeper {},
+            commandRunner: RuntimeDataBackupCommandRunner(),
+            serviceManager: RuntimeDataBackupServiceManager(),
+            runtimeOperationLeaseOwnerFactory: { RuntimeDataBackupOperationLeaseOwner() },
+            guestControlGatewayFactory: { guestControlGateway },
+            fileStore: fileStore
+        )
+
+        XCTAssertThrowsError(try lifecycle.runtimeDataBackupComposition().createBackup())
+        XCTAssertNil(fileStore.files[redisArchive])
+        XCTAssertNil(fileStore.files[postgresArchive])
     }
 
     func testAutomaticBackupRejectsInvalidRetentionBeforeGuestControlOperation() throws {
@@ -146,12 +191,23 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             fileStore: fileStore
         )
 
-        let message = try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()
+        let result = try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()
         let created = backupRoot.appendingPathComponent("20260610T094200Z-automatic")
 
-        XCTAssertEqual(message, "automatic backup completed: \(created.path)")
+        XCTAssertEqual(result.state, .completed)
+        XCTAssertEqual(result.backup, created)
+        XCTAssertEqual(result.message, "automatic backup completed: \(created.path)")
         XCTAssertTrue(fileStore.directories.contains(created))
-        XCTAssertEqual(fileStore.removed, [oldest, middle])
+        XCTAssertEqual(
+            fileStore.removed,
+            [
+                hostRedisArchive,
+                installedPaths.postgresBackupsDirectory
+                    .appendingPathComponent("postgres-20260610T094159Z.tar.gz"),
+                oldest,
+                middle,
+            ]
+        )
         XCTAssertFalse(fileStore.directories.contains(oldest))
         XCTAssertFalse(fileStore.directories.contains(middle))
         XCTAssertTrue(fileStore.directories.contains(newestExisting))
@@ -190,10 +246,59 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             fileStore: fileStore
         )
 
-        let message = try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()
+        let result = try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()
 
-        XCTAssertEqual(message, "automatic backup skipped: disabled")
+        XCTAssertEqual(result.state, .skippedDisabled)
+        XCTAssertEqual(result.message, "automatic backup skipped: disabled")
         XCTAssertNil(fileStore.files[legacyRequestURL])
+    }
+
+    func testAutomaticBackupReportsCleanupFailureWithoutDiscardingBackup() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let productRoot = temporaryProductRoot()
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        let redisArchive = installedPaths.redisBackupsDirectory
+            .appendingPathComponent("redis-20260610T094159Z.tar.gz")
+        let postgresArchive = installedPaths.postgresBackupsDirectory
+            .appendingPathComponent("postgres-20260610T094159Z.tar.gz")
+        let guestControlGateway = RuntimeDataBackupGuestControlGateway(
+            backupArchive: "/mnt/tirosh/backups/redis/redis-20260610T094159Z.tar.gz"
+        )
+
+        try writeRequiredRuntimeDataBackupSources(installedPaths, fileStore: fileStore)
+        try writeGuestRuntimeSettings(
+            installedPaths,
+            fileStore: fileStore,
+            automaticBackupEnabled: true,
+            retentionCount: 2
+        )
+        fileStore.files[redisArchive] = Data("redis-archive".utf8)
+        fileStore.removeItemErrors[postgresArchive] = CocoaError(.fileWriteNoPermission)
+
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installedPaths.runtimeHome,
+                installed: installedPaths,
+                config: installedPaths.vmConfig,
+                pidFile: installedPaths.pidFile
+            ),
+            clock: RuntimeDataBackupFixedClock(),
+            sleeper: RuntimeDataBackupResultSleeper {},
+            commandRunner: RuntimeDataBackupCommandRunner(),
+            serviceManager: RuntimeDataBackupServiceManager(),
+            runtimeOperationLeaseOwnerFactory: { RuntimeDataBackupOperationLeaseOwner() },
+            guestControlGatewayFactory: { guestControlGateway },
+            fileStore: fileStore
+        )
+
+        let result = try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()
+
+        XCTAssertEqual(result.state, .completedWithCleanupFailure)
+        XCTAssertEqual(result.backup?.lastPathComponent, "20260610T094200Z-automatic")
+        XCTAssertEqual(result.cleanupFailures.map(\.archive), [postgresArchive])
+        XCTAssertNil(fileStore.files[redisArchive])
+        XCTAssertNotNil(fileStore.files[postgresArchive])
     }
 
     private func writeRequiredRuntimeDataBackupSources(
@@ -396,8 +501,7 @@ private final class RuntimeDataBackupGuestControlGateway: RuntimeGuestControlGat
             command: .postgresBackup,
             result: RuntimeGuestControlOperationResult(
                 archive: "/mnt/tirosh/backups/postgres/postgres-20260610T094159Z.tar.gz",
-                databaseId: "cluster:vitalserver",
-                alembicRevisions: ["0002_recorder_observability_expectations"]
+                alembicRevision: "0002_observability_expectations"
             )
         )
     }

@@ -630,16 +630,16 @@ restore systemd service are removed; CLI restore requires an explicit
 `--archive` argument.
 
 The PostgreSQL backup API creates a whole-database custom-format dump and a
-manifest that proves database identity, Alembic revisions, included owner
-schemas/relations, size, and checksum. Its completed result carries `archive`,
-`databaseId`, and `alembicRevisions`. A failed dump, unreadable custom archive,
-or incomplete schema proof is a typed failed operation.
+manifest that proves the fixed database name, PostgreSQL server version, one
+Alembic revision, dump format/file, size, and checksum. Its completed result
+carries `archive` and `alembicRevision`. A failed dump, unreadable custom
+archive, or invalid manifest is a typed failed operation.
 
 The PostgreSQL restore request requires both `archive` and the boolean
 `restartRuntime`; omission or a non-boolean value is an invalid request rather
 than a default. Archive structure, manifest, checksum, and `pg_restore --list`
 are validated before writers stop. A completed result carries
-`restoredArchive`, `databaseId`, `alembicRevisions`, and `runtimeRestarted`.
+`restoredArchive`, `alembicRevision`, and `runtimeRestarted`.
 VitalServer backup restore sends `restartRuntime=false`, verifies that result,
 and leaves writers stopped until the following Redis restore starts the full
 runtime. This prevents product writers from running between the two datastore

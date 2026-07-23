@@ -63,59 +63,31 @@ def create_postgres_backup_archive() -> PostgresBackupOutcome:
 
     return PostgresBackupOutcome(
         archive=archive,
-        database_id=manifest.database_id,
-        alembic_revisions=manifest.alembic_revisions,
+        alembic_revision=manifest.alembic_revision,
     )
 
 
 def _capture_manifest(dump: Path) -> PostgresBackupManifest:
-    system_identifier = _postgres_lines(
-        "SELECT system_identifier::text FROM pg_control_system()"
-    )
     server_version = _postgres_lines("SHOW server_version")
     revisions = _postgres_lines(
         "SELECT version_num FROM public.alembic_version ORDER BY version_num"
     )
-    schemas = _postgres_lines(
-        """
-        SELECT nspname
-          FROM pg_namespace
-         WHERE nspname <> 'information_schema'
-           AND nspname !~ '^pg_'
-         ORDER BY nspname
-        """
-    )
-    relations = _postgres_lines(
-        """
-        SELECT namespace.nspname || '.' || relation.relname
-          FROM pg_class AS relation
-          JOIN pg_namespace AS namespace
-            ON namespace.oid = relation.relnamespace
-         WHERE namespace.nspname <> 'information_schema'
-           AND namespace.nspname !~ '^pg_'
-           AND relation.relkind IN ('r', 'p')
-         ORDER BY namespace.nspname, relation.relname
-        """
-    )
-    if len(system_identifier) != 1:
-        raise GuestDependencyError(
-            "PostgreSQL returned an invalid system identifier",
-            code="postgres-backup-database-identity-invalid",
-        )
     if len(server_version) != 1:
         raise GuestDependencyError(
             "PostgreSQL returned an invalid server version",
             code="postgres-backup-server-version-invalid",
         )
+    if len(revisions) != 1:
+        raise GuestDependencyError(
+            "PostgreSQL must report exactly one Alembic revision",
+            code="postgres-backup-alembic-revision-invalid",
+        )
     return new_postgres_backup_manifest(
-        database_id=f"{system_identifier[0]}:{POSTGRES_BACKUP_DATABASE_NAME}",
         created_at=utc_now(),
         server_version=server_version[0],
         dump_sha256=_sha256(dump),
         dump_size_bytes=dump.stat().st_size,
-        alembic_revisions=revisions,
-        included_schemas=schemas,
-        included_relations=relations,
+        alembic_revision=revisions[0],
     )
 
 

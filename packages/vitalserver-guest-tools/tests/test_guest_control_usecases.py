@@ -778,8 +778,7 @@ class FakePostgresBackup:
             )
         return PostgresBackupResult(
             archive="/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz",
-            database_id="cluster:vitalserver",
-            alembic_revisions=("0002_recorder_observability_expectations",),
+            alembic_revision="0002_observability_expectations",
         )
 
     def restore_backup(
@@ -796,8 +795,7 @@ class FakePostgresBackup:
             )
         return PostgresRestoreResult(
             restored_archive=archive,
-            database_id="cluster:vitalserver",
-            alembic_revisions=("0002_recorder_observability_expectations",),
+            alembic_revision="0002_observability_expectations",
             runtime_restarted=restart_runtime,
         )
 
@@ -1857,8 +1855,7 @@ def test_create_postgres_backup_persists_database_proof() -> None:
     assert operation.command == ServiceCommand.POSTGRES_BACKUP
     assert operation.result == {
         "archive": "/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz",
-        "databaseId": "cluster:vitalserver",
-        "alembicRevisions": ["0002_recorder_observability_expectations"],
+        "alembicRevision": "0002_observability_expectations",
     }
     assert operations.events[-1].result == operation.result
 
@@ -1904,8 +1901,7 @@ def test_restore_postgres_backup_persists_database_proof() -> None:
     assert operation.command == ServiceCommand.POSTGRES_RESTORE
     assert operation.result == {
         "restoredArchive": archive,
-        "databaseId": "cluster:vitalserver",
-        "alembicRevisions": ["0002_recorder_observability_expectations"],
+        "alembicRevision": "0002_observability_expectations",
         "runtimeRestarted": False,
     }
 

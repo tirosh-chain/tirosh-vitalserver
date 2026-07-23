@@ -9,8 +9,7 @@ final class RuntimeGuestMaintenanceControlUseCaseTests: XCTestCase {
             operation: postgresBackupOperation(
                 result: RuntimeGuestControlOperationResult(
                     archive: "/mnt/tirosh/backups/postgres/postgres.tar.gz",
-                    databaseId: "cluster:vitalserver",
-                    alembicRevisions: ["0002_recorder_observability_expectations"]
+                    alembicRevision: "0002_observability_expectations"
                 )
             )
         )
@@ -20,10 +19,9 @@ final class RuntimeGuestMaintenanceControlUseCaseTests: XCTestCase {
 
         XCTAssertEqual(operation.operationId, "postgres-backup-1")
         XCTAssertEqual(operation.command, .postgresBackup)
-        XCTAssertEqual(operation.result?.databaseId, "cluster:vitalserver")
         XCTAssertEqual(
-            operation.result?.alembicRevisions,
-            ["0002_recorder_observability_expectations"]
+            operation.result?.alembicRevision,
+            "0002_observability_expectations"
         )
     }
 
@@ -33,8 +31,7 @@ final class RuntimeGuestMaintenanceControlUseCaseTests: XCTestCase {
             operation: postgresRestoreOperation(
                 result: RuntimeGuestControlOperationResult(
                     restoredArchive: archive,
-                    databaseId: "cluster:vitalserver",
-                    alembicRevisions: ["0002_recorder_observability_expectations"],
+                    alembicRevision: "0002_observability_expectations",
                     runtimeRestarted: false
                 )
             )

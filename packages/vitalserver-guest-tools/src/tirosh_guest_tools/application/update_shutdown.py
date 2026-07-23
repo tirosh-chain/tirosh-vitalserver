@@ -176,8 +176,7 @@ def backup_postgres(
             "fields": {
                 "step": "postgres-backup",
                 "archive": postgres_backup_path,
-                "databaseId": outcome.database_id,
-                "alembicRevisions": list(outcome.alembic_revisions),
+                "alembicRevision": outcome.alembic_revision,
             }
         },
     )

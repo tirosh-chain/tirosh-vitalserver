@@ -833,8 +833,7 @@ class FakePostgresBackup:
     def create_backup(self) -> PostgresBackupResult:
         return PostgresBackupResult(
             archive="/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz",
-            database_id="cluster:vitalserver",
-            alembic_revisions=("0002_recorder_observability_expectations",),
+            alembic_revision="0002_observability_expectations",
         )
 
     def restore_backup(
@@ -845,8 +844,7 @@ class FakePostgresBackup:
     ) -> PostgresRestoreResult:
         return PostgresRestoreResult(
             restored_archive=archive,
-            database_id="cluster:vitalserver",
-            alembic_revisions=("0002_recorder_observability_expectations",),
+            alembic_revision="0002_observability_expectations",
             runtime_restarted=restart_runtime,
         )
 
@@ -1671,8 +1669,7 @@ def test_postgres_backup_route_returns_operation_with_database_proof(
     assert document["state"] == "completed"
     assert document["result"] == {
         "archive": "/mnt/tirosh/backups/postgres/postgres-20260701.tar.gz",
-        "databaseId": "cluster:vitalserver",
-        "alembicRevisions": ["0002_recorder_observability_expectations"],
+        "alembicRevision": "0002_observability_expectations",
     }
 
 
@@ -1699,8 +1696,7 @@ def test_postgres_restore_route_returns_operation_with_database_proof(
     assert document["state"] == "completed"
     assert document["result"] == {
         "restoredArchive": archive,
-        "databaseId": "cluster:vitalserver",
-        "alembicRevisions": ["0002_recorder_observability_expectations"],
+        "alembicRevision": "0002_observability_expectations",
         "runtimeRestarted": False,
     }
 

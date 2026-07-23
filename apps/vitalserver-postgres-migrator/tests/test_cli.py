@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -10,8 +11,9 @@ MIGRATION = (
 )
 EXPECTATION_MIGRATION = (
     Path(__file__).resolve().parents[1]
-    / "migrations/versions/0002_recorder_observability_expectations.py"
+    / "migrations/versions/0002_observability_expectations.py"
 )
+MIGRATION_DIRECTORY = MIGRATION.parent
 
 
 def test_requires_explicit_database_url() -> None:
@@ -46,3 +48,11 @@ def test_observability_expectation_revision_preserves_unknown_as_absence() -> No
     assert "support_state IN ('supported', 'unsupported')" in source
     assert "'unknown'" not in source
     assert "expected_since IS NOT NULL" in source
+
+
+@pytest.mark.parametrize("migration", sorted(MIGRATION_DIRECTORY.glob("*.py")))
+def test_revision_identifier_fits_alembic_version_column(migration: Path) -> None:
+    source = migration.read_text(encoding="utf-8")
+    match = re.search(r'^revision = "([^"]+)"$', source, re.MULTILINE)
+    assert match is not None
+    assert len(match.group(1)) <= 32

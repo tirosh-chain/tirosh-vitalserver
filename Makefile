@@ -57,7 +57,7 @@ include make/vm.mk
 	dist/install/dev dist/install/dev/verified dist/installed/health dist/installed/smoke dist/uninstall/dev \
 	runtime/up runtime/up-bridged runtime/down runtime/status runtime/health \
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
-	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke runtime/conformance runtime/proof/conformance runtime/proof/smoke runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/review runtime/proof/acceptance \
+	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke runtime/conformance runtime/proof/conformance runtime/proof/smoke runtime/proof/postgres-restore runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/review runtime/proof/acceptance \
 	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop product/scenarios/check \
 	docs/build docs/serve \
 	devtools/release-contract devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
@@ -126,6 +126,8 @@ runtime/network/bridged: internal/vm/network/bridged
 runtime/e2e/smoke: internal/vm/e2e/smoke
 runtime/proof/smoke:
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
+runtime/proof/postgres-restore:
+	DOCKER_COMPOSE="$(DOCKER_COMPOSE)" bash scripts/postgres_restore_compose_proof.sh
 runtime/proof/no-v1-service-state:
 	$(PYTHON) scripts/runtime_no_v1_service_state.py
 runtime/proof/python-focused:
@@ -403,6 +405,7 @@ help/runtime:
 	@printf "  runtime/proxy/start           Start host proxy for a runtime endpoint\n"
 	@printf "  runtime/e2e/smoke             Run local Runtime Control HTTP smoke test\n"
 	@printf "  runtime/proof/smoke              Build dev golden runtime and prove Guest Control/Product Lab boot smoke\n"
+	@printf "  runtime/proof/postgres-restore   Restore a real Compose PostgreSQL dump and compare representative reads\n"
 	@printf "  runtime/proof/no-v1-service-state\n"
 	@printf "                                Static proof that product service state does not use v1 files\n"
 	@printf "  runtime/proof/python-focused     Run focused Python Runtime v2 product/package tests\n"

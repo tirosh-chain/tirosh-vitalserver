@@ -15,8 +15,6 @@ from tirosh_guest_tools.domain.errors import GuestContractError, GuestDependency
 from tirosh_guest_tools.domain.postgres_backup import (
     POSTGRES_BACKUP_DUMP_FILE,
     POSTGRES_BACKUP_MANIFEST_FILE,
-    REQUIRED_RELATIONS,
-    REQUIRED_SCHEMAS,
     PostgresBackupManifest,
     PostgresBackupManifestContractError,
     new_postgres_backup_manifest,
@@ -24,16 +22,16 @@ from tirosh_guest_tools.domain.postgres_backup import (
 )
 
 
-def test_postgres_backup_manifest_requires_the_managed_database_contract() -> None:
+def test_postgres_backup_manifest_requires_database_and_revision() -> None:
     document = _manifest().as_json()
-    document["includedSchemas"] = ["public"]
-    document["includedRelations"] = ["public.alembic_version"]
+    document["databaseName"] = "other"
+    document.pop("alembicRevision")
 
     with pytest.raises(PostgresBackupManifestContractError) as error:
         validated_postgres_backup_manifest(document)
 
-    assert "includedSchemas is missing required schemas" in str(error.value)
-    assert "includedRelations is missing required relations" in str(error.value)
+    assert "databaseName is unsupported" in str(error.value)
+    assert "alembicRevision must be a non-empty string" in str(error.value)
 
 
 def test_create_postgres_backup_writes_verified_archive(
@@ -70,14 +68,39 @@ def test_create_postgres_backup_writes_verified_archive(
     outcome = postgres_backup.create_postgres_backup_archive()
 
     assert outcome.archive.is_file()
-    assert outcome.database_id == "cluster:vitalserver"
-    assert outcome.alembic_revisions == ("0002_recorder_observability_expectations",)
+    assert outcome.alembic_revision == "0002_observability_expectations"
     assert len(verified) == 1
     with tarfile.open(outcome.archive, "r:gz") as archive:
         assert {member.name for member in archive.getmembers()} == {
             POSTGRES_BACKUP_DUMP_FILE,
             POSTGRES_BACKUP_MANIFEST_FILE,
         }
+
+
+def test_postgres_backup_requires_exactly_one_alembic_revision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dump = tmp_path / POSTGRES_BACKUP_DUMP_FILE
+    dump.write_bytes(b"PGDMP-test")
+    responses = iter(
+        [
+            ("16.9",),
+            ("0001_initial_schema", "0002_observability_expectations"),
+        ]
+    )
+    monkeypatch.setattr(
+        postgres_backup,
+        "_postgres_lines",
+        lambda _statement: next(responses),
+    )
+
+    with pytest.raises(GuestDependencyError) as error:
+        postgres_backup._capture_manifest(dump)
+
+    assert getattr(error.value, "code", None) == (
+        "postgres-backup-alembic-revision-invalid"
+    )
 
 
 def test_postgres_restore_rejects_dump_checksum_mismatch_before_commands(
@@ -254,18 +277,32 @@ def test_postgres_restore_can_leave_runtime_stopped_for_coordinated_restore(
     assert started == []
 
 
+def test_postgres_restore_requires_manifest_alembic_revision_after_restore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        postgres_restore,
+        "_postgres_lines",
+        lambda _statement: ("different-revision",),
+    )
+
+    with pytest.raises(GuestDependencyError) as error:
+        postgres_restore._verify_restored_database(_manifest())
+
+    assert getattr(error.value, "code", None) == (
+        "postgres-restore-database-verification-failed"
+    )
+
+
 def _manifest(
     *,
     dump_sha256: str = "a" * 64,
     dump_size_bytes: int = 10,
 ) -> PostgresBackupManifest:
     return new_postgres_backup_manifest(
-        database_id="cluster:vitalserver",
         created_at="2026-07-23T12:00:00Z",
         server_version="16.9",
         dump_sha256=dump_sha256,
         dump_size_bytes=dump_size_bytes,
-        alembic_revisions=("0002_recorder_observability_expectations",),
-        included_schemas=tuple(sorted(REQUIRED_SCHEMAS)),
-        included_relations=tuple(sorted(REQUIRED_RELATIONS)),
+        alembic_revision="0002_observability_expectations",
     )

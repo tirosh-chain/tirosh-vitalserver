@@ -537,8 +537,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
               "updatedAt": "2026-07-01T00:00:01+00:00",
               "result": {
                 "archive": "/mnt/tirosh/backups/postgres/postgres.tar.gz",
-                "databaseId": "cluster:vitalserver",
-                "alembicRevisions": ["0002_recorder_observability_expectations"]
+                "alembicRevision": "0002_observability_expectations"
               }
             }
             """
@@ -551,7 +550,10 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         let operation = try gateway.createPostgresBackup()
 
         XCTAssertEqual(operation.command, .postgresBackup)
-        XCTAssertEqual(operation.result?.databaseId, "cluster:vitalserver")
+        XCTAssertEqual(
+            operation.result?.alembicRevision,
+            "0002_observability_expectations"
+        )
         XCTAssertEqual(
             client.requests.map { $0.url?.absoluteString },
             ["http://127.0.0.1:18330/runtime/maintenance/postgres-backup"]
@@ -572,8 +574,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
               "updatedAt": "2026-07-01T00:00:01+00:00",
               "result": {
                 "restoredArchive": "\(archive)",
-                "databaseId": "cluster:vitalserver",
-                "alembicRevisions": ["0002_recorder_observability_expectations"],
+                "alembicRevision": "0002_observability_expectations",
                 "runtimeRestarted": false
               }
             }

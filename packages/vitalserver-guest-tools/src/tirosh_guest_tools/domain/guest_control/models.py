@@ -644,14 +644,12 @@ class PostgresBackupDependencyError(RuntimeError):
 @dataclass(frozen=True)
 class PostgresBackupResult:
     archive: str
-    database_id: str
-    alembic_revisions: tuple[str, ...]
+    alembic_revision: str
 
     def as_json(self) -> dict[str, Any]:
         return {
             "archive": self.archive,
-            "databaseId": self.database_id,
-            "alembicRevisions": list(self.alembic_revisions),
+            "alembicRevision": self.alembic_revision,
         }
 
 
@@ -665,15 +663,13 @@ class PostgresRestoreDependencyError(RuntimeError):
 @dataclass(frozen=True)
 class PostgresRestoreResult:
     restored_archive: str
-    database_id: str
-    alembic_revisions: tuple[str, ...]
+    alembic_revision: str
     runtime_restarted: bool
 
     def as_json(self) -> dict[str, Any]:
         return {
             "restoredArchive": self.restored_archive,
-            "databaseId": self.database_id,
-            "alembicRevisions": list(self.alembic_revisions),
+            "alembicRevision": self.alembic_revision,
             "runtimeRestarted": self.runtime_restarted,
         }
 

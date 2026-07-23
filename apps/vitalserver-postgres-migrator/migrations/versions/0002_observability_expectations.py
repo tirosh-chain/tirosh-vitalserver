@@ -1,6 +1,6 @@
 """Add explicit Recorder observability support expectations.
 
-Revision ID: 0002_recorder_observability_expectations
+Revision ID: 0002_observability_expectations
 Revises: 0001_initial_schema
 Create Date: 2026-07-23
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0002_recorder_observability_expectations"
+revision = "0002_observability_expectations"
 down_revision = "0001_initial_schema"
 branch_labels = None
 depends_on = None
@@ -46,7 +46,7 @@ def upgrade() -> None:
         );
 
         COMMENT ON TABLE recorder_observability.expectations IS
-          'Explicit deployment or compatibility evidence; absence is unknown, not unsupported';
+          'Explicit support evidence; absence is unknown, not unsupported';
         """
     )
 

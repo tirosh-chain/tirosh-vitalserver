@@ -341,9 +341,15 @@ struct RuntimeLifecycle {
 
     func createRuntimeDataBackup() throws {
         do {
-            let backup = try runtimeDataBackupComposition().createBackup()
+            let result = try runtimeDataBackupComposition().createBackup()
             print("runtime data backup completed")
-            print("backup: \(backup.path)")
+            print("backup: \(result.backup.path)")
+            for failure in result.cleanupFailures {
+                print(
+                    "maintenance archive cleanup failed: "
+                        + "\(failure.archive.path): \(failure.reason)"
+                )
+            }
         } catch let error as RuntimeDataBackupStoreError {
             throw LauncherError.runtimeOperationFailed(error.description)
         }
@@ -352,7 +358,7 @@ struct RuntimeLifecycle {
     func createAutomaticBackup() throws {
         do {
             let result = try runtimeDataBackupComposition().createAutomaticBackup()
-            print(result)
+            print(result.message)
         } catch let error as RuntimeDataBackupStoreError {
             throw LauncherError.runtimeOperationFailed(error.description)
         }

@@ -16,7 +16,7 @@ macOS Helper는 Advanced -> Recovery operations -> VitalServer backup에서 이 
 
 ### 1-3. Retention 기준
 
-`backupRetentionCount`는 `backups/vitalserver-helper` 아래의 VitalServer backup directory 보관 개수입니다. Redis/PostgreSQL maintenance archive 보관 개수가 아니며, datastore별 recovery/migration archive에는 적용하지 않습니다.
+`backupRetentionCount`는 `backups/vitalserver-helper` 아래의 검증된 VitalServer backup directory 보관 개수입니다. 통합 backup 생성에 사용한 Redis/PostgreSQL maintenance archive는 최종 package 검증 직후 삭제하므로 별도 retention 대상이 아닙니다. 사용자가 직접 만든 datastore별 maintenance backup에는 이 설정을 적용하지 않습니다.
 
 ### 1-4. 저장 위치와 compatibility baseline
 
@@ -73,7 +73,7 @@ Manifest가 모든 artifact를 하나의 file format으로 합치거나 artifact
 | Artifact | Data schema owner | Restore compatibility 기준 |
 |---|---|---|
 | `redis-data` | Guest VitalServer Redis schema | Guest Redis restore worker가 복원합니다. 현재 Guest runtime이 읽을 수 없는 Redis key/value layout 변경은 backup-level `restoreCompatibilityVersion` bump 또는 명시 migration이 필요합니다. |
-| `postgres-database` | PostgreSQL owner schemas (`public`, `vitaldb_read_model`, `product_lab`, `recorder_observability`) | Guest PostgreSQL restore worker가 복원합니다. Dump manifest는 database ID, PostgreSQL version, Alembic revision, 포함 schema/relation, dump size/checksum을 증명합니다. |
+| `postgres-database` | PostgreSQL owner schemas (`public`, `vitaldb_read_model`, `product_lab`, `recorder_observability`) | Guest PostgreSQL restore worker가 복원합니다. Dump manifest는 고정 database name, PostgreSQL version, 단일 Alembic revision, dump format/file, size/checksum을 증명합니다. |
 | `runtime-vm-config` | Host VM runtime config contract | Host가 VM start 전후에 읽습니다. Breaking config change는 restore 전 compatibility bump 또는 config migration이 필요합니다. |
 | `guest-runtime-config` | Guest deploy/runtime config contract | Host가 배포하고 Guest bootstrap/service가 소비합니다. Breaking field change는 compatibility bump 또는 migration이 필요합니다. |
 | `guest-runtime-settings` | Runtime settings contract | Host UI와 Guest runtime이 함께 소비합니다. Settings schema 변경은 missing/invalid/default 의미를 명시적으로 보존해야 합니다. |
@@ -100,7 +100,7 @@ Restore compatibility version은 backup unit 전체의 restore 계약이며 prod
 이전 format으로 만든 backup을 현재 runtime이 명시 migration 없이 안전하게 restore할 수 없으면 restore compatibility version을 올립니다. 예시는 아래와 같습니다.
 
 - 현재 VitalServer가 old data를 읽을 수 없을 정도로 Redis key/value layout이 변경됨
-- PostgreSQL dump format, required owner schema/relation 또는 migration compatibility가 현재 restore validator와 호환되지 않게 변경됨
+- PostgreSQL dump format 또는 migration compatibility가 현재 restore validator와 호환되지 않게 변경됨
 - `runtime-vm-config`, `guest-runtime-config`, `guest-runtime-settings`에서 required field가 제거되거나 의미가 바뀜
 - `runtime-observability.sqlite` schema 변경으로 restored snapshot이 unreadable하거나 read-only query path에서 unsafe함
 - launchd service label 또는 start-on-boot state 의미가 호환되지 않게 바뀜
@@ -123,21 +123,37 @@ Missing backup directory, decode failure, permission failure, Guest Control capa
 
 ### 5-1. Guest-owned PostgreSQL backup
 
-Guest Control API `POST /runtime/maintenance/postgres-backup`은 `pg_dump --format=custom`으로 `vitalserver` database 전체를 한 snapshot으로 생성합니다. Dump를 `pg_restore --list`로 읽을 수 있어야 하고, database ID, Alembic revision, 포함 schema/relation, size, checksum이 담긴 manifest와 함께 archive를 만든 뒤에만 operation을 completed로 전이합니다.
+Guest Control API `POST /runtime/maintenance/postgres-backup`은 `pg_dump --format=custom`으로 `vitalserver` database 전체를 한 snapshot으로 생성합니다. Dump를 `pg_restore --list`로 읽을 수 있어야 하고, 고정 database name, PostgreSQL version, 단일 Alembic revision, dump format/file, size, checksum이 담긴 manifest와 함께 archive를 만든 뒤에만 operation을 completed로 전이합니다.
 
 Redis와 PostgreSQL backup operation은 각각 독립적인 receipt를 제공합니다. 현재 product backup은 두 receipt를 순서대로 수집하며, 두 datastore 사이의 distributed transaction 또는 같은 시점의 atomic snapshot을 주장하지 않습니다. 하나라도 실패하면 VitalServer backup은 생성되지 않습니다.
+
+Host는 두 maintenance archive를 VitalServer backup 안에 복사하고 최종 manifest와 checksum을 검증한 뒤, 이번 통합 backup operation이 만든 원본 archive만 삭제합니다. 최종 backup은 원본 archive cleanup 실패와 관계없이 보존되며, cleanup 실패는 `completedWithCleanupFailure`로 보고합니다. 최종 package 생성 또는 검증이 실패해도 이미 생성된 중간 archive cleanup을 시도하고 원래 실패를 유지합니다.
 
 ### 5-2. Guest-owned coordinated restore
 
 Host는 선택한 Redis/PostgreSQL archive를 shared runtime data directory에 staging하고 Guest Control maintenance API에 guest mount path를 전달합니다.
 
-PostgreSQL restore는 writer를 멈추기 전에 archive members, manifest, checksum과 custom dump readability를 검증합니다. 그 뒤 observation writer와 Compose stack을 정지하고 PostgreSQL만 올려 database를 교체합니다. Restore 후 Alembic revision과 포함 schema/relation이 manifest와 같아야 성공입니다.
+PostgreSQL restore는 writer를 멈추기 전에 archive members, manifest, checksum과 custom dump readability를 검증합니다. 그 뒤 observation writer와 Compose stack을 정지하고 PostgreSQL만 올려 database를 교체합니다. Restore 후 단일 Alembic revision이 manifest와 같아야 성공입니다. Schema/object readiness는 migrator와 각 repository의 startup verification이 소유합니다.
 
 VitalServer backup restore에서 Host는 `restartRuntime=false`를 명시합니다. 따라서 PostgreSQL 복원 후 writer는 계속 멈춰 있고, 다음 Redis restore가 Redis volume을 교체한 뒤 전체 Compose stack과 observation writer를 한 번만 시작합니다. PostgreSQL operation result의 `runtimeRestarted=false` proof가 없으면 Host는 복원을 성공으로 처리하지 않습니다.
 
 ### 5-3. Capability failure
 
 `maintenance:postgres-backup:create`, `maintenance:postgres-restore:create`, `maintenance:redis-backup:create`, `maintenance:redis-restore:create` 중 필요한 capability를 보고하지 않는 Guest는 VitalServer backup 또는 restore를 완료할 수 없습니다. Host는 Guest datastore internals를 추정하지 말고 capability/operation failure를 명시적으로 보고해야 합니다.
+
+### 5-4. 실제 Compose restore proof
+
+다음 target은 Guest Compose PostgreSQL에 실제 migration과 대표 데이터를 적용하고, custom dump를 새 database에 restore한 뒤 세 owner schema의 JSON read와 Alembic revision이 동일한지 비교합니다.
+
+```bash
+make runtime/proof/postgres-restore
+```
+
+이 proof는 전용 Compose project와 volume을 만들고 종료 시 삭제합니다. Guest Compose의 PostgreSQL host port를 사용하므로 실행 중인 runtime과 동시에 실행하지 않습니다.
+
+### 5-5. 명시적 제외 범위
+
+VitalServer backup은 `.vital` 업로드/cold-path 파일, runtime log, VM disk image를 포함하지 않습니다. `.vital` 파일은 ingress와 cold-path가 구분된 각 owner 정책을 따르고, VM disk repair archive는 VitalServer backup과 다른 recovery artifact입니다. 이 파일들의 존재를 PostgreSQL이나 backup manifest에서 추정하지 않습니다.
 
 ## 6. Troubleshooting
 

@@ -948,7 +948,7 @@ Workstream A + Workstream B
 구현을 시작하기 전에 다음 state를 read-only proof로 남깁니다.
 
 - 설치 DB의 `alembic_version`
-- `0002_recorder_observability_expectations` 적용 여부
+- `0002_observability_expectations` 적용 여부
 - schema/table별 PostgreSQL estimated row count와 total/index size
 - PostgreSQL volume과 현재 backup artifact 존재 여부
 - Redis, PostgreSQL, `.vital` file과 recovery artifact의 현재 backup 포함/제외
@@ -958,11 +958,11 @@ Workstream A + Workstream B
 이 proof 없이 migration file을 수정하거나 기존 설치가 clean이라고 가정하지
 않습니다.
 
-DB 내부 상태는 `vitalserver-postgres-inventory`의 read-only JSON proof로
-수집합니다. 이 명령은 row estimate를 정확한 count로 표현하지 않으며, DB query
-실패를 empty state로 바꾸지 않습니다. PostgreSQL volume/backup artifact,
-Redis와 `.vital` 파일은 DB 명령이 소유하지 않으므로 후속 Host/Guest inventory
-proof에서 별도로 수집합니다.
+DB revision은 `public.alembic_version`을 명시적으로 읽고, schema readiness는
+migrator와 각 repository의 startup verification으로 확인합니다. 별도 범용
+inventory CLI를 제품 계약으로 두지 않습니다. PostgreSQL volume/backup
+artifact, Redis와 `.vital` 파일은 서로 다른 owner state이므로 각 owner의
+명시적인 계약으로 확인합니다.
 
 Phase 0 결과로 다음 결정을 기록합니다.
 
@@ -1212,15 +1212,14 @@ schema와 migration revision의 일관성을 유지합니다.
 ```text
 PostgreSQLBackupManifest
   schemaVersion
-  databaseId
+  databaseName
   serverVersion
-  alembicRevisions
+  alembicRevision
   createdAt
   dumpFormat
+  dumpFile
   dumpSha256
   dumpSizeBytes
-  includedSchemas
-  includedRelations
 ```
 
 - Guest maintenance adapter가 `pg_dump --format=custom`을 실행합니다.
@@ -1229,7 +1228,7 @@ PostgreSQLBackupManifest
 - restore는 maintenance state에서만 수행합니다.
 - restore 동안 Guest observation writer, Product Lab과 Recorder Ingress writer를
   정지하거나 명시적인 maintenance write barrier에 진입시킵니다.
-- `pg_restore` 전 manifest, checksum, database ID policy와 migration revision을
+- `pg_restore` 전 manifest, checksum, 고정 database name과 migration revision을
   검증합니다.
 - restore 후 migrator, schema readiness와 representative read proof를
   실행한 뒤에만 completed로 전이합니다.
@@ -1245,6 +1244,9 @@ PostgreSQLBackupManifest
 현재 Guest Control의 PostgreSQL backup/restore operation, custom dump
 manifest/checksum 검증, restore write barrier, Host VitalServer backup의 required
 `postgres-database` artifact와 compatibility version 2까지 구현되었습니다.
+통합 backup의 최종 package 검증 후 그 operation이 만든 Redis/PostgreSQL
+maintenance archive를 삭제하고, cleanup 실패는 최종 backup을 보존한
+`completedWithCleanupFailure`로 보고합니다.
 제품 restore는 PostgreSQL 복원에 `restartRuntime=false`를 명시하고 Redis
 복원이 끝날 때까지 writer를 재기동하지 않습니다.
 Update shutdown은 Redis와 PostgreSQL receipt가 모두 있어야
@@ -1253,11 +1255,12 @@ Update shutdown은 Redis와 PostgreSQL receipt가 모두 있어야
 backup은 기존 disk archive가 별도로 남기 때문에 명시적인 best-effort
 degraded operation으로 유지합니다.
 
-남은 release work는 다음과 같습니다.
-
-- 실제 패키지 Compose/PostgreSQL을 사용한 backup -> 새 database restore ->
-  schema별 representative read equality proof
-- PostgreSQL maintenance archive retention과 diagnostics inventory
+`make runtime/proof/postgres-restore`는 실제 Guest Compose/PostgreSQL에서
+migration, 대표 데이터 write, custom dump, 새 database restore, owner schema별
+representative read equality를 검증합니다. 별도 diagnostics inventory와 통합
+backup 중간 archive retention은 축소 범위에서 제품 기능으로 만들지 않습니다.
+용량 측정과 사용자가 직접 생성한 standalone maintenance backup 보관 정책은
+실제 운영 필요가 확인될 때 별도 결정합니다.
 
 Redis와 PostgreSQL snapshot은 각각 내부적으로 일관되지만 서로 다른 시점에
 순차 생성됩니다. 현재 구현은 cross-datastore distributed transaction을

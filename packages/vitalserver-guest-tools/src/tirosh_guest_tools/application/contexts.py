@@ -25,13 +25,11 @@ class RedisRestoreOutcome:
 @dataclass(frozen=True)
 class PostgresBackupOutcome:
     archive: Path
-    database_id: str
-    alembic_revisions: tuple[str, ...]
+    alembic_revision: str
 
 
 @dataclass(frozen=True)
 class PostgresRestoreOutcome:
     restored_archive: Path
-    database_id: str
-    alembic_revisions: tuple[str, ...]
+    alembic_revision: str
     runtime_restarted: bool

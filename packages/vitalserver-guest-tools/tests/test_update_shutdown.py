@@ -353,8 +353,7 @@ def _record_postgres_backup(
 def _postgres_backup_outcome() -> PostgresBackupOutcome:
     return PostgresBackupOutcome(
         archive=Path("/tmp/postgres.tar.gz"),
-        database_id="database-id",
-        alembic_revisions=("revision-1",),
+        alembic_revision="revision-1",
     )
 
 

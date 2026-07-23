@@ -7,18 +7,61 @@ import OutboundAdapters
 import Workflow
 import Errors
 
+enum RuntimeAutomaticBackupResultState: String, Equatable {
+    case completed
+    case completedWithCleanupFailure
+    case skippedDisabled
+    case skippedActiveOperation
+}
+
+struct RuntimeDataBackupCleanupFailure: Equatable {
+    let archive: URL
+    let reason: String
+}
+
+struct RuntimeDataBackupCreationResult: Equatable {
+    let backup: URL
+    let cleanupFailures: [RuntimeDataBackupCleanupFailure]
+}
+
+struct RuntimeAutomaticBackupResult: Equatable {
+    let state: RuntimeAutomaticBackupResultState
+    let backup: URL?
+    let activeOperation: String?
+    let cleanupFailures: [RuntimeDataBackupCleanupFailure]
+
+    var message: String {
+        switch state {
+        case .completed:
+            return "automatic backup completed: \(backup?.path ?? "<missing>")"
+        case .completedWithCleanupFailure:
+            let paths = cleanupFailures.map(\.archive.path).joined(separator: ",")
+            return "automatic backup completed with maintenance archive cleanup failure: \(paths)"
+        case .skippedDisabled:
+            return "automatic backup skipped: disabled"
+        case .skippedActiveOperation:
+            return "automatic backup skipped: active operation \(activeOperation ?? "<missing>")"
+        }
+    }
+}
+
 struct RuntimeDataBackupComposition {
     let lifecycle: RuntimeLifecycle
 
-    func createBackup() throws -> URL {
+    func createBackup() throws -> RuntimeDataBackupCreationResult {
         try createBackup(reason: "manual")
     }
 
-    func createAutomaticBackup() throws -> String {
+    func createAutomaticBackup() throws -> RuntimeAutomaticBackupResult {
         let settings = try loadGuestRuntimeSettings()
         guard settings.automaticBackupEnabled else {
             lifecycle.log("automatic backup skipped because automaticBackupEnabled=false")
-            return "automatic backup skipped: disabled"
+            return RuntimeAutomaticBackupResult(
+                state: .skippedDisabled,
+                backup: nil,
+                activeOperation: nil,
+                cleanupFailures: []
+            )
         }
         guard RuntimeBackupSchedulePolicy.isValidRetentionCount(settings.backupRetentionCount) else {
             throw LauncherError.runtimeOperationFailed(
@@ -45,49 +88,103 @@ struct RuntimeDataBackupComposition {
             try leaseOwner.acquire(lease)
         } catch RuntimeOperationLeaseOwnerError.existingOperation(_, let operation) {
             lifecycle.log("automatic backup skipped during active runtime operation operation=\(operation)")
-            return "automatic backup skipped: active operation \(operation)"
+            return RuntimeAutomaticBackupResult(
+                state: .skippedActiveOperation,
+                backup: nil,
+                activeOperation: operation,
+                cleanupFailures: []
+            )
         }
         defer {
             try? leaseOwner.release(operationId: operationID)
         }
 
-        let backup = try createBackup(reason: "automatic")
+        let creation = try createBackup(reason: "automatic")
         try pruneVitalServerHelperBackups(retentionCount: settings.backupRetentionCount)
-        lifecycle.log("automatic backup completed backup=\(backup.path)")
-        return "automatic backup completed: \(backup.path)"
+        let state: RuntimeAutomaticBackupResultState = creation.cleanupFailures.isEmpty
+            ? .completed
+            : .completedWithCleanupFailure
+        lifecycle.log(
+            "automatic backup \(state.rawValue) backup=\(creation.backup.path)"
+        )
+        return RuntimeAutomaticBackupResult(
+            state: state,
+            backup: creation.backup,
+            activeOperation: nil,
+            cleanupFailures: creation.cleanupFailures
+        )
     }
 
-    func createBackup(reason: String) throws -> URL {
-        let redisOperation = try lifecycle.createRedisBackupThroughGuestControl()
-        guard let redisArchivePath = redisOperation.result?.archive?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !redisArchivePath.isEmpty else {
-            throw LauncherError.runtimeOperationFailed("runtime data backup requires a redis archive")
-        }
-        let postgresOperation = try lifecycle.createPostgresBackupThroughGuestControl()
-        guard let postgresArchivePath = postgresOperation.result?.archive?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !postgresArchivePath.isEmpty else {
-            throw LauncherError.runtimeOperationFailed(
-                "runtime data backup requires a PostgreSQL archive"
+    func createBackup(reason: String) throws -> RuntimeDataBackupCreationResult {
+        var maintenanceArchives: [URL] = []
+        do {
+            let redisOperation = try lifecycle.createRedisBackupThroughGuestControl()
+            guard let redisArchivePath = redisOperation.result?.archive?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !redisArchivePath.isEmpty else {
+                throw LauncherError.runtimeOperationFailed(
+                    "runtime data backup requires a redis archive"
+                )
+            }
+            let redisArchive = try hostSharedDataURL(
+                forGuestArchivePath: redisArchivePath,
+                label: "Redis backup"
             )
+            maintenanceArchives.append(redisArchive)
+
+            let postgresOperation = try lifecycle.createPostgresBackupThroughGuestControl()
+            guard let postgresArchivePath = postgresOperation.result?.archive?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !postgresArchivePath.isEmpty else {
+                throw LauncherError.runtimeOperationFailed(
+                    "runtime data backup requires a PostgreSQL archive"
+                )
+            }
+            let postgresArchive = try hostSharedDataURL(
+                forGuestArchivePath: postgresArchivePath,
+                label: "PostgreSQL backup"
+            )
+            maintenanceArchives.append(postgresArchive)
+
+            let backup = try runtimeDataBackupStore().createBackup(
+                reason: reason,
+                redisArchive: redisArchive,
+                postgresArchive: postgresArchive,
+                startOnBootState: try startOnBootStateData()
+            )
+            try validateManifest(backup)
+            return RuntimeDataBackupCreationResult(
+                backup: backup,
+                cleanupFailures: cleanupMaintenanceArchives(maintenanceArchives)
+            )
+        } catch {
+            _ = cleanupMaintenanceArchives(maintenanceArchives)
+            throw error
         }
-        let redisArchive = try hostSharedDataURL(
-            forGuestArchivePath: redisArchivePath,
-            label: "Redis backup"
-        )
-        let postgresArchive = try hostSharedDataURL(
-            forGuestArchivePath: postgresArchivePath,
-            label: "PostgreSQL backup"
-        )
-        let backup = try runtimeDataBackupStore().createBackup(
-            reason: reason,
-            redisArchive: redisArchive,
-            postgresArchive: postgresArchive,
-            startOnBootState: try startOnBootStateData()
-        )
-        try validateManifest(backup)
-        return backup
+    }
+
+    private func cleanupMaintenanceArchives(
+        _ archives: [URL]
+    ) -> [RuntimeDataBackupCleanupFailure] {
+        archives.compactMap { archive in
+            do {
+                try lifecycle.fileStore.removeItem(at: archive)
+                lifecycle.log(
+                    "integrated backup maintenance archive removed archive=\(archive.path)"
+                )
+                return nil
+            } catch {
+                let failure = RuntimeDataBackupCleanupFailure(
+                    archive: archive,
+                    reason: error.localizedDescription
+                )
+                lifecycle.log(
+                    "integrated backup maintenance archive cleanup failed "
+                        + "archive=\(archive.path) reason=\(failure.reason)"
+                )
+                return failure
+            }
+        }
     }
 
     private func loadGuestRuntimeSettings() throws -> GuestRuntimeSettingsDocument {

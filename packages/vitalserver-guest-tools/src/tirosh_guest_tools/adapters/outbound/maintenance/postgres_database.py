@@ -33,8 +33,7 @@ class PostgresDatabaseMaintenanceAdapter:
             ) from error
         return PostgresBackupResult(
             archive=str(outcome.archive),
-            database_id=outcome.database_id,
-            alembic_revisions=outcome.alembic_revisions,
+            alembic_revision=outcome.alembic_revision,
         )
 
     def restore_backup(
@@ -60,7 +59,6 @@ class PostgresDatabaseMaintenanceAdapter:
             ) from error
         return PostgresRestoreResult(
             restored_archive=str(outcome.restored_archive),
-            database_id=outcome.database_id,
-            alembic_revisions=outcome.alembic_revisions,
+            alembic_revision=outcome.alembic_revision,
             runtime_restarted=outcome.runtime_restarted,
         )

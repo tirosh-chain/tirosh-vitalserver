@@ -53,8 +53,7 @@ def restore_postgres_backup_archive(
             _start_runtime()
     return PostgresRestoreOutcome(
         restored_archive=archive,
-        database_id=manifest.database_id,
-        alembic_revisions=manifest.alembic_revisions,
+        alembic_revision=manifest.alembic_revision,
         runtime_restarted=restart_runtime,
     )
 
@@ -237,38 +236,11 @@ def _verify_restored_database(manifest: PostgresBackupManifest) -> None:
     revisions = _postgres_lines(
         "SELECT version_num FROM public.alembic_version ORDER BY version_num"
     )
-    schemas = _postgres_lines(
-        """
-        SELECT nspname
-          FROM pg_namespace
-         WHERE nspname <> 'information_schema'
-           AND nspname !~ '^pg_'
-         ORDER BY nspname
-        """
-    )
-    relations = _postgres_lines(
-        """
-        SELECT namespace.nspname || '.' || relation.relname
-          FROM pg_class AS relation
-          JOIN pg_namespace AS namespace
-            ON namespace.oid = relation.relnamespace
-         WHERE namespace.nspname <> 'information_schema'
-           AND namespace.nspname !~ '^pg_'
-           AND relation.relkind IN ('r', 'p')
-         ORDER BY namespace.nspname, relation.relname
-        """
-    )
-    mismatches: list[str] = []
-    if revisions != manifest.alembic_revisions:
-        mismatches.append("alembic revisions")
-    if schemas != manifest.included_schemas:
-        mismatches.append("included schemas")
-    if relations != manifest.included_relations:
-        mismatches.append("included relations")
-    if mismatches:
+    if revisions != (manifest.alembic_revision,):
         raise GuestDependencyError(
-            "PostgreSQL restored database verification failed: "
-            + ", ".join(mismatches),
+            "PostgreSQL restored database Alembic revision does not match "
+            f"the backup manifest: expected={manifest.alembic_revision} "
+            f"actual={list(revisions)}",
             code="postgres-restore-database-verification-failed",
         )
 
