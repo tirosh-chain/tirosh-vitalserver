@@ -1196,6 +1196,12 @@ PWA Recorder Detail은 Recorder를 선택한 뒤에만 24시간/15분 timeline�
 storage percent만 표시하며 condition label이나 임계값을 추론하지 않습니다.
 Swift와 다른 client도 동일한 Runtime Control endpoint를 사용할 수 있습니다.
 
+실제 PostgreSQL proof는 2026-07-24에 격리된 PostgreSQL 16 clean database에
+Alembic `0003_expectation_workflow`까지 적용한 뒤 실행했습니다. Timeline의
+`date_bin`/reading-state 집계, explicit unsupported expectation, accepted
+observation 우선순위와 kernel incident filter/read가 integration test에서
+통과했습니다.
+
 #### 완료 조건
 
 - 한 Recorder 24시간 기본 window가 bounded row/payload 제한 안에 들어옵니다.
@@ -1362,7 +1368,7 @@ RetentionRun
 2. 기존 revision에서 upgrade 후 데이터 보존
 3. expectation set/idempotent/conflict/clear
 4. observation/profile/boot out-of-order projection
-5. actual PostgreSQL summary/Detail/timeline integration (integration DB 필요)
+5. actual PostgreSQL summary/Detail/timeline integration
 6. PWA/Swift generated contract parity
 7. 전체 PostgreSQL backup -> 새 DB restore -> schema별 read equality
 8. clean install, in-place update와 재부팅 후 read equality
@@ -1378,7 +1384,7 @@ RetentionRun
 5. expectation command workflow, internal adapter와 Guest/Runtime forwarding
 6. typed Detail backend와 public Runtime contract
 7. PWA/Swift lazy Detail
-8. bounded timeline/incidents — 구현됨, actual PostgreSQL integration proof 남음
+8. bounded timeline/incidents — 구현 및 actual PostgreSQL integration proof 완료
 9. schema별 capacity report와 retention decision
 10. 필요성이 증명된 owner의 retention/rebuild
 11. install/update/reboot release proof와 troubleshooting
