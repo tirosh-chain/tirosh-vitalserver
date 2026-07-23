@@ -73,6 +73,27 @@ struct RuntimeControlHTTPCommandRoutes {
         case .hideVitalDBRecorders:
             let request = try request.decodedBody(RuntimeVitalDBRecorderVisibilityRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.hideVitalDBRecorders(request))
+        case .applyRecorderObservabilityExpectation:
+            let command = try request.decodedBody(
+                RuntimeRecorderObservabilityExpectationCommand.self
+            )
+            let requestedVrcode = try request.recorderObservabilityExpectationCode()
+            guard command.vrcode == requestedVrcode else {
+                throw RuntimeControlHTTPQueryError.invalidBody(
+                    "Recorder expectation command VRCODE must match the requested recorder."
+                )
+            }
+            let receipt = try await handler.applyRecorderObservabilityExpectation(command)
+            let status: RuntimeControlHTTPStatus
+            switch receipt.state {
+            case .accepted, .idempotent:
+                status = .ok
+            case .revisionConflict:
+                status = .conflict
+            case .rejected:
+                status = .unprocessableEntity
+            }
+            return try RuntimeControlHTTPResponseFactory.json(receipt, status: status)
         case .unhideVitalDBRecorders:
             let request = try request.decodedBody(RuntimeVitalDBRecorderVisibilityRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.unhideVitalDBRecorders(request))

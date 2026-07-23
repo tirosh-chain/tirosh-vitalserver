@@ -400,6 +400,12 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.hideVitalDBRecorders(request)
     }
 
+    public func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        try await commandWorker.applyRecorderObservabilityExpectation(command)
+    }
+
     public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
         try await commandWorker.unhideVitalDBRecorders(request)
     }

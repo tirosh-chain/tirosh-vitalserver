@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+import json
 from io import BytesIO
+from typing import Any
 from urllib.error import HTTPError
 
 import pytest
@@ -251,3 +252,142 @@ def test_recorder_ingress_adapter_rejects_incomplete_observability_summary(
 
     assert error.value.kind == "recorder-ingress-contract-invalid"
     assert "profileState" in error.value.message
+
+
+def test_recorder_ingress_adapter_posts_authenticated_expectation_command(
+    monkeypatch: Any,
+) -> None:
+    requests: list[Any] = []
+
+    class Response:
+        status = 201
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def read(self) -> bytes:
+            return (
+                b'{"state":"accepted","commandId":"command-001",'
+                b'"eventId":"event-001","vrcode":"VR-001",'
+                b'"currentRevision":1,"failure":null}'
+            )
+
+    def fake_urlopen(request: Any, *, timeout: float) -> Response:
+        assert timeout == 5.0
+        requests.append(request)
+        return Response()
+
+    monkeypatch.setattr(status_service, "urlopen", fake_urlopen)
+    command = {
+        "commandId": "command-001",
+        "vrcode": "VR-001",
+        "expectedRevision": 0,
+        "action": "set",
+        "expectedSince": "2026-07-24T00:00:00Z",
+    }
+
+    receipt = RecorderIngressStatusServiceAdapter(
+        expectation_command_url="http://recorder-ingress/internal/expectations",
+        expectation_control_token="secret-token",
+    ).apply_recorder_observability_expectation(command)
+
+    assert receipt["state"] == "accepted"
+    request = requests[0]
+    assert request.full_url == "http://recorder-ingress/internal/expectations"
+    assert request.method == "POST"
+    assert request.get_header("Authorization") == "Bearer secret-token"
+    assert json.loads(request.data) == command
+
+
+def test_recorder_ingress_adapter_preserves_expectation_revision_conflict(
+    monkeypatch: Any,
+) -> None:
+    def conflict(request: Any, *, timeout: float) -> None:
+        del timeout
+        raise HTTPError(
+            request.full_url,
+            409,
+            "conflict",
+            {},
+            BytesIO(
+                b'{"state":"revisionConflict","commandId":"command-001",'
+                b'"eventId":null,"vrcode":"VR-001","currentRevision":2,'
+                b'"failure":"revisionConflict"}'
+            ),
+        )
+
+    monkeypatch.setattr(status_service, "urlopen", conflict)
+
+    receipt = RecorderIngressStatusServiceAdapter(
+        expectation_control_token="secret-token"
+    ).apply_recorder_observability_expectation(
+        {
+            "commandId": "command-001",
+            "vrcode": "VR-001",
+            "expectedRevision": 0,
+            "action": "clear",
+        }
+    )
+
+    assert receipt["state"] == "revisionConflict"
+    assert receipt["currentRevision"] == 2
+
+
+def test_recorder_ingress_adapter_reports_missing_expectation_credential(
+    tmp_path: Any,
+) -> None:
+    with pytest.raises(RecorderIngressDependencyError) as error:
+        RecorderIngressStatusServiceAdapter(
+            expectation_control_token_file=tmp_path / "missing-token"
+        ).apply_recorder_observability_expectation(
+            {
+                "commandId": "command-001",
+                "vrcode": "VR-001",
+                "expectedRevision": 0,
+                "action": "clear",
+            }
+        )
+
+    assert (
+        error.value.kind
+        == "recorder-ingress-control-credential-unavailable"
+    )
+
+
+def test_recorder_ingress_adapter_rejects_invalid_expectation_receipt(
+    monkeypatch: Any,
+) -> None:
+    class Response:
+        status = 201
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def read(self) -> bytes:
+            return b'{"state":"accepted","commandId":"command-001"}'
+
+    monkeypatch.setattr(
+        status_service,
+        "urlopen",
+        lambda *args, **kwargs: Response(),
+    )
+
+    with pytest.raises(RecorderIngressDependencyError) as error:
+        RecorderIngressStatusServiceAdapter(
+            expectation_control_token="secret-token"
+        ).apply_recorder_observability_expectation(
+            {
+                "commandId": "command-001",
+                "vrcode": "VR-001",
+                "expectedRevision": 0,
+                "action": "clear",
+            }
+        )
+
+    assert error.value.kind == "recorder-ingress-contract-invalid"

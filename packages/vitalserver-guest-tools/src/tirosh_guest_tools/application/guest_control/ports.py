@@ -200,6 +200,12 @@ class RecorderIngressReadModelPort(Protocol):
     def recorder_observability_detail(self, vrcode: str) -> dict[str, Any]:
         raise NotImplementedError
 
+    def apply_recorder_observability_expectation(
+        self,
+        command: dict[str, Any],
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
 
 class RecorderRecoveryReadModelPort(Protocol):
     def list_artifacts(self) -> dict[str, Any]:

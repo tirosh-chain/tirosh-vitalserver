@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import subprocess
 import time
 from contextlib import suppress
@@ -84,6 +85,7 @@ DEFAULT_REDIS_CONTAINER_MEMORY_LIMIT_MIB = 3277
 MIB_BYTES = 1024 * 1024
 MAX_DIAGNOSTIC_OUTPUT_CHARS = 12000
 COMPOSE_ENVIRONMENT_VARIABLES = (
+    "RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN",
     "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS",
     "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED",
     "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS",
@@ -222,12 +224,59 @@ def load_runtime_env() -> RuntimeConfig:
     os.environ["VITALSERVER_PUBLIC_PORT"] = str(config.public_port)
     os.environ["VITALSERVER_ADMIN_PASSWORD"] = config.admin_password
     os.environ["VITALSERVER_VITAL_FILES_DIR"] = config.vital_files_directory
+    os.environ["RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN"] = (
+        ensure_recorder_ingress_expectation_control_token(
+            COMPOSE_ENVIRONMENT_FILE.with_name(
+                "recorder-ingress-expectation-control-token"
+            )
+        )
+    )
     settings_path = RUNTIME_SETTINGS_FILE
     settings_document = read_json(settings_path)
     load_recorder_ingress_send_data_env(settings_document, settings_path)
     write_compose_runtime_limits(settings_document, settings_path)
     write_compose_environment_file()
     return config
+
+
+def ensure_recorder_ingress_expectation_control_token(path: Any) -> str:
+    credential_path = os.fspath(path)
+    try:
+        if os.path.exists(credential_path):
+            with open(credential_path, encoding="utf-8") as credential_file:
+                token = credential_file.read().strip()
+            if len(token) < 32:
+                raise GuestContractError(
+                    "Recorder expectation control credential is invalid.",
+                    code="recorder-expectation-control-credential-invalid",
+                )
+            return token
+
+        token = secrets.token_urlsafe(32)
+        temporary_path = credential_path + ".next"
+        os.makedirs(os.path.dirname(credential_path), exist_ok=True)
+        descriptor = os.open(
+            temporary_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                output.write(token + "\n")
+            os.replace(temporary_path, credential_path)
+        except BaseException:
+            with suppress(OSError):
+                os.unlink(temporary_path)
+            raise
+        return token
+    except GuestContractError:
+        raise
+    except OSError as error:
+        raise GuestDependencyError(
+            "Recorder expectation control credential could not be read or written: "
+            f"{credential_path}: {error}",
+            code="recorder-expectation-control-credential-io-failed",
+        ) from error
 
 
 def write_compose_environment_file() -> None:

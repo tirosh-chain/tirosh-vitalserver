@@ -130,6 +130,12 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         try await client.hideVitalDBRecorders(request)
     }
 
+    public func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        try await client.applyRecorderObservabilityExpectation(command)
+    }
+
     public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
         try await client.unhideVitalDBRecorders(request)
     }

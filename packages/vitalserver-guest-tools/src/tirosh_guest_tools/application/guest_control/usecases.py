@@ -259,7 +259,12 @@ class GuestControlUseCases:
             )
 
         if self._recorder_ingress is not None:
-            capabilities.append("recorder-ingress:status:get")
+            capabilities.extend(
+                [
+                    "recorder-ingress:status:get",
+                    "vitaldb:recorders:observability-expectation:apply",
+                ]
+            )
         if (
             self._recorder_ingress is not None
             and self._recorder_recovery is not None
@@ -1501,6 +1506,27 @@ class GuestControlUseCases:
                 "protocolVersion": None,
                 "readError": error.message,
             }
+
+    def apply_recorder_observability_expectation(
+        self,
+        *,
+        vrcode: str,
+        command: dict[str, object],
+    ) -> dict[str, object]:
+        if self._recorder_ingress is None:
+            raise GuestControlDependencyError(
+                "Recorder ingress expectation command adapter is unavailable.",
+                kind="recorder-ingress-control-unavailable",
+            )
+        try:
+            return self._recorder_ingress.apply_recorder_observability_expectation(
+                command
+            )
+        except RecorderIngressDependencyError as error:
+            raise GuestControlDependencyError(
+                error.message,
+                kind=error.kind,
+            ) from error
 
     def get_redis_relay_status(self) -> dict[str, object]:
         if self._redis_relay is None:

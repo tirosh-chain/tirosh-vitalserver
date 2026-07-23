@@ -31,6 +31,48 @@ final class RuntimeControlAPITests: XCTestCase {
         })
     }
 
+    @MainActor
+    func testRecorderExpectationEndpointReturnsTypedConflict() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(
+            handler: RuntimeControlClientAPIReadHandler(client: client)
+        )
+        let command = RuntimeRecorderObservabilityExpectationCommand(
+            commandId: "command-001",
+            vrcode: "VR-001",
+            expectedRevision: 1,
+            action: .clear,
+            supportState: nil,
+            source: nil,
+            recorderVersion: nil,
+            producerVersion: nil,
+            protocolVersion: nil,
+            catalogRevision: nil,
+            expectedSince: nil,
+            evidenceDocument: [:],
+            decidedAt: "2026-07-24T00:00:00Z"
+        )
+
+        let response = await router.route(.init(
+            method: .post,
+            path: (
+                "/runtime/vitaldb/recorders/VR-001/"
+                + "observability/expectation"
+            ),
+            body: try JSONEncoder().encode(command)
+        ))
+
+        XCTAssertEqual(response.status, .conflict)
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                RuntimeRecorderObservabilityExpectationReceipt.self,
+                from: try XCTUnwrap(response.body)
+            ).state,
+            .revisionConflict
+        )
+        XCTAssertEqual(client.recorderExpectationCommands, [command])
+    }
+
     func testPlatformAffordanceRoutesAreExplicitlySeparated() {
         let hostRoutes = RuntimeControlAPIEndpoint.allCases
             .map(\.route)
@@ -3805,6 +3847,9 @@ private final class FakeRuntimeControlClient:
     var startGuestServiceRequests: [RuntimeGuestServiceControlRequest] = []
     var stopGuestServiceRequests: [RuntimeGuestServiceControlRequest] = []
     var restartGuestServiceRequests: [RuntimeGuestServiceRestartRequest] = []
+    var recorderExpectationCommands: [
+        RuntimeRecorderObservabilityExpectationCommand
+    ] = []
     var backupLatestPaths: [String?] = []
     var loadBackupsError: Error?
     var exportLogsError: Error?
@@ -3956,6 +4001,20 @@ private final class FakeRuntimeControlClient:
         _ request: RuntimeVitalDBRecorderVisibilityRequest
     ) async throws -> RuntimeVitalRecorderHistory {
         loadVitalDBRecorders()
+    }
+
+    func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        recorderExpectationCommands.append(command)
+        return RuntimeRecorderObservabilityExpectationReceipt(
+            state: .revisionConflict,
+            commandId: command.commandId,
+            eventId: nil,
+            vrcode: command.vrcode,
+            currentRevision: 2,
+            failure: "revisionConflict"
+        )
     }
 
     func unhideVitalDBRecorders(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -26,6 +27,15 @@ DEFAULT_RECORDER_INGRESS_OBSERVABILITY_URL = (
 RECORDER_INGRESS_OBSERVABILITY_URL_ENV = (
     "TIROSH_RECORDER_INGRESS_OBSERVABILITY_URL"
 )
+DEFAULT_RECORDER_INGRESS_EXPECTATION_COMMAND_URL = (
+    "http://127.0.0.1:18083/internal/recorder-observability/expectations"
+)
+RECORDER_INGRESS_EXPECTATION_COMMAND_URL_ENV = (
+    "TIROSH_RECORDER_INGRESS_EXPECTATION_COMMAND_URL"
+)
+DEFAULT_RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE = Path(
+    "/mnt/runtime/recorder-ingress-expectation-control-token"
+)
 
 
 class RecorderIngressStatusServiceAdapter:
@@ -35,6 +45,11 @@ class RecorderIngressStatusServiceAdapter:
         status_url: str | None = None,
         native_uploads_url: str | None = None,
         observability_url: str | None = None,
+        expectation_command_url: str | None = None,
+        expectation_control_token: str | None = None,
+        expectation_control_token_file: Path = (
+            DEFAULT_RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE
+        ),
         timeout_seconds: float = 5.0,
     ) -> None:
         self._status_url = status_url or os.environ.get(
@@ -49,6 +64,12 @@ class RecorderIngressStatusServiceAdapter:
             RECORDER_INGRESS_OBSERVABILITY_URL_ENV,
             DEFAULT_RECORDER_INGRESS_OBSERVABILITY_URL,
         )
+        self._expectation_command_url = expectation_command_url or os.environ.get(
+            RECORDER_INGRESS_EXPECTATION_COMMAND_URL_ENV,
+            DEFAULT_RECORDER_INGRESS_EXPECTATION_COMMAND_URL,
+        )
+        self._expectation_control_token = expectation_control_token
+        self._expectation_control_token_file = expectation_control_token_file
         self._timeout_seconds = timeout_seconds
 
     def status(self) -> dict[str, Any]:
@@ -96,6 +117,88 @@ class RecorderIngressStatusServiceAdapter:
                     read_error=None,
                 )
             raise
+
+    def apply_recorder_observability_expectation(
+        self,
+        command: dict[str, Any],
+    ) -> dict[str, Any]:
+        token = self._load_expectation_control_token()
+        request = Request(
+            self._expectation_command_url,
+            data=json.dumps(
+                command,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+            method="POST",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                data = response.read()
+        except HTTPError as error:
+            if error.code in {409, 422}:
+                return _validated_expectation_receipt(
+                    _decoded_object(
+                        error.read(),
+                        operation="Recorder expectation command",
+                    )
+                )
+            kind = (
+                "recorder-ingress-control-unauthorized"
+                if error.code == 401
+                else "recorder-ingress-control-unavailable"
+            )
+            raise RecorderIngressDependencyError(
+                "Recorder ingress expectation command failed: "
+                f"status={error.code}",
+                kind=kind,
+            ) from error
+        except URLError as error:
+            raise RecorderIngressDependencyError(
+                "Recorder ingress expectation command is unavailable: "
+                f"{error.reason}",
+                kind="recorder-ingress-unavailable",
+            ) from error
+        except TimeoutError as error:
+            raise RecorderIngressDependencyError(
+                "Recorder ingress expectation command timed out.",
+                kind="recorder-ingress-timeout",
+            ) from error
+        return _validated_expectation_receipt(
+            _decoded_object(data, operation="Recorder expectation command")
+        )
+
+    def _load_expectation_control_token(self) -> str:
+        if self._expectation_control_token is not None:
+            token = self._expectation_control_token.strip()
+            if token:
+                return token
+            raise RecorderIngressDependencyError(
+                "Recorder expectation control credential is empty.",
+                kind="recorder-ingress-control-credential-unavailable",
+            )
+        try:
+            token = self._expectation_control_token_file.read_text(
+                encoding="utf-8"
+            ).strip()
+        except OSError as error:
+            raise RecorderIngressDependencyError(
+                "Recorder expectation control credential could not be read: "
+                f"{self._expectation_control_token_file}: {error}",
+                kind="recorder-ingress-control-credential-unavailable",
+            ) from error
+        if not token:
+            raise RecorderIngressDependencyError(
+                "Recorder expectation control credential file is empty: "
+                f"{self._expectation_control_token_file}",
+                kind="recorder-ingress-control-credential-unavailable",
+            )
+        return token
 
     def _read_document(
         self,
@@ -157,6 +260,63 @@ def _validated_observability_list(document: dict[str, Any]) -> dict[str, Any]:
         raise _observability_contract_error("list state or recorders is invalid")
     for summary in document["recorders"]:
         _validate_observability_summary(summary)
+    return document
+
+
+def _decoded_object(data: bytes, *, operation: str) -> dict[str, Any]:
+    try:
+        document = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RecorderIngressDependencyError(
+            f"{operation} returned invalid JSON: {error}",
+            kind="recorder-ingress-contract-invalid",
+        ) from error
+    if not isinstance(document, dict):
+        raise RecorderIngressDependencyError(
+            f"{operation} returned a non-object JSON document.",
+            kind="recorder-ingress-contract-invalid",
+        )
+    return document
+
+
+def _validated_expectation_receipt(
+    document: dict[str, Any],
+) -> dict[str, Any]:
+    state = document.get("state")
+    if state not in {
+        "accepted",
+        "idempotent",
+        "revisionConflict",
+        "rejected",
+    }:
+        raise _observability_contract_error(
+            "expectation receipt state is invalid"
+        )
+    if not isinstance(document.get("commandId"), str):
+        raise _observability_contract_error(
+            "expectation receipt commandId is invalid"
+        )
+    if not isinstance(document.get("vrcode"), str):
+        raise _observability_contract_error(
+            "expectation receipt VRCODE is invalid"
+        )
+    if not isinstance(document.get("currentRevision"), int):
+        raise _observability_contract_error(
+            "expectation receipt currentRevision is invalid"
+        )
+    if state in {"accepted", "idempotent"}:
+        if not isinstance(document.get("eventId"), str) or (
+            document.get("failure") is not None
+        ):
+            raise _observability_contract_error(
+                "accepted expectation receipt evidence is invalid"
+            )
+    elif document.get("eventId") is not None or not isinstance(
+        document.get("failure"), str
+    ):
+        raise _observability_contract_error(
+            "failed expectation receipt evidence is invalid"
+        )
     return document
 
 

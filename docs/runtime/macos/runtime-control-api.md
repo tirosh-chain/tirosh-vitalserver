@@ -76,6 +76,7 @@ Runtime capability identifier `services:start`, `services:stop`,
 | `GET` | `/runtime/vitaldb/recorders` |
 | `GET` | `/runtime/vitaldb/recorders/{vrcode}` |
 | `GET` | `/runtime/vitaldb/recorders/{vrcode}/activity` |
+| `POST` | `/runtime/vitaldb/recorders/{vrcode}/observability/expectation` |
 | `GET` | `/runtime/vitaldb/beds` |
 | `GET` | `/runtime/vitaldb/beds/{bedID}` |
 | `GET` | `/runtime/vitaldb/relationships` |
@@ -267,6 +268,15 @@ Provider `start|stop|restart` command는 Platform effect와 Provider state를 �
 `GET /runtime/vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
 
 `GET /runtime/vitaldb/recorders/{vrcode}/activity`는 recorder activity chart용 lazy window read model입니다. Query는 `bucketSeconds=60|300`, `period=last15Minutes|lastHour|last6Hours|last12Hours|all`, `pageIndex=<non-negative integer>`를 지원합니다. `period=all`일 때 page 하나는 12시간이며, `pageIndex`가 없으면 최신 page를 반환합니다. Runtime v2 server는 Guest Control API의 `GET /runtime/vitaldb/recorders/{vrcode}/activity`를 소비하고, Guest/Postgres read model에서 해당 `vrcode`의 first/latest bucket boundary와 선택된 window의 `since/until` 범위만 조회합니다. Host SQLite projection은 Guest provider가 없는 transitional diagnostics path일 뿐 product state owner가 아닙니다. UI는 응답의 `page.count`, `page.index`, `page.windowStartedAt`, `page.windowEndedAt`, `buckets`만 표시하고 전체 history gap을 브라우저나 SwiftUI 메모리에서 materialize하면 안 됩니다.
+
+`POST /runtime/vitaldb/recorders/{vrcode}/observability/expectation`은 운영자
+control plane의 명시적 command 경로입니다. Runtime Control은 body의 `vrcode`가
+path와 같은지 확인한 뒤 Guest Control로 전달하고, Guest는 별도 내부 bearer
+credential로 recorder-ingress를 호출합니다. recorder-ingress가
+`expectation_events` journal과 current projection을 revision compare-and-set으로
+갱신합니다. 응답의 `accepted`, `idempotent`, `revisionConflict`, `rejected`는
+각각 200, 200, 409, 422로 보존됩니다. Guest, credential, PostgreSQL 실패는
+503이며 disabled나 성공으로 바꾸지 않습니다.
 
 `RuntimeVitalRecorderActivityWindow.state`는 `loaded`, `empty`, `invalidRequest`, `readFailed` 중 하나입니다. `empty`는 read가 성공했지만 해당 recorder/window에 activity bucket이 없다는 뜻이며, `readFailed`와 구분해야 합니다. `invalidRequest`는 query contract 위반입니다. Missing bucket은 선택된 window 안에서만 zero-count display bucket으로 채울 수 있고, window 밖의 missing history를 activity state로 추정하지 않습니다.
 

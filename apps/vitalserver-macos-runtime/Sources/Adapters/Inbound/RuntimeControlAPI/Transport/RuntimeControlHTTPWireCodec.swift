@@ -194,6 +194,8 @@ public enum RuntimeControlHTTPWireCodec {
             return "Method Not Allowed"
         case .conflict:
             return "Conflict"
+        case .unprocessableEntity:
+            return "Unprocessable Entity"
         case .serviceUnavailable:
             return "Service Unavailable"
         case .notImplemented:

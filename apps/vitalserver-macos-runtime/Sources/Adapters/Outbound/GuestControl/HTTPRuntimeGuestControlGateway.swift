@@ -623,6 +623,40 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         )
     }
 
+    public func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        let encodedBody: Data
+        do {
+            encodedBody = try encoder.encode(command)
+        } catch {
+            throw RuntimeGuestControlHTTPGatewayError.decodeFailed(
+                error.localizedDescription
+            )
+        }
+        let response = try httpClient.send(
+            request(
+                method: "POST",
+                path: "/runtime/vitaldb/recorders/\(pathSegment(command.vrcode))/observability/expectation",
+                body: encodedBody
+            ),
+            bodyFileURL: nil
+        )
+        guard [200, 409, 422].contains(response.statusCode) else {
+            throw requestFailed(response)
+        }
+        do {
+            return try decoder.decode(
+                RuntimeRecorderObservabilityExpectationReceipt.self,
+                from: response.data
+            )
+        } catch {
+            throw RuntimeGuestControlHTTPGatewayError.decodeFailed(
+                runtimeGuestControlDecodingErrorDescription(error)
+            )
+        }
+    }
+
     public func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) throws -> RuntimeVitalRecorderHistory {
         try decode(
             RuntimeVitalRecorderHistory.self,

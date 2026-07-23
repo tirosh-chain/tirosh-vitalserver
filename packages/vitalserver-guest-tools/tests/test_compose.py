@@ -335,7 +335,33 @@ def test_load_runtime_env_materializes_explicit_compose_environment(
     assert values["VITALSERVER_ADMIN_PASSWORD"] == 'secret#"value'
     assert values["VITALSERVER_PUBLIC_HOST"] == "vital.example.test"
     assert values["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
+    assert len(values["RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN"]) >= 32
+    assert (
+        values["RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN"]
+        == (tmp_path / "recorder-ingress-expectation-control-token")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
     assert "VITALSERVER_HTTP_PORT" not in values
+
+
+def test_expectation_control_credential_is_stable_and_invalid_state_is_not_replaced(
+    tmp_path: Any,
+) -> None:
+    path = tmp_path / "expectation-token"
+
+    first = compose.ensure_recorder_ingress_expectation_control_token(path)
+    second = compose.ensure_recorder_ingress_expectation_control_token(path)
+
+    assert len(first) >= 32
+    assert second == first
+    assert path.stat().st_mode & 0o777 == 0o600
+
+    path.write_text("short\n", encoding="utf-8")
+    with pytest.raises(GuestContractError) as error:
+        compose.ensure_recorder_ingress_expectation_control_token(path)
+    assert error.value.code == "recorder-expectation-control-credential-invalid"
+    assert path.read_text(encoding="utf-8") == "short\n"
 
 
 def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(

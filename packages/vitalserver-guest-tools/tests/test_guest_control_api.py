@@ -770,6 +770,19 @@ class FakeRecorderIngress:
             "resources": {},
         }
 
+    def apply_recorder_observability_expectation(
+        self,
+        command: dict[str, object],
+    ) -> dict[str, object]:
+        return {
+            "state": "accepted",
+            "commandId": command["commandId"],
+            "eventId": "event-001",
+            "vrcode": command["vrcode"],
+            "currentRevision": 1,
+            "failure": None,
+        }
+
 
 class FakeRecorderRecovery:
     def list_artifacts(self) -> dict[str, object]:
@@ -1335,6 +1348,10 @@ def test_capabilities_route_advertises_vitaldb_read_model(
     assert "vitaldb:beds:delete" in document["capabilities"]
     assert "vitaldb:relationships:get" in document["capabilities"]
     assert "recorder-ingress:status:get" in document["capabilities"]
+    assert (
+        "vitaldb:recorders:observability-expectation:apply"
+        in document["capabilities"]
+    )
     assert "lab:beds" in document["capabilities"]
     assert "lab:recorders" in document["capabilities"]
 
@@ -3012,6 +3029,56 @@ def test_lab_post_route_rejects_missing_json_body(
         )
 
     assert "JSON request body is required" in str(error.value)
+
+
+def test_recorder_expectation_route_forwards_command(
+    usecases: GuestControlUseCases,
+) -> None:
+    command = {
+        "commandId": "command-001",
+        "vrcode": "VR-001",
+        "expectedRevision": 0,
+        "action": "clear",
+    }
+
+    status, receipt = route_request(
+        method="POST",
+        path=(
+            "/runtime/vitaldb/recorders/VR-001/"
+            "observability/expectation"
+        ),
+        body=json.dumps(command).encode("utf-8"),
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert receipt["state"] == "accepted"
+    assert receipt["commandId"] == "command-001"
+
+
+def test_recorder_expectation_route_rejects_vrcode_mismatch(
+    usecases: GuestControlUseCases,
+) -> None:
+    with pytest.raises(guest_control_api.GuestControlAPIError) as error:
+        route_request(
+            method="POST",
+            path=(
+                "/runtime/vitaldb/recorders/VR-001/"
+                "observability/expectation"
+            ),
+            body=json.dumps(
+                {
+                    "commandId": "command-001",
+                    "vrcode": "VR-002",
+                    "expectedRevision": 0,
+                    "action": "clear",
+                }
+            ).encode("utf-8"),
+            usecases=usecases,
+        )
+
+    assert error.value.status == HTTPStatus.BAD_REQUEST
+    assert error.value.code == "recorderExpectationVrcodeMismatch"
 
 
 def lab_session(

@@ -1,6 +1,9 @@
 "use strict";
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const test = require("node:test");
 const { loadConfig } = require("../../src/config");
 
@@ -29,6 +32,12 @@ test("config loads bounded Recorder observability admission settings", () => {
   assert.strictEqual(defaults.freshnessToleranceMultiplier, 3);
   assert.strictEqual(defaults.freshnessAllowanceSeconds, 30);
   assert.strictEqual(defaults.firstReportGraceSeconds, 300);
+  assert.deepStrictEqual(defaults.expectationControl, {
+    state: "unavailable",
+    token: null,
+    reason: "expectation_control_credential_missing",
+  });
+  assert.strictEqual(defaults.expectationCommandMaxBytes, 64 * 1024);
   const configured = loadConfig({
     RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY: "/data/observability",
     RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES: "7340032",
@@ -39,6 +48,40 @@ test("config loads bounded Recorder observability admission settings", () => {
   assert.strictEqual(configured.maxRequestBytes, 7 * MIB);
   assert.strictEqual(configured.database.host, "db.internal");
   assert.strictEqual(configured.database.maxConnections, 4);
+});
+
+test("expectation control credential is explicit and file read failures stay unavailable", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "recorder-expectation-credential-"),
+  );
+  const tokenFile = path.join(directory, "token");
+  fs.writeFileSync(tokenFile, "control-secret\n");
+
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE: tokenFile,
+  }).observability.expectationControl, {
+    state: "loaded",
+    token: "control-secret",
+    reason: null,
+  });
+  const unreadable = loadConfig({
+    RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE:
+      path.join(directory, "missing"),
+  }).observability.expectationControl;
+  assert.strictEqual(unreadable.state, "unavailable");
+  assert.strictEqual(unreadable.token, null);
+  assert.match(
+    unreadable.reason,
+    /^expectation_control_credential_file_read_failed:/,
+  );
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN: "literal",
+    RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE: tokenFile,
+  }).observability.expectationControl, {
+    state: "unavailable",
+    token: null,
+    reason: "expectation_control_credential_ambiguous",
+  });
 });
 
 test("config loads explicit redis ip rewrite policy", () => {

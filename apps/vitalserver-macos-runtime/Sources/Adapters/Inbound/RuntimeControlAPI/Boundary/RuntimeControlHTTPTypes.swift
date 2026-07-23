@@ -12,6 +12,7 @@ public enum RuntimeControlHTTPStatus: Int, Codable, Equatable, Sendable {
     case notFound = 404
     case methodNotAllowed = 405
     case conflict = 409
+    case unprocessableEntity = 422
     case serviceUnavailable = 503
     case notImplemented = 501
     case internalServerError = 500
@@ -137,6 +138,9 @@ public protocol RuntimeControlAPIReadHandler {
     func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList
     func resetLabRecorders() async throws -> RuntimeLabRecorderList
     func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt
     func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
     func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
     func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
@@ -370,6 +374,14 @@ public extension RuntimeControlAPIReadHandler {
 
     func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
         RuntimeVitalRecorderHistory(readError: "VitalDB read model gateway is unavailable.")
+    }
+
+    func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        throw RuntimeControlClientUnsupportedError.unavailable(
+            "vitaldb-recorder-observability-expectation"
+        )
     }
 
     func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {

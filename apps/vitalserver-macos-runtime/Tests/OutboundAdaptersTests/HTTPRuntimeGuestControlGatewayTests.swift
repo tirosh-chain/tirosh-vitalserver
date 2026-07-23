@@ -1031,6 +1031,58 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         }
     }
 
+    func testRecorderExpectationCommandPreservesConflictReceipt() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 409,
+            body: """
+            {
+              "state": "revisionConflict",
+              "commandId": "command-001",
+              "eventId": null,
+              "vrcode": "VR/A",
+              "currentRevision": 2,
+              "failure": "revisionConflict"
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+        let command = RuntimeRecorderObservabilityExpectationCommand(
+            commandId: "command-001",
+            vrcode: "VR/A",
+            expectedRevision: 1,
+            action: .clear,
+            supportState: nil,
+            source: nil,
+            recorderVersion: nil,
+            producerVersion: nil,
+            protocolVersion: nil,
+            catalogRevision: nil,
+            expectedSince: nil,
+            evidenceDocument: [:],
+            decidedAt: "2026-07-24T00:00:00Z"
+        )
+
+        let receipt = try gateway.applyRecorderObservabilityExpectation(command)
+
+        XCTAssertEqual(receipt.state, .revisionConflict)
+        XCTAssertEqual(receipt.currentRevision, 2)
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
+        XCTAssertEqual(
+            client.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/vitaldb/recorders/VR%2FA/observability/expectation"
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                RuntimeRecorderObservabilityExpectationCommand.self,
+                from: try XCTUnwrap(client.requests.first?.httpBody)
+            ),
+            command
+        )
+    }
+
     func testVitalDBRecorderActivityRequestsGuestControlReadModelEndpoint() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,

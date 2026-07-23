@@ -386,6 +386,12 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         try await commandClient.hideVitalDBRecorders(request)
     }
 
+    public func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        try await commandClient.applyRecorderObservabilityExpectation(command)
+    }
+
     public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
         try await commandClient.unhideVitalDBRecorders(request)
     }

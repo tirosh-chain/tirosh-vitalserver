@@ -445,6 +445,14 @@ public actor MacRuntimeControlCommandWorker {
         }
     }
 
+    public func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        try await runVitalDBGuestControlCommand { gateway in
+            try gateway.applyRecorderObservabilityExpectation(command)
+        }
+    }
+
     public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
         await runVitalDBVisibilityCommand { gateway in
             try gateway.unhideVitalDBRecorders(request)

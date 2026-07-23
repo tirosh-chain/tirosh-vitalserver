@@ -172,6 +172,52 @@ paths:
             support expectation.
         "503":
           description: PostgreSQL current projection is unavailable.
+  /internal/recorder-observability/expectations:
+    post:
+      operationId: applyRecorderObservabilityExpectation
+      summary: Apply an authenticated support expectation command
+      description: >
+        Internal command boundary used by Guest Control. Commands are journaled
+        before the current projection is advanced with revision compare-and-set.
+        A missing or unreadable control credential is an unavailable dependency,
+        never a disabled or successful command.
+      security:
+        - ExpectationControlBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecorderObservabilityExpectationCommand"
+      responses:
+        "200":
+          description: The command was an idempotent replay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityExpectationReceipt"
+        "201":
+          description: The command was accepted and persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityExpectationReceipt"
+        "401":
+          description: The internal control credential is invalid.
+        "409":
+          description: expectedRevision does not match the current projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityExpectationReceipt"
+        "422":
+          description: The domain rejected a complete command.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityExpectationReceipt"
+        "503":
+          description: Credential or PostgreSQL command persistence is unavailable.
   /upload:
     post:
       operationId: uploadTrackedNativeVitalFile
@@ -347,6 +393,10 @@ paths:
         "503":
           description: The finalization state dependency is unavailable.
 components:
+  securitySchemes:
+    ExpectationControlBearer:
+      type: http
+      scheme: bearer
   parameters:
     RecorderVrcode:
       name: vrcode
@@ -478,6 +528,56 @@ components:
         The PostgreSQL transaction could not confirm the admission result. The client
         may retry the whole chunk.
   schemas:
+    RecorderObservabilityExpectationCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - commandId
+        - vrcode
+        - expectedRevision
+        - action
+        - supportState
+        - source
+        - recorderVersion
+        - producerVersion
+        - protocolVersion
+        - catalogRevision
+        - expectedSince
+        - evidenceDocument
+        - decidedAt
+      properties:
+        commandId: {type: string, format: uuid}
+        vrcode: {type: string}
+        expectedRevision: {type: integer, minimum: 0}
+        action: {type: string, enum: [set, clear]}
+        supportState:
+          type: string
+          nullable: true
+          enum: [supported, unsupported]
+        source:
+          type: string
+          nullable: true
+          enum: [deployment_assignment, version_catalog, manual]
+        recorderVersion: {type: string, nullable: true}
+        producerVersion: {type: string, nullable: true}
+        protocolVersion: {type: string, nullable: true}
+        catalogRevision: {type: string, nullable: true}
+        expectedSince: {type: string, format: date-time, nullable: true}
+        evidenceDocument: {type: object, additionalProperties: true}
+        decidedAt: {type: string, format: date-time}
+    RecorderObservabilityExpectationReceipt:
+      type: object
+      additionalProperties: false
+      required: [state, commandId, eventId, vrcode, currentRevision, failure]
+      properties:
+        state:
+          type: string
+          enum: [accepted, idempotent, revisionConflict, rejected]
+        commandId: {type: string}
+        eventId: {type: string, nullable: true}
+        vrcode: {type: string}
+        currentRevision: {type: integer, minimum: 0}
+        failure: {type: string, nullable: true}
     RecorderObservabilitySummary:
       type: object
       additionalProperties: false

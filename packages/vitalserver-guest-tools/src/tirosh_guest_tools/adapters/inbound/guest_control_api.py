@@ -694,6 +694,34 @@ def route_request(
         return HTTPStatus.OK, usecases.get_recorder_observability(parts[3])
 
     if (
+        method == "POST"
+        and len(parts) == 6
+        and parts[:3] == ["runtime", "vitaldb", "recorders"]
+        and parts[4:] == ["observability", "expectation"]
+    ):
+        request = _json_body(body)
+        command_vrcode = request.get("vrcode")
+        if not isinstance(command_vrcode, str) or command_vrcode != parts[3]:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=(
+                    "Recorder expectation command VRCODE must match the "
+                    "requested recorder."
+                ),
+                code="recorderExpectationVrcodeMismatch",
+            )
+        receipt = usecases.apply_recorder_observability_expectation(
+            vrcode=parts[3],
+            command=request,
+        )
+        state = receipt.get("state")
+        if state == "revisionConflict":
+            return HTTPStatus.CONFLICT, receipt
+        if state == "rejected":
+            return HTTPStatus.UNPROCESSABLE_ENTITY, receipt
+        return HTTPStatus.OK, receipt
+
+    if (
         method == "GET"
         and len(parts) == 4
         and parts[:3] == ["runtime", "vitaldb", "recorders"]

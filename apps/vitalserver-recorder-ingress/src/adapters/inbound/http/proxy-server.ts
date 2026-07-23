@@ -21,6 +21,10 @@ const { createBodyMirror } = require("./body-mirror");
 const { createClientWebSocketRelay, shouldSuppressSendDataRelay } = require("./websocket-client-relay");
 const { nativeVitalUploadMetadataFromHeaders } = require("./native-vital-upload-http");
 const {
+  receiveRecorderObservabilityExpectationCommand,
+  recorderObservabilityExpectationCommandRoute,
+} = require("./recorder-observability-expectation-http");
+const {
   receiveRecorderObservability,
   recorderObservabilityRoute,
 } = require("./recorder-observability-http");
@@ -45,6 +49,12 @@ type RecorderIngressHttpConfig = {
   };
   observability: {
     maxRequestBytes: number;
+    expectationCommandMaxBytes: number;
+    expectationControl: {
+      state: "loaded" | "unavailable";
+      token: string | null;
+      reason: string | null;
+    };
   };
   spool: {
     mode: string;
@@ -167,6 +177,15 @@ function waitForActiveSocketsToClose(activeSockets: Set<Socket>, timeoutMs: numb
 }
 
 function proxyHttp(req, res, dependencies) {
+  if (recorderObservabilityExpectationCommandRoute(req.url)) {
+    receiveRecorderObservabilityExpectationCommand(req, res, {
+      repository: dependencies.recorderObservabilityRepository,
+      credential: dependencies.config.observability.expectationControl,
+      maxRequestBytes:
+        dependencies.config.observability.expectationCommandMaxBytes,
+    });
+    return;
+  }
   const queryRoute = recorderObservabilityQueryRoute(req.url);
   if (queryRoute) {
     void readRecorderObservabilityQuery(

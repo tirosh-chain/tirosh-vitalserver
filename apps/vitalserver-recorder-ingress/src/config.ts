@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("fs");
 const { sendDataIngressModes } = require("./domain/send-data-ingress-contracts");
 
 const MIB = 1024 * 1024;
@@ -81,6 +82,12 @@ function loadConfig(env) {
         env,
         "RECORDER_INGRESS_OBSERVABILITY_FIRST_REPORT_GRACE_SECONDS",
         300
+      ),
+      expectationControl: expectationControlCredential(env),
+      expectationCommandMaxBytes: numberEnv(
+        env,
+        "RECORDER_INGRESS_EXPECTATION_COMMAND_MAX_BYTES",
+        64 * 1024
       ),
     },
     upstream: {
@@ -305,6 +312,69 @@ function numberListEnv(env, name, fallback) {
     .split(",")
     .map((item) => Number.parseInt(item.trim(), 10));
   return values.every(Number.isFinite) ? values : fallback;
+}
+
+function expectationControlCredential(env) {
+  const tokenConfigured = Object.prototype.hasOwnProperty.call(
+    env,
+    "RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN",
+  );
+  const fileConfigured = Object.prototype.hasOwnProperty.call(
+    env,
+    "RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE",
+  );
+  if (tokenConfigured && fileConfigured) {
+    return {
+      state: "unavailable",
+      token: null,
+      reason: "expectation_control_credential_ambiguous",
+    };
+  }
+  if (fileConfigured) {
+    const path = String(
+      env.RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE || "",
+    ).trim();
+    if (!path) {
+      return {
+        state: "unavailable",
+        token: null,
+        reason: "expectation_control_credential_file_path_empty",
+      };
+    }
+    try {
+      const token = fs.readFileSync(path, "utf8").trim();
+      return token
+        ? { state: "loaded", token, reason: null }
+        : {
+          state: "unavailable",
+          token: null,
+          reason: "expectation_control_credential_file_empty",
+        };
+    } catch (error) {
+      return {
+        state: "unavailable",
+        token: null,
+        reason: `expectation_control_credential_file_read_failed:${error.message}`,
+      };
+    }
+  }
+  if (tokenConfigured) {
+    const token = String(
+      env.RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN || "",
+    ).trim();
+    return token
+      ? { state: "loaded", token, reason: null }
+      : {
+        state: "unavailable",
+        token: null,
+        reason: "expectation_control_credential_empty",
+      };
+  }
+  return {
+    state: "unavailable",
+    token: null,
+    reason: "expectation_control_credential_missing",
+  };
 }
 
 module.exports = { loadConfig };

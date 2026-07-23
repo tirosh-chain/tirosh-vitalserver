@@ -141,6 +141,7 @@ struct RuntimeControlHTTPReadRoutes {
              .deleteLabRecorders,
              .resetLabRecorders,
              .hideVitalDBRecorders,
+             .applyRecorderObservabilityExpectation,
              .unhideVitalDBRecorders,
              .deleteVitalDBRecorders,
              .hideVitalDBBeds,

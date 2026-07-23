@@ -318,6 +318,25 @@ Recorder별 Vital-file 이력은 Product Lab library와 별도 read model입니�
 GET /runtime/vitaldb/recorders/{vrcode}/vital-files
 ```
 
+Recorder support expectation mutation은 다음 authenticated forwarding chain만
+사용합니다.
+
+```text
+Runtime Control
+  POST /runtime/vitaldb/recorders/{vrcode}/observability/expectation
+    -> Guest Control (same path)
+      -> recorder-ingress
+         POST /internal/recorder-observability/expectations
+```
+
+Guest compose owner는
+`/mnt/runtime/recorder-ingress-expectation-control-token`을 mode `0600`으로
+한 번 생성하고 compose environment와 Guest adapter가 같은 credential을
+소비하게 합니다. 기존 credential이 비어 있거나 invalid하면 재생성으로
+상태를 덮지 않고 command unavailable로 보고합니다. Runtime/Guest는
+recorder-ingress의 accepted/idempotent/conflict/rejected receipt를 그대로
+전달하며 PostgreSQL persistence failure를 성공으로 변환하지 않습니다.
+
 응답은 recorder-ingress의 `nativeRecorderUpload` 상태와 recorder-recovery의
 `coldPathRecovery` artifact만 합칩니다. Native upload에 vrcode가 선언되지
 않았으면 relationship owner가 upload 수신 시각의 exact bedName assignment를

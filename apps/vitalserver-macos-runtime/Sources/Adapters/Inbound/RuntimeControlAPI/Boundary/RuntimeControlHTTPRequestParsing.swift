@@ -184,6 +184,24 @@ public extension RuntimeControlHTTPRequest {
         return decoded
     }
 
+    func recorderObservabilityExpectationCode() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 6,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              components[4] == "observability",
+              components[5] == "expectation",
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
     private func vitalDBRecorderActivityCode() throws -> String {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)

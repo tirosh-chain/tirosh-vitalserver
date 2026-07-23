@@ -27,6 +27,12 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .get, path: "/runtime/vitaldb/recorders/{vrcode}/activity", scope: .runtimeControl)
         case .vitalDBRecorderVitalFiles:
             return .init(method: .get, path: "/runtime/vitaldb/recorders/{vrcode}/vital-files", scope: .runtimeControl)
+        case .applyRecorderObservabilityExpectation:
+            return .init(
+                method: .post,
+                path: "/runtime/vitaldb/recorders/{vrcode}/observability/expectation",
+                scope: .runtimeControl
+            )
         case .vitalDBBeds:
             return .init(method: .get, path: "/runtime/vitaldb/beds", scope: .runtimeControl)
         case .vitalDBBed:
@@ -210,6 +216,15 @@ public extension RuntimeControlAPIEndpoint {
 
     private func matches(path: String) -> Bool {
         switch self {
+        case .applyRecorderObservabilityExpectation:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 6
+                && components[0] == "runtime"
+                && components[1] == "vitaldb"
+                && components[2] == "recorders"
+                && !components[3].isEmpty
+                && components[4] == "observability"
+                && components[5] == "expectation"
         case .vitalDBRecorderActivity,
              .vitalDBRecorderVitalFiles:
             let components = path.split(separator: "/", omittingEmptySubsequences: true)

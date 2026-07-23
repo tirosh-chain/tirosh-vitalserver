@@ -3,6 +3,9 @@ import RuntimeControl
 
 protocol RuntimeVitalDBGuestControlGateway {
     func vitalDBRecorders() throws -> RuntimeVitalRecorderHistory
+    func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) throws -> RuntimeRecorderObservabilityExpectationReceipt
     func hideVitalDBRecorders(
         _ request: RuntimeVitalDBRecorderVisibilityRequest
     ) throws -> RuntimeVitalRecorderHistory
@@ -29,6 +32,14 @@ enum RuntimeVitalDBGuestControlGatewayCapabilityError: Error {
 }
 
 extension RuntimeVitalDBGuestControlGateway {
+    func applyRecorderObservabilityExpectation(
+        _: RuntimeRecorderObservabilityExpectationCommand
+    ) throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        throw RuntimeVitalDBGuestControlGatewayCapabilityError.unavailable(
+            "vitaldb-recorder-observability-expectation"
+        )
+    }
+
     func hideVitalDBRecorders(
         _: RuntimeVitalDBRecorderVisibilityRequest
     ) throws -> RuntimeVitalRecorderHistory {

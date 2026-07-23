@@ -2605,6 +2605,77 @@
         }
       }
     },
+    "/runtime/vitaldb/recorders/{vrcode}/observability/expectation": {
+      "post": {
+        "operationId": "applyRecorderObservabilityExpectation",
+        "summary": "Apply one Recorder support expectation command",
+        "description": "Authenticated Runtime Control forwarding boundary. The Guest and recorder-ingress preserve accepted, idempotent, revision-conflict, rejected, and dependency-failure meanings.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "guestCommandProxy",
+        "x-runtime-control-access": "localServerMediated",
+        "parameters": [
+          {
+            "name": "vrcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeRecorderObservabilityExpectationCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Command accepted or idempotently replayed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeRecorderObservabilityExpectationReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The command contract is invalid or its vrcode differs from the path."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "description": "The expected revision conflicts with the current projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeRecorderObservabilityExpectationReceipt"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The complete command was rejected by domain policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeRecorderObservabilityExpectationReceipt"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Guest, credential, or PostgreSQL command persistence is unavailable."
+          }
+        }
+      }
+    },
     "/runtime/vitaldb/recorders/{vrcode}/vital-files": {
       "get": {
         "operationId": "getVitalDBRecorderVitalFiles",
@@ -4398,6 +4469,69 @@
           "readError": {
             "type": ["string", "null"]
           }
+        }
+      },
+      "RuntimeRecorderObservabilityExpectationCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "commandId",
+          "vrcode",
+          "expectedRevision",
+          "action",
+          "supportState",
+          "source",
+          "recorderVersion",
+          "producerVersion",
+          "protocolVersion",
+          "catalogRevision",
+          "expectedSince",
+          "evidenceDocument",
+          "decidedAt"
+        ],
+        "properties": {
+          "commandId": {"type": "string", "format": "uuid"},
+          "vrcode": {"type": "string"},
+          "expectedRevision": {"type": "integer", "minimum": 0},
+          "action": {"type": "string", "enum": ["set", "clear"]},
+          "supportState": {
+            "type": ["string", "null"],
+            "enum": ["supported", "unsupported", null]
+          },
+          "source": {
+            "type": ["string", "null"],
+            "enum": ["deployment_assignment", "version_catalog", "manual", null]
+          },
+          "recorderVersion": {"type": ["string", "null"]},
+          "producerVersion": {"type": ["string", "null"]},
+          "protocolVersion": {"type": ["string", "null"]},
+          "catalogRevision": {"type": ["string", "null"]},
+          "expectedSince": {"type": ["string", "null"]},
+          "evidenceDocument": {"type": "object", "additionalProperties": true},
+          "decidedAt": {"type": "string"}
+        }
+      },
+      "RuntimeRecorderObservabilityExpectationReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "commandId",
+          "eventId",
+          "vrcode",
+          "currentRevision",
+          "failure"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["accepted", "idempotent", "revisionConflict", "rejected"]
+          },
+          "commandId": {"type": "string"},
+          "eventId": {"type": ["string", "null"]},
+          "vrcode": {"type": "string"},
+          "currentRevision": {"type": "integer", "minimum": 0},
+          "failure": {"type": ["string", "null"]}
         }
       },
       "RuntimeRecorderRedisIPSyncStatus": {

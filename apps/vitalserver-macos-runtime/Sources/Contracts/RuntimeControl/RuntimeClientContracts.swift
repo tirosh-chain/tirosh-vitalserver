@@ -59,6 +59,9 @@ public protocol RuntimeControlClient {
     func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList
     func resetLabRecorders() async throws -> RuntimeLabRecorderList
     func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt
     func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
     func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
     func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
@@ -163,6 +166,14 @@ public extension RuntimeControlClient {
         _ request: RuntimeVitalDBRecorderVisibilityRequest
     ) async throws -> RuntimeVitalRecorderHistory {
         throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-recorders-hide")
+    }
+
+    func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        throw RuntimeControlClientUnsupportedError.unavailable(
+            "vitaldb-recorder-observability-expectation"
+        )
     }
 
     func unhideVitalDBRecorders(

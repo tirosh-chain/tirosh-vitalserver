@@ -641,6 +641,7 @@ class FakeVitalDBReadModel:
 class FakeRecorderIngress:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
+        self.expectation_commands: list[dict[str, object]] = []
 
     def status(self) -> dict[str, object]:
         if self.fail:
@@ -696,6 +697,25 @@ class FakeRecorderIngress:
             "producerVersion": None,
             "protocolVersion": None,
             "readError": None,
+        }
+
+    def apply_recorder_observability_expectation(
+        self,
+        command: dict[str, object],
+    ) -> dict[str, object]:
+        if self.fail:
+            raise RecorderIngressDependencyError(
+                "Recorder ingress expectation command is unavailable.",
+                kind="recorder-ingress-control-unavailable",
+            )
+        self.expectation_commands.append(command)
+        return {
+            "state": "accepted",
+            "commandId": command["commandId"],
+            "eventId": "event-001",
+            "vrcode": command["vrcode"],
+            "currentRevision": 1,
+            "failure": None,
         }
 
 
@@ -981,6 +1001,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "maintenance:update-shutdown:create",
         "maintenance:guest-poweroff:create",
         "recorder-ingress:status:get",
+        "vitaldb:recorders:observability-expectation:apply",
         "vitaldb:recorders:vital-files",
         "redis-relay:status:get",
         "vitaldb:observations:latest",
@@ -2898,3 +2919,52 @@ def test_redis_relay_status_preserves_dependency_failure() -> None:
         "document": None,
         "readError": "Redis relay status document is invalid.",
     }
+
+
+def test_apply_recorder_observability_expectation_forwards_explicit_command() -> None:
+    recorder_ingress = FakeRecorderIngress()
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        recorder_ingress=recorder_ingress,
+    )
+    command = {
+        "commandId": "command-001",
+        "vrcode": "VR-001",
+        "expectedRevision": 0,
+        "action": "clear",
+    }
+
+    receipt = usecases.apply_recorder_observability_expectation(
+        vrcode="VR-001",
+        command=command,
+    )
+
+    assert receipt["state"] == "accepted"
+    assert recorder_ingress.expectation_commands == [command]
+
+
+def test_apply_recorder_observability_expectation_preserves_dependency_failure(
+) -> None:
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+        recorder_ingress=FakeRecorderIngress(fail=True),
+    )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        usecases.apply_recorder_observability_expectation(
+            vrcode="VR-001",
+            command={
+                "commandId": "command-001",
+                "vrcode": "VR-001",
+                "expectedRevision": 0,
+                "action": "clear",
+            },
+        )
+
+    assert error.value.kind == "recorder-ingress-control-unavailable"
