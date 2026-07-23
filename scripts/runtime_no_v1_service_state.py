@@ -1289,12 +1289,12 @@ def check_operation_state_reader_does_not_copy_status_updated_at() -> CheckResul
         ),
         (
             relative(mac_runtime_environment_path),
-            "let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(",
+            "let operationLeaseOwner = SQLiteRuntimeOperationLeaseRepository(",
             mac_runtime_environment_text,
         ),
         (
             relative(mac_runtime_environment_path),
-            "url: installedPaths.runtimeOperationLease",
+            "databaseURL: installedPaths.runtimeStateDatabase",
             mac_runtime_environment_text,
         ),
         (
@@ -2288,37 +2288,12 @@ def check_runtime_current_owner_file_names_are_separate() -> CheckResult:
         ),
         (
             relative(host_owner_path),
-            'public static let vmLifecycle = "vm-lifecycle.json"',
-            host_owner_text,
-        ),
-        (
-            relative(host_owner_path),
-            'public static let runtimeEndpoint = "runtime-endpoint.json"',
-            host_owner_text,
-        ),
-        (
-            relative(host_owner_path),
             'public static let operationLease = "runtime-operation-lease.json"',
             host_owner_text,
         ),
         (
             "production",
             "RuntimeBootstrapEvidenceFileNames.vmIP",
-            product_text,
-        ),
-        (
-            "production",
-            "RuntimeHostOwnerFileNames.vmLifecycle",
-            product_text,
-        ),
-        (
-            "production",
-            "RuntimeHostOwnerFileNames.runtimeEndpoint",
-            product_text,
-        ),
-        (
-            "production",
-            "RuntimeHostOwnerFileNames.operationLease",
             product_text,
         ),
         (
@@ -2351,7 +2326,7 @@ def check_runtime_current_owner_file_names_are_separate() -> CheckResult:
     return CheckResult(
         "runtime-current-owner-file-names-separate",
         True,
-        "bootstrap address evidence and Host VM lifecycle names are not generic runtime file names",
+        "bootstrap address evidence remains separate while current Host owners are SQLite-owned",
     )
 
 
@@ -2523,11 +2498,6 @@ def check_runtime_generic_file_names_are_removed() -> CheckResult:
             'public static let runtimeInstallState = "tirosh-vitalserver-install-state.json"',
             workflow_artifact_text,
         ),
-        (
-            relative(workflow_artifact_path),
-            'public static let runtimeUninstallState = "tirosh-vitalserver-uninstall-state.json"',
-            workflow_artifact_text,
-        ),
     ]
     missing = [
         f"{path}:{token}"
@@ -2604,10 +2574,6 @@ def check_runtime_workflow_state_artifact_writers_are_named_as_artifacts() -> Ch
         MACOS_RUNTIME
         / "Tests/CLIHostTests/RuntimeInstallWorkflowStateArtifactStoreTests.swift"
     )
-    uninstall_test_path = (
-        MACOS_RUNTIME
-        / "Tests/CLIHostTests/RuntimeUninstallWorkflowStateArtifactStoreTests.swift"
-    )
     runtime_control_constants_path = (
         MACOS_RUNTIME
         / "Sources/Adapters/Outbound/MacRuntimeControlClient/Environment"
@@ -2620,19 +2586,9 @@ def check_runtime_workflow_state_artifact_writers_are_named_as_artifacts() -> Ch
             read(install_store_path),
         ),
         (
-            relative(uninstall_store_path),
-            "public struct RuntimeUninstallWorkflowStateArtifactStore",
-            read(uninstall_store_path),
-        ),
-        (
             relative(install_test_path),
             "final class RuntimeInstallWorkflowStateArtifactStoreTests",
             read(install_test_path),
-        ),
-        (
-            relative(uninstall_test_path),
-            "final class RuntimeUninstallWorkflowStateArtifactStoreTests",
-            read(uninstall_test_path),
         ),
     ]
     missing = [
@@ -2654,6 +2610,10 @@ def check_runtime_workflow_state_artifact_writers_are_named_as_artifacts() -> Ch
             "Host-owned lifecycle document at `/private/tmp/tirosh-vitalserver-uninstall-state.json`",
         ],
     )
+    if uninstall_store_path.exists():
+        forbidden.append(
+            f"{relative(uninstall_store_path)}: uninstall workflow state is SQLite-owned"
+        )
     constants_text = read(runtime_control_constants_path)
     for token in [
         "runtimeInstallState = installed.runtimeInstallState.path",
@@ -2672,7 +2632,7 @@ def check_runtime_workflow_state_artifact_writers_are_named_as_artifacts() -> Ch
     return CheckResult(
         "runtime-workflow-state-artifact-writers-named-as-artifacts",
         True,
-        "install/uninstall workflow state files are named as workflow artifacts, not current state stores",
+        "install diagnostics state is an artifact and uninstall workflow state remains SQLite-owned",
     )
 
 
@@ -4436,7 +4396,8 @@ def check_runtime_data_backup_uses_guest_control_maintenance_api() -> CheckResul
     required = [
         "lifecycle.createRedisBackupThroughGuestControl()",
         "lifecycle.restoreRedisBackupThroughGuestControl(",
-        "operation.result?.archive",
+        "redisOperation.result?.archive",
+        "postgresOperation.result?.archive",
         "operation.result?.restoredArchive",
     ]
     forbidden = [
@@ -4998,7 +4959,8 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
             "class SQLAlchemyLabSessionStore",
             "create_engine(_sqlalchemy_url(database_url)",
             '"postgresql+psycopg://"',
-            "LabRecordBase.metadata.create_all",
+            "def ensure_ready(self) -> None:",
+            'raise _unavailable("schema verification", error)',
             'kind="labSessionStoreUnavailable"',
         ],
         relative(lab_records_path): [
@@ -5024,7 +4986,7 @@ def check_guest_control_default_state_uses_sqlite_control_store() -> CheckResult
         ],
         relative(lab_sqlalchemy_tests_path): [
             "test_sqlalchemy_store_uses_same_domain_contract_with_sqlite",
-            "test_sqlalchemy_store_writes_existing_timestamp_columns",
+            "test_sqlalchemy_store_reports_missing_managed_schema",
         ],
         relative(lab_readme_path): [
             "Runtime v2 product service",
@@ -6338,7 +6300,7 @@ def check_cli_consumes_guest_control_product_apis() -> CheckResult:
             'path: "/runtime/services"',
             'path: "/runtime/stack"',
             'path: "/runtime/vitaldb/observations/latest"',
-            'path: "/runtime/vitaldb/relationships"',
+            'path: "/runtime/vitaldb/relationships?eventLimit=100"',
             'path: "/runtime/lab/scenarios"',
             'path: "/runtime/lab/vital-files/replay"',
         ],
@@ -6399,8 +6361,8 @@ def check_cli_guest_control_default_url_uses_guest_address_provider() -> CheckRe
     required = [
         "let guestAddressProvider: any RuntimeGuestAddressProvider",
         "self.guestAddressProvider = container.guestAddressProvider",
-        "guestAddressProvider ?? FileRuntimeGuestAddressResourceStore(",
-        "documentURL: installedPaths.runtimeEndpoint",
+        "guestAddressProvider ?? SQLiteRuntimeGuestAddressResourceStore(",
+        "databaseURL: installedPaths.runtimeStateDatabase",
         "readGuestAddress()",
         "guestAddressRead.loadedAddress",
         "guestAddressRead.failureStatusText",
@@ -8256,10 +8218,10 @@ def check_vitaldb_host_sqlite_projection_requires_diagnostics_mode() -> CheckRes
         "InstalledRuntimePaths.defaultInstalled.runtimeObservabilityDB.path",
     ]
     product_reader_required = [
-        "guestVitalDBReadModelProvider: .live()",
-        "guestVitalDBBedReadModelProvider: .live()",
-        "guestVitalDBActivityProvider: .live()",
-        "guestVitalDBRelationshipProvider: .live()",
+        "guestVitalDBReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL)",
+        "guestVitalDBBedReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL)",
+        "guestVitalDBActivityProvider: .live(guestControlBaseURL: guestControlBaseURL)",
+        "guestVitalDBRelationshipProvider: .live(guestControlBaseURL: guestControlBaseURL)",
         "Guest VitalDB bed read model is unavailable.",
         "Guest VitalDB activity read model is unavailable.",
         "Guest VitalDB relationship read model is unavailable.",
@@ -9271,14 +9233,9 @@ def check_host_proxy_runtime_state_read_is_vm_bootstrap_only() -> CheckResult:
     text = read(path)
     required = [
         'vm_ip_file="${vm_home}/data/run/vm-ip"',
-        'runtime_endpoint_file="${vm_home}/run/runtime-endpoint.json"',
         "read_vm_ip()",
         "upstream_ready()",
         "proxy_ready()",
-        "publish_runtime_endpoint()",
-        'printf \'{"address":"%s","source":"platform-agent","state":"loaded"}',
-        'mv -f "${temporary}" "${runtime_endpoint_file}"',
-        "clear_runtime_endpoint()",
         "waiting for Platform runtime endpoint source",
     ]
     forbidden = [
@@ -9314,7 +9271,7 @@ def check_host_proxy_runtime_state_read_is_vm_bootstrap_only() -> CheckResult:
     return CheckResult(
         "host-proxy-runtime-state-bootstrap-only",
         True,
-        "Host proxy promotes bootstrap address evidence into the durable Platform endpoint owner and uses HTTP readiness probes",
+        "Host proxy consumes bootstrap address evidence and uses direct HTTP readiness probes; the Platform Agent owns SQLite endpoint promotion",
     )
 
 
@@ -9633,10 +9590,10 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         / "Sources/Hosts/MacPlatformAgent"
         / "RuntimeControlOperationLeaseController.swift"
     )
-    json_file_operation_lease_repository_path = (
+    sqlite_operation_lease_repository_path = (
         MACOS_RUNTIME
         / "Sources/Adapters/Outbound/Persistence"
-        / "JSONFileRuntimeOperationLeaseRepository.swift"
+        / "SQLiteRuntimeOperationLeaseRepository.swift"
     )
     mac_runtime_client_path = (
         MACOS_RUNTIME
@@ -9724,7 +9681,12 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(runtime_lifecycle_path),
-            "JSONFileRuntimeOperationLeaseRepository(url: container.installedPaths.runtimeOperationLease)",
+            "SQLiteRuntimeOperationLeaseRepository(",
+            runtime_lifecycle_text,
+        ),
+        (
+            relative(runtime_lifecycle_path),
+            "databaseURL: container.installedPaths.runtimeStateDatabase",
             runtime_lifecycle_text,
         ),
         (
@@ -9849,12 +9811,12 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(mac_environment_path),
-            "let operationLeaseOwner = JSONFileRuntimeOperationLeaseRepository(",
+            "let operationLeaseOwner = SQLiteRuntimeOperationLeaseRepository(",
             mac_environment_text,
         ),
         (
             relative(mac_environment_path),
-            "url: installedPaths.runtimeOperationLease",
+            "databaseURL: installedPaths.runtimeStateDatabase",
             mac_environment_text,
         ),
         (
@@ -9909,7 +9871,7 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(operation_lease_race_troubleshooting_path),
-            "`vm/run/runtime-operation-lease.json`은 그 owner document이며 API와 CLI workflow가 같은 lock/atomic-write repository를 공유합니다.",
+            "`runtime-state.sqlite.runtime_operation_lease`가 owner이며 API와 CLI workflow가 같은 transaction/revision repository를 공유합니다.",
             operation_lease_race_troubleshooting_text,
         ),
         (
@@ -9944,12 +9906,12 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
         ),
         (
             relative(log_export_contract_path),
-            "diagnostics/platform/\\(RuntimeHostOwnerFileNames.operationLease)",
+            'relativeDestination: "diagnostics/host/runtime-state.sqlite"',
             log_export_contract_text,
         ),
         (
             relative(log_export_sources_path),
-            "return installed.runtimeOperationLease",
+            "return installed.runtimeStateDatabase",
             log_export_sources_text,
         ),
         (
@@ -9972,20 +9934,15 @@ def check_cli_host_centralizes_operation_lease_owner_adapter_selection(
             "return installed.runtimeObservation",
             log_export_sources_text,
         ),
-        (
-            relative(log_export_sources_path),
-            "return installed.vmLifecycle",
-            log_export_sources_text,
-        ),
     ]
     missing = [
         f"{path}:{token}"
         for path, token, text in required
         if token not in text
     ]
-    if not json_file_operation_lease_repository_path.exists():
+    if not sqlite_operation_lease_repository_path.exists():
         missing.append(
-            f"{relative(json_file_operation_lease_repository_path)}:durable Platform operation lease owner is missing"
+            f"{relative(sqlite_operation_lease_repository_path)}:durable Platform operation lease owner is missing"
         )
     forbidden = [
         (
@@ -10225,12 +10182,12 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
     provider_store_path = (
         MACOS_RUNTIME
         / "Sources/Adapters/Outbound/Persistence"
-        / "FileRuntimeVMLifecycleResourceStore.swift"
+        / "SQLiteRuntimeVMLifecycleResourceStore.swift"
     )
     provider_store_tests_path = (
         MACOS_RUNTIME
         / "Tests/OutboundAdaptersTests"
-        / "FileRuntimeVMLifecycleResourceStoreTests.swift"
+        / "SQLiteRuntimeVMLifecycleStateRepositoryTests.swift"
     )
     status_owner_readers_path = (
         MACOS_RUNTIME
@@ -10331,13 +10288,13 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
         (relative(api_handler_path), "vmLifecycleClient.putVMLifecycleResource(request.document)"),
         (relative(mac_environment_path), "RuntimeControlVMLifecycleController("),
         (relative(controller_path), "final class RuntimeControlVMLifecycleController"),
-        (relative(controller_path), "FileRuntimeVMLifecycleResourceStore("),
-        (relative(provider_store_path), "public struct FileRuntimeVMLifecycleResourceStore"),
+        (relative(controller_path), "SQLiteRuntimeVMLifecycleResourceStore("),
+        (relative(provider_store_path), "public struct SQLiteRuntimeVMLifecycleResourceStore"),
         (relative(provider_store_path), "RuntimeVMLifecycleResourceReading"),
         (relative(provider_store_path), "RuntimeVMLifecycleResourceWriting"),
-        (relative(provider_store_path), "options: .atomic"),
-        (relative(provider_store_tests_path), "testWritePersistsLifecycleForAnotherReader"),
-        (relative(provider_store_tests_path), "testInvalidDocumentStaysFailedInsteadOfMissing"),
+        (relative(provider_store_path), "SQLiteRuntimeVMLifecycleStateRepository"),
+        (relative(provider_store_tests_path), "testPersistsTransitionsAndOutboxInSameRevisionOrder"),
+        (relative(provider_store_tests_path), "testStaleTransitionDoesNotWriteStateOrOutbox"),
         (relative(outbound_client_path), "public struct RuntimeControlAPIVMLifecycleOwner"),
         (relative(outbound_client_path), 'path: "/platform/runtime-provider"'),
         (relative(outbound_client_path), "invalidVMLifecycleState"),
@@ -10347,22 +10304,22 @@ def check_host_vm_lifecycle_has_runtime_control_api_owner_surface() -> CheckResu
         (relative(resource_reader_path), "public struct UnavailableRuntimeVMLifecycleResourceReader"),
         (relative(resource_reader_path), "enum RuntimeVMLifecycleResourceReadMapper"),
         (relative(mac_environment_path), "vmLifecycleResourceReader: vmLifecycleController"),
-        (relative(mac_client_path), "platformStateReader: Self.livePlatformStateReader()"),
+        (relative(mac_client_path), "platformStateReader: PlatformStateReading = SystemPlatformStateReader()"),
         (relative(mac_client_path), "vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading"),
         (relative(mac_client_path), "vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()"),
         (relative(status_owner_readers_path), "RuntimeVMLifecycleResourceReadMapper.statusRead"),
         (relative(health_checker_path), "RuntimeVMLifecycleResourceReadMapper.loadResult"),
-        (relative(lifecycle_composition_path), "vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()"),
-        (relative(launcher_path), "FileRuntimeVMLifecycleResourceStore("),
-        (relative(launcher_path), "documentURL: paths.installed.vmLifecycle"),
+        (relative(lifecycle_composition_path), "vmLifecycleResourceReader: SQLiteRuntimeVMLifecycleResourceStore("),
+        (relative(launcher_path), "SQLiteRuntimeVMLifecycleResourceStore("),
+        (relative(launcher_path), "databaseURL: paths.installed.runtimeStateDatabase"),
         (relative(launcher_path), "writeVMLifecycleResource"),
         (relative(vm_delegate_composition_path), "lifecycleWriter: any RuntimeVMLifecycleResourceWriting"),
         (relative(vm_termination_composition_path), "lifecycleWriter: any RuntimeVMLifecycleResourceWriting"),
         (relative(api_tests_path), "testRouterServesAndUpdatesHostVMLifecycleResourceWithoutLoadingStatus"),
         (relative(controller_tests_path), "testLoadReportsMissingDistinctly"),
         (relative(outbound_client_tests_path), "testHTTPFailureDoesNotBecomeMissingResource"),
-        (relative(watchdog_composition_path), "FileRuntimeVMLifecycleResourceStore("),
-        (relative(cli_lifecycle_path), "FileRuntimeVMLifecycleResourceStore("),
+        (relative(watchdog_composition_path), "SQLiteRuntimeVMLifecycleResourceStore("),
+        (relative(cli_lifecycle_path), "SQLiteRuntimeVMLifecycleResourceStore("),
         (relative(cli_lifecycle_path), "skipped VM lifecycle stopped write after process stop"),
         (relative(openapi_path), '"/platform/runtime-provider"'),
         (relative(openapi_path), '"RuntimeProviderResourceState"'),
@@ -10467,13 +10424,12 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
     )
     durable_store_path = (
         MACOS_RUNTIME
-        / "Sources/Adapters/Outbound/Persistence/FileRuntimeGuestAddressResourceStore.swift"
+        / "Sources/Adapters/Outbound/Persistence/SQLiteRuntimeGuestAddressResourceStore.swift"
     )
     durable_store_tests_path = (
         MACOS_RUNTIME
-        / "Tests/OutboundAdaptersTests/FileRuntimeGuestAddressResourceStoreTests.swift"
+        / "Tests/OutboundAdaptersTests/SQLiteRuntimeEndpointStateRepositoryTests.swift"
     )
-    proxy_path = MACOS_RUNTIME / "Support/Packaging/proxy-run.template"
     outbound_client_path = (
         MACOS_RUNTIME
         / "Sources/Adapters/Outbound/RuntimeControlAPI/RuntimeControlAPIGuestAddressOwner.swift"
@@ -10526,7 +10482,6 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
         relative(controller_path): read(controller_path),
         relative(durable_store_path): read(durable_store_path),
         relative(durable_store_tests_path): read(durable_store_tests_path),
-        relative(proxy_path): read(proxy_path),
         relative(outbound_client_path): read(outbound_client_path),
         relative(resource_reader_path): read(resource_reader_path),
         relative(mac_client_path): read(mac_client_path),
@@ -10551,20 +10506,20 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
         (relative(controller_path), "final class RuntimeControlGuestAddressController"),
         (relative(controller_path), "any RuntimeGuestAddressResourceReading"),
         (relative(controller_path), "any RuntimeGuestAddressResourceWriting"),
-        (relative(durable_store_path), "public struct FileRuntimeGuestAddressResourceStore"),
-        (relative(durable_store_path), "options: .atomic"),
+        (relative(durable_store_path), "public struct SQLiteRuntimeGuestAddressResourceStore"),
+        (relative(durable_store_path), "SQLiteRuntimeEndpointStateRepository"),
         (relative(durable_store_path), "source: .platformAgent"),
-        (relative(durable_store_tests_path), "testPutPersistsEndpointForAnotherReader"),
-        (relative(proxy_path), 'runtime_endpoint_file="${vm_home}/run/runtime-endpoint.json"'),
-        (relative(proxy_path), "publish_runtime_endpoint()"),
-        (relative(proxy_path), '"source":"platform-agent"'),
+        (relative(durable_store_tests_path), "testEndpointRequiresMatchingBootAndLifecycleRevision"),
+        (relative(durable_store_tests_path), "loadRuntimeEndpointState()"),
+        (relative(mac_environment_path), "RuntimeEndpointSynchronizationLoop("),
+        (relative(mac_environment_path), "FileRuntimeGuestAddressBootstrapReader("),
         (relative(outbound_client_path), "public struct RuntimeControlAPIGuestAddressOwner"),
         (relative(outbound_client_path), 'path: "/platform/runtime-endpoint"'),
         (relative(outbound_client_path), "invalidGuestAddressState"),
         (relative(resource_reader_path), "public struct RuntimeControlAPIGuestAddressProvider"),
         (relative(resource_reader_path), "RuntimeGuestAddressResourceReadMapper.readResult"),
         (relative(mac_environment_path), "guestAddressProvider: runtimeEndpointStore"),
-        (relative(mac_client_path), "platformStateReader: Self.livePlatformStateReader()"),
+        (relative(mac_client_path), "platformStateReader: PlatformStateReading = SystemPlatformStateReader()"),
         (relative(mac_client_path), "guestAddressProvider: any RuntimeGuestAddressProvider"),
         (relative(mac_client_path), "guestAddressProvider: RuntimeControlAPIGuestAddressProvider()"),
         (relative(status_owner_readers_path), "UnavailableRuntimeGuestAddressProvider("),
@@ -10575,9 +10530,9 @@ def check_host_guest_address_has_runtime_control_api_owner_surface() -> CheckRes
         (relative(openapi_path), '"RuntimeEndpointResourceState"'),
         (relative(api_docs_path), "`GET /platform/runtime-endpoint`"),
         (relative(api_docs_path), "`PUT /platform/runtime-endpoint`"),
-        (relative(guest_control_docs_path), "`vm/run/runtime-endpoint.json` is the durable owner document"),
-        (relative(vm_ip_troubleshooting_path), "durable runtime endpoint owner (`vm/run/runtime-endpoint.json`)"),
-        (relative(vm_ip_troubleshooting_path), "Platform proxy adapter explicitly promotes into the owner document"),
+        (relative(guest_control_docs_path), "`runtime-state.sqlite.runtime_endpoint` is the durable owner"),
+        (relative(vm_ip_troubleshooting_path), "durable `runtime-state.sqlite.runtime_endpoint` owner"),
+        (relative(vm_ip_troubleshooting_path), "Platform proxy adapter explicitly promotes into the SQLite owner"),
     ]
     missing = [
         f"{path}:{token}"
