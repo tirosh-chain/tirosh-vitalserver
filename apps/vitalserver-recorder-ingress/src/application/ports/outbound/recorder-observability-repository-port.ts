@@ -5,6 +5,10 @@ import type {
   RecorderObservabilityResourceType,
 } from "../../../domain/recorder-observability";
 import type {
+  RecorderObservabilityExpectationCommand,
+  RecorderObservabilityExpectationDecision,
+} from "../../../domain/recorder-observability-expectation";
+import type {
   RecorderObservabilityReportState,
   RecorderObservabilitySupportState,
 } from "../../../domain/recorder-observability";
@@ -73,6 +77,9 @@ export interface RecorderObservabilityRepositoryPort {
     replaceCurrent: boolean,
   ): Promise<void>;
   failProjection(recordId: string, error: string): Promise<void>;
+  applyExpectationCommand(
+    command: RecorderObservabilityExpectationCommand,
+  ): Promise<RecorderObservabilityExpectationDecision>;
   listCurrentRecorders(): Promise<RecorderObservabilitySummaryReadModel[]>;
   readRecorderObservability(
     vrcode: string,

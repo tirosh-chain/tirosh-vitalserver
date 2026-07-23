@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Pool, type PoolClient } from "pg";
 import type {
   PreparedRecorderObservabilityLine,
@@ -9,6 +10,13 @@ import {
   mergeCurrentProjection,
   summarizeCurrentProjection,
 } from "../../../domain/recorder-observability";
+import {
+  decideRecorderObservabilityExpectation,
+  validateRecorderObservabilityExpectationCommand,
+  type RecorderObservabilityExpectationCommand,
+  type RecorderObservabilityExpectationEvent,
+  type RecorderObservabilityExpectationProjection,
+} from "../../../domain/recorder-observability-expectation";
 import type {
   CurrentProjection,
   ProjectionCandidate,
@@ -43,6 +51,8 @@ export function createRecorderObservabilityRepository(config: {
   freshnessToleranceMultiplier?: number;
   freshnessAllowanceSeconds?: number;
   firstReportGraceSeconds?: number;
+  eventId?: () => string;
+  now?: () => string;
 }): RecorderObservabilityRepositoryPort {
   const pool = new Pool({
     host: config.host,
@@ -56,6 +66,8 @@ export function createRecorderObservabilityRepository(config: {
     config.freshnessToleranceMultiplier || 3;
   const freshnessAllowanceSeconds = config.freshnessAllowanceSeconds ?? 30;
   const firstReportGraceSeconds = config.firstReportGraceSeconds ?? 300;
+  const eventId = config.eventId ?? randomUUID;
+  const now = config.now ?? (() => new Date().toISOString());
 
   return {
     async ping() {
@@ -75,8 +87,14 @@ export function createRecorderObservabilityRepository(config: {
              ('current', 'report_state'),
              ('current', 'latest_received_at'),
              ('expectations', 'vrcode'),
+             ('expectations', 'revision'),
+             ('expectations', 'lifecycle_state'),
+             ('expectations', 'source_event_id'),
              ('expectations', 'support_state'),
-             ('expectations', 'source')
+             ('expectations', 'source'),
+             ('expectation_events', 'event_id'),
+             ('expectation_events', 'command_id'),
+             ('expectation_events', 'revision')
          )
          SELECT required.table_name, required.column_name
            FROM required
@@ -170,6 +188,65 @@ export function createRecorderObservabilityRepository(config: {
         [recordId, error.slice(0, 2048)],
       );
     },
+    async applyExpectationCommand(command) {
+      return withTransaction(pool, async (client) => {
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+          [command.vrcode],
+        );
+        const currentResult = await client.query(
+          `SELECT *
+             FROM recorder_observability.expectations
+            WHERE vrcode = $1
+            FOR UPDATE`,
+          [command.vrcode],
+        );
+        const receivedAt = now();
+        const validationFailure =
+          validateRecorderObservabilityExpectationCommand(command, receivedAt);
+        if (validationFailure) {
+          return {
+            kind: "rejected",
+            currentRevision: currentResult.rows[0]
+              ? Number(currentResult.rows[0].revision)
+              : 0,
+            failure: validationFailure,
+          };
+        }
+        const existingEventResult = await client.query(
+          `SELECT *
+             FROM recorder_observability.expectation_events
+            WHERE command_id = $1`,
+          [command.commandId],
+        );
+        const decision = decideRecorderObservabilityExpectation({
+          command,
+          current: currentResult.rows[0]
+            ? expectationProjectionFromRow(currentResult.rows[0])
+            : null,
+          existingEvent: existingEventResult.rows[0]
+            ? expectationEventFromRow(existingEventResult.rows[0])
+            : null,
+          eventId: eventId(),
+          receivedAt,
+        });
+        if (decision.kind !== "accepted") return decision;
+
+        await insertExpectationEvent(client, decision.event);
+        const saved = await saveExpectationProjection(
+          client,
+          decision.projection,
+          decision.event.previousRevision,
+        );
+        if (!saved) {
+          throw new Error(
+            `expectation_projection_cas_failed:vrcode=${command.vrcode}`
+              + `:expectedRevision=${decision.event.previousRevision}`,
+          );
+        }
+        return decision;
+      });
+    },
     async listCurrentRecorders() {
       const result = await pool.query(
         `WITH current_summary AS (
@@ -220,7 +297,11 @@ export function createRecorderObservabilityRepository(config: {
                expectation.expected_since,
                CURRENT_TIMESTAMP AS evaluated_at
           FROM current_summary
-          FULL OUTER JOIN recorder_observability.expectations AS expectation
+          FULL OUTER JOIN (
+            SELECT *
+              FROM recorder_observability.expectations
+             WHERE lifecycle_state = 'active'
+          ) AS expectation
             ON expectation.vrcode = current_summary.vrcode
          ORDER BY vrcode`,
         [freshnessToleranceMultiplier, freshnessAllowanceSeconds],
@@ -282,7 +363,10 @@ export function createRecorderObservabilityRepository(config: {
                CURRENT_TIMESTAMP AS evaluated_at
           FROM current_summary
           FULL OUTER JOIN (
-            SELECT * FROM recorder_observability.expectations WHERE vrcode = $1
+            SELECT *
+              FROM recorder_observability.expectations
+             WHERE vrcode = $1
+               AND lifecycle_state = 'active'
           ) AS expectation
             ON expectation.vrcode = current_summary.vrcode`,
         [
@@ -677,6 +761,131 @@ async function withTransaction<T>(
   } finally {
     client.release();
   }
+}
+
+async function insertExpectationEvent(
+  client: PoolClient,
+  event: RecorderObservabilityExpectationEvent,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO recorder_observability.expectation_events (
+       event_id, command_id, vrcode, previous_revision, revision, action,
+       support_state, source, recorder_version, producer_version,
+       protocol_version, catalog_revision, expected_since, evidence_document,
+       decided_at, received_at
+     ) VALUES (
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16
+     )`,
+    [
+      event.eventId,
+      event.commandId,
+      event.vrcode,
+      event.previousRevision,
+      event.revision,
+      event.action,
+      event.supportState,
+      event.source,
+      event.recorderVersion,
+      event.producerVersion,
+      event.protocolVersion,
+      event.catalogRevision,
+      event.expectedSince,
+      JSON.stringify(event.evidenceDocument),
+      event.decidedAt,
+      event.receivedAt,
+    ],
+  );
+}
+
+async function saveExpectationProjection(
+  client: PoolClient,
+  projection: RecorderObservabilityExpectationProjection,
+  expectedRevision: number,
+): Promise<boolean> {
+  const result = await client.query(
+    `INSERT INTO recorder_observability.expectations (
+       vrcode, revision, lifecycle_state, source_event_id, support_state,
+       source, recorder_version, producer_version, protocol_version,
+       catalog_revision, expected_since, evidence_document, updated_at
+     ) VALUES (
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13
+     )
+     ON CONFLICT (vrcode) DO UPDATE SET
+       revision = EXCLUDED.revision,
+       lifecycle_state = EXCLUDED.lifecycle_state,
+       source_event_id = EXCLUDED.source_event_id,
+       support_state = EXCLUDED.support_state,
+       source = EXCLUDED.source,
+       recorder_version = EXCLUDED.recorder_version,
+       producer_version = EXCLUDED.producer_version,
+       protocol_version = EXCLUDED.protocol_version,
+       catalog_revision = EXCLUDED.catalog_revision,
+       expected_since = EXCLUDED.expected_since,
+       evidence_document = EXCLUDED.evidence_document,
+       updated_at = EXCLUDED.updated_at
+     WHERE recorder_observability.expectations.revision = $14`,
+    [
+      projection.vrcode,
+      projection.revision,
+      projection.lifecycleState,
+      projection.sourceEventId,
+      projection.supportState,
+      projection.source,
+      projection.recorderVersion,
+      projection.producerVersion,
+      projection.protocolVersion,
+      projection.catalogRevision,
+      projection.expectedSince,
+      JSON.stringify(projection.evidenceDocument),
+      projection.updatedAt,
+      expectedRevision,
+    ],
+  );
+  return result.rowCount === 1;
+}
+
+function expectationProjectionFromRow(
+  row: Record<string, any>,
+): RecorderObservabilityExpectationProjection {
+  return {
+    vrcode: String(row.vrcode),
+    revision: Number(row.revision),
+    lifecycleState: row.lifecycle_state,
+    sourceEventId: String(row.source_event_id),
+    supportState: row.support_state || null,
+    source: row.source || null,
+    recorderVersion: row.recorder_version || null,
+    producerVersion: row.producer_version || null,
+    protocolVersion: row.protocol_version || null,
+    catalogRevision: row.catalog_revision || null,
+    expectedSince: iso(row.expected_since),
+    evidenceDocument: row.evidence_document,
+    updatedAt: iso(row.updated_at) || "",
+  };
+}
+
+function expectationEventFromRow(
+  row: Record<string, any>,
+): RecorderObservabilityExpectationEvent {
+  return {
+    eventId: String(row.event_id),
+    commandId: String(row.command_id),
+    vrcode: String(row.vrcode),
+    expectedRevision: Number(row.previous_revision),
+    previousRevision: Number(row.previous_revision),
+    revision: Number(row.revision),
+    action: row.action,
+    supportState: row.support_state || null,
+    source: row.source || null,
+    recorderVersion: row.recorder_version || null,
+    producerVersion: row.producer_version || null,
+    protocolVersion: row.protocol_version || null,
+    catalogRevision: row.catalog_revision || null,
+    expectedSince: iso(row.expected_since),
+    evidenceDocument: row.evidence_document,
+    decidedAt: iso(row.decided_at) || "",
+    receivedAt: iso(row.received_at) || "",
+  };
 }
 
 function iso(value: unknown): string | null {

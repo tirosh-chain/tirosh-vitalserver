@@ -47,8 +47,38 @@ VALUES (
   CURRENT_TIMESTAMP
 );
 
+INSERT INTO recorder_observability.expectation_events (
+  event_id,
+  command_id,
+  vrcode,
+  previous_revision,
+  revision,
+  action,
+  support_state,
+  source,
+  expected_since,
+  evidence_document,
+  decided_at
+)
+VALUES (
+  '30000000-0000-4000-8000-000000000001',
+  '30000000-0000-4000-8000-000000000002',
+  'PROOF-RECORDER',
+  0,
+  1,
+  'set',
+  'supported',
+  'manual',
+  CURRENT_TIMESTAMP,
+  '{"proofId":"${proof_id}"}'::jsonb,
+  CURRENT_TIMESTAMP
+);
+
 INSERT INTO recorder_observability.expectations (
   vrcode,
+  revision,
+  lifecycle_state,
+  source_event_id,
   support_state,
   source,
   expected_since,
@@ -56,6 +86,9 @@ INSERT INTO recorder_observability.expectations (
 )
 VALUES (
   'PROOF-RECORDER',
+  1,
+  'active',
+  '30000000-0000-4000-8000-000000000001',
   'supported',
   'manual',
   CURRENT_TIMESTAMP,
@@ -103,6 +136,14 @@ SELECT jsonb_build_object(
   'recorderExpectation',
     (SELECT evidence_document
        FROM recorder_observability.expectations
+      WHERE vrcode = 'PROOF-RECORDER'),
+  'recorderExpectationEvent',
+    (SELECT jsonb_build_object(
+       'commandId', command_id,
+       'revision', revision,
+       'action', action
+     )
+       FROM recorder_observability.expectation_events
       WHERE vrcode = 'PROOF-RECORDER')
 )::text;
 "

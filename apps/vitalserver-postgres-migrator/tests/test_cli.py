@@ -13,6 +13,10 @@ EXPECTATION_MIGRATION = (
     Path(__file__).resolve().parents[1]
     / "migrations/versions/0002_observability_expectations.py"
 )
+EXPECTATION_WORKFLOW_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "migrations/versions/0003_expectation_workflow.py"
+)
 MIGRATION_DIRECTORY = MIGRATION.parent
 
 
@@ -48,6 +52,18 @@ def test_observability_expectation_revision_preserves_unknown_as_absence() -> No
     assert "support_state IN ('supported', 'unsupported')" in source
     assert "'unknown'" not in source
     assert "expected_since IS NOT NULL" in source
+
+
+def test_expectation_workflow_revision_adds_journal_and_current_cas_fields() -> None:
+    source = EXPECTATION_WORKFLOW_MIGRATION.read_text(encoding="utf-8")
+    assert 'down_revision = "0002_observability_expectations"' in source
+    assert "recorder_observability.expectation_events" in source
+    assert "command_id uuid NOT NULL UNIQUE" in source
+    assert "UNIQUE (vrcode, revision)" in source
+    assert "revision = previous_revision + 1" in source
+    assert "lifecycle_state IN ('active', 'cleared')" in source
+    assert "expectations_source_event_fk" in source
+    assert "action = 'clear'" in source
 
 
 @pytest.mark.parametrize("migration", sorted(MIGRATION_DIRECTORY.glob("*.py")))

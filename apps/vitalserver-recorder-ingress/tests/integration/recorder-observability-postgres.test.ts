@@ -24,12 +24,19 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
     freshnessToleranceMultiplier: 3,
     freshnessAllowanceSeconds: 30,
     firstReportGraceSeconds: 300,
+    eventId: eventIds([
+      "10000000-0000-4000-8000-000000000001",
+      "10000000-0000-4000-8000-000000000002",
+      "10000000-0000-4000-8000-000000000003",
+    ]),
+    now: () => "2026-07-23T01:10:00Z",
   };
   const repository = createRecorderObservabilityRepository(config);
   const inspect = new Pool(config);
   await repository.ping();
   await inspect.query(
-    `TRUNCATE recorder_observability.expectations,
+    `TRUNCATE recorder_observability.expectation_events,
+              recorder_observability.expectations,
               recorder_observability.current,
               recorder_observability.records,
               recorder_observability.requests
@@ -105,14 +112,44 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
     severity: "unknown",
   }]);
 
-  await inspect.query(
-    `INSERT INTO recorder_observability.expectations (
-       vrcode, support_state, source, recorder_version, expected_since
-     ) VALUES
-       ('BRMH-OR2', 'supported', 'deployment_assignment', '1.19.0',
-        CURRENT_TIMESTAMP - INTERVAL '10 minutes'),
-       ('BRMH-OR3', 'unsupported', 'version_catalog', '1.18.43', NULL)`,
+  const supportedCommand = expectationCommand({
+    commandId: "20000000-0000-4000-8000-000000000001",
+    vrcode: "BRMH-OR2",
+    recorderVersion: "1.19.0",
+  });
+  const supportedDecision = await repository.applyExpectationCommand(
+    supportedCommand,
   );
+  const retryDecision = await repository.applyExpectationCommand(
+    supportedCommand,
+  );
+  const unsupportedDecision = await repository.applyExpectationCommand(
+    expectationCommand({
+      commandId: "20000000-0000-4000-8000-000000000002",
+      vrcode: "BRMH-OR3",
+      supportState: "unsupported",
+      source: "version_catalog",
+      recorderVersion: "1.18.43",
+      expectedSince: null,
+    }),
+  );
+  const conflictDecision = await repository.applyExpectationCommand(
+    expectationCommand({
+      commandId: "20000000-0000-4000-8000-000000000003",
+      vrcode: "BRMH-OR2",
+      supportState: "unsupported",
+      source: "manual",
+      expectedSince: null,
+    }),
+  );
+  assert.strictEqual(supportedDecision.kind, "accepted");
+  assert.strictEqual(retryDecision.kind, "idempotent");
+  assert.strictEqual(unsupportedDecision.kind, "accepted");
+  assert.deepStrictEqual(conflictDecision, {
+    kind: "revisionConflict",
+    currentRevision: 1,
+    failure: "revisionConflict",
+  });
   const summaries = await repository.listCurrentRecorders();
   assert.deepStrictEqual(
     summaries.map((summary) => ({
@@ -142,6 +179,27 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
       },
     ],
   );
+  const clearDecision = await repository.applyExpectationCommand(
+    expectationCommand({
+      commandId: "20000000-0000-4000-8000-000000000004",
+      vrcode: "BRMH-OR3",
+      expectedRevision: 1,
+      action: "clear",
+      supportState: null,
+      source: null,
+      recorderVersion: null,
+      producerVersion: null,
+      protocolVersion: null,
+      catalogRevision: null,
+      expectedSince: null,
+      evidenceDocument: {},
+    }),
+  );
+  assert.strictEqual(clearDecision.kind, "accepted");
+  assert.deepStrictEqual(
+    (await repository.listCurrentRecorders()).map((summary) => summary.vrcode),
+    ["BRMH-OR1", "BRMH-OR2"],
+  );
 
   const tables = await inspect.query(
     `SELECT tablename
@@ -151,6 +209,7 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
   );
   assert.deepStrictEqual(tables.rows.map((row) => row.tablename), [
     "current",
+    "expectation_events",
     "expectations",
     "records",
     "requests",
@@ -159,6 +218,30 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
   await repository.close();
   await inspect.end();
 });
+
+function expectationCommand(overrides = {}) {
+  return {
+    commandId: "20000000-0000-4000-8000-000000000001",
+    vrcode: "BRMH-OR2",
+    expectedRevision: 0,
+    action: "set",
+    supportState: "supported",
+    source: "deployment_assignment",
+    recorderVersion: null,
+    producerVersion: null,
+    protocolVersion: null,
+    catalogRevision: null,
+    expectedSince: "2026-07-23T00:50:00Z",
+    evidenceDocument: { deploymentId: "deployment-1" },
+    decidedAt: "2026-07-23T00:50:00Z",
+    ...overrides,
+  };
+}
+
+function eventIds(values) {
+  let index = 0;
+  return () => values[index++] || "10000000-0000-4000-8000-999999999999";
+}
 
 function batch(overrides = {}) {
   return {
