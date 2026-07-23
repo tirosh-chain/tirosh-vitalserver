@@ -185,7 +185,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
         XCTAssertEqual(
             compose.components(separatedBy: "seccomp=unconfined").count - 1,
-            11
+            12
         )
     }
 
