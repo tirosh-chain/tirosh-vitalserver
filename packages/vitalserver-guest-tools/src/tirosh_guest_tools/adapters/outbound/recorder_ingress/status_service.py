@@ -117,6 +117,70 @@ class RecorderIngressStatusServiceAdapter:
                 )
             raise
 
+    def recorder_observability_timeline(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, Any]:
+        return self._recorder_observability_history(
+            vrcode,
+            "timeline",
+            query,
+        )
+
+    def recorder_observability_incidents(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, Any]:
+        return self._recorder_observability_history(
+            vrcode,
+            "incidents",
+            query,
+        )
+
+    def _recorder_observability_history(
+        self,
+        vrcode: str,
+        resource: str,
+        query: dict[str, str],
+    ) -> dict[str, Any]:
+        from urllib.parse import quote, urlencode
+
+        url = (
+            f"{self._observability_url}/{quote(vrcode, safe='')}"
+            f"/observability/{resource}?{urlencode(query)}"
+        )
+        _http_status, document = self._read_document(
+            url,
+            operation=f"Recorder observability {resource} for {vrcode}",
+        )
+        if (
+            document.get("vrcode") != vrcode
+            or document.get("timeBasis") != "receivedAt"
+            or document.get("readError") is not None
+        ):
+            raise _observability_contract_error(
+                f"{resource} identity or read state is invalid"
+            )
+        if resource == "timeline":
+            state = document.get("state")
+            support_state = document.get("supportState")
+            buckets = document.get("buckets")
+            if (
+                state not in {"loaded", "notReported", "unsupported"}
+                or support_state not in {"supported", "unsupported", "unknown"}
+                or not isinstance(buckets, list)
+                or (state == "loaded" and not buckets)
+                or (state == "unsupported" and support_state != "unsupported")
+            ):
+                raise _observability_contract_error("timeline is invalid")
+        elif document.get("state") != "loaded" or not isinstance(
+            document.get("incidents"), list
+        ):
+            raise _observability_contract_error("incidents are invalid")
+        return document
+
     def apply_recorder_observability_expectation(
         self,
         command: dict[str, Any],

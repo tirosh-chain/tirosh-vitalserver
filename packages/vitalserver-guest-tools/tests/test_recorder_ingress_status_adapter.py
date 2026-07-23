@@ -330,6 +330,60 @@ def test_recorder_ingress_adapter_accepts_typed_observability_detail(
     assert "resources" not in result
 
 
+def test_recorder_ingress_adapter_forwards_bounded_timeline_query(
+    monkeypatch: Any,
+) -> None:
+    requested: list[str] = []
+    document = {
+        "state": "notReported",
+        "vrcode": "VR-001",
+        "supportState": "supported",
+        "timeBasis": "receivedAt",
+        "query": {
+            "from": "2026-07-23T00:00:00.000Z",
+            "until": "2026-07-24T00:00:00.000Z",
+            "bucketSeconds": 900,
+        },
+        "buckets": [],
+        "readError": None,
+    }
+
+    class Response:
+        status = 200
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def read(self) -> bytes:
+            return json.dumps(document).encode()
+
+    def fake_urlopen(request: Any, *, timeout: float) -> Response:
+        del timeout
+        requested.append(request.full_url)
+        return Response()
+
+    monkeypatch.setattr(status_service, "urlopen", fake_urlopen)
+    result = RecorderIngressStatusServiceAdapter().recorder_observability_timeline(
+        "VR-001",
+        {
+            "from": "2026-07-23T00:00:00Z",
+            "until": "2026-07-24T00:00:00Z",
+            "bucketSeconds": "900",
+        },
+    )
+
+    assert result == document
+    assert requested[0].endswith(
+        "/VR-001/observability/timeline"
+        "?from=2026-07-23T00%3A00%3A00Z"
+        "&until=2026-07-24T00%3A00%3A00Z"
+        "&bucketSeconds=900"
+    )
+
+
 def test_recorder_ingress_adapter_posts_authenticated_expectation_command(
     monkeypatch: Any,
 ) -> None:

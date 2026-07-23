@@ -766,6 +766,34 @@ class FakeRecorderIngress:
     def recorder_observability_detail(self, vrcode: str) -> dict[str, object]:
         return _recorder_observability_detail(vrcode)
 
+    def recorder_observability_timeline(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "vrcode": vrcode,
+            "timeBasis": "receivedAt",
+            "query": query,
+            "buckets": [],
+            "readError": None,
+        }
+
+    def recorder_observability_incidents(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "vrcode": vrcode,
+            "timeBasis": "receivedAt",
+            "incidents": [],
+            "nextCursor": None,
+            "readError": None,
+        }
+
     def apply_recorder_observability_expectation(
         self,
         command: dict[str, object],
@@ -2793,6 +2821,37 @@ def test_vitaldb_recorder_observability_route_preserves_support_axes(
     assert document["support"]["state"] == "supported"
     assert document["report"]["state"] == "current"
     assert "resources" not in document
+
+
+def test_vitaldb_recorder_observability_history_routes_forward_bounded_query(
+    usecases: GuestControlUseCases,
+) -> None:
+    timeline_status, timeline = route_request(
+        method="GET",
+        path="/runtime/vitaldb/recorders/VR-001/observability/timeline",
+        query={
+            "from": ["2026-07-23T00:00:00Z"],
+            "until": ["2026-07-24T00:00:00Z"],
+            "bucketSeconds": ["900"],
+        },
+        usecases=usecases,
+    )
+    incident_status, incidents = route_request(
+        method="GET",
+        path="/runtime/vitaldb/recorders/VR-001/observability/incidents",
+        query={
+            "from": ["2026-07-01T00:00:00Z"],
+            "until": ["2026-07-24T00:00:00Z"],
+            "limit": ["25"],
+        },
+        usecases=usecases,
+    )
+
+    assert timeline_status == HTTPStatus.OK
+    assert timeline["timeBasis"] == "receivedAt"
+    assert timeline["query"]["bucketSeconds"] == "900"
+    assert incident_status == HTTPStatus.OK
+    assert incidents["nextCursor"] is None
 
 
 def test_vitaldb_recorders_visibility_routes_require_hidden_before_delete(

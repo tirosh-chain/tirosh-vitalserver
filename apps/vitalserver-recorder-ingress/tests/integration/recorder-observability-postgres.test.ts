@@ -150,6 +150,83 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
     currentRevision: 1,
     failure: "revisionConflict",
   });
+  const timeline = await repository.readRecorderObservabilityTimeline({
+    vrcode: "BRMH-OR1",
+    from: "2026-07-23T01:00:00Z",
+    until: "2026-07-23T02:00:00Z",
+    bucketSeconds: 900,
+  });
+  assert.strictEqual(timeline.supportState, "supported");
+  assert.strictEqual(timeline.rows.length, 1);
+  assert.strictEqual(timeline.rows[0].sampleCount, 1);
+  assert.strictEqual(
+    timeline.rows[0].metrics.temperatureCelsius.stateCounts.absent,
+    1,
+  );
+  const unsupportedTimeline = await repository.readRecorderObservabilityTimeline({
+    vrcode: "BRMH-OR3",
+    from: "2026-07-23T01:00:00Z",
+    until: "2026-07-23T02:00:00Z",
+    bucketSeconds: 900,
+  });
+  assert.deepStrictEqual(unsupportedTimeline, {
+    supportState: "unsupported",
+    rows: [],
+  });
+
+  await repository.admit(batch({
+    requestId: "00000000-0000-4000-8000-000000000003",
+    resourceType: "kernelIncident",
+    receivedAt: "2026-07-23T01:05:00Z",
+    lines: [preparedLine({
+      rawSha256: "1".repeat(64),
+      canonicalSha256: "2".repeat(64),
+      rawDocument: "{\"eventId\":\"incident-1\"}",
+      identity: {
+        eventId: "incident-1",
+        deviceId: "vr-brmh-15",
+        schemaVersion: "v1",
+        kind: "kernel-incident",
+        siteId: "brmh",
+        bootId: "boot-a",
+        sequence: 2,
+        deviceObservedAt: "2026-07-23T01:04:59Z",
+        deviceTimeState: "synchronized",
+      },
+      document: {
+        schemaVersion: "v1",
+        eventId: "incident-1",
+        deviceId: "vr-brmh-15",
+        capturedAt: "2026-07-23T01:04:59Z",
+        captureTimeState: "synchronized",
+        incidentType: "panic",
+        incidentBootId: "boot-a",
+        messageExcerpt: "kernel panic",
+        truncated: false,
+      },
+    })],
+  }));
+  const incidents = await repository.readRecorderObservabilityIncidents({
+    vrcode: "BRMH-OR1",
+    from: "2026-07-23T01:00:00Z",
+    until: "2026-07-23T02:00:00Z",
+    incidentType: "panic",
+    cursor: null,
+    limit: 10,
+  });
+  assert.deepStrictEqual(
+    incidents.map((incident) => ({
+      eventId: incident.eventId,
+      incidentType: incident.incidentType,
+      receivedAt: incident.receivedAt,
+    })),
+    [{
+      eventId: "incident-1",
+      incidentType: "panic",
+      receivedAt: "2026-07-23T01:05:00.000Z",
+    }],
+  );
+
   const summaries = await repository.listCurrentRecorders();
   assert.deepStrictEqual(
     summaries.map((summary) => ({

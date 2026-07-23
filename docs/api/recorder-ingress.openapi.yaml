@@ -160,8 +160,9 @@ paths:
       responses:
         "200":
           description: >
-            The one-row current aggregate, including latest and associated
-            Profile state, health, boot start/shutdown, and retained evidence.
+            Typed current Detail including associated Profile, health, and
+            matching boot start/shutdown state. Internal retained JSONB
+            evidence is not exposed.
           content:
             application/json:
               schema:
@@ -172,6 +173,44 @@ paths:
             support expectation.
         "503":
           description: PostgreSQL current projection is unavailable.
+  /runtime/vitaldb/recorders/{vrcode}/observability/timeline:
+    get:
+      operationId: getRecorderObservabilityTimeline
+      summary: Read a bounded Recorder health timeline
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: until, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: bucketSeconds, in: query, required: true, schema: {type: integer, enum: [300, 900, 3600]}}
+      responses:
+        "200":
+          description: At most 24 hours of receipt-time buckets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityTimeline"
+        "400": {description: Query window or bucket is invalid.}
+        "503": {description: PostgreSQL history read is unavailable.}
+  /runtime/vitaldb/recorders/{vrcode}/observability/incidents:
+    get:
+      operationId: getRecorderObservabilityIncidents
+      summary: Read bounded Recorder kernel incidents
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: until, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: type, in: query, required: false, schema: {type: string, enum: [panic, oops, watchdog, lockup, unknown]}}
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        "200":
+          description: Receipt-time ordered incident page with an opaque cursor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityIncidentPage"
+        "400": {description: Query window, filter, cursor, or limit is invalid.}
+        "503": {description: PostgreSQL history read is unavailable.}
   /internal/recorder-observability/expectations:
     post:
       operationId: applyRecorderObservabilityExpectation
@@ -747,6 +786,67 @@ components:
         value: {nullable: true}
         detail: {type: string, nullable: true}
         observedAt: {type: string, nullable: true}
+    RecorderObservabilityTimeline:
+      type: object
+      additionalProperties: false
+      required: [state, vrcode, supportState, timeBasis, query, buckets, readError]
+      properties:
+        state: {type: string, enum: [loaded, notReported, unsupported]}
+        vrcode: {type: string}
+        supportState: {type: string, enum: [supported, unsupported, unknown]}
+        timeBasis: {type: string, enum: [receivedAt]}
+        query:
+          type: object
+          required: [from, until, bucketSeconds]
+          properties:
+            from: {type: string, format: date-time}
+            until: {type: string, format: date-time}
+            bucketSeconds: {type: integer, enum: [300, 900, 3600]}
+        buckets:
+          type: array
+          items:
+            type: object
+            required: [bucketStartedAt, sampleCount, metrics]
+            properties:
+              bucketStartedAt: {type: string, format: date-time}
+              sampleCount: {type: integer, minimum: 1}
+              metrics:
+                type: object
+                additionalProperties:
+                  type: object
+                  required: [average, stateCounts]
+                  properties:
+                    average: {type: number, nullable: true}
+                    stateCounts:
+                      type: object
+                      additionalProperties: {type: integer, minimum: 0}
+        readError: {type: string, nullable: true}
+    RecorderObservabilityIncidentPage:
+      type: object
+      additionalProperties: false
+      required: [state, vrcode, timeBasis, incidents, nextCursor, readError]
+      properties:
+        state: {type: string, enum: [loaded]}
+        vrcode: {type: string}
+        timeBasis: {type: string, enum: [receivedAt]}
+        incidents:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [recordId, eventId, receivedAt, capturedAt, captureTimeState, incidentType, incidentBootId, messageExcerpt, truncated]
+            properties:
+              recordId: {type: string}
+              eventId: {type: string}
+              receivedAt: {type: string, format: date-time}
+              capturedAt: {type: string, format: date-time}
+              captureTimeState: {type: string}
+              incidentType: {type: string, enum: [panic, oops, watchdog, lockup, unknown]}
+              incidentBootId: {type: string, nullable: true}
+              messageExcerpt: {type: string}
+              truncated: {type: boolean}
+        nextCursor: {type: string, nullable: true}
+        readError: {type: string, nullable: true}
     RecorderObservabilityAdmission:
       type: object
       additionalProperties: false

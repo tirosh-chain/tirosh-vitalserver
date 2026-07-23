@@ -22,6 +22,10 @@ import type {
   ProjectionCandidate,
   RecorderObservabilityResourceType,
 } from "../../../domain/recorder-observability";
+import type {
+  RecorderObservabilityIncidentRow,
+  RecorderObservabilityTimelineRow,
+} from "../../../domain/recorder-observability-history";
 
 type AggregateEntry = ProjectionCandidate & {
   associatedProfileRecordId?: string | null;
@@ -380,9 +384,184 @@ export function createRecorderObservabilityRepository(config: {
         resources: row.document || null,
       }));
     },
+    async readRecorderObservabilityTimeline(query) {
+      const [timelineResult, expectationResult] = await Promise.all([
+        pool.query(
+          timelineSQL(),
+          [query.vrcode, query.from, query.until, query.bucketSeconds],
+        ),
+        pool.query(
+          `SELECT support_state
+             FROM recorder_observability.expectations
+            WHERE vrcode = $1
+              AND lifecycle_state = 'active'`,
+          [query.vrcode],
+        ),
+      ]);
+      const expectation = expectationResult.rows[0];
+      const rows = timelineResult.rows.map(timelineRow);
+      return {
+        supportState: rows.length > 0
+          ? "supported"
+          : expectation?.support_state === "unsupported"
+          ? "unsupported"
+          : expectation?.support_state === "supported"
+            ? "supported"
+            : "unknown",
+        rows,
+      };
+    },
+    async readRecorderObservabilityIncidents(query) {
+      const parameters: unknown[] = [
+        query.vrcode,
+        query.from,
+        query.until,
+        query.incidentType,
+      ];
+      const cursorClause = query.cursor
+        ? `AND (received_at, record_id)
+                 < ($5::timestamptz, $6::bigint)`
+        : "";
+      if (query.cursor) {
+        parameters.push(query.cursor.receivedAt, query.cursor.recordId);
+      }
+      parameters.push(query.limit + 1);
+      const limitParameter = parameters.length;
+      const result = await pool.query(
+        `SELECT record_id::text,
+                claimed_event_id,
+                received_at,
+                document->>'capturedAt' AS captured_at,
+                document->>'captureTimeState' AS capture_time_state,
+                document->>'incidentType' AS incident_type,
+                document->>'incidentBootId' AS incident_boot_id,
+                document->>'messageExcerpt' AS message_excerpt,
+                (document->>'truncated')::boolean AS truncated
+           FROM recorder_observability.records
+          WHERE disposition = 'accepted'
+            AND resource_type = 'kernelIncident'
+            AND vrcode = $1
+            AND received_at >= $2::timestamptz
+            AND received_at < $3::timestamptz
+            AND ($4::text IS NULL OR document->>'incidentType' = $4)
+            ${cursorClause}
+          ORDER BY received_at DESC, record_id DESC
+          LIMIT $${limitParameter}`,
+        parameters,
+      );
+      return result.rows.map(incidentRow);
+    },
     async close() {
       await pool.end();
     },
+  };
+}
+
+const TIMELINE_METRICS = [
+  {
+    name: "temperatureCelsius",
+    sqlName: "temperature_celsius",
+    path: ["payload", "raspberryPi", "temperatureCelsius"],
+  },
+  {
+    name: "memoryAvailableBytes",
+    sqlName: "memory_available_bytes",
+    path: ["payload", "memory", "availableBytes"],
+  },
+  {
+    name: "rootUsedPercent",
+    sqlName: "root_used_percent",
+    path: ["payload", "storage", "root", "usedPercent"],
+  },
+  {
+    name: "dataUsedPercent",
+    sqlName: "data_used_percent",
+    path: ["payload", "storage", "data", "usedPercent"],
+  },
+  {
+    name: "publisherBufferBytes",
+    sqlName: "publisher_buffer_bytes",
+    path: ["payload", "publisher", "bufferBytes"],
+  },
+] as const;
+const READING_STATES = [
+  "ok",
+  "missing",
+  "invalid",
+  "failed",
+  "unsupported",
+] as const;
+
+function timelineSQL(): string {
+  const readings = TIMELINE_METRICS.flatMap((metric) => {
+    const statePath = `{${[...metric.path, "state"].join(",")}}`;
+    const valuePath = `{${[...metric.path, "value"].join(",")}}`;
+    const average = `AVG(CASE
+      WHEN document #>> '${statePath}' = 'ok'
+       AND jsonb_typeof(document #> '${valuePath}') = 'number'
+      THEN (document #>> '${valuePath}')::double precision
+    END)::double precision AS ${metric.sqlName}_average`;
+    const counts = READING_STATES.map((state) =>
+      `COUNT(*) FILTER (
+        WHERE document #>> '${statePath}' = '${state}'
+      )::integer AS ${metric.sqlName}_${state}`,
+    );
+    const absent = `COUNT(*) FILTER (
+      WHERE document #> '${statePath}' IS NULL
+    )::integer AS ${metric.sqlName}_absent`;
+    return [average, ...counts, absent];
+  });
+  return `SELECT date_bin(
+                   make_interval(secs => $4::double precision),
+                   received_at,
+                   TIMESTAMPTZ '1970-01-01 00:00:00+00'
+                 ) AS bucket_started_at,
+                 COUNT(*)::integer AS sample_count,
+                 ${readings.join(",\n")}
+            FROM recorder_observability.records
+           WHERE disposition = 'accepted'
+             AND resource_type = 'observation'
+             AND vrcode = $1
+             AND received_at >= $2::timestamptz
+             AND received_at < $3::timestamptz
+           GROUP BY bucket_started_at
+           ORDER BY bucket_started_at`;
+}
+
+function timelineRow(row: Record<string, unknown>): RecorderObservabilityTimelineRow {
+  return {
+    bucketStartedAt: (row.bucket_started_at as Date).toISOString(),
+    sampleCount: Number(row.sample_count),
+    metrics: Object.fromEntries(TIMELINE_METRICS.map((metric) => [
+      metric.name,
+      {
+        average: row[`${metric.sqlName}_average`] === null
+          ? null
+          : Number(row[`${metric.sqlName}_average`]),
+        stateCounts: Object.fromEntries(
+          [...READING_STATES, "absent"].map((state) => [
+            state,
+            Number(row[`${metric.sqlName}_${state}`]),
+          ]),
+        ),
+      },
+    ])),
+  };
+}
+
+function incidentRow(row: Record<string, unknown>): RecorderObservabilityIncidentRow {
+  return {
+    recordId: String(row.record_id),
+    eventId: String(row.claimed_event_id),
+    receivedAt: (row.received_at as Date).toISOString(),
+    capturedAt: String(row.captured_at),
+    captureTimeState: String(row.capture_time_state),
+    incidentType: String(row.incident_type),
+    incidentBootId: row.incident_boot_id === null
+      ? null
+      : String(row.incident_boot_id),
+    messageExcerpt: String(row.message_excerpt),
+    truncated: row.truncated === true,
   };
 }
 

@@ -12,6 +12,12 @@ import type {
   RecorderObservabilityReportState,
   RecorderObservabilitySupportState,
 } from "../../../domain/recorder-observability";
+import type {
+  RecorderObservabilityIncidentQuery,
+  RecorderObservabilityIncidentRow,
+  RecorderObservabilityTimelineQuery,
+  RecorderObservabilityTimelineReadModel,
+} from "../../../domain/recorder-observability-history";
 
 export type RecorderObservabilitySummaryReadModel = {
   vrcode: string;
@@ -84,5 +90,11 @@ export interface RecorderObservabilityRepositoryPort {
   readRecorderObservability(
     vrcode: string,
   ): Promise<RecorderObservabilityDetailReadModel[]>;
+  readRecorderObservabilityTimeline(
+    query: RecorderObservabilityTimelineQuery,
+  ): Promise<RecorderObservabilityTimelineReadModel>;
+  readRecorderObservabilityIncidents(
+    query: RecorderObservabilityIncidentQuery,
+  ): Promise<RecorderObservabilityIncidentRow[]>;
   close(): Promise<void>;
 }

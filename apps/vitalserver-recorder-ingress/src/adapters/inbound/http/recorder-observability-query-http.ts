@@ -1,32 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { RecorderObservabilityRepositoryPort } from "../../../application/ports/outbound/recorder-observability-repository-port";
 import { mapRecorderObservabilityDetail } from "../../../domain/recorder-observability-detail";
+import {
+  incidentsDocument,
+  parseRecorderObservabilityHistoryRoute,
+  timelineDocument,
+} from "../../../domain/recorder-observability-history";
 
 export function recorderObservabilityQueryRoute(
   requestURL: string | undefined,
-):
-  | { kind: "list" }
-  | { kind: "detail"; vrcode: string }
-  | { kind: "invalid" }
-  | null {
-  const pathname = new URL(requestURL || "/", "http://recorder-ingress").pathname;
-  if (pathname === "/runtime/vitaldb/recorders") return { kind: "list" };
-  const match = pathname.match(
-    /^\/runtime\/vitaldb\/recorders\/([^/]+)\/observability$/,
-  );
-  if (!match) {
-    return pathname.startsWith("/runtime/vitaldb/recorders/")
-      ? { kind: "invalid" }
-      : null;
-  }
-  try {
-    const vrcode = decodeURIComponent(match[1]);
-    return /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(vrcode)
-      ? { kind: "detail", vrcode }
-      : { kind: "invalid" };
-  } catch (_error) {
-    return { kind: "invalid" };
-  }
+) {
+  return parseRecorderObservabilityHistoryRoute(requestURL);
 }
 
 export async function readRecorderObservabilityQuery(
@@ -36,8 +20,15 @@ export async function readRecorderObservabilityQuery(
   repository?: RecorderObservabilityRepositoryPort,
 ): Promise<void> {
   req.resume();
-  if (!route || route.kind === "invalid") {
+  if (!route) {
     writeJson(res, 404, { state: "not_found" });
+    return;
+  }
+  if (route.kind === "invalid") {
+    writeJson(res, route.reason === "path_invalid" ? 404 : 400, {
+      state: "invalidRequest",
+      reason: route.reason,
+    });
     return;
   }
   if (req.method !== "GET") {
@@ -55,6 +46,20 @@ export async function readRecorderObservabilityQuery(
     if (route.kind === "list") {
       const recorders = await repository.listCurrentRecorders();
       writeJson(res, 200, { state: "loaded", recorders });
+      return;
+    }
+    if (route.kind === "timeline") {
+      const readModel = await repository.readRecorderObservabilityTimeline(
+        route.query,
+      );
+      writeJson(res, 200, timelineDocument(route.query, readModel));
+      return;
+    }
+    if (route.kind === "incidents") {
+      const rows = await repository.readRecorderObservabilityIncidents(
+        route.query,
+      );
+      writeJson(res, 200, incidentsDocument(route.query, rows));
       return;
     }
     const rows = await repository.readRecorderObservability(route.vrcode);

@@ -694,6 +694,59 @@ def route_request(
         return HTTPStatus.OK, usecases.get_recorder_observability(parts[3])
 
     if (
+        method == "GET"
+        and len(parts) == 6
+        and parts[:3] == ["runtime", "vitaldb", "recorders"]
+        and parts[4:] in (
+            ["observability", "timeline"],
+            ["observability", "incidents"],
+        )
+    ):
+        flattened_query = {
+            key: values[0]
+            for key, values in query.items()
+            if len(values) == 1
+        }
+        if len(flattened_query) != len(query):
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail="Recorder observability query parameters must be singular.",
+                code="recorderObservabilityQueryInvalid",
+            )
+        required = {"from", "until"}
+        allowed = (
+            required | {"bucketSeconds"}
+            if parts[5] == "timeline"
+            else required | {"type", "cursor", "limit"}
+        )
+        if not required.issubset(flattened_query) or not set(
+            flattened_query
+        ).issubset(allowed):
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=(
+                    "Recorder observability query parameters are "
+                    "incomplete or unknown."
+                ),
+                code="recorderObservabilityQueryInvalid",
+            )
+        if parts[5] == "timeline" and "bucketSeconds" not in flattened_query:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail="Recorder observability timeline bucketSeconds is required.",
+                code="recorderObservabilityQueryInvalid",
+            )
+        if parts[5] == "timeline":
+            return HTTPStatus.OK, usecases.get_recorder_observability_timeline(
+                parts[3],
+                flattened_query,
+            )
+        return HTTPStatus.OK, usecases.get_recorder_observability_incidents(
+            parts[3],
+            flattened_query,
+        )
+
+    if (
         method == "POST"
         and len(parts) == 6
         and parts[:3] == ["runtime", "vitaldb", "recorders"]

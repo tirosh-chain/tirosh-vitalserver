@@ -737,6 +737,34 @@ class FakeRecorderIngress:
             "readError": None,
         }
 
+    def recorder_observability_timeline(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "vrcode": vrcode,
+            "timeBasis": "receivedAt",
+            "query": query,
+            "buckets": [],
+            "readError": None,
+        }
+
+    def recorder_observability_incidents(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "vrcode": vrcode,
+            "timeBasis": "receivedAt",
+            "incidents": [],
+            "nextCursor": None,
+            "readError": None,
+        }
+
     def apply_recorder_observability_expectation(
         self,
         command: dict[str, object],

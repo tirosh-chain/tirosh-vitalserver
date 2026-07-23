@@ -1481,6 +1481,57 @@ class GuestControlUseCases:
                 error.message,
             )
 
+    def get_recorder_observability_timeline(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, object]:
+        return self._get_recorder_observability_history(
+            vrcode,
+            "timeline",
+            query,
+        )
+
+    def get_recorder_observability_incidents(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, object]:
+        return self._get_recorder_observability_history(
+            vrcode,
+            "incidents",
+            query,
+        )
+
+    def _get_recorder_observability_history(
+        self,
+        vrcode: str,
+        resource: str,
+        query: dict[str, str],
+    ) -> dict[str, object]:
+        if self._recorder_ingress is None:
+            return _recorder_observability_history_unavailable_document(
+                vrcode,
+                resource,
+                "Recorder ingress observability adapter is unavailable.",
+            )
+        try:
+            if resource == "timeline":
+                return self._recorder_ingress.recorder_observability_timeline(
+                    vrcode,
+                    query,
+                )
+            return self._recorder_ingress.recorder_observability_incidents(
+                vrcode,
+                query,
+            )
+        except RecorderIngressDependencyError as error:
+            return _recorder_observability_history_unavailable_document(
+                vrcode,
+                resource,
+                error.message,
+            )
+
     def apply_recorder_observability_expectation(
         self,
         *,
@@ -2415,6 +2466,21 @@ def _recorder_observability_detail_unavailable_document(
             "networkInterfaces": [],
         },
         "readIssues": [],
+        "readError": message,
+    }
+
+
+def _recorder_observability_history_unavailable_document(
+    vrcode: str,
+    resource: str,
+    message: str,
+) -> dict[str, object]:
+    return {
+        "state": "unavailable",
+        "vrcode": vrcode,
+        "timeBasis": "receivedAt",
+        ("buckets" if resource == "timeline" else "incidents"): [],
+        **({"nextCursor": None} if resource == "incidents" else {}),
         "readError": message,
     }
 

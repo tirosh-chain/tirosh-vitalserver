@@ -200,6 +200,20 @@ class RecorderIngressReadModelPort(Protocol):
     def recorder_observability_detail(self, vrcode: str) -> dict[str, Any]:
         raise NotImplementedError
 
+    def recorder_observability_timeline(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def recorder_observability_incidents(
+        self,
+        vrcode: str,
+        query: dict[str, str],
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
     def apply_recorder_observability_expectation(
         self,
         command: dict[str, Any],
