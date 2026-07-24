@@ -8,11 +8,40 @@ cross-host HTTP acceptance cannot depend on product executable defaults.
 
 from __future__ import annotations
 
+import os
+import unittest
+
+
+def require_recorder_catalog_test_database_url() -> str:
+    database_url = os.environ.get(
+        "VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL"
+    )
+    if not database_url:
+        raise unittest.SkipTest(
+            "VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL is required "
+            "for the real Guest Runtime PostgreSQL acceptance fixture"
+        )
+    return database_url
+
 
 def compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
     *,
     listen_address: str,
     state_database_path: str,
+    bootstrap_evidence_root_directory: str,
+    recorder_catalog_database_url: str,
+    recorder_catalog_admission_bearer_token: str,
+    recorder_observation_max_report_age_seconds: int,
+    archive_source_admission_bearer_token: str,
+    archive_artifact_object_root_directory: str,
+    archive_source_maximum_bytes: int,
+    lab_replay_source_object_root_directory: str,
+    lab_replay_source_maximum_bytes: int,
+    lab_replay_spool_root_directory: str,
+    lab_replay_string_track_policy: str,
+    lab_replay_gap_policy: str,
+    lab_replay_frame_batch_size: int,
+    recorder_attribution_policy_kind: str,
     service_version: str,
     instance_id: str,
     archive_export_outcome_mode: str | None,
@@ -38,6 +67,20 @@ def compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
     arguments = [
         "--listen", listen_address,
         "--state-db", state_database_path,
+        "--bootstrap-evidence-root", bootstrap_evidence_root_directory,
+        "--recorder-catalog-database-url", recorder_catalog_database_url,
+        "--recorder-catalog-admission-bearer-token", recorder_catalog_admission_bearer_token,
+        "--recorder-observation-max-report-age-seconds", str(recorder_observation_max_report_age_seconds),
+        "--archive-source-admission-bearer-token", archive_source_admission_bearer_token,
+        "--archive-artifact-object-root", archive_artifact_object_root_directory,
+        "--archive-source-max-bytes", str(archive_source_maximum_bytes),
+        "--lab-replay-source-object-root", lab_replay_source_object_root_directory,
+        "--lab-replay-source-max-bytes", str(lab_replay_source_maximum_bytes),
+        "--lab-replay-spool-root", lab_replay_spool_root_directory,
+        "--lab-replay-string-track-policy", lab_replay_string_track_policy,
+        "--lab-replay-gap-policy", lab_replay_gap_policy,
+        "--lab-replay-frame-batch-size", str(lab_replay_frame_batch_size),
+        "--recorder-attribution-policy-kind", recorder_attribution_policy_kind,
         "--service-version", service_version,
         "--instance-id", instance_id,
         "--archive-provider-kind", archive_provider_kind,
@@ -60,6 +103,28 @@ def compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
         "--telemetry-pipeline-mode", telemetry_collector_probe_outcome_mode,
         "--telemetry-export-mode", telemetry_export_outcome_mode,
     ]
+    if (
+        bootstrap_evidence_root_directory == ""
+        or recorder_catalog_database_url == ""
+        or recorder_catalog_admission_bearer_token == ""
+        or recorder_observation_max_report_age_seconds < 1
+        or recorder_observation_max_report_age_seconds > 86400
+        or archive_source_admission_bearer_token == ""
+        or archive_artifact_object_root_directory == ""
+        or archive_source_maximum_bytes < 1
+        or lab_replay_source_object_root_directory == ""
+        or lab_replay_source_maximum_bytes < 1
+        or lab_replay_spool_root_directory == ""
+        or lab_replay_string_track_policy not in {"reject", "skip"}
+        or lab_replay_gap_policy not in {"omit-track", "fail-frame"}
+        or lab_replay_frame_batch_size < 1
+        or lab_replay_frame_batch_size > 60
+        or recorder_attribution_policy_kind != "recorder-assignment-owner"
+    ):
+        raise ValueError(
+            "Guest Runtime persistence and Recorder attribution inputs must "
+            "be complete and explicit"
+        )
     if external_upstream_observation_provider_kind == "external-capability-profile":
         if external_upstream_outcome_mode == "" or external_upstream_observation_external_vitalserver_delivery_configuration_path is not None or external_upstream_observation_request_timeout_milliseconds is not None:
             raise ValueError("External Upstream outcome profile requires an explicit outcome mode without C46 inputs")

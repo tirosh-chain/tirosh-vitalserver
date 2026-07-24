@@ -4,6 +4,7 @@ package hostagentcontrolhttpapi
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -15,6 +16,8 @@ import (
 )
 
 const maximumCommandBytes int64 = 1 << 20
+const maximumLabReplaySourceBytes int64 = 1 << 30
+const maximumLabReplaySourceCommandHeaderBytes = 16 << 10
 
 type HostAgentControlHTTPServer struct {
 	service   *hostagentapplication.HostAgentControlApplicationService
@@ -97,6 +100,8 @@ func (server *HostAgentControlHTTPServer) ServeHTTP(response http.ResponseWriter
 		server.getTelemetryReceipt(response, request, pathParameter(request.URL.Path, "/v1/platform/telemetry/receipts/"))
 	case request.Method == http.MethodGet && allowedRuntimeRead(request.URL.Path):
 		server.forwardRuntimeRead(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/lab/replay-sources":
+		server.forwardRuntimeStream(response, request)
 	case request.Method == http.MethodPost && allowedRuntimeCommand(request.URL.Path):
 		server.forwardRuntimeCommand(response, request)
 	default:
@@ -370,13 +375,125 @@ func (server *HostAgentControlHTTPServer) forwardRuntimeCommand(response http.Re
 	writeJSON(response, http.StatusBadGateway, outcome.Failure)
 }
 
+func (server *HostAgentControlHTTPServer) forwardRuntimeStream(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	commandHeader := request.Header.Get("X-Vital-Lab-Replay-Source-Command")
+	requestID := requestIDFromLabReplaySourceCommandHeader(commandHeader)
+	switch {
+	case request.Header.Get("Content-Type") != "application/x-vital":
+		rejection, err := server.service.RejectMalformedGuestRuntimeControlCommand(
+			requestID,
+			"Lab replay source body must use application/x-vital",
+		)
+		if err != nil {
+			writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "Host Agent could not create rejection correlation id"})
+			return
+		}
+		writeJSON(response, http.StatusUnsupportedMediaType, rejection)
+		return
+	case commandHeader == "" ||
+		len(commandHeader) > maximumLabReplaySourceCommandHeaderBytes:
+		rejection, err := server.service.RejectMalformedGuestRuntimeControlCommand(
+			requestID,
+			"Lab replay source command header is missing or too large",
+		)
+		if err != nil {
+			writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "Host Agent could not create rejection correlation id"})
+			return
+		}
+		writeJSON(response, http.StatusBadRequest, rejection)
+		return
+	case request.ContentLength < 0:
+		rejection, err := server.service.RejectMalformedGuestRuntimeControlCommand(
+			requestID,
+			"Lab replay source requires an explicit Content-Length",
+		)
+		if err != nil {
+			writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "Host Agent could not create rejection correlation id"})
+			return
+		}
+		writeJSON(response, http.StatusLengthRequired, rejection)
+		return
+	case request.ContentLength > maximumLabReplaySourceBytes:
+		rejection, err := server.service.RejectMalformedGuestRuntimeControlCommand(
+			requestID,
+			"Lab replay source exceeds the 1 GiB facade limit",
+		)
+		if err != nil {
+			writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "Host Agent could not create rejection correlation id"})
+			return
+		}
+		writeJSON(response, http.StatusRequestEntityTooLarge, rejection)
+		return
+	}
+	request.Body = http.MaxBytesReader(
+		response,
+		request.Body,
+		maximumLabReplaySourceBytes+1,
+	)
+	outcome, err := server.service.ForwardGuestRuntimeControlStream(
+		request.Context(),
+		hostagentapplication.GuestRuntimeControlHTTPStreamingRequest{
+			Method:        http.MethodPost,
+			Path:          request.URL.Path,
+			ContentType:   request.Header.Get("Content-Type"),
+			ContentLength: request.ContentLength,
+			Body:          request.Body,
+			Headers: map[string]string{
+				"X-Vital-Lab-Replay-Source-Command": commandHeader,
+			},
+		},
+		requestID,
+	)
+	if err != nil {
+		writeJSON(response, http.StatusInternalServerError, map[string]string{"error": "Host Agent Guest streaming facade failed"})
+		return
+	}
+	if outcome.Response != nil {
+		writeRaw(response, outcome.Response.StatusCode, outcome.Response.ContentType, outcome.Response.Body)
+		return
+	}
+	if outcome.Rejected != nil {
+		writeJSON(response, http.StatusServiceUnavailable, outcome.Rejected)
+		return
+	}
+	writeJSON(response, http.StatusBadGateway, outcome.Failure)
+}
+
+func requestIDFromLabReplaySourceCommandHeader(encoded string) string {
+	if encoded == "" || len(encoded) > maximumLabReplaySourceCommandHeaderBytes {
+		return ""
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(raw) > maximumLabReplaySourceCommandHeaderBytes {
+		return ""
+	}
+	return requestIDFromRaw(raw)
+}
+
 func allowedRuntimeRead(path string) bool {
+	if recorderObservabilityReadPathParameter(path) != "" {
+		return true
+	}
 	if path == "/v1/runtime/topology" || path == "/v1/runtime/capabilities" || path == "/v1/runtime/readiness" ||
 		path == "/v1/runtime/lab/sessions" || path == "/v1/runtime/lab/beds" || path == "/v1/runtime/lab/recorders" ||
+		path == "/v1/runtime/recorders" ||
+		path == "/v1/runtime/operational-state/identity" ||
 		path == "/v1/runtime/archive/export-provider" ||
 		path == "/v1/runtime/archive/credential-material" ||
 		path == "/v1/runtime/external-upstreams" || path == "/v1/runtime/relay-targets" ||
-		path == "/v1/time/clock-quality" || path == "/v1/runtime/catalog/recorder-observations" {
+		path == "/v1/time/clock-quality" {
+		return true
+	}
+	guestOperationalStateOperationID := strings.TrimPrefix(
+		path,
+		"/v1/runtime/operational-state/operations/",
+	)
+	if guestOperationalStateOperationID != path &&
+		guestOperationalStateOperationID != "" &&
+		!strings.Contains(guestOperationalStateOperationID, "/") {
 		return true
 	}
 	operationID := strings.TrimPrefix(path, "/v1/runtime/operations/")
@@ -387,9 +504,11 @@ func allowedRuntimeRead(path string) bool {
 		"/v1/runtime/lab/sessions/",
 		"/v1/runtime/lab/beds/",
 		"/v1/runtime/lab/recorders/",
+		"/v1/runtime/lab/replays/",
 		"/v1/runtime/lab/deletion-receipts/",
 		"/v1/runtime/archive/manifests/",
 		"/v1/runtime/archive/export-receipts/",
+		"/v1/runtime/artifacts/",
 		"/v1/runtime/external-upstreams/",
 		"/v1/runtime/relay-targets/",
 		"/v1/time/authorities/",
@@ -405,18 +524,55 @@ func allowedRuntimeRead(path string) bool {
 	return false
 }
 
+func recorderObservabilityReadPathParameter(path string) string {
+	const prefix = "/v1/runtime/recorders/"
+	value := strings.TrimPrefix(path, prefix)
+	if value == path {
+		return ""
+	}
+	for _, suffix := range []string{"/observability", "/observability/timeline", "/observability/incidents", "/artifacts"} {
+		if strings.HasSuffix(value, suffix) {
+			recorderID := strings.TrimSuffix(value, suffix)
+			if recorderID != "" && !strings.Contains(recorderID, "/") {
+				return recorderID
+			}
+		}
+	}
+	return ""
+}
+
 func allowedRuntimeCommand(path string) bool {
+	if recorderExpectationCommandPathParameter(path) != "" {
+		return true
+	}
 	return path == "/v1/runtime/topology:apply" ||
+		path == "/v1/runtime/recorder-assignments" ||
+		path == "/v1/runtime/operational-state/backups" ||
+		path == "/v1/runtime/operational-state/restores" ||
 		path == "/v1/runtime/lab/sessions" ||
+		path == "/v1/runtime/lab/replays" ||
 		path == "/v1/runtime/lab/resources:command" ||
 		path == "/v1/runtime/archive/exports" ||
 		path == "/v1/runtime/archive/credential-material" ||
 		path == "/v1/runtime/external-upstreams" ||
 		path == "/v1/runtime/relay-targets" ||
 		path == "/v1/time/authorities" ||
-		path == "/v1/runtime/catalog/recorder-observations" ||
 		path == "/v1/runtime/telemetry/pipelines" ||
 		path == "/v1/runtime/telemetry/signals"
+}
+
+func recorderExpectationCommandPathParameter(path string) string {
+	const prefix = "/v1/runtime/recorders/"
+	const suffix = "/observability-expectation"
+	value := strings.TrimPrefix(path, prefix)
+	if value == path || !strings.HasSuffix(value, suffix) {
+		return ""
+	}
+	value = strings.TrimSuffix(value, suffix)
+	if value == "" || strings.Contains(value, "/") {
+		return ""
+	}
+	return value
 }
 
 func pathParameter(path string, prefix string) string {

@@ -4,6 +4,7 @@ package hostagentapplication
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentdomain"
@@ -46,11 +47,21 @@ type GuestRuntimeControlHTTPForwardingFailure struct {
 	Issue *hostagentdomain.Issue
 }
 
+type GuestRuntimeControlHTTPStreamingRequest struct {
+	Method        string
+	Path          string
+	ContentType   string
+	ContentLength int64
+	Body          io.Reader
+	Headers       map[string]string
+}
+
 // GuestRuntimeControlHTTPTransport is the Host-side transport port for the
 // explicit C33 Guest Runtime Control HTTP endpoint.
 type GuestRuntimeControlHTTPTransport interface {
 	Probe(context.Context, hostagentdomain.GuestRuntimeControlEndpoint) GuestRuntimeControlHTTPProbeResult
 	Forward(context.Context, hostagentdomain.GuestRuntimeControlEndpoint, string, string, []byte, string) (GuestRuntimeControlHTTPForwardedResponse, *GuestRuntimeControlHTTPForwardingFailure)
+	ForwardStream(context.Context, hostagentdomain.GuestRuntimeControlEndpoint, GuestRuntimeControlHTTPStreamingRequest) (GuestRuntimeControlHTTPForwardedResponse, *GuestRuntimeControlHTTPForwardingFailure)
 }
 
 type HostAgentClock interface {

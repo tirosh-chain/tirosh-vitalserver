@@ -3,11 +3,14 @@ package guestruntimecontrolhttpapi
 
 import (
 	"context"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimeapplication"
@@ -15,37 +18,64 @@ import (
 )
 
 const maximumCommandBytes int64 = 1 << 20
+const maximumArchiveSourceCommandHeaderBytes = 16 << 10
+const maximumLabReplaySourceCommandHeaderBytes = 16 << 10
+const recorderGatewayCatalogAdmissionSourceIdentity = "recorder-gateway"
 
 // GuestRuntimeControlHTTPServer exposes only versioned Guest Runtime control
 // contracts. It formats explicit application outcomes; it does not own
 // topology, Lab, archive, external integration, time, catalog, or telemetry state.
 type GuestRuntimeControlHTTPServer struct {
-	topologyService           *guestruntimeapplication.GuestRuntimeTopologyApplicationService
-	lab                       *guestruntimeapplication.GuestRuntimeLabApplicationService
-	archive                   *guestruntimeapplication.GuestRuntimeArchiveApplicationService
-	archiveCredentialMaterial *guestruntimeapplication.GuestRuntimeArchiveCredentialMaterialApplicationService
-	external                  *guestruntimeapplication.GuestRuntimeExternalUpstreamApplicationService
-	relay                     *guestruntimeapplication.GuestRuntimeOutboundRelayApplicationService
-	time                      *guestruntimeapplication.GuestRuntimeTimeAuthorityApplicationService
-	catalog                   *guestruntimeapplication.GuestRuntimeObservationCatalogApplicationService
-	telemetry                 *guestruntimeapplication.GuestRuntimeTelemetryPipelineApplicationService
-	coordinator               *guestruntimeapplication.GuestRuntimeLabArchiveLifecycleCoordinator
+	topologyService             *guestruntimeapplication.GuestRuntimeTopologyApplicationService
+	lab                         *guestruntimeapplication.GuestRuntimeLabApplicationService
+	archive                     *guestruntimeapplication.GuestRuntimeArchiveApplicationService
+	archiveLineage              *guestruntimeapplication.GuestRuntimeArchiveLineageApplicationService
+	archiveSourceAdmission      *guestruntimeapplication.GuestRuntimeArchiveSourceAdmissionApplicationService
+	archiveSourceAdmissionToken string
+	archiveSourceMaximumBytes   int64
+	labReplaySource             *guestruntimeapplication.GuestRuntimeLabReplaySourceApplicationService
+	labReplaySourceMaximumBytes int64
+	labReplay                   *guestruntimeapplication.GuestRuntimeLabReplayApplicationService
+	archiveCredentialMaterial   *guestruntimeapplication.GuestRuntimeArchiveCredentialMaterialApplicationService
+	external                    *guestruntimeapplication.GuestRuntimeExternalUpstreamApplicationService
+	relay                       *guestruntimeapplication.GuestRuntimeOutboundRelayApplicationService
+	time                        *guestruntimeapplication.GuestRuntimeTimeAuthorityApplicationService
+	catalog                     *guestruntimeapplication.GuestRuntimeObservationCatalogApplicationService
+	catalogAdmissionBearerToken string
+	recorderAssignment          *guestruntimeapplication.GuestRuntimeRecorderAssignmentApplicationService
+	operationalStateIdentity    *guestruntimeapplication.GuestOperationalStateIdentityApplicationService
+	operationalStateBackup      *guestruntimeapplication.GuestOperationalStateBackupApplicationService
+	operationalStateRestore     bool
+	telemetry                   *guestruntimeapplication.GuestRuntimeTelemetryPipelineApplicationService
+	coordinator                 *guestruntimeapplication.GuestRuntimeLabArchiveLifecycleCoordinator
 }
 
 // GuestRuntimeControlModules keeps module composition named as the Guest Runtime grows.
 // Callers cannot accidentally swap two state owners through a positional
 // constructor argument.
 type GuestRuntimeControlModules struct {
-	Topology                             *guestruntimeapplication.GuestRuntimeTopologyApplicationService
-	Lab                                  *guestruntimeapplication.GuestRuntimeLabApplicationService
-	Archive                              *guestruntimeapplication.GuestRuntimeArchiveApplicationService
-	ArchiveCredentialMaterial            *guestruntimeapplication.GuestRuntimeArchiveCredentialMaterialApplicationService
-	ExternalUpstreamIntegration          *guestruntimeapplication.GuestRuntimeExternalUpstreamApplicationService
-	OutboundRelayTarget                  *guestruntimeapplication.GuestRuntimeOutboundRelayApplicationService
-	GuestTimeAuthority                   *guestruntimeapplication.GuestRuntimeTimeAuthorityApplicationService
-	RecorderObservationCatalog           *guestruntimeapplication.GuestRuntimeObservationCatalogApplicationService
-	GuestTelemetryPipeline               *guestruntimeapplication.GuestRuntimeTelemetryPipelineApplicationService
-	LabArchiveLifecycleCoordinationClock guestruntimeapplication.GuestRuntimeClock
+	Topology                                       *guestruntimeapplication.GuestRuntimeTopologyApplicationService
+	Lab                                            *guestruntimeapplication.GuestRuntimeLabApplicationService
+	Archive                                        *guestruntimeapplication.GuestRuntimeArchiveApplicationService
+	ArchiveLineage                                 *guestruntimeapplication.GuestRuntimeArchiveLineageApplicationService
+	ArchiveSourceAdmission                         *guestruntimeapplication.GuestRuntimeArchiveSourceAdmissionApplicationService
+	ArchiveSourceAdmissionBearerToken              string
+	ArchiveSourceMaximumBytes                      int64
+	LabReplaySource                                *guestruntimeapplication.GuestRuntimeLabReplaySourceApplicationService
+	LabReplaySourceMaximumBytes                    int64
+	LabReplay                                      *guestruntimeapplication.GuestRuntimeLabReplayApplicationService
+	ArchiveCredentialMaterial                      *guestruntimeapplication.GuestRuntimeArchiveCredentialMaterialApplicationService
+	ExternalUpstreamIntegration                    *guestruntimeapplication.GuestRuntimeExternalUpstreamApplicationService
+	OutboundRelayTarget                            *guestruntimeapplication.GuestRuntimeOutboundRelayApplicationService
+	GuestTimeAuthority                             *guestruntimeapplication.GuestRuntimeTimeAuthorityApplicationService
+	RecorderObservationCatalog                     *guestruntimeapplication.GuestRuntimeObservationCatalogApplicationService
+	RecorderObservationCatalogAdmissionBearerToken string
+	RecorderAssignment                             *guestruntimeapplication.GuestRuntimeRecorderAssignmentApplicationService
+	GuestOperationalStateIdentity                  *guestruntimeapplication.GuestOperationalStateIdentityApplicationService
+	GuestOperationalStateBackup                    *guestruntimeapplication.GuestOperationalStateBackupApplicationService
+	GuestOperationalStateRestoreAdmissionEnabled   bool
+	GuestTelemetryPipeline                         *guestruntimeapplication.GuestRuntimeTelemetryPipelineApplicationService
+	LabArchiveLifecycleCoordinationClock           guestruntimeapplication.GuestRuntimeClock
 }
 
 func NewGuestRuntimeTopologyHTTPServer(topologyService *guestruntimeapplication.GuestRuntimeTopologyApplicationService) *GuestRuntimeControlHTTPServer {
@@ -61,16 +91,28 @@ func NewGuestRuntimeControlHTTPServer(topologyService *guestruntimeapplication.G
 
 func NewGuestRuntimeControlHTTPServerWithModules(modules GuestRuntimeControlModules) *GuestRuntimeControlHTTPServer {
 	return &GuestRuntimeControlHTTPServer{
-		topologyService:           modules.Topology,
-		lab:                       modules.Lab,
-		archive:                   modules.Archive,
-		archiveCredentialMaterial: modules.ArchiveCredentialMaterial,
-		external:                  modules.ExternalUpstreamIntegration,
-		relay:                     modules.OutboundRelayTarget,
-		time:                      modules.GuestTimeAuthority,
-		catalog:                   modules.RecorderObservationCatalog,
-		telemetry:                 modules.GuestTelemetryPipeline,
-		coordinator:               guestruntimeapplication.NewGuestRuntimeLabArchiveLifecycleCoordinator(modules.Lab, modules.Archive, modules.LabArchiveLifecycleCoordinationClock),
+		topologyService:             modules.Topology,
+		lab:                         modules.Lab,
+		archive:                     modules.Archive,
+		archiveLineage:              modules.ArchiveLineage,
+		archiveSourceAdmission:      modules.ArchiveSourceAdmission,
+		archiveSourceAdmissionToken: modules.ArchiveSourceAdmissionBearerToken,
+		archiveSourceMaximumBytes:   modules.ArchiveSourceMaximumBytes,
+		labReplaySource:             modules.LabReplaySource,
+		labReplaySourceMaximumBytes: modules.LabReplaySourceMaximumBytes,
+		labReplay:                   modules.LabReplay,
+		archiveCredentialMaterial:   modules.ArchiveCredentialMaterial,
+		external:                    modules.ExternalUpstreamIntegration,
+		relay:                       modules.OutboundRelayTarget,
+		time:                        modules.GuestTimeAuthority,
+		catalog:                     modules.RecorderObservationCatalog,
+		catalogAdmissionBearerToken: modules.RecorderObservationCatalogAdmissionBearerToken,
+		recorderAssignment:          modules.RecorderAssignment,
+		operationalStateIdentity:    modules.GuestOperationalStateIdentity,
+		operationalStateBackup:      modules.GuestOperationalStateBackup,
+		operationalStateRestore:     modules.GuestOperationalStateRestoreAdmissionEnabled,
+		telemetry:                   modules.GuestTelemetryPipeline,
+		coordinator:                 guestruntimeapplication.NewGuestRuntimeLabArchiveLifecycleCoordinator(modules.Lab, modules.Archive, modules.LabArchiveLifecycleCoordinationClock),
 	}
 }
 
@@ -84,6 +126,32 @@ func (server *GuestRuntimeControlHTTPServer) ReconcilePendingTerminalArchiveExpo
 		return fmt.Errorf("Lab terminal archive reconciliation is unavailable because Lab, Archive, or its coordination clock is not composed")
 	}
 	return server.coordinator.ReconcilePendingTerminalArchiveExports(ctx)
+}
+
+// RunNextPendingLabReplayEffect executes one already-durable replay outbox
+// effect. Process lifecycle owns repetition; the HTTP adapter does not infer a
+// replay transition from request traffic.
+func (server *GuestRuntimeControlHTTPServer) RunNextPendingLabReplayEffect(
+	ctx context.Context,
+) (guestruntimedomain.LabReplayOperation, bool, error) {
+	if server.labReplay == nil {
+		return guestruntimedomain.LabReplayOperation{}, false,
+			fmt.Errorf("Guest Runtime Lab replay module is not composed")
+	}
+	return server.labReplay.RunNextPendingLabReplayEffect(ctx)
+}
+
+// RunNextPendingGuestOperationalStateEffect executes one durable C76 outbox
+// effect. Process lifecycle owns repetition; HTTP traffic never advances the
+// backup or restore state machine implicitly.
+func (server *GuestRuntimeControlHTTPServer) RunNextPendingGuestOperationalStateEffect(
+	ctx context.Context,
+) (guestruntimedomain.GuestOperationalStateBackupOperation, bool, error) {
+	if server.operationalStateBackup == nil {
+		return guestruntimedomain.GuestOperationalStateBackupOperation{}, false,
+			fmt.Errorf("Guest operational-state backup module is not composed")
+	}
+	return server.operationalStateBackup.RunNextPendingEffect(ctx)
 }
 
 func (server *GuestRuntimeControlHTTPServer) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -119,16 +187,41 @@ func (server *GuestRuntimeControlHTTPServer) ServeHTTP(response http.ResponseWri
 		server.getVirtualRecorder(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/lab/recorders/"))
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/lab/resources:command":
 		server.executeLabResource(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/lab/replay-sources":
+		server.admitLabReplaySource(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/lab/replays":
+		server.admitLabReplay(response, request)
+	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/lab/replays/") != "":
+		server.getLabReplay(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/lab/replays/"))
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/operational-state/backups":
+		server.admitGuestOperationalStateBackup(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/operational-state/restores":
+		server.admitGuestOperationalStateRestore(response, request)
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/runtime/operational-state/identity":
+		server.getGuestOperationalStateIdentity(response, request)
+	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/operational-state/operations/") != "":
+		server.getGuestOperationalStateOperation(
+			response,
+			request,
+			runtimePathParameter(
+				request.URL.Path,
+				"/v1/runtime/operational-state/operations/",
+			),
+		)
 	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/lab/deletion-receipts/") != "":
 		server.getDeletionReceipt(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/lab/deletion-receipts/"))
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/archive/exports":
 		server.exportArtifact(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/internal/v1/archive/recorder-uploads":
+		server.admitRecorderVitalUpload(response, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/runtime/archive/export-provider":
 		server.getArchiveExportProviderConfiguration(response, request)
 	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/archive/manifests/") != "":
 		server.getArtifactManifest(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/archive/manifests/"))
 	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/archive/export-receipts/") != "":
 		server.getExportReceipt(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/archive/export-receipts/"))
+	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/artifacts/") != "":
+		server.getArchiveArtifact(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/artifacts/"))
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/runtime/archive/credential-material":
 		server.getArchiveCredentialMaterialAvailability(response, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/archive/credential-material":
@@ -151,12 +244,24 @@ func (server *GuestRuntimeControlHTTPServer) ServeHTTP(response http.ResponseWri
 		server.getTimeAuthority(response, request, runtimePathParameter(request.URL.Path, "/v1/time/authorities/"))
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/time/clock-quality":
 		server.getClockQuality(response, request)
-	case request.Method == http.MethodGet && request.URL.Path == "/v1/runtime/catalog/recorder-observations":
-		server.listCatalogObservations(response, request)
-	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/catalog/recorder-observations":
+	case request.Method == http.MethodPost && request.URL.Path == "/internal/v1/recorder-catalog/observations":
 		server.ingestCatalogObservation(response, request)
 	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/catalog/recorder-observations/") != "":
 		server.getCatalogObservation(response, request, runtimePathParameter(request.URL.Path, "/v1/runtime/catalog/recorder-observations/"))
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/runtime/recorders":
+		server.getRecorderObservabilitySummaryPage(response, request)
+	case request.Method == http.MethodGet && recorderObservabilityPathParameter(request.URL.Path, "/observability") != "":
+		server.getRecorderObservabilitySummary(response, request, recorderObservabilityPathParameter(request.URL.Path, "/observability"))
+	case request.Method == http.MethodGet && recorderObservabilityPathParameter(request.URL.Path, "/observability/timeline") != "":
+		server.getRecorderObservationTimeline(response, request, recorderObservabilityPathParameter(request.URL.Path, "/observability/timeline"))
+	case request.Method == http.MethodGet && recorderObservabilityPathParameter(request.URL.Path, "/observability/incidents") != "":
+		server.getRecorderIncidentHistory(response, request, recorderObservabilityPathParameter(request.URL.Path, "/observability/incidents"))
+	case request.Method == http.MethodGet && recorderObservabilityPathParameter(request.URL.Path, "/artifacts") != "":
+		server.getRecorderArtifacts(response, request, recorderObservabilityPathParameter(request.URL.Path, "/artifacts"))
+	case request.Method == http.MethodPost && recorderExpectationPathParameter(request.URL.Path) != "":
+		server.applyRecorderExpectation(response, request, recorderExpectationPathParameter(request.URL.Path))
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/recorder-assignments":
+		server.admitRecorderAssignmentEvidence(response, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/runtime/telemetry/pipelines":
 		server.applyTelemetryPipeline(response, request)
 	case request.Method == http.MethodGet && runtimePathParameter(request.URL.Path, "/v1/runtime/telemetry/pipelines/") != "":
@@ -247,12 +352,12 @@ func (server *GuestRuntimeControlHTTPServer) getClockQuality(response http.Respo
 	writeJSON(response, http.StatusOK, server.time.ReadGuestClockQuality(request.Context()))
 }
 
-func (server *GuestRuntimeControlHTTPServer) listCatalogObservations(response http.ResponseWriter, request *http.Request) {
-	if server.catalog == nil {
-		server.writeCatalogUnavailable(response, request)
-		return
+func validBearerAuthorization(authorization string, bearerToken string) bool {
+	if bearerToken == "" {
+		return false
 	}
-	writeJSON(response, http.StatusOK, server.catalog.ListCatalogObservations(request.Context()))
+	expected := "Bearer " + bearerToken
+	return len(authorization) == len(expected) && subtle.ConstantTimeCompare([]byte(authorization), []byte(expected)) == 1
 }
 
 func (server *GuestRuntimeControlHTTPServer) ingestCatalogObservation(response http.ResponseWriter, request *http.Request) {
@@ -260,14 +365,383 @@ func (server *GuestRuntimeControlHTTPServer) ingestCatalogObservation(response h
 		server.writeCatalogCommandUnavailable(response, request)
 		return
 	}
+	if !validBearerAuthorization(request.Header.Get("Authorization"), server.catalogAdmissionBearerToken) {
+		writeJSON(response, http.StatusUnauthorized, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      requestIDFromRequest(request),
+			ObservedAt:     guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+			AdmissionState: "not-admitted",
+			Issue:          guestruntimedomain.Issue{Code: "recorder-catalog-source-authentication-failed", Message: "Recorder Catalog admission requires the configured Recorder Gateway credential", Retryable: boolPointer(false), Dependency: "recorder-gateway"},
+		})
+		return
+	}
 	var command guestruntimedomain.CatalogObservationIngestCommand
-	requestID, err := decodeCommand(request, &command)
+	requestID, receivedBytes, sourceDocument, err := decodeCatalogObservationCommand(request, &command)
+	evidence := guestruntimeapplication.CatalogObservationAdmissionEvidence{
+		SourceIdentity: recorderGatewayCatalogAdmissionSourceIdentity,
+		MediaType:      request.Header.Get("Content-Type"),
+		ReceivedBytes:  receivedBytes,
+	}
 	if err != nil {
+		if sourceDocument != nil && guestruntimedomain.ValidIdentifier(requestID) && evidence.MediaType != "" {
+			admission, rejection, admissionFailure := server.catalog.QuarantineCatalogObservation(
+				request.Context(),
+				requestID,
+				sourceDocument,
+				guestruntimedomain.Issue{Code: "invalid-recorder-observation-document", Message: "Recorder observation document did not match the v1 Catalog command contract", Retryable: boolPointer(false), Dependency: "recorder-gateway"},
+				evidence,
+			)
+			if rejection != nil {
+				writeJSON(response, http.StatusBadRequest, rejection)
+				return
+			}
+			if admissionFailure != nil {
+				writeJSON(response, http.StatusInternalServerError, admissionFailure)
+				return
+			}
+			writeJSON(response, http.StatusAccepted, admission)
+			return
+		}
 		writeJSON(response, http.StatusBadRequest, malformedRejection(requestID, "invalid-catalog-observation-command-envelope", err.Error()))
 		return
 	}
-	operation, rejection, admissionFailure := server.catalog.IngestCatalogObservation(request.Context(), command)
-	server.writeCommandOutcome(response, operation, rejection, admissionFailure)
+	admission, rejection, admissionFailure := server.catalog.IngestCatalogObservation(
+		request.Context(),
+		command,
+		evidence,
+	)
+	if rejection != nil {
+		writeJSON(response, http.StatusBadRequest, rejection)
+		return
+	}
+	if admissionFailure != nil {
+		writeJSON(response, http.StatusInternalServerError, admissionFailure)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, admission)
+}
+
+func (server *GuestRuntimeControlHTTPServer) admitRecorderVitalUpload(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	observedAt := guestruntimedomain.Timestamp(
+		guestruntimeapplication.SystemGuestRuntimeClock{}.Now(),
+	)
+	if server.archiveSourceAdmission == nil ||
+		server.archiveSourceMaximumBytes < 1 {
+		writeJSON(response, http.StatusServiceUnavailable, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      requestIDFromRequest(request),
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:       "archive-source-admission-unavailable",
+				Message:    "Guest Runtime Archive source admission is not configured",
+				Dependency: "archive-export",
+			},
+		})
+		return
+	}
+	if !validBearerAuthorization(
+		request.Header.Get("Authorization"),
+		server.archiveSourceAdmissionToken,
+	) {
+		writeJSON(response, http.StatusUnauthorized, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      requestIDFromRequest(request),
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:       "archive-source-authentication-failed",
+				Message:    "Archive source admission requires the configured Recorder Gateway credential",
+				Dependency: "recorder-gateway",
+			},
+		})
+		return
+	}
+	if request.Header.Get("Content-Type") != "application/x-vital" {
+		writeJSON(response, http.StatusUnsupportedMediaType, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      requestIDFromRequest(request),
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:    "archive-source-media-type-invalid",
+				Message: "Archive source body must use application/x-vital",
+			},
+		})
+		return
+	}
+	command, err := decodeArchiveSourceAdmissionCommandHeader(
+		request.Header.Get("X-Vital-Archive-Source-Command"),
+	)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      requestIDFromRequest(request),
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:    "archive-source-command-header-invalid",
+				Message: err.Error(),
+			},
+		})
+		return
+	}
+	if command.Source.ByteSize > server.archiveSourceMaximumBytes {
+		writeJSON(response, http.StatusRequestEntityTooLarge, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      command.RequestID,
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:    "archive-source-size-exceeded",
+				Message: "Archive source receipt exceeds the configured byte limit",
+			},
+		})
+		return
+	}
+	request.Body = http.MaxBytesReader(
+		response,
+		request.Body,
+		server.archiveSourceMaximumBytes+1,
+	)
+	receipt, err := server.archiveSourceAdmission.AdmitRecorderVitalUpload(
+		request.Context(),
+		command,
+		request.Body,
+	)
+	if err == nil {
+		status := http.StatusAccepted
+		if receipt.Outcome == "duplicate" {
+			status = http.StatusOK
+		} else if receipt.Outcome == "quarantined" {
+			status = http.StatusUnprocessableEntity
+		}
+		writeJSON(response, status, receipt)
+		return
+	}
+	var rejected guestruntimeapplication.ArchiveSourceAdmissionRejectedError
+	if errors.As(err, &rejected) {
+		writeJSON(response, http.StatusBadRequest, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      command.RequestID,
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue:          rejected.Issue,
+		})
+		return
+	}
+	var unknown guestruntimeapplication.ArchiveSourceAdmissionUnknownError
+	if errors.As(err, &unknown) {
+		writeJSON(response, http.StatusServiceUnavailable, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      command.RequestID,
+			ObservedAt:     observedAt,
+			AdmissionState: "unknown",
+			Issue:          unknown.Issue,
+		})
+		return
+	}
+	writeJSON(response, http.StatusInternalServerError, guestruntimedomain.CommandAdmissionFailure{
+		SchemaVersion:  guestruntimedomain.SchemaVersion,
+		State:          "failed",
+		RequestID:      command.RequestID,
+		ObservedAt:     observedAt,
+		AdmissionState: "unknown",
+		Issue: guestruntimedomain.Issue{
+			Code:       "archive-source-admission-unclassified",
+			Message:    err.Error(),
+			Dependency: "archive-export",
+		},
+	})
+}
+
+func decodeArchiveSourceAdmissionCommandHeader(
+	encoded string,
+) (guestruntimedomain.ArchiveSourceAdmissionCommand, error) {
+	var command guestruntimedomain.ArchiveSourceAdmissionCommand
+	if encoded == "" || len(encoded) > maximumArchiveSourceCommandHeaderBytes {
+		return command, fmt.Errorf("X-Vital-Archive-Source-Command is missing or too large")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(raw) > maximumArchiveSourceCommandHeaderBytes {
+		return command, fmt.Errorf("X-Vital-Archive-Source-Command is not bounded base64url JSON")
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&command); err != nil {
+		return command, fmt.Errorf("decode Archive source command: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return command, fmt.Errorf("Archive source command must contain one JSON document")
+	}
+	if err := guestruntimedomain.ValidateArchiveSourceAdmissionCommand(command); err != nil {
+		return command, err
+	}
+	return command, nil
+}
+
+func (server *GuestRuntimeControlHTTPServer) admitLabReplaySource(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	observedAt := guestruntimedomain.Timestamp(
+		guestruntimeapplication.SystemGuestRuntimeClock{}.Now(),
+	)
+	if server.labReplaySource == nil ||
+		server.labReplaySourceMaximumBytes < 1 {
+		writeJSON(response, http.StatusServiceUnavailable, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      requestIDFromRequest(request),
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:       "lab-replay-source-owner-unavailable",
+				Message:    "Lab replay source owner is not composed",
+				Dependency: "lab-replay-source-owner",
+			},
+		})
+		return
+	}
+	if request.Header.Get("Content-Type") != guestruntimedomain.LabReplaySourceMediaType {
+		writeJSON(response, http.StatusUnsupportedMediaType, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      requestIDFromRequest(request),
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:    "lab-replay-source-media-type-invalid",
+				Message: "Lab replay source body must use application/x-vital",
+			},
+		})
+		return
+	}
+	command, err := decodeLabReplaySourceAdmissionCommandHeader(
+		request.Header.Get("X-Vital-Lab-Replay-Source-Command"),
+	)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      requestIDFromRequest(request),
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:    "lab-replay-source-command-header-invalid",
+				Message: err.Error(),
+			},
+		})
+		return
+	}
+	if err := guestruntimedomain.ValidateLabReplaySourceAdmissionCommand(
+		command,
+		server.labReplaySourceMaximumBytes,
+	); err != nil {
+		status := http.StatusBadRequest
+		if command.ByteSize > server.labReplaySourceMaximumBytes {
+			status = http.StatusRequestEntityTooLarge
+		}
+		writeJSON(response, status, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      command.RequestID,
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue: guestruntimedomain.Issue{
+				Code:    "lab-replay-source-command-invalid",
+				Message: err.Error(),
+			},
+		})
+		return
+	}
+	request.Body = http.MaxBytesReader(
+		response,
+		request.Body,
+		server.labReplaySourceMaximumBytes+1,
+	)
+	receipt, err := server.labReplaySource.AdmitLabReplaySource(
+		request.Context(),
+		command,
+		request.Body,
+	)
+	if err == nil {
+		status := http.StatusAccepted
+		if receipt.Outcome == "duplicate" {
+			status = http.StatusOK
+		}
+		writeJSON(response, status, receipt)
+		return
+	}
+	var rejected guestruntimeapplication.LabReplaySourceAdmissionRejectedError
+	if errors.As(err, &rejected) {
+		writeJSON(response, http.StatusUnprocessableEntity, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      command.RequestID,
+			ObservedAt:     observedAt,
+			AdmissionState: "not-admitted",
+			Issue:          rejected.Issue,
+		})
+		return
+	}
+	var unknown guestruntimeapplication.LabReplaySourceAdmissionUnknownError
+	if errors.As(err, &unknown) {
+		writeJSON(response, http.StatusServiceUnavailable, guestruntimedomain.CommandAdmissionFailure{
+			SchemaVersion:  guestruntimedomain.SchemaVersion,
+			State:          "failed",
+			RequestID:      command.RequestID,
+			ObservedAt:     observedAt,
+			AdmissionState: "unknown",
+			Issue:          unknown.Issue,
+		})
+		return
+	}
+	writeJSON(response, http.StatusInternalServerError, guestruntimedomain.CommandAdmissionFailure{
+		SchemaVersion:  guestruntimedomain.SchemaVersion,
+		State:          "failed",
+		RequestID:      command.RequestID,
+		ObservedAt:     observedAt,
+		AdmissionState: "unknown",
+		Issue: guestruntimedomain.Issue{
+			Code:       "lab-replay-source-admission-unclassified",
+			Message:    err.Error(),
+			Dependency: "lab-replay-source-owner",
+		},
+	})
+}
+
+func decodeLabReplaySourceAdmissionCommandHeader(
+	encoded string,
+) (guestruntimedomain.LabReplaySourceAdmissionCommand, error) {
+	var command guestruntimedomain.LabReplaySourceAdmissionCommand
+	if encoded == "" || len(encoded) > maximumLabReplaySourceCommandHeaderBytes {
+		return command, fmt.Errorf("X-Vital-Lab-Replay-Source-Command is missing or too large")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(raw) > maximumLabReplaySourceCommandHeaderBytes {
+		return command, fmt.Errorf("X-Vital-Lab-Replay-Source-Command is not bounded base64url JSON")
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&command); err != nil {
+		return command, fmt.Errorf("decode Lab replay source command: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return command, fmt.Errorf("Lab replay source command must contain one JSON document")
+	}
+	return command, nil
 }
 
 func (server *GuestRuntimeControlHTTPServer) getCatalogObservation(response http.ResponseWriter, request *http.Request, id string) {
@@ -276,6 +750,164 @@ func (server *GuestRuntimeControlHTTPServer) getCatalogObservation(response http
 		return
 	}
 	writeJSON(response, http.StatusOK, server.catalog.ReadCatalogObservation(request.Context(), id))
+}
+
+func (server *GuestRuntimeControlHTTPServer) getRecorderObservabilitySummary(response http.ResponseWriter, request *http.Request, recorderID string) {
+	if server.catalog == nil {
+		server.writeCatalogUnavailable(response, request)
+		return
+	}
+	writeJSON(response, http.StatusOK, server.catalog.ReadRecorderObservabilitySummary(request.Context(), recorderID))
+}
+
+func (server *GuestRuntimeControlHTTPServer) getRecorderObservabilitySummaryPage(response http.ResponseWriter, request *http.Request) {
+	if server.catalog == nil {
+		server.writeCatalogUnavailable(response, request)
+		return
+	}
+	limit, ok := recorderSummaryPageLimit(response, request)
+	if !ok {
+		return
+	}
+	writeJSON(
+		response,
+		http.StatusOK,
+		server.catalog.ReadRecorderObservabilitySummaryPage(
+			request.Context(),
+			limit,
+			request.URL.Query().Get("cursor"),
+		),
+	)
+}
+
+func recorderSummaryPageLimit(response http.ResponseWriter, request *http.Request) (int, bool) {
+	raw := request.URL.Query().Get("limit")
+	limit, err := strconv.Atoi(raw)
+	if raw == "" || err != nil {
+		writeJSON(response, http.StatusBadRequest, guestruntimedomain.ReadResult{
+			SchemaVersion: guestruntimedomain.SchemaVersion,
+			State:         "invalid",
+			ObservedAt:    guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+			Issue:         &guestruntimedomain.Issue{Code: "invalid-recorder-summary-page-limit", Message: "limit query parameter must be an integer between 1 and 100"},
+		})
+		return 0, false
+	}
+	return limit, true
+}
+
+func (server *GuestRuntimeControlHTTPServer) getRecorderObservationTimeline(response http.ResponseWriter, request *http.Request, recorderID string) {
+	if server.catalog == nil {
+		server.writeCatalogUnavailable(response, request)
+		return
+	}
+	limit, ok := recorderHistoryLimit(response, request)
+	if !ok {
+		return
+	}
+	writeJSON(response, http.StatusOK, server.catalog.ReadRecorderObservationTimeline(request.Context(), recorderID, limit, request.URL.Query().Get("cursor")))
+}
+
+func (server *GuestRuntimeControlHTTPServer) getRecorderIncidentHistory(response http.ResponseWriter, request *http.Request, recorderID string) {
+	if server.catalog == nil {
+		server.writeCatalogUnavailable(response, request)
+		return
+	}
+	limit, ok := recorderHistoryLimit(response, request)
+	if !ok {
+		return
+	}
+	writeJSON(response, http.StatusOK, server.catalog.ReadRecorderIncidentHistory(request.Context(), recorderID, limit, request.URL.Query().Get("cursor")))
+}
+
+func recorderHistoryLimit(response http.ResponseWriter, request *http.Request) (int, bool) {
+	raw := request.URL.Query().Get("limit")
+	limit, err := strconv.Atoi(raw)
+	if raw == "" || err != nil {
+		writeJSON(response, http.StatusBadRequest, guestruntimedomain.ReadResult{
+			SchemaVersion: guestruntimedomain.SchemaVersion,
+			State:         "invalid",
+			ObservedAt:    guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+			Issue:         &guestruntimedomain.Issue{Code: "invalid-recorder-history-limit", Message: "limit query parameter must be an integer between 1 and 100"},
+		})
+		return 0, false
+	}
+	return limit, true
+}
+
+func (server *GuestRuntimeControlHTTPServer) applyRecorderExpectation(response http.ResponseWriter, request *http.Request, recorderID string) {
+	if server.catalog == nil {
+		server.writeCatalogCommandUnavailable(response, request)
+		return
+	}
+	var command guestruntimedomain.RecorderObservabilityExpectationCommand
+	requestID, err := decodeCommand(request, &command)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(requestID, "invalid-recorder-expectation-command-envelope", err.Error()))
+		return
+	}
+	receipt, rejection, admissionFailure := server.catalog.ApplyRecorderExpectation(request.Context(), recorderID, command)
+	if rejection != nil {
+		status := http.StatusBadRequest
+		if rejection.Issue.Code == "recorder-expectation-revision-conflict" || rejection.Issue.Code == "request-id-reused-with-different-command" {
+			status = http.StatusConflict
+		}
+		writeJSON(response, status, rejection)
+		return
+	}
+	if admissionFailure != nil {
+		writeJSON(response, http.StatusInternalServerError, admissionFailure)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, receipt)
+}
+
+func (server *GuestRuntimeControlHTTPServer) admitRecorderAssignmentEvidence(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	if server.recorderAssignment == nil {
+		writeJSON(
+			response,
+			http.StatusServiceUnavailable,
+			unavailableAdmission(
+				requestIDFromRequest(request),
+				"recorder-assignment-owner-unavailable",
+				"Guest Runtime Recorder Assignment module is not configured",
+			),
+		)
+		return
+	}
+	var command guestruntimedomain.RecorderAssignmentEvidenceCommand
+	requestID, err := decodeCommand(request, &command)
+	if err != nil {
+		writeJSON(
+			response,
+			http.StatusBadRequest,
+			malformedRejection(
+				requestID,
+				"invalid-recorder-assignment-command-envelope",
+				err.Error(),
+			),
+		)
+		return
+	}
+	receipt, rejection, admissionFailure := server.recorderAssignment.AdmitRecorderAssignmentEvidence(
+		request.Context(),
+		command,
+	)
+	if rejection != nil {
+		status := http.StatusBadRequest
+		if rejection.Issue.Code == "recorder-assignment-request-id-conflict" {
+			status = http.StatusConflict
+		}
+		writeJSON(response, status, rejection)
+		return
+	}
+	if admissionFailure != nil {
+		writeJSON(response, http.StatusServiceUnavailable, admissionFailure)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, receipt)
 }
 
 func (server *GuestRuntimeControlHTTPServer) applyTelemetryPipeline(response http.ResponseWriter, request *http.Request) {
@@ -442,6 +1074,347 @@ func (server *GuestRuntimeControlHTTPServer) getDeletionReceipt(response http.Re
 	writeJSON(response, http.StatusOK, server.lab.ReadLabResourceDeletionReceipt(request.Context(), id))
 }
 
+func (server *GuestRuntimeControlHTTPServer) getLabReplay(
+	response http.ResponseWriter,
+	request *http.Request,
+	replayID string,
+) {
+	if server.labReplay == nil {
+		writeJSON(
+			response,
+			http.StatusServiceUnavailable,
+			guestruntimedomain.ReadResult{
+				SchemaVersion: guestruntimedomain.SchemaVersion,
+				State:         "failed",
+				ObservedAt:    guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+				Issue: &guestruntimedomain.Issue{
+					Code:       "lab-replay-owner-unavailable",
+					Message:    "Guest Runtime Lab replay module is not configured",
+					Retryable:  boolPointer(true),
+					Dependency: "guest-runtime-lab-replay",
+				},
+			},
+		)
+		return
+	}
+	writeJSON(
+		response,
+		http.StatusOK,
+		server.labReplay.ReadLabReplay(request.Context(), replayID),
+	)
+}
+
+func (server *GuestRuntimeControlHTTPServer) admitLabReplay(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	if server.labReplay == nil {
+		writeJSON(
+			response,
+			http.StatusServiceUnavailable,
+			unavailableAdmission(
+				requestIDFromRequest(request),
+				"lab-replay-owner-unavailable",
+				"Guest Runtime Lab replay module is not configured",
+			),
+		)
+		return
+	}
+	var command guestruntimedomain.LabReplayCommand
+	requestID, err := decodeCommand(request, &command)
+	if err != nil {
+		writeJSON(
+			response,
+			http.StatusBadRequest,
+			malformedRejection(
+				requestID,
+				"invalid-lab-replay-command-envelope",
+				err.Error(),
+			),
+		)
+		return
+	}
+	if _, err := guestruntimedomain.NewLabReplayOperation(command); err != nil {
+		writeJSON(
+			response,
+			http.StatusBadRequest,
+			malformedRejection(
+				command.RequestID,
+				"invalid-lab-replay-command",
+				err.Error(),
+			),
+		)
+		return
+	}
+	operation, err := server.labReplay.AdmitLabReplay(request.Context(), command)
+	if errors.Is(err, guestruntimeapplication.ErrGuestRuntimeOwnedResourceConflict) {
+		writeJSON(
+			response,
+			http.StatusConflict,
+			malformedRejection(
+				command.RequestID,
+				"lab-replay-request-conflict",
+				err.Error(),
+			),
+		)
+		return
+	}
+	var rejected guestruntimedomain.LabReplayAdmissionRejectedError
+	if errors.As(err, &rejected) {
+		writeJSON(
+			response,
+			http.StatusBadRequest,
+			guestruntimedomain.CommandRejection{
+				SchemaVersion: guestruntimedomain.SchemaVersion,
+				State:         "rejected",
+				RequestID:     command.RequestID,
+				RejectedAt:    rejected.RejectedAt,
+				Issue:         rejected.Issue,
+			},
+		)
+		return
+	}
+	if err != nil {
+		writeJSON(
+			response,
+			http.StatusInternalServerError,
+			guestruntimedomain.CommandAdmissionFailure{
+				SchemaVersion:  guestruntimedomain.SchemaVersion,
+				State:          "failed",
+				RequestID:      command.RequestID,
+				ObservedAt:     guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+				AdmissionState: "unknown",
+				Issue: guestruntimedomain.Issue{
+					Code:       "lab-replay-admission-failed",
+					Message:    err.Error(),
+					Retryable:  boolPointer(true),
+					Dependency: "guest-state-store",
+				},
+			},
+		)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, operation)
+}
+
+func (server *GuestRuntimeControlHTTPServer) admitGuestOperationalStateBackup(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	if server.operationalStateBackup == nil {
+		writeJSON(
+			response,
+			http.StatusServiceUnavailable,
+			unavailableAdmission(
+				requestIDFromRequest(request),
+				"guest-operational-state-backup-owner-unavailable",
+				"Guest operational-state backup module is not configured",
+			),
+		)
+		return
+	}
+	var command guestruntimedomain.GuestOperationalStateBackupCommand
+	requestID, err := decodeCommand(request, &command)
+	if err != nil {
+		writeJSON(
+			response,
+			http.StatusBadRequest,
+			malformedRejection(
+				requestID,
+				"invalid-guest-operational-state-backup-command-envelope",
+				err.Error(),
+			),
+		)
+		return
+	}
+	if _, err := guestruntimedomain.NewGuestOperationalStateBackupOperation(
+		command,
+	); err != nil {
+		writeJSON(
+			response,
+			http.StatusBadRequest,
+			malformedRejection(
+				command.RequestID,
+				"invalid-guest-operational-state-backup-command",
+				err.Error(),
+			),
+		)
+		return
+	}
+	operation, err := server.operationalStateBackup.AdmitBackup(
+		request.Context(),
+		command,
+	)
+	server.writeGuestOperationalStateAdmission(
+		response,
+		command.RequestID,
+		operation,
+		err,
+	)
+}
+
+func (server *GuestRuntimeControlHTTPServer) admitGuestOperationalStateRestore(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	if server.operationalStateBackup == nil ||
+		!server.operationalStateRestore {
+		writeJSON(
+			response,
+			http.StatusServiceUnavailable,
+			unavailableAdmission(
+				requestIDFromRequest(request),
+				"guest-operational-state-restore-owner-unavailable",
+				"Guest operational-state restore module is not configured",
+			),
+		)
+		return
+	}
+	var command guestruntimedomain.GuestOperationalStateRestoreCommand
+	requestID, err := decodeCommand(request, &command)
+	if err != nil {
+		writeJSON(
+			response,
+			http.StatusBadRequest,
+			malformedRejection(
+				requestID,
+				"invalid-guest-operational-state-restore-command-envelope",
+				err.Error(),
+			),
+		)
+		return
+	}
+	if _, err := guestruntimedomain.NewGuestOperationalStateRestoreOperation(
+		command,
+	); err != nil {
+		writeJSON(
+			response,
+			http.StatusBadRequest,
+			malformedRejection(
+				command.RequestID,
+				"invalid-guest-operational-state-restore-command",
+				err.Error(),
+			),
+		)
+		return
+	}
+	operation, err := server.operationalStateBackup.AdmitRestore(
+		request.Context(),
+		command,
+	)
+	server.writeGuestOperationalStateAdmission(
+		response,
+		command.RequestID,
+		operation,
+		err,
+	)
+}
+
+func (server *GuestRuntimeControlHTTPServer) writeGuestOperationalStateAdmission(
+	response http.ResponseWriter,
+	requestID string,
+	operation guestruntimedomain.GuestOperationalStateBackupOperation,
+	err error,
+) {
+	if errors.Is(err, guestruntimeapplication.ErrGuestRuntimeOwnedResourceConflict) {
+		writeJSON(
+			response,
+			http.StatusConflict,
+			malformedRejection(
+				requestID,
+				"guest-operational-state-request-conflict",
+				err.Error(),
+			),
+		)
+		return
+	}
+	if err != nil {
+		writeJSON(
+			response,
+			http.StatusInternalServerError,
+			guestruntimedomain.CommandAdmissionFailure{
+				SchemaVersion:  guestruntimedomain.SchemaVersion,
+				State:          "failed",
+				RequestID:      requestID,
+				ObservedAt:     guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+				AdmissionState: "unknown",
+				Issue: guestruntimedomain.Issue{
+					Code:       "guest-operational-state-admission-failed",
+					Message:    err.Error(),
+					Retryable:  boolPointer(true),
+					Dependency: "guest-operational-state-ledger",
+				},
+			},
+		)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, operation)
+}
+
+func (server *GuestRuntimeControlHTTPServer) getGuestOperationalStateOperation(
+	response http.ResponseWriter,
+	request *http.Request,
+	operationID string,
+) {
+	if server.operationalStateBackup == nil {
+		writeJSON(
+			response,
+			http.StatusServiceUnavailable,
+			guestruntimedomain.ReadResult{
+				SchemaVersion: guestruntimedomain.SchemaVersion,
+				State:         "failed",
+				ObservedAt:    guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+				Issue: &guestruntimedomain.Issue{
+					Code:       "guest-operational-state-owner-unavailable",
+					Message:    "Guest operational-state backup module is not configured",
+					Retryable:  boolPointer(true),
+					Dependency: "guest-operational-state-ledger",
+				},
+			},
+		)
+		return
+	}
+	writeJSON(
+		response,
+		http.StatusOK,
+		server.operationalStateBackup.ReadOperation(
+			request.Context(),
+			operationID,
+		),
+	)
+}
+
+func (server *GuestRuntimeControlHTTPServer) getGuestOperationalStateIdentity(
+	response http.ResponseWriter,
+	request *http.Request,
+) {
+	if server.operationalStateIdentity == nil {
+		writeJSON(
+			response,
+			http.StatusServiceUnavailable,
+			guestruntimedomain.ReadResult{
+				SchemaVersion: guestruntimedomain.SchemaVersion,
+				State:         "failed",
+				ObservedAt: guestruntimedomain.Timestamp(
+					guestruntimeapplication.SystemGuestRuntimeClock{}.Now(),
+				),
+				Issue: &guestruntimedomain.Issue{
+					Code:       "guest-operational-state-identity-owner-unavailable",
+					Message:    "Guest operational-state identity module is not configured",
+					Retryable:  boolPointer(true),
+					Dependency: "guest-operational-state",
+				},
+			},
+		)
+		return
+	}
+	writeJSON(
+		response,
+		http.StatusOK,
+		server.operationalStateIdentity.Read(request.Context()),
+	)
+}
+
 func (server *GuestRuntimeControlHTTPServer) createLabSession(response http.ResponseWriter, request *http.Request) {
 	if server.lab == nil {
 		server.writeLabCommandUnavailable(response, request)
@@ -509,6 +1482,44 @@ func (server *GuestRuntimeControlHTTPServer) getExportReceipt(response http.Resp
 		return
 	}
 	writeJSON(response, http.StatusOK, server.archive.ReadArtifactExportReceipt(request.Context(), id))
+}
+
+func (server *GuestRuntimeControlHTTPServer) getArchiveArtifact(response http.ResponseWriter, request *http.Request, id string) {
+	if server.archiveLineage == nil {
+		server.writeArchiveUnavailable(response, request)
+		return
+	}
+	writeJSON(response, http.StatusOK, server.archiveLineage.ReadArchiveArtifact(request.Context(), id))
+}
+
+func (server *GuestRuntimeControlHTTPServer) getRecorderArtifacts(response http.ResponseWriter, request *http.Request, recorderID string) {
+	if server.archiveLineage == nil {
+		server.writeArchiveUnavailable(response, request)
+		return
+	}
+	limit, ok := recorderArtifactLimit(response, request)
+	if !ok {
+		return
+	}
+	writeJSON(response, http.StatusOK, server.archiveLineage.ReadRecorderArtifacts(request.Context(), recorderID, limit, request.URL.Query().Get("cursor")))
+}
+
+func recorderArtifactLimit(response http.ResponseWriter, request *http.Request) (int, bool) {
+	raw := request.URL.Query().Get("limit")
+	limit, err := strconv.Atoi(raw)
+	if raw == "" || err != nil || limit < 1 || limit > 100 {
+		writeJSON(response, http.StatusBadRequest, guestruntimedomain.ReadResult{
+			SchemaVersion: guestruntimedomain.SchemaVersion,
+			State:         "invalid",
+			ObservedAt:    guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()),
+			Issue: &guestruntimedomain.Issue{
+				Code:    "invalid-recorder-artifact-limit",
+				Message: "limit query parameter must be an integer between 1 and 100",
+			},
+		})
+		return 0, false
+	}
+	return limit, true
 }
 
 func (server *GuestRuntimeControlHTTPServer) writeMalformedLabCommand(response http.ResponseWriter, requestID string, err error) {
@@ -597,6 +1608,33 @@ func runtimePathParameter(path string, prefix string) string {
 	return value
 }
 
+func recorderExpectationPathParameter(path string) string {
+	const prefix = "/v1/runtime/recorders/"
+	const suffix = "/observability-expectation"
+	value := strings.TrimPrefix(path, prefix)
+	if value == path || !strings.HasSuffix(value, suffix) {
+		return ""
+	}
+	value = strings.TrimSuffix(value, suffix)
+	if value == "" || strings.Contains(value, "/") {
+		return ""
+	}
+	return value
+}
+
+func recorderObservabilityPathParameter(path string, suffix string) string {
+	const prefix = "/v1/runtime/recorders/"
+	value := strings.TrimPrefix(path, prefix)
+	if value == path || !strings.HasSuffix(value, suffix) {
+		return ""
+	}
+	value = strings.TrimSuffix(value, suffix)
+	if value == "" || strings.Contains(value, "/") {
+		return ""
+	}
+	return value
+}
+
 func malformedRejection(requestID string, code string, message string) guestruntimedomain.CommandRejection {
 	return guestruntimedomain.CommandRejection{SchemaVersion: guestruntimedomain.SchemaVersion, State: "rejected", RequestID: requestIDOrGenerated(requestID), RejectedAt: guestruntimedomain.Timestamp(guestruntimeapplication.SystemGuestRuntimeClock{}.Now()), Issue: guestruntimedomain.Issue{Code: code, Message: message}}
 }
@@ -652,22 +1690,57 @@ func (server *GuestRuntimeControlHTTPServer) applyTopology(response http.Respons
 }
 
 func decodeCommand(request *http.Request, destination any) (string, error) {
+	requestID, _, err := decodeCommandWithReceivedBytes(request, destination)
+	return requestID, err
+}
+
+func decodeCommandWithReceivedBytes(request *http.Request, destination any) (string, int64, error) {
 	raw, err := io.ReadAll(io.LimitReader(request.Body, maximumCommandBytes+1))
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if len(raw) > int(maximumCommandBytes) {
-		return requestIDFromRaw(raw), errors.New("command body exceeds the 1 MiB limit")
+		return requestIDFromRaw(raw), int64(len(raw)), errors.New("command body exceeds the 1 MiB limit")
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
-		return requestIDFromRaw(raw), err
+		return requestIDFromRaw(raw), int64(len(raw)), err
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return requestIDFromRaw(raw), errors.New("command body must contain exactly one JSON object")
+		return requestIDFromRaw(raw), int64(len(raw)), errors.New("command body must contain exactly one JSON object")
 	}
-	return requestIDFromRaw(raw), nil
+	return requestIDFromRaw(raw), int64(len(raw)), nil
+}
+
+func decodeCatalogObservationCommand(request *http.Request, destination *guestruntimedomain.CatalogObservationIngestCommand) (string, int64, map[string]any, error) {
+	raw, err := io.ReadAll(io.LimitReader(request.Body, maximumCommandBytes+1))
+	if err != nil {
+		return "", 0, nil, err
+	}
+	requestID := requestIDFromRaw(raw)
+	if len(raw) > int(maximumCommandBytes) {
+		return requestID, int64(len(raw)), nil, errors.New("command body exceeds the 1 MiB limit")
+	}
+	var sourceDocument map[string]any
+	if err := json.Unmarshal(raw, &sourceDocument); err != nil || sourceDocument == nil {
+		if err == nil {
+			err = errors.New("command body must be a JSON object")
+		}
+		return requestID, int64(len(raw)), nil, err
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		return requestID, int64(len(raw)), sourceDocument, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return requestID, int64(len(raw)), sourceDocument, errors.New("command body must contain exactly one JSON object")
+	}
+	if issue := guestruntimedomain.ValidateCatalogObservationIngestCommand(*destination); issue != nil {
+		return requestID, int64(len(raw)), sourceDocument, errors.New(issue.Code)
+	}
+	return requestID, int64(len(raw)), sourceDocument, nil
 }
 
 func requestIDFromRaw(raw []byte) string {

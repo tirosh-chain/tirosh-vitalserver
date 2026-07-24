@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from acceptance.harness.guest_runtime_control_http_acceptance_fixture_arguments import (
     compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments,
+    require_recorder_catalog_test_database_url,
 )
 from tooling.contracts import ContractRepository
 
@@ -154,7 +155,9 @@ class RunningGuest(RunningProcess):
             [
                 str(binary),
                 *compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
-                    listen_address="127.0.0.1:{0}".format(self.port), state_database_path=str(work / "guest.sqlite"), service_version="external-time-acceptance", instance_id="guest-" + suffix,
+                    listen_address="127.0.0.1:{0}".format(self.port), state_database_path=str(work / "guest.sqlite"), bootstrap_evidence_root_directory=str(work / "bootstrap-evidence"), service_version="external-time-acceptance", instance_id="guest-" + suffix,
+                    recorder_catalog_database_url=require_recorder_catalog_test_database_url(), recorder_catalog_admission_bearer_token="external-time-catalog-token", recorder_observation_max_report_age_seconds=300,
+                    archive_source_admission_bearer_token="external-time-archive-token", archive_artifact_object_root_directory=str(work / "archive-artifacts"), archive_source_maximum_bytes=67108864, lab_replay_source_object_root_directory=str(work / "lab-replay-sources"), lab_replay_source_maximum_bytes=67108864, lab_replay_spool_root_directory=str(work / "lab-replay-spools"), lab_replay_string_track_policy="skip", lab_replay_gap_policy="fail-frame", lab_replay_frame_batch_size=1, recorder_attribution_policy_kind="recorder-assignment-owner",
                     archive_export_outcome_mode="succeed", recorder_gateway_cold_path_source_endpoint="http://127.0.0.1:8090", lab_recorder_runner_endpoint="http://127.0.0.1:8091", external_upstream_outcome_mode=external, outbound_relay_outcome_mode=relay,
                     guest_node_id="guest-" + suffix, time_authority_id="guest-time-" + suffix, time_probe_outcome_mode=clock,
                     telemetry_collector_probe_outcome_mode=pipeline, telemetry_export_outcome_mode=export,
@@ -328,21 +331,6 @@ class ExternalTimeObservabilityAcceptance(unittest.TestCase):
         self.assertEqual("guest", quality["node"]["kind"], quality)
         for evidence in ("source", "stratum", "offsetMs", "uncertaintyMs", "lastSyncAt"):
             self.assertIn(evidence, quality, quality)
-
-        envelope = {
-            "schemaVersion": "v1", "protocolVersion": "v1", "recorderId": "recorder-observation-source", "bootId": "observation-boot", "sequence": 7,
-            "occurredAt": "2026-07-17T08:59:00Z",
-            "time": {"state": "synchronized", "sourceId": "recorder-ntp", "offsetMs": 0.25, "uncertaintyMs": 1.0, "lastSyncAt": "2026-07-17T08:59:00Z"},
-            "runtime": {"state": "ready", "version": "1.2.3"},
-        }
-        catalog_operation = self.post(guest.url, "/v1/runtime/catalog/recorder-observations", {"schemaVersion": "v1", "requestId": "catalog-observation-ingest", "observationId": "observation-primary", "envelope": envelope})
-        self.assertEqual("succeeded", catalog_operation["state"], catalog_operation)
-        observation = self.read(guest.url, "/v1/runtime/catalog/recorder-observations/observation-primary")["value"]
-        self.assert_schema("catalog-observation.schema.json", observation)
-        self.assertEqual(envelope["occurredAt"], observation["envelope"]["occurredAt"], observation)
-        self.assertNotEqual(envelope["occurredAt"], observation["receivedAt"], observation)
-        replay = self.post(guest.url, "/v1/runtime/catalog/recorder-observations", {"schemaVersion": "v1", "requestId": "catalog-observation-replay", "observationId": "observation-other", "envelope": envelope})
-        self.assertEqual(catalog_operation["id"], replay["id"], replay)
 
         pipeline_operation = self.post(guest.url, "/v1/runtime/telemetry/pipelines", self.telemetry_pipeline("guest-telemetry-pipeline", "guest-telemetry", "guest", "guest-available"))
         self.assert_schema("operation.schema.json", pipeline_operation)

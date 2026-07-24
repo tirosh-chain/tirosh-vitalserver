@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -46,11 +47,13 @@ func (provider *fakeProvider) Execute(_ context.Context, invocation hostagentdom
 }
 
 type fakeGuestControl struct {
-	probe        hostagentapplication.GuestRuntimeControlHTTPProbeResult
-	response     hostagentapplication.GuestRuntimeControlHTTPForwardedResponse
-	failure      *hostagentapplication.GuestRuntimeControlHTTPForwardingFailure
-	probeCalls   int
-	forwardCalls int
+	probe         hostagentapplication.GuestRuntimeControlHTTPProbeResult
+	response      hostagentapplication.GuestRuntimeControlHTTPForwardedResponse
+	failure       *hostagentapplication.GuestRuntimeControlHTTPForwardingFailure
+	probeCalls    int
+	forwardCalls  int
+	streamStarted chan struct{}
+	releaseStream chan struct{}
 }
 
 func (guest *fakeGuestControl) Probe(context.Context, hostagentdomain.GuestRuntimeControlEndpoint) hostagentapplication.GuestRuntimeControlHTTPProbeResult {
@@ -60,6 +63,32 @@ func (guest *fakeGuestControl) Probe(context.Context, hostagentdomain.GuestRunti
 
 func (guest *fakeGuestControl) Forward(_ context.Context, _ hostagentdomain.GuestRuntimeControlEndpoint, _ string, _ string, _ []byte, _ string) (hostagentapplication.GuestRuntimeControlHTTPForwardedResponse, *hostagentapplication.GuestRuntimeControlHTTPForwardingFailure) {
 	guest.forwardCalls++
+	return guest.response, guest.failure
+}
+
+func (guest *fakeGuestControl) ForwardStream(
+	ctx context.Context,
+	_ hostagentdomain.GuestRuntimeControlEndpoint,
+	stream hostagentapplication.GuestRuntimeControlHTTPStreamingRequest,
+) (
+	hostagentapplication.GuestRuntimeControlHTTPForwardedResponse,
+	*hostagentapplication.GuestRuntimeControlHTTPForwardingFailure,
+) {
+	guest.forwardCalls++
+	if guest.streamStarted != nil {
+		close(guest.streamStarted)
+	}
+	if guest.releaseStream != nil {
+		select {
+		case <-guest.releaseStream:
+		case <-ctx.Done():
+			return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{},
+				&hostagentapplication.GuestRuntimeControlHTTPForwardingFailure{
+					Issue: &hostagentdomain.Issue{Code: "stream-context-cancelled"},
+				}
+		}
+	}
+	_, _ = io.Copy(io.Discard, stream.Body)
 	return guest.response, guest.failure
 }
 
@@ -215,6 +244,70 @@ func TestGuestCommandForwardFailurePreservesUnknownDelivery(t *testing.T) {
 	}
 	if after := endpoint(t, service); after.Transport.State != "unavailable" {
 		t.Fatalf("failed forward did not persist Host transport observation: %+v", after.Transport)
+	}
+}
+
+func TestLabReplaySourceStreamDoesNotHoldEndpointWorkflowLockDuringTransfer(t *testing.T) {
+	provider := &fakeProvider{results: map[string]hostagentdomain.ProviderLifecycleResult{}}
+	streamStarted := make(chan struct{})
+	releaseStream := make(chan struct{})
+	guest := &fakeGuestControl{
+		probe:         hostagentapplication.GuestRuntimeControlHTTPProbeResult{Reachable: true},
+		response:      hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{StatusCode: 202, ContentType: "application/json", Body: []byte(`{"state":"accepted"}`)},
+		streamStarted: streamStarted,
+		releaseStream: releaseStream,
+	}
+	service := newService(t, provider, guest)
+	streamOutcome := make(chan hostagentapplication.GuestRuntimeControlCommandForwardOutcome, 1)
+	streamError := make(chan error, 1)
+	go func() {
+		outcome, err := service.ForwardGuestRuntimeControlStream(
+			context.Background(),
+			hostagentapplication.GuestRuntimeControlHTTPStreamingRequest{
+				Method:        "POST",
+				Path:          "/v1/runtime/lab/replay-sources",
+				ContentType:   "application/x-vital",
+				ContentLength: 5,
+				Body:          strings.NewReader("vital"),
+				Headers: map[string]string{
+					"X-Vital-Lab-Replay-Source-Command": "encoded-command",
+				},
+			},
+			"lab-replay-upload-1",
+		)
+		streamOutcome <- outcome
+		streamError <- err
+	}()
+	<-streamStarted
+
+	commandCompleted := make(chan struct{})
+	var commandOutcome hostagentapplication.GuestRuntimeControlCommandForwardOutcome
+	var commandErr error
+	go func() {
+		commandOutcome, commandErr = service.ForwardGuestRuntimeControlCommand(
+			context.Background(),
+			"/v1/runtime/topology:apply",
+			[]byte(`{"schemaVersion":"v1"}`),
+			"application/json",
+			"parallel-command-1",
+		)
+		close(commandCompleted)
+	}()
+	select {
+	case <-commandCompleted:
+	case <-time.After(time.Second):
+		t.Fatal("unrelated Host control command was blocked by Lab replay source transfer")
+	}
+	if commandErr != nil || commandOutcome.Response == nil {
+		t.Fatalf("parallel command err=%v outcome=%+v", commandErr, commandOutcome)
+	}
+
+	close(releaseStream)
+	if err := <-streamError; err != nil {
+		t.Fatalf("stream error = %v", err)
+	}
+	if outcome := <-streamOutcome; outcome.Response == nil {
+		t.Fatalf("stream outcome = %+v", outcome)
 	}
 }
 

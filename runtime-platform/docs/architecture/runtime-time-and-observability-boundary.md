@@ -70,3 +70,15 @@ endpoint. Its `time` is deliberately `not-reported` because the Runner does
 not own an independent recorder NTP authority. A physical Vital Recorder must
 use this same contract with its own boot ID, sequence, clock facts, and runtime
 facts; neither Gateway, Host, nor UI may synthesize them.
+
+The current Guest SQLite `CatalogObservation` repository is a foundation
+implementation, not the target product persistence model. The next capability
+replaces it with the Guest-owned PostgreSQL `recorder_catalog` schema. It keeps
+immutable admission evidence, a current projection, explicit expectation
+events, and bounded timeline/incident reads without dual-writing the SQLite
+table. Support, expectation, report freshness, and owner read state remain
+separate axes; absence of a report never proves that a Recorder is unsupported.
+
+The detailed schema, routes, cutover rule, artifact lineage boundary, and
+acceptance sequence are defined by the
+[Helper 0.2 Capability Adoption Plan](helper-0.2-capability-adoption-plan.md).

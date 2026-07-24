@@ -16,6 +16,20 @@
       }
     ],
     "stateDatabasePath": "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite",
+    "recorderCatalogDatabaseUrlMaterialPath": "/var/lib/vitalserver/private/recorder-catalog-database-url",
+    "recorderCatalogMigrationReceiptPath": "/var/lib/vitalserver/private/recorder-catalog-migration-receipt.json",
+    "recorderCatalogAdmissionBearerTokenMaterialPath": "/var/lib/vitalserver/private/recorder-catalog-admission-token",
+    "recorderObservationMaxReportAgeSeconds": 300,
+    "archiveSourceAdmissionBearerTokenMaterialPath": "/var/lib/vitalserver/private/archive-source-admission-token",
+    "archiveArtifactObjectRootDirectory": "/var/lib/vitalserver/archive-artifacts",
+    "archiveSourceMaximumBytes": 67108864,
+    "labReplaySourceObjectRootDirectory": "/var/lib/vitalserver/lab-replay-sources",
+    "labReplaySourceMaximumBytes": 67108864,
+    "labReplaySpoolRootDirectory": "/var/lib/vitalserver/lab-replay-spools",
+    "labReplayStringTrackPolicy": "skip",
+    "labReplayGapPolicy": "fail-frame",
+    "labReplayFrameBatchSize": 1,
+    "recorderAttributionPolicyKind": "recorder-assignment-owner",
     "serviceVersion": "0.1.0-dev",
     "instanceId": "guest-runtime-primary",
     "archiveExportProvider": {
@@ -26,7 +40,7 @@
         "kind": "bundled-vitalserver-topology-deployment",
         "configurationPath": "/opt/vitalserver/current/config/guest-product-vitalserver-topology-deployment.json"
       },
-      "credentialMaterialPath": "/run/vitalserver/secrets/bundled-vitalserver-reference-library.json"
+      "credentialMaterialPath": "/var/lib/vitalserver/private/bundled-vitalserver-reference-library.json"
     },
     "recorderGatewayColdPathSourceEndpoint": "http://127.0.0.1:8090",
     "labRecorderRunnerEndpoint": "http://127.0.0.1:8091",
@@ -55,6 +69,16 @@
       "kind": "otlp-http",
       "collectorBaseEndpoint": "http://127.0.0.1:4318",
       "requestTimeoutMilliseconds": 5000
+    },
+    "operationalStateBackup": {
+      "rootDirectory": "/var/lib/vitalserver/guest-runtime",
+      "ledgerDatabasePath": "/var/lib/vitalserver/guest-runtime/operational-state-backup-ledger.sqlite",
+      "destinationReference": {
+        "resourceType": "guest-backup-destination",
+        "resourceId": "guest-local-operational-state"
+      },
+      "pgDumpExecutablePath": "/usr/bin/pg_dump",
+      "pgRestoreExecutablePath": "/usr/bin/pg_restore"
     }
   },
   "recorderGateway": {
@@ -76,15 +100,25 @@
       "maximumAttempts": 3,
       "retryDelayMilliseconds": 100,
       "leaseDurationMilliseconds": 1000
-    }
+    },
+    "guestRuntimeObservationCatalogEndpoint": "http://127.0.0.1:18443",
+    "observationCatalogBearerTokenMaterialPath": "/var/lib/vitalserver/private/recorder-catalog-admission-token",
+    "vitalUploadPolicy": {
+      "maximumBytes": 67108864,
+      "recoveryIntervalMilliseconds": 1000,
+      "recoveryMaximumItems": 100
+    },
+    "guestRuntimeArchiveSourceAdmissionEndpoint": "http://127.0.0.1:18443/internal/v1/archive/recorder-uploads",
+    "archiveSourceAdmissionBearerTokenMaterialPath": "/var/lib/vitalserver/private/archive-source-admission-token",
+    "archiveSourceAdmissionRequestTimeoutMilliseconds": 30000
   },
   "labRecorderRunner": {
     "nodeExecutablePath": "/opt/vitalserver/current/node/bin/node",
     "programPath": "/opt/vitalserver/current/lab-recorder-runner/dist/cmd/lab-recorder-runner.js",
     "listener": { "bindHost": "127.0.0.1", "port": 8091 },
     "recorderGatewayEndpoint": "http://127.0.0.1:8090",
-    "guestRuntimeObservationCatalogEndpoint": "http://127.0.0.1:18443",
-    "scenarioCatalogPath": "/opt/vitalserver/current/lab-recorder-runner/lab-scenario-catalog.json"
+    "scenarioCatalogPath": "/opt/vitalserver/current/lab-recorder-runner/lab-scenario-catalog.json",
+    "replayStateDirectory": "/var/lib/vitalserver/lab-replay-runner"
   },
   "telemetryCollector": {
     "executablePath": "/opt/vitalserver/current/bin/guest-telemetry-collector",

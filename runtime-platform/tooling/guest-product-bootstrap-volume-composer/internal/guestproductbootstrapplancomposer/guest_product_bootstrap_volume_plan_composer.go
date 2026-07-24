@@ -36,18 +36,25 @@ type GuestProductBootstrapPayloads map[string]GuestProductBootstrapPayloadIdenti
 // GuestProductProcessDeploymentPaths is the C37 subset which must agree with
 // the Guest-owned paths declared by C39.
 type GuestProductProcessDeploymentPaths struct {
-	GuestRuntimeExecutablePath               string
-	GuestRuntimeStateDatabasePath            string
-	RecorderGatewayNodePath                  string
-	RecorderGatewayProgramPath               string
-	LabRecorderRunnerNodePath                string
-	LabRecorderRunnerProgramPath             string
-	LabScenarioCatalogPath                   string
-	GuestTelemetryCollectorExecutablePath    string
-	GuestTelemetryCollectorConfigurationPath string
-	GuestTimeAuthorityKind                   string
-	GuestTimeAuthorityNTPServerHost          string
-	GuestTimeAuthorityNTPServerPort          int
+	GuestRuntimeExecutablePath                                   string
+	GuestRuntimeStateDatabasePath                                string
+	RecorderCatalogDatabaseURLMaterialPath                       string
+	RecorderCatalogMigrationReceiptPath                          string
+	RecorderCatalogAdmissionBearerTokenMaterialPath              string
+	ArchiveSourceAdmissionBearerTokenMaterialPath                string
+	ArchiveArtifactObjectRootDirectory                           string
+	RecorderGatewayNodePath                                      string
+	RecorderGatewayProgramPath                                   string
+	RecorderGatewayObservationCatalogBearerTokenMaterialPath     string
+	RecorderGatewayArchiveSourceAdmissionBearerTokenMaterialPath string
+	LabRecorderRunnerNodePath                                    string
+	LabRecorderRunnerProgramPath                                 string
+	LabScenarioCatalogPath                                       string
+	GuestTelemetryCollectorExecutablePath                        string
+	GuestTelemetryCollectorConfigurationPath                     string
+	GuestTimeAuthorityKind                                       string
+	GuestTimeAuthorityNTPServerHost                              string
+	GuestTimeAuthorityNTPServerPort                              int
 }
 
 // GuestProductServiceManagerDeployment is the C38 subset that controls the
@@ -152,6 +159,27 @@ type GuestProductBootstrapTimeSynchronization struct {
 	ConfigurationDestinationPath string
 }
 
+// GuestProductBootstrapRecorderCatalogPostgreSQL declares the only supported
+// first-boot database and migration effect. Every private path must agree with
+// C37; generated values never appear in C39.
+type GuestProductBootstrapRecorderCatalogPostgreSQL struct {
+	PackageManager                                string
+	PackageNames                                  []string
+	ServiceName                                   string
+	DatabaseHost                                  string
+	DatabasePort                                  int
+	DatabaseName                                  string
+	DatabaseRoleName                              string
+	DatabaseURLMaterialPath                       string
+	CatalogAdmissionBearerTokenMaterialPath       string
+	ArchiveSourceAdmissionBearerTokenMaterialPath string
+	GeneratedSecretByteCount                      int
+	MigrationExecutablePath                       string
+	MigrationPythonExecutablePath                 string
+	ExpectedRevision                              string
+	MigrationReceiptPath                          string
+}
+
 // GuestProductBootstrapConfiguration is C39's domain view. It describes a
 // first-Guest-boot payload installation, not a Host filesystem operation.
 type GuestProductBootstrapConfiguration struct {
@@ -164,6 +192,9 @@ type GuestProductBootstrapConfiguration struct {
 	GuestProductRelease                       GuestProductBootstrapRelease
 	GuestRuntime                              GuestProductBootstrapExecutablePayload
 	GuestRuntimeStateDirectory                GuestProductBootstrapStateDirectory
+	GuestPrivateStateDirectory                GuestProductBootstrapStateDirectory
+	GuestArchiveArtifactObjectDirectory       GuestProductBootstrapStateDirectory
+	GuestRecorderCatalogPostgreSQL            GuestProductBootstrapRecorderCatalogPostgreSQL
 	GuestTelemetryCollector                   *GuestProductBootstrapExecutablePayload
 	GuestTelemetryCollectorConfiguration      *GuestProductBootstrapConfigurationPayload
 	GuestTelemetryStateDirectory              *GuestProductBootstrapStateDirectory
@@ -265,6 +296,16 @@ func ComposeGuestProductBootstrapVolumePlan(
 	if path.Dir(composition.ProcessDeployment.GuestRuntimeStateDatabasePath) != configuration.GuestRuntimeStateDirectory.DirectoryPath {
 		return guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan{}, fmt.Errorf("C37 Guest Runtime state database parent does not match C39 Guest Runtime state directory")
 	}
+	recorderCatalog := configuration.GuestRecorderCatalogPostgreSQL
+	if composition.ProcessDeployment.RecorderCatalogDatabaseURLMaterialPath != recorderCatalog.DatabaseURLMaterialPath ||
+		composition.ProcessDeployment.RecorderCatalogMigrationReceiptPath != recorderCatalog.MigrationReceiptPath ||
+		composition.ProcessDeployment.RecorderCatalogAdmissionBearerTokenMaterialPath != recorderCatalog.CatalogAdmissionBearerTokenMaterialPath ||
+		composition.ProcessDeployment.ArchiveSourceAdmissionBearerTokenMaterialPath != recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath ||
+		composition.ProcessDeployment.RecorderGatewayObservationCatalogBearerTokenMaterialPath != recorderCatalog.CatalogAdmissionBearerTokenMaterialPath ||
+		composition.ProcessDeployment.RecorderGatewayArchiveSourceAdmissionBearerTokenMaterialPath != recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath ||
+		composition.ProcessDeployment.ArchiveArtifactObjectRootDirectory != configuration.GuestArchiveArtifactObjectDirectory.DirectoryPath {
+		return guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan{}, fmt.Errorf("C37 private material or Archive object paths do not match C39 PostgreSQL bootstrap ownership")
+	}
 	if err := validateTelemetryCollectorBootstrapAgreement(composition.ProcessDeployment, configuration); err != nil {
 		return guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan{}, err
 	}
@@ -309,6 +350,31 @@ func ComposeGuestProductBootstrapVolumePlan(
 		GuestRuntimeStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
 			DirectoryPath: configuration.GuestRuntimeStateDirectory.DirectoryPath,
 			DirectoryMode: configuration.GuestRuntimeStateDirectory.DirectoryMode,
+		},
+		GuestPrivateStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
+			DirectoryPath: configuration.GuestPrivateStateDirectory.DirectoryPath,
+			DirectoryMode: configuration.GuestPrivateStateDirectory.DirectoryMode,
+		},
+		GuestArchiveArtifactObjectDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
+			DirectoryPath: configuration.GuestArchiveArtifactObjectDirectory.DirectoryPath,
+			DirectoryMode: configuration.GuestArchiveArtifactObjectDirectory.DirectoryMode,
+		},
+		GuestRecorderCatalogPostgreSQL: guestproductbootstrapvolumeplan.DeclaredGuestRecorderCatalogPostgreSQL{
+			PackageManager:                          recorderCatalog.PackageManager,
+			PackageNames:                            append([]string(nil), recorderCatalog.PackageNames...),
+			ServiceName:                             recorderCatalog.ServiceName,
+			DatabaseHost:                            recorderCatalog.DatabaseHost,
+			DatabasePort:                            recorderCatalog.DatabasePort,
+			DatabaseName:                            recorderCatalog.DatabaseName,
+			DatabaseRoleName:                        recorderCatalog.DatabaseRoleName,
+			DatabaseURLMaterialPath:                 recorderCatalog.DatabaseURLMaterialPath,
+			CatalogAdmissionBearerTokenMaterialPath: recorderCatalog.CatalogAdmissionBearerTokenMaterialPath,
+			ArchiveSourceAdmissionBearerTokenMaterialPath: recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath,
+			GeneratedSecretByteCount:                      recorderCatalog.GeneratedSecretByteCount,
+			MigrationExecutablePath:                       recorderCatalog.MigrationExecutablePath,
+			MigrationPythonExecutablePath:                 recorderCatalog.MigrationPythonExecutablePath,
+			ExpectedRevision:                              recorderCatalog.ExpectedRevision,
+			MigrationReceiptPath:                          recorderCatalog.MigrationReceiptPath,
 		},
 	}
 	if configuration.GuestTelemetryStateDirectory != nil {

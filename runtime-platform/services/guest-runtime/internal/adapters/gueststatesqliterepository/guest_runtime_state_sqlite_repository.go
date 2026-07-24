@@ -22,6 +22,8 @@ type GuestRuntimeStateSQLiteRepository struct {
 	database *sql.DB
 }
 
+const guestRuntimeStateSQLiteSchemaVersion = 1
+
 func OpenGuestRuntimeStateSQLiteRepository(ctx context.Context, databasePath string) (*GuestRuntimeStateSQLiteRepository, error) {
 	if databasePath == "" {
 		return nil, fmt.Errorf("Guest Runtime state database path is required")
@@ -54,6 +56,11 @@ func (repository *GuestRuntimeStateSQLiteRepository) Close() error {
 func (repository *GuestRuntimeStateSQLiteRepository) migrate(ctx context.Context) error {
 	statements := []string{
 		`PRAGMA foreign_keys = ON`,
+		`CREATE TABLE IF NOT EXISTS state_store_metadata (
+			singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+			database_id TEXT NOT NULL UNIQUE,
+			schema_version INTEGER NOT NULL CHECK (schema_version > 0)
+		)`,
 		`CREATE TABLE IF NOT EXISTS runtime_topology (
 			singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
 			id TEXT NOT NULL UNIQUE,
@@ -92,6 +99,31 @@ func (repository *GuestRuntimeStateSQLiteRepository) migrate(ctx context.Context
 			request_id TEXT NOT NULL UNIQUE,
 			document_json TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS lab_replay_source_admissions (
+			request_id TEXT PRIMARY KEY,
+			source_id TEXT NOT NULL UNIQUE,
+			command_digest TEXT NOT NULL,
+			command_json TEXT NOT NULL,
+			receipt_json TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS lab_replay_operations (
+			id TEXT PRIMARY KEY,
+			request_id TEXT NOT NULL UNIQUE,
+			command_digest TEXT NOT NULL,
+			resource_revision INTEGER NOT NULL,
+			document_json TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS lab_replay_effects (
+			operation_id TEXT NOT NULL REFERENCES lab_replay_operations(id),
+			operation_revision INTEGER NOT NULL,
+			command TEXT NOT NULL,
+			state TEXT NOT NULL CHECK (state IN ('pending', 'completed')),
+			created_at TEXT NOT NULL,
+			completed_at TEXT,
+			PRIMARY KEY (operation_id, operation_revision)
+		)`,
+		`CREATE INDEX IF NOT EXISTS lab_replay_effects_pending
+		 ON lab_replay_effects(state, created_at, operation_id)`,
 		`CREATE TABLE IF NOT EXISTS archive_manifests (
 			id TEXT PRIMARY KEY,
 			artifact_id TEXT NOT NULL UNIQUE,
@@ -128,13 +160,6 @@ func (repository *GuestRuntimeStateSQLiteRepository) migrate(ctx context.Context
 			id TEXT PRIMARY KEY,
 			document_json TEXT NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS catalog_observations (
-			id TEXT PRIMARY KEY,
-			source_key TEXT NOT NULL UNIQUE,
-			envelope_digest TEXT NOT NULL,
-			operation_id TEXT NOT NULL UNIQUE,
-			document_json TEXT NOT NULL
-		)`,
 		`CREATE TABLE IF NOT EXISTS telemetry_pipelines (
 			id TEXT PRIMARY KEY,
 			document_json TEXT NOT NULL
@@ -157,6 +182,42 @@ func (repository *GuestRuntimeStateSQLiteRepository) migrate(ctx context.Context
 		if _, err := repository.database.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("migrate Guest Runtime state database: %w", err)
 		}
+	}
+	var databaseID string
+	var schemaVersion int
+	err := repository.database.QueryRowContext(
+		ctx,
+		`SELECT database_id, schema_version
+		   FROM state_store_metadata
+		  WHERE singleton = 1`,
+	).Scan(&databaseID, &schemaVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		databaseID, err = guestruntimedomain.NewIdentifier("guest-runtime-ledger")
+		if err != nil {
+			return fmt.Errorf("create Guest Runtime state database identity: %w", err)
+		}
+		if _, err := repository.database.ExecContext(
+			ctx,
+			`INSERT INTO state_store_metadata(
+				singleton, database_id, schema_version
+			) VALUES (1, ?, ?)`,
+			databaseID,
+			guestRuntimeStateSQLiteSchemaVersion,
+		); err != nil {
+			return fmt.Errorf("persist Guest Runtime state database identity: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read Guest Runtime state database identity: %w", err)
+	}
+	if !guestruntimedomain.ValidIdentifier(databaseID) ||
+		schemaVersion != guestRuntimeStateSQLiteSchemaVersion {
+		return fmt.Errorf(
+			"Guest Runtime state database metadata is invalid: expectedSchemaVersion=%d actualSchemaVersion=%d",
+			guestRuntimeStateSQLiteSchemaVersion,
+			schemaVersion,
+		)
 	}
 	return nil
 }

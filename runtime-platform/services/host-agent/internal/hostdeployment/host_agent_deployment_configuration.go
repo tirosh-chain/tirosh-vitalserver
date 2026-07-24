@@ -24,6 +24,7 @@ type HostAgentDeploymentConfiguration struct {
 	Control                     HostAgentControlConfiguration            `json:"control"`
 	Installation                HostInstallationConfiguration            `json:"installation"`
 	GuestRuntimeControlEndpoint GuestRuntimeControlEndpointConfiguration `json:"guestRuntimeControlEndpoint"`
+	OperationalStateBackup      HostOperationalStateBackupConfiguration  `json:"operationalStateBackup"`
 	Provider                    SelectedProviderConfiguration            `json:"provider"`
 	Time                        HostTimeConfiguration                    `json:"time"`
 	Telemetry                   HostTelemetryConfiguration               `json:"telemetry"`
@@ -68,6 +69,14 @@ type GuestRuntimeControlEndpointConfiguration struct {
 	Scheme string `json:"scheme"`
 	Host   string `json:"host"`
 	Port   int    `json:"port"`
+}
+
+type HostOperationalStateBackupConfiguration struct {
+	ScheduleID           string                            `json:"scheduleId"`
+	IntervalSeconds      int                               `json:"intervalSeconds"`
+	RetryIntervalSeconds int                               `json:"retryIntervalSeconds"`
+	DestinationReference hostagentdomain.ResourceReference `json:"destinationReference"`
+	RetentionPolicy      string                            `json:"retentionPolicy"`
 }
 
 type SelectedProviderConfiguration struct {
@@ -178,6 +187,14 @@ func (configuration HostAgentDeploymentConfiguration) Validate() error {
 	if !isDeploymentIdentifier(configuration.GuestRuntimeControlEndpoint.ID) || (configuration.GuestRuntimeControlEndpoint.Scheme != "http" && configuration.GuestRuntimeControlEndpoint.Scheme != "https") || !isExplicitText(configuration.GuestRuntimeControlEndpoint.Host) || configuration.GuestRuntimeControlEndpoint.Port < 1 || configuration.GuestRuntimeControlEndpoint.Port > 65535 {
 		return fmt.Errorf("Guest Runtime Control endpoint identity, scheme, host, and port must be explicit and valid")
 	}
+	if _, _, err := hostagentdomain.PlanScheduledGuestOperationalStateBackup(
+		configuration.OperationalStateBackup.Schedule(),
+		time.Unix(0, 0).UTC(),
+	); err != nil ||
+		configuration.OperationalStateBackup.RetryIntervalSeconds < 10 ||
+		configuration.OperationalStateBackup.RetryIntervalSeconds > 3600 {
+		return fmt.Errorf("Host operational-state backup schedule, destination, retention, and retry interval must be explicit and valid")
+	}
 	if !hostagentdomain.ValidPlatformProviderKind(configuration.Provider.Kind) || !isDeploymentIdentifier(configuration.Provider.ID) {
 		return fmt.Errorf("selected provider kind and identity must be explicit and valid")
 	}
@@ -238,6 +255,15 @@ func (configuration HostAgentDeploymentConfiguration) Validate() error {
 		return fmt.Errorf("update bootstrap mode must be unavailable or staged")
 	}
 	return nil
+}
+
+func (configuration HostOperationalStateBackupConfiguration) Schedule() hostagentdomain.HostOperationalStateBackupSchedule {
+	return hostagentdomain.HostOperationalStateBackupSchedule{
+		ScheduleID:           configuration.ScheduleID,
+		IntervalSeconds:      configuration.IntervalSeconds,
+		DestinationReference: configuration.DestinationReference,
+		RetentionPolicy:      configuration.RetentionPolicy,
+	}
 }
 
 func (configuration HostAgentDeploymentConfiguration) GuestTimeout() time.Duration {

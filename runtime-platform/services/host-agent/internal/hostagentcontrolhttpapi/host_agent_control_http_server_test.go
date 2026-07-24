@@ -2,6 +2,7 @@ package hostagentcontrolhttpapi_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -36,6 +37,21 @@ func (guest) Probe(context.Context, hostagentdomain.GuestRuntimeControlEndpoint)
 }
 
 func (guest guest) Forward(context.Context, hostagentdomain.GuestRuntimeControlEndpoint, string, string, []byte, string) (hostagentapplication.GuestRuntimeControlHTTPForwardedResponse, *hostagentapplication.GuestRuntimeControlHTTPForwardingFailure) {
+	statusCode := guest.statusCode
+	if statusCode == 0 {
+		statusCode = http.StatusOK
+	}
+	return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{StatusCode: statusCode, ContentType: "application/json; charset=utf-8", Body: guest.body}, nil
+}
+
+func (guest guest) ForwardStream(
+	context.Context,
+	hostagentdomain.GuestRuntimeControlEndpoint,
+	hostagentapplication.GuestRuntimeControlHTTPStreamingRequest,
+) (
+	hostagentapplication.GuestRuntimeControlHTTPForwardedResponse,
+	*hostagentapplication.GuestRuntimeControlHTTPForwardingFailure,
+) {
 	statusCode := guest.statusCode
 	if statusCode == 0 {
 		statusCode = http.StatusOK
@@ -78,6 +94,32 @@ func newHandler(t *testing.T, rawGuestBody []byte) http.Handler {
 	}
 	t.Cleanup(func() { _ = repository.Close() })
 	return newHandlerWithRepository(t, repository, rawGuestBody)
+}
+
+func TestLabReplaySourceFacadeStreamsBeyondJSONCommandLimit(t *testing.T) {
+	rawGuestBody := []byte(`{"schemaVersion":"v1","outcome":"accepted"}`)
+	handler := newHandler(t, rawGuestBody)
+	body := strings.NewReader(strings.Repeat("v", 2<<20))
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/runtime/lab/replay-sources",
+		body,
+	)
+	request.Header.Set("Content-Type", "application/x-vital")
+	request.Header.Set(
+		"X-Vital-Lab-Replay-Source-Command",
+		base64.RawURLEncoding.EncodeToString(
+			[]byte(`{"requestId":"lab-replay-stream-1"}`),
+		),
+	)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if response.Body.String() != string(rawGuestBody) {
+		t.Fatalf("Guest response changed: %q", response.Body.String())
+	}
 }
 
 func TestGuestFacadeDoesNotDecodeOrRewriteSuccessfulGuestResponse(t *testing.T) {

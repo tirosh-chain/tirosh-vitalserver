@@ -15,6 +15,15 @@ func TestRenderGuestOwnedBootstrapScriptCreatesDeclaredGuestRuntimeStateDirector
 			DirectoryPath: "/var/lib/vitalserver/guest-runtime",
 			DirectoryMode: "0700",
 		},
+		GuestPrivateStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
+			DirectoryPath: "/var/lib/vitalserver/private",
+			DirectoryMode: "0700",
+		},
+		GuestArchiveArtifactObjectDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
+			DirectoryPath: "/var/lib/vitalserver/archive-artifacts",
+			DirectoryMode: "0700",
+		},
+		GuestRecorderCatalogPostgreSQL: testGuestRecorderCatalogPostgreSQL(),
 	}
 
 	script, err := renderGuestOwnedBootstrapScript(plan)
@@ -30,11 +39,54 @@ func TestRenderGuestOwnedBootstrapScriptCreatesDeclaredGuestRuntimeStateDirector
 	}
 }
 
+func TestRenderGuestOwnedBootstrapScriptMigratesRecorderCatalogBeforeStartingProduct(t *testing.T) {
+	plan := guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan{
+		VolumeLabel:     "CIDATA",
+		ServiceUnitName: "vitalserver-guest-product.service",
+		GuestRuntimeStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
+			DirectoryPath: "/var/lib/vitalserver/guest-runtime",
+			DirectoryMode: "0700",
+		},
+		GuestPrivateStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
+			DirectoryPath: "/var/lib/vitalserver/private",
+			DirectoryMode: "0700",
+		},
+		GuestArchiveArtifactObjectDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{
+			DirectoryPath: "/var/lib/vitalserver/archive-artifacts",
+			DirectoryMode: "0700",
+		},
+		GuestRecorderCatalogPostgreSQL: testGuestRecorderCatalogPostgreSQL(),
+	}
+
+	script, err := renderGuestOwnedBootstrapScript(plan)
+	if err != nil {
+		t.Fatalf("render Guest bootstrap script: %v", err)
+	}
+	packageInstall := "apt-get install --yes --no-install-recommends postgresql python3-alembic python3-psycopg"
+	roleCreation := `--command "DO \$\$ BEGIN`
+	migration := `"/opt/vitalserver/current/bin/guest-runtime" --process-role=recorder-catalog-migrator`
+	productStart := "systemctl start vitalserver-guest-product.service"
+	packageOffset := strings.Index(script, packageInstall)
+	roleOffset := strings.Index(script, roleCreation)
+	migrationOffset := strings.Index(script, migration)
+	productStartOffset := strings.Index(script, productStart)
+	if packageOffset < 0 || roleOffset < 0 || migrationOffset < 0 || productStartOffset < 0 ||
+		packageOffset > roleOffset || roleOffset > migrationOffset || migrationOffset > productStartOffset {
+		t.Fatalf("PostgreSQL provisioning and migration must precede product startup:\n%s", script)
+	}
+	if strings.Contains(script, `DO \\$\\$`) {
+		t.Fatalf("PostgreSQL dollar quoting must contain one shell escape per dollar:\n%s", script)
+	}
+}
+
 func TestRenderGuestOwnedBootstrapScriptInstallsAndStartsOnlyDeclaredChronyService(t *testing.T) {
 	plan := guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan{
 		VolumeLabel: "CIDATA", ServiceUnitName: "vitalserver-guest-product.service",
-		GuestRuntimeStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/guest-runtime", DirectoryMode: "0700"},
-		GuestTimeSynchronization:   &guestproductbootstrapvolumeplan.DeclaredGuestTimeSynchronization{PackageManager: "apt", PackageName: "chrony", ServiceName: "chrony.service"},
+		GuestRuntimeStateDirectory:          guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/guest-runtime", DirectoryMode: "0700"},
+		GuestPrivateStateDirectory:          guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/private", DirectoryMode: "0700"},
+		GuestArchiveArtifactObjectDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/archive-artifacts", DirectoryMode: "0700"},
+		GuestRecorderCatalogPostgreSQL:      testGuestRecorderCatalogPostgreSQL(),
+		GuestTimeSynchronization:            &guestproductbootstrapvolumeplan.DeclaredGuestTimeSynchronization{PackageManager: "apt", PackageName: "chrony", ServiceName: "chrony.service"},
 	}
 
 	script, err := renderGuestOwnedBootstrapScript(plan)
@@ -52,7 +104,10 @@ func TestRenderGuestOwnedBootstrapScriptInstallsAndStartsOnlyDeclaredChronyServi
 func TestRenderGuestOwnedBootstrapScriptExplicitlyInitializesBundledImageSetStateBeforeStartingManager(t *testing.T) {
 	plan := guestproductbootstrapvolumeplan.GuestProductBootstrapVolumeCompositionPlan{
 		VolumeLabel: "CIDATA", ServiceUnitName: "vitalserver-guest-product.service",
-		GuestRuntimeStateDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/guest-runtime", DirectoryMode: "0700"},
+		GuestRuntimeStateDirectory:          guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/guest-runtime", DirectoryMode: "0700"},
+		GuestPrivateStateDirectory:          guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/private", DirectoryMode: "0700"},
+		GuestArchiveArtifactObjectDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/archive-artifacts", DirectoryMode: "0700"},
+		GuestRecorderCatalogPostgreSQL:      testGuestRecorderCatalogPostgreSQL(),
 		GuestBundledUpstreamImageSetManager: &guestproductbootstrapvolumeplan.DeclaredGuestBundledUpstreamImageSetManager{
 			ManagerID: "bundled-upstream-image-set-manager", ExecutablePath: "/opt/vitalserver/current/bin/guest-bundled-upstream-image-set-manager", ConfigurationPath: "/opt/vitalserver/current/config/guest-bundled-upstream-image-set-manager.json",
 			StateDirectory:           guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/bundled-upstream-image-sets", DirectoryMode: "0700"},
@@ -75,5 +130,25 @@ func TestRenderGuestOwnedBootstrapScriptExplicitlyInitializesBundledImageSetStat
 	}
 	if strings.Contains(script, "docker load") || strings.Contains(script, "docker compose") {
 		t.Fatalf("C40 must not invoke the C64 container engine:\n%s", script)
+	}
+}
+
+func testGuestRecorderCatalogPostgreSQL() guestproductbootstrapvolumeplan.DeclaredGuestRecorderCatalogPostgreSQL {
+	return guestproductbootstrapvolumeplan.DeclaredGuestRecorderCatalogPostgreSQL{
+		PackageManager:                          "apt",
+		PackageNames:                            []string{"postgresql", "python3-alembic", "python3-psycopg"},
+		ServiceName:                             "postgresql.service",
+		DatabaseHost:                            "127.0.0.1",
+		DatabasePort:                            5432,
+		DatabaseName:                            "vitalserver",
+		DatabaseRoleName:                        "vitalserver",
+		DatabaseURLMaterialPath:                 "/var/lib/vitalserver/private/recorder-catalog-database-url",
+		CatalogAdmissionBearerTokenMaterialPath: "/var/lib/vitalserver/private/recorder-catalog-admission-token",
+		ArchiveSourceAdmissionBearerTokenMaterialPath: "/var/lib/vitalserver/private/archive-source-admission-token",
+		GeneratedSecretByteCount:                      32,
+		MigrationExecutablePath:                       "/opt/vitalserver/current/bin/guest-runtime",
+		MigrationPythonExecutablePath:                 "/usr/bin/python3",
+		ExpectedRevision:                              "0006_backup_owner",
+		MigrationReceiptPath:                          "/var/lib/vitalserver/private/recorder-catalog-migration-receipt.json",
 	}
 }

@@ -6,19 +6,34 @@ package guestruntimecontrolhttpapplication
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"path/filepath"
 	"time"
 
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/archiveartifactobjectfile"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/archiveprovider"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/externalupstreamobservationprovider"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/guestbootstrapidentityfile"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatebackupsqliterepository"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatebackupstageexecutor"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatepostgresqlbackup"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatepostgresqlrepository"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatepostgresqlrestore"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatesqliterepository"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatesqliterestore"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/labrecorderrunner"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/labreplaysourcefile"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/outboundrelayobservationprovider"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/recorderassignmentresolution"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/recordergatewaycoldpathsource"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/telemetryexporter"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/timeprovider"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/vitalartifactformation"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/vitalfilereplayparser"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/vitalfilereplayspoolsqlite"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/vitalserverindexedlibrary"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimeapplication"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimecontrolhttpapi"
@@ -31,6 +46,23 @@ import (
 // observation.
 type GuestRuntimeControlHTTPApplicationDeployment struct {
 	GuestRuntimeStateDatabasePath                                           string
+	RecorderCatalogPostgreSQLDatabaseURL                                    string
+	RecorderCatalogDatabaseURLMaterialPath                                  string
+	RecorderCatalogMigrationReceiptPath                                     string
+	RecorderCatalogAdmissionBearerToken                                     string
+	RecorderCatalogAdmissionBearerTokenMaterialPath                         string
+	RecorderObservationMaxReportAgeSeconds                                  int
+	ArchiveSourceAdmissionBearerToken                                       string
+	ArchiveSourceAdmissionBearerTokenMaterialPath                           string
+	ArchiveArtifactObjectRootDirectory                                      string
+	ArchiveSourceMaximumBytes                                               int64
+	LabReplaySourceObjectRootDirectory                                      string
+	LabReplaySourceMaximumBytes                                             int64
+	LabReplaySpoolRootDirectory                                             string
+	LabReplayStringTrackPolicy                                              string
+	LabReplayGapPolicy                                                      string
+	LabReplayFrameBatchSize                                                 int
+	RecorderAttributionPolicyKind                                           string
 	GuestRuntimeServiceVersion                                              string
 	GuestRuntimeInstanceID                                                  string
 	ArchiveExportProviderReference                                          guestruntimedomain.ArchiveProviderReference
@@ -57,14 +89,56 @@ type GuestRuntimeControlHTTPApplicationDeployment struct {
 	GuestTelemetryRequestTimeoutMilliseconds                                int
 	GuestTelemetryCollectorProbeOutcomeMode                                 string
 	GuestTelemetryExportOutcomeMode                                         string
+	GuestOperationalStateBackupRootDirectory                                string
+	GuestOperationalStateBackupLedgerDatabasePath                           string
+	GuestOperationalStateBackupDestinationReference                         guestruntimedomain.ResourceReference
+	GuestOperationalStatePostgreSQLDumpExecutablePath                       string
+	GuestOperationalStatePostgreSQLRestoreExecutablePath                    string
+	GuestOperationalStateRestoreTargetReference                             guestruntimedomain.ResourceReference
+	GuestOperationalStateRestoreSQLiteTargetPath                            string
+	GuestOperationalStateRestorePostgreSQLDatabaseURL                       string
 }
 
 // GuestRuntimeControlHTTPApplication exposes the composed HTTP handler and
-// owns the lifecycle of the Guest Runtime SQLite repository it opened.
+// owns the lifecycle of the Guest Runtime SQLite control ledger and PostgreSQL
+// Recorder Catalog repositories it opened.
 type GuestRuntimeControlHTTPApplication struct {
-	ControlHTTPHandler          http.Handler
-	guestRuntimeStateRepository *gueststatesqliterepository.GuestRuntimeStateSQLiteRepository
-	reconcileTerminalArchives   func(context.Context) error
+	ControlHTTPHandler           http.Handler
+	guestRuntimeStateRepository  *gueststatesqliterepository.GuestRuntimeStateSQLiteRepository
+	recorderCatalogRepository    recorderCatalogRepository
+	archiveLineageRepository     archiveLineageRepository
+	recorderAssignmentRepository recorderAssignmentRepository
+	reconcileTerminalArchives    func(context.Context) error
+	runNextLabReplayEffect       func(context.Context) (guestruntimedomain.LabReplayOperation, bool, error)
+	stopLabReplayWorker          context.CancelFunc
+	labReplayWorkerDone          chan struct{}
+	guestOperationalStateLedger  *gueststatebackupsqliterepository.Repository
+	guestOperationalStateBackup  *gueststatepostgresqlbackup.Owner
+	guestOperationalStateRestore *gueststatepostgresqlrestore.Owner
+	runNextGuestStateEffect      func(context.Context) (guestruntimedomain.GuestOperationalStateBackupOperation, bool, error)
+	stopGuestStateWorker         context.CancelFunc
+	guestStateWorkerDone         chan struct{}
+}
+
+type recorderCatalogRepository interface {
+	guestruntimeapplication.GuestRuntimeObservationCatalogStateRepository
+	guestruntimeapplication.GuestRuntimePostgreSQLIdentityReader
+	guestruntimeapplication.GuestRuntimeReadinessDependency
+	Close() error
+}
+
+type archiveLineageRepository interface {
+	guestruntimeapplication.GuestRuntimeArchiveLineageRepository
+	guestruntimeapplication.GuestRuntimeArchiveSourceAdmissionRepository
+	guestruntimeapplication.GuestOperationalStateArtifactInventoryOwner
+	guestruntimeapplication.GuestRuntimeReadinessDependency
+	Close() error
+}
+
+type recorderAssignmentRepository interface {
+	guestruntimeapplication.GuestRuntimeRecorderAssignmentRepository
+	guestruntimeapplication.GuestRuntimeReadinessDependency
+	Close() error
 }
 
 // OpenGuestRuntimeControlHTTPApplication opens the explicitly named Guest
@@ -84,20 +158,374 @@ func OpenGuestRuntimeControlHTTPApplication(
 	if err != nil {
 		return nil, fmt.Errorf("open Guest Runtime state repository: %w", err)
 	}
+	recorderCatalogRepository, err := gueststatepostgresqlrepository.OpenRecorderCatalogPostgreSQLRepository(
+		compositionContext,
+		deployment.RecorderCatalogPostgreSQLDatabaseURL,
+	)
+	if err != nil {
+		_ = guestRuntimeStateRepository.Close()
+		return nil, fmt.Errorf("open Recorder Catalog repository: %w", err)
+	}
+	archiveLineageRepository, err := gueststatepostgresqlrepository.OpenArchiveExportPostgreSQLRepository(
+		compositionContext,
+		deployment.RecorderCatalogPostgreSQLDatabaseURL,
+	)
+	if err != nil {
+		_ = recorderCatalogRepository.Close()
+		_ = guestRuntimeStateRepository.Close()
+		return nil, fmt.Errorf("open Archive Export lineage repository: %w", err)
+	}
+	recorderAssignmentRepository, err := gueststatepostgresqlrepository.OpenRecorderAssignmentPostgreSQLRepository(
+		compositionContext,
+		deployment.RecorderCatalogPostgreSQLDatabaseURL,
+	)
+	if err != nil {
+		_ = archiveLineageRepository.Close()
+		_ = recorderCatalogRepository.Close()
+		_ = guestRuntimeStateRepository.Close()
+		return nil, fmt.Errorf("open Recorder Assignment repository: %w", err)
+	}
 
-	controlHTTPServer, err := assembleGuestRuntimeControlHTTPHandler(
+	controlApplication, err := openGuestRuntimeControlHTTPApplicationWithRepositories(
 		guestRuntimeStateRepository,
+		recorderCatalogRepository,
+		archiveLineageRepository,
+		recorderAssignmentRepository,
 		deployment,
 	)
 	if err != nil {
+		return nil, err
+	}
+	controlApplication.startLabReplayWorker(compositionContext)
+	controlApplication.startGuestOperationalStateWorker(compositionContext)
+	return controlApplication, nil
+}
+
+func openGuestRuntimeControlHTTPApplicationWithRepositories(
+	guestRuntimeStateRepository *gueststatesqliterepository.GuestRuntimeStateSQLiteRepository,
+	recorderCatalogRepository recorderCatalogRepository,
+	archiveLineageRepository archiveLineageRepository,
+	recorderAssignmentRepository recorderAssignmentRepository,
+	deployment GuestRuntimeControlHTTPApplicationDeployment,
+) (*GuestRuntimeControlHTTPApplication, error) {
+	var guestOperationalStateService *guestruntimeapplication.GuestOperationalStateBackupApplicationService
+	var guestOperationalStateLedger *gueststatebackupsqliterepository.Repository
+	var guestOperationalStateBackupOwner *gueststatepostgresqlbackup.Owner
+	var guestOperationalStateRestoreOwner *gueststatepostgresqlrestore.Owner
+	if guestOperationalStateBackupConfigured(deployment) {
+		var err error
+		guestOperationalStateLedger, err = gueststatebackupsqliterepository.Open(
+			context.Background(),
+			deployment.GuestOperationalStateBackupLedgerDatabasePath,
+		)
+		if err != nil {
+			closeGuestRuntimeRepositories(
+				guestRuntimeStateRepository,
+				recorderCatalogRepository,
+				archiveLineageRepository,
+				recorderAssignmentRepository,
+			)
+			return nil, fmt.Errorf(
+				"open Guest operational-state backup ledger: %w",
+				err,
+			)
+		}
+		guestOperationalStateBackupOwner, err = gueststatepostgresqlbackup.Open(
+			context.Background(),
+			gueststatepostgresqlbackup.Configuration{
+				DatabaseURL: deployment.RecorderCatalogPostgreSQLDatabaseURL,
+				PGDumpExecutablePath: deployment.
+					GuestOperationalStatePostgreSQLDumpExecutablePath,
+				PGRestoreExecutablePath: deployment.
+					GuestOperationalStatePostgreSQLRestoreExecutablePath,
+				ExpectedAlembicRevision: gueststatepostgresqlrepository.
+					ExpectedRecorderCatalogRevision,
+			},
+		)
+		if err != nil {
+			_ = guestOperationalStateLedger.Close()
+			closeGuestRuntimeRepositories(
+				guestRuntimeStateRepository,
+				recorderCatalogRepository,
+				archiveLineageRepository,
+				recorderAssignmentRepository,
+			)
+			return nil, fmt.Errorf(
+				"open Guest operational-state PostgreSQL backup owner: %w",
+				err,
+			)
+		}
+		backupStageExecutor, err := gueststatebackupstageexecutor.New(
+			gueststatebackupstageexecutor.Configuration{
+				RootDirectory: deployment.
+					GuestOperationalStateBackupRootDirectory,
+				DestinationReference: deployment.
+					GuestOperationalStateBackupDestinationReference,
+			},
+			guestRuntimeStateRepository,
+			guestOperationalStateBackupOwner,
+			archiveLineageRepository,
+			guestruntimeapplication.SystemGuestRuntimeClock{},
+		)
+		if err != nil {
+			_ = guestOperationalStateBackupOwner.Close()
+			_ = guestOperationalStateLedger.Close()
+			closeGuestRuntimeRepositories(
+				guestRuntimeStateRepository,
+				recorderCatalogRepository,
+				archiveLineageRepository,
+				recorderAssignmentRepository,
+			)
+			return nil, fmt.Errorf(
+				"compose Guest operational-state backup stage executor: %w",
+				err,
+			)
+		}
+		var stageExecutor guestruntimeapplication.GuestOperationalStateBackupStageExecutor = backupStageExecutor
+		if guestOperationalStateRestoreConfigured(deployment) {
+			sqliteRestoreOwner, restoreError := gueststatesqliterestore.New(
+				deployment.GuestOperationalStateRestoreSQLiteTargetPath,
+			)
+			if restoreError != nil {
+				_ = guestOperationalStateBackupOwner.Close()
+				_ = guestOperationalStateLedger.Close()
+				closeGuestRuntimeRepositories(
+					guestRuntimeStateRepository,
+					recorderCatalogRepository,
+					archiveLineageRepository,
+					recorderAssignmentRepository,
+				)
+				return nil, fmt.Errorf(
+					"compose Guest operational-state SQLite restore owner: %w",
+					restoreError,
+				)
+			}
+			guestOperationalStateRestoreOwner, restoreError =
+				gueststatepostgresqlrestore.Open(
+					context.Background(),
+					deployment.GuestOperationalStateRestorePostgreSQLDatabaseURL,
+					deployment.GuestOperationalStatePostgreSQLRestoreExecutablePath,
+				)
+			if restoreError != nil {
+				_ = guestOperationalStateBackupOwner.Close()
+				_ = guestOperationalStateLedger.Close()
+				closeGuestRuntimeRepositories(
+					guestRuntimeStateRepository,
+					recorderCatalogRepository,
+					archiveLineageRepository,
+					recorderAssignmentRepository,
+				)
+				return nil, fmt.Errorf(
+					"open Guest operational-state PostgreSQL restore owner: %w",
+					restoreError,
+				)
+			}
+			restoreStageExecutor, restoreError :=
+				gueststatebackupstageexecutor.NewRestore(
+					gueststatebackupstageexecutor.RestoreConfiguration{
+						RootDirectory: deployment.
+							GuestOperationalStateBackupRootDirectory,
+						TargetReference: deployment.
+							GuestOperationalStateRestoreTargetReference,
+					},
+					sqliteRestoreOwner,
+					guestOperationalStateRestoreOwner,
+					guestruntimeapplication.SystemGuestRuntimeClock{},
+				)
+			if restoreError != nil {
+				_ = guestOperationalStateRestoreOwner.Close()
+				_ = guestOperationalStateBackupOwner.Close()
+				_ = guestOperationalStateLedger.Close()
+				closeGuestRuntimeRepositories(
+					guestRuntimeStateRepository,
+					recorderCatalogRepository,
+					archiveLineageRepository,
+					recorderAssignmentRepository,
+				)
+				return nil, fmt.Errorf(
+					"compose Guest operational-state restore stage executor: %w",
+					restoreError,
+				)
+			}
+			stageExecutor, restoreError = gueststatebackupstageexecutor.NewComposite(
+				backupStageExecutor,
+				restoreStageExecutor,
+			)
+			if restoreError != nil {
+				_ = guestOperationalStateRestoreOwner.Close()
+				_ = guestOperationalStateBackupOwner.Close()
+				_ = guestOperationalStateLedger.Close()
+				closeGuestRuntimeRepositories(
+					guestRuntimeStateRepository,
+					recorderCatalogRepository,
+					archiveLineageRepository,
+					recorderAssignmentRepository,
+				)
+				return nil, fmt.Errorf(
+					"compose Guest operational-state backup and restore executor: %w",
+					restoreError,
+				)
+			}
+		}
+		guestOperationalStateService, err =
+			guestruntimeapplication.NewGuestOperationalStateBackupApplicationService(
+				guestOperationalStateLedger,
+				stageExecutor,
+				guestruntimeapplication.SystemGuestRuntimeClock{},
+			)
+		if err != nil {
+			if guestOperationalStateRestoreOwner != nil {
+				_ = guestOperationalStateRestoreOwner.Close()
+			}
+			_ = guestOperationalStateBackupOwner.Close()
+			_ = guestOperationalStateLedger.Close()
+			closeGuestRuntimeRepositories(
+				guestRuntimeStateRepository,
+				recorderCatalogRepository,
+				archiveLineageRepository,
+				recorderAssignmentRepository,
+			)
+			return nil, fmt.Errorf(
+				"compose Guest operational-state backup service: %w",
+				err,
+			)
+		}
+	}
+	controlHTTPServer, err := assembleGuestRuntimeControlHTTPHandler(
+		guestRuntimeStateRepository,
+		recorderCatalogRepository,
+		archiveLineageRepository,
+		recorderAssignmentRepository,
+		guestOperationalStateService,
+		deployment,
+	)
+	if err != nil {
+		if guestOperationalStateRestoreOwner != nil {
+			_ = guestOperationalStateRestoreOwner.Close()
+		}
+		if guestOperationalStateBackupOwner != nil {
+			_ = guestOperationalStateBackupOwner.Close()
+		}
+		if guestOperationalStateLedger != nil {
+			_ = guestOperationalStateLedger.Close()
+		}
+		_ = recorderAssignmentRepository.Close()
+		_ = archiveLineageRepository.Close()
+		_ = recorderCatalogRepository.Close()
 		_ = guestRuntimeStateRepository.Close()
 		return nil, err
 	}
 	return &GuestRuntimeControlHTTPApplication{
-		ControlHTTPHandler:          controlHTTPServer,
-		guestRuntimeStateRepository: guestRuntimeStateRepository,
-		reconcileTerminalArchives:   controlHTTPServer.ReconcilePendingTerminalArchiveExports,
+		ControlHTTPHandler:           controlHTTPServer,
+		guestRuntimeStateRepository:  guestRuntimeStateRepository,
+		recorderCatalogRepository:    recorderCatalogRepository,
+		archiveLineageRepository:     archiveLineageRepository,
+		recorderAssignmentRepository: recorderAssignmentRepository,
+		reconcileTerminalArchives:    controlHTTPServer.ReconcilePendingTerminalArchiveExports,
+		runNextLabReplayEffect:       controlHTTPServer.RunNextPendingLabReplayEffect,
+		guestOperationalStateLedger:  guestOperationalStateLedger,
+		guestOperationalStateBackup:  guestOperationalStateBackupOwner,
+		guestOperationalStateRestore: guestOperationalStateRestoreOwner,
+		runNextGuestStateEffect:      controlHTTPServer.RunNextPendingGuestOperationalStateEffect,
 	}, nil
+}
+
+func (controlHTTPApplication *GuestRuntimeControlHTTPApplication) startLabReplayWorker(
+	parent context.Context,
+) {
+	workerContext, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	controlHTTPApplication.stopLabReplayWorker = cancel
+	controlHTTPApplication.labReplayWorkerDone = done
+	go func() {
+		defer close(done)
+		controlHTTPApplication.runLabReplayWorker(workerContext)
+	}()
+}
+
+func (controlHTTPApplication *GuestRuntimeControlHTTPApplication) runLabReplayWorker(
+	ctx context.Context,
+) {
+	const replayTick = time.Second
+	for {
+		operation, ran, err := controlHTTPApplication.runNextLabReplayEffect(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			log.Printf(
+				"Guest Runtime Lab replay effect outcome unresolved replayId=%s state=%s error=%v",
+				operation.ID,
+				operation.State,
+				err,
+			)
+		}
+		wait := time.Duration(0)
+		switch {
+		case err != nil || !ran:
+			wait = replayTick
+		case operation.State == guestruntimedomain.LabReplaySendingState &&
+			operation.PreparationReceipt != nil:
+			nextOutput := time.Unix(
+				0,
+				int64(
+					(operation.PreparationReceipt.OutputStartedAt+
+						float64(operation.NextFrameOffsetSecond))*float64(time.Second),
+				),
+			)
+			wait = time.Until(nextOutput)
+		case operation.State == guestruntimedomain.LabReplayAwaitingUpstreamDeliveryState:
+			wait = replayTick
+		}
+		if wait <= 0 {
+			continue
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func (controlHTTPApplication *GuestRuntimeControlHTTPApplication) startGuestOperationalStateWorker(
+	parent context.Context,
+) {
+	if controlHTTPApplication.guestOperationalStateLedger == nil {
+		return
+	}
+	workerContext, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	controlHTTPApplication.stopGuestStateWorker = cancel
+	controlHTTPApplication.guestStateWorkerDone = done
+	go func() {
+		defer close(done)
+		const idleWait = time.Second
+		for {
+			_, ran, err := controlHTTPApplication.runNextGuestStateEffect(
+				workerContext,
+			)
+			if workerContext.Err() != nil {
+				return
+			}
+			if err == nil && ran {
+				continue
+			}
+			timer := time.NewTimer(idleWait)
+			select {
+			case <-workerContext.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				return
+			case <-timer.C:
+			}
+		}
+	}()
 }
 
 // ReconcilePendingTerminalArchiveExports repeats only already-persisted Lab
@@ -114,15 +542,99 @@ func (controlHTTPApplication *GuestRuntimeControlHTTPApplication) ReconcilePendi
 // repository opened during composition. It does not make an operation-state
 // claim about the Guest Runtime process.
 func (controlHTTPApplication *GuestRuntimeControlHTTPApplication) CloseGuestRuntimeControlHTTPApplication() error {
-	if controlHTTPApplication == nil || controlHTTPApplication.guestRuntimeStateRepository == nil {
-		return fmt.Errorf("Guest Runtime control application has no opened Guest Runtime state repository")
+	if controlHTTPApplication == nil ||
+		controlHTTPApplication.guestRuntimeStateRepository == nil ||
+		controlHTTPApplication.recorderCatalogRepository == nil ||
+		controlHTTPApplication.archiveLineageRepository == nil ||
+		controlHTTPApplication.recorderAssignmentRepository == nil {
+		return fmt.Errorf("Guest Runtime control application does not own every opened state repository")
 	}
-	return controlHTTPApplication.guestRuntimeStateRepository.Close()
+	if controlHTTPApplication.stopLabReplayWorker != nil {
+		controlHTTPApplication.stopLabReplayWorker()
+	}
+	if controlHTTPApplication.labReplayWorkerDone != nil {
+		<-controlHTTPApplication.labReplayWorkerDone
+	}
+	if controlHTTPApplication.stopGuestStateWorker != nil {
+		controlHTTPApplication.stopGuestStateWorker()
+	}
+	if controlHTTPApplication.guestStateWorkerDone != nil {
+		<-controlHTTPApplication.guestStateWorkerDone
+	}
+	var guestOperationalStateRestoreError error
+	if controlHTTPApplication.guestOperationalStateRestore != nil {
+		guestOperationalStateRestoreError =
+			controlHTTPApplication.guestOperationalStateRestore.Close()
+	}
+	var guestOperationalStateBackupError error
+	if controlHTTPApplication.guestOperationalStateBackup != nil {
+		guestOperationalStateBackupError =
+			controlHTTPApplication.guestOperationalStateBackup.Close()
+	}
+	var guestOperationalStateLedgerError error
+	if controlHTTPApplication.guestOperationalStateLedger != nil {
+		guestOperationalStateLedgerError =
+			controlHTTPApplication.guestOperationalStateLedger.Close()
+	}
+	assignmentError := controlHTTPApplication.recorderAssignmentRepository.Close()
+	archiveError := controlHTTPApplication.archiveLineageRepository.Close()
+	catalogError := controlHTTPApplication.recorderCatalogRepository.Close()
+	controlLedgerError := controlHTTPApplication.guestRuntimeStateRepository.Close()
+	return errors.Join(
+		guestOperationalStateRestoreError,
+		guestOperationalStateBackupError,
+		guestOperationalStateLedgerError,
+		assignmentError,
+		archiveError,
+		catalogError,
+		controlLedgerError,
+	)
 }
 
 func validateGuestRuntimeControlHTTPApplicationDeployment(deployment GuestRuntimeControlHTTPApplicationDeployment) error {
-	if deployment.GuestRuntimeStateDatabasePath == "" || deployment.GuestRuntimeServiceVersion == "" || deployment.GuestRuntimeInstanceID == "" {
-		return fmt.Errorf("Guest Runtime state database path, service version, and instance ID are required")
+	if deployment.GuestRuntimeStateDatabasePath == "" ||
+		deployment.RecorderCatalogPostgreSQLDatabaseURL == "" ||
+		deployment.RecorderCatalogAdmissionBearerToken == "" ||
+		deployment.ArchiveSourceAdmissionBearerToken == "" ||
+		deployment.ArchiveArtifactObjectRootDirectory == "" ||
+		deployment.ArchiveSourceMaximumBytes < 1 ||
+		deployment.LabReplaySourceObjectRootDirectory == "" ||
+		deployment.LabReplaySourceMaximumBytes < 1 ||
+		deployment.LabReplaySpoolRootDirectory == "" ||
+		deployment.LabReplayStringTrackPolicy == "" ||
+		deployment.LabReplayGapPolicy == "" ||
+		deployment.LabReplayFrameBatchSize != 1 ||
+		deployment.RecorderAttributionPolicyKind == "" ||
+		deployment.GuestRuntimeServiceVersion == "" ||
+		deployment.GuestRuntimeInstanceID == "" {
+		return fmt.Errorf("Guest Runtime state stores, Catalog and Archive admission credentials, Archive object policy, service version, and instance ID are required")
+	}
+	if deployment.RecorderAttributionPolicyKind != recorderassignmentresolution.RecorderAssignmentOwnerPolicyKind {
+		return fmt.Errorf("Guest Runtime Recorder attribution policy kind is unsupported")
+	}
+	if !validGuestOperationalStateBackupConfiguration(deployment) {
+		return fmt.Errorf(
+			"Guest operational-state backup configuration must be either absent or complete",
+		)
+	}
+	if !validGuestOperationalStateRestoreConfiguration(deployment) {
+		return fmt.Errorf(
+			"Guest operational-state restore configuration must be absent or a complete empty-target configuration attached to backup",
+		)
+	}
+	if !filepath.IsAbs(deployment.LabReplaySourceObjectRootDirectory) ||
+		!filepath.IsAbs(deployment.LabReplaySpoolRootDirectory) {
+		return fmt.Errorf("Guest Runtime Lab replay source and spool root directories must be absolute")
+	}
+	if deployment.LabReplayStringTrackPolicy != guestruntimedomain.VitalFileStringTrackPolicyReject &&
+		deployment.LabReplayStringTrackPolicy != guestruntimedomain.VitalFileStringTrackPolicySkip {
+		return fmt.Errorf("Guest Runtime Lab replay string-track policy is unsupported")
+	}
+	if !guestruntimedomain.ValidVitalFileReplayGapPolicy(deployment.LabReplayGapPolicy) {
+		return fmt.Errorf("Guest Runtime Lab replay gap policy is unsupported")
+	}
+	if err := guestruntimedomain.ValidateRecorderObservationFreshnessPolicy(guestruntimedomain.RecorderObservationFreshnessPolicy{MaxReportAgeSeconds: deployment.RecorderObservationMaxReportAgeSeconds}); err != nil {
+		return err
 	}
 	if deployment.GuestRuntimeNode.Kind == "" || deployment.GuestRuntimeNode.ID == "" || deployment.GuestTimeAuthorityID == "" {
 		return fmt.Errorf("Guest Runtime node and Time Authority ID are required")
@@ -159,9 +671,40 @@ func validateGuestRuntimeControlHTTPApplicationDeployment(deployment GuestRuntim
 
 func assembleGuestRuntimeControlHTTPHandler(
 	guestRuntimeStateRepository *gueststatesqliterepository.GuestRuntimeStateSQLiteRepository,
+	recorderCatalogRepository recorderCatalogRepository,
+	archiveLineageRepository archiveLineageRepository,
+	recorderAssignmentRepository recorderAssignmentRepository,
+	guestOperationalStateService *guestruntimeapplication.GuestOperationalStateBackupApplicationService,
 	deployment GuestRuntimeControlHTTPApplicationDeployment,
 ) (*guestruntimecontrolhttpapi.GuestRuntimeControlHTTPServer, error) {
 	guestRuntimeApplicationClock := guestruntimeapplication.SystemGuestRuntimeClock{}
+	guestBootstrapIdentityReader, err := guestbootstrapidentityfile.NewReader(
+		guestbootstrapidentityfile.Configuration{
+			MigrationReceiptPath:                          deployment.RecorderCatalogMigrationReceiptPath,
+			RecorderCatalogDatabaseURLMaterialPath:        deployment.RecorderCatalogDatabaseURLMaterialPath,
+			CatalogAdmissionBearerTokenMaterialPath:       deployment.RecorderCatalogAdmissionBearerTokenMaterialPath,
+			ArchiveSourceAdmissionBearerTokenMaterialPath: deployment.ArchiveSourceAdmissionBearerTokenMaterialPath,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"compose Guest bootstrap identity reader: %w",
+			err,
+		)
+	}
+	guestOperationalStateIdentityService, err :=
+		guestruntimeapplication.NewGuestOperationalStateIdentityApplicationService(
+			guestRuntimeStateRepository,
+			recorderCatalogRepository,
+			guestBootstrapIdentityReader,
+			guestRuntimeApplicationClock,
+		)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"compose Guest operational-state identity service: %w",
+			err,
+		)
+	}
 	externalUpstreamObservationProvider, err := composeGuestRuntimeExternalUpstreamObservationProvider(deployment)
 	if err != nil {
 		return nil, fmt.Errorf("compose Guest Runtime External Upstream provider: %w", err)
@@ -196,9 +739,14 @@ func assembleGuestRuntimeControlHTTPHandler(
 		return nil, fmt.Errorf("compose Guest Runtime Outbound Relay service: %w", err)
 	}
 
-	topologyService, err := guestruntimeapplication.NewGuestRuntimeTopologyApplicationServiceWithExternalUpstreamReader(
+	topologyService, err := guestruntimeapplication.NewGuestRuntimeTopologyApplicationServiceWithDependencies(
 		guestRuntimeStateRepository,
 		externalUpstreamService,
+		[]guestruntimeapplication.GuestRuntimeReadinessDependency{
+			recorderCatalogRepository,
+			archiveLineageRepository,
+			recorderAssignmentRepository,
+		},
 		guestRuntimeApplicationClock,
 		guestruntimeapplication.CryptoGuestRuntimeRequestCorrelationIdentifierGenerator{},
 		deployment.GuestRuntimeServiceVersion,
@@ -257,6 +805,83 @@ func assembleGuestRuntimeControlHTTPHandler(
 	if err != nil {
 		return nil, fmt.Errorf("compose Guest Runtime Archive service: %w", err)
 	}
+	archiveLineageService, err := guestruntimeapplication.NewGuestRuntimeArchiveLineageApplicationService(
+		archiveLineageRepository,
+		guestRuntimeApplicationClock,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Archive lineage service: %w", err)
+	}
+	archiveArtifactObjectStore, err := archiveartifactobjectfile.OpenFileArchiveArtifactObjectStore(
+		deployment.ArchiveArtifactObjectRootDirectory,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Archive artifact object store: %w", err)
+	}
+	recorderAssignmentService, err := guestruntimeapplication.NewGuestRuntimeRecorderAssignmentApplicationService(
+		recorderAssignmentRepository,
+		guestRuntimeApplicationClock,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Recorder assignment service: %w", err)
+	}
+	recorderAttributionResolver, err := recorderassignmentresolution.NewRecorderAssignmentOwnerAttributionResolver(
+		recorderAssignmentService,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Recorder attribution resolver: %w", err)
+	}
+	archiveSourceAdmissionService, err := guestruntimeapplication.NewGuestRuntimeArchiveSourceAdmissionApplicationService(
+		archiveLineageRepository,
+		archiveArtifactObjectStore,
+		recorderAttributionResolver,
+		guestRuntimeApplicationClock,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Archive source admission service: %w", err)
+	}
+	labReplaySourceObjectStore, err := labreplaysourcefile.OpenFileLabReplaySourceObjectStore(
+		deployment.LabReplaySourceObjectRootDirectory,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Lab replay source object store: %w", err)
+	}
+	labReplaySourceService, err := guestruntimeapplication.NewGuestRuntimeLabReplaySourceApplicationService(
+		guestRuntimeStateRepository,
+		labReplaySourceObjectStore,
+		guestRuntimeApplicationClock,
+		deployment.LabReplaySourceMaximumBytes,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Lab replay source service: %w", err)
+	}
+	labReplayParser, err := vitalfilereplayparser.NewVitalFileReplayParser(
+		guestruntimedomain.VitalFileReplayCompatibilityPolicy{
+			StringTrackPolicy: deployment.LabReplayStringTrackPolicy,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Lab replay parser: %w", err)
+	}
+	labReplaySpoolFactory, err := vitalfilereplayspoolsqlite.NewFactory(
+		deployment.LabReplaySpoolRootDirectory,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Lab replay spool factory: %w", err)
+	}
+	labReplayService, err := guestruntimeapplication.NewGuestRuntimeLabReplayApplicationService(
+		guestRuntimeStateRepository,
+		labReplaySourceObjectStore,
+		labReplayParser,
+		labReplaySpoolFactory,
+		labRecorderRunner,
+		deployment.LabReplayFrameBatchSize,
+		deployment.LabReplayGapPolicy,
+		guestRuntimeApplicationClock,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose Guest Runtime Lab replay service: %w", err)
+	}
 	guestTimeAuthorityProvider, err := composeGuestRuntimeTimeAuthorityProvider(deployment)
 	if err != nil {
 		return nil, fmt.Errorf("compose Guest Runtime Time Authority provider: %w", err)
@@ -273,9 +898,10 @@ func assembleGuestRuntimeControlHTTPHandler(
 		return nil, fmt.Errorf("compose Guest Runtime Time Authority service: %w", err)
 	}
 	recorderObservationCatalogService, err := guestruntimeapplication.NewGuestRuntimeObservationCatalogApplicationService(
-		guestRuntimeStateRepository,
+		recorderCatalogRepository,
 		guestRuntimeApplicationClock,
 		guestruntimeapplication.CryptoGuestRuntimeRequestCorrelationIdentifierGenerator{},
+		guestruntimedomain.RecorderObservationFreshnessPolicy{MaxReportAgeSeconds: deployment.RecorderObservationMaxReportAgeSeconds},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("compose Guest Runtime Recorder Observation Catalog service: %w", err)
@@ -295,17 +921,135 @@ func assembleGuestRuntimeControlHTTPHandler(
 		return nil, fmt.Errorf("compose Guest Runtime Telemetry Pipeline service: %w", err)
 	}
 	return guestruntimecontrolhttpapi.NewGuestRuntimeControlHTTPServerWithModules(guestruntimecontrolhttpapi.GuestRuntimeControlModules{
-		Topology:                             topologyService,
-		Lab:                                  labService,
-		Archive:                              archiveService,
-		ArchiveCredentialMaterial:            archiveCredentialMaterialService,
-		ExternalUpstreamIntegration:          externalUpstreamService,
-		OutboundRelayTarget:                  outboundRelayService,
-		GuestTimeAuthority:                   guestTimeAuthorityService,
-		RecorderObservationCatalog:           recorderObservationCatalogService,
+		Topology:                          topologyService,
+		Lab:                               labService,
+		Archive:                           archiveService,
+		ArchiveLineage:                    archiveLineageService,
+		ArchiveSourceAdmission:            archiveSourceAdmissionService,
+		ArchiveSourceAdmissionBearerToken: deployment.ArchiveSourceAdmissionBearerToken,
+		ArchiveSourceMaximumBytes:         deployment.ArchiveSourceMaximumBytes,
+		LabReplaySource:                   labReplaySourceService,
+		LabReplaySourceMaximumBytes:       deployment.LabReplaySourceMaximumBytes,
+		LabReplay:                         labReplayService,
+		ArchiveCredentialMaterial:         archiveCredentialMaterialService,
+		ExternalUpstreamIntegration:       externalUpstreamService,
+		OutboundRelayTarget:               outboundRelayService,
+		GuestTimeAuthority:                guestTimeAuthorityService,
+		RecorderObservationCatalog:        recorderObservationCatalogService,
+		RecorderObservationCatalogAdmissionBearerToken: deployment.RecorderCatalogAdmissionBearerToken,
+		RecorderAssignment:            recorderAssignmentService,
+		GuestOperationalStateIdentity: guestOperationalStateIdentityService,
+		GuestOperationalStateBackup:   guestOperationalStateService,
+		GuestOperationalStateRestoreAdmissionEnabled: guestOperationalStateRestoreConfigured(
+			deployment,
+		),
 		GuestTelemetryPipeline:               guestTelemetryPipelineService,
 		LabArchiveLifecycleCoordinationClock: guestRuntimeApplicationClock,
 	}), nil
+}
+
+func guestOperationalStateBackupConfigured(
+	deployment GuestRuntimeControlHTTPApplicationDeployment,
+) bool {
+	return deployment.GuestOperationalStateBackupRootDirectory != ""
+}
+
+func guestOperationalStateRestoreConfigured(
+	deployment GuestRuntimeControlHTTPApplicationDeployment,
+) bool {
+	return deployment.GuestOperationalStateRestoreSQLiteTargetPath != ""
+}
+
+func validGuestOperationalStateBackupConfiguration(
+	deployment GuestRuntimeControlHTTPApplicationDeployment,
+) bool {
+	valuesPresent := []bool{
+		deployment.GuestOperationalStateBackupRootDirectory != "",
+		deployment.GuestOperationalStateBackupLedgerDatabasePath != "",
+		deployment.GuestOperationalStateBackupDestinationReference.ResourceType != "",
+		deployment.GuestOperationalStateBackupDestinationReference.ResourceID != "",
+		deployment.GuestOperationalStatePostgreSQLDumpExecutablePath != "",
+		deployment.GuestOperationalStatePostgreSQLRestoreExecutablePath != "",
+	}
+	present := 0
+	for _, valuePresent := range valuesPresent {
+		if valuePresent {
+			present++
+		}
+	}
+	if present == 0 {
+		return true
+	}
+	if present != len(valuesPresent) {
+		return false
+	}
+	return filepath.IsAbs(
+		deployment.GuestOperationalStateBackupRootDirectory,
+	) &&
+		filepath.IsAbs(
+			deployment.GuestOperationalStateBackupLedgerDatabasePath,
+		) &&
+		filepath.IsAbs(
+			deployment.GuestOperationalStatePostgreSQLDumpExecutablePath,
+		) &&
+		filepath.IsAbs(
+			deployment.GuestOperationalStatePostgreSQLRestoreExecutablePath,
+		) &&
+		guestruntimedomain.ValidIdentifier(
+			deployment.GuestOperationalStateBackupDestinationReference.ResourceType,
+		) &&
+		guestruntimedomain.ValidIdentifier(
+			deployment.GuestOperationalStateBackupDestinationReference.ResourceID,
+		)
+}
+
+func validGuestOperationalStateRestoreConfiguration(
+	deployment GuestRuntimeControlHTTPApplicationDeployment,
+) bool {
+	valuesPresent := []bool{
+		deployment.GuestOperationalStateRestoreTargetReference.ResourceType != "",
+		deployment.GuestOperationalStateRestoreTargetReference.ResourceID != "",
+		deployment.GuestOperationalStateRestoreSQLiteTargetPath != "",
+		deployment.GuestOperationalStateRestorePostgreSQLDatabaseURL != "",
+	}
+	present := 0
+	for _, valuePresent := range valuesPresent {
+		if valuePresent {
+			present++
+		}
+	}
+	if present == 0 {
+		return true
+	}
+	if present != len(valuesPresent) ||
+		!guestOperationalStateBackupConfigured(deployment) {
+		return false
+	}
+	return filepath.IsAbs(
+		deployment.GuestOperationalStateRestoreSQLiteTargetPath,
+	) &&
+		deployment.GuestOperationalStateRestoreSQLiteTargetPath !=
+			deployment.GuestRuntimeStateDatabasePath &&
+		deployment.GuestOperationalStateRestorePostgreSQLDatabaseURL !=
+			deployment.RecorderCatalogPostgreSQLDatabaseURL &&
+		guestruntimedomain.ValidIdentifier(
+			deployment.GuestOperationalStateRestoreTargetReference.ResourceType,
+		) &&
+		guestruntimedomain.ValidIdentifier(
+			deployment.GuestOperationalStateRestoreTargetReference.ResourceID,
+		)
+}
+
+func closeGuestRuntimeRepositories(
+	guestRuntimeStateRepository *gueststatesqliterepository.GuestRuntimeStateSQLiteRepository,
+	recorderCatalogRepository recorderCatalogRepository,
+	archiveLineageRepository archiveLineageRepository,
+	recorderAssignmentRepository recorderAssignmentRepository,
+) {
+	_ = recorderAssignmentRepository.Close()
+	_ = archiveLineageRepository.Close()
+	_ = recorderCatalogRepository.Close()
+	_ = guestRuntimeStateRepository.Close()
 }
 
 func validateGuestRuntimeExternalUpstreamObservationProvider(deployment GuestRuntimeControlHTTPApplicationDeployment) error {

@@ -490,6 +490,13 @@ func renderGuestOwnedBootstrapScript(plan guestproductbootstrapvolumeplan.GuestP
 		script.WriteString("[ \"$(wc -c < \"$mount_root/" + payloadPath + "\")\" -eq " + fmt.Sprintf("%d", source.SizeBytes) + " ]\n")
 		script.WriteString("printf '%s  %s\\n' '" + source.SHA256 + "' \"$mount_root/" + payloadPath + "\" | sha256sum -c -\n")
 	}
+	recorderCatalog := plan.GuestRecorderCatalogPostgreSQL
+	script.WriteString(
+		"export DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install --yes --no-install-recommends " +
+			strings.Join(recorderCatalog.PackageNames, " ") +
+			"\nsystemctl enable " + recorderCatalog.ServiceName +
+			"\nsystemctl start " + recorderCatalog.ServiceName + "\n",
+	)
 	if plan.GuestTimeSynchronization != nil {
 		// The plan validator accepts exactly the selected apt/chrony/systemd
 		// tuple. This Guest-owned effect still fails closed if package retrieval
@@ -520,6 +527,31 @@ func renderGuestOwnedBootstrapScript(plan guestproductbootstrapvolumeplan.GuestP
 	// database initialization failure rather than treating this declaration as
 	// readiness evidence.
 	script.WriteString("install -d -m " + plan.GuestRuntimeStateDirectory.DirectoryMode + " \"" + plan.GuestRuntimeStateDirectory.DirectoryPath + "\"\n")
+	script.WriteString("install -d -m " + plan.GuestPrivateStateDirectory.DirectoryMode + " \"" + plan.GuestPrivateStateDirectory.DirectoryPath + "\"\n")
+	script.WriteString("install -d -m " + plan.GuestArchiveArtifactObjectDirectory.DirectoryMode + " \"" + plan.GuestArchiveArtifactObjectDirectory.DirectoryPath + "\"\n")
+	script.WriteString("umask 077\n")
+	script.WriteString("database_password=\"$(od -An -N " + fmt.Sprintf("%d", recorderCatalog.GeneratedSecretByteCount) + " -tx1 /dev/urandom | tr -d ' \\n')\"\n")
+	script.WriteString("[ \"${#database_password}\" -eq " + fmt.Sprintf("%d", recorderCatalog.GeneratedSecretByteCount*2) + " ]\n")
+	script.WriteString("runuser -u postgres -- psql --dbname postgres --set ON_ERROR_STOP=1 --command \"DO \\$\\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '" + recorderCatalog.DatabaseRoleName + "') THEN CREATE ROLE " + recorderCatalog.DatabaseRoleName + " LOGIN; END IF; END \\$\\$;\"\n")
+	script.WriteString("runuser -u postgres -- psql --dbname postgres --set ON_ERROR_STOP=1 --command \"ALTER ROLE " + recorderCatalog.DatabaseRoleName + " WITH LOGIN PASSWORD '$database_password';\"\n")
+	script.WriteString("if ! runuser -u postgres -- psql --dbname postgres --tuples-only --no-align --command \"SELECT 1 FROM pg_database WHERE datname = '" + recorderCatalog.DatabaseName + "'\" | grep -qx 1; then\n")
+	script.WriteString("  runuser -u postgres -- createdb --owner " + recorderCatalog.DatabaseRoleName + " " + recorderCatalog.DatabaseName + "\nfi\n")
+	script.WriteString("database_url_temporary=\"$(mktemp \"" + plan.GuestPrivateStateDirectory.DirectoryPath + "/.recorder-catalog-database-url.XXXXXX\")\"\n")
+	script.WriteString("printf '%s' \"postgresql://" + recorderCatalog.DatabaseRoleName + ":${database_password}@" + recorderCatalog.DatabaseHost + ":" + fmt.Sprintf("%d", recorderCatalog.DatabasePort) + "/" + recorderCatalog.DatabaseName + "?sslmode=disable\" > \"$database_url_temporary\"\n")
+	script.WriteString("chmod 0600 \"$database_url_temporary\"\nmv -f \"$database_url_temporary\" \"" + recorderCatalog.DatabaseURLMaterialPath + "\"\n")
+	for _, tokenPath := range []string{
+		recorderCatalog.CatalogAdmissionBearerTokenMaterialPath,
+		recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath,
+	} {
+		script.WriteString("token_temporary=\"$(mktemp \"" + plan.GuestPrivateStateDirectory.DirectoryPath + "/.internal-bearer-token.XXXXXX\")\"\n")
+		script.WriteString("od -An -N " + fmt.Sprintf("%d", recorderCatalog.GeneratedSecretByteCount) + " -tx1 /dev/urandom | tr -d ' \\n' > \"$token_temporary\"\n")
+		script.WriteString("[ \"$(wc -c < \"$token_temporary\")\" -eq " + fmt.Sprintf("%d", recorderCatalog.GeneratedSecretByteCount*2) + " ]\n")
+		script.WriteString("chmod 0600 \"$token_temporary\"\nmv -f \"$token_temporary\" \"" + tokenPath + "\"\n")
+	}
+	script.WriteString("migration_receipt_temporary=\"$(mktemp \"" + plan.GuestPrivateStateDirectory.DirectoryPath + "/.recorder-catalog-migration-receipt.XXXXXX\")\"\n")
+	script.WriteString("\"" + recorderCatalog.MigrationExecutablePath + "\" --process-role=recorder-catalog-migrator --migration-python-executable=\"" + recorderCatalog.MigrationPythonExecutablePath + "\" --recorder-catalog-database-url-material-path=\"" + recorderCatalog.DatabaseURLMaterialPath + "\" > \"$migration_receipt_temporary\"\n")
+	script.WriteString("grep -Fq '\"state\":\"succeeded\"' \"$migration_receipt_temporary\"\ngrep -Fq '\"revision\":\"" + recorderCatalog.ExpectedRevision + "\"' \"$migration_receipt_temporary\"\n")
+	script.WriteString("chmod 0600 \"$migration_receipt_temporary\"\nmv -f \"$migration_receipt_temporary\" \"" + recorderCatalog.MigrationReceiptPath + "\"\n")
 	if plan.GuestTelemetryStateDirectory != nil {
 		// The Collector owns this store. Cloud-init prepares only the declared
 		// directory; it does not treat creation as Collector readiness.

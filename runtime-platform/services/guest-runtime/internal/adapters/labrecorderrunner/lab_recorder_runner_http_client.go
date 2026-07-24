@@ -92,6 +92,129 @@ func (client *LabRecorderRunnerHTTPClient) StopLabVirtualRecorderRun(ctx context
 	return guestruntimedomain.LabRecorderRunnerFinalizationReceipt{RunID: decoded.ID, RunRevision: decoded.ResourceRevision, RecorderGatewayRecorderID: decoded.RecorderGatewayRecorderID, ColdPathCaptureID: decoded.ColdPathCaptureID, FinalizationReceiptID: decoded.FinalizationReceipt.ID}, nil
 }
 
+func (client *LabRecorderRunnerHTTPClient) PrepareLabReplay(
+	ctx context.Context,
+	effect guestruntimeapplication.LabReplayPrepareEffect,
+) (guestruntimedomain.LabReplayPreparationReceipt, error) {
+	response, err := client.post(ctx, "/internal/v1/lab-replays:prepare", map[string]any{
+		"schemaVersion":               guestruntimedomain.SchemaVersion,
+		"replayId":                    effect.ReplayID,
+		"recorderGatewayRecorderCode": effect.RecorderGatewayRecorderCode,
+		"spoolDatabaseSha256":         effect.SpoolReceipt.DatabaseSHA256,
+		"frameCount":                  effect.SpoolReceipt.DurationSeconds,
+	})
+	if err != nil {
+		return guestruntimedomain.LabReplayPreparationReceipt{}, err
+	}
+	if response.StatusCode >= 400 && response.StatusCode < 500 {
+		return guestruntimedomain.LabReplayPreparationReceipt{},
+			knownReplayRejection("Lab recorder Runner rejected replay preparation", response.Body)
+	}
+	if response.StatusCode != http.StatusCreated && response.StatusCode != http.StatusOK {
+		return guestruntimedomain.LabReplayPreparationReceipt{},
+			fmt.Errorf("Lab recorder Runner replay preparation returned HTTP %d", response.StatusCode)
+	}
+	var receipt guestruntimedomain.LabReplayPreparationReceipt
+	if err := decodeRunnerResponse(response.Body, &receipt); err != nil {
+		return guestruntimedomain.LabReplayPreparationReceipt{},
+			fmt.Errorf("decode Lab recorder Runner replay preparation receipt: %w", err)
+	}
+	if receipt.SchemaVersion != guestruntimedomain.SchemaVersion ||
+		receipt.ReplayID != effect.ReplayID ||
+		receipt.SpoolDatabaseSHA256 != effect.SpoolReceipt.DatabaseSHA256 ||
+		receipt.FrameCount != effect.SpoolReceipt.DurationSeconds {
+		return guestruntimedomain.LabReplayPreparationReceipt{},
+			fmt.Errorf("Lab recorder Runner replay preparation receipt is mismatched")
+	}
+	return receipt, nil
+}
+
+func (client *LabRecorderRunnerHTTPClient) SendLabReplayMessageBatch(
+	ctx context.Context,
+	effect guestruntimeapplication.LabReplayMessageBatchEffect,
+) (guestruntimedomain.LabReplayMessageBatchReceipt, error) {
+	response, err := client.post(
+		ctx,
+		"/internal/v1/lab-replays/"+url.PathEscape(effect.RunnerSessionID)+"/batches",
+		map[string]any{
+			"schemaVersion":     guestruntimedomain.SchemaVersion,
+			"replayId":          effect.ReplayID,
+			"runnerSessionId":   effect.RunnerSessionID,
+			"batchId":           effect.BatchID,
+			"startOffsetSecond": effect.StartOffsetSecond,
+			"frames":            effect.Frames,
+			"finalBatch":        effect.FinalBatch,
+		},
+	)
+	if err != nil {
+		return guestruntimedomain.LabReplayMessageBatchReceipt{}, err
+	}
+	if response.StatusCode >= 400 && response.StatusCode < 500 {
+		return guestruntimedomain.LabReplayMessageBatchReceipt{},
+			knownReplayRejection("Lab recorder Runner rejected replay message batch", response.Body)
+	}
+	if response.StatusCode != http.StatusAccepted && response.StatusCode != http.StatusOK {
+		return guestruntimedomain.LabReplayMessageBatchReceipt{},
+			fmt.Errorf("Lab recorder Runner replay message batch returned HTTP %d", response.StatusCode)
+	}
+	var receipt guestruntimedomain.LabReplayMessageBatchReceipt
+	if err := decodeRunnerResponse(response.Body, &receipt); err != nil {
+		return guestruntimedomain.LabReplayMessageBatchReceipt{},
+			fmt.Errorf("decode Lab recorder Runner replay message batch receipt: %w", err)
+	}
+	if receipt.SchemaVersion != guestruntimedomain.SchemaVersion ||
+		receipt.ReplayID != effect.ReplayID ||
+		receipt.RunnerSessionID != effect.RunnerSessionID ||
+		receipt.BatchID != effect.BatchID ||
+		receipt.StartOffsetSecond != effect.StartOffsetSecond ||
+		receipt.FrameCount != len(effect.Frames) ||
+		receipt.FinalBatch != effect.FinalBatch {
+		return guestruntimedomain.LabReplayMessageBatchReceipt{},
+			fmt.Errorf("Lab recorder Runner replay message batch receipt is mismatched")
+	}
+	return receipt, nil
+}
+
+func (client *LabRecorderRunnerHTTPClient) ConfirmLabReplayUpstreamDelivery(
+	ctx context.Context,
+	effect guestruntimeapplication.LabReplayUpstreamDeliveryEffect,
+) (guestruntimedomain.LabReplayUpstreamDeliveryReceipt, error) {
+	response, err := client.post(
+		ctx,
+		"/internal/v1/lab-replays/"+url.PathEscape(effect.RunnerSessionID)+":confirm-upstream",
+		map[string]any{
+			"schemaVersion":      guestruntimedomain.SchemaVersion,
+			"replayId":           effect.ReplayID,
+			"runnerSessionId":    effect.RunnerSessionID,
+			"expectedFrameCount": effect.ExpectedFrameCount,
+		},
+	)
+	if err != nil {
+		return guestruntimedomain.LabReplayUpstreamDeliveryReceipt{}, err
+	}
+	if response.StatusCode >= 400 && response.StatusCode < 500 {
+		return guestruntimedomain.LabReplayUpstreamDeliveryReceipt{},
+			knownReplayRejection("Lab recorder Runner rejected replay delivery confirmation", response.Body)
+	}
+	if response.StatusCode != http.StatusOK {
+		return guestruntimedomain.LabReplayUpstreamDeliveryReceipt{},
+			fmt.Errorf("Lab recorder Runner replay delivery confirmation returned HTTP %d", response.StatusCode)
+	}
+	var receipt guestruntimedomain.LabReplayUpstreamDeliveryReceipt
+	if err := decodeRunnerResponse(response.Body, &receipt); err != nil {
+		return guestruntimedomain.LabReplayUpstreamDeliveryReceipt{},
+			fmt.Errorf("decode Lab recorder Runner replay delivery receipt: %w", err)
+	}
+	if receipt.SchemaVersion != guestruntimedomain.SchemaVersion ||
+		receipt.ReplayID != effect.ReplayID ||
+		receipt.RunnerSessionID != effect.RunnerSessionID ||
+		receipt.DeliveredFrameCount != effect.ExpectedFrameCount {
+		return guestruntimedomain.LabReplayUpstreamDeliveryReceipt{},
+			fmt.Errorf("Lab recorder Runner replay delivery receipt is mismatched")
+	}
+	return receipt, nil
+}
+
 type runnerHTTPResponse struct {
 	StatusCode int
 	Body       []byte
@@ -181,6 +304,34 @@ func knownRunnerRejection(subject string, body []byte) error {
 	return guestruntimeapplication.SourceEligibilityError{Issue: guestruntimedomain.Issue{Code: decoded.Issue.Code, Message: decoded.Issue.Message, Retryable: decoded.Issue.Retryable, Dependency: decoded.Issue.Dependency}}
 }
 
+func knownReplayRejection(subject string, body []byte) error {
+	var decoded struct {
+		SchemaVersion string `json:"schemaVersion"`
+		State         string `json:"state"`
+		Issue         *struct {
+			Code       string `json:"code"`
+			Message    string `json:"message"`
+			Retryable  *bool  `json:"retryable"`
+			Dependency string `json:"dependency"`
+		} `json:"issue"`
+	}
+	if err := decodeRunnerResponse(body, &decoded); err != nil ||
+		decoded.SchemaVersion != guestruntimedomain.SchemaVersion ||
+		decoded.State != "rejected" ||
+		decoded.Issue == nil ||
+		!guestruntimedomain.ValidIdentifier(decoded.Issue.Code) ||
+		decoded.Issue.Message == "" ||
+		decoded.Issue.Retryable == nil ||
+		*decoded.Issue.Retryable ||
+		!guestruntimedomain.ValidIdentifier(decoded.Issue.Dependency) {
+		return fmt.Errorf("%s without a valid replay rejection contract", subject)
+	}
+	return guestruntimeapplication.LabReplayEffectRejectedError{
+		Code:    decoded.Issue.Code,
+		Message: decoded.Issue.Message,
+	}
+}
+
 func parseGuestLoopbackEndpoint(value string) (*url.URL, error) {
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "http" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
@@ -201,3 +352,4 @@ func parseGuestLoopbackEndpoint(value string) (*url.URL, error) {
 }
 
 var _ guestruntimeapplication.GuestRuntimeLabRecorderRunner = (*LabRecorderRunnerHTTPClient)(nil)
+var _ guestruntimeapplication.GuestRuntimeLabReplayEffectRunner = (*LabRecorderRunnerHTTPClient)(nil)

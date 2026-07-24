@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimecontrolhttpapplication"
@@ -22,6 +23,20 @@ import (
 func main() {
 	var listenAddress string
 	var stateDatabase string
+	var bootstrapEvidenceRootDirectory string
+	var recorderCatalogDatabaseURL string
+	var recorderCatalogAdmissionBearerToken string
+	var recorderObservationMaxReportAgeSeconds int
+	var archiveSourceAdmissionBearerToken string
+	var archiveArtifactObjectRootDirectory string
+	var archiveSourceMaximumBytes int64
+	var labReplaySourceObjectRootDirectory string
+	var labReplaySourceMaximumBytes int64
+	var labReplaySpoolRootDirectory string
+	var labReplayStringTrackPolicy string
+	var labReplayGapPolicy string
+	var labReplayFrameBatchSize int
+	var recorderAttributionPolicyKind string
 	var serviceVersion string
 	var instanceID string
 	var archiveProviderKind string
@@ -56,6 +71,20 @@ func main() {
 	var telemetryExportMode string
 	flag.StringVar(&listenAddress, "listen", "", "required acceptance fixture TCP control listen address")
 	flag.StringVar(&stateDatabase, "state-db", "", "required Guest Runtime-owned SQLite database path")
+	flag.StringVar(&bootstrapEvidenceRootDirectory, "bootstrap-evidence-root", "", "required acceptance-only explicit root for synthetic bootstrap evidence")
+	flag.StringVar(&recorderCatalogDatabaseURL, "recorder-catalog-database-url", "", "required Recorder Catalog PostgreSQL database URL")
+	flag.StringVar(&recorderCatalogAdmissionBearerToken, "recorder-catalog-admission-bearer-token", "", "required acceptance-only Recorder Gateway-to-Catalog bearer token")
+	flag.IntVar(&recorderObservationMaxReportAgeSeconds, "recorder-observation-max-report-age-seconds", 0, "required explicit Recorder observation freshness threshold")
+	flag.StringVar(&archiveSourceAdmissionBearerToken, "archive-source-admission-bearer-token", "", "required acceptance-only Recorder Gateway-to-Archive bearer token")
+	flag.StringVar(&archiveArtifactObjectRootDirectory, "archive-artifact-object-root", "", "required Guest-owned Archive artifact object directory")
+	flag.Int64Var(&archiveSourceMaximumBytes, "archive-source-max-bytes", 0, "required maximum Recorder Vital upload source bytes")
+	flag.StringVar(&labReplaySourceObjectRootDirectory, "lab-replay-source-object-root", "", "required Guest-owned Lab replay source object directory")
+	flag.Int64Var(&labReplaySourceMaximumBytes, "lab-replay-source-max-bytes", 0, "required maximum Lab replay source bytes")
+	flag.StringVar(&labReplaySpoolRootDirectory, "lab-replay-spool-root", "", "required Guest-owned Lab replay spool directory")
+	flag.StringVar(&labReplayStringTrackPolicy, "lab-replay-string-track-policy", "", "required Lab replay string-track policy")
+	flag.StringVar(&labReplayGapPolicy, "lab-replay-gap-policy", "", "required Lab replay frame-gap policy")
+	flag.IntVar(&labReplayFrameBatchSize, "lab-replay-frame-batch-size", 0, "required Lab replay frames per real-time Runner batch; v1 requires exactly 1")
+	flag.StringVar(&recorderAttributionPolicyKind, "recorder-attribution-policy-kind", "", "required explicit Recorder attribution policy kind")
 	flag.StringVar(&serviceVersion, "service-version", "", "required Guest Runtime release version")
 	flag.StringVar(&instanceID, "instance-id", "", "required Guest Runtime instance identifier")
 	flag.StringVar(&archiveProviderKind, "archive-provider-kind", "", "required Archive Export provider kind")
@@ -90,15 +119,30 @@ func main() {
 	flag.StringVar(&telemetryExportMode, "telemetry-export-mode", "", "required only for the telemetry outcome profile")
 	flag.Parse()
 	if missing := missingRequiredGuestRuntimeControlHTTPAcceptanceFixtureFlags([]requiredGuestRuntimeControlHTTPAcceptanceFixtureFlag{
-		{name: "--listen", value: listenAddress}, {name: "--state-db", value: stateDatabase}, {name: "--service-version", value: serviceVersion}, {name: "--instance-id", value: instanceID},
+		{name: "--listen", value: listenAddress}, {name: "--state-db", value: stateDatabase}, {name: "--bootstrap-evidence-root", value: bootstrapEvidenceRootDirectory}, {name: "--recorder-catalog-database-url", value: recorderCatalogDatabaseURL}, {name: "--recorder-catalog-admission-bearer-token", value: recorderCatalogAdmissionBearerToken}, {name: "--service-version", value: serviceVersion}, {name: "--instance-id", value: instanceID},
+		{name: "--archive-source-admission-bearer-token", value: archiveSourceAdmissionBearerToken}, {name: "--archive-artifact-object-root", value: archiveArtifactObjectRootDirectory}, {name: "--lab-replay-source-object-root", value: labReplaySourceObjectRootDirectory}, {name: "--lab-replay-spool-root", value: labReplaySpoolRootDirectory}, {name: "--lab-replay-string-track-policy", value: labReplayStringTrackPolicy}, {name: "--lab-replay-gap-policy", value: labReplayGapPolicy}, {name: "--lab-replay-frame-batch-size", value: fmt.Sprintf("%d", labReplayFrameBatchSize)}, {name: "--recorder-attribution-policy-kind", value: recorderAttributionPolicyKind},
 		{name: "--archive-provider-kind", value: archiveProviderKind}, {name: "--archive-provider-id", value: archiveProviderID}, {name: "--recorder-gateway-cold-path-source-endpoint", value: recorderGatewayColdPathSourceEndpoint}, {name: "--lab-recorder-runner-endpoint", value: labRecorderRunnerEndpoint},
 		{name: "--external-upstream-observation-provider-kind", value: externalUpstreamObservationProviderKind}, {name: "--external-upstream-observation-provider-id", value: externalUpstreamObservationProviderID},
 		{name: "--outbound-relay-observation-provider-kind", value: outboundRelayObservationProviderKind}, {name: "--outbound-relay-observation-provider-id", value: outboundRelayObservationProviderID}, {name: "--outbound-relay-observation-provider-mode", value: outboundRelayObservationProviderMode},
 		{name: "--guest-node-id", value: guestNodeID}, {name: "--time-authority-id", value: timeAuthorityID}, {name: "--time-adapter-kind", value: timeAdapterKind},
 		{name: "--telemetry-adapter-kind", value: telemetryAdapterKind},
-	}); len(missing) > 0 || archiveProviderRevision < 1 || externalUpstreamObservationProviderRevision < 1 || outboundRelayObservationProviderRevision < 1 || !completeArchiveProviderFlags(archiveProviderKind, archiveProviderMode, archiveProviderVitalServerConfigurationKind, archiveProviderVitalServerConfigurationPath, archiveProviderCredentialMaterialPath) || !completeExternalUpstreamObservationProviderFlags(externalUpstreamObservationProviderKind, externalUpstreamObservationProviderMode, externalUpstreamObservationExternalVitalServerDeliveryConfigurationPath, externalUpstreamObservationRequestTimeoutMilliseconds) || !completeTimeAuthorityAdapterFlags(timeAdapterKind, timeChronyExecutablePath, timeRequestTimeoutMilliseconds, timeProviderMode) || !completeTelemetryAdapterFlags(telemetryAdapterKind, telemetryCollectorBaseEndpoint, telemetryRequestTimeoutMilliseconds, telemetryPipelineMode, telemetryExportMode) {
+	}); len(missing) > 0 || archiveSourceMaximumBytes < 1 || archiveProviderRevision < 1 || externalUpstreamObservationProviderRevision < 1 || outboundRelayObservationProviderRevision < 1 || !completeArchiveProviderFlags(archiveProviderKind, archiveProviderMode, archiveProviderVitalServerConfigurationKind, archiveProviderVitalServerConfigurationPath, archiveProviderCredentialMaterialPath) || !completeExternalUpstreamObservationProviderFlags(externalUpstreamObservationProviderKind, externalUpstreamObservationProviderMode, externalUpstreamObservationExternalVitalServerDeliveryConfigurationPath, externalUpstreamObservationRequestTimeoutMilliseconds) || !completeTimeAuthorityAdapterFlags(timeAdapterKind, timeChronyExecutablePath, timeRequestTimeoutMilliseconds, timeProviderMode) || !completeTelemetryAdapterFlags(telemetryAdapterKind, telemetryCollectorBaseEndpoint, telemetryRequestTimeoutMilliseconds, telemetryPipelineMode, telemetryExportMode) {
 		fmt.Fprintln(os.Stderr, "Guest Runtime Control HTTP acceptance fixture requires every application deployment setting explicitly; this fixture does not create a Guest virtio-socket listener")
 		os.Exit(2)
+	}
+	bootstrapEvidence, err := materializeAcceptanceBootstrapEvidence(
+		bootstrapEvidenceRootDirectory,
+		recorderCatalogDatabaseURL,
+		recorderCatalogAdmissionBearerToken,
+		archiveSourceAdmissionBearerToken,
+	)
+	if err != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"Guest Runtime Control HTTP acceptance fixture bootstrap evidence failed: %v\n",
+			err,
+		)
+		os.Exit(1)
 	}
 
 	acceptanceFixtureContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -107,6 +151,23 @@ func main() {
 		acceptanceFixtureContext,
 		guestruntimecontrolhttpapplication.GuestRuntimeControlHTTPApplicationDeployment{
 			GuestRuntimeStateDatabasePath:                                           stateDatabase,
+			RecorderCatalogPostgreSQLDatabaseURL:                                    recorderCatalogDatabaseURL,
+			RecorderCatalogDatabaseURLMaterialPath:                                  bootstrapEvidence.databaseURLMaterialPath,
+			RecorderCatalogMigrationReceiptPath:                                     bootstrapEvidence.migrationReceiptPath,
+			RecorderCatalogAdmissionBearerToken:                                     recorderCatalogAdmissionBearerToken,
+			RecorderCatalogAdmissionBearerTokenMaterialPath:                         bootstrapEvidence.catalogAdmissionTokenMaterialPath,
+			RecorderObservationMaxReportAgeSeconds:                                  recorderObservationMaxReportAgeSeconds,
+			ArchiveSourceAdmissionBearerToken:                                       archiveSourceAdmissionBearerToken,
+			ArchiveSourceAdmissionBearerTokenMaterialPath:                           bootstrapEvidence.archiveAdmissionTokenMaterialPath,
+			ArchiveArtifactObjectRootDirectory:                                      archiveArtifactObjectRootDirectory,
+			ArchiveSourceMaximumBytes:                                               archiveSourceMaximumBytes,
+			LabReplaySourceObjectRootDirectory:                                      labReplaySourceObjectRootDirectory,
+			LabReplaySourceMaximumBytes:                                             labReplaySourceMaximumBytes,
+			LabReplaySpoolRootDirectory:                                             labReplaySpoolRootDirectory,
+			LabReplayStringTrackPolicy:                                              labReplayStringTrackPolicy,
+			LabReplayGapPolicy:                                                      labReplayGapPolicy,
+			LabReplayFrameBatchSize:                                                 labReplayFrameBatchSize,
+			RecorderAttributionPolicyKind:                                           recorderAttributionPolicyKind,
 			GuestRuntimeServiceVersion:                                              serviceVersion,
 			GuestRuntimeInstanceID:                                                  instanceID,
 			ArchiveExportProviderReference:                                          guestruntimedomain.ArchiveProviderReference{Kind: archiveProviderKind, ID: archiveProviderID, CapabilityRevision: archiveProviderRevision},
@@ -165,6 +226,57 @@ func main() {
 	case <-acceptanceFixtureContext.Done():
 		_ = controlHTTPServer.Shutdown(acceptanceFixtureContext)
 	}
+}
+
+type acceptanceBootstrapEvidence struct {
+	databaseURLMaterialPath           string
+	catalogAdmissionTokenMaterialPath string
+	archiveAdmissionTokenMaterialPath string
+	migrationReceiptPath              string
+}
+
+func materializeAcceptanceBootstrapEvidence(
+	root string,
+	databaseURL string,
+	catalogAdmissionToken string,
+	archiveAdmissionToken string,
+) (acceptanceBootstrapEvidence, error) {
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return acceptanceBootstrapEvidence{},
+			fmt.Errorf("acceptance bootstrap evidence root must be an explicit absolute path")
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return acceptanceBootstrapEvidence{}, err
+	}
+	evidence := acceptanceBootstrapEvidence{
+		databaseURLMaterialPath: filepath.Join(
+			root,
+			"recorder-catalog-database-url",
+		),
+		catalogAdmissionTokenMaterialPath: filepath.Join(
+			root,
+			"recorder-catalog-admission-token",
+		),
+		archiveAdmissionTokenMaterialPath: filepath.Join(
+			root,
+			"archive-source-admission-token",
+		),
+		migrationReceiptPath: filepath.Join(
+			root,
+			"recorder-catalog-migration-receipt.json",
+		),
+	}
+	for path, contents := range map[string]string{
+		evidence.databaseURLMaterialPath:           databaseURL,
+		evidence.catalogAdmissionTokenMaterialPath: catalogAdmissionToken,
+		evidence.archiveAdmissionTokenMaterialPath: archiveAdmissionToken,
+		evidence.migrationReceiptPath:              `{"schemaVersion":"v1","state":"succeeded","revision":"0006_backup_owner","startedAt":"2026-07-24T00:00:00Z","finishedAt":"2026-07-24T00:00:01Z"}`,
+	} {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			return acceptanceBootstrapEvidence{}, err
+		}
+	}
+	return evidence, nil
 }
 
 func completeArchiveProviderFlags(kind string, outcomeMode string, vitalServerConfigurationKind string, vitalServerConfigurationPath string, credentialMaterialPath string) bool {

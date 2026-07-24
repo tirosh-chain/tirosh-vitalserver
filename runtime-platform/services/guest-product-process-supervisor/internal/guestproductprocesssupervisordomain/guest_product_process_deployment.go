@@ -45,20 +45,50 @@ type GuestProductProcessDeploymentConfiguration struct {
 }
 
 type GuestRuntimeProcessDeployment struct {
-	ExecutablePath                        string                                  `json:"executablePath"`
-	Listener                              GuestProductProcessListener             `json:"listener"`
-	ControlVirtioSocketListener           GuestRuntimeControlVirtioSocketListener `json:"controlVirtioSocketListener"`
-	PublicServiceVirtioSocketBridges      []GuestPublicServiceVirtioSocketBridge  `json:"publicServiceVirtioSocketBridges"`
-	StateDatabasePath                     string                                  `json:"stateDatabasePath"`
-	ServiceVersion                        string                                  `json:"serviceVersion"`
-	InstanceID                            string                                  `json:"instanceId"`
-	ArchiveExportProvider                 ArchiveExportProvider                   `json:"archiveExportProvider"`
-	RecorderGatewayColdPathSourceEndpoint string                                  `json:"recorderGatewayColdPathSourceEndpoint"`
-	LabRecorderRunnerEndpoint             string                                  `json:"labRecorderRunnerEndpoint"`
-	ExternalUpstreamObservationProvider   ExternalUpstreamObservationProvider     `json:"externalUpstreamObservationProvider"`
-	OutboundRelayObservationProvider      OutboundRelayObservationProvider        `json:"outboundRelayObservationProvider"`
-	TimeAuthority                         GuestTimeAuthority                      `json:"timeAuthority"`
-	TelemetryPipeline                     GuestTelemetryPipeline                  `json:"telemetryPipeline"`
+	ExecutablePath                                  string                                  `json:"executablePath"`
+	Listener                                        GuestProductProcessListener             `json:"listener"`
+	ControlVirtioSocketListener                     GuestRuntimeControlVirtioSocketListener `json:"controlVirtioSocketListener"`
+	PublicServiceVirtioSocketBridges                []GuestPublicServiceVirtioSocketBridge  `json:"publicServiceVirtioSocketBridges"`
+	StateDatabasePath                               string                                  `json:"stateDatabasePath"`
+	RecorderCatalogDatabaseURLMaterialPath          string                                  `json:"recorderCatalogDatabaseUrlMaterialPath"`
+	RecorderCatalogMigrationReceiptPath             string                                  `json:"recorderCatalogMigrationReceiptPath"`
+	RecorderCatalogAdmissionBearerTokenMaterialPath string                                  `json:"recorderCatalogAdmissionBearerTokenMaterialPath"`
+	RecorderObservationMaxReportAgeSeconds          int                                     `json:"recorderObservationMaxReportAgeSeconds"`
+	ArchiveSourceAdmissionBearerTokenMaterialPath   string                                  `json:"archiveSourceAdmissionBearerTokenMaterialPath"`
+	ArchiveArtifactObjectRootDirectory              string                                  `json:"archiveArtifactObjectRootDirectory"`
+	ArchiveSourceMaximumBytes                       int64                                   `json:"archiveSourceMaximumBytes"`
+	LabReplaySourceObjectRootDirectory              string                                  `json:"labReplaySourceObjectRootDirectory"`
+	LabReplaySourceMaximumBytes                     int64                                   `json:"labReplaySourceMaximumBytes"`
+	LabReplaySpoolRootDirectory                     string                                  `json:"labReplaySpoolRootDirectory"`
+	LabReplayStringTrackPolicy                      string                                  `json:"labReplayStringTrackPolicy"`
+	LabReplayGapPolicy                              string                                  `json:"labReplayGapPolicy"`
+	LabReplayFrameBatchSize                         int                                     `json:"labReplayFrameBatchSize"`
+	RecorderAttributionPolicyKind                   string                                  `json:"recorderAttributionPolicyKind"`
+	ServiceVersion                                  string                                  `json:"serviceVersion"`
+	InstanceID                                      string                                  `json:"instanceId"`
+	ArchiveExportProvider                           ArchiveExportProvider                   `json:"archiveExportProvider"`
+	RecorderGatewayColdPathSourceEndpoint           string                                  `json:"recorderGatewayColdPathSourceEndpoint"`
+	LabRecorderRunnerEndpoint                       string                                  `json:"labRecorderRunnerEndpoint"`
+	ExternalUpstreamObservationProvider             ExternalUpstreamObservationProvider     `json:"externalUpstreamObservationProvider"`
+	OutboundRelayObservationProvider                OutboundRelayObservationProvider        `json:"outboundRelayObservationProvider"`
+	TimeAuthority                                   GuestTimeAuthority                      `json:"timeAuthority"`
+	TelemetryPipeline                               GuestTelemetryPipeline                  `json:"telemetryPipeline"`
+	OperationalStateBackup                          GuestOperationalStateBackupDeployment   `json:"operationalStateBackup"`
+	OperationalStateRestore                         *GuestOperationalStateRestoreDeployment `json:"operationalStateRestore,omitempty"`
+}
+
+type GuestOperationalStateBackupDeployment struct {
+	RootDirectory           string                        `json:"rootDirectory"`
+	LedgerDatabasePath      string                        `json:"ledgerDatabasePath"`
+	DestinationReference    GuestProductResourceReference `json:"destinationReference"`
+	PGDumpExecutablePath    string                        `json:"pgDumpExecutablePath"`
+	PGRestoreExecutablePath string                        `json:"pgRestoreExecutablePath"`
+}
+
+type GuestOperationalStateRestoreDeployment struct {
+	TargetReference                   GuestProductResourceReference `json:"targetReference"`
+	SQLiteTargetPath                  string                        `json:"sqliteTargetPath"`
+	PostgreSQLDatabaseURLMaterialPath string                        `json:"postgresqlDatabaseUrlMaterialPath"`
 }
 
 // GuestRuntimeControlVirtioSocketListener declares the Guest-owned socket
@@ -83,15 +113,21 @@ type GuestPublicServiceVirtioSocketBridge struct {
 }
 
 type RecorderGatewayProcessDeployment struct {
-	NodeExecutablePath                           string                                       `json:"nodeExecutablePath"`
-	ProgramPath                                  string                                       `json:"programPath"`
-	Listener                                     GuestProductProcessListener                  `json:"listener"`
-	DurableIngressStateDirectory                 string                                       `json:"durableIngressStateDirectory"`
-	VitalServerTopologyDeploymentPath            string                                       `json:"vitalServerTopologyDeploymentPath"`
-	ExternalVitalServerDeliveryConfigurationPath string                                       `json:"externalVitalServerDeliveryConfigurationPath"`
-	DeliveryReplayAdmissionPolicy                RecorderGatewayDeliveryReplayAdmissionPolicy `json:"deliveryReplayAdmissionPolicy"`
-	ColdPathCapturePolicy                        RecorderGatewayColdPathCapturePolicy         `json:"coldPathCapturePolicy"`
-	ReplayPolicy                                 RecorderGatewayReplayPolicy                  `json:"replayPolicy"`
+	NodeExecutablePath                               string                                       `json:"nodeExecutablePath"`
+	ProgramPath                                      string                                       `json:"programPath"`
+	Listener                                         GuestProductProcessListener                  `json:"listener"`
+	DurableIngressStateDirectory                     string                                       `json:"durableIngressStateDirectory"`
+	VitalServerTopologyDeploymentPath                string                                       `json:"vitalServerTopologyDeploymentPath"`
+	ExternalVitalServerDeliveryConfigurationPath     string                                       `json:"externalVitalServerDeliveryConfigurationPath"`
+	DeliveryReplayAdmissionPolicy                    RecorderGatewayDeliveryReplayAdmissionPolicy `json:"deliveryReplayAdmissionPolicy"`
+	ColdPathCapturePolicy                            RecorderGatewayColdPathCapturePolicy         `json:"coldPathCapturePolicy"`
+	ReplayPolicy                                     RecorderGatewayReplayPolicy                  `json:"replayPolicy"`
+	GuestRuntimeObservationCatalogEndpoint           string                                       `json:"guestRuntimeObservationCatalogEndpoint"`
+	ObservationCatalogBearerTokenMaterialPath        string                                       `json:"observationCatalogBearerTokenMaterialPath"`
+	VitalUploadPolicy                                RecorderGatewayVitalUploadPolicy             `json:"vitalUploadPolicy"`
+	GuestRuntimeArchiveSourceAdmissionEndpoint       string                                       `json:"guestRuntimeArchiveSourceAdmissionEndpoint"`
+	ArchiveSourceAdmissionBearerTokenMaterialPath    string                                       `json:"archiveSourceAdmissionBearerTokenMaterialPath"`
+	ArchiveSourceAdmissionRequestTimeoutMilliseconds int                                          `json:"archiveSourceAdmissionRequestTimeoutMilliseconds"`
 }
 
 // LabRecorderRunnerProcessDeployment declares the dedicated Guest-local
@@ -99,12 +135,12 @@ type RecorderGatewayProcessDeployment struct {
 // listener and the exact Recorder Gateway loopback endpoint; it never derives
 // a target from an address, process name, or public route.
 type LabRecorderRunnerProcessDeployment struct {
-	NodeExecutablePath                     string                      `json:"nodeExecutablePath"`
-	ProgramPath                            string                      `json:"programPath"`
-	Listener                               GuestProductProcessListener `json:"listener"`
-	RecorderGatewayEndpoint                string                      `json:"recorderGatewayEndpoint"`
-	GuestRuntimeObservationCatalogEndpoint string                      `json:"guestRuntimeObservationCatalogEndpoint"`
-	ScenarioCatalogPath                    string                      `json:"scenarioCatalogPath"`
+	NodeExecutablePath      string                      `json:"nodeExecutablePath"`
+	ProgramPath             string                      `json:"programPath"`
+	Listener                GuestProductProcessListener `json:"listener"`
+	RecorderGatewayEndpoint string                      `json:"recorderGatewayEndpoint"`
+	ScenarioCatalogPath     string                      `json:"scenarioCatalogPath"`
+	ReplayStateDirectory    string                      `json:"replayStateDirectory"`
 }
 
 // GuestTelemetryCollectorDeployment is the selected Guest-local Collector
@@ -304,6 +340,12 @@ type RecorderGatewayReplayPolicy struct {
 	LeaseDurationMilliseconds int `json:"leaseDurationMilliseconds"`
 }
 
+type RecorderGatewayVitalUploadPolicy struct {
+	MaximumBytes                 int64 `json:"maximumBytes"`
+	RecoveryIntervalMilliseconds int   `json:"recoveryIntervalMilliseconds"`
+	RecoveryMaximumItems         int   `json:"recoveryMaximumItems"`
+}
+
 // GuestProductProcessInvocation is the complete, named process effect that
 // the application layer may give an operating-system process adapter.
 type GuestProductProcessInvocation struct {
@@ -367,8 +409,25 @@ func ValidateGuestProductProcessDeploymentConfiguration(configuration GuestProdu
 	if !labRecorderRunnerGatewayEndpointTargetsRecorderGateway(configuration.LabRecorderRunner.RecorderGatewayEndpoint, configuration.RecorderGateway.Listener) {
 		return fmt.Errorf("Lab recorder Runner recorderGatewayEndpoint must target the declared Recorder Gateway Guest-loopback listener")
 	}
-	if !labRecorderRunnerObservationCatalogEndpointTargetsGuestRuntime(configuration.LabRecorderRunner.GuestRuntimeObservationCatalogEndpoint, configuration.GuestRuntime.Listener) {
-		return fmt.Errorf("Lab recorder Runner guestRuntimeObservationCatalogEndpoint must target the declared Guest Runtime Guest-loopback listener")
+	if !labRecorderRunnerObservationCatalogEndpointTargetsGuestRuntime(configuration.RecorderGateway.GuestRuntimeObservationCatalogEndpoint, configuration.GuestRuntime.Listener) {
+		return fmt.Errorf("Recorder Gateway guestRuntimeObservationCatalogEndpoint must target the declared Guest Runtime Guest-loopback listener")
+	}
+	if configuration.GuestRuntime.RecorderCatalogAdmissionBearerTokenMaterialPath != configuration.RecorderGateway.ObservationCatalogBearerTokenMaterialPath {
+		return fmt.Errorf("Guest Runtime and Recorder Gateway must reference the same Recorder Catalog admission credential material")
+	}
+	if !recorderGatewayArchiveSourceEndpointTargetsGuestRuntime(
+		configuration.RecorderGateway.GuestRuntimeArchiveSourceAdmissionEndpoint,
+		configuration.GuestRuntime.Listener,
+	) {
+		return fmt.Errorf("Recorder Gateway guestRuntimeArchiveSourceAdmissionEndpoint must target the declared Guest Runtime Archive source route")
+	}
+	if configuration.GuestRuntime.ArchiveSourceAdmissionBearerTokenMaterialPath !=
+		configuration.RecorderGateway.ArchiveSourceAdmissionBearerTokenMaterialPath {
+		return fmt.Errorf("Guest Runtime and Recorder Gateway must reference the same Archive source admission credential material")
+	}
+	if configuration.GuestRuntime.ArchiveSourceMaximumBytes !=
+		configuration.RecorderGateway.VitalUploadPolicy.MaximumBytes {
+		return fmt.Errorf("Guest Runtime and Recorder Gateway must declare the same Vital upload byte limit")
 	}
 	if configuration.GuestRuntime.StateDatabasePath == configuration.RecorderGateway.DurableIngressStateDirectory {
 		return fmt.Errorf("Guest Runtime stateDatabasePath and Recorder Gateway durableIngressStateDirectory must remain separate owned stores")
@@ -389,9 +448,24 @@ func PlanGuestProductProcessInvocations(configuration GuestProductProcessDeploym
 	runtime := configuration.GuestRuntime
 	gateway := configuration.RecorderGateway
 	runtimeArguments := []string{
+		"--process-role=runtime-control",
 		"--listen=" + listenerAddress(runtime.Listener),
 		"--control-virtio-socket-port=" + strconv.Itoa(runtime.ControlVirtioSocketListener.Port),
 		"--state-db=" + runtime.StateDatabasePath,
+		"--recorder-catalog-database-url-material-path=" + runtime.RecorderCatalogDatabaseURLMaterialPath,
+		"--recorder-catalog-migration-receipt-path=" + runtime.RecorderCatalogMigrationReceiptPath,
+		"--recorder-catalog-admission-bearer-token-material-path=" + runtime.RecorderCatalogAdmissionBearerTokenMaterialPath,
+		"--recorder-observation-max-report-age-seconds=" + strconv.Itoa(runtime.RecorderObservationMaxReportAgeSeconds),
+		"--archive-source-admission-bearer-token-material-path=" + runtime.ArchiveSourceAdmissionBearerTokenMaterialPath,
+		"--archive-artifact-object-root=" + runtime.ArchiveArtifactObjectRootDirectory,
+		"--archive-source-max-bytes=" + strconv.FormatInt(runtime.ArchiveSourceMaximumBytes, 10),
+		"--lab-replay-source-object-root=" + runtime.LabReplaySourceObjectRootDirectory,
+		"--lab-replay-source-max-bytes=" + strconv.FormatInt(runtime.LabReplaySourceMaximumBytes, 10),
+		"--lab-replay-spool-root=" + runtime.LabReplaySpoolRootDirectory,
+		"--lab-replay-string-track-policy=" + runtime.LabReplayStringTrackPolicy,
+		"--lab-replay-gap-policy=" + runtime.LabReplayGapPolicy,
+		"--lab-replay-frame-batch-size=" + strconv.Itoa(runtime.LabReplayFrameBatchSize),
+		"--recorder-attribution-policy-kind=" + runtime.RecorderAttributionPolicyKind,
 		"--service-version=" + runtime.ServiceVersion,
 		"--instance-id=" + runtime.InstanceID,
 		"--archive-provider-kind=" + runtime.ArchiveExportProvider.Kind,
@@ -420,6 +494,21 @@ func PlanGuestProductProcessInvocations(configuration GuestProductProcessDeploym
 		"--telemetry-request-timeout-milliseconds=" + strconv.Itoa(runtime.TelemetryPipeline.RequestTimeoutMilliseconds),
 		"--telemetry-pipeline-mode=" + runtime.TelemetryPipeline.CollectorProbeOutcomeMode,
 		"--telemetry-export-mode=" + runtime.TelemetryPipeline.ExportOutcomeMode,
+		"--operational-state-backup-root=" + runtime.OperationalStateBackup.RootDirectory,
+		"--operational-state-backup-ledger-db=" + runtime.OperationalStateBackup.LedgerDatabasePath,
+		"--operational-state-backup-destination-type=" + runtime.OperationalStateBackup.DestinationReference.ResourceType,
+		"--operational-state-backup-destination-id=" + runtime.OperationalStateBackup.DestinationReference.ResourceID,
+		"--operational-state-pg-dump-executable=" + runtime.OperationalStateBackup.PGDumpExecutablePath,
+		"--operational-state-pg-restore-executable=" + runtime.OperationalStateBackup.PGRestoreExecutablePath,
+	}
+	if runtime.OperationalStateRestore != nil {
+		runtimeArguments = append(
+			runtimeArguments,
+			"--operational-state-restore-target-type="+runtime.OperationalStateRestore.TargetReference.ResourceType,
+			"--operational-state-restore-target-id="+runtime.OperationalStateRestore.TargetReference.ResourceID,
+			"--operational-state-restore-sqlite-target="+runtime.OperationalStateRestore.SQLiteTargetPath,
+			"--operational-state-restore-postgresql-database-url-material-path="+runtime.OperationalStateRestore.PostgreSQLDatabaseURLMaterialPath,
+		)
 	}
 	archiveProviderArguments, err := planGuestRuntimeArchiveProviderArguments(runtime.ArchiveExportProvider, configuration.RecorderGateway, externalConfiguration)
 	if err != nil {
@@ -448,14 +537,22 @@ func PlanGuestProductProcessInvocations(configuration GuestProductProcessDeploym
 		"--replay-max-attempts=" + strconv.Itoa(gateway.ReplayPolicy.MaximumAttempts),
 		"--replay-retry-delay-ms=" + strconv.Itoa(gateway.ReplayPolicy.RetryDelayMilliseconds),
 		"--replay-lease-duration-ms=" + strconv.Itoa(gateway.ReplayPolicy.LeaseDurationMilliseconds),
+		"--guest-runtime-observation-catalog-endpoint=" + gateway.GuestRuntimeObservationCatalogEndpoint,
+		"--guest-runtime-observation-catalog-bearer-token-material-path=" + gateway.ObservationCatalogBearerTokenMaterialPath,
+		"--recorder-vital-upload-max-bytes=" + strconv.FormatInt(gateway.VitalUploadPolicy.MaximumBytes, 10),
+		"--recorder-vital-upload-recovery-interval-ms=" + strconv.Itoa(gateway.VitalUploadPolicy.RecoveryIntervalMilliseconds),
+		"--recorder-vital-upload-recovery-max-items=" + strconv.Itoa(gateway.VitalUploadPolicy.RecoveryMaximumItems),
+		"--guest-runtime-archive-source-admission-endpoint=" + gateway.GuestRuntimeArchiveSourceAdmissionEndpoint,
+		"--guest-runtime-archive-source-admission-bearer-token-material-path=" + gateway.ArchiveSourceAdmissionBearerTokenMaterialPath,
+		"--guest-runtime-archive-source-admission-request-timeout-ms=" + strconv.Itoa(gateway.ArchiveSourceAdmissionRequestTimeoutMilliseconds),
 	}
 	runner := configuration.LabRecorderRunner
 	runnerArguments := []string{
 		runner.ProgramPath,
 		"--listen=" + listenerAddress(runner.Listener),
 		"--recorder-gateway-endpoint=" + runner.RecorderGatewayEndpoint,
-		"--guest-runtime-observation-catalog-endpoint=" + runner.GuestRuntimeObservationCatalogEndpoint,
 		"--scenario-catalog=" + runner.ScenarioCatalogPath,
+		"--lab-replay-state-directory=" + runner.ReplayStateDirectory,
 	}
 	invocations := make([]GuestProductProcessInvocation, 0, 4)
 	if collector := configuration.TelemetryCollector; collector != nil {
@@ -617,11 +714,52 @@ func validateRecorderGatewayVitalServerDeliveryResolution(resolution RecorderGat
 }
 
 func validateGuestRuntimeProcessDeployment(deployment GuestRuntimeProcessDeployment) error {
-	if !validAbsoluteGuestPath(deployment.ExecutablePath) || !validAbsoluteGuestPath(deployment.StateDatabasePath) {
-		return fmt.Errorf("Guest Runtime executablePath and stateDatabasePath must be absolute Guest paths without traversal")
+	if !validAbsoluteGuestPath(deployment.ExecutablePath) ||
+		!validAbsoluteGuestPath(deployment.StateDatabasePath) ||
+		!validAbsoluteGuestPath(deployment.RecorderCatalogDatabaseURLMaterialPath) ||
+		!validAbsoluteGuestPath(deployment.RecorderCatalogMigrationReceiptPath) ||
+		!validAbsoluteGuestPath(deployment.RecorderCatalogAdmissionBearerTokenMaterialPath) ||
+		!validAbsoluteGuestPath(deployment.ArchiveSourceAdmissionBearerTokenMaterialPath) ||
+		!validAbsoluteGuestPath(deployment.ArchiveArtifactObjectRootDirectory) ||
+		!validAbsoluteGuestPath(deployment.LabReplaySourceObjectRootDirectory) ||
+		!validAbsoluteGuestPath(deployment.LabReplaySpoolRootDirectory) ||
+		!validAbsoluteGuestPath(deployment.OperationalStateBackup.RootDirectory) ||
+		!validAbsoluteGuestPath(deployment.OperationalStateBackup.LedgerDatabasePath) ||
+		!validAbsoluteGuestPath(deployment.OperationalStateBackup.PGDumpExecutablePath) ||
+		!validAbsoluteGuestPath(deployment.OperationalStateBackup.PGRestoreExecutablePath) ||
+		!isGuestProductResourceReference(
+			deployment.OperationalStateBackup.DestinationReference,
+			"guest-backup-destination",
+		) {
+		return fmt.Errorf("Guest Runtime executablePath, state stores, and admission material paths must be absolute Guest paths without traversal")
+	}
+	if deployment.OperationalStateRestore != nil &&
+		(!validAbsoluteGuestPath(deployment.OperationalStateRestore.SQLiteTargetPath) ||
+			!validAbsoluteGuestPath(deployment.OperationalStateRestore.PostgreSQLDatabaseURLMaterialPath) ||
+			deployment.OperationalStateRestore.SQLiteTargetPath == deployment.StateDatabasePath ||
+			deployment.OperationalStateRestore.PostgreSQLDatabaseURLMaterialPath ==
+				deployment.RecorderCatalogDatabaseURLMaterialPath ||
+			!isGuestProductResourceReference(
+				deployment.OperationalStateRestore.TargetReference,
+				"guest-restore-target",
+			)) {
+		return fmt.Errorf("Guest Runtime operational-state restore target must be an explicit empty target distinct from live state")
 	}
 	if !validListener(deployment.Listener) || !validPort(deployment.ControlVirtioSocketListener.Port) || !validIdentifier(deployment.ServiceVersion) || !validIdentifier(deployment.InstanceID) {
 		return fmt.Errorf("Guest Runtime listener, controlVirtioSocketListener, serviceVersion, or instanceId is invalid")
+	}
+	if deployment.RecorderObservationMaxReportAgeSeconds < 1 || deployment.RecorderObservationMaxReportAgeSeconds > 86400 {
+		return fmt.Errorf("Guest Runtime Recorder observation max report age must be between 1 and 86400 seconds")
+	}
+	if deployment.ArchiveSourceMaximumBytes < 1 ||
+		deployment.ArchiveSourceMaximumBytes > 2147483648 ||
+		deployment.LabReplaySourceMaximumBytes < 1 ||
+		deployment.LabReplaySourceMaximumBytes > 1073741824 ||
+		(deployment.LabReplayStringTrackPolicy != "reject" && deployment.LabReplayStringTrackPolicy != "skip") ||
+		(deployment.LabReplayGapPolicy != "omit-track" && deployment.LabReplayGapPolicy != "fail-frame") ||
+		deployment.LabReplayFrameBatchSize != 1 ||
+		deployment.RecorderAttributionPolicyKind != "recorder-assignment-owner" {
+		return fmt.Errorf("Guest Runtime Archive source byte limit or Recorder attribution policy is invalid")
 	}
 	if err := validateGuestPublicServiceVirtioSocketBridges(deployment.PublicServiceVirtioSocketBridges, deployment.ControlVirtioSocketListener.Port); err != nil {
 		return err
@@ -690,11 +828,23 @@ func guestPublicServiceVirtioSocketBridgeArgument(bridge GuestPublicServiceVirti
 }
 
 func validateRecorderGatewayProcessDeployment(deployment RecorderGatewayProcessDeployment) error {
-	if !validAbsoluteGuestPath(deployment.NodeExecutablePath) || !validAbsoluteGuestPath(deployment.ProgramPath) || !validAbsoluteGuestPath(deployment.DurableIngressStateDirectory) {
-		return fmt.Errorf("Recorder Gateway executable and durable ingress-state paths must be absolute Guest paths without traversal")
+	if !validAbsoluteGuestPath(deployment.NodeExecutablePath) ||
+		!validAbsoluteGuestPath(deployment.ProgramPath) ||
+		!validAbsoluteGuestPath(deployment.DurableIngressStateDirectory) ||
+		!validAbsoluteGuestPath(deployment.ObservationCatalogBearerTokenMaterialPath) ||
+		!validAbsoluteGuestPath(deployment.ArchiveSourceAdmissionBearerTokenMaterialPath) {
+		return fmt.Errorf("Recorder Gateway executable, durable ingress-state, and admission credential paths must be absolute Guest paths without traversal")
 	}
-	if !validListener(deployment.Listener) || !validAbsoluteGuestPath(deployment.VitalServerTopologyDeploymentPath) || (deployment.ExternalVitalServerDeliveryConfigurationPath != "" && !validAbsoluteGuestPath(deployment.ExternalVitalServerDeliveryConfigurationPath)) {
-		return fmt.Errorf("Recorder Gateway listener, C44 topology path, or C46 external delivery configuration path is invalid")
+	if !validListener(deployment.Listener) ||
+		!validAbsoluteGuestPath(deployment.VitalServerTopologyDeploymentPath) ||
+		!validGuestLoopbackHTTPURL(deployment.GuestRuntimeObservationCatalogEndpoint) ||
+		!validGuestLoopbackHTTPRoute(
+			deployment.GuestRuntimeArchiveSourceAdmissionEndpoint,
+			"/internal/v1/archive/recorder-uploads",
+		) ||
+		(deployment.ExternalVitalServerDeliveryConfigurationPath != "" &&
+			!validAbsoluteGuestPath(deployment.ExternalVitalServerDeliveryConfigurationPath)) {
+		return fmt.Errorf("Recorder Gateway listener, Guest Runtime endpoints, C44 topology path, or C46 external delivery configuration path is invalid")
 	}
 	if !inRange(deployment.DeliveryReplayAdmissionPolicy.MaximumPendingItems, 1, 10000000) || !inRange(deployment.DeliveryReplayAdmissionPolicy.MaximumPendingBytes, 1, 2147483648) || !inRange(deployment.ColdPathCapturePolicy.MaximumRetainedPackets, 1, 10000000) || !inRange(deployment.ColdPathCapturePolicy.MaximumRetainedPayloadBytes, 1, 2147483648) {
 		return fmt.Errorf("Recorder Gateway deliveryReplayAdmissionPolicy or coldPathCapturePolicy is invalid")
@@ -702,15 +852,22 @@ func validateRecorderGatewayProcessDeployment(deployment RecorderGatewayProcessD
 	if !inRange(deployment.ReplayPolicy.IntervalMilliseconds, 1, 3600000) || !inRange(deployment.ReplayPolicy.MaximumAttempts, 1, 1000) || !inRange(deployment.ReplayPolicy.RetryDelayMilliseconds, 1, 3600000) || !inRange(deployment.ReplayPolicy.LeaseDurationMilliseconds, 1, 3600000) {
 		return fmt.Errorf("Recorder Gateway replayPolicy is invalid")
 	}
+	if deployment.VitalUploadPolicy.MaximumBytes < 1 ||
+		deployment.VitalUploadPolicy.MaximumBytes > 2147483648 ||
+		!inRange(deployment.VitalUploadPolicy.RecoveryIntervalMilliseconds, 1, 3600000) ||
+		!inRange(deployment.VitalUploadPolicy.RecoveryMaximumItems, 1, 1000) ||
+		!inRange(deployment.ArchiveSourceAdmissionRequestTimeoutMilliseconds, 1, 300000) {
+		return fmt.Errorf("Recorder Gateway vitalUploadPolicy or Archive source request timeout is invalid")
+	}
 	return nil
 }
 
 func validateLabRecorderRunnerProcessDeployment(deployment LabRecorderRunnerProcessDeployment) error {
-	if !validAbsoluteGuestPath(deployment.NodeExecutablePath) || !validAbsoluteGuestPath(deployment.ProgramPath) || !validAbsoluteGuestPath(deployment.ScenarioCatalogPath) {
-		return fmt.Errorf("Lab recorder Runner executable, program, and scenario catalog paths must be absolute Guest paths without traversal")
+	if !validAbsoluteGuestPath(deployment.NodeExecutablePath) || !validAbsoluteGuestPath(deployment.ProgramPath) || !validAbsoluteGuestPath(deployment.ScenarioCatalogPath) || !validAbsoluteGuestPath(deployment.ReplayStateDirectory) {
+		return fmt.Errorf("Lab recorder Runner executable, program, scenario catalog, and replay state paths must be absolute Guest paths without traversal")
 	}
-	if deployment.Listener.BindHost != "127.0.0.1" || !validPort(deployment.Listener.Port) || !validGuestLoopbackHTTPURL(deployment.RecorderGatewayEndpoint) || !validGuestLoopbackHTTPURL(deployment.GuestRuntimeObservationCatalogEndpoint) {
-		return fmt.Errorf("Lab recorder Runner listener, Recorder Gateway endpoint, and Guest Runtime observation catalog endpoint must be valid Guest-loopback values")
+	if deployment.Listener.BindHost != "127.0.0.1" || !validPort(deployment.Listener.Port) || !validGuestLoopbackHTTPURL(deployment.RecorderGatewayEndpoint) {
+		return fmt.Errorf("Lab recorder Runner listener and Recorder Gateway endpoint must be valid Guest-loopback values")
 	}
 	return nil
 }
@@ -848,6 +1005,24 @@ func validGuestLoopbackHTTPURL(value string) bool {
 	return parsed.Port() != "" && err == nil && validPort(port)
 }
 
+func validGuestLoopbackHTTPRoute(value string, expectedPath string) bool {
+	parsed, err := url.Parse(value)
+	if err != nil ||
+		parsed.Scheme != "http" ||
+		parsed.Host == "" ||
+		parsed.User != nil ||
+		parsed.RawQuery != "" ||
+		parsed.Fragment != "" ||
+		parsed.Path != expectedPath {
+		return false
+	}
+	if parsed.Hostname() != "127.0.0.1" && parsed.Hostname() != "::1" {
+		return false
+	}
+	port, err := strconv.Atoi(parsed.Port())
+	return parsed.Port() != "" && err == nil && validPort(port)
+}
+
 func guestRuntimeColdPathSourceEndpointTargetsRecorderGateway(endpoint string, recorderGatewayListener GuestProductProcessListener) bool {
 	return guestLoopbackEndpointTargetsListener(endpoint, recorderGatewayListener)
 }
@@ -858,6 +1033,25 @@ func labRecorderRunnerGatewayEndpointTargetsRecorderGateway(endpoint string, rec
 
 func labRecorderRunnerObservationCatalogEndpointTargetsGuestRuntime(endpoint string, guestRuntimeListener GuestProductProcessListener) bool {
 	return guestLoopbackEndpointTargetsListener(endpoint, guestRuntimeListener)
+}
+
+func recorderGatewayArchiveSourceEndpointTargetsGuestRuntime(
+	endpoint string,
+	guestRuntimeListener GuestProductProcessListener,
+) bool {
+	if !guestLoopbackTargetIsAcceptedByListener(guestRuntimeListener) ||
+		!validGuestLoopbackHTTPRoute(
+			endpoint,
+			"/internal/v1/archive/recorder-uploads",
+		) {
+		return false
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return false
+	}
+	port, err := strconv.Atoi(parsed.Port())
+	return err == nil && port == guestRuntimeListener.Port
 }
 
 // guestLoopbackEndpointTargetsListener proves a declaration points to one

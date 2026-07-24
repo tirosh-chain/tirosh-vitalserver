@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -44,6 +45,9 @@ type GuestProductBootstrapVolumeCompositionPlan struct {
 	ReleaseManagerServiceUnitName       string                                       `json:"releaseManagerServiceUnitName"`
 	GuestProductRelease                 DeclaredGuestProductRelease                  `json:"guestProductRelease"`
 	GuestRuntimeStateDirectory          DeclaredGuestDirectory                       `json:"guestRuntimeStateDirectory"`
+	GuestPrivateStateDirectory          DeclaredGuestDirectory                       `json:"guestPrivateStateDirectory"`
+	GuestArchiveArtifactObjectDirectory DeclaredGuestDirectory                       `json:"guestArchiveArtifactObjectDirectory"`
+	GuestRecorderCatalogPostgreSQL      DeclaredGuestRecorderCatalogPostgreSQL       `json:"guestRecorderCatalogPostgreSQL"`
 	GuestTelemetryStateDirectory        *DeclaredGuestDirectory                      `json:"guestTelemetryStateDirectory,omitempty"`
 	GuestBundledUpstreamImageSetManager *DeclaredGuestBundledUpstreamImageSetManager `json:"guestBundledUpstreamImageSetManager,omitempty"`
 	GuestTimeSynchronization            *DeclaredGuestTimeSynchronization            `json:"guestTimeSynchronization,omitempty"`
@@ -71,6 +75,24 @@ type DeclaredGuestProductRelease struct {
 type DeclaredGuestDirectory struct {
 	DirectoryPath string `json:"directoryPath"`
 	DirectoryMode string `json:"directoryMode"`
+}
+
+type DeclaredGuestRecorderCatalogPostgreSQL struct {
+	PackageManager                                string   `json:"packageManager"`
+	PackageNames                                  []string `json:"packageNames"`
+	ServiceName                                   string   `json:"serviceName"`
+	DatabaseHost                                  string   `json:"databaseHost"`
+	DatabasePort                                  int      `json:"databasePort"`
+	DatabaseName                                  string   `json:"databaseName"`
+	DatabaseRoleName                              string   `json:"databaseRoleName"`
+	DatabaseURLMaterialPath                       string   `json:"databaseURLMaterialPath"`
+	CatalogAdmissionBearerTokenMaterialPath       string   `json:"catalogAdmissionBearerTokenMaterialPath"`
+	ArchiveSourceAdmissionBearerTokenMaterialPath string   `json:"archiveSourceAdmissionBearerTokenMaterialPath"`
+	GeneratedSecretByteCount                      int      `json:"generatedSecretByteCount"`
+	MigrationExecutablePath                       string   `json:"migrationExecutablePath"`
+	MigrationPythonExecutablePath                 string   `json:"migrationPythonExecutablePath"`
+	ExpectedRevision                              string   `json:"expectedRevision"`
+	MigrationReceiptPath                          string   `json:"migrationReceiptPath"`
 }
 
 // DeclaredGuestBundledUpstreamImageSetManager is the C40 execution contract
@@ -184,6 +206,36 @@ func ValidateGuestProductBootstrapVolumeCompositionPlan(plan GuestProductBootstr
 	if !isSafeAbsoluteGuestPath(plan.GuestRuntimeStateDirectory.DirectoryPath) || plan.GuestRuntimeStateDirectory.DirectoryMode != "0700" {
 		return fmt.Errorf("C40 Guest Runtime state directory is invalid")
 	}
+	if plan.GuestPrivateStateDirectory.DirectoryPath != "/var/lib/vitalserver/private" ||
+		plan.GuestPrivateStateDirectory.DirectoryMode != "0700" ||
+		plan.GuestArchiveArtifactObjectDirectory.DirectoryPath != "/var/lib/vitalserver/archive-artifacts" ||
+		plan.GuestArchiveArtifactObjectDirectory.DirectoryMode != "0700" ||
+		plan.GuestPrivateStateDirectory.DirectoryPath == plan.GuestRuntimeStateDirectory.DirectoryPath ||
+		plan.GuestArchiveArtifactObjectDirectory.DirectoryPath == plan.GuestRuntimeStateDirectory.DirectoryPath ||
+		plan.GuestArchiveArtifactObjectDirectory.DirectoryPath == plan.GuestPrivateStateDirectory.DirectoryPath {
+		return fmt.Errorf("C40 Guest private or Archive object directory is invalid")
+	}
+	recorderCatalog := plan.GuestRecorderCatalogPostgreSQL
+	if recorderCatalog.PackageManager != "apt" ||
+		!slices.Equal(recorderCatalog.PackageNames, []string{"postgresql", "python3-alembic", "python3-psycopg"}) ||
+		recorderCatalog.ServiceName != "postgresql.service" ||
+		recorderCatalog.DatabaseHost != "127.0.0.1" ||
+		recorderCatalog.DatabasePort != 5432 ||
+		recorderCatalog.DatabaseName != "vitalserver" ||
+		recorderCatalog.DatabaseRoleName != "vitalserver" ||
+		!isPathBelow(plan.GuestPrivateStateDirectory.DirectoryPath, recorderCatalog.DatabaseURLMaterialPath) ||
+		!isPathBelow(plan.GuestPrivateStateDirectory.DirectoryPath, recorderCatalog.CatalogAdmissionBearerTokenMaterialPath) ||
+		!isPathBelow(plan.GuestPrivateStateDirectory.DirectoryPath, recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath) ||
+		recorderCatalog.DatabaseURLMaterialPath == recorderCatalog.CatalogAdmissionBearerTokenMaterialPath ||
+		recorderCatalog.DatabaseURLMaterialPath == recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath ||
+		recorderCatalog.CatalogAdmissionBearerTokenMaterialPath == recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath ||
+		recorderCatalog.GeneratedSecretByteCount != 32 ||
+		!isSafeAbsoluteGuestPath(recorderCatalog.MigrationExecutablePath) ||
+		recorderCatalog.MigrationPythonExecutablePath != "/usr/bin/python3" ||
+		recorderCatalog.ExpectedRevision != "0006_backup_owner" ||
+		!isPathBelow(plan.GuestPrivateStateDirectory.DirectoryPath, recorderCatalog.MigrationReceiptPath) {
+		return fmt.Errorf("C40 Recorder Catalog PostgreSQL declaration is invalid")
+	}
 	if plan.GuestTelemetryStateDirectory != nil && (!isSafeAbsoluteGuestPath(plan.GuestTelemetryStateDirectory.DirectoryPath) || plan.GuestTelemetryStateDirectory.DirectoryMode != "0700" || plan.GuestTelemetryStateDirectory.DirectoryPath == plan.GuestRuntimeStateDirectory.DirectoryPath) {
 		return fmt.Errorf("C40 Guest telemetry state directory is invalid or overlaps the Guest Runtime state directory")
 	}
@@ -212,6 +264,8 @@ func ValidateGuestProductBootstrapVolumeCompositionPlan(plan GuestProductBootstr
 	installedGuestFiles := make(map[string]struct{}, len(plan.FileInstallations))
 	destinations[plan.GuestRuntimeStateDirectory.DirectoryPath] = "Guest Runtime state directory"
 	destinations[plan.GuestProductRelease.ReleaseStateDirectory] = "Guest Product release state directory"
+	destinations[plan.GuestPrivateStateDirectory.DirectoryPath] = "Guest private state directory"
+	destinations[plan.GuestArchiveArtifactObjectDirectory.DirectoryPath] = "Guest Archive artifact object directory"
 	if plan.GuestTelemetryStateDirectory != nil {
 		destinations[plan.GuestTelemetryStateDirectory.DirectoryPath] = "Guest telemetry state directory"
 	}

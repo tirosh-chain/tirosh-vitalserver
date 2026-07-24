@@ -126,6 +126,35 @@ type CatalogObservationIngestCommand struct {
 	Envelope      RecorderObservationEnvelope `json:"envelope"`
 }
 
+type CatalogObservationAdmission struct {
+	SchemaVersion                   string             `json:"schemaVersion"`
+	RequestID                       string             `json:"requestId"`
+	Outcome                         string             `json:"outcome"`
+	ObservationReference            *ResourceReference `json:"observationReference,omitempty"`
+	DuplicateOfObservationReference *ResourceReference `json:"duplicateOfObservationReference,omitempty"`
+	Issue                           *Issue             `json:"issue,omitempty"`
+	ReceivedAt                      string             `json:"receivedAt"`
+	PersistedAt                     string             `json:"persistedAt"`
+}
+
+type RecorderObservabilitySummary struct {
+	SchemaVersion              string             `json:"schemaVersion"`
+	RecorderID                 string             `json:"recorderId"`
+	ResourceRevision           int                `json:"resourceRevision"`
+	SupportState               string             `json:"supportState"`
+	ExpectationState           string             `json:"expectationState"`
+	ReportState                string             `json:"reportState"`
+	ReadState                  string             `json:"readState"`
+	LatestObservationReference *ResourceReference `json:"latestObservationReference,omitempty"`
+	LatestBootID               *string            `json:"latestBootId,omitempty"`
+	LatestSequence             *int               `json:"latestSequence,omitempty"`
+	LatestOccurredAt           *string            `json:"latestOccurredAt,omitempty"`
+	LatestReceivedAt           *string            `json:"latestReceivedAt,omitempty"`
+	LatestPersistedAt          *string            `json:"latestPersistedAt,omitempty"`
+	Issue                      *Issue             `json:"issue,omitempty"`
+	UpdatedAt                  string             `json:"updatedAt"`
+}
+
 type TelemetryRedactionPolicy struct {
 	AllowedAttributeKeys    []string `json:"allowedAttributeKeys"`
 	MaxAttributes           int      `json:"maxAttributes"`
@@ -313,8 +342,106 @@ func NewCatalogObservation(command CatalogObservationIngestCommand, receivedAt t
 	}, nil
 }
 
+func NewAcceptedCatalogObservationAdmission(command CatalogObservationIngestCommand, receivedAt time.Time, persistedAt time.Time) (CatalogObservationAdmission, error) {
+	if issue := ValidateCatalogObservationIngestCommand(command); issue != nil {
+		return CatalogObservationAdmission{}, fmt.Errorf("invalid CatalogObservation command: %s", issue.Code)
+	}
+	reference := ResourceReference{ResourceType: CatalogObservationResourceType, ResourceID: command.ObservationID}
+	return CatalogObservationAdmission{
+		SchemaVersion:        SchemaVersion,
+		RequestID:            command.RequestID,
+		Outcome:              "accepted",
+		ObservationReference: &reference,
+		ReceivedAt:           Timestamp(receivedAt),
+		PersistedAt:          Timestamp(persistedAt),
+	}, nil
+}
+
+func NewDuplicateCatalogObservationAdmission(requestID string, originalObservationID string, receivedAt time.Time, persistedAt time.Time) (CatalogObservationAdmission, error) {
+	if !ValidIdentifier(requestID) || !ValidIdentifier(originalObservationID) {
+		return CatalogObservationAdmission{}, fmt.Errorf("duplicate Catalog admission requires valid request and observation identifiers")
+	}
+	reference := ResourceReference{ResourceType: CatalogObservationResourceType, ResourceID: originalObservationID}
+	return CatalogObservationAdmission{
+		SchemaVersion:                   SchemaVersion,
+		RequestID:                       requestID,
+		Outcome:                         "duplicate",
+		DuplicateOfObservationReference: &reference,
+		ReceivedAt:                      Timestamp(receivedAt),
+		PersistedAt:                     Timestamp(persistedAt),
+	}, nil
+}
+
+func NewQuarantinedCatalogObservationAdmission(requestID string, issue Issue, receivedAt time.Time, persistedAt time.Time) (CatalogObservationAdmission, error) {
+	if !ValidIdentifier(requestID) || issue.Code == "" || issue.Message == "" {
+		return CatalogObservationAdmission{}, fmt.Errorf("quarantined Catalog admission requires valid request identity and typed issue")
+	}
+	return CatalogObservationAdmission{
+		SchemaVersion: SchemaVersion,
+		RequestID:     requestID,
+		Outcome:       "quarantined",
+		Issue:         &issue,
+		ReceivedAt:    Timestamp(receivedAt),
+		PersistedAt:   Timestamp(persistedAt),
+	}, nil
+}
+func ProjectRecorderObservabilitySummary(
+	observation CatalogObservation,
+	previous *RecorderObservabilitySummary,
+) (RecorderObservabilitySummary, error) {
+	if !ValidIdentifier(observation.Envelope.RecorderID) || !ValidIdentifier(observation.ID) {
+		return RecorderObservabilitySummary{}, fmt.Errorf("Recorder observability projection requires a valid observation identity")
+	}
+	resourceRevision := 1
+	expectationState := "unset"
+	if previous != nil {
+		if previous.RecorderID != observation.Envelope.RecorderID || previous.ResourceRevision < 1 {
+			return RecorderObservabilitySummary{}, fmt.Errorf("Recorder observability previous projection identity is invalid")
+		}
+		if previous.ExpectationState != "expected" && previous.ExpectationState != "not-expected" && previous.ExpectationState != "unset" {
+			return RecorderObservabilitySummary{}, fmt.Errorf("Recorder observability previous expectation state is invalid")
+		}
+		resourceRevision = previous.ResourceRevision + 1
+		expectationState = previous.ExpectationState
+	}
+	observationReference := ResourceReference{
+		ResourceType: CatalogObservationResourceType,
+		ResourceID:   observation.ID,
+	}
+	bootID := observation.Envelope.BootID
+	sequence := observation.Envelope.Sequence
+	occurredAt := observation.Envelope.OccurredAt
+	receivedAt := observation.ReceivedAt
+	persistedAt := observation.PersistedAt
+	return RecorderObservabilitySummary{
+		SchemaVersion:              SchemaVersion,
+		RecorderID:                 observation.Envelope.RecorderID,
+		ResourceRevision:           resourceRevision,
+		SupportState:               "supported",
+		ExpectationState:           expectationState,
+		ReportState:                "current",
+		ReadState:                  "available",
+		LatestObservationReference: &observationReference,
+		LatestBootID:               &bootID,
+		LatestSequence:             &sequence,
+		LatestOccurredAt:           &occurredAt,
+		LatestReceivedAt:           &receivedAt,
+		LatestPersistedAt:          &persistedAt,
+		UpdatedAt:                  persistedAt,
+	}, nil
+}
+
 func CatalogSourceKey(envelope RecorderObservationEnvelope) string {
-	return envelope.RecorderID + "\x00" + envelope.BootID + "\x00" + fmt.Sprintf("%d", envelope.Sequence)
+	// Length prefixes preserve tuple boundaries without using NUL, which
+	// PostgreSQL text values reject.
+	return fmt.Sprintf(
+		"%d:%s%d:%s%d",
+		len(envelope.RecorderID),
+		envelope.RecorderID,
+		len(envelope.BootID),
+		envelope.BootID,
+		envelope.Sequence,
+	)
 }
 
 func CatalogEnvelopeDigest(envelope RecorderObservationEnvelope) (string, error) {

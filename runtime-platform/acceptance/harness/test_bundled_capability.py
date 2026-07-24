@@ -15,6 +15,7 @@ import urllib.request
 
 from acceptance.harness.guest_runtime_control_http_acceptance_fixture_arguments import (
     compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments,
+    require_recorder_catalog_test_database_url,
 )
 from tooling.contracts import ContractRepository
 
@@ -63,7 +64,9 @@ class BundledUpstreamCapabilityAcceptance(unittest.TestCase):
             [
                 str(binary),
                 *compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
-                    listen_address="127.0.0.1:{0}".format(self.port), state_database_path=str(work / "guest.sqlite"), service_version="bundled-capability-acceptance", instance_id="guest-capability-acceptance",
+                    listen_address="127.0.0.1:{0}".format(self.port), state_database_path=str(work / "guest.sqlite"), bootstrap_evidence_root_directory=str(work / "bootstrap-evidence"), service_version="bundled-capability-acceptance", instance_id="guest-capability-acceptance",
+                    recorder_catalog_database_url=require_recorder_catalog_test_database_url(), recorder_catalog_admission_bearer_token="bundled-capability-catalog-token", recorder_observation_max_report_age_seconds=300,
+                    archive_source_admission_bearer_token="bundled-capability-archive-token", archive_artifact_object_root_directory=str(work / "archive-artifacts"), archive_source_maximum_bytes=67108864, lab_replay_source_object_root_directory=str(work / "lab-replay-sources"), lab_replay_source_maximum_bytes=67108864, lab_replay_spool_root_directory=str(work / "lab-replay-spools"), lab_replay_string_track_policy="skip", lab_replay_gap_policy="fail-frame", lab_replay_frame_batch_size=1, recorder_attribution_policy_kind="recorder-assignment-owner",
                     archive_export_outcome_mode="succeed", recorder_gateway_cold_path_source_endpoint="http://127.0.0.1:8090", lab_recorder_runner_endpoint="http://127.0.0.1:8091", external_upstream_outcome_mode="unsupported", outbound_relay_outcome_mode="unsupported",
                     guest_node_id="guest-capability-acceptance", time_authority_id="guest-time-capability-acceptance", time_probe_outcome_mode="unsupported",
                     telemetry_collector_probe_outcome_mode="unsupported", telemetry_export_outcome_mode="unavailable",

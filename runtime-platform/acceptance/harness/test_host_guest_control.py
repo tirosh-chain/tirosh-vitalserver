@@ -16,6 +16,7 @@ import urllib.request
 
 from acceptance.harness.guest_runtime_control_http_acceptance_fixture_arguments import (
     compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments,
+    require_recorder_catalog_test_database_url,
 )
 
 
@@ -113,7 +114,9 @@ class HostGuestControlAcceptance(unittest.TestCase):
 
     def guest_fixture_arguments(self) -> list[str]:
         return compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
-            listen_address=f"127.0.0.1:{self.guest_port}", state_database_path=str(self.work / "guest.sqlite"), service_version="acceptance", instance_id="guest-acceptance",
+            listen_address=f"127.0.0.1:{self.guest_port}", state_database_path=str(self.work / "guest.sqlite"), bootstrap_evidence_root_directory=str(self.work / "bootstrap-evidence"), service_version="acceptance", instance_id="guest-acceptance",
+            recorder_catalog_database_url=require_recorder_catalog_test_database_url(), recorder_catalog_admission_bearer_token="host-guest-catalog-token", recorder_observation_max_report_age_seconds=300,
+            archive_source_admission_bearer_token="host-guest-archive-token", archive_artifact_object_root_directory=str(self.work / "archive-artifacts"), archive_source_maximum_bytes=67108864, lab_replay_source_object_root_directory=str(self.work / "lab-replay-sources"), lab_replay_source_maximum_bytes=67108864, lab_replay_spool_root_directory=str(self.work / "lab-replay-spools"), lab_replay_string_track_policy="skip", lab_replay_gap_policy="fail-frame", lab_replay_frame_batch_size=1, recorder_attribution_policy_kind="recorder-assignment-owner",
             archive_export_outcome_mode="succeed", recorder_gateway_cold_path_source_endpoint="http://127.0.0.1:8090", lab_recorder_runner_endpoint="http://127.0.0.1:8091", external_upstream_outcome_mode="unsupported", outbound_relay_outcome_mode="unsupported",
             guest_node_id="guest-acceptance", time_authority_id="guest-time-acceptance", time_probe_outcome_mode="unsupported",
             telemetry_collector_probe_outcome_mode="unsupported", telemetry_export_outcome_mode="unavailable",
@@ -180,6 +183,27 @@ class HostGuestControlAcceptance(unittest.TestCase):
             check=False,
         )
 
+    def restart_guest_runtime_process(self) -> None:
+        self.guest_process.terminate()
+        self.guest_process.wait(timeout=5)
+        if self.guest_process.stdout is not None:
+            self.guest_process.stdout.close()
+        if self.guest_process.stderr is not None:
+            self.guest_process.stderr.close()
+        self.guest_process = subprocess.Popen(
+            [
+                str(self.guest_runtime_control_http_acceptance_fixture_binary),
+                *self.guest_fixture_arguments(),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        wait_for_ready(
+            self.guest_url + "/v1/runtime/readiness",
+            self.guest_process,
+        )
+
     def test_platformctl_uses_the_public_host_facade_without_state_discovery(self) -> None:
         endpoint_read = self.platformctl("guest-runtime-control-endpoint")
         self.assertEqual(0, endpoint_read.returncode, endpoint_read.stderr)
@@ -209,6 +233,68 @@ class HostGuestControlAcceptance(unittest.TestCase):
         readiness_response = json.loads(readiness.stdout)
         self.assertEqual(200, readiness_response["httpStatus"], readiness_response)
         self.assertEqual("available", readiness_response["document"]["state"], readiness_response)
+
+        identity_before_restart = self.platformctl(
+            "runtime",
+            "operational-state-identity",
+        )
+        self.assertEqual(
+            0,
+            identity_before_restart.returncode,
+            identity_before_restart.stderr,
+        )
+        identity_before_response = json.loads(identity_before_restart.stdout)
+        self.assertEqual(
+            200,
+            identity_before_response["httpStatus"],
+            identity_before_response,
+        )
+        identity_before = identity_before_response["document"]
+        self.assertEqual("available", identity_before["state"], identity_before)
+        self.assertEqual(
+            "0006_backup_owner",
+            identity_before["value"]["postgresql"]["alembicRevision"],
+        )
+        self.assertEqual(
+            {
+                "archive_export",
+                "guest_operational_state",
+                "recorder_assignment",
+                "recorder_catalog",
+            },
+            set(identity_before["value"]["postgresql"]["ownerSchemas"]),
+        )
+
+        self.restart_guest_runtime_process()
+        identity_after_restart = self.platformctl(
+            "runtime",
+            "operational-state-identity",
+        )
+        self.assertEqual(
+            0,
+            identity_after_restart.returncode,
+            identity_after_restart.stderr,
+        )
+        identity_after_response = json.loads(identity_after_restart.stdout)
+        self.assertEqual(
+            200,
+            identity_after_response["httpStatus"],
+            identity_after_response,
+        )
+        identity_after = identity_after_response["document"]
+        self.assertEqual("available", identity_after["state"], identity_after)
+        self.assertEqual(
+            identity_before["value"]["sqlite"],
+            identity_after["value"]["sqlite"],
+        )
+        self.assertEqual(
+            identity_before["value"]["postgresql"],
+            identity_after["value"]["postgresql"],
+        )
+        self.assertEqual(
+            identity_before["value"]["bootstrap"],
+            identity_after["value"]["bootstrap"],
+        )
 
         archive_provider = self.platformctl("runtime", "archive-export-provider")
         self.assertEqual(0, archive_provider.returncode, archive_provider.stderr)
@@ -385,6 +471,26 @@ class HostGuestControlAcceptance(unittest.TestCase):
         self.assertEqual(200, guest_status, guest_body)
         self.assertEqual(200, host_status, host_body)
         self.assertEqual("available", json.loads(host_body)["state"])
+        guest_identity_status, guest_identity_body = request_json(
+            self.guest_url + "/v1/runtime/operational-state/identity"
+        )
+        host_identity_status, host_identity_body = request_json(
+            self.host_url + "/v1/runtime/operational-state/identity"
+        )
+        self.assertEqual(200, guest_identity_status, guest_identity_body)
+        self.assertEqual(200, host_identity_status, host_identity_body)
+        direct_identity = json.loads(guest_identity_body)
+        initial_identity = json.loads(host_identity_body)
+        for identity_key in ("sqlite", "postgresql", "bootstrap"):
+            self.assertEqual(
+                direct_identity["value"][identity_key],
+                initial_identity["value"][identity_key],
+            )
+        self.assertEqual("available", initial_identity["state"], initial_identity)
+        self.assertEqual(
+            "0006_backup_owner",
+            initial_identity["value"]["postgresql"]["alembicRevision"],
+        )
         endpoint = self.get_host_endpoint()
         self.assertEqual("reachable", endpoint["transport"]["state"])
 
@@ -449,6 +555,23 @@ class HostGuestControlAcceptance(unittest.TestCase):
         status, body = request_json(self.host_url + "/v1/runtime/readiness")
         self.assertEqual(200, status, body)
         self.assertEqual("available", json.loads(body)["state"])
+        status, body = request_json(
+            self.host_url + "/v1/runtime/operational-state/identity"
+        )
+        self.assertEqual(200, status, body)
+        reboot_identity = json.loads(body)
+        self.assertEqual(
+            initial_identity["value"]["sqlite"],
+            reboot_identity["value"]["sqlite"],
+        )
+        self.assertEqual(
+            initial_identity["value"]["postgresql"],
+            reboot_identity["value"]["postgresql"],
+        )
+        self.assertEqual(
+            initial_identity["value"]["bootstrap"],
+            reboot_identity["value"]["bootstrap"],
+        )
 
         malformed = dict(topology_command)
         malformed["requestId"] = "topology-invalid-1"
@@ -480,7 +603,9 @@ class HostGuestArchiveCredentialMaterialAcceptance(HostGuestControlAcceptance):
         )
         self.credential_material_path = self.work / "guest-private" / "archive-credential.json"
         return compose_explicit_guest_runtime_control_http_acceptance_fixture_arguments(
-            listen_address=f"127.0.0.1:{self.guest_port}", state_database_path=str(self.work / "guest.sqlite"), service_version="acceptance", instance_id="guest-credential-acceptance",
+            listen_address=f"127.0.0.1:{self.guest_port}", state_database_path=str(self.work / "guest.sqlite"), bootstrap_evidence_root_directory=str(self.work / "bootstrap-evidence"), service_version="acceptance", instance_id="guest-credential-acceptance",
+            recorder_catalog_database_url=require_recorder_catalog_test_database_url(), recorder_catalog_admission_bearer_token="host-guest-credential-catalog-token", recorder_observation_max_report_age_seconds=300,
+            archive_source_admission_bearer_token="host-guest-credential-archive-token", archive_artifact_object_root_directory=str(self.work / "archive-artifacts"), archive_source_maximum_bytes=67108864, lab_replay_source_object_root_directory=str(self.work / "lab-replay-sources"), lab_replay_source_maximum_bytes=67108864, lab_replay_spool_root_directory=str(self.work / "lab-replay-spools"), lab_replay_string_track_policy="skip", lab_replay_gap_policy="fail-frame", lab_replay_frame_batch_size=1, recorder_attribution_policy_kind="recorder-assignment-owner",
             archive_export_outcome_mode=None, archive_provider_kind="vitalserver-indexed-library", archive_provider_id=self.credential_id,
             archive_provider_vitalserver_configuration_kind="external-vitalserver-delivery-configuration", archive_provider_vitalserver_configuration_path=str(configuration_path), archive_provider_credential_material_path=str(self.credential_material_path),
             recorder_gateway_cold_path_source_endpoint="http://127.0.0.1:8090", lab_recorder_runner_endpoint="http://127.0.0.1:8091", external_upstream_outcome_mode="unsupported", outbound_relay_outcome_mode="unsupported",

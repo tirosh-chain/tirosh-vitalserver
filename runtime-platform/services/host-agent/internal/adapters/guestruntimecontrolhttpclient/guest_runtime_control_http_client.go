@@ -70,6 +70,88 @@ func (client *GuestRuntimeControlHTTPClient) Forward(ctx context.Context, endpoi
 	return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{StatusCode: response.StatusCode, ContentType: response.Header.Get("Content-Type"), Body: encoded}, nil
 }
 
+func (client *GuestRuntimeControlHTTPClient) ForwardStream(
+	ctx context.Context,
+	endpoint hostagentdomain.GuestRuntimeControlEndpoint,
+	stream hostagentapplication.GuestRuntimeControlHTTPStreamingRequest,
+) (
+	hostagentapplication.GuestRuntimeControlHTTPForwardedResponse,
+	*hostagentapplication.GuestRuntimeControlHTTPForwardingFailure,
+) {
+	if stream.Method != http.MethodPost ||
+		stream.Path != "/v1/runtime/lab/replay-sources" ||
+		stream.Body == nil ||
+		stream.ContentType != "application/x-vital" ||
+		stream.ContentLength < 0 ||
+		len(stream.Headers) != 1 ||
+		stream.Headers["X-Vital-Lab-Replay-Source-Command"] == "" {
+		return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{},
+			&hostagentapplication.GuestRuntimeControlHTTPForwardingFailure{
+				Issue: issue(
+					"guest-control-stream-request-invalid",
+					"Host could not validate the Guest Runtime streaming request",
+				),
+			}
+	}
+	request, err := http.NewRequestWithContext(
+		ctx,
+		stream.Method,
+		guestRuntimeControlEndpointURL(endpoint, stream.Path),
+		stream.Body,
+	)
+	if err != nil {
+		return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{},
+			&hostagentapplication.GuestRuntimeControlHTTPForwardingFailure{
+				Issue: issue(
+					"guest-control-stream-request-invalid",
+					"Host could not build Guest Runtime streaming request",
+				),
+			}
+	}
+	request.ContentLength = stream.ContentLength
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Content-Type", stream.ContentType)
+	request.Header.Set(
+		"X-Vital-Lab-Replay-Source-Command",
+		stream.Headers["X-Vital-Lab-Replay-Source-Command"],
+	)
+	response, err := client.httpClient.Do(request)
+	if err != nil {
+		return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{},
+			&hostagentapplication.GuestRuntimeControlHTTPForwardingFailure{
+				Issue: issue(
+					"guest-control-stream-forward-failed",
+					"Host did not receive a Guest Runtime streaming response",
+				),
+			}
+	}
+	defer response.Body.Close()
+	encoded, err := io.ReadAll(io.LimitReader(response.Body, maximumResponseBytes+1))
+	if err != nil {
+		return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{},
+			&hostagentapplication.GuestRuntimeControlHTTPForwardingFailure{
+				Issue: issue(
+					"guest-control-response-read-failed",
+					"Host could not read Guest Runtime streaming response",
+				),
+			}
+	}
+	if len(encoded) > int(maximumResponseBytes) {
+		return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{},
+			&hostagentapplication.GuestRuntimeControlHTTPForwardingFailure{
+				Issue: issue(
+					"guest-control-response-too-large",
+					"Guest Runtime streaming response exceeded the configured Host forwarding limit",
+				),
+			}
+	}
+	return hostagentapplication.GuestRuntimeControlHTTPForwardedResponse{
+		StatusCode:  response.StatusCode,
+		ContentType: response.Header.Get("Content-Type"),
+		Body:        encoded,
+	}, nil
+}
+
 func guestRuntimeControlEndpointURL(endpoint hostagentdomain.GuestRuntimeControlEndpoint, path string) string {
 	return (&url.URL{
 		Scheme: endpoint.Address.Scheme,

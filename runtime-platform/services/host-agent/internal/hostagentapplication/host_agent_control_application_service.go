@@ -302,6 +302,113 @@ func (service *HostAgentControlApplicationService) ForwardGuestRuntimeControlRea
 }
 
 func (service *HostAgentControlApplicationService) ForwardGuestRuntimeControlCommand(ctx context.Context, path string, body []byte, contentType string, requestID string) (GuestRuntimeControlCommandForwardOutcome, error) {
+	return service.forwardGuestRuntimeControlCommand(
+		ctx,
+		requestID,
+		func(endpoint hostagentdomain.GuestRuntimeControlEndpoint) (GuestRuntimeControlHTTPForwardedResponse, *GuestRuntimeControlHTTPForwardingFailure) {
+			return service.guestRuntimeControlTransport.Forward(
+				ctx,
+				endpoint,
+				"POST",
+				path,
+				body,
+				contentType,
+			)
+		},
+	)
+}
+
+func (service *HostAgentControlApplicationService) ForwardGuestRuntimeControlStream(
+	ctx context.Context,
+	request GuestRuntimeControlHTTPStreamingRequest,
+	requestID string,
+) (GuestRuntimeControlCommandForwardOutcome, error) {
+	if request.Method != "POST" ||
+		request.Path != "/v1/runtime/lab/replay-sources" ||
+		request.Body == nil ||
+		request.ContentType != "application/x-vital" ||
+		request.ContentLength < 0 ||
+		len(request.Headers) != 1 ||
+		request.Headers["X-Vital-Lab-Replay-Source-Command"] == "" {
+		return GuestRuntimeControlCommandForwardOutcome{},
+			fmt.Errorf("Guest Runtime streaming command is incomplete or unsupported")
+	}
+	requestCorrelationID, err := service.resolveHostAgentControlRequestCorrelationID(requestID)
+	if err != nil {
+		return GuestRuntimeControlCommandForwardOutcome{}, err
+	}
+	endpoint, rejected, err := service.prepareGuestRuntimeControlCommand(
+		ctx,
+		requestCorrelationID,
+	)
+	if err != nil || rejected != nil {
+		return GuestRuntimeControlCommandForwardOutcome{Rejected: rejected}, err
+	}
+
+	// The endpoint owner is consulted and updated under endpointWorkflowMu, but
+	// the potentially long binary transfer must not serialize unrelated Host
+	// control work. The immutable endpoint revision prepared above is the
+	// explicit transport input for this attempt.
+	response, failure := service.guestRuntimeControlTransport.ForwardStream(
+		ctx,
+		endpoint,
+		request,
+	)
+	if failure == nil {
+		return GuestRuntimeControlCommandForwardOutcome{Response: &response}, nil
+	}
+	issue := normalizeForwardIssue(failure.Issue)
+	service.endpointWorkflowMu.Lock()
+	if _, updateErr := service.recordUnavailableGuestRuntimeControlHTTPTransport(ctx, endpoint, issue); updateErr != nil {
+		issue = hostagentdomain.Issue{Code: "host-endpoint-state-write-failed-after-forward", Message: updateErr.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"}
+	}
+	service.endpointWorkflowMu.Unlock()
+	return GuestRuntimeControlCommandForwardOutcome{Failure: &hostagentdomain.FacadeForwardingFailure{
+		SchemaVersion:       hostagentdomain.SchemaVersion,
+		State:               "failed",
+		RequestID:           requestCorrelationID,
+		ObservedAt:          hostagentdomain.Timestamp(service.clock.Now()),
+		DeliveryDisposition: "unknown",
+		Issue:               issue,
+	}}, nil
+}
+
+func (service *HostAgentControlApplicationService) prepareGuestRuntimeControlCommand(
+	ctx context.Context,
+	requestCorrelationID string,
+) (
+	hostagentdomain.GuestRuntimeControlEndpoint,
+	*hostagentdomain.CommandRejection,
+	error,
+) {
+	service.endpointWorkflowMu.Lock()
+	defer service.endpointWorkflowMu.Unlock()
+	endpoint, err := service.repository.ReadGuestRuntimeControlEndpoint(ctx)
+	if errors.Is(err, ErrHostAgentOwnedResourceNotFound) {
+		rejected, rejectionErr := service.createHostAgentControlCommandRejection(requestCorrelationID, hostagentdomain.Issue{Code: "guest-runtime-control-endpoint-missing", Message: "Host Guest Runtime Control endpoint is not configured"})
+		return hostagentdomain.GuestRuntimeControlEndpoint{}, rejected, rejectionErr
+	}
+	if err != nil {
+		rejected, rejectionErr := service.createHostAgentControlCommandRejection(requestCorrelationID, hostagentdomain.Issue{Code: "host-state-store-unavailable", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+		return hostagentdomain.GuestRuntimeControlEndpoint{}, rejected, rejectionErr
+	}
+	endpoint, unavailable, err := service.prepareGuestRuntimeControlForwarding(ctx, endpoint)
+	if err != nil {
+		rejected, rejectionErr := service.createHostAgentControlCommandRejection(requestCorrelationID, hostagentdomain.Issue{Code: "host-endpoint-state-write-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+		return hostagentdomain.GuestRuntimeControlEndpoint{}, rejected, rejectionErr
+	}
+	if unavailable != nil {
+		rejected, rejectionErr := service.createHostAgentControlCommandRejection(requestCorrelationID, *unavailable)
+		return hostagentdomain.GuestRuntimeControlEndpoint{}, rejected, rejectionErr
+	}
+	return endpoint, nil, nil
+}
+
+func (service *HostAgentControlApplicationService) forwardGuestRuntimeControlCommand(
+	ctx context.Context,
+	requestID string,
+	forward func(hostagentdomain.GuestRuntimeControlEndpoint) (GuestRuntimeControlHTTPForwardedResponse, *GuestRuntimeControlHTTPForwardingFailure),
+) (GuestRuntimeControlCommandForwardOutcome, error) {
 	service.endpointWorkflowMu.Lock()
 	defer service.endpointWorkflowMu.Unlock()
 	requestCorrelationID, err := service.resolveHostAgentControlRequestCorrelationID(requestID)
@@ -326,7 +433,7 @@ func (service *HostAgentControlApplicationService) ForwardGuestRuntimeControlCom
 		rejected, rejectionErr := service.createHostAgentControlCommandRejection(requestCorrelationID, *unavailable)
 		return GuestRuntimeControlCommandForwardOutcome{Rejected: rejected}, rejectionErr
 	}
-	response, failure := service.guestRuntimeControlTransport.Forward(ctx, endpoint, "POST", path, body, contentType)
+	response, failure := forward(endpoint)
 	if failure == nil {
 		return GuestRuntimeControlCommandForwardOutcome{Response: &response}, nil
 	}

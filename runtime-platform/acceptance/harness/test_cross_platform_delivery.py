@@ -175,6 +175,16 @@ class CrossPlatformDeliveryAcceptance(unittest.TestCase):
                 "dataDirectory": str(self.work / "data"),
             },
             "guestRuntimeControlEndpoint": {"id": "guest-control", "scheme": "http", "host": "127.0.0.1", "port": 18443},
+            "operationalStateBackup": {
+                "scheduleId": "acceptance-daily",
+                "intervalSeconds": 86400,
+                "retryIntervalSeconds": 60,
+                "destinationReference": {
+                    "resourceType": "guest-backup-destination",
+                    "resourceId": "acceptance-guest-operational-state",
+                },
+                "retentionPolicy": "retain-all",
+            },
             "provider": {
                 "kind": provider_kind,
                 "id": "guest-vm",

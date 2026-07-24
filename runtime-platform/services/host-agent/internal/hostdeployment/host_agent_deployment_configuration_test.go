@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostagentdomain"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-agent/internal/hostdeployment"
 )
 
@@ -26,12 +27,30 @@ func validMacOSDeploymentConfiguration() hostdeployment.HostAgentDeploymentConfi
 			InstallationID: "vitalserver-macos", ProductVersion: "0.1.0-dev", RuntimeVersion: "0.1.0-dev", DataDirectory: "/var/lib/vitalserver/data",
 		},
 		GuestRuntimeControlEndpoint: hostdeployment.GuestRuntimeControlEndpointConfiguration{ID: "vitalserver-guest", Scheme: "http", Host: "192.168.64.2", Port: 18443},
+		OperationalStateBackup: hostdeployment.HostOperationalStateBackupConfiguration{
+			ScheduleID:           "daily-primary",
+			IntervalSeconds:      86400,
+			RetryIntervalSeconds: 60,
+			DestinationReference: hostagentdomain.ResourceReference{
+				ResourceType: hostagentdomain.GuestOperationalStateBackupDestinationType,
+				ResourceID:   "guest-local-operational-state",
+			},
+			RetentionPolicy: hostagentdomain.HostOperationalStateBackupRetentionRetainAll,
+		},
 		Provider: hostdeployment.SelectedProviderConfiguration{
 			Kind: "macos-virtualization", ID: "vitalserver-macos-provider", MacOSVirtualMachineSupervisorExecutablePath: "/opt/vitalserver/macos-virtual-machine-supervisor", MacOSVirtualMachineConfigurationPath: "/opt/vitalserver/config/macos-vm.json",
 		},
 		Time:            hostdeployment.HostTimeConfiguration{HostNodeID: "vitalserver-macos-host", TimeAuthorityID: "vitalserver-host-time", Kind: "time-authority-outcome-profile", ProviderMode: "unsupported"},
 		Telemetry:       hostdeployment.HostTelemetryConfiguration{Kind: "telemetry-export-outcome-profile", PipelineMode: "unsupported", ExportMode: "unavailable"},
 		UpdateBootstrap: hostdeployment.HostUpdateBootstrapConfiguration{Mode: "unavailable"},
+	}
+}
+
+func TestHostBackupScheduleRequiresExplicitRetainAllPolicy(t *testing.T) {
+	configuration := validMacOSDeploymentConfiguration()
+	configuration.OperationalStateBackup.RetentionPolicy = ""
+	if err := configuration.Validate(); err == nil {
+		t.Fatal("missing retention policy must not become implicit retain-all")
 	}
 }
 

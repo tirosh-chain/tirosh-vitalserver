@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,19 +10,37 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/guestpublicservicevirtiobridge"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/guestruntimecontrolvirtiolistener"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatepostgresqlmigration"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimecontrolhttpapplication"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimedomain"
 )
 
 func main() {
+	var processRole string
+	var migrationPythonExecutablePath string
 	var listenAddress string
 	var controlVirtioSocketPort uint
 	var publicServiceVirtioSocketBridgeArguments guestPublicServiceVirtioSocketBridgeArguments
 	var stateDatabase string
+	var recorderCatalogDatabaseURLMaterialPath string
+	var recorderCatalogMigrationReceiptPath string
+	var recorderCatalogAdmissionBearerTokenMaterialPath string
+	var recorderObservationMaxReportAgeSeconds int
+	var archiveSourceAdmissionBearerTokenMaterialPath string
+	var archiveArtifactObjectRootDirectory string
+	var archiveSourceMaximumBytes int64
+	var labReplaySourceObjectRootDirectory string
+	var labReplaySourceMaximumBytes int64
+	var labReplaySpoolRootDirectory string
+	var labReplayStringTrackPolicy string
+	var labReplayGapPolicy string
+	var labReplayFrameBatchSize int
+	var recorderAttributionPolicyKind string
 	var serviceVersion string
 	var instanceID string
 	var archiveProviderKind string
@@ -54,10 +73,36 @@ func main() {
 	var telemetryRequestTimeoutMilliseconds int
 	var telemetryPipelineMode string
 	var telemetryExportMode string
+	var guestOperationalStateBackupRootDirectory string
+	var guestOperationalStateBackupLedgerDatabasePath string
+	var guestOperationalStateBackupDestinationType string
+	var guestOperationalStateBackupDestinationID string
+	var guestOperationalStatePostgreSQLDumpExecutablePath string
+	var guestOperationalStatePostgreSQLRestoreExecutablePath string
+	var guestOperationalStateRestoreTargetType string
+	var guestOperationalStateRestoreTargetID string
+	var guestOperationalStateRestoreSQLiteTargetPath string
+	var guestOperationalStateRestorePostgreSQLDatabaseURLMaterialPath string
+	flag.StringVar(&processRole, "process-role", "", "required process role: runtime-control or recorder-catalog-migrator")
+	flag.StringVar(&migrationPythonExecutablePath, "migration-python-executable", "", "required only for recorder-catalog-migrator: absolute Python executable with Alembic and Psycopg")
 	flag.StringVar(&listenAddress, "listen", "", "required Guest Runtime control listen address")
 	flag.UintVar(&controlVirtioSocketPort, "control-virtio-socket-port", 0, "required Guest Runtime control virtio-socket listener port")
 	flag.Var(&publicServiceVirtioSocketBridgeArguments, "guest-public-service-virtio-socket-bridge", "required C37 public route as routeId,virtioSocketPort,127.0.0.1:targetPort; repeat for every route")
 	flag.StringVar(&stateDatabase, "state-db", "", "required Guest Runtime-owned SQLite database path")
+	flag.StringVar(&recorderCatalogDatabaseURLMaterialPath, "recorder-catalog-database-url-material-path", "", "required private file containing the Recorder Catalog PostgreSQL database URL")
+	flag.StringVar(&recorderCatalogMigrationReceiptPath, "recorder-catalog-migration-receipt-path", "", "required private file containing the persisted Recorder Catalog migration receipt")
+	flag.StringVar(&recorderCatalogAdmissionBearerTokenMaterialPath, "recorder-catalog-admission-bearer-token-material-path", "", "required private file containing the Recorder Gateway-to-Catalog bearer token")
+	flag.IntVar(&recorderObservationMaxReportAgeSeconds, "recorder-observation-max-report-age-seconds", 0, "required explicit Recorder observation freshness threshold")
+	flag.StringVar(&archiveSourceAdmissionBearerTokenMaterialPath, "archive-source-admission-bearer-token-material-path", "", "required private file containing the Recorder Gateway-to-Archive bearer token")
+	flag.StringVar(&archiveArtifactObjectRootDirectory, "archive-artifact-object-root", "", "required Guest-owned Archive artifact object directory")
+	flag.Int64Var(&archiveSourceMaximumBytes, "archive-source-max-bytes", 0, "required maximum Recorder Vital upload source bytes")
+	flag.StringVar(&labReplaySourceObjectRootDirectory, "lab-replay-source-object-root", "", "required Guest-owned Lab replay source object directory")
+	flag.Int64Var(&labReplaySourceMaximumBytes, "lab-replay-source-max-bytes", 0, "required maximum Lab replay source bytes")
+	flag.StringVar(&labReplaySpoolRootDirectory, "lab-replay-spool-root", "", "required Guest-owned Lab replay spool directory")
+	flag.StringVar(&labReplayStringTrackPolicy, "lab-replay-string-track-policy", "", "required Lab replay string-track policy: reject or skip")
+	flag.StringVar(&labReplayGapPolicy, "lab-replay-gap-policy", "", "required Lab replay frame-gap policy: omit-track or fail-frame")
+	flag.IntVar(&labReplayFrameBatchSize, "lab-replay-frame-batch-size", 0, "required Lab replay frames per real-time Runner batch; v1 requires exactly 1")
+	flag.StringVar(&recorderAttributionPolicyKind, "recorder-attribution-policy-kind", "", "required explicit Recorder attribution policy kind")
 	flag.StringVar(&serviceVersion, "service-version", "", "required Guest Runtime release version")
 	flag.StringVar(&instanceID, "instance-id", "", "required Guest Runtime instance identifier")
 	flag.StringVar(&archiveProviderKind, "archive-provider-kind", "", "required Archive Export provider kind")
@@ -90,15 +135,66 @@ func main() {
 	flag.IntVar(&telemetryRequestTimeoutMilliseconds, "telemetry-request-timeout-milliseconds", 0, "required only for the OTLP HTTP telemetry adapter")
 	flag.StringVar(&telemetryPipelineMode, "telemetry-pipeline-mode", "", "required only for the telemetry outcome profile")
 	flag.StringVar(&telemetryExportMode, "telemetry-export-mode", "", "required only for the telemetry outcome profile")
+	flag.StringVar(&guestOperationalStateBackupRootDirectory, "operational-state-backup-root", "", "optional as a complete set: absolute immutable C76 backup root")
+	flag.StringVar(&guestOperationalStateBackupLedgerDatabasePath, "operational-state-backup-ledger-db", "", "optional as a complete set: C76 ledger outside the snapshotted Guest Runtime database")
+	flag.StringVar(&guestOperationalStateBackupDestinationType, "operational-state-backup-destination-type", "", "optional as a complete set: immutable destination resource type")
+	flag.StringVar(&guestOperationalStateBackupDestinationID, "operational-state-backup-destination-id", "", "optional as a complete set: immutable destination resource id")
+	flag.StringVar(&guestOperationalStatePostgreSQLDumpExecutablePath, "operational-state-pg-dump-executable", "", "optional as a complete set: absolute pg_dump executable")
+	flag.StringVar(&guestOperationalStatePostgreSQLRestoreExecutablePath, "operational-state-pg-restore-executable", "", "optional as a complete set: absolute pg_restore executable used to prove the dump")
+	flag.StringVar(&guestOperationalStateRestoreTargetType, "operational-state-restore-target-type", "", "optional as a complete set: explicitly provisioned empty restore target resource type")
+	flag.StringVar(&guestOperationalStateRestoreTargetID, "operational-state-restore-target-id", "", "optional as a complete set: explicitly provisioned empty restore target resource id")
+	flag.StringVar(&guestOperationalStateRestoreSQLiteTargetPath, "operational-state-restore-sqlite-target", "", "optional as a complete set: absent SQLite target path")
+	flag.StringVar(&guestOperationalStateRestorePostgreSQLDatabaseURLMaterialPath, "operational-state-restore-postgresql-database-url-material-path", "", "optional as a complete set: private file containing the empty PostgreSQL target URL")
 	flag.Parse()
+	if processRole == "recorder-catalog-migrator" {
+		if migrationPythonExecutablePath == "" ||
+			recorderCatalogDatabaseURLMaterialPath == "" {
+			fmt.Fprintln(
+				os.Stderr,
+				"Recorder Catalog migrator requires --migration-python-executable and --recorder-catalog-database-url-material-path",
+			)
+			os.Exit(2)
+		}
+		recorderCatalogDatabaseURL, err := readExactPrivateMaterial(
+			recorderCatalogDatabaseURLMaterialPath,
+			"Recorder Catalog PostgreSQL database URL",
+		)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		receipt, err := gueststatepostgresqlmigration.ApplyRecorderCatalogMigrations(
+			context.Background(),
+			gueststatepostgresqlmigration.RecorderCatalogMigrationConfiguration{
+				PythonExecutablePath: migrationPythonExecutablePath,
+				DatabaseURL:          recorderCatalogDatabaseURL,
+			},
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Recorder Catalog migration failed: %v\n", err)
+			os.Exit(1)
+		}
+		encoded, err := json.Marshal(receipt)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Recorder Catalog migration receipt encode failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(encoded))
+		return
+	}
+	if processRole != "runtime-control" {
+		fmt.Fprintln(os.Stderr, "Guest Runtime --process-role must be runtime-control or recorder-catalog-migrator")
+		os.Exit(2)
+	}
 	if missing := missingRequiredGuestRuntimeFlags([]requiredGuestRuntimeFlag{
-		{name: "--listen", value: listenAddress}, {name: "--control-virtio-socket-port", value: fmt.Sprintf("%d", controlVirtioSocketPort)}, {name: "--state-db", value: stateDatabase}, {name: "--service-version", value: serviceVersion}, {name: "--instance-id", value: instanceID},
+		{name: "--listen", value: listenAddress}, {name: "--control-virtio-socket-port", value: fmt.Sprintf("%d", controlVirtioSocketPort)}, {name: "--state-db", value: stateDatabase}, {name: "--recorder-catalog-database-url-material-path", value: recorderCatalogDatabaseURLMaterialPath}, {name: "--recorder-catalog-migration-receipt-path", value: recorderCatalogMigrationReceiptPath}, {name: "--recorder-catalog-admission-bearer-token-material-path", value: recorderCatalogAdmissionBearerTokenMaterialPath}, {name: "--service-version", value: serviceVersion}, {name: "--instance-id", value: instanceID},
+		{name: "--archive-source-admission-bearer-token-material-path", value: archiveSourceAdmissionBearerTokenMaterialPath}, {name: "--archive-artifact-object-root", value: archiveArtifactObjectRootDirectory}, {name: "--archive-source-max-bytes", value: fmt.Sprintf("%d", archiveSourceMaximumBytes)}, {name: "--lab-replay-source-object-root", value: labReplaySourceObjectRootDirectory}, {name: "--lab-replay-source-max-bytes", value: fmt.Sprintf("%d", labReplaySourceMaximumBytes)}, {name: "--lab-replay-spool-root", value: labReplaySpoolRootDirectory}, {name: "--lab-replay-string-track-policy", value: labReplayStringTrackPolicy}, {name: "--lab-replay-gap-policy", value: labReplayGapPolicy}, {name: "--lab-replay-frame-batch-size", value: fmt.Sprintf("%d", labReplayFrameBatchSize)}, {name: "--recorder-attribution-policy-kind", value: recorderAttributionPolicyKind},
 		{name: "--archive-provider-kind", value: archiveProviderKind}, {name: "--archive-provider-id", value: archiveProviderID}, {name: "--recorder-gateway-cold-path-source-endpoint", value: recorderGatewayColdPathSourceEndpoint}, {name: "--lab-recorder-runner-endpoint", value: labRecorderRunnerEndpoint},
 		{name: "--external-upstream-observation-provider-kind", value: externalUpstreamObservationProviderKind}, {name: "--external-upstream-observation-provider-id", value: externalUpstreamObservationProviderID},
 		{name: "--outbound-relay-observation-provider-kind", value: outboundRelayObservationProviderKind}, {name: "--outbound-relay-observation-provider-id", value: outboundRelayObservationProviderID}, {name: "--outbound-relay-observation-provider-mode", value: outboundRelayObservationProviderMode},
 		{name: "--guest-node-id", value: guestNodeID}, {name: "--time-authority-id", value: timeAuthorityID}, {name: "--time-adapter-kind", value: timeAdapterKind},
 		{name: "--telemetry-adapter-kind", value: telemetryAdapterKind},
-	}); len(missing) > 0 || controlVirtioSocketPort > uint(^uint16(0)) || archiveProviderRevision < 1 || externalUpstreamObservationProviderRevision < 1 || outboundRelayObservationProviderRevision < 1 || !completeArchiveProviderFlags(archiveProviderKind, archiveProviderMode, archiveProviderVitalServerConfigurationKind, archiveProviderVitalServerConfigurationPath, archiveProviderCredentialMaterialPath) || !completeExternalUpstreamObservationProviderFlags(externalUpstreamObservationProviderKind, externalUpstreamObservationProviderMode, externalUpstreamObservationExternalVitalServerDeliveryConfigurationPath, externalUpstreamObservationRequestTimeoutMilliseconds) || !completeTimeAuthorityAdapterFlags(timeAdapterKind, timeChronyExecutablePath, timeRequestTimeoutMilliseconds, timeProviderMode) || !completeTelemetryAdapterFlags(telemetryAdapterKind, telemetryCollectorBaseEndpoint, telemetryRequestTimeoutMilliseconds, telemetryPipelineMode, telemetryExportMode) {
+	}); len(missing) > 0 || controlVirtioSocketPort > uint(^uint16(0)) || archiveSourceMaximumBytes < 1 || labReplayFrameBatchSize != 1 || archiveProviderRevision < 1 || externalUpstreamObservationProviderRevision < 1 || outboundRelayObservationProviderRevision < 1 || !completeArchiveProviderFlags(archiveProviderKind, archiveProviderMode, archiveProviderVitalServerConfigurationKind, archiveProviderVitalServerConfigurationPath, archiveProviderCredentialMaterialPath) || !completeExternalUpstreamObservationProviderFlags(externalUpstreamObservationProviderKind, externalUpstreamObservationProviderMode, externalUpstreamObservationExternalVitalServerDeliveryConfigurationPath, externalUpstreamObservationRequestTimeoutMilliseconds) || !completeTimeAuthorityAdapterFlags(timeAdapterKind, timeChronyExecutablePath, timeRequestTimeoutMilliseconds, timeProviderMode) || !completeTelemetryAdapterFlags(telemetryAdapterKind, telemetryCollectorBaseEndpoint, telemetryRequestTimeoutMilliseconds, telemetryPipelineMode, telemetryExportMode) {
 		fmt.Fprintln(os.Stderr, "Guest Runtime required configuration is incomplete; every provider reference, selected adapter, TCP listener, virtio-socket listener, state store, time, and telemetry setting must be explicit")
 		os.Exit(2)
 	}
@@ -113,6 +209,42 @@ func main() {
 			os.Exit(2)
 		}
 	}
+	recorderCatalogDatabaseURL, err := readExactPrivateMaterial(
+		recorderCatalogDatabaseURLMaterialPath,
+		"Recorder Catalog PostgreSQL database URL",
+	)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	recorderCatalogAdmissionBearerToken, err := readExactPrivateMaterial(
+		recorderCatalogAdmissionBearerTokenMaterialPath,
+		"Recorder Catalog admission bearer token",
+	)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	archiveSourceAdmissionBearerToken, err := readExactPrivateMaterial(
+		archiveSourceAdmissionBearerTokenMaterialPath,
+		"Archive source admission bearer token",
+	)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	guestOperationalStateRestorePostgreSQLDatabaseURL := ""
+	if guestOperationalStateRestorePostgreSQLDatabaseURLMaterialPath != "" {
+		guestOperationalStateRestorePostgreSQLDatabaseURL, err =
+			readExactPrivateMaterial(
+				guestOperationalStateRestorePostgreSQLDatabaseURLMaterialPath,
+				"Guest operational-state restore PostgreSQL database URL",
+			)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+	}
 
 	guestRuntimeProcessContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -120,6 +252,23 @@ func main() {
 		guestRuntimeProcessContext,
 		guestruntimecontrolhttpapplication.GuestRuntimeControlHTTPApplicationDeployment{
 			GuestRuntimeStateDatabasePath:                                           stateDatabase,
+			RecorderCatalogPostgreSQLDatabaseURL:                                    recorderCatalogDatabaseURL,
+			RecorderCatalogDatabaseURLMaterialPath:                                  recorderCatalogDatabaseURLMaterialPath,
+			RecorderCatalogMigrationReceiptPath:                                     recorderCatalogMigrationReceiptPath,
+			RecorderCatalogAdmissionBearerToken:                                     recorderCatalogAdmissionBearerToken,
+			RecorderCatalogAdmissionBearerTokenMaterialPath:                         recorderCatalogAdmissionBearerTokenMaterialPath,
+			RecorderObservationMaxReportAgeSeconds:                                  recorderObservationMaxReportAgeSeconds,
+			ArchiveSourceAdmissionBearerToken:                                       archiveSourceAdmissionBearerToken,
+			ArchiveSourceAdmissionBearerTokenMaterialPath:                           archiveSourceAdmissionBearerTokenMaterialPath,
+			ArchiveArtifactObjectRootDirectory:                                      archiveArtifactObjectRootDirectory,
+			ArchiveSourceMaximumBytes:                                               archiveSourceMaximumBytes,
+			LabReplaySourceObjectRootDirectory:                                      labReplaySourceObjectRootDirectory,
+			LabReplaySourceMaximumBytes:                                             labReplaySourceMaximumBytes,
+			LabReplaySpoolRootDirectory:                                             labReplaySpoolRootDirectory,
+			LabReplayStringTrackPolicy:                                              labReplayStringTrackPolicy,
+			LabReplayGapPolicy:                                                      labReplayGapPolicy,
+			LabReplayFrameBatchSize:                                                 labReplayFrameBatchSize,
+			RecorderAttributionPolicyKind:                                           recorderAttributionPolicyKind,
 			GuestRuntimeServiceVersion:                                              serviceVersion,
 			GuestRuntimeInstanceID:                                                  instanceID,
 			ArchiveExportProviderReference:                                          guestruntimedomain.ArchiveProviderReference{Kind: archiveProviderKind, ID: archiveProviderID, CapabilityRevision: archiveProviderRevision},
@@ -146,6 +295,14 @@ func main() {
 			GuestTelemetryRequestTimeoutMilliseconds:                                telemetryRequestTimeoutMilliseconds,
 			GuestTelemetryCollectorProbeOutcomeMode:                                 telemetryPipelineMode,
 			GuestTelemetryExportOutcomeMode:                                         telemetryExportMode,
+			GuestOperationalStateBackupRootDirectory:                                guestOperationalStateBackupRootDirectory,
+			GuestOperationalStateBackupLedgerDatabasePath:                           guestOperationalStateBackupLedgerDatabasePath,
+			GuestOperationalStateBackupDestinationReference:                         guestruntimedomain.ResourceReference{ResourceType: guestOperationalStateBackupDestinationType, ResourceID: guestOperationalStateBackupDestinationID},
+			GuestOperationalStatePostgreSQLDumpExecutablePath:                       guestOperationalStatePostgreSQLDumpExecutablePath,
+			GuestOperationalStatePostgreSQLRestoreExecutablePath:                    guestOperationalStatePostgreSQLRestoreExecutablePath,
+			GuestOperationalStateRestoreTargetReference:                             guestruntimedomain.ResourceReference{ResourceType: guestOperationalStateRestoreTargetType, ResourceID: guestOperationalStateRestoreTargetID},
+			GuestOperationalStateRestoreSQLiteTargetPath:                            guestOperationalStateRestoreSQLiteTargetPath,
+			GuestOperationalStateRestorePostgreSQLDatabaseURL:                       guestOperationalStateRestorePostgreSQLDatabaseURL,
 		},
 	)
 	if err != nil {
@@ -203,6 +360,21 @@ func main() {
 		os.Exit(1)
 	case <-guestRuntimeProcessContext.Done():
 	}
+}
+
+func readExactPrivateMaterial(path string, description string) (string, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("%s material read failed: %w", description, err)
+	}
+	value := string(contents)
+	if value == "" || strings.TrimSpace(value) != value {
+		return "", fmt.Errorf(
+			"%s material must contain one exact non-empty value without surrounding whitespace",
+			description,
+		)
+	}
+	return value, nil
 }
 
 func completeArchiveProviderFlags(kind string, outcomeMode string, vitalServerConfigurationKind string, vitalServerConfigurationPath string, credentialMaterialPath string) bool {

@@ -89,6 +89,30 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Host Agent configuration failed: %v\n", err)
 		os.Exit(1)
 	}
+	backupScheduler, err :=
+		hostagentapplication.NewHostOperationalStateBackupScheduler(
+			deploymentConfiguration.OperationalStateBackup.Schedule(),
+			time.Duration(
+				deploymentConfiguration.
+					OperationalStateBackup.
+					RetryIntervalSeconds,
+			)*time.Second,
+			service,
+			clock,
+		)
+	if err != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"Host operational-state backup scheduler initialization failed: %v\n",
+			err,
+		)
+		os.Exit(1)
+	}
+	go runHostOperationalStateBackupScheduler(
+		context,
+		backupScheduler,
+		os.Stderr,
+	)
 	bootstrapper := hostagentapplication.HostUpdateBootstrapper(updatebootstrap.Unavailable{Clock: clock})
 	if deploymentConfiguration.UpdateBootstrap.Mode == "staged" {
 		stagedBundleBootstrapper, bootstrapperErr := updatebootstrap.NewStagedBundleBootstrapper(updatebootstrap.StagedBundleBootstrapperConfig{
@@ -201,6 +225,40 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Host Agent server failed: %v\n", serveErr)
 		os.Exit(1)
 	case <-context.Done():
+	}
+}
+
+func runHostOperationalStateBackupScheduler(
+	ctx context.Context,
+	scheduler *hostagentapplication.HostOperationalStateBackupScheduler,
+	diagnostics io.Writer,
+) {
+	for {
+		_, nextSlot, err := scheduler.AdmitCurrentSlot(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		wait := time.Until(nextSlot)
+		if err != nil {
+			fmt.Fprintf(
+				diagnostics,
+				"Host scheduled operational-state backup admission failed: %v\n",
+				err,
+			)
+			wait = scheduler.RetryInterval()
+		}
+		if wait <= 0 {
+			wait = scheduler.RetryInterval()
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		case <-timer.C:
+		}
 	}
 }
 

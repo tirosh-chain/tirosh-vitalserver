@@ -45,128 +45,6 @@ func (repository *GuestRuntimeStateSQLiteRepository) CommitTimeAuthorityOutcome(
 	return repository.commitRevisionedOperationalOutcome(ctx, "time_authorities", authority.ID, authority.ResourceRevision, string(encodedAuthority), operation, "Time Authority")
 }
 
-func (repository *GuestRuntimeStateSQLiteRepository) ReadCatalogObservation(ctx context.Context, id string) (guestruntimedomain.CatalogObservation, error) {
-	var encoded string
-	err := repository.database.QueryRowContext(ctx, `SELECT document_json FROM catalog_observations WHERE id = ?`, id).Scan(&encoded)
-	if errors.Is(err, sql.ErrNoRows) {
-		return guestruntimedomain.CatalogObservation{}, guestruntimeapplication.ErrGuestRuntimeOwnedResourceNotFound
-	}
-	if err != nil {
-		return guestruntimedomain.CatalogObservation{}, fmt.Errorf("read CatalogObservation: %w", err)
-	}
-	return decodeCatalogObservation(encoded)
-}
-
-func (repository *GuestRuntimeStateSQLiteRepository) ListCatalogObservations(ctx context.Context) ([]guestruntimedomain.CatalogObservation, error) {
-	rows, err := repository.database.QueryContext(ctx, `SELECT document_json FROM catalog_observations ORDER BY id`)
-	if err != nil {
-		return nil, fmt.Errorf("list CatalogObservations: %w", err)
-	}
-	defer rows.Close()
-	observations := []guestruntimedomain.CatalogObservation{}
-	for rows.Next() {
-		var encoded string
-		if err := rows.Scan(&encoded); err != nil {
-			return nil, fmt.Errorf("scan CatalogObservation: %w", err)
-		}
-		observation, err := decodeCatalogObservation(encoded)
-		if err != nil {
-			return nil, err
-		}
-		observations = append(observations, observation)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate CatalogObservations: %w", err)
-	}
-	return observations, nil
-}
-
-func (repository *GuestRuntimeStateSQLiteRepository) ReadCatalogObservationBySourceKey(ctx context.Context, sourceKey string) (guestruntimeapplication.CatalogStoredObservation, error) {
-	var envelopeDigest string
-	var observationJSON string
-	var operationDigest string
-	var operationJSON string
-	err := repository.database.QueryRowContext(ctx, `SELECT catalog.envelope_digest, catalog.document_json, operation.command_digest, operation.document_json
-FROM catalog_observations AS catalog
-JOIN runtime_operations AS operation ON operation.id = catalog.operation_id
-WHERE catalog.source_key = ?`, sourceKey).Scan(&envelopeDigest, &observationJSON, &operationDigest, &operationJSON)
-	if errors.Is(err, sql.ErrNoRows) {
-		return guestruntimeapplication.CatalogStoredObservation{}, guestruntimeapplication.ErrGuestRuntimeOwnedResourceNotFound
-	}
-	if err != nil {
-		return guestruntimeapplication.CatalogStoredObservation{}, fmt.Errorf("read CatalogObservation source identity: %w", err)
-	}
-	observation, err := decodeCatalogObservation(observationJSON)
-	if err != nil {
-		return guestruntimeapplication.CatalogStoredObservation{}, err
-	}
-	operation, err := decodeOperationalOperation(operationJSON, operationDigest)
-	if err != nil {
-		return guestruntimeapplication.CatalogStoredObservation{}, err
-	}
-	return guestruntimeapplication.CatalogStoredObservation{Observation: observation, EnvelopeDigest: envelopeDigest, Operation: operation}, nil
-}
-
-func (repository *GuestRuntimeStateSQLiteRepository) ReadCatalogObservationIngestOperationByRequestID(ctx context.Context, requestID string) (guestruntimedomain.Operation, error) {
-	return repository.readGuestRuntimeOperationByRequestID(ctx, requestID)
-}
-
-func (repository *GuestRuntimeStateSQLiteRepository) AdmitCatalogOperation(ctx context.Context, sourceKey string, operation guestruntimedomain.Operation) error {
-	encodedOperation, err := json.Marshal(operation)
-	if err != nil {
-		return fmt.Errorf("encode Catalog ingest operation: %w", err)
-	}
-	transaction, err := repository.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin Catalog ingest admission transaction: %w", err)
-	}
-	defer transaction.Rollback()
-	var existing string
-	err = transaction.QueryRowContext(ctx, `SELECT id FROM catalog_observations WHERE source_key = ?`, sourceKey).Scan(&existing)
-	if err == nil {
-		return guestruntimeapplication.ErrGuestRuntimeOwnedResourceConflict
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("read Catalog source identity for admission: %w", err)
-	}
-	if _, err := transaction.ExecContext(ctx, `INSERT INTO runtime_operations (id, request_id, command_digest, document_json) VALUES (?, ?, ?, ?)`, operation.ID, operation.RequestID, operation.CommandDigest, string(encodedOperation)); err != nil {
-		return mapOperationalConflict("persist Catalog ingest operation", err)
-	}
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("commit Catalog ingest admission transaction: %w", err)
-	}
-	return nil
-}
-
-func (repository *GuestRuntimeStateSQLiteRepository) CommitCatalogObservation(ctx context.Context, observation guestruntimedomain.CatalogObservation, envelopeDigest string, operation guestruntimedomain.Operation) error {
-	encodedObservation, err := json.Marshal(observation)
-	if err != nil {
-		return fmt.Errorf("encode CatalogObservation: %w", err)
-	}
-	encodedOperation, err := json.Marshal(operation)
-	if err != nil {
-		return fmt.Errorf("encode terminal Catalog ingest operation: %w", err)
-	}
-	transaction, err := repository.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin Catalog ingest outcome transaction: %w", err)
-	}
-	defer transaction.Rollback()
-	if err := validateRunningOperation(ctx, transaction, operation); err != nil {
-		return err
-	}
-	if _, err := transaction.ExecContext(ctx, `UPDATE runtime_operations SET document_json = ? WHERE id = ?`, string(encodedOperation), operation.ID); err != nil {
-		return fmt.Errorf("persist terminal Catalog ingest operation: %w", err)
-	}
-	if _, err := transaction.ExecContext(ctx, `INSERT INTO catalog_observations (id, source_key, envelope_digest, operation_id, document_json) VALUES (?, ?, ?, ?, ?)`, observation.ID, guestruntimedomain.CatalogSourceKey(observation.Envelope), envelopeDigest, operation.ID, string(encodedObservation)); err != nil {
-		return mapOperationalConflict("persist CatalogObservation", err)
-	}
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("commit Catalog ingest outcome transaction: %w", err)
-	}
-	return nil
-}
-
 func (repository *GuestRuntimeStateSQLiteRepository) ReadTelemetryPipeline(ctx context.Context, id string) (guestruntimedomain.TelemetryPipeline, error) {
 	var encoded string
 	err := repository.database.QueryRowContext(ctx, `SELECT document_json FROM telemetry_pipelines WHERE id = ?`, id).Scan(&encoded)
@@ -336,14 +214,6 @@ ON CONFLICT(id) DO UPDATE SET document_json = excluded.document_json`, id, resou
 	return nil
 }
 
-func decodeCatalogObservation(encoded string) (guestruntimedomain.CatalogObservation, error) {
-	var observation guestruntimedomain.CatalogObservation
-	if err := json.Unmarshal([]byte(encoded), &observation); err != nil {
-		return guestruntimedomain.CatalogObservation{}, fmt.Errorf("decode owned CatalogObservation: %w", err)
-	}
-	return observation, nil
-}
-
 func decodeOperationalOperation(encoded string, digest string) (guestruntimedomain.Operation, error) {
 	var operation guestruntimedomain.Operation
 	if err := json.Unmarshal([]byte(encoded), &operation); err != nil {
@@ -365,5 +235,4 @@ func isUniqueConstraint(err error) bool {
 }
 
 var _ guestruntimeapplication.GuestRuntimeTimeAuthorityStateRepository = (*GuestRuntimeStateSQLiteRepository)(nil)
-var _ guestruntimeapplication.GuestRuntimeObservationCatalogStateRepository = (*GuestRuntimeStateSQLiteRepository)(nil)
 var _ guestruntimeapplication.GuestRuntimeTelemetryPipelineStateRepository = (*GuestRuntimeStateSQLiteRepository)(nil)

@@ -55,6 +55,14 @@ func completeDeclaredGuestProductBootstrapVolumePlan() guestproductbootstrapvolu
 			DirectoryPath: "/var/lib/vitalserver/guest-runtime",
 			DirectoryMode: "0700",
 		},
+		GuestPrivateStateDirectory:          guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/private", DirectoryMode: "0700"},
+		GuestArchiveArtifactObjectDirectory: guestproductbootstrapvolumeplan.DeclaredGuestDirectory{DirectoryPath: "/var/lib/vitalserver/archive-artifacts", DirectoryMode: "0700"},
+		GuestRecorderCatalogPostgreSQL: guestproductbootstrapvolumeplan.DeclaredGuestRecorderCatalogPostgreSQL{
+			PackageManager: "apt", PackageNames: []string{"postgresql", "python3-alembic", "python3-psycopg"}, ServiceName: "postgresql.service",
+			DatabaseHost: "127.0.0.1", DatabasePort: 5432, DatabaseName: "vitalserver", DatabaseRoleName: "vitalserver",
+			DatabaseURLMaterialPath: "/var/lib/vitalserver/private/recorder-catalog-database-url", CatalogAdmissionBearerTokenMaterialPath: "/var/lib/vitalserver/private/recorder-catalog-admission-token", ArchiveSourceAdmissionBearerTokenMaterialPath: "/var/lib/vitalserver/private/archive-source-admission-token",
+			GeneratedSecretByteCount: 32, MigrationExecutablePath: "/opt/vitalserver/current/bin/guest-runtime", MigrationPythonExecutablePath: "/usr/bin/python3", ExpectedRevision: "0006_backup_owner", MigrationReceiptPath: "/var/lib/vitalserver/private/recorder-catalog-migration-receipt.json",
+		},
 		Sources: []guestproductbootstrapvolumeplan.DeclaredBootstrapSource{
 			declaredBootstrapSource("guest-runtime-linux-arm64", "sources/guest-runtime-linux-arm64"),
 			declaredBootstrapSource("guest-node-services-linux-arm64", "sources/guest-node-services-linux-arm64"),

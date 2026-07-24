@@ -4,6 +4,7 @@ package guestruntimeapplication
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimedomain"
@@ -12,6 +13,8 @@ import (
 var ErrGuestRuntimeOwnedResourceNotFound = errors.New("owned resource not found")
 var ErrGuestRuntimeOwnedResourceConflict = errors.New("owned resource conflict")
 var ErrGuestRuntimeOwnedResourceRevisionConflict = errors.New("owned resource revision conflict")
+var ErrArchiveArtifactObjectContentMismatch = errors.New("Archive artifact object content mismatch")
+var ErrLabReplaySourceObjectContentMismatch = errors.New("Lab replay source object content mismatch")
 
 // SourceEligibilityError is a known Lab-owned negative answer. It is distinct
 // from a repository failure: Archive Export can reject before admission when a
@@ -34,6 +37,70 @@ type GuestRuntimeTopologyStateRepository interface {
 	ReadRuntimeTopologyOperation(context.Context, string) (guestruntimedomain.Operation, error)
 	ReadRuntimeTopologyOperationByRequestID(context.Context, string) (guestruntimedomain.Operation, error)
 	CommitRuntimeTopologyApplication(context.Context, guestruntimedomain.RuntimeTopology, *guestruntimedomain.CapabilityDocument, guestruntimedomain.Operation) error
+}
+
+// GuestRuntimeReadinessDependency is one explicitly composed product
+// dependency whose owner can prove availability. Readiness consumes this
+// result; it does not infer dependency state from process presence, logs, or
+// another repository.
+type GuestRuntimeReadinessDependency interface {
+	GuestRuntimeReadinessDependencyID() string
+	VerifyGuestRuntimeReadinessDependency(context.Context) error
+}
+
+// GuestRuntimeSQLiteIdentityReader and
+// GuestRuntimePostgreSQLIdentityReader are separate owner ports. The
+// application service composes them into one all-or-failed observation.
+type GuestRuntimeSQLiteIdentityReader interface {
+	ReadGuestOperationalStateSQLiteIdentity(
+		context.Context,
+	) (guestruntimedomain.GuestOperationalStateSQLiteIdentity, error)
+}
+
+type GuestRuntimePostgreSQLIdentityReader interface {
+	ReadGuestOperationalStatePostgreSQLIdentity(
+		context.Context,
+	) (guestruntimedomain.GuestOperationalStatePostgreSQLIdentity, error)
+}
+
+type GuestRuntimeBootstrapIdentityReader interface {
+	ReadGuestOperationalStateBootstrapIdentity(
+		context.Context,
+	) (guestruntimedomain.GuestOperationalStateBootstrapIdentity, error)
+}
+
+type StoredRecorderAssignmentEvidence struct {
+	Evidence      guestruntimedomain.RecorderAssignmentEvidence
+	CommandDigest string
+}
+
+// GuestRuntimeRecorderAssignmentRepository is the only persistence boundary
+// for assignment evidence and time-bounded resolution receipts.
+type GuestRuntimeRecorderAssignmentRepository interface {
+	ReadRecorderAssignmentEvidenceByRequestID(
+		context.Context,
+		string,
+	) (StoredRecorderAssignmentEvidence, error)
+	CommitRecorderAssignmentEvidence(
+		context.Context,
+		string,
+		string,
+		guestruntimedomain.RecorderAssignmentEvidence,
+	) error
+	ListEffectiveRecorderAssignmentEvidence(
+		context.Context,
+		string,
+		string,
+		int,
+	) ([]guestruntimedomain.RecorderAssignmentEvidence, error)
+	ReadRecorderAssignmentResolution(
+		context.Context,
+		string,
+	) (guestruntimedomain.RecorderAssignmentResolution, error)
+	CommitRecorderAssignmentResolution(
+		context.Context,
+		guestruntimedomain.RecorderAssignmentResolution,
+	) error
 }
 
 // LabStateTransitionCommit is the one explicit mutation envelope consumed by the Lab
@@ -105,6 +172,277 @@ type GuestRuntimeArchiveStateRepository interface {
 	AdmitArtifactExport(context.Context, guestruntimedomain.ArtifactManifest, []byte, string, guestruntimedomain.Operation) error
 	CommitArtifactExportOutcome(context.Context, guestruntimedomain.ExportReceipt, guestruntimedomain.Operation) error
 	ListArtifactsRetainedForResource(context.Context, guestruntimedomain.ResourceReference) ([]guestruntimedomain.ResourceReference, error)
+}
+
+// ArchiveArtifactPagePosition is the decoded PostgreSQL keyset position for
+// one Recorder artifact page. Presentation cursors remain opaque outside the
+// application layer.
+type ArchiveArtifactPagePosition struct {
+	ResolvedAt string
+	ArtifactID string
+}
+
+const (
+	MaximumRecorderArtifactPageSize = 100
+	// Repository reads one additional item so the application owner can
+	// produce an opaque next cursor without issuing a second query.
+	MaximumRecorderArtifactRepositoryFetchSize = MaximumRecorderArtifactPageSize + 1
+)
+
+// GuestRuntimeArchiveLineageRepository owns durable artifact identity,
+// Recorder attribution, upload attempts, and indexing receipts in the
+// archive_export PostgreSQL schema. It deliberately does not own command
+// operations or artifact bytes.
+type GuestRuntimeArchiveLineageRepository interface {
+	CommitFinalizedArchiveArtifact(
+		context.Context,
+		guestruntimedomain.ArchiveArtifact,
+		guestruntimedomain.RecorderArtifactAttribution,
+	) error
+	CommitArchiveUploadAttempt(
+		context.Context,
+		guestruntimedomain.ArchiveUploadAttempt,
+	) error
+	CommitArchiveIndexingReceipt(
+		context.Context,
+		guestruntimedomain.ArchiveIndexingReceipt,
+	) error
+	ReadArchiveArtifactDetail(
+		context.Context,
+		string,
+	) (guestruntimedomain.ArchiveArtifactDetail, error)
+	ListMatchedRecorderArchiveArtifacts(
+		context.Context,
+		string,
+		int,
+		*ArchiveArtifactPagePosition,
+	) ([]guestruntimedomain.ArchiveArtifactDetail, error)
+}
+
+// ArchiveStoredSourceAdmission binds request-id idempotency to the complete
+// source command digest and the durable owner receipt.
+type ArchiveStoredSourceAdmission struct {
+	CommandDigest string
+	Command       guestruntimedomain.ArchiveSourceAdmissionCommand
+	Receipt       guestruntimedomain.ArchiveSourceAdmissionReceipt
+}
+
+// GuestRuntimeArchiveSourceAdmissionRepository owns Recorder upload source
+// admission receipts. Accepted admission, artifact identity, and attribution
+// are committed atomically; artifact bytes remain owned by the object store.
+type GuestRuntimeArchiveSourceAdmissionRepository interface {
+	ReadArchiveSourceAdmission(
+		context.Context,
+		string,
+	) (ArchiveStoredSourceAdmission, error)
+	ReadArchiveArtifactDetailBySourceReceipt(
+		context.Context,
+		string,
+		string,
+		string,
+	) (guestruntimedomain.ArchiveArtifactDetail, error)
+	CommitAcceptedArchiveSourceAdmission(
+		context.Context,
+		string,
+		guestruntimedomain.ArchiveSourceAdmissionCommand,
+		guestruntimedomain.ArchiveSourceAdmissionReceipt,
+		guestruntimedomain.ArchiveArtifact,
+		guestruntimedomain.RecorderArtifactAttribution,
+	) error
+	CommitTerminalArchiveSourceAdmission(
+		context.Context,
+		string,
+		guestruntimedomain.ArchiveSourceAdmissionCommand,
+		guestruntimedomain.ArchiveSourceAdmissionReceipt,
+	) error
+}
+
+type ArchiveArtifactObjectCommit struct {
+	ArtifactID  string
+	Source      guestruntimedomain.RecorderVitalUploadSourceReceipt
+	Content     io.Reader
+	PersistedAt string
+}
+
+// GuestRuntimeArchiveArtifactObjectStore owns direct-upload .vital bytes. It
+// verifies the complete Gateway receipt while streaming and atomically exposes
+// only a content object accompanied by a durable object receipt.
+type GuestRuntimeArchiveArtifactObjectStore interface {
+	CommitArchiveArtifactObject(
+		context.Context,
+		ArchiveArtifactObjectCommit,
+	) (guestruntimedomain.ArchiveArtifactObjectReceipt, error)
+}
+
+type StoredLabReplaySourceAdmission struct {
+	CommandDigest string
+	Command       guestruntimedomain.LabReplaySourceAdmissionCommand
+	Receipt       guestruntimedomain.LabReplaySourceAdmissionReceipt
+}
+
+type GuestRuntimeLabReplaySourceRepository interface {
+	ReadLabReplaySourceAdmission(
+		context.Context,
+		string,
+	) (StoredLabReplaySourceAdmission, error)
+	CommitLabReplaySourceAdmission(
+		context.Context,
+		string,
+		guestruntimedomain.LabReplaySourceAdmissionCommand,
+		guestruntimedomain.LabReplaySourceAdmissionReceipt,
+	) error
+}
+
+type LabReplaySourceObjectCommit struct {
+	Command     guestruntimedomain.LabReplaySourceAdmissionCommand
+	Content     io.Reader
+	PersistedAt string
+}
+
+type GuestRuntimeLabReplaySourceObjectStore interface {
+	CommitLabReplaySourceObject(
+		context.Context,
+		LabReplaySourceObjectCommit,
+	) (guestruntimedomain.LabReplaySourceObjectReceipt, error)
+	OpenLabReplaySourceObject(
+		context.Context,
+		guestruntimedomain.ResourceReference,
+		string,
+	) (io.ReadCloser, error)
+}
+
+type GuestRuntimeVitalFileReplayRecordSink interface {
+	AcceptHeader(guestruntimedomain.VitalFileReplayHeader) error
+	AcceptTrack(guestruntimedomain.VitalFileReplayTrackDefinition) error
+	AcceptWaveformChunk(guestruntimedomain.VitalFileReplayWaveformChunk) error
+	AcceptNumericRecord(guestruntimedomain.VitalFileReplayNumericRecord) error
+	AcceptStringRecord(guestruntimedomain.VitalFileReplayStringRecord) error
+}
+
+type GuestRuntimeVitalFileReplayParser interface {
+	Probe(io.Reader) (guestruntimedomain.VitalFileReplayHeader, error)
+	Scan(
+		io.Reader,
+		GuestRuntimeVitalFileReplayRecordSink,
+	) (guestruntimedomain.VitalFileReplayScanResult, error)
+}
+
+type GuestRuntimeVitalFileReplaySpoolWriter interface {
+	GuestRuntimeVitalFileReplayRecordSink
+	Commit(
+		guestruntimedomain.VitalFileReplayScanResult,
+		string,
+	) (guestruntimedomain.VitalFileReplaySpoolReceipt, error)
+	Abort() error
+}
+
+type GuestRuntimeVitalFileReplaySpoolFactory interface {
+	NewSpoolWriter(string) (GuestRuntimeVitalFileReplaySpoolWriter, error)
+	ReadFinalizedSpoolReceipt(
+		string,
+	) (guestruntimedomain.VitalFileReplaySpoolReceipt, error)
+	OpenSpoolReader(
+		string,
+		guestruntimedomain.VitalFileReplaySpoolReceipt,
+		string,
+	) (GuestRuntimeVitalFileReplaySpoolReader, error)
+}
+
+type GuestRuntimeVitalFileReplaySpoolReader interface {
+	Receipt() guestruntimedomain.VitalFileReplaySpoolReceipt
+	Frame(int, float64) (guestruntimedomain.VitalFileReplayFrame, error)
+	Close() error
+}
+
+type LabReplayPrepareEffect struct {
+	ReplayID                    string
+	RecorderGatewayRecorderCode string
+	SpoolReceipt                guestruntimedomain.VitalFileReplaySpoolReceipt
+}
+
+type LabReplayMessageBatchEffect struct {
+	ReplayID          string
+	RunnerSessionID   string
+	BatchID           string
+	StartOffsetSecond int
+	Frames            []guestruntimedomain.VitalFileReplayFrame
+	FinalBatch        bool
+}
+
+type LabReplayUpstreamDeliveryEffect struct {
+	ReplayID           string
+	RunnerSessionID    string
+	ExpectedFrameCount int
+}
+
+type GuestRuntimeLabReplayEffectRunner interface {
+	PrepareLabReplay(
+		context.Context,
+		LabReplayPrepareEffect,
+	) (guestruntimedomain.LabReplayPreparationReceipt, error)
+	SendLabReplayMessageBatch(
+		context.Context,
+		LabReplayMessageBatchEffect,
+	) (guestruntimedomain.LabReplayMessageBatchReceipt, error)
+	ConfirmLabReplayUpstreamDelivery(
+		context.Context,
+		LabReplayUpstreamDeliveryEffect,
+	) (guestruntimedomain.LabReplayUpstreamDeliveryReceipt, error)
+}
+
+type LabReplayEffectRejectedError struct {
+	Code    string
+	Message string
+}
+
+func (failure LabReplayEffectRejectedError) Error() string {
+	return failure.Message
+}
+
+type PendingLabReplayEffect struct {
+	Operation guestruntimedomain.LabReplayOperation
+	Command   string
+	CreatedAt string
+}
+
+type GuestRuntimeLabReplayRepository interface {
+	ReadLabReplayOperation(
+		context.Context,
+		string,
+	) (guestruntimedomain.LabReplayOperation, error)
+	ReadLabReplayOperationByRequestID(
+		context.Context,
+		string,
+	) (guestruntimedomain.LabReplayOperation, error)
+	AdmitLabReplayOperation(
+		context.Context,
+		string,
+		guestruntimedomain.LabReplayOperation,
+		string,
+	) error
+	CommitLabReplayTransition(
+		context.Context,
+		guestruntimedomain.LabReplayOperation,
+		guestruntimedomain.LabReplayOperation,
+		string,
+		string,
+	) error
+	ListPendingLabReplayEffects(
+		context.Context,
+		int,
+	) ([]PendingLabReplayEffect, error)
+}
+
+// GuestRuntimeRecorderArtifactAttributionResolver is the only assignment-owner
+// boundary consumed by Archive Export. It returns a complete candidate answer
+// or an error; Archive Export never substitutes bed-name matching.
+type GuestRuntimeRecorderArtifactAttributionResolver interface {
+	ResolveRecorderArtifactAttribution(
+		context.Context,
+		guestruntimedomain.RecorderVitalUploadSourceReceipt,
+		string,
+		string,
+	) (guestruntimedomain.RecorderAttributionResolutionInput, error)
 }
 
 // GuestRuntimeArchiveExportProvider owns the result of each external export step. A returned

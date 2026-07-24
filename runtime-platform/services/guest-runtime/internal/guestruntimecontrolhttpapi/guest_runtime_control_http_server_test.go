@@ -3,18 +3,60 @@ package guestruntimecontrolhttpapi_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatebackupsqliterepository"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/gueststatesqliterepository"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/labreplaysourcefile"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/vitalfilereplayparser"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/adapters/vitalfilereplayspoolsqlite"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimeapplication"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimecontrolhttpapi"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-runtime/internal/guestruntimedomain"
 )
+
+type unavailableLabReplayEffectRunner struct{}
+
+type inertGuestOperationalStateStageExecutor struct{}
+
+func (inertGuestOperationalStateStageExecutor) ExecuteStage(
+	context.Context,
+	guestruntimedomain.GuestOperationalStateBackupOperation,
+	string,
+) (guestruntimeapplication.GuestOperationalStateBackupStageResult, error) {
+	return guestruntimeapplication.GuestOperationalStateBackupStageResult{},
+		errors.New("stage execution is not part of HTTP admission")
+}
+
+func (unavailableLabReplayEffectRunner) PrepareLabReplay(
+	context.Context,
+	guestruntimeapplication.LabReplayPrepareEffect,
+) (guestruntimedomain.LabReplayPreparationReceipt, error) {
+	return guestruntimedomain.LabReplayPreparationReceipt{}, errors.New("not invoked")
+}
+
+func (unavailableLabReplayEffectRunner) SendLabReplayMessageBatch(
+	context.Context,
+	guestruntimeapplication.LabReplayMessageBatchEffect,
+) (guestruntimedomain.LabReplayMessageBatchReceipt, error) {
+	return guestruntimedomain.LabReplayMessageBatchReceipt{}, errors.New("not invoked")
+}
+
+func (unavailableLabReplayEffectRunner) ConfirmLabReplayUpstreamDelivery(
+	context.Context,
+	guestruntimeapplication.LabReplayUpstreamDeliveryEffect,
+) (guestruntimedomain.LabReplayUpstreamDeliveryReceipt, error) {
+	return guestruntimedomain.LabReplayUpstreamDeliveryReceipt{}, errors.New("not invoked")
+}
 
 func newServerWithRepository(t *testing.T, repository guestruntimeapplication.GuestRuntimeTopologyStateRepository) http.Handler {
 	t.Helper()
@@ -23,6 +65,77 @@ func newServerWithRepository(t *testing.T, repository guestruntimeapplication.Gu
 		t.Fatalf("new service: %v", err)
 	}
 	return guestruntimecontrolhttpapi.NewGuestRuntimeTopologyHTTPServer(service)
+}
+
+func TestGuestOperationalStateBackupHTTPAdmissionAndReadUseDurableOwner(
+	t *testing.T,
+) {
+	ctx := context.Background()
+	ledger, err := gueststatebackupsqliterepository.Open(
+		ctx,
+		filepath.Join(t.TempDir(), "guest-operational-state-ledger.sqlite"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	service, err := guestruntimeapplication.NewGuestOperationalStateBackupApplicationService(
+		ledger,
+		inertGuestOperationalStateStageExecutor{},
+		guestruntimeapplication.SystemGuestRuntimeClock{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := guestruntimecontrolhttpapi.NewGuestRuntimeControlHTTPServerWithModules(
+		guestruntimecontrolhttpapi.GuestRuntimeControlModules{
+			GuestOperationalStateBackup: service,
+		},
+	)
+	command := guestruntimedomain.GuestOperationalStateBackupCommand{
+		SchemaVersion: guestruntimedomain.SchemaVersion,
+		RequestID:     "backup-http-request-1",
+		OperationID:   "backup-http-operation-1",
+		DestinationReference: guestruntimedomain.ResourceReference{
+			ResourceType: "guest-backup-destination",
+			ResourceID:   "backup-http-destination-1",
+		},
+		RequestedAt: "2026-07-24T21:30:00Z",
+	}
+	body, err := json.Marshal(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/runtime/operational-state/backups",
+		bytes.NewReader(body),
+	)
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted ||
+		!bytes.Contains(response.Body.Bytes(), []byte(`"state":"requested"`)) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	readRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/v1/runtime/operational-state/operations/"+command.OperationID,
+		nil,
+	)
+	readResponse := httptest.NewRecorder()
+	server.ServeHTTP(readResponse, readRequest)
+	if readResponse.Code != http.StatusOK ||
+		!bytes.Contains(readResponse.Body.Bytes(), []byte(`"state":"available"`)) ||
+		!bytes.Contains(
+			readResponse.Body.Bytes(),
+			[]byte(`"id":"backup-http-operation-1"`),
+		) {
+		t.Fatalf(
+			"read status=%d body=%s",
+			readResponse.Code,
+			readResponse.Body.String(),
+		)
+	}
 }
 
 func newServer(t *testing.T) http.Handler {
@@ -226,5 +339,185 @@ func TestArchiveRoutesReportAnUnavailableOwnerWithoutInventingOwnerState(t *test
 		if body["state"] != expectation.expectedState || body["credentialReference"] != nil || body["value"] != nil {
 			t.Fatalf("archive owner error must preserve its explicit state without inventing owner configuration: %#v", body)
 		}
+	}
+}
+
+func TestLabReplaySourceRouteStreamsOneImmutableVitalObject(t *testing.T) {
+	repository, err := gueststatesqliterepository.OpenGuestRuntimeStateSQLiteRepository(
+		context.Background(),
+		filepath.Join(t.TempDir(), "guest.sqlite"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repository.Close() })
+	objectStore, err := labreplaysourcefile.OpenFileLabReplaySourceObjectStore(
+		filepath.Join(t.TempDir(), "lab-replay-sources"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := guestruntimeapplication.NewGuestRuntimeLabReplaySourceApplicationService(
+		repository,
+		objectStore,
+		guestruntimeapplication.SystemGuestRuntimeClock{},
+		64<<20,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parser, err := vitalfilereplayparser.NewVitalFileReplayParser(
+		guestruntimedomain.VitalFileReplayCompatibilityPolicy{
+			StringTrackPolicy: guestruntimedomain.VitalFileStringTrackPolicySkip,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spoolFactory, err := vitalfilereplayspoolsqlite.NewFactory(
+		filepath.Join(t.TempDir(), "lab-replay-spools"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayService, err := guestruntimeapplication.NewGuestRuntimeLabReplayApplicationService(
+		repository,
+		objectStore,
+		parser,
+		spoolFactory,
+		unavailableLabReplayEffectRunner{},
+		1,
+		guestruntimedomain.VitalFileReplayGapPolicyFailFrame,
+		guestruntimeapplication.SystemGuestRuntimeClock{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := guestruntimecontrolhttpapi.NewGuestRuntimeControlHTTPServerWithModules(
+		guestruntimecontrolhttpapi.GuestRuntimeControlModules{
+			LabReplaySource:             service,
+			LabReplaySourceMaximumBytes: 64 << 20,
+			LabReplay:                   replayService,
+		},
+	)
+	content := []byte("one complete vital replay object")
+	digest := sha256.Sum256(content)
+	command := guestruntimedomain.LabReplaySourceAdmissionCommand{
+		SchemaVersion:    guestruntimedomain.SchemaVersion,
+		RequestID:        "lab-replay-source-http-request-1",
+		SourceID:         "lab-replay-source-http-1",
+		OriginalFileName: "sample.vital",
+		MediaType:        guestruntimedomain.LabReplaySourceMediaType,
+		ByteSize:         int64(len(content)),
+		SHA256:           hex.EncodeToString(digest[:]),
+	}
+	encodedCommand, err := json.Marshal(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/runtime/lab/replay-sources",
+		bytes.NewReader(content),
+	)
+	request.Header.Set("Content-Type", guestruntimedomain.LabReplaySourceMediaType)
+	request.Header.Set(
+		"X-Vital-Lab-Replay-Source-Command",
+		base64.RawURLEncoding.EncodeToString(encodedCommand),
+	)
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var receipt guestruntimedomain.LabReplaySourceAdmissionReceipt
+	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Outcome != "accepted" ||
+		receipt.SourceReference.ResourceType != guestruntimedomain.LabReplaySourceResourceType ||
+		receipt.SHA256 != command.SHA256 {
+		t.Fatalf("receipt=%#v", receipt)
+	}
+	replayCommand := guestruntimedomain.LabReplayCommand{
+		SchemaVersion:               guestruntimedomain.SchemaVersion,
+		RequestID:                   "lab-replay-http-request-1",
+		ReplayID:                    "lab-replay-http-1",
+		SourceReference:             receipt.SourceReference,
+		SourceSHA256:                receipt.SHA256,
+		RecorderGatewayRecorderCode: "LAB-RECORDER-01",
+		RequestedAt: time.Now().
+			UTC().
+			Add(-time.Minute).
+			Format(time.RFC3339Nano),
+	}
+	replayBody, err := json.Marshal(replayCommand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/runtime/lab/replays",
+		bytes.NewReader(replayBody),
+	)
+	replayResponse := httptest.NewRecorder()
+	server.ServeHTTP(replayResponse, replayRequest)
+	if replayResponse.Code != http.StatusAccepted {
+		t.Fatalf(
+			"replay admission status=%d body=%s",
+			replayResponse.Code,
+			replayResponse.Body.String(),
+		)
+	}
+	readRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/v1/runtime/lab/replays/"+replayCommand.ReplayID,
+		nil,
+	)
+	readResponse := httptest.NewRecorder()
+	server.ServeHTTP(readResponse, readRequest)
+	if readResponse.Code != http.StatusOK ||
+		!bytes.Contains(readResponse.Body.Bytes(), []byte(`"state":"available"`)) ||
+		!bytes.Contains(readResponse.Body.Bytes(), []byte(`"state":"pending-file-validation"`)) {
+		t.Fatalf(
+			"replay read status=%d body=%s",
+			readResponse.Code,
+			readResponse.Body.String(),
+		)
+	}
+
+	futureCommand := replayCommand
+	futureCommand.RequestID = "lab-replay-http-future-request-1"
+	futureCommand.ReplayID = "lab-replay-http-future-1"
+	futureCommand.RequestedAt = "2099-07-24T16:00:00Z"
+	futureBody, err := json.Marshal(futureCommand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	futureRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/runtime/lab/replays",
+		bytes.NewReader(futureBody),
+	)
+	futureResponse := httptest.NewRecorder()
+	server.ServeHTTP(futureResponse, futureRequest)
+	if futureResponse.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"future replay status=%d body=%s",
+			futureResponse.Code,
+			futureResponse.Body.String(),
+		)
+	}
+	var futureRejection guestruntimedomain.CommandRejection
+	if err := json.Unmarshal(
+		futureResponse.Body.Bytes(),
+		&futureRejection,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if futureRejection.State != "rejected" ||
+		futureRejection.RequestID != futureCommand.RequestID ||
+		futureRejection.Issue.Code != "lab-replay-requested-at-in-future" {
+		t.Fatalf("future replay rejection=%#v", futureRejection)
 	}
 }

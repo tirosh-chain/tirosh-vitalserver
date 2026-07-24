@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/guest-product-bootstrap-volume-composer/internal/guestproductbootstrapplancomposer"
@@ -112,9 +113,23 @@ type guestProductProcessDeploymentConfiguration struct {
 	DeploymentID              string `json:"deploymentId"`
 	RequiredProcessExitPolicy string `json:"requiredProcessExitPolicy"`
 	GuestRuntime              struct {
-		ExecutablePath        string `json:"executablePath"`
-		StateDatabasePath     string `json:"stateDatabasePath"`
-		ArchiveExportProvider struct {
+		ExecutablePath                                  string `json:"executablePath"`
+		StateDatabasePath                               string `json:"stateDatabasePath"`
+		RecorderCatalogDatabaseURLMaterialPath          string `json:"recorderCatalogDatabaseUrlMaterialPath"`
+		RecorderCatalogMigrationReceiptPath             string `json:"recorderCatalogMigrationReceiptPath"`
+		RecorderCatalogAdmissionBearerTokenMaterialPath string `json:"recorderCatalogAdmissionBearerTokenMaterialPath"`
+		RecorderObservationMaxReportAgeSeconds          int    `json:"recorderObservationMaxReportAgeSeconds"`
+		ArchiveSourceAdmissionBearerTokenMaterialPath   string `json:"archiveSourceAdmissionBearerTokenMaterialPath"`
+		ArchiveArtifactObjectRootDirectory              string `json:"archiveArtifactObjectRootDirectory"`
+		ArchiveSourceMaximumBytes                       int64  `json:"archiveSourceMaximumBytes"`
+		LabReplaySourceObjectRootDirectory              string `json:"labReplaySourceObjectRootDirectory"`
+		LabReplaySourceMaximumBytes                     int64  `json:"labReplaySourceMaximumBytes"`
+		LabReplaySpoolRootDirectory                     string `json:"labReplaySpoolRootDirectory"`
+		LabReplayStringTrackPolicy                      string `json:"labReplayStringTrackPolicy"`
+		LabReplayGapPolicy                              string `json:"labReplayGapPolicy"`
+		LabReplayFrameBatchSize                         int    `json:"labReplayFrameBatchSize"`
+		RecorderAttributionPolicyKind                   string `json:"recorderAttributionPolicyKind"`
+		ArchiveExportProvider                           struct {
 			Kind                     string `json:"kind"`
 			CredentialMaterialPath   string `json:"credentialMaterialPath"`
 			VitalServerConfiguration *struct {
@@ -127,17 +142,35 @@ type guestProductProcessDeploymentConfiguration struct {
 			NTPServerHost string `json:"ntpServerHost"`
 			NTPServerPort int    `json:"ntpServerPort"`
 		} `json:"timeAuthority"`
+		OperationalStateBackup struct {
+			RootDirectory        string `json:"rootDirectory"`
+			LedgerDatabasePath   string `json:"ledgerDatabasePath"`
+			DestinationReference struct {
+				ResourceType string `json:"resourceType"`
+				ResourceID   string `json:"resourceId"`
+			} `json:"destinationReference"`
+			PGDumpExecutablePath    string `json:"pgDumpExecutablePath"`
+			PGRestoreExecutablePath string `json:"pgRestoreExecutablePath"`
+		} `json:"operationalStateBackup"`
 	} `json:"guestRuntime"`
 	RecorderGateway struct {
-		NodeExecutablePath                           string `json:"nodeExecutablePath"`
-		ProgramPath                                  string `json:"programPath"`
-		VitalServerTopologyDeploymentPath            string `json:"vitalServerTopologyDeploymentPath"`
-		ExternalVitalServerDeliveryConfigurationPath string `json:"externalVitalServerDeliveryConfigurationPath"`
+		NodeExecutablePath                            string `json:"nodeExecutablePath"`
+		ProgramPath                                   string `json:"programPath"`
+		VitalServerTopologyDeploymentPath             string `json:"vitalServerTopologyDeploymentPath"`
+		ExternalVitalServerDeliveryConfigurationPath  string `json:"externalVitalServerDeliveryConfigurationPath"`
+		GuestRuntimeObservationCatalogEndpoint        string `json:"guestRuntimeObservationCatalogEndpoint"`
+		ObservationCatalogBearerTokenMaterialPath     string `json:"observationCatalogBearerTokenMaterialPath"`
+		ArchiveSourceAdmissionBearerTokenMaterialPath string `json:"archiveSourceAdmissionBearerTokenMaterialPath"`
+		GuestRuntimeArchiveSourceAdmissionEndpoint    string `json:"guestRuntimeArchiveSourceAdmissionEndpoint"`
+		VitalUploadPolicy                             struct {
+			MaximumBytes int64 `json:"maximumBytes"`
+		} `json:"vitalUploadPolicy"`
 	} `json:"recorderGateway"`
 	LabRecorderRunner struct {
-		NodeExecutablePath  string `json:"nodeExecutablePath"`
-		ProgramPath         string `json:"programPath"`
-		ScenarioCatalogPath string `json:"scenarioCatalogPath"`
+		NodeExecutablePath   string `json:"nodeExecutablePath"`
+		ProgramPath          string `json:"programPath"`
+		ScenarioCatalogPath  string `json:"scenarioCatalogPath"`
+		ReplayStateDirectory string `json:"replayStateDirectory"`
 	} `json:"labRecorderRunner"`
 	TelemetryCollector *struct {
 		ExecutablePath    string `json:"executablePath"`
@@ -190,6 +223,31 @@ type guestProductBootstrapConfiguration struct {
 		DirectoryPath string `json:"directoryPath"`
 		DirectoryMode string `json:"directoryMode"`
 	} `json:"guestRuntimeStateDirectory"`
+	GuestPrivateStateDirectory struct {
+		DirectoryPath string `json:"directoryPath"`
+		DirectoryMode string `json:"directoryMode"`
+	} `json:"guestPrivateStateDirectory"`
+	GuestArchiveArtifactObjectDirectory struct {
+		DirectoryPath string `json:"directoryPath"`
+		DirectoryMode string `json:"directoryMode"`
+	} `json:"guestArchiveArtifactObjectDirectory"`
+	GuestRecorderCatalogPostgreSQL struct {
+		PackageManager                                string   `json:"packageManager"`
+		PackageNames                                  []string `json:"packageNames"`
+		ServiceName                                   string   `json:"serviceName"`
+		DatabaseHost                                  string   `json:"databaseHost"`
+		DatabasePort                                  int      `json:"databasePort"`
+		DatabaseName                                  string   `json:"databaseName"`
+		DatabaseRoleName                              string   `json:"databaseRoleName"`
+		DatabaseURLMaterialPath                       string   `json:"databaseURLMaterialPath"`
+		CatalogAdmissionBearerTokenMaterialPath       string   `json:"catalogAdmissionBearerTokenMaterialPath"`
+		ArchiveSourceAdmissionBearerTokenMaterialPath string   `json:"archiveSourceAdmissionBearerTokenMaterialPath"`
+		GeneratedSecretByteCount                      int      `json:"generatedSecretByteCount"`
+		MigrationExecutablePath                       string   `json:"migrationExecutablePath"`
+		MigrationPythonExecutablePath                 string   `json:"migrationPythonExecutablePath"`
+		ExpectedRevision                              string   `json:"expectedRevision"`
+		MigrationReceiptPath                          string   `json:"migrationReceiptPath"`
+	} `json:"guestRecorderCatalogPostgreSQL"`
 	GuestTelemetryCollector *struct {
 		ArtifactID      string `json:"artifactId"`
 		DestinationPath string `json:"destinationPath"`
@@ -724,7 +782,46 @@ func readGuestProductProcessDeployment(path string) (guestProductProcessDeployme
 	archiveProvider := deployment.GuestRuntime.ArchiveExportProvider
 	archiveProviderIsValid := (archiveProvider.Kind == "archive-export-outcome-profile" && archiveProvider.CredentialMaterialPath == "" && archiveProvider.VitalServerConfiguration == nil) ||
 		(archiveProvider.Kind == "vitalserver-indexed-library" && isAbsoluteGuestPath(archiveProvider.CredentialMaterialPath) && archiveProvider.VitalServerConfiguration != nil && (archiveProvider.VitalServerConfiguration.Kind == "external-vitalserver-delivery-configuration" || archiveProvider.VitalServerConfiguration.Kind == "bundled-vitalserver-topology-deployment") && isAbsoluteGuestPath(archiveProvider.VitalServerConfiguration.ConfigurationPath))
-	if deployment.SchemaVersion != "v1" || deployment.RequiredProcessExitPolicy != "terminate-guest-product" || !isAbsoluteGuestPath(deployment.GuestRuntime.ExecutablePath) || !isAbsoluteGuestPath(deployment.GuestRuntime.StateDatabasePath) || !archiveProviderIsValid || !isAbsoluteGuestPath(deployment.RecorderGateway.NodeExecutablePath) || !isAbsoluteGuestPath(deployment.RecorderGateway.ProgramPath) || !isAbsoluteGuestPath(deployment.RecorderGateway.VitalServerTopologyDeploymentPath) || (deployment.RecorderGateway.ExternalVitalServerDeliveryConfigurationPath != "" && !isAbsoluteGuestPath(deployment.RecorderGateway.ExternalVitalServerDeliveryConfigurationPath)) || !isAbsoluteGuestPath(deployment.LabRecorderRunner.NodeExecutablePath) || !isAbsoluteGuestPath(deployment.LabRecorderRunner.ProgramPath) || !isAbsoluteGuestPath(deployment.LabRecorderRunner.ScenarioCatalogPath) {
+	if deployment.SchemaVersion != "v1" ||
+		deployment.RequiredProcessExitPolicy != "terminate-guest-product" ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.ExecutablePath) ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.StateDatabasePath) ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.RecorderCatalogDatabaseURLMaterialPath) ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.RecorderCatalogMigrationReceiptPath) ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.RecorderCatalogAdmissionBearerTokenMaterialPath) ||
+		deployment.GuestRuntime.RecorderObservationMaxReportAgeSeconds < 1 ||
+		deployment.GuestRuntime.RecorderObservationMaxReportAgeSeconds > 86400 ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.ArchiveSourceAdmissionBearerTokenMaterialPath) ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.ArchiveArtifactObjectRootDirectory) ||
+		deployment.GuestRuntime.ArchiveSourceMaximumBytes < 1 ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.LabReplaySourceObjectRootDirectory) ||
+		deployment.GuestRuntime.LabReplaySourceMaximumBytes < 1 ||
+		deployment.GuestRuntime.LabReplaySourceMaximumBytes > 1073741824 ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.LabReplaySpoolRootDirectory) ||
+		(deployment.GuestRuntime.LabReplayStringTrackPolicy != "reject" && deployment.GuestRuntime.LabReplayStringTrackPolicy != "skip") ||
+		(deployment.GuestRuntime.LabReplayGapPolicy != "omit-track" && deployment.GuestRuntime.LabReplayGapPolicy != "fail-frame") ||
+		deployment.GuestRuntime.LabReplayFrameBatchSize != 1 ||
+		deployment.GuestRuntime.RecorderAttributionPolicyKind != "recorder-assignment-owner" ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.OperationalStateBackup.RootDirectory) ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.OperationalStateBackup.LedgerDatabasePath) ||
+		deployment.GuestRuntime.OperationalStateBackup.DestinationReference.ResourceType != "guest-backup-destination" ||
+		deployment.GuestRuntime.OperationalStateBackup.DestinationReference.ResourceID == "" ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.OperationalStateBackup.PGDumpExecutablePath) ||
+		!isAbsoluteGuestPath(deployment.GuestRuntime.OperationalStateBackup.PGRestoreExecutablePath) ||
+		!archiveProviderIsValid ||
+		!isAbsoluteGuestPath(deployment.RecorderGateway.NodeExecutablePath) ||
+		!isAbsoluteGuestPath(deployment.RecorderGateway.ProgramPath) ||
+		!isAbsoluteGuestPath(deployment.RecorderGateway.VitalServerTopologyDeploymentPath) ||
+		!isAbsoluteGuestPath(deployment.RecorderGateway.ObservationCatalogBearerTokenMaterialPath) ||
+		!isAbsoluteGuestPath(deployment.RecorderGateway.ArchiveSourceAdmissionBearerTokenMaterialPath) ||
+		deployment.RecorderGateway.GuestRuntimeArchiveSourceAdmissionEndpoint == "" ||
+		deployment.RecorderGateway.VitalUploadPolicy.MaximumBytes != deployment.GuestRuntime.ArchiveSourceMaximumBytes ||
+		deployment.RecorderGateway.ArchiveSourceAdmissionBearerTokenMaterialPath != deployment.GuestRuntime.ArchiveSourceAdmissionBearerTokenMaterialPath ||
+		(deployment.RecorderGateway.ExternalVitalServerDeliveryConfigurationPath != "" && !isAbsoluteGuestPath(deployment.RecorderGateway.ExternalVitalServerDeliveryConfigurationPath)) ||
+		!isAbsoluteGuestPath(deployment.LabRecorderRunner.NodeExecutablePath) ||
+		!isAbsoluteGuestPath(deployment.LabRecorderRunner.ProgramPath) ||
+		!isAbsoluteGuestPath(deployment.LabRecorderRunner.ScenarioCatalogPath) ||
+		!isAbsoluteGuestPath(deployment.LabRecorderRunner.ReplayStateDirectory) {
 		return guestProductProcessDeploymentConfiguration{}, fmt.Errorf("C37 bootstrap-relevant process deployment is invalid")
 	}
 	if deployment.TelemetryCollector != nil && (!isAbsoluteGuestPath(deployment.TelemetryCollector.ExecutablePath) || !isAbsoluteGuestPath(deployment.TelemetryCollector.ConfigurationPath)) {
@@ -873,8 +970,31 @@ func isBootstrapConfigurationValid(configuration guestProductBootstrapConfigurat
 		return candidate == release.ReleaseDirectory || withinRelease(candidate)
 	}
 	bundledManagerIsValid := configuration.GuestBundledUpstreamImageSetManager == nil || validGuestProductBundledUpstreamImageSetManagerPayload(*configuration.GuestBundledUpstreamImageSetManager, architecture, withinRelease)
+	recorderCatalog := configuration.GuestRecorderCatalogPostgreSQL
+	recorderCatalogIsValid := recorderCatalog.PackageManager == "apt" &&
+		slices.Equal(recorderCatalog.PackageNames, []string{"postgresql", "python3-alembic", "python3-psycopg"}) &&
+		recorderCatalog.ServiceName == "postgresql.service" &&
+		recorderCatalog.DatabaseHost == "127.0.0.1" &&
+		recorderCatalog.DatabasePort == 5432 &&
+		recorderCatalog.DatabaseName == "vitalserver" &&
+		recorderCatalog.DatabaseRoleName == "vitalserver" &&
+		isAbsoluteGuestPath(recorderCatalog.DatabaseURLMaterialPath) &&
+		isAbsoluteGuestPath(recorderCatalog.CatalogAdmissionBearerTokenMaterialPath) &&
+		isAbsoluteGuestPath(recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath) &&
+		recorderCatalog.GeneratedSecretByteCount == 32 &&
+		recorderCatalog.MigrationExecutablePath == configuration.GuestProductRelease.CurrentReleaseLinkPath+"/bin/guest-runtime" &&
+		recorderCatalog.MigrationPythonExecutablePath == "/usr/bin/python3" &&
+		recorderCatalog.ExpectedRevision == "0006_backup_owner" &&
+		isAbsoluteGuestPath(recorderCatalog.MigrationReceiptPath)
 	return (architecture == "arm64" || architecture == "amd64") && releaseIsValid && configuration.GuestRuntime.ArtifactID == "guest-runtime-linux-"+architecture && withinRelease(configuration.GuestRuntime.DestinationPath) && configuration.GuestRuntime.FileMode == "0755" &&
 		isAbsoluteGuestPath(configuration.GuestRuntimeStateDirectory.DirectoryPath) && configuration.GuestRuntimeStateDirectory.DirectoryMode == "0700" &&
+		configuration.GuestPrivateStateDirectory.DirectoryPath == "/var/lib/vitalserver/private" && configuration.GuestPrivateStateDirectory.DirectoryMode == "0700" &&
+		configuration.GuestArchiveArtifactObjectDirectory.DirectoryPath == "/var/lib/vitalserver/archive-artifacts" && configuration.GuestArchiveArtifactObjectDirectory.DirectoryMode == "0700" &&
+		strings.HasPrefix(recorderCatalog.DatabaseURLMaterialPath, configuration.GuestPrivateStateDirectory.DirectoryPath+"/") &&
+		strings.HasPrefix(recorderCatalog.CatalogAdmissionBearerTokenMaterialPath, configuration.GuestPrivateStateDirectory.DirectoryPath+"/") &&
+		strings.HasPrefix(recorderCatalog.ArchiveSourceAdmissionBearerTokenMaterialPath, configuration.GuestPrivateStateDirectory.DirectoryPath+"/") &&
+		strings.HasPrefix(recorderCatalog.MigrationReceiptPath, configuration.GuestPrivateStateDirectory.DirectoryPath+"/") &&
+		recorderCatalogIsValid &&
 		telemetryCollectorIsValid && (configuration.GuestTelemetryCollector == nil || (withinRelease(configuration.GuestTelemetryCollector.DestinationPath) && withinRelease(configuration.GuestTelemetryCollectorConfiguration.DestinationPath))) &&
 		timeSynchronizationIsValid &&
 		configuration.GuestNodeServicesBundle.ArtifactID == "guest-node-services-linux-"+architecture && configuration.GuestNodeServicesBundle.ArchiveFormat == "tar-gzip" && configuration.GuestNodeServicesBundle.EntryModePolicy == guestproductbootstrapvolumeplan.PreserveArchiveEntryModePolicy && configuration.GuestNodeServicesBundle.SymbolicLinkPolicy == guestproductbootstrapvolumeplan.AllowRelativeLinksToDeclaredRegularFilesPolicy && atOrBelowRelease(configuration.GuestNodeServicesBundle.DestinationDirectory) && len(configuration.GuestNodeServicesBundle.RequiredArchivePaths) >= 4 &&
@@ -1124,18 +1244,25 @@ func composeDeclaredGuestProductBootstrapVolume(
 	plan, err := guestproductbootstrapplancomposer.ComposeGuestProductBootstrapVolumePlan(
 		guestproductbootstrapplancomposer.GuestProductBootstrapVolumePlanComposition{
 			ProcessDeployment: guestproductbootstrapplancomposer.GuestProductProcessDeploymentPaths{
-				GuestRuntimeExecutablePath:               processDeployment.GuestRuntime.ExecutablePath,
-				GuestRuntimeStateDatabasePath:            processDeployment.GuestRuntime.StateDatabasePath,
-				RecorderGatewayNodePath:                  processDeployment.RecorderGateway.NodeExecutablePath,
-				RecorderGatewayProgramPath:               processDeployment.RecorderGateway.ProgramPath,
-				LabRecorderRunnerNodePath:                processDeployment.LabRecorderRunner.NodeExecutablePath,
-				LabRecorderRunnerProgramPath:             processDeployment.LabRecorderRunner.ProgramPath,
-				LabScenarioCatalogPath:                   processDeployment.LabRecorderRunner.ScenarioCatalogPath,
-				GuestTelemetryCollectorExecutablePath:    telemetryCollectorExecutablePath,
-				GuestTelemetryCollectorConfigurationPath: telemetryCollectorConfigurationPath,
-				GuestTimeAuthorityKind:                   processDeployment.GuestRuntime.TimeAuthority.Kind,
-				GuestTimeAuthorityNTPServerHost:          processDeployment.GuestRuntime.TimeAuthority.NTPServerHost,
-				GuestTimeAuthorityNTPServerPort:          processDeployment.GuestRuntime.TimeAuthority.NTPServerPort,
+				GuestRuntimeExecutablePath:                                   processDeployment.GuestRuntime.ExecutablePath,
+				GuestRuntimeStateDatabasePath:                                processDeployment.GuestRuntime.StateDatabasePath,
+				RecorderCatalogDatabaseURLMaterialPath:                       processDeployment.GuestRuntime.RecorderCatalogDatabaseURLMaterialPath,
+				RecorderCatalogMigrationReceiptPath:                          processDeployment.GuestRuntime.RecorderCatalogMigrationReceiptPath,
+				RecorderCatalogAdmissionBearerTokenMaterialPath:              processDeployment.GuestRuntime.RecorderCatalogAdmissionBearerTokenMaterialPath,
+				ArchiveSourceAdmissionBearerTokenMaterialPath:                processDeployment.GuestRuntime.ArchiveSourceAdmissionBearerTokenMaterialPath,
+				ArchiveArtifactObjectRootDirectory:                           processDeployment.GuestRuntime.ArchiveArtifactObjectRootDirectory,
+				RecorderGatewayNodePath:                                      processDeployment.RecorderGateway.NodeExecutablePath,
+				RecorderGatewayProgramPath:                                   processDeployment.RecorderGateway.ProgramPath,
+				RecorderGatewayObservationCatalogBearerTokenMaterialPath:     processDeployment.RecorderGateway.ObservationCatalogBearerTokenMaterialPath,
+				RecorderGatewayArchiveSourceAdmissionBearerTokenMaterialPath: processDeployment.RecorderGateway.ArchiveSourceAdmissionBearerTokenMaterialPath,
+				LabRecorderRunnerNodePath:                                    processDeployment.LabRecorderRunner.NodeExecutablePath,
+				LabRecorderRunnerProgramPath:                                 processDeployment.LabRecorderRunner.ProgramPath,
+				LabScenarioCatalogPath:                                       processDeployment.LabRecorderRunner.ScenarioCatalogPath,
+				GuestTelemetryCollectorExecutablePath:                        telemetryCollectorExecutablePath,
+				GuestTelemetryCollectorConfigurationPath:                     telemetryCollectorConfigurationPath,
+				GuestTimeAuthorityKind:                                       processDeployment.GuestRuntime.TimeAuthority.Kind,
+				GuestTimeAuthorityNTPServerHost:                              processDeployment.GuestRuntime.TimeAuthority.NTPServerHost,
+				GuestTimeAuthorityNTPServerPort:                              processDeployment.GuestRuntime.TimeAuthority.NTPServerPort,
 			},
 			ServiceManagerDeployment: guestproductbootstrapplancomposer.GuestProductServiceManagerDeployment{
 				ServiceUnitName:                       serviceManagerDeployment.ServiceUnitName,
@@ -1260,9 +1387,28 @@ func mapGuestProductBootstrapConfiguration(configuration guestProductBootstrapCo
 	}
 	return guestproductbootstrapplancomposer.GuestProductBootstrapConfiguration{
 		BootstrapID: configuration.BootstrapID, VolumeLabel: configuration.VolumeLabel, GuestVolumeFileSystem: configuration.GuestBootstrapVolumeFileSystem, InstanceID: configuration.InstanceID, LocalHostName: configuration.LocalHostName, GuestArchitecture: configuration.GuestArchitecture,
-		GuestProductRelease:                  guestproductbootstrapplancomposer.GuestProductBootstrapRelease{ReleaseID: configuration.GuestProductRelease.ReleaseID, ReleaseDirectory: configuration.GuestProductRelease.ReleaseDirectory, CurrentReleaseLinkPath: configuration.GuestProductRelease.CurrentReleaseLinkPath, ReleaseStateDirectory: configuration.GuestProductRelease.ReleaseStateDirectory, ReleaseStateDirectoryMode: configuration.GuestProductRelease.ReleaseStateDirectoryMode},
-		GuestRuntime:                         guestproductbootstrapplancomposer.GuestProductBootstrapExecutablePayload{ArtifactID: configuration.GuestRuntime.ArtifactID, DestinationPath: configuration.GuestRuntime.DestinationPath, FileMode: configuration.GuestRuntime.FileMode},
-		GuestRuntimeStateDirectory:           guestproductbootstrapplancomposer.GuestProductBootstrapStateDirectory{DirectoryPath: configuration.GuestRuntimeStateDirectory.DirectoryPath, DirectoryMode: configuration.GuestRuntimeStateDirectory.DirectoryMode},
+		GuestProductRelease:                 guestproductbootstrapplancomposer.GuestProductBootstrapRelease{ReleaseID: configuration.GuestProductRelease.ReleaseID, ReleaseDirectory: configuration.GuestProductRelease.ReleaseDirectory, CurrentReleaseLinkPath: configuration.GuestProductRelease.CurrentReleaseLinkPath, ReleaseStateDirectory: configuration.GuestProductRelease.ReleaseStateDirectory, ReleaseStateDirectoryMode: configuration.GuestProductRelease.ReleaseStateDirectoryMode},
+		GuestRuntime:                        guestproductbootstrapplancomposer.GuestProductBootstrapExecutablePayload{ArtifactID: configuration.GuestRuntime.ArtifactID, DestinationPath: configuration.GuestRuntime.DestinationPath, FileMode: configuration.GuestRuntime.FileMode},
+		GuestRuntimeStateDirectory:          guestproductbootstrapplancomposer.GuestProductBootstrapStateDirectory{DirectoryPath: configuration.GuestRuntimeStateDirectory.DirectoryPath, DirectoryMode: configuration.GuestRuntimeStateDirectory.DirectoryMode},
+		GuestPrivateStateDirectory:          guestproductbootstrapplancomposer.GuestProductBootstrapStateDirectory{DirectoryPath: configuration.GuestPrivateStateDirectory.DirectoryPath, DirectoryMode: configuration.GuestPrivateStateDirectory.DirectoryMode},
+		GuestArchiveArtifactObjectDirectory: guestproductbootstrapplancomposer.GuestProductBootstrapStateDirectory{DirectoryPath: configuration.GuestArchiveArtifactObjectDirectory.DirectoryPath, DirectoryMode: configuration.GuestArchiveArtifactObjectDirectory.DirectoryMode},
+		GuestRecorderCatalogPostgreSQL: guestproductbootstrapplancomposer.GuestProductBootstrapRecorderCatalogPostgreSQL{
+			PackageManager:                          configuration.GuestRecorderCatalogPostgreSQL.PackageManager,
+			PackageNames:                            append([]string(nil), configuration.GuestRecorderCatalogPostgreSQL.PackageNames...),
+			ServiceName:                             configuration.GuestRecorderCatalogPostgreSQL.ServiceName,
+			DatabaseHost:                            configuration.GuestRecorderCatalogPostgreSQL.DatabaseHost,
+			DatabasePort:                            configuration.GuestRecorderCatalogPostgreSQL.DatabasePort,
+			DatabaseName:                            configuration.GuestRecorderCatalogPostgreSQL.DatabaseName,
+			DatabaseRoleName:                        configuration.GuestRecorderCatalogPostgreSQL.DatabaseRoleName,
+			DatabaseURLMaterialPath:                 configuration.GuestRecorderCatalogPostgreSQL.DatabaseURLMaterialPath,
+			CatalogAdmissionBearerTokenMaterialPath: configuration.GuestRecorderCatalogPostgreSQL.CatalogAdmissionBearerTokenMaterialPath,
+			ArchiveSourceAdmissionBearerTokenMaterialPath: configuration.GuestRecorderCatalogPostgreSQL.ArchiveSourceAdmissionBearerTokenMaterialPath,
+			GeneratedSecretByteCount:                      configuration.GuestRecorderCatalogPostgreSQL.GeneratedSecretByteCount,
+			MigrationExecutablePath:                       configuration.GuestRecorderCatalogPostgreSQL.MigrationExecutablePath,
+			MigrationPythonExecutablePath:                 configuration.GuestRecorderCatalogPostgreSQL.MigrationPythonExecutablePath,
+			ExpectedRevision:                              configuration.GuestRecorderCatalogPostgreSQL.ExpectedRevision,
+			MigrationReceiptPath:                          configuration.GuestRecorderCatalogPostgreSQL.MigrationReceiptPath,
+		},
 		GuestTelemetryCollector:              telemetryCollector,
 		GuestTelemetryCollectorConfiguration: telemetryCollectorConfiguration,
 		GuestTelemetryStateDirectory:         telemetryStateDirectory,

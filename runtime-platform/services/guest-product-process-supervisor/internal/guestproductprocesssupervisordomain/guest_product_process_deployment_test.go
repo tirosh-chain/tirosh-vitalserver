@@ -18,10 +18,25 @@ func TestGuestProductProcessDeploymentPlansEveryServiceInputExplicitly(t *testin
 		t.Fatalf("Guest Runtime invocation = %#v", invocations[0])
 	}
 	requiredRuntimeArguments := []string{
+		"--process-role=runtime-control",
 		"--listen=0.0.0.0:18443",
 		"--control-virtio-socket-port=18443",
 		"--guest-public-service-virtio-socket-bridge=recorder-gateway,18090,127.0.0.1:8090",
 		"--state-db=/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite",
+		"--recorder-catalog-database-url-material-path=/var/lib/vitalserver/private/recorder-catalog-database-url",
+		"--recorder-catalog-migration-receipt-path=/var/lib/vitalserver/private/recorder-catalog-migration-receipt.json",
+		"--recorder-catalog-admission-bearer-token-material-path=/var/lib/vitalserver/private/recorder-catalog-admission-token",
+		"--recorder-observation-max-report-age-seconds=300",
+		"--archive-source-admission-bearer-token-material-path=/var/lib/vitalserver/private/archive-source-admission-token",
+		"--archive-artifact-object-root=/var/lib/vitalserver/archive-artifacts",
+		"--archive-source-max-bytes=67108864",
+		"--lab-replay-source-object-root=/var/lib/vitalserver/lab-replay-sources",
+		"--lab-replay-source-max-bytes=67108864",
+		"--lab-replay-spool-root=/var/lib/vitalserver/lab-replay-spools",
+		"--lab-replay-string-track-policy=skip",
+		"--lab-replay-gap-policy=fail-frame",
+		"--lab-replay-frame-batch-size=1",
+		"--recorder-attribution-policy-kind=recorder-assignment-owner",
 		"--archive-provider-mode=succeed",
 		"--recorder-gateway-cold-path-source-endpoint=http://127.0.0.1:8090",
 		"--lab-recorder-runner-endpoint=http://127.0.0.1:8091",
@@ -50,6 +65,14 @@ func TestGuestProductProcessDeploymentPlansEveryServiceInputExplicitly(t *testin
 		"--cold-path-capture-max-retained-packets=1024",
 		"--cold-path-capture-max-retained-payload-bytes=67108864",
 		"--replay-lease-duration-ms=1000",
+		"--guest-runtime-observation-catalog-endpoint=http://127.0.0.1:18443",
+		"--guest-runtime-observation-catalog-bearer-token-material-path=/var/lib/vitalserver/private/recorder-catalog-admission-token",
+		"--recorder-vital-upload-max-bytes=67108864",
+		"--recorder-vital-upload-recovery-interval-ms=1000",
+		"--recorder-vital-upload-recovery-max-items=100",
+		"--guest-runtime-archive-source-admission-endpoint=http://127.0.0.1:18443/internal/v1/archive/recorder-uploads",
+		"--guest-runtime-archive-source-admission-bearer-token-material-path=/var/lib/vitalserver/private/archive-source-admission-token",
+		"--guest-runtime-archive-source-admission-request-timeout-ms=30000",
 	}
 	for _, expected := range requiredGatewayArguments {
 		if !contains(invocations[1].Arguments, expected) {
@@ -64,10 +87,50 @@ func TestGuestProductProcessDeploymentPlansEveryServiceInputExplicitly(t *testin
 		"--listen=127.0.0.1:8091",
 		"--recorder-gateway-endpoint=http://127.0.0.1:8090",
 		"--scenario-catalog=/etc/vitalserver/lab-scenario-catalog.json",
+		"--lab-replay-state-directory=/var/lib/vitalserver/lab-replay-runner",
 	} {
 		if !contains(invocations[2].Arguments, expected) {
 			t.Fatalf("Lab recorder Runner invocation omitted explicit argument %s: %#v", expected, invocations[2].Arguments)
 		}
+	}
+}
+
+func TestGuestProductProcessDeploymentPlansOnlyExplicitMaintenanceRestoreTarget(
+	t *testing.T,
+) {
+	configuration := validGuestProductProcessDeploymentConfiguration()
+	configuration.GuestRuntime.OperationalStateRestore =
+		&GuestOperationalStateRestoreDeployment{
+			TargetReference: GuestProductResourceReference{
+				ResourceType: "guest-restore-target",
+				ResourceID:   "maintenance-empty-target-1",
+			},
+			SQLiteTargetPath:                  "/var/lib/vitalserver/restore-target/guest-runtime.sqlite",
+			PostgreSQLDatabaseURLMaterialPath: "/var/lib/vitalserver/private/restore-target-database-url",
+		}
+	invocations, err := PlanGuestProductProcessInvocations(
+		configuration,
+		validRecorderGatewayVitalServerDeliveryResolution(),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("explicit maintenance restore target rejected: %v", err)
+	}
+	for _, expected := range []string{
+		"--operational-state-restore-target-type=guest-restore-target",
+		"--operational-state-restore-target-id=maintenance-empty-target-1",
+		"--operational-state-restore-sqlite-target=/var/lib/vitalserver/restore-target/guest-runtime.sqlite",
+		"--operational-state-restore-postgresql-database-url-material-path=/var/lib/vitalserver/private/restore-target-database-url",
+	} {
+		if !contains(invocations[0].Arguments, expected) {
+			t.Fatalf("Guest Runtime restore invocation omitted %s: %#v", expected, invocations[0].Arguments)
+		}
+	}
+
+	configuration.GuestRuntime.OperationalStateRestore.SQLiteTargetPath =
+		configuration.GuestRuntime.StateDatabasePath
+	if err := ValidateGuestProductProcessDeploymentConfiguration(configuration); err == nil {
+		t.Fatal("live Guest Runtime SQLite database must not be accepted as a restore target")
 	}
 }
 
@@ -220,7 +283,7 @@ func TestGuestProductProcessDeploymentPlansVitalServerIndexedLibraryWithoutOutco
 	configuration := validGuestProductProcessDeploymentConfiguration()
 	configuration.GuestRuntime.ArchiveExportProvider = ArchiveExportProvider{
 		GuestProductProviderCapabilityReference: GuestProductProviderCapabilityReference{Kind: "vitalserver-indexed-library", ID: "external-vitalserver-primary-library", CapabilityRevision: 1},
-		CredentialMaterialPath:                  "/run/vitalserver/secrets/external-vitalserver-primary-library.json",
+		CredentialMaterialPath:                  "/var/lib/vitalserver/private/external-vitalserver-primary-library.json",
 		VitalServerConfiguration:                &VitalServerArchiveProviderConfiguration{Kind: "external-vitalserver-delivery-configuration", ConfigurationPath: "/etc/vitalserver/external-vitalserver-delivery-configuration.json"},
 	}
 	external := validExternalVitalServerDeliveryConfiguration()
@@ -229,7 +292,7 @@ func TestGuestProductProcessDeploymentPlansVitalServerIndexedLibraryWithoutOutco
 		t.Fatalf("valid external indexed-library provider rejected: %v", err)
 	}
 	runtimeArguments := invocations[0].Arguments
-	if contains(runtimeArguments, "--archive-provider-mode=succeed") || !contains(runtimeArguments, "--archive-provider-vitalserver-configuration-kind=external-vitalserver-delivery-configuration") || !contains(runtimeArguments, "--archive-provider-vitalserver-configuration=/etc/vitalserver/external-vitalserver-delivery-configuration.json") || !contains(runtimeArguments, "--archive-provider-credential-material-path=/run/vitalserver/secrets/external-vitalserver-primary-library.json") {
+	if contains(runtimeArguments, "--archive-provider-mode=succeed") || !contains(runtimeArguments, "--archive-provider-vitalserver-configuration-kind=external-vitalserver-delivery-configuration") || !contains(runtimeArguments, "--archive-provider-vitalserver-configuration=/etc/vitalserver/external-vitalserver-delivery-configuration.json") || !contains(runtimeArguments, "--archive-provider-credential-material-path=/var/lib/vitalserver/private/external-vitalserver-primary-library.json") {
 		t.Fatalf("indexed-library invocation lost explicit configuration or retained profile fallback: %#v", runtimeArguments)
 	}
 
@@ -245,7 +308,7 @@ func TestGuestProductProcessDeploymentPlansBundledVitalServerIndexedLibraryFromE
 	configuration.GuestRuntime.ArchiveExportProvider = ArchiveExportProvider{
 		GuestProductProviderCapabilityReference: GuestProductProviderCapabilityReference{Kind: "vitalserver-indexed-library", ID: "bundled-upstream-primary-library", CapabilityRevision: 1},
 		VitalServerConfiguration:                &VitalServerArchiveProviderConfiguration{Kind: "bundled-vitalserver-topology-deployment", ConfigurationPath: "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json"},
-		CredentialMaterialPath:                  "/run/vitalserver/secrets/bundled-upstream-primary-library.json",
+		CredentialMaterialPath:                  "/var/lib/vitalserver/private/bundled-upstream-primary-library.json",
 	}
 	resolution := RecorderGatewayVitalServerDeliveryResolution{
 		VitalServerPacketDeliveryEndpoint:                     VitalServerPacketDeliveryEndpoint{Scheme: "http", Host: "127.0.0.1", Port: 18300},
@@ -268,7 +331,7 @@ func validGuestProductProcessDeploymentConfiguration() GuestProductProcessDeploy
 		GuestRuntime: GuestRuntimeProcessDeployment{
 			ExecutablePath: "/opt/vitalserver/bin/guest-runtime", Listener: GuestProductProcessListener{BindHost: "0.0.0.0", Port: 18443}, ControlVirtioSocketListener: GuestRuntimeControlVirtioSocketListener{Port: 18443}, PublicServiceVirtioSocketBridges: []GuestPublicServiceVirtioSocketBridge{
 				{RouteID: "recorder-gateway", GuestProductProcessName: RecorderGatewayProcessName, VirtioSocketPort: 18090, TargetHost: "127.0.0.1", TargetPort: 8090},
-			}, StateDatabasePath: "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite", ServiceVersion: "0.1.0-dev", InstanceID: "guest-runtime-primary",
+			}, StateDatabasePath: "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite", RecorderCatalogDatabaseURLMaterialPath: "/var/lib/vitalserver/private/recorder-catalog-database-url", RecorderCatalogMigrationReceiptPath: "/var/lib/vitalserver/private/recorder-catalog-migration-receipt.json", RecorderCatalogAdmissionBearerTokenMaterialPath: "/var/lib/vitalserver/private/recorder-catalog-admission-token", RecorderObservationMaxReportAgeSeconds: 300, ArchiveSourceAdmissionBearerTokenMaterialPath: "/var/lib/vitalserver/private/archive-source-admission-token", ArchiveArtifactObjectRootDirectory: "/var/lib/vitalserver/archive-artifacts", ArchiveSourceMaximumBytes: 67108864, LabReplaySourceObjectRootDirectory: "/var/lib/vitalserver/lab-replay-sources", LabReplaySourceMaximumBytes: 67108864, LabReplaySpoolRootDirectory: "/var/lib/vitalserver/lab-replay-spools", LabReplayStringTrackPolicy: "skip", LabReplayGapPolicy: "fail-frame", LabReplayFrameBatchSize: 1, RecorderAttributionPolicyKind: "recorder-assignment-owner", ServiceVersion: "0.1.0-dev", InstanceID: "guest-runtime-primary",
 			ArchiveExportProvider:                 ArchiveExportProvider{GuestProductProviderCapabilityReference: GuestProductProviderCapabilityReference{Kind: "archive-export-outcome-profile", ID: "bundled-archive", CapabilityRevision: 1}, OutcomeMode: "succeed"},
 			RecorderGatewayColdPathSourceEndpoint: "http://127.0.0.1:8090",
 			LabRecorderRunnerEndpoint:             "http://127.0.0.1:8091",
@@ -276,13 +339,23 @@ func validGuestProductProcessDeploymentConfiguration() GuestProductProcessDeploy
 			OutboundRelayObservationProvider:      OutboundRelayObservationProvider{GuestProductProviderCapabilityReference: GuestProductProviderCapabilityReference{Kind: "outbound-relay-profile", ID: "outbound-relay", CapabilityRevision: 1}, OutcomeMode: "unsupported"},
 			TimeAuthority:                         GuestTimeAuthority{GuestNodeID: "guest-primary", TimeAuthorityID: "guest-time-authority", Kind: "time-authority-outcome-profile", ProbeOutcomeMode: "unsupported"},
 			TelemetryPipeline:                     GuestTelemetryPipeline{Kind: "telemetry-export-outcome-profile", CollectorProbeOutcomeMode: "unsupported", ExportOutcomeMode: "unavailable"},
+			OperationalStateBackup: GuestOperationalStateBackupDeployment{
+				RootDirectory:      "/var/lib/vitalserver/guest-runtime",
+				LedgerDatabasePath: "/var/lib/vitalserver/guest-runtime/operational-state-backup-ledger.sqlite",
+				DestinationReference: GuestProductResourceReference{
+					ResourceType: "guest-backup-destination",
+					ResourceID:   "guest-local-operational-state",
+				},
+				PGDumpExecutablePath:    "/usr/bin/pg_dump",
+				PGRestoreExecutablePath: "/usr/bin/pg_restore",
+			},
 		},
 		RecorderGateway: RecorderGatewayProcessDeployment{
 			NodeExecutablePath: "/opt/vitalserver/node/bin/node", ProgramPath: "/opt/vitalserver/recorder-gateway/dist/cmd/recorder-gateway.js", Listener: GuestProductProcessListener{BindHost: "0.0.0.0", Port: 8090}, DurableIngressStateDirectory: "/var/lib/vitalserver/recorder-gateway", VitalServerTopologyDeploymentPath: "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json", ExternalVitalServerDeliveryConfigurationPath: "/etc/vitalserver/external-vitalserver-delivery-configuration.json",
-			DeliveryReplayAdmissionPolicy: RecorderGatewayDeliveryReplayAdmissionPolicy{MaximumPendingItems: 1024, MaximumPendingBytes: 67108864}, ColdPathCapturePolicy: RecorderGatewayColdPathCapturePolicy{MaximumRetainedPackets: 1024, MaximumRetainedPayloadBytes: 67108864}, ReplayPolicy: RecorderGatewayReplayPolicy{IntervalMilliseconds: 100, MaximumAttempts: 3, RetryDelayMilliseconds: 100, LeaseDurationMilliseconds: 1000},
+			DeliveryReplayAdmissionPolicy: RecorderGatewayDeliveryReplayAdmissionPolicy{MaximumPendingItems: 1024, MaximumPendingBytes: 67108864}, ColdPathCapturePolicy: RecorderGatewayColdPathCapturePolicy{MaximumRetainedPackets: 1024, MaximumRetainedPayloadBytes: 67108864}, ReplayPolicy: RecorderGatewayReplayPolicy{IntervalMilliseconds: 100, MaximumAttempts: 3, RetryDelayMilliseconds: 100, LeaseDurationMilliseconds: 1000}, GuestRuntimeObservationCatalogEndpoint: "http://127.0.0.1:18443", ObservationCatalogBearerTokenMaterialPath: "/var/lib/vitalserver/private/recorder-catalog-admission-token", VitalUploadPolicy: RecorderGatewayVitalUploadPolicy{MaximumBytes: 67108864, RecoveryIntervalMilliseconds: 1000, RecoveryMaximumItems: 100}, GuestRuntimeArchiveSourceAdmissionEndpoint: "http://127.0.0.1:18443/internal/v1/archive/recorder-uploads", ArchiveSourceAdmissionBearerTokenMaterialPath: "/var/lib/vitalserver/private/archive-source-admission-token", ArchiveSourceAdmissionRequestTimeoutMilliseconds: 30000,
 		},
 		LabRecorderRunner: LabRecorderRunnerProcessDeployment{
-			NodeExecutablePath: "/opt/vitalserver/node/bin/node", ProgramPath: "/opt/vitalserver/lab-recorder-runner/dist/cmd/lab-recorder-runner.js", Listener: GuestProductProcessListener{BindHost: "127.0.0.1", Port: 8091}, RecorderGatewayEndpoint: "http://127.0.0.1:8090", GuestRuntimeObservationCatalogEndpoint: "http://127.0.0.1:18443", ScenarioCatalogPath: "/etc/vitalserver/lab-scenario-catalog.json",
+			NodeExecutablePath: "/opt/vitalserver/node/bin/node", ProgramPath: "/opt/vitalserver/lab-recorder-runner/dist/cmd/lab-recorder-runner.js", Listener: GuestProductProcessListener{BindHost: "127.0.0.1", Port: 8091}, RecorderGatewayEndpoint: "http://127.0.0.1:8090", ScenarioCatalogPath: "/etc/vitalserver/lab-scenario-catalog.json", ReplayStateDirectory: "/var/lib/vitalserver/lab-replay-runner",
 		},
 	}
 }

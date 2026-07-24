@@ -13,13 +13,14 @@ import (
 // its command operations, capability projection, and readiness projection.
 // It is not the owner of Lab, archive, external integration, or process state.
 type GuestRuntimeTopologyApplicationService struct {
-	repository         GuestRuntimeTopologyStateRepository
-	externalReader     GuestRuntimeExternalUpstreamCapabilityReader
-	clock              GuestRuntimeClock
-	identifiers        GuestRuntimeRequestCorrelationIdentifierGenerator
-	serviceVersion     string
-	serviceInstance    string
-	topologyWorkflowMu sync.Mutex
+	repository            GuestRuntimeTopologyStateRepository
+	externalReader        GuestRuntimeExternalUpstreamCapabilityReader
+	clock                 GuestRuntimeClock
+	identifiers           GuestRuntimeRequestCorrelationIdentifierGenerator
+	serviceVersion        string
+	serviceInstance       string
+	readinessDependencies []GuestRuntimeReadinessDependency
+	topologyWorkflowMu    sync.Mutex
 }
 
 func NewGuestRuntimeTopologyApplicationService(repository GuestRuntimeTopologyStateRepository, clock GuestRuntimeClock, identifiers GuestRuntimeRequestCorrelationIdentifierGenerator, serviceVersion string, serviceInstance string) (*GuestRuntimeTopologyApplicationService, error) {
@@ -31,19 +32,63 @@ func NewGuestRuntimeTopologyApplicationService(repository GuestRuntimeTopologySt
 // bundled-profile fallback; the topology can report that unsupported state but
 // cannot manufacture an external capability.
 func NewGuestRuntimeTopologyApplicationServiceWithExternalUpstreamReader(repository GuestRuntimeTopologyStateRepository, externalReader GuestRuntimeExternalUpstreamCapabilityReader, clock GuestRuntimeClock, identifiers GuestRuntimeRequestCorrelationIdentifierGenerator, serviceVersion string, serviceInstance string) (*GuestRuntimeTopologyApplicationService, error) {
+	return NewGuestRuntimeTopologyApplicationServiceWithDependencies(
+		repository,
+		externalReader,
+		nil,
+		clock,
+		identifiers,
+		serviceVersion,
+		serviceInstance,
+	)
+}
+
+// NewGuestRuntimeTopologyApplicationServiceWithDependencies composes product
+// readiness from explicitly named owner dependencies. A missing dependency is
+// a composition error; an unavailable dependency is a failed readiness read.
+func NewGuestRuntimeTopologyApplicationServiceWithDependencies(
+	repository GuestRuntimeTopologyStateRepository,
+	externalReader GuestRuntimeExternalUpstreamCapabilityReader,
+	readinessDependencies []GuestRuntimeReadinessDependency,
+	clock GuestRuntimeClock,
+	identifiers GuestRuntimeRequestCorrelationIdentifierGenerator,
+	serviceVersion string,
+	serviceInstance string,
+) (*GuestRuntimeTopologyApplicationService, error) {
 	if repository == nil || clock == nil || identifiers == nil {
 		return nil, fmt.Errorf("repository, clock, and identifier generator are required")
 	}
 	if serviceVersion == "" {
 		return nil, fmt.Errorf("service version is required")
 	}
+	dependencyIDs := map[string]struct{}{}
+	for _, dependency := range readinessDependencies {
+		if dependency == nil {
+			return nil, fmt.Errorf("Guest Runtime readiness dependency is required")
+		}
+		dependencyID := dependency.GuestRuntimeReadinessDependencyID()
+		if !guestruntimedomain.ValidIdentifier(dependencyID) {
+			return nil, fmt.Errorf(
+				"Guest Runtime readiness dependency ID %q is invalid",
+				dependencyID,
+			)
+		}
+		if _, exists := dependencyIDs[dependencyID]; exists {
+			return nil, fmt.Errorf(
+				"Guest Runtime readiness dependency ID %q is duplicated",
+				dependencyID,
+			)
+		}
+		dependencyIDs[dependencyID] = struct{}{}
+	}
 	return &GuestRuntimeTopologyApplicationService{
-		repository:      repository,
-		externalReader:  externalReader,
-		clock:           clock,
-		identifiers:     identifiers,
-		serviceVersion:  serviceVersion,
-		serviceInstance: serviceInstance,
+		repository:            repository,
+		externalReader:        externalReader,
+		clock:                 clock,
+		identifiers:           identifiers,
+		serviceVersion:        serviceVersion,
+		serviceInstance:       serviceInstance,
+		readinessDependencies: append([]GuestRuntimeReadinessDependency(nil), readinessDependencies...),
 	}, nil
 }
 
@@ -160,6 +205,16 @@ func (service *GuestRuntimeTopologyApplicationService) ReadGuestRuntimeReadiness
 	now := guestruntimedomain.Timestamp(service.clock.Now())
 	if err := service.repository.VerifyRuntimeTopologyStateStoreAvailability(ctx); err != nil {
 		return failedRead(now, "guest-state-store-unavailable", err.Error(), "guest-state-store")
+	}
+	for _, dependency := range service.readinessDependencies {
+		if err := dependency.VerifyGuestRuntimeReadinessDependency(ctx); err != nil {
+			return failedRead(
+				now,
+				"guest-readiness-dependency-unavailable",
+				err.Error(),
+				dependency.GuestRuntimeReadinessDependencyID(),
+			)
+		}
 	}
 	return guestruntimedomain.ReadResult{
 		SchemaVersion: guestruntimedomain.SchemaVersion,
