@@ -60,6 +60,13 @@
       "maxLength": 64,
       "pattern": "^http://(127\\.0\\.0\\.1|\\[::1\\]):[0-9]+$"
     },
+    "GuestRuntimeArchiveSourceAdmissionURL": {
+      "description": "The exact Guest Runtime internal Archive source admission route.",
+      "type": "string",
+      "minLength": 58,
+      "maxLength": 128,
+      "pattern": "^http://(127\\.0\\.0\\.1|\\[::1\\]):[0-9]+/internal/v1/archive/recorder-uploads$"
+    },
     "Port": { "type": "integer", "minimum": 1, "maximum": 65535 },
     "Listener": {
       "type": "object",
@@ -222,7 +229,7 @@
     "GuestRuntimeProcess": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["executablePath", "listener", "controlVirtioSocketListener", "publicServiceVirtioSocketBridges", "stateDatabasePath", "serviceVersion", "instanceId", "archiveExportProvider", "recorderGatewayColdPathSourceEndpoint", "labRecorderRunnerEndpoint", "externalUpstreamObservationProvider", "outboundRelayObservationProvider", "timeAuthority", "telemetryPipeline"],
+      "required": ["executablePath", "listener", "controlVirtioSocketListener", "publicServiceVirtioSocketBridges", "stateDatabasePath", "recorderCatalogDatabaseUrlMaterialPath", "recorderCatalogMigrationReceiptPath", "recorderCatalogAdmissionBearerTokenMaterialPath", "recorderObservationMaxReportAgeSeconds", "archiveSourceAdmissionBearerTokenMaterialPath", "archiveArtifactObjectRootDirectory", "archiveSourceMaximumBytes", "labReplaySourceObjectRootDirectory", "labReplaySourceMaximumBytes", "labReplaySpoolRootDirectory", "labReplayStringTrackPolicy", "labReplayGapPolicy", "labReplayFrameBatchSize", "recorderAttributionPolicyKind", "serviceVersion", "instanceId", "archiveExportProvider", "recorderGatewayColdPathSourceEndpoint", "labRecorderRunnerEndpoint", "externalUpstreamObservationProvider", "outboundRelayObservationProvider", "timeAuthority", "telemetryPipeline", "operationalStateBackup"],
       "properties": {
         "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
         "listener": { "$ref": "#/$defs/Listener" },
@@ -233,6 +240,20 @@
           "items": { "$ref": "#/$defs/GuestPublicServiceVirtioSocketBridge" }
         },
         "stateDatabasePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "recorderCatalogDatabaseUrlMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "recorderCatalogMigrationReceiptPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "recorderCatalogAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "recorderObservationMaxReportAgeSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "archiveSourceAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "archiveArtifactObjectRootDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "archiveSourceMaximumBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 },
+        "labReplaySourceObjectRootDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "labReplaySourceMaximumBytes": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+        "labReplaySpoolRootDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "labReplayStringTrackPolicy": { "enum": ["reject", "skip"] },
+        "labReplayGapPolicy": { "enum": ["omit-track", "fail-frame"] },
+        "labReplayFrameBatchSize": { "const": 1 },
+        "recorderAttributionPolicyKind": { "const": "recorder-assignment-owner" },
         "serviceVersion": { "$ref": "#/$defs/Identifier" },
         "instanceId": { "$ref": "#/$defs/Identifier" },
         "archiveExportProvider": { "$ref": "#/$defs/ArchiveExportProvider" },
@@ -241,7 +262,48 @@
         "externalUpstreamObservationProvider": { "$ref": "#/$defs/ExternalUpstreamObservationProvider" },
         "outboundRelayObservationProvider": { "$ref": "#/$defs/OutboundRelayObservationProvider" },
         "timeAuthority": { "$ref": "#/$defs/GuestTimeAuthority" },
-        "telemetryPipeline": { "$ref": "#/$defs/GuestTelemetryPipeline" }
+        "telemetryPipeline": { "$ref": "#/$defs/GuestTelemetryPipeline" },
+        "operationalStateBackup": { "$ref": "#/$defs/GuestOperationalStateBackup" },
+        "operationalStateRestore": { "$ref": "#/$defs/GuestOperationalStateRestore" }
+      }
+    },
+    "GuestOperationalStateBackup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rootDirectory", "ledgerDatabasePath", "destinationReference", "pgDumpExecutablePath", "pgRestoreExecutablePath"],
+      "properties": {
+        "rootDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "ledgerDatabasePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "destinationReference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resourceType", "resourceId"],
+          "properties": {
+            "resourceType": { "$ref": "#/$defs/Identifier" },
+            "resourceId": { "$ref": "#/$defs/Identifier" }
+          }
+        },
+        "pgDumpExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "pgRestoreExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    },
+    "GuestOperationalStateRestore": {
+      "description": "Optional maintenance-only restore target. Its SQLite path must be absent and its PostgreSQL URL material must name an explicitly provisioned empty database; the live Guest Runtime stores are never valid targets.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetReference", "sqliteTargetPath", "postgresqlDatabaseUrlMaterialPath"],
+      "properties": {
+        "targetReference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resourceType", "resourceId"],
+          "properties": {
+            "resourceType": { "const": "guest-restore-target" },
+            "resourceId": { "$ref": "#/$defs/Identifier" }
+          }
+        },
+        "sqliteTargetPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "postgresqlDatabaseUrlMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
       }
     },
     "GuestRuntimeControlVirtioSocketListener": {
@@ -307,10 +369,20 @@
         "maximumRetainedPayloadBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 }
       }
     },
+    "RecorderGatewayVitalUploadPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumBytes", "recoveryIntervalMilliseconds", "recoveryMaximumItems"],
+      "properties": {
+        "maximumBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 },
+        "recoveryIntervalMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 },
+        "recoveryMaximumItems": { "type": "integer", "minimum": 1, "maximum": 1000 }
+      }
+    },
     "RecorderGatewayProcess": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["nodeExecutablePath", "programPath", "listener", "durableIngressStateDirectory", "vitalServerTopologyDeploymentPath", "deliveryReplayAdmissionPolicy", "coldPathCapturePolicy", "replayPolicy"],
+      "required": ["nodeExecutablePath", "programPath", "listener", "durableIngressStateDirectory", "vitalServerTopologyDeploymentPath", "deliveryReplayAdmissionPolicy", "coldPathCapturePolicy", "replayPolicy", "guestRuntimeObservationCatalogEndpoint", "observationCatalogBearerTokenMaterialPath", "vitalUploadPolicy", "guestRuntimeArchiveSourceAdmissionEndpoint", "archiveSourceAdmissionBearerTokenMaterialPath", "archiveSourceAdmissionRequestTimeoutMilliseconds"],
       "properties": {
         "nodeExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
         "programPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
@@ -320,14 +392,20 @@
         "externalVitalServerDeliveryConfigurationPath": { "$ref": "#/$defs/RecorderGatewayExternalVitalServerDeliveryConfigurationPath" },
         "deliveryReplayAdmissionPolicy": { "$ref": "#/$defs/RecorderGatewayDeliveryReplayAdmissionPolicy" },
         "coldPathCapturePolicy": { "$ref": "#/$defs/RecorderGatewayColdPathCapturePolicy" },
-        "replayPolicy": { "$ref": "#/$defs/RecorderGatewayReplayPolicy" }
+        "replayPolicy": { "$ref": "#/$defs/RecorderGatewayReplayPolicy" },
+        "guestRuntimeObservationCatalogEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
+        "observationCatalogBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "vitalUploadPolicy": { "$ref": "#/$defs/RecorderGatewayVitalUploadPolicy" },
+        "guestRuntimeArchiveSourceAdmissionEndpoint": { "$ref": "#/$defs/GuestRuntimeArchiveSourceAdmissionURL" },
+        "archiveSourceAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "archiveSourceAdmissionRequestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 300000 }
       }
     },
     "LabRecorderRunnerProcess": {
-      "description": "Guest-local virtual-recorder Socket.IO execution process. It consumes a declared scenario catalog, the exact Recorder Gateway loopback endpoint, and Guest Runtime Recorder-observation catalog endpoint; it is not a public route, Lab state store, Gateway capture store, or Archive provider.",
+      "description": "Guest-local virtual-recorder Socket.IO execution process. It publishes Recorder observations only through the declared Recorder Gateway loopback endpoint; it never bypasses Gateway to write the Guest Runtime Catalog.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["nodeExecutablePath", "programPath", "listener", "recorderGatewayEndpoint", "guestRuntimeObservationCatalogEndpoint", "scenarioCatalogPath"],
+      "required": ["nodeExecutablePath", "programPath", "listener", "recorderGatewayEndpoint", "scenarioCatalogPath", "replayStateDirectory"],
       "properties": {
         "nodeExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
         "programPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
@@ -341,8 +419,8 @@
           }
         },
         "recorderGatewayEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
-        "guestRuntimeObservationCatalogEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
-        "scenarioCatalogPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+        "scenarioCatalogPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "replayStateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" }
       }
     }
   }

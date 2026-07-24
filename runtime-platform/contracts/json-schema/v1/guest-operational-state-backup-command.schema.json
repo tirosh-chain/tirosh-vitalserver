@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-backup-command",
+  "title": "GuestOperationalStateBackupCommand",
+  "description": "Requests one Guest-owned operational-state snapshot into an explicitly selected immutable destination. It does not select retention or claim publication success.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "operationId", "destinationReference", "requestedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "operationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "destinationReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+    "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  }
+}

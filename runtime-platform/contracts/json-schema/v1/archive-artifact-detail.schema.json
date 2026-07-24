@@ -1,0 +1,438 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:archive-artifact-detail",
+  "title": "ArchiveArtifactDetail",
+  "description": "Archive Export-owned artifact identity, Recorder attribution, upload attempts, and independent indexing receipts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifact",
+    "attribution",
+    "uploadAttempts",
+    "indexingReceipts"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "artifact": {
+      "$ref": "#/$defs/ArchiveArtifact"
+    },
+    "attribution": {
+      "$ref": "#/$defs/RecorderAttribution"
+    },
+    "uploadAttempts": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/UploadAttempt"
+      }
+    },
+    "indexingReceipts": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/IndexingReceipt"
+      }
+    }
+  },
+  "$defs": {
+    "ArchiveArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "artifactId",
+        "sourceKind",
+        "sourceReceiptType",
+        "sourceReceiptId",
+        "manifest",
+        "originalFileName",
+        "mediaType",
+        "byteSize",
+        "sha256",
+        "finalizationState",
+        "createdAt",
+        "finalizedAt"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "artifactId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "sourceKind": {
+          "type": "string",
+          "enum": [
+            "recorder-upload",
+            "gateway-cold-path",
+            "lab-export",
+            "manual-upload"
+          ]
+        },
+        "sourceReceiptType": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "sourceReceiptId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "manifest": {
+          "$ref": "#/$defs/ArchiveLineageManifest"
+        },
+        "originalFileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "finalizationState": {
+          "const": "finalized"
+        },
+        "createdAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "finalizedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    },
+    "ArchiveLineageManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "id",
+        "source",
+        "artifact",
+        "createdAt"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "receiptType",
+            "receiptId",
+            "finalizedAt",
+            "evidenceReference"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "recorder-upload",
+                "gateway-cold-path",
+                "lab-export",
+                "manual-upload"
+              ]
+            },
+            "receiptType": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "receiptId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "finalizedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "evidenceReference": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+            }
+          }
+        },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "artifactId",
+            "sha256",
+            "byteSize",
+            "mediaType",
+            "storageReference"
+          ],
+          "properties": {
+            "artifactId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "sha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
+            "byteSize": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mediaType": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "storageReference": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+            }
+          }
+        },
+        "createdAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    },
+    "RecorderAttribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "artifactId",
+        "evidenceObservedAt",
+        "candidateRecorderIds",
+        "outcome",
+        "policyVersion",
+        "resolvedAt"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "artifactId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "reportedBedName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "evidenceObservedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "assignmentEvidenceReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+        },
+        "candidateRecorderIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          }
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "matched",
+            "unresolved",
+            "ambiguous"
+          ]
+        },
+        "matchedRecorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "policyVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "resolvedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "matched"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "matchedRecorderId"
+            ],
+            "properties": {
+              "candidateRecorderIds": {
+                "minItems": 1,
+                "maxItems": 1
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "matchedRecorderId"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "unresolved"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidateRecorderIds": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "ambiguous"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidateRecorderIds": {
+                "minItems": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ProviderReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "capabilityRevision"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "capabilityRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "UploadAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "attemptId",
+        "requestId",
+        "artifactId",
+        "provider",
+        "state",
+        "startedAt"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "attemptId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "artifactId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderReference"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "requested",
+            "running",
+            "succeeded",
+            "failed",
+            "unknown"
+          ]
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "startedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "finishedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    },
+    "IndexingReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "artifactId",
+        "uploadAttemptId",
+        "outcome",
+        "observedAt",
+        "persistedAt"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "receiptId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "artifactId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "uploadAttemptId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "providerReceiptId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "indexed",
+            "not-indexed",
+            "unknown",
+            "unsupported",
+            "failed"
+          ]
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "persistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    }
+  }
+}

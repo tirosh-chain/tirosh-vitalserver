@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "lab-replay-source-request-1",
+  "sourceId": "lab-replay-source-1",
+  "originalFileName": "sample.vital",
+  "mediaType": "application/x-vital",
+  "byteSize": 20,
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

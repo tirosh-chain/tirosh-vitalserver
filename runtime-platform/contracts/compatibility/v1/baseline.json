@@ -83,6 +83,34 @@
             "type": "string"
           }
         },
+        "RecorderHistoryCursor": {
+          "in": "query",
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "RecorderHistoryLimit": {
+          "in": "query",
+          "name": "limit",
+          "required": true,
+          "schema": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "RecorderId": {
+          "in": "path",
+          "name": "recorderId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
         "RelayTargetId": {
           "in": "path",
           "name": "targetId",
@@ -125,6 +153,21 @@
         }
       },
       "schemas": {
+        "ArchiveArtifactDetailReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/archive-artifact-detail.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
         "ArtifactManifestReadResult": {
           "allOf": [
             {
@@ -149,24 +192,6 @@
               "properties": {
                 "value": {
                   "$ref": "../json-schema/v1/capability-document.schema.json"
-                }
-              },
-              "type": "object"
-            }
-          ]
-        },
-        "CatalogObservationCollectionReadResult": {
-          "allOf": [
-            {
-              "$ref": "../json-schema/v1/read-result.schema.json"
-            },
-            {
-              "properties": {
-                "value": {
-                  "items": {
-                    "$ref": "../json-schema/v1/catalog-observation.schema.json"
-                  },
-                  "type": "array"
                 }
               },
               "type": "object"
@@ -286,6 +311,36 @@
         },
         "FacadeForwardingFailure": {
           "$ref": "../json-schema/v1/facade-forwarding-failure.schema.json"
+        },
+        "GuestOperationalStateIdentityReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/guest-operational-state-identity.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "GuestOperationalStateOperationReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/guest-operational-state-backup-operation.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
         },
         "GuestRuntimeControlEndpointReadResult": {
           "allOf": [
@@ -492,6 +547,21 @@
             }
           ]
         },
+        "RecorderArtifactPageReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/recorder-artifact-page.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
         "RecorderColdPathCaptureFinalizationReceiptReadResult": {
           "allOf": [
             {
@@ -516,6 +586,66 @@
               "properties": {
                 "value": {
                   "$ref": "../json-schema/v1/recorder-cold-path-capture.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "RecorderIncidentHistoryReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/recorder-incident-page.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "RecorderObservabilitySummaryPageReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/recorder-observability-summary-page.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "RecorderObservabilitySummaryReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/recorder-observability-summary.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "RecorderObservationTimelineReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/recorder-observation-timeline-page.schema.json"
                 }
               },
               "type": "object"
@@ -1830,6 +1960,30 @@
           "x-owner": "archive-export"
         }
       },
+      "/v1/runtime/artifacts/{artifactId}": {
+        "get": {
+          "operationId": "getRuntimeArchiveArtifact",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/ArtifactId"
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ArchiveArtifactDetailReadResult"
+                  }
+                }
+              },
+              "description": "Explicit Archive artifact detail read"
+            }
+          },
+          "summary": "Read Archive Export-owned artifact lineage and independent upstream outcomes",
+          "x-owner": "archive-export"
+        }
+      },
       "/v1/runtime/capabilities": {
         "get": {
           "operationId": "getRuntimeCapabilities",
@@ -1847,72 +2001,6 @@
           },
           "summary": "Read explicit upstream provider capabilities",
           "x-owner": "guest-runtime"
-        }
-      },
-      "/v1/runtime/catalog/recorder-observations": {
-        "get": {
-          "operationId": "listCatalogObservations",
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/CatalogObservationCollectionReadResult"
-                  }
-                }
-              },
-              "description": "Explicit Catalog observation collection read"
-            }
-          },
-          "summary": "List immutable Recorder self-observation Catalog projections",
-          "x-owner": "guest-runtime-observation-catalog"
-        },
-        "post": {
-          "operationId": "ingestCatalogObservation",
-          "requestBody": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "../json-schema/v1/catalog-observation-command.schema.json"
-                }
-              }
-            },
-            "required": true
-          },
-          "responses": {
-            "202": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "../json-schema/v1/operation.schema.json"
-                  }
-                }
-              },
-              "description": "Durable Catalog ingest operation"
-            },
-            "400": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "../json-schema/v1/command-rejection.schema.json"
-                  }
-                }
-              },
-              "description": "Command rejected before admission"
-            },
-            "500": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/CommandAdmissionFailure"
-                  }
-                }
-              },
-              "description": "Catalog admission outcome is unknown"
-            }
-          },
-          "summary": "Persist a Recorder-owned self-observation without rewriting device occurrence time",
-          "x-owner": "guest-runtime-observation-catalog"
         }
       },
       "/v1/runtime/catalog/recorder-observations/{observationId}": {
@@ -2139,6 +2227,217 @@
           "x-owner": "guest-runtime-lab"
         }
       },
+      "/v1/runtime/lab/replay-sources": {
+        "post": {
+          "description": "The bounded base64url JSON command in X-Vital-Lab-Replay-Source-Command declares byteSize and sha256. The application/x-vital body remains one immutable source object and is not reclassified as a Recorder upload or Gateway cold-path artifact.",
+          "operationId": "admitLabReplaySource",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "X-Vital-Lab-Replay-Source-Command",
+              "required": true,
+              "schema": {
+                "maxLength": 16384,
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/x-vital": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/lab-replay-source-admission-receipt.schema.json"
+                  }
+                }
+              },
+              "description": "The exact request was already admitted and its object was reverified"
+            },
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/lab-replay-source-admission-receipt.schema.json"
+                  }
+                }
+              },
+              "description": "The complete source object was admitted"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The command header was malformed or invalid"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The declared source exceeds the configured limit"
+            },
+            "415": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The body media type is not application/x-vital"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The streamed bytes do not match the declared size and digest"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The owner outcome is unavailable or unknown"
+            }
+          },
+          "summary": "Stream one complete user-uploaded .vital file into the Lab replay source owner",
+          "x-owner": "guest-runtime-lab-replay-source"
+        }
+      },
+      "/v1/runtime/lab/replays": {
+        "post": {
+          "description": "Admission persists the pending-file-validation operation and its validate-file effect atomically. It does not claim that file validation, message send, or upstream delivery succeeded.",
+          "operationId": "admitLabReplay",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/lab-replay-command.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/lab-replay-operation.schema.json"
+                  }
+                }
+              },
+              "description": "Durable replay operation admitted"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "The replay command is malformed or invalid"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "The requestId was already used for a different replay command"
+            },
+            "500": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "Replay admission outcome is unknown"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The Lab replay owner is unavailable"
+            }
+          },
+          "summary": "Create one durable replay operation for an admitted Lab replay source",
+          "x-owner": "guest-runtime-lab-replay"
+        }
+      },
+      "/v1/runtime/lab/replays/{replayId}": {
+        "get": {
+          "operationId": "getLabReplay",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "replayId",
+              "required": true,
+              "schema": {
+                "$ref": "../json-schema/v1/common.schema.json#/$defs/Identifier"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/read-result.schema.json"
+                  }
+                }
+              },
+              "description": "Explicit replay operation read result"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/read-result.schema.json"
+                  }
+                }
+              },
+              "description": "The Lab replay owner is unavailable"
+            }
+          },
+          "summary": "Read the Guest-owned replay operation including typed terminal failure",
+          "x-owner": "guest-runtime-lab-replay"
+        }
+      },
       "/v1/runtime/lab/resources:command": {
         "post": {
           "operationId": "executeLabResourceCommand",
@@ -2278,6 +2577,207 @@
           "x-owner": "guest-runtime-lab"
         }
       },
+      "/v1/runtime/operational-state/backups": {
+        "post": {
+          "operationId": "admitGuestOperationalStateBackup",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/guest-operational-state-backup-command.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/guest-operational-state-backup-operation.schema.json"
+                  }
+                }
+              },
+              "description": "The backup command was durably admitted"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "The command document was invalid"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "The requestId already names a different backup or restore command"
+            },
+            "500": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The Guest owner cannot determine whether admission committed"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The Guest operational-state owner is unavailable"
+            }
+          },
+          "summary": "Admit one Guest operational-state backup into the configured immutable destination",
+          "x-owner": "guest-runtime"
+        }
+      },
+      "/v1/runtime/operational-state/identity": {
+        "get": {
+          "operationId": "getGuestOperationalStateIdentity",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuestOperationalStateIdentityReadResult"
+                  }
+                }
+              },
+              "description": "Explicit Guest operational-state identity read result"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/read-result.schema.json"
+                  }
+                }
+              },
+              "description": "One or both Guest operational-state owners are unavailable"
+            }
+          },
+          "summary": "Read the atomic Guest SQLite and PostgreSQL owner identity",
+          "x-owner": "guest-runtime"
+        }
+      },
+      "/v1/runtime/operational-state/operations/{operationId}": {
+        "get": {
+          "operationId": "getGuestOperationalStateOperation",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/OperationId"
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GuestOperationalStateOperationReadResult"
+                  }
+                }
+              },
+              "description": "Explicit Guest operational-state operation read result"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/read-result.schema.json"
+                  }
+                }
+              },
+              "description": "The Guest operational-state owner is unavailable"
+            }
+          },
+          "summary": "Read one durable Guest operational-state backup or restore operation",
+          "x-owner": "guest-runtime"
+        }
+      },
+      "/v1/runtime/operational-state/restores": {
+        "post": {
+          "operationId": "admitGuestOperationalStateRestore",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/guest-operational-state-restore-command.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/guest-operational-state-backup-operation.schema.json"
+                  }
+                }
+              },
+              "description": "The restore command was durably admitted"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "The command document was invalid"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "The requestId already names a different backup or restore command"
+            },
+            "500": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The Guest owner cannot determine whether admission committed"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "The Guest operational-state owner is unavailable"
+            }
+          },
+          "summary": "Admit one immutable manifest restore into an explicitly provisioned empty target",
+          "x-owner": "guest-runtime"
+        }
+      },
       "/v1/runtime/operations/{operationId}": {
         "get": {
           "operationId": "getRuntimeOperation",
@@ -2319,6 +2819,271 @@
           },
           "summary": "Read Runtime service-owned readiness",
           "x-owner": "guest-runtime"
+        }
+      },
+      "/v1/runtime/recorder-assignments": {
+        "post": {
+          "operationId": "admitRecorderAssignmentEvidence",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-assignment-evidence-command.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/recorder-assignment-evidence-receipt.schema.json"
+                  }
+                }
+              },
+              "description": "Recorder assignment evidence was accepted or already durably owned by the same request"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "Recorder assignment command rejected before admission"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "requestId is already bound to different assignment evidence"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "Recorder Assignment persistence outcome is unavailable or unknown"
+            }
+          },
+          "summary": "Persist explicit time-bounded Recorder assignment evidence",
+          "x-owner": "guest-runtime-recorder-assignment"
+        }
+      },
+      "/v1/runtime/recorders": {
+        "get": {
+          "operationId": "listRecorderObservabilitySummaries",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/RecorderHistoryLimit"
+            },
+            {
+              "$ref": "#/components/parameters/RecorderHistoryCursor"
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RecorderObservabilitySummaryPageReadResult"
+                  }
+                }
+              },
+              "description": "Bounded Recorder observability summary page read"
+            }
+          },
+          "summary": "Read one bounded Catalog-owned page of current Recorder projections",
+          "x-owner": "guest-runtime-observation-catalog"
+        }
+      },
+      "/v1/runtime/recorders/{recorderId}/artifacts": {
+        "get": {
+          "description": "Only matched Archive attribution is returned. A reported bed name is evidence and never serves as Recorder identity.",
+          "operationId": "getRecorderArchiveArtifacts",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/RecorderId"
+            },
+            {
+              "$ref": "#/components/parameters/RecorderHistoryLimit"
+            },
+            {
+              "$ref": "#/components/parameters/RecorderHistoryCursor"
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RecorderArtifactPageReadResult"
+                  }
+                }
+              },
+              "description": "Bounded Recorder artifact page read"
+            }
+          },
+          "summary": "Read one bounded page of artifacts explicitly attributed to a Recorder",
+          "x-owner": "archive-export"
+        }
+      },
+      "/v1/runtime/recorders/{recorderId}/observability": {
+        "get": {
+          "operationId": "getRecorderObservabilitySummary",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/RecorderId"
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RecorderObservabilitySummaryReadResult"
+                  }
+                }
+              },
+              "description": "Explicit Recorder observability summary read"
+            }
+          },
+          "summary": "Read the Catalog-owned current Recorder observability projection",
+          "x-owner": "guest-runtime-observation-catalog"
+        }
+      },
+      "/v1/runtime/recorders/{recorderId}/observability-expectation": {
+        "post": {
+          "operationId": "applyRecorderObservabilityExpectation",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/RecorderId"
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-observability-expectation-command.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/recorder-expectation-receipt.schema.json"
+                  }
+                }
+              },
+              "description": "Expectation event and current projections were durably persisted"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "Expectation command rejected before admission"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "Request ownership or expected revision conflict"
+            },
+            "500": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CommandAdmissionFailure"
+                  }
+                }
+              },
+              "description": "Expectation persistence outcome is unknown"
+            }
+          },
+          "summary": "Persist an explicit revisioned Recorder observability expectation",
+          "x-owner": "guest-runtime-observation-catalog"
+        }
+      },
+      "/v1/runtime/recorders/{recorderId}/observability/incidents": {
+        "get": {
+          "operationId": "getRecorderIncidentHistory",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/RecorderId"
+            },
+            {
+              "$ref": "#/components/parameters/RecorderHistoryLimit"
+            },
+            {
+              "$ref": "#/components/parameters/RecorderHistoryCursor"
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RecorderIncidentHistoryReadResult"
+                  }
+                }
+              },
+              "description": "Bounded Recorder incident history read"
+            }
+          },
+          "summary": "Read one bounded page of Recorder-reported typed issues",
+          "x-owner": "guest-runtime-observation-catalog"
+        }
+      },
+      "/v1/runtime/recorders/{recorderId}/observability/timeline": {
+        "get": {
+          "operationId": "getRecorderObservationTimeline",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/RecorderId"
+            },
+            {
+              "$ref": "#/components/parameters/RecorderHistoryLimit"
+            },
+            {
+              "$ref": "#/components/parameters/RecorderHistoryCursor"
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RecorderObservationTimelineReadResult"
+                  }
+                }
+              },
+              "description": "Bounded Recorder observation timeline read"
+            }
+          },
+          "summary": "Read one bounded immutable Recorder observation timeline page",
+          "x-owner": "guest-runtime-observation-catalog"
         }
       },
       "/v1/runtime/relay-targets": {
@@ -2741,6 +3506,444 @@
   },
   "schemaVersion": "v1",
   "schemas": {
+    "json-schema/v1/archive-artifact-detail.schema.json": {
+      "$defs": {
+        "ArchiveArtifact": {
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "byteSize": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "createdAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "finalizationState": {
+              "const": "finalized"
+            },
+            "finalizedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "manifest": {
+              "$ref": "#/$defs/ArchiveLineageManifest"
+            },
+            "mediaType": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "originalFileName": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "sha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
+            "sourceKind": {
+              "enum": [
+                "recorder-upload",
+                "gateway-cold-path",
+                "lab-export",
+                "manual-upload"
+              ],
+              "type": "string"
+            },
+            "sourceReceiptId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "sourceReceiptType": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "artifactId",
+            "sourceKind",
+            "sourceReceiptType",
+            "sourceReceiptId",
+            "manifest",
+            "originalFileName",
+            "mediaType",
+            "byteSize",
+            "sha256",
+            "finalizationState",
+            "createdAt",
+            "finalizedAt"
+          ],
+          "type": "object"
+        },
+        "ArchiveLineageManifest": {
+          "additionalProperties": false,
+          "properties": {
+            "artifact": {
+              "additionalProperties": false,
+              "properties": {
+                "artifactId": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+                },
+                "byteSize": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mediaType": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+                },
+                "storageReference": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+                }
+              },
+              "required": [
+                "artifactId",
+                "sha256",
+                "byteSize",
+                "mediaType",
+                "storageReference"
+              ],
+              "type": "object"
+            },
+            "createdAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "source": {
+              "additionalProperties": false,
+              "properties": {
+                "evidenceReference": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+                },
+                "finalizedAt": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+                },
+                "kind": {
+                  "enum": [
+                    "recorder-upload",
+                    "gateway-cold-path",
+                    "lab-export",
+                    "manual-upload"
+                  ],
+                  "type": "string"
+                },
+                "receiptId": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+                },
+                "receiptType": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+                }
+              },
+              "required": [
+                "kind",
+                "receiptType",
+                "receiptId",
+                "finalizedAt",
+                "evidenceReference"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "id",
+            "source",
+            "artifact",
+            "createdAt"
+          ],
+          "type": "object"
+        },
+        "IndexingReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "issue": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+            },
+            "observedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "outcome": {
+              "enum": [
+                "indexed",
+                "not-indexed",
+                "unknown",
+                "unsupported",
+                "failed"
+              ],
+              "type": "string"
+            },
+            "persistedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "providerReceiptId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "receiptId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "uploadAttemptId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "receiptId",
+            "artifactId",
+            "uploadAttemptId",
+            "outcome",
+            "observedAt",
+            "persistedAt"
+          ],
+          "type": "object"
+        },
+        "ProviderReference": {
+          "additionalProperties": false,
+          "properties": {
+            "capabilityRevision": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "kind": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "capabilityRevision"
+          ],
+          "type": "object"
+        },
+        "RecorderAttribution": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "else": {
+                "not": {
+                  "required": [
+                    "matchedRecorderId"
+                  ]
+                }
+              },
+              "if": {
+                "properties": {
+                  "outcome": {
+                    "const": "matched"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "candidateRecorderIds": {
+                    "maxItems": 1,
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "matchedRecorderId"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "outcome": {
+                    "const": "unresolved"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "candidateRecorderIds": {
+                    "maxItems": 0
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "outcome": {
+                    "const": "ambiguous"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "candidateRecorderIds": {
+                    "minItems": 2
+                  }
+                }
+              }
+            }
+          ],
+          "properties": {
+            "artifactId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "assignmentEvidenceReference": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+            },
+            "candidateRecorderIds": {
+              "items": {
+                "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "evidenceObservedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "matchedRecorderId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "outcome": {
+              "enum": [
+                "matched",
+                "unresolved",
+                "ambiguous"
+              ],
+              "type": "string"
+            },
+            "policyVersion": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "reportedBedName": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "resolvedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "artifactId",
+            "evidenceObservedAt",
+            "candidateRecorderIds",
+            "outcome",
+            "policyVersion",
+            "resolvedAt"
+          ],
+          "type": "object"
+        },
+        "UploadAttempt": {
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "attemptId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "finishedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "issue": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+            },
+            "provider": {
+              "$ref": "#/$defs/ProviderReference"
+            },
+            "requestId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "startedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "state": {
+              "enum": [
+                "requested",
+                "running",
+                "succeeded",
+                "failed",
+                "unknown"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "attemptId",
+            "requestId",
+            "artifactId",
+            "provider",
+            "state",
+            "startedAt"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:archive-artifact-detail",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Archive Export-owned artifact identity, Recorder attribution, upload attempts, and independent indexing receipts.",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArchiveArtifact"
+        },
+        "attribution": {
+          "$ref": "#/$defs/RecorderAttribution"
+        },
+        "indexingReceipts": {
+          "items": {
+            "$ref": "#/$defs/IndexingReceipt"
+          },
+          "maxItems": 100,
+          "type": "array"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "uploadAttempts": {
+          "items": {
+            "$ref": "#/$defs/UploadAttempt"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "artifact",
+        "attribution",
+        "uploadAttempts",
+        "indexingReceipts"
+      ],
+      "title": "ArchiveArtifactDetail",
+      "type": "object"
+    },
     "json-schema/v1/archive-export-provider.schema.json": {
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:archive-export-provider",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3019,6 +4222,138 @@
         "reads"
       ],
       "title": "CapabilityDocument",
+      "type": "object"
+    },
+    "json-schema/v1/catalog-observation-admission.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:catalog-observation-admission",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "accepted"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "duplicateOfObservationReference"
+                  ]
+                },
+                {
+                  "required": [
+                    "issue"
+                  ]
+                }
+              ]
+            },
+            "required": [
+              "observationReference"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "duplicate"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "observationReference"
+                  ]
+                },
+                {
+                  "required": [
+                    "issue"
+                  ]
+                }
+              ]
+            },
+            "required": [
+              "duplicateOfObservationReference"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "quarantined"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "observationReference"
+                  ]
+                },
+                {
+                  "required": [
+                    "duplicateOfObservationReference"
+                  ]
+                }
+              ]
+            },
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ],
+      "description": "The Recorder Observation Catalog owner's durable admission receipt. Duplicate and quarantined are explicit persisted outcomes; an unknown write outcome is a CommandAdmissionFailure, not this receipt.",
+      "properties": {
+        "duplicateOfObservationReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "observationReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "outcome": {
+          "enum": [
+            "accepted",
+            "duplicate",
+            "quarantined"
+          ],
+          "type": "string"
+        },
+        "persistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "receivedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "outcome",
+        "receivedAt",
+        "persistedAt"
+      ],
+      "title": "CatalogObservationAdmission",
       "type": "object"
     },
     "json-schema/v1/catalog-observation-command.schema.json": {
@@ -6214,6 +7549,270 @@
       ],
       "title": "GuestBundledUpstreamImageSetManagement"
     },
+    "json-schema/v1/guest-installed-runtime-evidence.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-installed-runtime-evidence",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "stage": {
+                "enum": [
+                  "first-boot-checkpoint",
+                  "post-reboot-identity"
+                ]
+              },
+              "status": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "stage",
+              "status"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            },
+            "required": [
+              "hostBootSessionIdentifier",
+              "readinessObservedAt",
+              "identity"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "stage": {
+                "const": "direct-upload-lineage"
+              },
+              "status": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "stage",
+              "status"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            },
+            "required": [
+              "checkpointEvidenceId",
+              "edgeEndpoint",
+              "sourceVitalFile",
+              "uploadId",
+              "recorderId",
+              "reportedBedName",
+              "declaredRecorderCode",
+              "assignmentReceipt",
+              "artifact"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "identity"
+                  ]
+                },
+                {
+                  "required": [
+                    "artifact"
+                  ]
+                }
+              ]
+            },
+            "required": [
+              "issue"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "stage": {
+                "enum": [
+                  "direct-upload-lineage",
+                  "post-reboot-identity"
+                ]
+              }
+            },
+            "required": [
+              "stage"
+            ]
+          },
+          "then": {
+            "required": [
+              "checkpointEvidenceId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "stage": {
+                "const": "post-reboot-identity"
+              }
+            },
+            "required": [
+              "stage"
+            ]
+          },
+          "then": {
+            "required": [
+              "directUploadEvidenceId"
+            ]
+          }
+        }
+      ],
+      "description": "Release-runner evidence that an installed Guest exposed an available C77 identity through the Host facade before or after an observed Host reboot, and that a direct Recorder multipart upload was attributed to the explicit Recorder by the Archive owner. It does not infer Guest state from package, process, file, or log presence.",
+      "properties": {
+        "artifact": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:archive-artifact-detail"
+        },
+        "assignmentReceipt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-assignment-evidence-receipt"
+        },
+        "checkpointEvidenceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "declaredRecorderCode": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string"
+        },
+        "directUploadEvidenceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "edgeEndpoint": {
+          "format": "uri",
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "evidenceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "hostBootSessionIdentifier": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "identity": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-identity"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "readinessObservedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "recordedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "releaseDeliveryPlanId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "reportedBedName": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string"
+        },
+        "runner": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "kind": {
+              "const": "guest-installed-runtime"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sourceVitalFile": {
+          "additionalProperties": false,
+          "properties": {
+            "byteSize": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "fileName": {
+              "maxLength": 1024,
+              "minLength": 7,
+              "pattern": "\\.vital$",
+              "type": "string"
+            },
+            "sha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            }
+          },
+          "required": [
+            "fileName",
+            "byteSize",
+            "sha256"
+          ],
+          "type": "object"
+        },
+        "stage": {
+          "enum": [
+            "first-boot-checkpoint",
+            "direct-upload-lineage",
+            "post-reboot-identity"
+          ]
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "failed"
+          ]
+        },
+        "uploadId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "evidenceId",
+        "releaseDeliveryPlanId",
+        "stage",
+        "status",
+        "recordedAt",
+        "runner"
+      ],
+      "title": "GuestInstalledRuntimeEvidence",
+      "type": "object"
+    },
     "json-schema/v1/guest-lifecycle-command.schema.json": {
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-lifecycle-command",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6920,6 +8519,761 @@
       ],
       "title": "GuestLinuxSourceDiskMaterialization"
     },
+    "json-schema/v1/guest-operational-state-artifact-inventory.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-artifact-inventory",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Immutable Archive-owner metadata inventory included in C76. It does not claim that raw artifact object bytes were copied or retained.",
+      "properties": {
+        "artifacts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "artifactId": {
+                "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+              },
+              "byteSize": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "finalizationState": {
+                "const": "finalized"
+              },
+              "sha256": {
+                "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+              },
+              "storageReference": {
+                "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+              }
+            },
+            "required": [
+              "artifactId",
+              "storageReference",
+              "byteSize",
+              "sha256",
+              "finalizationState"
+            ],
+            "type": "object"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "createdAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "objectBytesIncluded": {
+          "const": false
+        },
+        "operationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "operationId",
+        "artifacts",
+        "objectBytesIncluded",
+        "createdAt"
+      ],
+      "title": "GuestOperationalStateArtifactInventory",
+      "type": "object"
+    },
+    "json-schema/v1/guest-operational-state-backup-command.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-backup-command",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Requests one Guest-owned operational-state snapshot into an explicitly selected immutable destination. It does not select retention or claim publication success.",
+      "properties": {
+        "destinationReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "operationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "operationId",
+        "destinationReference",
+        "requestedAt"
+      ],
+      "title": "GuestOperationalStateBackupCommand",
+      "type": "object"
+    },
+    "json-schema/v1/guest-operational-state-backup-manifest.schema.json": {
+      "$defs": {
+        "ArtifactInventoryReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "artifactCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "inventory": {
+              "$ref": "#/$defs/SnapshotArtifact"
+            }
+          },
+          "required": [
+            "artifactCount",
+            "inventory"
+          ],
+          "type": "object"
+        },
+        "PostgreSQLSnapshotReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "alembicRevision": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "databaseId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "includedOwnerSchemas": {
+              "items": {
+                "enum": [
+                  "recorder_catalog",
+                  "archive_export",
+                  "recorder_assignment",
+                  "guest_operational_state"
+                ]
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "snapshot": {
+              "$ref": "#/$defs/SnapshotArtifact"
+            }
+          },
+          "required": [
+            "databaseId",
+            "alembicRevision",
+            "includedOwnerSchemas",
+            "snapshot"
+          ],
+          "type": "object"
+        },
+        "SQLiteSnapshotReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "databaseId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "snapshot": {
+              "$ref": "#/$defs/SnapshotArtifact"
+            }
+          },
+          "required": [
+            "databaseId",
+            "schemaVersion",
+            "snapshot"
+          ],
+          "type": "object"
+        },
+        "SnapshotArtifact": {
+          "additionalProperties": false,
+          "properties": {
+            "byteSize": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "reference": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+            },
+            "sha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            }
+          },
+          "required": [
+            "reference",
+            "byteSize",
+            "sha256"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-backup-manifest",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Immutable successful C76 backup evidence. Artifact metadata is inventoried; raw artifact object bytes are deliberately outside v1.",
+      "properties": {
+        "artifactInventory": {
+          "$ref": "#/$defs/ArtifactInventoryReceipt"
+        },
+        "createdAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "destinationReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "objectBytesIncluded": {
+          "const": false
+        },
+        "operationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "postgresqlSnapshot": {
+          "$ref": "#/$defs/PostgreSQLSnapshotReceipt"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sqliteSnapshot": {
+          "$ref": "#/$defs/SQLiteSnapshotReceipt"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "operationId",
+        "destinationReference",
+        "sqliteSnapshot",
+        "postgresqlSnapshot",
+        "artifactInventory",
+        "objectBytesIncluded",
+        "createdAt"
+      ],
+      "title": "GuestOperationalStateBackupManifest",
+      "type": "object"
+    },
+    "json-schema/v1/guest-operational-state-backup-operation.schema.json": {
+      "$defs": {
+        "Failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "failedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "message": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "stage": {
+              "enum": [
+                "sqlite-snapshot",
+                "postgresql-snapshot",
+                "artifact-inventory",
+                "manifest-publication",
+                "backup-validation",
+                "empty-target-proof",
+                "sqlite-restore",
+                "postgresql-restore",
+                "owner-read-verification"
+              ]
+            }
+          },
+          "required": [
+            "stage",
+            "code",
+            "message",
+            "failedAt"
+          ],
+          "type": "object"
+        },
+        "StageReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "completedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "evidenceReference": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+            },
+            "evidenceSha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
+            "stage": {
+              "enum": [
+                "sqlite-snapshot",
+                "postgresql-snapshot",
+                "artifact-inventory",
+                "manifest-publication",
+                "backup-validation",
+                "empty-target-proof",
+                "sqlite-restore",
+                "postgresql-restore",
+                "owner-read-verification"
+              ]
+            }
+          },
+          "required": [
+            "stage",
+            "evidenceReference",
+            "evidenceSha256",
+            "completedAt"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-backup-operation",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "destinationReference"
+              ]
+            },
+            "required": [
+              "manifestReference",
+              "manifestSha256",
+              "targetReference"
+            ]
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "backup"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "targetReference"
+              ]
+            },
+            "required": [
+              "destinationReference"
+            ]
+          }
+        },
+        {
+          "else": {
+            "not": {
+              "required": [
+                "failure"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "state": {
+                "const": "failed"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "failure"
+            ]
+          }
+        },
+        {
+          "else": {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "backup"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "manifestReference"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "manifestSha256"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "backup"
+              },
+              "state": {
+                "const": "succeeded"
+              }
+            },
+            "required": [
+              "kind",
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "manifestReference",
+              "manifestSha256"
+            ]
+          }
+        }
+      ],
+      "description": "Durable C76 backup or empty-target restore workflow state. Stage evidence is explicit and terminal failure remains readable.",
+      "properties": {
+        "createdAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "destinationReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "failure": {
+          "$ref": "#/$defs/Failure"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "kind": {
+          "enum": [
+            "backup",
+            "restore"
+          ]
+        },
+        "manifestReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "manifestSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "resourceRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "stageReceipts": {
+          "items": {
+            "$ref": "#/$defs/StageReceipt"
+          },
+          "maxItems": 9,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "state": {
+          "enum": [
+            "requested",
+            "snapshotting-sqlite",
+            "snapshotting-postgresql",
+            "inventorying-artifacts",
+            "publishing",
+            "validating-backup",
+            "proving-empty-target",
+            "restoring-sqlite",
+            "restoring-postgresql",
+            "verifying-owner-reads",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "targetReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "updatedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "requestId",
+        "resourceRevision",
+        "kind",
+        "state",
+        "stageReceipts",
+        "createdAt",
+        "updatedAt"
+      ],
+      "title": "GuestOperationalStateBackupOperation",
+      "type": "object"
+    },
+    "json-schema/v1/guest-operational-state-empty-target-proof.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-empty-target-proof",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Owner-provided proof that one explicitly selected restore target has no SQLite state and no PostgreSQL owner state. A missing or failed probe is not an empty target.",
+      "properties": {
+        "operationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "postgresqlTarget": {
+          "additionalProperties": false,
+          "properties": {
+            "alembicVersionTablePresent": {
+              "const": false
+            },
+            "ownerSchemaCount": {
+              "const": 0
+            },
+            "state": {
+              "const": "empty"
+            }
+          },
+          "required": [
+            "state",
+            "ownerSchemaCount",
+            "alembicVersionTablePresent"
+          ],
+          "type": "object"
+        },
+        "provedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sqliteTarget": {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "absent"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        "targetReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "operationId",
+        "targetReference",
+        "sqliteTarget",
+        "postgresqlTarget",
+        "provedAt"
+      ],
+      "title": "GuestOperationalStateEmptyTargetProof",
+      "type": "object"
+    },
+    "json-schema/v1/guest-operational-state-identity.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-identity",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "One atomic Guest-owner observation of the SQLite control ledger, PostgreSQL accumulated state, persisted migration receipt, and non-secret aggregate private-material identity used by installation, reboot, and restore acceptance. A partial or inferred identity is not valid.",
+      "properties": {
+        "bootstrap": {
+          "additionalProperties": false,
+          "description": "Persisted owner evidence from the explicit C37 paths. It exposes no material value or individual material digest.",
+          "properties": {
+            "migrationReceipt": {
+              "additionalProperties": false,
+              "properties": {
+                "finishedAt": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+                },
+                "revision": {
+                  "const": "0006_backup_owner"
+                },
+                "schemaVersion": {
+                  "const": "v1"
+                },
+                "startedAt": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+                },
+                "state": {
+                  "const": "succeeded"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "state",
+                "revision",
+                "startedAt",
+                "finishedAt"
+              ],
+              "type": "object"
+            },
+            "privateMaterialSet": {
+              "additionalProperties": false,
+              "properties": {
+                "materialCount": {
+                  "const": 3
+                },
+                "sha256": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+                }
+              },
+              "required": [
+                "materialCount",
+                "sha256"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "migrationReceipt",
+            "privateMaterialSet"
+          ],
+          "type": "object"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "postgresql": {
+          "additionalProperties": false,
+          "properties": {
+            "alembicRevision": {
+              "const": "0006_backup_owner"
+            },
+            "databaseId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "ownerSchemas": {
+              "allOf": [
+                {
+                  "contains": {
+                    "const": "archive_export"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "guest_operational_state"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "recorder_assignment"
+                  }
+                },
+                {
+                  "contains": {
+                    "const": "recorder_catalog"
+                  }
+                }
+              ],
+              "items": {
+                "enum": [
+                  "archive_export",
+                  "guest_operational_state",
+                  "recorder_assignment",
+                  "recorder_catalog"
+                ]
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "databaseId",
+            "alembicRevision",
+            "ownerSchemas"
+          ],
+          "type": "object"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sqlite": {
+          "additionalProperties": false,
+          "properties": {
+            "databaseId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "databaseId",
+            "schemaVersion"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "sqlite",
+        "postgresql",
+        "bootstrap",
+        "observedAt"
+      ],
+      "title": "GuestOperationalStateIdentity",
+      "type": "object"
+    },
+    "json-schema/v1/guest-operational-state-restore-command.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-restore-command",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Requests restore of one immutable C76 manifest into one explicitly provisioned target. The restore workflow must independently prove that target empty.",
+      "properties": {
+        "manifestReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "manifestSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "operationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "targetReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "operationId",
+        "manifestReference",
+        "manifestSha256",
+        "targetReference",
+        "requestedAt"
+      ],
+      "title": "GuestOperationalStateRestoreCommand",
+      "type": "object"
+    },
     "json-schema/v1/guest-product-bootstrap-configuration.schema.json": {
       "$defs": {
         "AbsoluteGuestPath": {
@@ -6969,6 +9323,40 @@
             "artifactId",
             "destinationPath",
             "fileMode"
+          ],
+          "type": "object"
+        },
+        "GuestArchiveArtifactObjectDirectory": {
+          "additionalProperties": false,
+          "description": "Persistent Archive Export-owned object root prepared before direct upload admission.",
+          "properties": {
+            "directoryMode": {
+              "const": "0700"
+            },
+            "directoryPath": {
+              "const": "/var/lib/vitalserver/archive-artifacts"
+            }
+          },
+          "required": [
+            "directoryPath",
+            "directoryMode"
+          ],
+          "type": "object"
+        },
+        "GuestPrivateStateDirectory": {
+          "additionalProperties": false,
+          "description": "Persistent Guest-owned private material root. It is deliberately not /run, so reboot cannot erase database credentials or internal bearer tokens.",
+          "properties": {
+            "directoryMode": {
+              "const": "0700"
+            },
+            "directoryPath": {
+              "const": "/var/lib/vitalserver/private"
+            }
+          },
+          "required": [
+            "directoryPath",
+            "directoryMode"
           ],
           "type": "object"
         },
@@ -7243,6 +9631,9 @@
             "amd64"
           ]
         },
+        "guestArchiveArtifactObjectDirectory": {
+          "$ref": "#/$defs/GuestArchiveArtifactObjectDirectory"
+        },
         "guestBootstrapVolumeFileSystem": {
           "const": "iso9660"
         },
@@ -7442,6 +9833,9 @@
           ],
           "type": "object"
         },
+        "guestPrivateStateDirectory": {
+          "$ref": "#/$defs/GuestPrivateStateDirectory"
+        },
         "guestProductProcessDeployment": {
           "$ref": "#/$defs/ConfigurationBootstrapPayload"
         },
@@ -7499,6 +9893,79 @@
             "artifactId",
             "destinationPath",
             "fileMode"
+          ],
+          "type": "object"
+        },
+        "guestRecorderCatalogPostgreSQL": {
+          "additionalProperties": false,
+          "description": "Explicit first-boot PostgreSQL owner, private material generation, and Alembic migration effect. C40 must obtain the expected revision before it starts C38.",
+          "properties": {
+            "archiveSourceAdmissionBearerTokenMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "catalogAdmissionBearerTokenMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "databaseHost": {
+              "const": "127.0.0.1"
+            },
+            "databaseName": {
+              "const": "vitalserver"
+            },
+            "databasePort": {
+              "const": 5432
+            },
+            "databaseRoleName": {
+              "const": "vitalserver"
+            },
+            "databaseURLMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "expectedRevision": {
+              "const": "0006_backup_owner"
+            },
+            "generatedSecretByteCount": {
+              "const": 32
+            },
+            "migrationExecutablePath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "migrationPythonExecutablePath": {
+              "const": "/usr/bin/python3"
+            },
+            "migrationReceiptPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "packageManager": {
+              "const": "apt"
+            },
+            "packageNames": {
+              "const": [
+                "postgresql",
+                "python3-alembic",
+                "python3-psycopg"
+              ]
+            },
+            "serviceName": {
+              "const": "postgresql.service"
+            }
+          },
+          "required": [
+            "packageManager",
+            "packageNames",
+            "serviceName",
+            "databaseHost",
+            "databasePort",
+            "databaseName",
+            "databaseRoleName",
+            "databaseURLMaterialPath",
+            "catalogAdmissionBearerTokenMaterialPath",
+            "archiveSourceAdmissionBearerTokenMaterialPath",
+            "generatedSecretByteCount",
+            "migrationExecutablePath",
+            "migrationPythonExecutablePath",
+            "expectedRevision",
+            "migrationReceiptPath"
           ],
           "type": "object"
         },
@@ -7600,6 +10067,9 @@
         "guestProductRelease",
         "guestRuntime",
         "guestRuntimeStateDirectory",
+        "guestPrivateStateDirectory",
+        "guestArchiveArtifactObjectDirectory",
+        "guestRecorderCatalogPostgreSQL",
         "guestNodeServicesBundle",
         "guestProductProcessSupervisor",
         "guestProductProcessDeployment",
@@ -7704,6 +10174,78 @@
             "currentReleaseLinkPath",
             "releaseStateDirectory",
             "releaseStateDirectoryMode"
+          ],
+          "type": "object"
+        },
+        "GuestRecorderCatalogPostgreSQL": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSourceAdmissionBearerTokenMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "catalogAdmissionBearerTokenMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "databaseHost": {
+              "const": "127.0.0.1"
+            },
+            "databaseName": {
+              "const": "vitalserver"
+            },
+            "databasePort": {
+              "const": 5432
+            },
+            "databaseRoleName": {
+              "const": "vitalserver"
+            },
+            "databaseURLMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "expectedRevision": {
+              "const": "0006_backup_owner"
+            },
+            "generatedSecretByteCount": {
+              "const": 32
+            },
+            "migrationExecutablePath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "migrationPythonExecutablePath": {
+              "const": "/usr/bin/python3"
+            },
+            "migrationReceiptPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "packageManager": {
+              "const": "apt"
+            },
+            "packageNames": {
+              "const": [
+                "postgresql",
+                "python3-alembic",
+                "python3-psycopg"
+              ]
+            },
+            "serviceName": {
+              "const": "postgresql.service"
+            }
+          },
+          "required": [
+            "packageManager",
+            "packageNames",
+            "serviceName",
+            "databaseHost",
+            "databasePort",
+            "databaseName",
+            "databaseRoleName",
+            "databaseURLMaterialPath",
+            "catalogAdmissionBearerTokenMaterialPath",
+            "archiveSourceAdmissionBearerTokenMaterialPath",
+            "generatedSecretByteCount",
+            "migrationExecutablePath",
+            "migrationPythonExecutablePath",
+            "expectedRevision",
+            "migrationReceiptPath"
           ],
           "type": "object"
         },
@@ -7821,8 +10363,17 @@
           "minItems": 1,
           "type": "array"
         },
+        "guestArchiveArtifactObjectDirectory": {
+          "$ref": "#/$defs/GuestRuntimeStateDirectory"
+        },
+        "guestPrivateStateDirectory": {
+          "$ref": "#/$defs/GuestRuntimeStateDirectory"
+        },
         "guestProductRelease": {
           "$ref": "#/$defs/GuestProductRelease"
+        },
+        "guestRecorderCatalogPostgreSQL": {
+          "$ref": "#/$defs/GuestRecorderCatalogPostgreSQL"
         },
         "guestRuntimeStateDirectory": {
           "$ref": "#/$defs/GuestRuntimeStateDirectory"
@@ -7888,6 +10439,9 @@
         "releaseManagerServiceUnitName",
         "guestProductRelease",
         "guestRuntimeStateDirectory",
+        "guestPrivateStateDirectory",
+        "guestArchiveArtifactObjectDirectory",
+        "guestRecorderCatalogPostgreSQL",
         "sources",
         "fileInstallations",
         "archiveInstallations",
@@ -8103,6 +10657,81 @@
           "pattern": "^http://(127\\.0\\.0\\.1|\\[::1\\]):[0-9]+$",
           "type": "string"
         },
+        "GuestOperationalStateBackup": {
+          "additionalProperties": false,
+          "properties": {
+            "destinationReference": {
+              "additionalProperties": false,
+              "properties": {
+                "resourceId": {
+                  "$ref": "#/$defs/Identifier"
+                },
+                "resourceType": {
+                  "$ref": "#/$defs/Identifier"
+                }
+              },
+              "required": [
+                "resourceType",
+                "resourceId"
+              ],
+              "type": "object"
+            },
+            "ledgerDatabasePath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "pgDumpExecutablePath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "pgRestoreExecutablePath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "rootDirectory": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            }
+          },
+          "required": [
+            "rootDirectory",
+            "ledgerDatabasePath",
+            "destinationReference",
+            "pgDumpExecutablePath",
+            "pgRestoreExecutablePath"
+          ],
+          "type": "object"
+        },
+        "GuestOperationalStateRestore": {
+          "additionalProperties": false,
+          "description": "Optional maintenance-only restore target. Its SQLite path must be absent and its PostgreSQL URL material must name an explicitly provisioned empty database; the live Guest Runtime stores are never valid targets.",
+          "properties": {
+            "postgresqlDatabaseUrlMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "sqliteTargetPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "targetReference": {
+              "additionalProperties": false,
+              "properties": {
+                "resourceId": {
+                  "$ref": "#/$defs/Identifier"
+                },
+                "resourceType": {
+                  "const": "guest-restore-target"
+                }
+              },
+              "required": [
+                "resourceType",
+                "resourceId"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "targetReference",
+            "sqliteTargetPath",
+            "postgresqlDatabaseUrlMaterialPath"
+          ],
+          "type": "object"
+        },
         "GuestPublicServiceVirtioSocketBridge": {
           "additionalProperties": false,
           "description": "Guest Runtime transport adapter declaration for one C36 public route. It accepts the C32-declared virtio-socket port and forwards bytes to the Guest-loopback listener owned by the explicitly named C37 process; it is not a service readiness observation or NAT address declaration.",
@@ -8132,6 +10761,13 @@
           ],
           "type": "object"
         },
+        "GuestRuntimeArchiveSourceAdmissionURL": {
+          "description": "The exact Guest Runtime internal Archive source admission route.",
+          "maxLength": 128,
+          "minLength": 58,
+          "pattern": "^http://(127\\.0\\.0\\.1|\\[::1\\]):[0-9]+/internal/v1/archive/recorder-uploads$",
+          "type": "string"
+        },
         "GuestRuntimeControlVirtioSocketListener": {
           "additionalProperties": false,
           "description": "Guest-owned virtio-socket listener for the Host-declared Guest Runtime control bridge. It is a transport binding, not a Guest Runtime readiness observation.",
@@ -8148,8 +10784,19 @@
         "GuestRuntimeProcess": {
           "additionalProperties": false,
           "properties": {
+            "archiveArtifactObjectRootDirectory": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
             "archiveExportProvider": {
               "$ref": "#/$defs/ArchiveExportProvider"
+            },
+            "archiveSourceAdmissionBearerTokenMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "archiveSourceMaximumBytes": {
+              "maximum": 2147483648,
+              "minimum": 1,
+              "type": "integer"
             },
             "controlVirtioSocketListener": {
               "$ref": "#/$defs/GuestRuntimeControlVirtioSocketListener"
@@ -8166,8 +10813,40 @@
             "labRecorderRunnerEndpoint": {
               "$ref": "#/$defs/GuestLoopbackHTTPURL"
             },
+            "labReplayFrameBatchSize": {
+              "const": 1
+            },
+            "labReplayGapPolicy": {
+              "enum": [
+                "omit-track",
+                "fail-frame"
+              ]
+            },
+            "labReplaySourceMaximumBytes": {
+              "maximum": 1073741824,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "labReplaySourceObjectRootDirectory": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "labReplaySpoolRootDirectory": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "labReplayStringTrackPolicy": {
+              "enum": [
+                "reject",
+                "skip"
+              ]
+            },
             "listener": {
               "$ref": "#/$defs/Listener"
+            },
+            "operationalStateBackup": {
+              "$ref": "#/$defs/GuestOperationalStateBackup"
+            },
+            "operationalStateRestore": {
+              "$ref": "#/$defs/GuestOperationalStateRestore"
             },
             "outboundRelayObservationProvider": {
               "$ref": "#/$defs/OutboundRelayObservationProvider"
@@ -8179,8 +10858,25 @@
               "minItems": 1,
               "type": "array"
             },
+            "recorderAttributionPolicyKind": {
+              "const": "recorder-assignment-owner"
+            },
+            "recorderCatalogAdmissionBearerTokenMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "recorderCatalogDatabaseUrlMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "recorderCatalogMigrationReceiptPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
             "recorderGatewayColdPathSourceEndpoint": {
               "$ref": "#/$defs/GuestLoopbackHTTPURL"
+            },
+            "recorderObservationMaxReportAgeSeconds": {
+              "maximum": 86400,
+              "minimum": 1,
+              "type": "integer"
             },
             "serviceVersion": {
               "$ref": "#/$defs/Identifier"
@@ -8201,6 +10897,20 @@
             "controlVirtioSocketListener",
             "publicServiceVirtioSocketBridges",
             "stateDatabasePath",
+            "recorderCatalogDatabaseUrlMaterialPath",
+            "recorderCatalogMigrationReceiptPath",
+            "recorderCatalogAdmissionBearerTokenMaterialPath",
+            "recorderObservationMaxReportAgeSeconds",
+            "archiveSourceAdmissionBearerTokenMaterialPath",
+            "archiveArtifactObjectRootDirectory",
+            "archiveSourceMaximumBytes",
+            "labReplaySourceObjectRootDirectory",
+            "labReplaySourceMaximumBytes",
+            "labReplaySpoolRootDirectory",
+            "labReplayStringTrackPolicy",
+            "labReplayGapPolicy",
+            "labReplayFrameBatchSize",
+            "recorderAttributionPolicyKind",
             "serviceVersion",
             "instanceId",
             "archiveExportProvider",
@@ -8209,7 +10919,8 @@
             "externalUpstreamObservationProvider",
             "outboundRelayObservationProvider",
             "timeAuthority",
-            "telemetryPipeline"
+            "telemetryPipeline",
+            "operationalStateBackup"
           ],
           "type": "object"
         },
@@ -8478,11 +11189,8 @@
         },
         "LabRecorderRunnerProcess": {
           "additionalProperties": false,
-          "description": "Guest-local virtual-recorder Socket.IO execution process. It consumes a declared scenario catalog, the exact Recorder Gateway loopback endpoint, and Guest Runtime Recorder-observation catalog endpoint; it is not a public route, Lab state store, Gateway capture store, or Archive provider.",
+          "description": "Guest-local virtual-recorder Socket.IO execution process. It publishes Recorder observations only through the declared Recorder Gateway loopback endpoint; it never bypasses Gateway to write the Guest Runtime Catalog.",
           "properties": {
-            "guestRuntimeObservationCatalogEndpoint": {
-              "$ref": "#/$defs/GuestLoopbackHTTPURL"
-            },
             "listener": {
               "additionalProperties": false,
               "properties": {
@@ -8508,6 +11216,9 @@
             "recorderGatewayEndpoint": {
               "$ref": "#/$defs/GuestLoopbackHTTPURL"
             },
+            "replayStateDirectory": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
             "scenarioCatalogPath": {
               "$ref": "#/$defs/AbsoluteGuestPath"
             }
@@ -8517,8 +11228,8 @@
             "programPath",
             "listener",
             "recorderGatewayEndpoint",
-            "guestRuntimeObservationCatalogEndpoint",
-            "scenarioCatalogPath"
+            "scenarioCatalogPath",
+            "replayStateDirectory"
           ],
           "type": "object"
         },
@@ -8644,6 +11355,14 @@
         "RecorderGatewayProcess": {
           "additionalProperties": false,
           "properties": {
+            "archiveSourceAdmissionBearerTokenMaterialPath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "archiveSourceAdmissionRequestTimeoutMilliseconds": {
+              "maximum": 300000,
+              "minimum": 1,
+              "type": "integer"
+            },
             "coldPathCapturePolicy": {
               "$ref": "#/$defs/RecorderGatewayColdPathCapturePolicy"
             },
@@ -8656,10 +11375,19 @@
             "externalVitalServerDeliveryConfigurationPath": {
               "$ref": "#/$defs/RecorderGatewayExternalVitalServerDeliveryConfigurationPath"
             },
+            "guestRuntimeArchiveSourceAdmissionEndpoint": {
+              "$ref": "#/$defs/GuestRuntimeArchiveSourceAdmissionURL"
+            },
+            "guestRuntimeObservationCatalogEndpoint": {
+              "$ref": "#/$defs/GuestLoopbackHTTPURL"
+            },
             "listener": {
               "$ref": "#/$defs/Listener"
             },
             "nodeExecutablePath": {
+              "$ref": "#/$defs/AbsoluteGuestPath"
+            },
+            "observationCatalogBearerTokenMaterialPath": {
               "$ref": "#/$defs/AbsoluteGuestPath"
             },
             "programPath": {
@@ -8670,6 +11398,9 @@
             },
             "vitalServerTopologyDeploymentPath": {
               "$ref": "#/$defs/RecorderGatewayVitalServerTopologyDeploymentPath"
+            },
+            "vitalUploadPolicy": {
+              "$ref": "#/$defs/RecorderGatewayVitalUploadPolicy"
             }
           },
           "required": [
@@ -8680,7 +11411,13 @@
             "vitalServerTopologyDeploymentPath",
             "deliveryReplayAdmissionPolicy",
             "coldPathCapturePolicy",
-            "replayPolicy"
+            "replayPolicy",
+            "guestRuntimeObservationCatalogEndpoint",
+            "observationCatalogBearerTokenMaterialPath",
+            "vitalUploadPolicy",
+            "guestRuntimeArchiveSourceAdmissionEndpoint",
+            "archiveSourceAdmissionBearerTokenMaterialPath",
+            "archiveSourceAdmissionRequestTimeoutMilliseconds"
           ],
           "type": "object"
         },
@@ -8721,6 +11458,32 @@
           "minLength": 2,
           "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$)).+",
           "type": "string"
+        },
+        "RecorderGatewayVitalUploadPolicy": {
+          "additionalProperties": false,
+          "properties": {
+            "maximumBytes": {
+              "maximum": 2147483648,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "recoveryIntervalMilliseconds": {
+              "maximum": 3600000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "recoveryMaximumItems": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "maximumBytes",
+            "recoveryIntervalMilliseconds",
+            "recoveryMaximumItems"
+          ],
+          "type": "object"
         },
         "VitalServerArchiveProviderConfiguration": {
           "additionalProperties": false,
@@ -10399,6 +13162,52 @@
             }
           ]
         },
+        "HostOperationalStateBackupConfiguration": {
+          "additionalProperties": false,
+          "description": "Host-owned deterministic UTC interval schedule for C76 backup admission. retain-all is explicit v1 no-purge behavior; Host does not inspect Guest manifests, files, or databases.",
+          "properties": {
+            "destinationReference": {
+              "additionalProperties": false,
+              "properties": {
+                "resourceId": {
+                  "$ref": "#/$defs/DeploymentIdentifier"
+                },
+                "resourceType": {
+                  "const": "guest-backup-destination"
+                }
+              },
+              "required": [
+                "resourceType",
+                "resourceId"
+              ],
+              "type": "object"
+            },
+            "intervalSeconds": {
+              "maximum": 604800,
+              "minimum": 300,
+              "type": "integer"
+            },
+            "retentionPolicy": {
+              "const": "retain-all"
+            },
+            "retryIntervalSeconds": {
+              "maximum": 3600,
+              "minimum": 10,
+              "type": "integer"
+            },
+            "scheduleId": {
+              "$ref": "#/$defs/DeploymentIdentifier"
+            }
+          },
+          "required": [
+            "scheduleId",
+            "intervalSeconds",
+            "retryIntervalSeconds",
+            "destinationReference",
+            "retentionPolicy"
+          ],
+          "type": "object"
+        },
         "HostTelemetryConfiguration": {
           "oneOf": [
             {
@@ -10786,6 +13595,9 @@
         "installation": {
           "$ref": "#/$defs/HostInstallationConfiguration"
         },
+        "operationalStateBackup": {
+          "$ref": "#/$defs/HostOperationalStateBackupConfiguration"
+        },
         "provider": {
           "$ref": "#/$defs/SelectedProviderConfiguration"
         },
@@ -10807,6 +13619,7 @@
         "control",
         "installation",
         "guestRuntimeControlEndpoint",
+        "operationalStateBackup",
         "provider",
         "time",
         "telemetry",
@@ -11208,24 +14021,6 @@
           ],
           "type": "object"
         },
-        "PackageReceiptObservation": {
-          "additionalProperties": false,
-          "allOf": [
-            {
-              "if": {
-                "properties": {
-                  "state": {
-                    "const": "installed"
-                  }
-                },
-                "required": [
-                  "state"
-                ]
-              },
-              "then": {
-                "not": {
-                  "required": [
-                    "issue"
         "OperatorApplicationObservation": {
           "additionalProperties": false,
           "allOf": [
@@ -11271,6 +14066,24 @@
           ],
           "type": "object"
         },
+        "PackageReceiptObservation": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "installed"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "not": {
+                  "required": [
+                    "issue"
                   ]
                 },
                 "required": [
@@ -11558,6 +14371,9 @@
         "observedAt": {
           "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
         },
+        "operatorApplication": {
+          "$ref": "#/$defs/OperatorApplicationObservation"
+        },
         "packageReceipt": {
           "$ref": "#/$defs/PackageReceiptObservation"
         },
@@ -11576,9 +14392,6 @@
           "items": {
             "$ref": "#/$defs/RequiredServiceObservation"
           },
-        "operatorApplication": {
-          "$ref": "#/$defs/OperatorApplicationObservation"
-        },
           "maxItems": 3,
           "minItems": 3,
           "type": "array"
@@ -12511,6 +15324,15 @@
         "OperatorInterface": {
           "additionalProperties": false,
           "properties": {
+            "applicationBundleEntrypointRelativePath": {
+              "$ref": "#/$defs/RelativePayloadPath"
+            },
+            "applicationBundlePath": {
+              "$ref": "#/$defs/HostAbsolutePath"
+            },
+            "applicationBundleTreeSha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
             "bootstrapConfigurationPath": {
               "$ref": "#/$defs/HostAbsolutePath"
             },
@@ -12529,15 +15351,6 @@
           "properties": {
             "identifier": {
               "maxLength": 255,
-            "applicationBundleEntrypointRelativePath": {
-              "$ref": "#/$defs/RelativePayloadPath"
-            },
-            "applicationBundlePath": {
-              "$ref": "#/$defs/HostAbsolutePath"
-            },
-            "applicationBundleTreeSha256": {
-              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
-            },
               "minLength": 3,
               "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$",
               "type": "string"
@@ -12703,6 +15516,13 @@
                   "referenceKind"
                 ]
               },
+              "operatorInterface": {
+                "required": [
+                  "applicationBundlePath",
+                  "applicationBundleTreeSha256",
+                  "applicationBundleEntrypointRelativePath"
+                ]
+              },
               "requiredServices": {
                 "items": {
                   "properties": {
@@ -12721,13 +15541,6 @@
         {
           "if": {
             "properties": {
-              "operatorInterface": {
-                "required": [
-                  "applicationBundlePath",
-                  "applicationBundleTreeSha256",
-                  "applicationBundleEntrypointRelativePath"
-                ]
-              },
               "platform": {
                 "const": "linux"
               }
@@ -14699,6 +17512,679 @@
       ],
       "title": "Lab commands"
     },
+    "json-schema/v1/lab-replay-command.schema.json": {
+      "$defs": {
+        "LabReplaySourceReference": {
+          "additionalProperties": false,
+          "properties": {
+            "resourceId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "resourceType": {
+              "const": "lab-replay-source"
+            }
+          },
+          "required": [
+            "resourceType",
+            "resourceId"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-command",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Admits one durable replay operation for an already admitted immutable Lab replay source.",
+      "properties": {
+        "recorderGatewayRecorderCode": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "replayId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sourceReference": {
+          "$ref": "#/$defs/LabReplaySourceReference"
+        },
+        "sourceSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "replayId",
+        "sourceReference",
+        "sourceSha256",
+        "recorderGatewayRecorderCode",
+        "requestedAt"
+      ],
+      "title": "LabReplayCommand",
+      "type": "object"
+    },
+    "json-schema/v1/lab-replay-operation.schema.json": {
+      "$defs": {
+        "Failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "failedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "message": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "stage": {
+              "enum": [
+                "file-validation",
+                "track-decode",
+                "replay-preparation",
+                "message-send",
+                "upstream-delivery"
+              ]
+            }
+          },
+          "required": [
+            "stage",
+            "code",
+            "message",
+            "failedAt"
+          ],
+          "type": "object"
+        },
+        "PreparationReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "frameCount": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "outputStartedAt": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "preparedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "replayId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "runnerSessionId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "spoolDatabaseSha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "replayId",
+            "runnerSessionId",
+            "spoolDatabaseSha256",
+            "frameCount",
+            "outputStartedAt",
+            "preparedAt"
+          ],
+          "type": "object"
+        },
+        "SpoolReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "databaseByteSize": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "databaseSha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
+            "durationSeconds": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "endedAt": {
+              "type": "number"
+            },
+            "fileFormatVersion": {
+              "enum": [
+                "vital-v1",
+                "vital-v2",
+                "vital-v3"
+              ]
+            },
+            "finalizedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "graphCompatibleSignalCount": {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "recordCount": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "replayId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "startedAt": {
+              "type": "number"
+            },
+            "trackCount": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "replayId",
+            "fileFormatVersion",
+            "databaseSha256",
+            "databaseByteSize",
+            "startedAt",
+            "endedAt",
+            "durationSeconds",
+            "trackCount",
+            "recordCount",
+            "graphCompatibleSignalCount",
+            "finalizedAt"
+          ],
+          "type": "object"
+        },
+        "UpstreamDeliveryReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "deliveredFrameCount": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "deliveryConfirmedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "deliveryReceiptId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "replayId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "runnerSessionId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "replayId",
+            "runnerSessionId",
+            "deliveryReceiptId",
+            "deliveredFrameCount",
+            "deliveryConfirmedAt"
+          ],
+          "type": "object"
+        },
+        "ValidationReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "fileFormatVersion": {
+              "enum": [
+                "vital-v1",
+                "vital-v2",
+                "vital-v3"
+              ]
+            },
+            "graphCompatibleSignalCount": {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "parserContractVersion": {
+              "const": "v1"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "sourceReference": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-command#/$defs/LabReplaySourceReference"
+            },
+            "sourceSha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
+            "spoolReceipt": {
+              "$ref": "#/$defs/SpoolReceipt"
+            },
+            "validatedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "parserContractVersion",
+            "sourceReference",
+            "sourceSha256",
+            "fileFormatVersion",
+            "graphCompatibleSignalCount",
+            "spoolReceipt",
+            "validatedAt"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-operation",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "failure"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "state": {
+                "const": "failed"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "failure"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "pending-replay-preparation",
+                  "sending",
+                  "awaiting-upstream-delivery",
+                  "succeeded"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "validationReceipt"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "sending",
+                  "awaiting-upstream-delivery",
+                  "succeeded"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "preparationReceipt"
+            ]
+          }
+        },
+        {
+          "else": {
+            "not": {
+              "required": [
+                "upstreamDeliveryReceipt"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "upstreamDeliveryReceipt"
+            ]
+          }
+        },
+        {
+          "else": {
+            "not": {
+              "required": [
+                "stoppedFromState"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "state": {
+                "const": "stopped"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "stoppedFromState"
+            ]
+          }
+        }
+      ],
+      "description": "Guest-owned durable Lab replay state. Failure stage and evidence remain readable after the operation becomes terminal.",
+      "properties": {
+        "createdAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "failure": {
+          "$ref": "#/$defs/Failure"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "lastSendState": {
+          "enum": [
+            "not-attempted",
+            "sent",
+            "failed"
+          ]
+        },
+        "messagesSent": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nextFrameOffsetSecond": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "preparationReceipt": {
+          "$ref": "#/$defs/PreparationReceipt"
+        },
+        "recorderGatewayRecorderCode": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "resourceRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sourceReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-command#/$defs/LabReplaySourceReference"
+        },
+        "sourceSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "state": {
+          "enum": [
+            "pending-file-validation",
+            "pending-track-decode",
+            "pending-replay-preparation",
+            "sending",
+            "awaiting-upstream-delivery",
+            "succeeded",
+            "failed",
+            "stopped"
+          ]
+        },
+        "stoppedFromState": {
+          "enum": [
+            "pending-file-validation",
+            "pending-track-decode",
+            "pending-replay-preparation",
+            "sending",
+            "awaiting-upstream-delivery"
+          ]
+        },
+        "updatedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "upstreamDeliveryReceipt": {
+          "$ref": "#/$defs/UpstreamDeliveryReceipt"
+        },
+        "validationReceipt": {
+          "$ref": "#/$defs/ValidationReceipt"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "requestId",
+        "resourceRevision",
+        "state",
+        "sourceReference",
+        "sourceSha256",
+        "recorderGatewayRecorderCode",
+        "messagesSent",
+        "nextFrameOffsetSecond",
+        "lastSendState",
+        "createdAt",
+        "updatedAt"
+      ],
+      "title": "LabReplayOperation",
+      "type": "object"
+    },
+    "json-schema/v1/lab-replay-source-admission-command.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-source-admission-command",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Metadata evidence for one complete user-uploaded Lab replay source. The binary .vital body is streamed separately and must match byteSize and sha256.",
+      "properties": {
+        "byteSize": {
+          "maximum": 1073741824,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "mediaType": {
+          "const": "application/x-vital"
+        },
+        "originalFileName": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\\\]+$",
+          "type": "string"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "sourceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "sourceId",
+        "originalFileName",
+        "mediaType",
+        "byteSize",
+        "sha256"
+      ],
+      "title": "LabReplaySourceAdmissionCommand",
+      "type": "object"
+    },
+    "json-schema/v1/lab-replay-source-admission-receipt.schema.json": {
+      "$defs": {
+        "LabReplaySourceObjectReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "byteSize": {
+              "maximum": 1073741824,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "persistedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "schemaVersion": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+            },
+            "sha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            },
+            "sourceReference": {
+              "$ref": "#/$defs/LabReplaySourceReference"
+            },
+            "state": {
+              "enum": [
+                "committed",
+                "existing"
+              ]
+            },
+            "storageReference": {
+              "$ref": "#/$defs/LabReplaySourceStorageReference"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "sourceReference",
+            "state",
+            "byteSize",
+            "sha256",
+            "storageReference",
+            "persistedAt"
+          ],
+          "type": "object"
+        },
+        "LabReplaySourceReference": {
+          "additionalProperties": false,
+          "properties": {
+            "resourceId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "resourceType": {
+              "const": "lab-replay-source"
+            }
+          },
+          "required": [
+            "resourceType",
+            "resourceId"
+          ],
+          "type": "object"
+        },
+        "LabReplaySourceStorageReference": {
+          "additionalProperties": false,
+          "properties": {
+            "resourceId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "resourceType": {
+              "const": "guest-lab-replay-source-object"
+            }
+          },
+          "required": [
+            "resourceType",
+            "resourceId"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-source-admission-receipt",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Guest-owned receipt proving the immutable Lab replay source bytes and metadata admitted independently from Recorder upload and Gateway cold path.",
+      "properties": {
+        "byteSize": {
+          "maximum": 1073741824,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "mediaType": {
+          "const": "application/x-vital"
+        },
+        "objectReceipt": {
+          "$ref": "#/$defs/LabReplaySourceObjectReceipt"
+        },
+        "originalFileName": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\\\]+$",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "accepted",
+            "duplicate"
+          ]
+        },
+        "persistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "sourceReference": {
+          "$ref": "#/$defs/LabReplaySourceReference"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "outcome",
+        "sourceReference",
+        "originalFileName",
+        "mediaType",
+        "byteSize",
+        "sha256",
+        "objectReceipt",
+        "persistedAt"
+      ],
+      "title": "LabReplaySourceAdmissionReceipt",
+      "type": "object"
+    },
     "json-schema/v1/lab-resources.schema.json": {
       "$defs": {
         "LabBed": {
@@ -15484,6 +18970,9 @@
             "macOSVirtualMachineSupervisorBinaryAbsolutePath": {
               "$ref": "#/$defs/AbsoluteHostPath"
             },
+            "operatorApplicationBundleAbsolutePath": {
+              "$ref": "#/$defs/AbsoluteHostPath"
+            },
             "platformctlBinaryAbsolutePath": {
               "$ref": "#/$defs/AbsoluteHostPath"
             }
@@ -15495,6 +18984,7 @@
             "hostUpdateHandoffSupervisorBinaryAbsolutePath",
             "platformctlBinaryAbsolutePath",
             "macOSVirtualMachineSupervisorBinaryAbsolutePath",
+            "operatorApplicationBundleAbsolutePath",
             "guestProductProcessSupervisorArtifactAbsolutePath"
           ],
           "type": "object"
@@ -15502,9 +18992,6 @@
         "MacOSInstallerPackageSigning": {
           "additionalProperties": false,
           "allOf": [
-            "operatorApplicationBundleAbsolutePath": {
-              "$ref": "#/$defs/AbsoluteHostPath"
-            },
             {
               "else": {
                 "allOf": [
@@ -15516,7 +19003,6 @@
                     }
                   },
                   {
-            "operatorApplicationBundleAbsolutePath",
                     "not": {
                       "required": [
                         "productsignExecutableAbsolutePath"
@@ -18722,6 +22208,140 @@
       "title": "ReadResult",
       "type": "object"
     },
+    "json-schema/v1/recorder-artifact-page.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-artifact-page",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:archive-artifact-detail"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "nextCursor": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "recorderId",
+        "items"
+      ],
+      "title": "RecorderArtifactPage",
+      "type": "object"
+    },
+    "json-schema/v1/recorder-assignment-evidence-command.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-assignment-evidence-command",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "An explicit Administrator-sourced, time-bounded Recorder-to-bed assignment fact. An upload-reported bed name is not assignment evidence.",
+      "properties": {
+        "bedName": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string"
+        },
+        "effectiveFrom": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "effectiveUntil": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "evidenceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sourceKind": {
+          "const": "administrator"
+        },
+        "sourceReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "evidenceId",
+        "recorderId",
+        "bedName",
+        "effectiveFrom",
+        "observedAt",
+        "sourceKind",
+        "sourceReference"
+      ],
+      "title": "RecorderAssignmentEvidenceCommand",
+      "type": "object"
+    },
+    "json-schema/v1/recorder-assignment-evidence-receipt.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-assignment-evidence-receipt",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Recorder Assignment owner receipt. Duplicate means the same request already owns the same immutable command digest.",
+      "properties": {
+        "evidenceReference": {
+          "allOf": [
+            {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "recorder-assignment-evidence"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "accepted",
+            "duplicate"
+          ],
+          "type": "string"
+        },
+        "persistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "outcome",
+        "evidenceReference",
+        "persistedAt"
+      ],
+      "title": "RecorderAssignmentEvidenceReceipt",
+      "type": "object"
+    },
     "json-schema/v1/recorder-cold-path-capture-finalization-command.schema.json": {
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-cold-path-capture-finalization-command",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -19031,6 +22651,451 @@
       "title": "RecorderColdPathCapture",
       "type": "object"
     },
+    "json-schema/v1/recorder-expectation-event.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-expectation-event",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "set",
+            "clear"
+          ],
+          "type": "string"
+        },
+        "decidedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "evidence": {
+          "type": "object"
+        },
+        "expectationState": {
+          "enum": [
+            "expected",
+            "not-expected"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "persistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "previousRevision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "receivedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "source": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "supportState": {
+          "enum": [
+            "supported",
+            "unsupported"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "requestId",
+        "recorderId",
+        "previousRevision",
+        "revision",
+        "action",
+        "evidence",
+        "decidedAt",
+        "receivedAt",
+        "persistedAt"
+      ],
+      "title": "RecorderExpectationEvent",
+      "type": "object"
+    },
+    "json-schema/v1/recorder-expectation-receipt.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-expectation-receipt",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "persistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "recorder": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "state": {
+          "const": "persisted"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "state",
+        "event",
+        "recorder",
+        "revision",
+        "persistedAt"
+      ],
+      "title": "RecorderExpectationReceipt",
+      "type": "object"
+    },
+    "json-schema/v1/recorder-incident-page.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-incident-page",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-reported-incident"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "nextCursor": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "recorderId",
+        "items"
+      ],
+      "title": "RecorderIncidentPage",
+      "type": "object"
+    },
+    "json-schema/v1/recorder-observability-expectation-command.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observability-expectation-command",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "set"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "expectationState",
+              "source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "clear"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "expectationState"
+                  ]
+                },
+                {
+                  "required": [
+                    "supportState"
+                  ]
+                },
+                {
+                  "required": [
+                    "source"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "evidence": {
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ],
+      "description": "An explicit revisioned operator declaration. Absence of a report never creates this command.",
+      "properties": {
+        "action": {
+          "enum": [
+            "set",
+            "clear"
+          ],
+          "type": "string"
+        },
+        "evidence": {
+          "type": "object"
+        },
+        "expectationState": {
+          "enum": [
+            "expected",
+            "not-expected"
+          ],
+          "type": "string"
+        },
+        "expectedResourceRevision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "source": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "supportState": {
+          "enum": [
+            "supported",
+            "unsupported"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "expectedResourceRevision",
+        "action",
+        "evidence"
+      ],
+      "title": "RecorderObservabilityExpectationCommand",
+      "type": "object"
+    },
+    "json-schema/v1/recorder-observability-summary-page.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observability-summary-page",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "One Catalog-owned bounded page of current Recorder projections ordered by Recorder identity.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observability-summary"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "nextCursor": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "items"
+      ],
+      "title": "RecorderObservabilitySummaryPage",
+      "type": "object"
+    },
+    "json-schema/v1/recorder-observability-summary.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observability-summary",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reportState": {
+                "enum": [
+                  "current",
+                  "stale"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "latestObservationReference",
+              "latestBootId",
+              "latestSequence",
+              "latestOccurredAt",
+              "latestReceivedAt",
+              "latestPersistedAt"
+            ]
+          }
+        },
+        {
+          "else": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "readState": {
+                "enum": [
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ],
+      "description": "The Catalog-owned current projection. Support, expectation, report freshness, and owner read state remain independent facts.",
+      "properties": {
+        "expectationState": {
+          "enum": [
+            "expected",
+            "not-expected",
+            "unset"
+          ],
+          "type": "string"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "latestBootId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "latestObservationReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "latestOccurredAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "latestPersistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "latestReceivedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "latestSequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "readState": {
+          "enum": [
+            "available",
+            "unavailable",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "reportState": {
+          "enum": [
+            "never-reported",
+            "current",
+            "stale"
+          ],
+          "type": "string"
+        },
+        "resourceRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "supportState": {
+          "enum": [
+            "supported",
+            "unsupported",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "updatedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "recorderId",
+        "resourceRevision",
+        "supportState",
+        "expectationState",
+        "reportState",
+        "readState",
+        "updatedAt"
+      ],
+      "title": "RecorderObservabilitySummary",
+      "type": "object"
+    },
     "json-schema/v1/recorder-observation-envelope.schema.json": {
       "$defs": {
         "RecorderRuntimeObservation": {
@@ -19224,6 +23289,93 @@
       "title": "RecorderObservationEnvelope",
       "type": "object"
     },
+    "json-schema/v1/recorder-observation-timeline-page.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observation-timeline-page",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:catalog-observation"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "nextCursor": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "recorderId",
+        "items"
+      ],
+      "title": "RecorderObservationTimelinePage",
+      "type": "object"
+    },
+    "json-schema/v1/recorder-reported-incident.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-reported-incident",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "timeIssue"
+          ]
+        },
+        {
+          "required": [
+            "runtimeIssue"
+          ]
+        }
+      ],
+      "description": "A typed issue explicitly reported by the Recorder. Packet gaps, logs, missing reports, and UI refresh failures do not create this resource.",
+      "properties": {
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "observationReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "occurredAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "receivedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "runtimeIssue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "timeIssue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "recorderId",
+        "observationReference",
+        "occurredAt",
+        "receivedAt"
+      ],
+      "title": "RecorderReportedIncident",
+      "type": "object"
+    },
     "json-schema/v1/release-delivery-plan.schema.json": {
       "$defs": {
         "IntendedInstallerArtifact": {
@@ -19260,6 +23412,7 @@
             "clean-install",
             "service-registration",
             "reboot",
+            "installed-guest-runtime",
             "update",
             "rollback",
             "uninstall-reinstall"
@@ -21865,6 +26018,235 @@
         "rollback"
       ],
       "title": "UpdateExecutionReport",
+      "type": "object"
+    },
+    "json-schema/v1/vital-replay-corpus-manifest.schema.json": {
+      "$defs": {
+        "CorpusEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "byteSize": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "expectedReplay": {
+              "additionalProperties": false,
+              "properties": {
+                "minimumGraphCompatibleSignalCount": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "outcome": {
+                  "const": "succeeded"
+                },
+                "trackKinds": {
+                  "items": {
+                    "enum": [
+                      "waveform",
+                      "numeric",
+                      "string"
+                    ]
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "outcome",
+                "minimumGraphCompatibleSignalCount",
+                "trackKinds"
+              ],
+              "type": "object"
+            },
+            "fileName": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,1017}\\.vital$",
+              "type": "string"
+            },
+            "formatVersion": {
+              "maximum": 3,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "id": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "origin": {
+              "additionalProperties": false,
+              "properties": {
+                "evidenceReference": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+                },
+                "kind": {
+                  "enum": [
+                    "nonclinical-recorder-export",
+                    "deidentified-recorder-export"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "evidenceReference"
+              ],
+              "type": "object"
+            },
+            "sha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            }
+          },
+          "required": [
+            "id",
+            "fileName",
+            "byteSize",
+            "sha256",
+            "formatVersion",
+            "origin",
+            "expectedReplay"
+          ],
+          "type": "object"
+        }
+      },
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:vital-replay-corpus-manifest",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "properties": {
+            "entries": {
+              "contains": {
+                "properties": {
+                  "formatVersion": {
+                    "const": 1
+                  }
+                },
+                "required": [
+                  "formatVersion"
+                ],
+                "type": "object"
+              },
+              "minContains": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "entries": {
+              "contains": {
+                "properties": {
+                  "formatVersion": {
+                    "const": 2
+                  }
+                },
+                "required": [
+                  "formatVersion"
+                ],
+                "type": "object"
+              },
+              "minContains": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "entries": {
+              "contains": {
+                "properties": {
+                  "formatVersion": {
+                    "const": 3
+                  }
+                },
+                "required": [
+                  "formatVersion"
+                ],
+                "type": "object"
+              },
+              "minContains": 1
+            }
+          }
+        }
+      ],
+      "description": "Release-process declaration of human-approved, non-identifying, redistribution-authorized Recorder .vital artifacts used for v1-v3 replay compatibility evidence. The declaration does not itself prove the selected bytes; the corpus verifier binds every entry to an exact regular file.",
+      "properties": {
+        "approval": {
+          "additionalProperties": false,
+          "properties": {
+            "assertions": {
+              "additionalProperties": false,
+              "properties": {
+                "clinicalUseProhibited": {
+                  "const": true
+                },
+                "nonIdentifying": {
+                  "const": true
+                },
+                "redistributionAuthorized": {
+                  "const": true
+                }
+              },
+              "required": [
+                "nonIdentifying",
+                "redistributionAuthorized",
+                "clinicalUseProhibited"
+              ],
+              "type": "object"
+            },
+            "decision": {
+              "const": "approved"
+            },
+            "evidenceReference": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+            },
+            "reviewedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "reviewer": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+                },
+                "kind": {
+                  "const": "human"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "decision",
+            "reviewer",
+            "reviewedAt",
+            "evidenceReference",
+            "assertions"
+          ],
+          "type": "object"
+        },
+        "corpusId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/CorpusEntry"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "type": "array"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "corpusId",
+        "approval",
+        "entries"
+      ],
+      "title": "VitalReplayCorpusManifest",
       "type": "object"
     },
     "json-schema/v1/vitalserver-indexed-library-credential-material.schema.json": {

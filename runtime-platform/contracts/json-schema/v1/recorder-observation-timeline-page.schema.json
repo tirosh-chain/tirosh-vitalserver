@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observation-timeline-page",
+  "title": "RecorderObservationTimelinePage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "recorderId", "items"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "recorderId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:catalog-observation" }
+    },
+    "nextCursor": { "type": "string", "minLength": 1, "maxLength": 2048 }
+  }
+}

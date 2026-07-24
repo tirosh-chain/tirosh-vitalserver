@@ -26,6 +26,16 @@
     "host": "127.0.0.1",
     "port": 18443
   },
+  "operationalStateBackup": {
+    "scheduleId": "daily-primary",
+    "intervalSeconds": 86400,
+    "retryIntervalSeconds": 60,
+    "destinationReference": {
+      "resourceType": "guest-backup-destination",
+      "resourceId": "guest-local-operational-state"
+    },
+    "retentionPolicy": "retain-all"
+  },
   "provider": {
     "kind": "macos-virtualization",
     "id": "vitalserver-macos-provider",

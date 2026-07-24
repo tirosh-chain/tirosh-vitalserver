@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-artifact-inventory",
+  "title": "GuestOperationalStateArtifactInventory",
+  "description": "Immutable Archive-owner metadata inventory included in C76. It does not claim that raw artifact object bytes were copied or retained.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "operationId",
+    "artifacts",
+    "objectBytesIncluded",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "operationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "artifacts": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "artifactId",
+          "storageReference",
+          "byteSize",
+          "sha256",
+          "finalizationState"
+        ],
+        "properties": {
+          "artifactId": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          },
+          "storageReference": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+          },
+          "byteSize": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+          },
+          "finalizationState": {
+            "const": "finalized"
+          }
+        }
+      }
+    },
+    "objectBytesIncluded": {
+      "const": false
+    },
+    "createdAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "lab-replay-source-request-1",
+  "outcome": "accepted",
+  "sourceReference": {
+    "resourceType": "lab-replay-source",
+    "resourceId": "lab-replay-source-1"
+  },
+  "originalFileName": "sample.vital",
+  "mediaType": "application/x-vital",
+  "byteSize": 20,
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "objectReceipt": {
+    "schemaVersion": "v1",
+    "sourceReference": {
+      "resourceType": "lab-replay-source",
+      "resourceId": "lab-replay-source-1"
+    },
+    "state": "committed",
+    "byteSize": 20,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "storageReference": {
+      "resourceType": "guest-lab-replay-source-object",
+      "resourceId": "lab-replay-source-1"
+    },
+    "persistedAt": "2026-07-24T16:00:00Z"
+  },
+  "persistedAt": "2026-07-24T16:00:00Z"
+}

@@ -92,6 +92,16 @@
       "valid": true
     },
     {
+      "path": "valid/archive-artifact-detail.json",
+      "schema": "archive-artifact-detail.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-artifact-page.json",
+      "schema": "recorder-artifact-page.schema.json",
+      "valid": true
+    },
+    {
       "path": "valid/lab-session.json",
       "schema": "lab-resources.schema.json",
       "valid": true
@@ -179,6 +189,46 @@
     {
       "path": "valid/catalog-observation-ingest-command.json",
       "schema": "catalog-observation-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/catalog-observation-admission-accepted.json",
+      "schema": "catalog-observation-admission.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/catalog-observation-admission-quarantined.json",
+      "schema": "catalog-observation-admission.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observability-summary-current.json",
+      "schema": "recorder-observability-summary.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observability-summary-page.json",
+      "schema": "recorder-observability-summary-page.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-expectation-command-set.json",
+      "schema": "recorder-observability-expectation-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-expectation-receipt.json",
+      "schema": "recorder-expectation-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observation-timeline-page.json",
+      "schema": "recorder-observation-timeline-page.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-incident-page.json",
+      "schema": "recorder-incident-page.schema.json",
       "valid": true
     },
     {
@@ -847,8 +897,78 @@
       "valid": true
     },
     {
+      "path": "valid/lab-replay-command.json",
+      "schema": "lab-replay-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/lab-replay-operation-failed.json",
+      "schema": "lab-replay-operation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-operational-state-artifact-inventory.json",
+      "schema": "guest-operational-state-artifact-inventory.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-operational-state-empty-target-proof.json",
+      "schema": "guest-operational-state-empty-target-proof.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-operational-state-identity.json",
+      "schema": "guest-operational-state-identity.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-installed-runtime-evidence-first-boot.json",
+      "schema": "guest-installed-runtime-evidence.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/guest-installed-runtime-evidence-verified-without-identity.json",
+      "schema": "guest-installed-runtime-evidence.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-operational-state-identity-without-postgresql.json",
+      "schema": "guest-operational-state-identity.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/guest-operational-state-backup-manifest.json",
+      "schema": "guest-operational-state-backup-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-operational-state-backup-operation-succeeded.json",
+      "schema": "guest-operational-state-backup-operation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observability-summary-page.json",
+      "schema": "recorder-observability-summary-page.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/guest-operational-state-backup-manifest-with-object-bytes.json",
+      "schema": "guest-operational-state-backup-manifest.schema.json",
+      "valid": false
+    },
+    {
       "path": "invalid/release-delivery-proof-attachment-review-verified-without-evidence.json",
       "schema": "release-delivery-proof-attachment-review.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/vital-replay-corpus-manifest.json",
+      "schema": "vital-replay-corpus-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/vital-replay-corpus-manifest-without-redistribution-approval.json",
+      "schema": "vital-replay-corpus-manifest.schema.json",
       "valid": false
     }
   ]

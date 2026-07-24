@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-operation",
+  "title": "LabReplayOperation",
+  "description": "Guest-owned durable Lab replay state. Failure stage and evidence remain readable after the operation becomes terminal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "requestId", "resourceRevision", "state", "sourceReference", "sourceSha256", "recorderGatewayRecorderCode", "messagesSent", "nextFrameOffsetSecond", "lastSendState", "createdAt", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "resourceRevision": { "type": "integer", "minimum": 1 },
+    "state": { "enum": ["pending-file-validation", "pending-track-decode", "pending-replay-preparation", "sending", "awaiting-upstream-delivery", "succeeded", "failed", "stopped"] },
+    "sourceReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-command#/$defs/LabReplaySourceReference" },
+    "sourceSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "recorderGatewayRecorderCode": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "messagesSent": { "type": "integer", "minimum": 0 },
+    "nextFrameOffsetSecond": { "type": "integer", "minimum": 0 },
+    "lastSendState": { "enum": ["not-attempted", "sent", "failed"] },
+    "validationReceipt": { "$ref": "#/$defs/ValidationReceipt" },
+    "preparationReceipt": { "$ref": "#/$defs/PreparationReceipt" },
+    "upstreamDeliveryReceipt": { "$ref": "#/$defs/UpstreamDeliveryReceipt" },
+    "failure": { "$ref": "#/$defs/Failure" },
+    "stoppedFromState": { "enum": ["pending-file-validation", "pending-track-decode", "pending-replay-preparation", "sending", "awaiting-upstream-delivery"] },
+    "createdAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "updatedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] },
+      "then": { "required": ["failure"] },
+      "else": { "not": { "required": ["failure"] } }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["pending-replay-preparation", "sending", "awaiting-upstream-delivery", "succeeded"] } }, "required": ["state"] },
+      "then": { "required": ["validationReceipt"] }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["sending", "awaiting-upstream-delivery", "succeeded"] } }, "required": ["state"] },
+      "then": { "required": ["preparationReceipt"] }
+    },
+    {
+      "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
+      "then": { "required": ["upstreamDeliveryReceipt"] },
+      "else": { "not": { "required": ["upstreamDeliveryReceipt"] } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "stopped" } }, "required": ["state"] },
+      "then": { "required": ["stoppedFromState"] },
+      "else": { "not": { "required": ["stoppedFromState"] } }
+    }
+  ],
+  "$defs": {
+    "SpoolReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "replayId", "fileFormatVersion", "databaseSha256", "databaseByteSize", "startedAt", "endedAt", "durationSeconds", "trackCount", "recordCount", "graphCompatibleSignalCount", "finalizedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "replayId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "fileFormatVersion": { "enum": ["vital-v1", "vital-v2", "vital-v3"] },
+        "databaseSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "databaseByteSize": { "type": "integer", "minimum": 1 },
+        "startedAt": { "type": "number" },
+        "endedAt": { "type": "number" },
+        "durationSeconds": { "type": "integer", "minimum": 1 },
+        "trackCount": { "type": "integer", "minimum": 1 },
+        "recordCount": { "type": "integer", "minimum": 1 },
+        "graphCompatibleSignalCount": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "finalizedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "ValidationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "parserContractVersion", "sourceReference", "sourceSha256", "fileFormatVersion", "graphCompatibleSignalCount", "spoolReceipt", "validatedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "parserContractVersion": { "const": "v1" },
+        "sourceReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-command#/$defs/LabReplaySourceReference" },
+        "sourceSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "fileFormatVersion": { "enum": ["vital-v1", "vital-v2", "vital-v3"] },
+        "graphCompatibleSignalCount": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "spoolReceipt": { "$ref": "#/$defs/SpoolReceipt" },
+        "validatedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "PreparationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "replayId", "runnerSessionId", "spoolDatabaseSha256", "frameCount", "outputStartedAt", "preparedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "replayId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "runnerSessionId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "spoolDatabaseSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "frameCount": { "type": "integer", "minimum": 1 },
+        "outputStartedAt": { "type": "number", "exclusiveMinimum": 0 },
+        "preparedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "UpstreamDeliveryReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "replayId", "runnerSessionId", "deliveryReceiptId", "deliveredFrameCount", "deliveryConfirmedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "replayId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "runnerSessionId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "deliveryReceiptId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "deliveredFrameCount": { "type": "integer", "minimum": 1 },
+        "deliveryConfirmedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "Failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "code", "message", "failedAt"],
+      "properties": {
+        "stage": { "enum": ["file-validation", "track-decode", "replay-preparation", "message-send", "upstream-delivery"] },
+        "code": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "failedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v1",
+  "evidenceId": "guest-installed-first-boot-invalid",
+  "releaseDeliveryPlanId": "macos-runtime-platform-release",
+  "stage": "first-boot-checkpoint",
+  "status": "verified",
+  "recordedAt": "2026-07-24T23:30:00Z",
+  "runner": {
+    "kind": "guest-installed-runtime",
+    "id": "macos-clean-host-runner-1"
+  },
+  "hostBootSessionIdentifier": "host-boot-session-before",
+  "readinessObservedAt": "2026-07-24T23:29:59Z"
+}

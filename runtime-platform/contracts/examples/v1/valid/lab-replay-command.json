@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "lab-replay-request-1",
+  "replayId": "lab-replay-1",
+  "sourceReference": {
+    "resourceType": "lab-replay-source",
+    "resourceId": "lab-replay-source-1"
+  },
+  "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "recorderGatewayRecorderCode": "LAB-RECORDER-01",
+  "requestedAt": "2026-07-24T16:00:00Z"
+}

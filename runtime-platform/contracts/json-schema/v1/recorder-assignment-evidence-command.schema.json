@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-assignment-evidence-command",
+  "title": "RecorderAssignmentEvidenceCommand",
+  "description": "An explicit Administrator-sourced, time-bounded Recorder-to-bed assignment fact. An upload-reported bed name is not assignment evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "evidenceId", "recorderId", "bedName", "effectiveFrom", "observedAt", "sourceKind", "sourceReference"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "evidenceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "recorderId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "bedName": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "effectiveFrom": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "effectiveUntil": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "sourceKind": { "const": "administrator" },
+    "sourceReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference" }
+  }
+}

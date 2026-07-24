@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v1",
+  "evidenceId": "guest-installed-first-boot-1",
+  "releaseDeliveryPlanId": "macos-runtime-platform-release",
+  "stage": "first-boot-checkpoint",
+  "status": "verified",
+  "recordedAt": "2026-07-24T23:30:00Z",
+  "runner": {
+    "kind": "guest-installed-runtime",
+    "id": "macos-clean-host-runner-1"
+  },
+  "hostBootSessionIdentifier": "host-boot-session-before",
+  "readinessObservedAt": "2026-07-24T23:29:59Z",
+  "identity": {
+    "schemaVersion": "v1",
+    "sqlite": {
+      "databaseId": "guest-runtime-state-20260724-1",
+      "schemaVersion": 7
+    },
+    "postgresql": {
+      "databaseId": "guest-postgresql-20260724-1",
+      "alembicRevision": "0006_backup_owner",
+      "ownerSchemas": [
+        "archive_export",
+        "guest_operational_state",
+        "recorder_assignment",
+        "recorder_catalog"
+      ]
+    },
+    "bootstrap": {
+      "migrationReceipt": {
+        "schemaVersion": "v1",
+        "state": "succeeded",
+        "revision": "0006_backup_owner",
+        "startedAt": "2026-07-24T23:20:00Z",
+        "finishedAt": "2026-07-24T23:20:05Z"
+      },
+      "privateMaterialSet": {
+        "materialCount": 3,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "observedAt": "2026-07-24T23:29:59Z"
+  }
+}

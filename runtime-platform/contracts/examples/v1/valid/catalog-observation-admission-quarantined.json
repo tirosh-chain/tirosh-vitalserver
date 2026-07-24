@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "catalog-observation-quarantine-1",
+  "outcome": "quarantined",
+  "issue": {
+    "code": "invalid-recorder-observation-document",
+    "message": "Recorder observation document did not match the v1 Catalog command contract",
+    "retryable": false,
+    "dependency": "recorder-gateway"
+  },
+  "receivedAt": "2026-07-24T00:00:02Z",
+  "persistedAt": "2026-07-24T00:00:02Z"
+}

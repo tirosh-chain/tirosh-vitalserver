@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "recorder-assignment-request-1",
+  "evidenceId": "recorder-assignment-evidence-1",
+  "recorderId": "recorder-1",
+  "bedName": "OR-01",
+  "effectiveFrom": "2026-07-24T10:00:00Z",
+  "observedAt": "2026-07-24T10:00:00Z",
+  "sourceKind": "administrator",
+  "sourceReference": {
+    "kind": "administrator-command",
+    "id": "operator-assignment-command-1"
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-identity",
+  "title": "GuestOperationalStateIdentity",
+  "description": "One atomic Guest-owner observation of the SQLite control ledger, PostgreSQL accumulated state, persisted migration receipt, and non-secret aggregate private-material identity used by installation, reboot, and restore acceptance. A partial or inferred identity is not valid.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sqlite",
+    "postgresql",
+    "bootstrap",
+    "observedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "sqlite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["databaseId", "schemaVersion"],
+      "properties": {
+        "databaseId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["databaseId", "alembicRevision", "ownerSchemas"],
+      "properties": {
+        "databaseId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "alembicRevision": {
+          "const": "0006_backup_owner"
+        },
+        "ownerSchemas": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "archive_export",
+              "guest_operational_state",
+              "recorder_assignment",
+              "recorder_catalog"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": { "const": "archive_export" }
+            },
+            {
+              "contains": { "const": "guest_operational_state" }
+            },
+            {
+              "contains": { "const": "recorder_assignment" }
+            },
+            {
+              "contains": { "const": "recorder_catalog" }
+            }
+          ]
+        }
+      }
+    },
+    "bootstrap": {
+      "description": "Persisted owner evidence from the explicit C37 paths. It exposes no material value or individual material digest.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["migrationReceipt", "privateMaterialSet"],
+      "properties": {
+        "migrationReceipt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "state",
+            "revision",
+            "startedAt",
+            "finishedAt"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "v1" },
+            "state": { "const": "succeeded" },
+            "revision": { "const": "0006_backup_owner" },
+            "startedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "finishedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            }
+          }
+        },
+        "privateMaterialSet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["materialCount", "sha256"],
+          "properties": {
+            "materialCount": { "const": 3 },
+            "sha256": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+            }
+          }
+        }
+      }
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  }
+}

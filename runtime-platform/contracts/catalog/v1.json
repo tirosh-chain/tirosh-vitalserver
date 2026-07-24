@@ -48,14 +48,16 @@
     },
     {
       "id": "C6",
-      "name": "ArtifactExportCommand, ArchiveExportProviderConfiguration, ArtifactManifest, and ExportReceipt",
+      "name": "ArtifactExportCommand, ArchiveExportProviderConfiguration, ArtifactManifest, ExportReceipt, and Archive artifact lineage",
       "owner": "Archive Export",
       "boundary": "artifact finalization and export receipt",
       "schemas": [
         "json-schema/v1/artifact-export-command.schema.json",
         "json-schema/v1/archive-export-provider.schema.json",
         "json-schema/v1/artifact-manifest.schema.json",
-        "json-schema/v1/export-receipt.schema.json"
+        "json-schema/v1/export-receipt.schema.json",
+        "json-schema/v1/archive-artifact-detail.schema.json",
+        "json-schema/v1/recorder-artifact-page.schema.json"
       ]
     },
     {
@@ -174,13 +176,22 @@
     },
     {
       "id": "C19",
-      "name": "RecorderObservationEnvelope, CatalogObservation, and ingest command",
+      "name": "RecorderObservationEnvelope, Catalog admission, current summary, ingest, and expectation contracts",
       "owner": "Vital Recorder source and Guest Runtime Observation Catalog projection",
       "boundary": "device self-observation source and immutable query projection",
       "schemas": [
         "json-schema/v1/recorder-observation-envelope.schema.json",
         "json-schema/v1/catalog-observation.schema.json",
-        "json-schema/v1/catalog-observation-command.schema.json"
+        "json-schema/v1/catalog-observation-command.schema.json",
+        "json-schema/v1/catalog-observation-admission.schema.json",
+        "json-schema/v1/recorder-observability-summary.schema.json",
+        "json-schema/v1/recorder-observability-summary-page.schema.json",
+        "json-schema/v1/recorder-observability-expectation-command.schema.json",
+        "json-schema/v1/recorder-expectation-event.schema.json",
+        "json-schema/v1/recorder-expectation-receipt.schema.json",
+        "json-schema/v1/recorder-observation-timeline-page.schema.json",
+        "json-schema/v1/recorder-reported-incident.schema.json",
+        "json-schema/v1/recorder-incident-page.schema.json"
       ]
     },
     {
@@ -691,6 +702,57 @@
       "boundary": "explicit review of C24 proof fragments and exact evidence material into one new immutable proof-set candidate; it never mutates a source proof set or creates Host installation state",
       "schemas": [
         "json-schema/v1/release-delivery-proof-attachment-review.schema.json"
+      ]
+    },
+    {
+      "id": "C75",
+      "name": "LabReplayCommand and LabReplayOperation",
+      "owner": "Guest Runtime Lab replay",
+      "boundary": "one immutable Lab replay source to durable validation, decode, preparation, send, upstream-delivery, or typed terminal failure state",
+      "schemas": [
+        "json-schema/v1/lab-replay-command.schema.json",
+        "json-schema/v1/lab-replay-operation.schema.json"
+      ]
+    },
+    {
+      "id": "C76",
+      "name": "GuestOperationalStateBackupCommand, GuestOperationalStateRestoreCommand, GuestOperationalStateEmptyTargetProof, GuestOperationalStateArtifactInventory, GuestOperationalStateBackupManifest, and GuestOperationalStateBackupOperation",
+      "owner": "Guest operational-state backup workflow",
+      "boundary": "explicit SQLite and PostgreSQL owner snapshot, artifact metadata inventory, immutable publication, and empty-target restore evidence; raw artifact object retention is outside v1",
+      "schemas": [
+        "json-schema/v1/guest-operational-state-backup-command.schema.json",
+        "json-schema/v1/guest-operational-state-restore-command.schema.json",
+        "json-schema/v1/guest-operational-state-empty-target-proof.schema.json",
+        "json-schema/v1/guest-operational-state-artifact-inventory.schema.json",
+        "json-schema/v1/guest-operational-state-backup-manifest.schema.json",
+        "json-schema/v1/guest-operational-state-backup-operation.schema.json"
+      ]
+    },
+    {
+      "id": "C77",
+      "name": "GuestOperationalStateIdentity",
+      "owner": "Guest operational-state and bootstrap evidence owners",
+      "boundary": "one atomic public observation of the Guest Runtime SQLite control-ledger identity, PostgreSQL accumulated-state identity, persisted migration receipt, and aggregate non-secret private-material-set identity; partial, missing, or failed owner reads never become an available installation or reboot proof",
+      "schemas": [
+        "json-schema/v1/guest-operational-state-identity.schema.json"
+      ]
+    },
+    {
+      "id": "C78",
+      "name": "GuestInstalledRuntimeEvidence",
+      "owner": "Guest installed-runtime release evidence runner",
+      "boundary": "one immutable first-boot, direct Recorder upload lineage, or post-reboot observation through the installed Host and Guest public facades; direct upload requires explicit assignment and exact source/artifact owner evidence, while reboot evidence requires a changed Host boot session and stable C77 identity; it never reads Guest files, databases, processes, or logs",
+      "schemas": [
+        "json-schema/v1/guest-installed-runtime-evidence.schema.json"
+      ]
+    },
+    {
+      "id": "C79",
+      "name": "VitalReplayCorpusManifest",
+      "owner": "Release data review",
+      "boundary": "one human-approved non-identifying and redistribution-authorized set of exact Recorder .vital artifacts for v1-v3 replay evidence; automated verification binds declared names, sizes, and digests but never creates the approval decision",
+      "schemas": [
+        "json-schema/v1/vital-replay-corpus-manifest.schema.json"
       ]
     }
   ]

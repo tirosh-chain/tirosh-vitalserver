@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "recorder-assignment-request-1",
+  "outcome": "accepted",
+  "evidenceReference": {
+    "kind": "recorder-assignment-evidence",
+    "id": "recorder-assignment-evidence-1"
+  },
+  "persistedAt": "2026-07-24T10:00:01Z"
+}

@@ -5,12 +5,13 @@
   "description": "C33 Host-owned deployment document for one Host Agent service instance. It supplies every runtime path, OS-local administration listener and authorization policy, configured Guest Runtime Control endpoint, selected provider input, time/telemetry mode, and update-bootstrap mode. The service process must not derive omitted inputs from installation layout, environment, or command-line defaults.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "control", "installation", "guestRuntimeControlEndpoint", "provider", "time", "telemetry", "updateBootstrap"],
+  "required": ["schemaVersion", "control", "installation", "guestRuntimeControlEndpoint", "operationalStateBackup", "provider", "time", "telemetry", "updateBootstrap"],
   "properties": {
     "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
     "control": { "$ref": "#/$defs/HostAgentControl" },
     "installation": { "$ref": "#/$defs/HostInstallationConfiguration" },
     "guestRuntimeControlEndpoint": { "$ref": "#/$defs/GuestRuntimeControlEndpointConfiguration" },
+    "operationalStateBackup": { "$ref": "#/$defs/HostOperationalStateBackupConfiguration" },
     "provider": { "$ref": "#/$defs/SelectedProviderConfiguration" },
     "time": { "$ref": "#/$defs/HostTimeConfiguration" },
     "telemetry": { "$ref": "#/$defs/HostTelemetryConfiguration" },
@@ -124,6 +125,27 @@
         "scheme": { "type": "string", "enum": ["http", "https"] },
         "host": { "type": "string", "minLength": 1, "maxLength": 255 },
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "HostOperationalStateBackupConfiguration": {
+      "description": "Host-owned deterministic UTC interval schedule for C76 backup admission. retain-all is explicit v1 no-purge behavior; Host does not inspect Guest manifests, files, or databases.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheduleId", "intervalSeconds", "retryIntervalSeconds", "destinationReference", "retentionPolicy"],
+      "properties": {
+        "scheduleId": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "intervalSeconds": { "type": "integer", "minimum": 300, "maximum": 604800 },
+        "retryIntervalSeconds": { "type": "integer", "minimum": 10, "maximum": 3600 },
+        "destinationReference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resourceType", "resourceId"],
+          "properties": {
+            "resourceType": { "const": "guest-backup-destination" },
+            "resourceId": { "$ref": "#/$defs/DeploymentIdentifier" }
+          }
+        },
+        "retentionPolicy": { "const": "retain-all" }
       }
     },
     "SelectedProviderConfiguration": {

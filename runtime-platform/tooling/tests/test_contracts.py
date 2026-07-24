@@ -33,6 +33,8 @@ class ContractKernelTests(unittest.TestCase):
                 "json-schema/v1/archive-export-provider.schema.json",
                 "json-schema/v1/artifact-manifest.schema.json",
                 "json-schema/v1/export-receipt.schema.json",
+                "json-schema/v1/archive-artifact-detail.schema.json",
+                "json-schema/v1/recorder-artifact-page.schema.json",
             ],
             archive_contract["schemas"],
         )
@@ -92,6 +94,17 @@ class ContractKernelTests(unittest.TestCase):
         self.assertEqual("Release process", by_id["C72"]["owner"])
         self.assertEqual("Guest Linux source disk materializer", by_id["C73"]["owner"])
         self.assertEqual("Release process", by_id["C74"]["owner"])
+        self.assertEqual("Guest Runtime Lab replay", by_id["C75"]["owner"])
+        self.assertEqual("Guest operational-state backup workflow", by_id["C76"]["owner"])
+        self.assertEqual(
+            "Guest operational-state and bootstrap evidence owners",
+            by_id["C77"]["owner"],
+        )
+        self.assertEqual(
+            "Guest installed-runtime release evidence runner",
+            by_id["C78"]["owner"],
+        )
+        self.assertEqual("Release data review", by_id["C79"]["owner"])
 
     def test_checked_in_guest_bootstrap_configurations_are_explicit_valid_architecture_inputs(self) -> None:
         product_root = self.root / "product" / "guest-product"

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-restore-command",
+  "title": "GuestOperationalStateRestoreCommand",
+  "description": "Requests restore of one immutable C76 manifest into one explicitly provisioned target. The restore workflow must independently prove that target empty.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "operationId", "manifestReference", "manifestSha256", "targetReference", "requestedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "operationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "manifestReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+    "manifestSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "targetReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+    "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  }
+}

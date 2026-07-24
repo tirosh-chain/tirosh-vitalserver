@@ -6,6 +6,8 @@
     "executablePath": "/opt/vitalserver/bin/guest-runtime",
     "listener": { "bindHost": "0.0.0.0", "port": 18443 },
     "stateDatabasePath": "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite",
+    "recorderCatalogDatabaseUrlMaterialPath": "/var/lib/vitalserver/private/recorder-catalog-database-url",
+    "recorderCatalogMigrationReceiptPath": "/var/lib/vitalserver/private/recorder-catalog-migration-receipt.json",
     "serviceVersion": "0.1.0-dev",
     "instanceId": "guest-runtime-primary",
     "archiveExportProvider": { "kind": "archive-export-outcome-profile", "id": "bundled-archive", "capabilityRevision": 1, "outcomeMode": "succeed" },

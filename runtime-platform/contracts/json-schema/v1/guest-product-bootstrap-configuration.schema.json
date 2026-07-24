@@ -5,7 +5,7 @@
   "description": "C39 desired first-Guest-boot installation for the Guest Product. It declares one immutable Guest Product release directory, its explicitly activated current-release link, one explicit Linux Guest architecture, Guest-owned payload destinations, independently owned Guest Runtime and telemetry Collector state directories, an optional explicit Guest NTP service installation, and the Guest-visible NoCloud filesystem identity only; it never names a Host-selected root partition, Host storage-image container, ext4 implementation, or Host-side filesystem write. The Guest Node Services bundle contains the declared Node runtime, Recorder Gateway, Lab Recorder Runner, and scenario catalog; its archive entry-mode and symbolic-link policies are independent declarations so a consumer can distinguish permission preservation from safe link acceptance.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "bootstrapId", "volumeLabel", "guestBootstrapVolumeFileSystem", "instanceId", "localHostName", "guestArchitecture", "guestProductRelease", "guestRuntime", "guestRuntimeStateDirectory", "guestNodeServicesBundle", "guestProductProcessSupervisor", "guestProductProcessDeployment", "guestProductReleaseManager", "guestProductServiceManagerDeployment", "guestProductVitalServerTopologyDeployment"],
+  "required": ["schemaVersion", "bootstrapId", "volumeLabel", "guestBootstrapVolumeFileSystem", "instanceId", "localHostName", "guestArchitecture", "guestProductRelease", "guestRuntime", "guestRuntimeStateDirectory", "guestPrivateStateDirectory", "guestArchiveArtifactObjectDirectory", "guestRecorderCatalogPostgreSQL", "guestNodeServicesBundle", "guestProductProcessSupervisor", "guestProductProcessDeployment", "guestProductReleaseManager", "guestProductServiceManagerDeployment", "guestProductVitalServerTopologyDeployment"],
   "properties": {
     "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
     "bootstrapId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
@@ -17,6 +17,33 @@
     "guestProductRelease": { "$ref": "#/$defs/GuestProductRelease" },
     "guestRuntime": { "$ref": "#/$defs/ExecutableBootstrapPayload" },
     "guestRuntimeStateDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
+    "guestPrivateStateDirectory": { "$ref": "#/$defs/GuestPrivateStateDirectory" },
+    "guestArchiveArtifactObjectDirectory": { "$ref": "#/$defs/GuestArchiveArtifactObjectDirectory" },
+    "guestRecorderCatalogPostgreSQL": {
+      "description": "Explicit first-boot PostgreSQL owner, private material generation, and Alembic migration effect. C40 must obtain the expected revision before it starts C38.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageManager", "packageNames", "serviceName", "databaseHost", "databasePort", "databaseName", "databaseRoleName", "databaseURLMaterialPath", "catalogAdmissionBearerTokenMaterialPath", "archiveSourceAdmissionBearerTokenMaterialPath", "generatedSecretByteCount", "migrationExecutablePath", "migrationPythonExecutablePath", "expectedRevision", "migrationReceiptPath"],
+      "properties": {
+        "packageManager": { "const": "apt" },
+        "packageNames": {
+          "const": ["postgresql", "python3-alembic", "python3-psycopg"]
+        },
+        "serviceName": { "const": "postgresql.service" },
+        "databaseHost": { "const": "127.0.0.1" },
+        "databasePort": { "const": 5432 },
+        "databaseName": { "const": "vitalserver" },
+        "databaseRoleName": { "const": "vitalserver" },
+        "databaseURLMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "catalogAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "archiveSourceAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "generatedSecretByteCount": { "const": 32 },
+        "migrationExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "migrationPythonExecutablePath": { "const": "/usr/bin/python3" },
+        "expectedRevision": { "const": "0006_backup_owner" },
+        "migrationReceiptPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    },
     "guestTelemetryCollector": {
       "type": "object",
       "additionalProperties": false,
@@ -227,6 +254,26 @@
       "required": ["directoryPath", "directoryMode"],
       "properties": {
         "directoryPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "directoryMode": { "const": "0700" }
+      }
+    },
+    "GuestPrivateStateDirectory": {
+      "description": "Persistent Guest-owned private material root. It is deliberately not /run, so reboot cannot erase database credentials or internal bearer tokens.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directoryPath", "directoryMode"],
+      "properties": {
+        "directoryPath": { "const": "/var/lib/vitalserver/private" },
+        "directoryMode": { "const": "0700" }
+      }
+    },
+    "GuestArchiveArtifactObjectDirectory": {
+      "description": "Persistent Archive Export-owned object root prepared before direct upload admission.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directoryPath", "directoryMode"],
+      "properties": {
+        "directoryPath": { "const": "/var/lib/vitalserver/archive-artifacts" },
         "directoryMode": { "const": "0700" }
       }
     },

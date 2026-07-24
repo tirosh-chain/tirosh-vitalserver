@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "v1",
+  "recorderId": "recorder-lab-0001",
+  "items": [
+    {
+      "schemaVersion": "v1",
+      "id": "catalog-observation-1-reported-incident",
+      "recorderId": "recorder-lab-0001",
+      "observationReference": {
+        "resourceType": "catalog-observation",
+        "resourceId": "catalog-observation-1"
+      },
+      "occurredAt": "2026-07-17T00:00:00Z",
+      "receivedAt": "2026-07-17T00:00:02Z",
+      "runtimeIssue": {
+        "code": "recorder-runtime-failed",
+        "message": "Recorder reported its runtime failure",
+        "retryable": true,
+        "dependency": "recorder-runtime"
+      }
+    }
+  ]
+}

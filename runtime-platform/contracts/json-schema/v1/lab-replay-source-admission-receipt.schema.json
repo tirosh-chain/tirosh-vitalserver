@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-source-admission-receipt",
+  "title": "LabReplaySourceAdmissionReceipt",
+  "description": "Guest-owned receipt proving the immutable Lab replay source bytes and metadata admitted independently from Recorder upload and Gateway cold path.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "outcome", "sourceReference", "originalFileName", "mediaType", "byteSize", "sha256", "objectReceipt", "persistedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "outcome": { "enum": ["accepted", "duplicate"] },
+    "sourceReference": { "$ref": "#/$defs/LabReplaySourceReference" },
+    "originalFileName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[^/\\\\]+$"
+    },
+    "mediaType": { "const": "application/x-vital" },
+    "byteSize": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+    "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "objectReceipt": { "$ref": "#/$defs/LabReplaySourceObjectReceipt" },
+    "persistedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "$defs": {
+    "LabReplaySourceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceId"],
+      "properties": {
+        "resourceType": { "const": "lab-replay-source" },
+        "resourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "LabReplaySourceStorageReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceId"],
+      "properties": {
+        "resourceType": { "const": "guest-lab-replay-source-object" },
+        "resourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "LabReplaySourceObjectReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "sourceReference", "state", "byteSize", "sha256", "storageReference", "persistedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "sourceReference": { "$ref": "#/$defs/LabReplaySourceReference" },
+        "state": { "enum": ["committed", "existing"] },
+        "byteSize": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "storageReference": { "$ref": "#/$defs/LabReplaySourceStorageReference" },
+        "persistedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    }
+  }
+}

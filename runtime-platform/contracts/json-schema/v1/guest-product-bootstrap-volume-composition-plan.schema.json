@@ -5,7 +5,7 @@
   "description": "C40 explicit plan from the Guest Product release composer to the selected NoCloud bootstrap-volume composer. The Host produces one read-only RAW storage image containing the Guest-visible CIDATA ISO9660 filesystem. Guest cloud-init owns the later root-filesystem installation. Every named bootstrap payload has exactly one declared file or archive installation; the service enable link must target the declared installed service unit. An optional explicit Chrony installation is a separate Guest time-service effect, not a clock-quality result. The plan makes source bytes, Guest destinations, archive operation, service-unit link, Guest Runtime state directory, storage-image format, and Guest filesystem explicit; the composer must not mount or edit a Guest root image, discover a source, or select a delivery medium from the Host.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "bootstrapId", "volumeLabel", "storageImageFormat", "guestVolumeFileSystem", "instanceId", "localHostName", "serviceUnitName", "releaseManagerServiceUnitName", "guestProductRelease", "guestRuntimeStateDirectory", "sources", "fileInstallations", "archiveInstallations", "symbolicLinks"],
+  "required": ["schemaVersion", "bootstrapId", "volumeLabel", "storageImageFormat", "guestVolumeFileSystem", "instanceId", "localHostName", "serviceUnitName", "releaseManagerServiceUnitName", "guestProductRelease", "guestRuntimeStateDirectory", "guestPrivateStateDirectory", "guestArchiveArtifactObjectDirectory", "guestRecorderCatalogPostgreSQL", "sources", "fileInstallations", "archiveInstallations", "symbolicLinks"],
   "properties": {
     "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
     "bootstrapId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
@@ -18,6 +18,9 @@
     "releaseManagerServiceUnitName": { "const": "vitalserver-guest-product-release-manager.service" },
     "guestProductRelease": { "$ref": "#/$defs/GuestProductRelease" },
     "guestRuntimeStateDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
+    "guestPrivateStateDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
+    "guestArchiveArtifactObjectDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
+    "guestRecorderCatalogPostgreSQL": { "$ref": "#/$defs/GuestRecorderCatalogPostgreSQL" },
     "guestTelemetryStateDirectory": { "$ref": "#/$defs/GuestRuntimeStateDirectory" },
     "guestTimeSynchronization": { "$ref": "#/$defs/GuestTimeSynchronization" },
     "sources": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/Source" } },
@@ -50,6 +53,28 @@
         "currentReleaseLinkPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
         "releaseStateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
         "releaseStateDirectoryMode": { "const": "0700" }
+      }
+    },
+    "GuestRecorderCatalogPostgreSQL": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageManager", "packageNames", "serviceName", "databaseHost", "databasePort", "databaseName", "databaseRoleName", "databaseURLMaterialPath", "catalogAdmissionBearerTokenMaterialPath", "archiveSourceAdmissionBearerTokenMaterialPath", "generatedSecretByteCount", "migrationExecutablePath", "migrationPythonExecutablePath", "expectedRevision", "migrationReceiptPath"],
+      "properties": {
+        "packageManager": { "const": "apt" },
+        "packageNames": { "const": ["postgresql", "python3-alembic", "python3-psycopg"] },
+        "serviceName": { "const": "postgresql.service" },
+        "databaseHost": { "const": "127.0.0.1" },
+        "databasePort": { "const": 5432 },
+        "databaseName": { "const": "vitalserver" },
+        "databaseRoleName": { "const": "vitalserver" },
+        "databaseURLMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "catalogAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "archiveSourceAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "generatedSecretByteCount": { "const": 32 },
+        "migrationExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "migrationPythonExecutablePath": { "const": "/usr/bin/python3" },
+        "expectedRevision": { "const": "0006_backup_owner" },
+        "migrationReceiptPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
       }
     },
     "GuestTimeSynchronization": {

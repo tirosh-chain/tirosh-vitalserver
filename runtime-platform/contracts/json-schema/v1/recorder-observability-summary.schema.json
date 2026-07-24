@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observability-summary",
+  "title": "RecorderObservabilitySummary",
+  "description": "The Catalog-owned current projection. Support, expectation, report freshness, and owner read state remain independent facts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "recorderId",
+    "resourceRevision",
+    "supportState",
+    "expectationState",
+    "reportState",
+    "readState",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "recorderId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "resourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "supportState": {
+      "type": "string",
+      "enum": [
+        "supported",
+        "unsupported",
+        "unknown"
+      ]
+    },
+    "expectationState": {
+      "type": "string",
+      "enum": [
+        "expected",
+        "not-expected",
+        "unset"
+      ]
+    },
+    "reportState": {
+      "type": "string",
+      "enum": [
+        "never-reported",
+        "current",
+        "stale"
+      ]
+    },
+    "readState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable",
+        "failed"
+      ]
+    },
+    "latestObservationReference": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+    },
+    "latestBootId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "latestSequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "latestOccurredAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "latestReceivedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "latestPersistedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    },
+    "updatedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "reportState": {
+            "enum": [
+              "current",
+              "stale"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "latestObservationReference",
+          "latestBootId",
+          "latestSequence",
+          "latestOccurredAt",
+          "latestReceivedAt",
+          "latestPersistedAt"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "readState": {
+            "enum": [
+              "unavailable",
+              "failed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "issue"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "issue"
+          ]
+        }
+      }
+    }
+  ]
+}
