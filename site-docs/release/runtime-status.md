@@ -147,7 +147,29 @@ read model에 명시적인 status evaluation time을 전달해 `Last seen`이 th
 `Stale`로 계산하는 것입니다. 예방 원칙은 presentation이 시간 상태를 추측하지 않고, status 계산
 시각을 adapter/read boundary에서 명시적으로 공급하는 것입니다.
 
-### 4-2. Bed 상태
+### 4-2. Recorder Observer health와 incident
+
+Recorder Detail의 Health report는 VRecorder connection activity와 별개인
+Recorder 장비 자체의 관측 자료입니다.
+
+| 표시 | 의미 |
+|---|---|
+| Evidence health | boot ledger, power summary, journal과 pstore를 마지막으로 읽은 bounded 상태 |
+| Incident assessment | 현재 observation이 보고한 boot-loop와 반복 저전압 assessment |
+| Active Recorder incidents | 현재 assessment 중 warning 또는 critical인 signal |
+| Recent reported incidents | 최근 30일 동안 수신된 kernel/boot incident history |
+| Boot `nonOrderable` | boot epoch/ordinal 근거가 없어 순서를 안전하게 비교할 수 없음 |
+
+현재 assessment와 history는 같은 뜻이 아닙니다. 현재 assessment가 정상으로
+돌아와도 과거 incident는 history에 남을 수 있고, history가 비어 있어도
+evidence health가 degraded 또는 failed일 수 있습니다.
+
+`boot-loop`과 `repeated-undervoltage`는 Recorder가 보고한 bounded evidence
+분류입니다. 전원 어댑터, 케이블, hardware reset 또는 kernel hang 가운데 하나를
+원인으로 확정하지 않습니다. 장비 원인 분석에는 Recorder 원본 archive와 현장
+전원/AP 자료를 함께 사용합니다.
+
+### 4-3. Bed 상태
 
 | 표시 | 의미 |
 |---|---|
@@ -162,7 +184,7 @@ Beds 화면에서는 `Bed ID`, `Name`, `VRecorder`, `Status`, `Last seen`, `Anom
 Bed 상세의 `VRecorder status`, `VRecorder IP`, `VRecorder last seen`은 bed가 연결된 VRecorder
 read model에서 온 명시 상태입니다. Bed 화면은 VRecorder 상태를 임의로 추정하지 않습니다.
 
-### 4-3. Stale과 Offline을 볼 때
+### 4-4. Stale과 Offline을 볼 때
 
 `Stale`은 activity가 오래되었다는 뜻이고, `Offline`은 현재 online으로 보이지 않는다는 뜻입니다.
 둘 다 바로 장애 원인을 확정하지 않습니다.

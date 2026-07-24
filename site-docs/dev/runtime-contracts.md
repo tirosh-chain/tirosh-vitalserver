@@ -253,6 +253,30 @@ Recorder Ingress API는 VRecorder command 흐름과 audit event를 관측하기 
 | ----------------------------------- | ------------------------------ |
 | `docs/api/recorder-ingress.openapi.yaml` | command audit sidecar endpoint |
 
+Recorder 장비 Observer가 보내는 observability resource도 같은 ingress가
+수신합니다.
+
+```text
+POST /api/v1/recorders/{vrcode}/observations
+POST /api/v1/recorders/{vrcode}/profiles
+POST /api/v1/recorders/{vrcode}/boot-events
+POST /api/v1/recorders/{vrcode}/diagnostic-events
+POST /api/v1/recorders/{vrcode}/kernel-incidents
+```
+
+HTTP `/api/v1`과 NDJSON document의 `schemaVersion`은 독립 계약입니다. Helper
+0.2.1은 observation/boot-event v1과 v2를 함께 수락하고, Recorder 0.2.6 후보는
+observation v2와 boot-event v2를 활성 계약으로 발행합니다. 그래서 rollout은
+Helper 0.2.1을 먼저 배포하고 기존 v1 수신을 확인한 뒤 Recorder를 canary로
+올립니다.
+
+`202`는 line disposition이 durable하다는 뜻이지 모든 line이 accepted됐다는
+뜻은 아닙니다. accepted, duplicate와 quarantined count를 구분해야 합니다.
+PWA와 Swift가 표시하는 current incident assessment는 최신 observation의 상태이고,
+recent incident history는 accepted kernel incident 및 boot-event v2 signal을
+bounded query한 결과입니다. UI는 이 evidence를 root cause로 다시 분류하지
+않습니다.
+
 ### 7-5. Vital Server API
 
 Vital Server API 문서는 Vital Server integration surface를 기록하기 위한 reference입니다.

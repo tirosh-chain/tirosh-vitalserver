@@ -763,18 +763,19 @@ fallback은 두 owner를 만들기 때문에 사용하지 않습니다.
 완료:
 
 - authoritative v1 contract admission과 PostgreSQL durable disposition
+- authoritative observation v2와 boot-event v2 admission 및 source digest receipt
 - Profile/Observation/Boot current aggregate와 freshness policy
 - support expectation schema와 first-report grace policy
 - Ingress -> Guest Control -> Runtime Control summary contract
 - Swift/PWA Recorder 목록 및 Detail의 support/report 표시
+- evidence health, current incident assessment와 non-orderable boot의 typed Detail
+- accepted event store를 사용하는 bounded timeline/incident query
+- PWA와 Swift Recorder Detail의 current incident 및 recent incident presentation
 
 남음:
 
 - deployment assignment 또는 승인된 version catalog가 expectation을 기록하는
   application workflow
-- Profile/resource 세부 정보를 위한 작은 typed Detail DTO
-- Timeline/incident bounded query와 projection
-- PostgreSQL migration을 적용한 실제 DB 통합 검증
 - capacity, retention, backup/restore와 release proof
 
 ### Phase 0. 계약과 ADR
@@ -857,6 +858,11 @@ VitalServer 저장소:
 
 ### Phase 5. Timeline과 incident query
 
+구현 완료. 별도 incident table 없이 accepted event store와 기존 history index를
+사용합니다. Timeline은 최대 24시간, incident는 최대 30일로 제한하고
+kernel incident와 boot-event v2의 active assessment signal을 하나의 typed
+history contract로 제공합니다.
+
 - 실제 UI query를 기준으로 bucket schema를 정의합니다.
 - boot transition과 diagnostic/kernel incident projection을 추가합니다.
 - 필요한 JSONB GIN 또는 expression index만 추가합니다.
@@ -869,6 +875,11 @@ VitalServer 저장소:
 - 장기간 조회가 raw event 전체를 application memory에 materialize하지 않습니다.
 
 ### Phase 6. Swift/PWA
+
+1차 구현 완료. 두 client 모두 Recorder 선택 뒤 Detail/history를 lazy load하며
+evidence health, current incident assessment, non-orderable boot와 최근 incident를
+표시합니다. UI는 boot-loop나 반복 저전압 evidence를 root cause로 재분류하지
+않습니다.
 
 - Recorder 목록에 작은 observability summary를 추가합니다.
 - Detail은 profile, current health, signals, timeline과 incidents를 lazy load합니다.
@@ -1215,7 +1226,9 @@ Guest와 Runtime Control은 query를 재검증하고 결과 state를 그대로 �
 PWA Recorder Detail은 Recorder를 선택한 뒤에만 24시간/15분 timeline과 최근
 20개 incident를 lazy read합니다. 현재 chart는 직접 설명 가능한 root/data
 storage percent만 표시하며 condition label이나 임계값을 추론하지 않습니다.
-Swift와 다른 client도 동일한 Runtime Control endpoint를 사용할 수 있습니다.
+Swift Recorder Detail도 선택된 VRCODE의 최근 30일 incident를 최대 20개
+lazy read하고 current assessment와 history를 분리해 표시합니다. 두 client는
+동일한 Runtime Control endpoint와 generated contract를 사용합니다.
 
 실제 PostgreSQL proof는 2026-07-24에 격리된 PostgreSQL 16 clean database에
 Alembic `0003_expectation_workflow`까지 적용한 뒤 실행했습니다. Timeline의

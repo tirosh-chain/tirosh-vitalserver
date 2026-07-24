@@ -1,5 +1,12 @@
 # Recorder observability API and database handoff
 
+> **문서 상태:** 이 문서는 초기 공동 설계와 합의 과정을 보존합니다. 다섯 POST,
+> PostgreSQL admission/current/history query와 Swift/PWA presentation은 이후
+> 구현됐으므로 현재 계약과 배포 판단은
+> [Recorder observability 호환성과 배포 순서](observability-compatibility-and-rollout.md)를
+> 먼저 확인합니다. 아래의 “제안”, “아직 구현되지 않음” 표현은 당시 설계
+> checkpoint이며 현재 구현 상태를 뜻하지 않습니다.
+
 ## 1. 전달 목적
 
 이 문서는 Vital Recorder 작업자가 다음 내용을 한 번에 확인하기 위한 협의

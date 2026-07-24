@@ -18,6 +18,7 @@ Remote Console PWA, 관측 sidecar, packaging/update 도구, 검증 도구를 �
 | 찾는 내용 | 위치 |
 |---|---|
 | 설치, 사용, 현장 검증 | [Release docs](https://tirosh-chain.github.io/vitalserver-helper/release/) |
+| 버전별 기능과 호환성 | [`CHANGELOG.md`](CHANGELOG.md) |
 | 구조, contract, package, 검증 기준 | [Dev docs](https://tirosh-chain.github.io/vitalserver-helper/dev/) |
 | repository 내부 책임 지도 | [Repository Map](https://tirosh-chain.github.io/vitalserver-helper/dev/repository-map/) |
 | 문서 source | [`site-docs/`](site-docs/) |
