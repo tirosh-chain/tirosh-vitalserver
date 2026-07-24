@@ -1,0 +1,12 @@
+avahi-daemon
+busybox-static
+ca-certificates
+cloud-guest-utils
+curl
+docker.io
+docker-compose-v2
+procps
+psmisc
+python3-minimal
+python3-venv
+util-linux

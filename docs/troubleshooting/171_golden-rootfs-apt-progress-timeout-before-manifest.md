@@ -14,9 +14,10 @@ error: timed out waiting for .../data/run/rootfs-ready:
 last=manifest missing: .../data/run/rootfs-runtime-manifest.json
 ```
 
-The current run directory contains a matching `rootfs-apt-plan.json` and may
-contain `rootfs-apt-installed.json`, but it does not contain
-`rootfs-runtime-manifest.json` or `rootfs-failure.json`.
+The current run directory may contain a matching `rootfs-apt-plan.json`, but it
+does not contain `rootfs-runtime-manifest.json` or `rootfs-failure.json`. In the
+earlier variant, the timeout can occur during `apt-get update`, before the APT
+plan can be created at all.
 
 The launcher log shows that APT completed near the 600-second wait boundary,
 followed immediately by VM shutdown.
@@ -28,11 +29,12 @@ extended its deadline only when `rootfs-runtime-manifest.json` changed. The
 Guest does not create that manifest until after package installation, Guest
 Tools installation, and rootfs smoke startup.
 
-When the pinned Ubuntu snapshot was slow, the Guest produced a valid,
-current-run `rootfs-apt-plan.json` but the Host ignored that explicit progress
-document. The original deadline expired and cleanup sent SIGTERM to the VM
-before the Guest could enter rootfs smoke and create the manifest. Because the
-Guest command itself had not failed, no `rootfs-failure.json` was expected.
+When the pinned Ubuntu snapshot was slow, the Guest either produced a valid
+current-run `rootfs-apt-plan.json` that the Host did not yet consume, or remained
+inside `apt-get update` before that plan boundary. The original deadline expired
+and cleanup sent SIGTERM to the VM before the Guest could enter rootfs smoke and
+create the manifest. Because the Guest command itself had not failed, no
+`rootfs-failure.json` was expected.
 
 ## Checks
 
@@ -40,6 +42,7 @@ Compare the runId and timestamps without inferring Guest state from log text:
 
 ```sh
 sed -n '1,220p' .tmp/vitalserver-vm-golden/data/run/rootfs-apt-plan.json
+sed -n '1,220p' .tmp/vitalserver-vm-golden/data/run/rootfs-apt-progress.json
 sed -n '1,220p' .tmp/vitalserver-vm-golden/data/run/rootfs-failure.json
 tail -n 240 .tmp/vitalserver-vm-golden/logs/launcher.log
 ```
@@ -49,16 +52,20 @@ failure document exists, and shutdown begins at the Host wait deadline.
 
 ## Fix
 
-The Host wait workflow now treats two current-run documents as explicit
+The Host wait workflow now treats three current-run documents as explicit
 progress contracts:
 
+- `rootfs-apt-progress.json`: `runId` plus `updatedAt`
 - `rootfs-apt-plan.json`: `runId` plus `generatedAt`
 - `rootfs-runtime-manifest.json`: `runId` plus `updatedAt`
 
-A new valid token extends the inactivity deadline. Stale documents with a
-different runId, unreadable JSON, or documents without the required timestamp
-do not extend it. Timeout errors also print the last accepted progress token
-and preserve both the APT plan and manifest inspection messages.
+During `apt-get update` and `apt-get install`, the Guest atomically publishes a
+running heartbeat every 30 seconds. Each command owns an explicit 1,800-second
+timeout. A new valid token extends the Host inactivity deadline. Stale documents
+with a different runId or documents without the required timestamp do not
+extend it. Invalid current-run documents and explicit failed status terminate
+the build. Timeout errors print the last accepted progress token and preserve
+the APT progress, APT plan, and manifest inspection messages.
 
 ## Prevention
 
@@ -84,3 +91,8 @@ and preserve both the APT plan and manifest inspection messages.
   before rootfs smoke created its manifest. Added current-run APT plan progress
   to the inactivity deadline contract and a focused clock-driven regression
   test.
+- 2026-07-24: A snapshot index fetch was still active at VM uptime 600 seconds,
+  before `rootfs-apt-plan.json` existed. Added atomic Guest-owned APT command
+  progress heartbeats for both index update and package install, explicit
+  command timeouts, Host consumption of that progress contract, and focused
+  running/failed regression tests.

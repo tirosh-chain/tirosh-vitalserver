@@ -39,7 +39,9 @@ Browser / VRecorder
 | 상황 | 실행/확인 |
 |---|---|
 | 현장 전달용 개발 설치 파일을 만들고 싶다 | `make dist/dmg/dev` |
-| 반복 개발용 cache DMG만 빠르게 만들고 싶다 | `make dist/dmg/dev/cached` |
+| 반복 개발용 DMG를 전체 golden cache로 가장 빠르게 만들고 싶다 | `make dist/dmg/dev/cached` |
+| mutable rootfs를 새로 만드는 compile 단계만 확인하고 싶다 | `make dist/dmg/dev/compile` |
+| 이미 만든 DMG와 golden rootfs proof만 다시 확인하고 싶다 | `make dist/dmg/dev/verify` |
 | release 제품 설치 파일을 만들고 싶다 | `make dist/dmg/release` |
 | 개발용 `.pkg`만 만들고 싶다 | `make dist/pkg/dev` |
 | air-gapped 현장 업데이트 bundle을 만들고 싶다 | `make dist/update/release` |
@@ -105,6 +107,46 @@ package에 들어가는 golden rootfs base는 설치 파일 효율과 air-gapped
 ```sh
 make dist/dmg/release
 ```
+
+### DMG build profile과 cache 경계
+
+| 명령 | 전체 golden rootfs cache | APT-prepared cache | review / artifact verify / runtime smoke |
+|---|---|---|---|
+| `make dist/dmg/dev` | 사용하지 않고 clean compile | 유효하면 사용 | 모두 실행 |
+| `make dist/dmg/dev/cached` | source fingerprint와 receipt가 맞으면 사용 | 전체 cache miss로 compile할 때 유효하면 사용 | 실행하지 않음 |
+| `make dist/dmg/dev/compile` | 사용하지 않고 clean compile | 유효하면 사용 | 실행하지 않음 |
+| `make dist/dmg/dev/verify` | 기존 cache를 요구하며 stale이면 실패 | 사용하지 않음 | artifact verify와 runtime smoke 실행 |
+| `make dist/dmg/release` | 사용하지 않고 clean compile | 유효하면 사용 | release guard를 포함해 모두 실행 |
+
+여기서 clean compile은 기존 mutable `vm-disk.img`를 폐기하고 새 disk를
+조립한다는 의미입니다. 매번 APT 네트워크를 사용한다는 의미는 아닙니다.
+
+APT cache hit은 다음 세 계층의 proof가 모두 맞아야 합니다.
+
+1. Host의 APT/rootfs contract fingerprint
+2. `apt-prepared-rootfs.raw.gz.sha256`
+3. Guest의 snapshot, 필수 package/version, `dpkg --audit` proof
+
+통과하면 Host preflight는 APT source를 `verified-cache`로 명시하고 snapshot
+endpoint를 probe하지 않습니다. Guest도 `apt-get update`와 `apt-get install`
+대신 cache 내부 proof와 실제 package 상태를 다시 검증합니다. 하나라도 맞지
+않으면 cache hit으로 처리하지 않고 Ubuntu base의 네트워크 APT 경로를 실행합니다.
+
+로컬 artifact 위치:
+
+```text
+.tmp/vitalserver-vm-pkg/
+  apt-prepared-rootfs.raw.gz
+  apt-prepared-rootfs.raw.gz.sha256
+  apt-prepared-rootfs.contract
+  rootfs-base.raw.gz
+  rootfs-base.contract
+```
+
+APT package 추가·삭제는
+`Support/Guest/rootfs-apt-packages.txt`에서 수행합니다. snapshot source,
+install mode, upgrade/package proof 의미가 바뀌면
+`Support/Guest/rootfs-apt-cache-contract.txt`도 함께 갱신해야 합니다.
 
 ### 2. 이미 설치된 현장에 offline update bundle 제공
 
@@ -190,7 +232,17 @@ make devtools/start
 
 ### 5. 패키징 시간이 너무 오래 걸릴 때
 
-rootfs gzip 압축은 시간이 오래 걸릴 수 있습니다. build machine에 `pigz`가 있으면 병렬 gzip을 사용합니다.
+먼저 작업 목적에 맞는 profile을 선택합니다.
+
+```sh
+make dist/dmg/dev/cached   # 전체 golden cache가 맞는 반복 패키징
+make dist/dmg/dev/compile  # 새 mutable rootfs가 필요한 compile 진단
+make dist/dmg/dev          # 현장 전달 proof가 필요한 전체 gate
+```
+
+`compile`과 전체 gate도 유효한 APT-prepared cache가 있으면 APT 네트워크를
+건너뜁니다. rootfs gzip 압축은 여전히 시간이 걸릴 수 있습니다. build machine에
+`pigz`가 있으면 병렬 gzip을 사용합니다.
 
 ```sh
 command -v pigz
@@ -226,7 +278,9 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | `make devtools/app` | Helper app bundle 생성 |
 | `make dist/pkg/dev` | release-dev.json 기반 개발 검증용 `.pkg` 생성 |
 | `make dist/dmg/dev` | 현장 전달 표준 gate: review, clean compile, artifact verify, golden runtime smoke를 거친 release-dev.json 기반 `.dmg` 생성 |
-| `make dist/dmg/dev/cached` | compatible golden rootfs cache를 우선 재사용하는 반복 개발용 `.dmg` 생성. 현장 전달 검증은 수행하지 않음 |
+| `make dist/dmg/dev/cached` | 전체 source fingerprint와 receipt가 일치하는 golden rootfs를 재사용하는 반복 개발용 `.dmg` 생성. 현장 전달 검증은 수행하지 않음 |
+| `make dist/dmg/dev/compile` | 기존 mutable disk를 폐기하고 dev DMG를 clean compile. 검증된 APT-prepared seed는 재사용할 수 있으며 현장 전달 proof는 아님 |
+| `make dist/dmg/dev/verify` | compile 없이 기존 dev DMG readback과 verified golden rootfs runtime smoke 수행. cache가 없거나 stale이면 실패 |
 | `make dist/pkg/release` | release.json 기반 release `.pkg` 생성 |
 | `make dist/dmg/release` | release.json 기반 release 현장 전달 gate: review, clean compile, artifact verify, golden runtime smoke를 거친 `.dmg` 생성 |
 | `make dist/update/dev` | release-dev.json 기반 Product Update bundle 생성 |

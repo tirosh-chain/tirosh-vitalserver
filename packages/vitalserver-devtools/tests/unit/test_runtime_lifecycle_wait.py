@@ -526,6 +526,80 @@ def test_wait_for_rootfs_ready_extends_inactivity_deadline_on_apt_plan_progress(
     assert clock[0] == 1.5
 
 
+def test_wait_for_rootfs_ready_extends_deadline_during_apt_commands(
+    monkeypatch,
+    tmp_path,
+):
+    write_rootfs_apt_progress(
+        tmp_path,
+        run_id="run-test",
+        status="running",
+        updated_at="2026-07-24T06:01:20Z",
+    )
+    clock = [0.0]
+    sleep_count = [0]
+
+    def sleep(_seconds):
+        sleep_count[0] += 1
+        clock[0] += 0.75
+        if sleep_count[0] == 1:
+            write_rootfs_apt_progress(
+                tmp_path,
+                run_id="run-test",
+                stage="apt-install",
+                status="running",
+                updated_at="2026-07-24T06:01:50Z",
+            )
+        elif sleep_count[0] == 2:
+            write_rootfs_manifest(tmp_path, run_id="run-test")
+            write_rootfs_marker(tmp_path, run_id="run-test")
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.monotonic",
+        lambda: clock[0],
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.sleep",
+        sleep,
+    )
+
+    result = wait_for_rootfs_ready(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="run-test",
+        )
+    )
+
+    assert result == 0
+    assert clock[0] == 1.5
+
+
+def test_wait_for_rootfs_ready_rejects_failed_apt_progress(tmp_path):
+    write_rootfs_apt_progress(
+        tmp_path,
+        run_id="run-test",
+        status="failed",
+        updated_at="2026-07-24T06:11:20Z",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=r"rootfs apt command failed.*stage=apt-index-update",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
+            )
+        )
+
+
 def test_wait_for_rootfs_ready_reports_cleanup_command_failure(tmp_path):
     write_rootfs_manifest(
         tmp_path,
@@ -1324,6 +1398,7 @@ def write_rootfs_failure(
                 "stage": stage,
                 "exitCode": exit_code,
                 "reason": "guest-rootfs-prepare-failed",
+                "aptProgressPath": "/mnt/tirosh/run/rootfs-apt-progress.json",
                 "aptPlanPath": "/mnt/tirosh/run/rootfs-apt-plan.json",
             }
         ),
@@ -1335,6 +1410,7 @@ def write_rootfs_apt_plan(
     vm_home,
     *,
     run_id: str,
+    stage: str = "apt-index-update",
     status: str,
     blocked: list[str],
 ) -> None:
@@ -1349,6 +1425,32 @@ def write_rootfs_apt_plan(
                 "status": status,
                 "snapshot": "20250313T000000Z",
                 "blockedUpgrades": blocked,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_rootfs_apt_progress(
+    vm_home,
+    *,
+    run_id: str,
+    stage: str = "apt-index-update",
+    status: str,
+    updated_at: str,
+) -> None:
+    apt_progress = vm_home / "data/run/rootfs-apt-progress.json"
+    apt_progress.parent.mkdir(parents=True, exist_ok=True)
+    apt_progress.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": run_id,
+                "stage": stage,
+                "status": status,
+                "updatedAt": updated_at,
+                "activeCommand": "apt-get update",
+                "activeCommandTimeoutSeconds": 1800,
             }
         ),
         encoding="utf-8",

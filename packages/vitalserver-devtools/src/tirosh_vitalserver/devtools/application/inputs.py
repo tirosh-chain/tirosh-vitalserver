@@ -218,6 +218,7 @@ class GoldenRootfsPreflightInput:
     config: Path
     vm_home: Path
     expected_run_id: str
+    apt_source: str = "network"
 
 
 @dataclass(frozen=True)

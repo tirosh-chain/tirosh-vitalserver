@@ -112,7 +112,16 @@ Host compile이 product image를 build/pull/export하는 유일한 경계입니�
 
 Package 단계는 Docker image를 다시 만들거나 Guest source를 다시 stage하지 않습니다. `--guest-deploy-source`로 compile이 사용한 material만 받아 Host-owned run metadata를 새로 쓴 뒤 receipt와 다시 대조합니다. runtime smoke도 같은 순서로 restage한 material을 cached rootfs receipt와 대조한 뒤에만 VM을 부팅합니다. 따라서 compile 이후 apt snapshot, Docker platform, runtime-data contract, Guest source가 달라지면 package 또는 smoke는 성공으로 진행하지 않습니다.
 
-`dist/dmg/dev/cached`의 fingerprint는 Guest support/tools만이 아니라 실제 deploy source, Docker build source, deploy serializer, rootfs receipt schema, effective build config와 rootfs size를 포함합니다. receipt와 fingerprint가 모두 일치할 때만 cache를 재사용합니다. 하나라도 다르거나 cache가 없으면 이전 golden `vm-disk.img`를 계속 쓰지 않고 새 Ubuntu base disk에서 compile합니다.
+`dist/dmg/dev/cached`의 fingerprint는 Guest support/tools만이 아니라 실제 deploy source, Docker build source, deploy serializer, rootfs receipt schema, effective build config와 rootfs size를 포함합니다. receipt와 fingerprint가 모두 일치할 때만 완성된 golden cache를 재사용합니다. 하나라도 다르거나 cache가 없으면 이전 golden `vm-disk.img`를 계속 쓰지 않고 새 mutable disk를 compile합니다.
+
+새 mutable disk의 OS package source는 별도 APT-prepared cache 계약이 소유합니다.
+`apt-prepared-rootfs.raw.gz`, contract stamp, SHA-256과 Guest 내부
+snapshot/package/dpkg proof가 모두 일치하면 해당 immutable seed에서 disk를
+복원합니다. 이 경우 Host snapshot endpoint probe와 Guest `apt-get
+update/install`을 실행하지 않습니다. APT cache가 unavailable, stale, invalid인
+경우에만 Ubuntu cloud image에서 시작해 network APT를 수행하고, 성공한 compile
+뒤 새 APT-prepared cache를 atomic publish합니다. 따라서 `clean`은 mutable disk
+재사용 금지를 뜻하며 network APT 강제를 뜻하지 않습니다.
 
 Guest-tools wheel은 temporary build output에서 만든 뒤 compiled deploy material에만 복사합니다. source tree의 `packages/vitalserver-guest-tools/dist`는 compile input도, compile output도 아닙니다. 따라서 같은 delivery run의 wheel staging이 이후 runtime-smoke의 rootfs fingerprint를 바꾸지 않습니다.
 

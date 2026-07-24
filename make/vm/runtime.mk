@@ -19,6 +19,7 @@ VM_ROOTFS_RUN_ID ?=
 # already exercised by the golden rootfs compile.
 VM_GUEST_DEPLOY_SOURCE ?=
 VM_GUEST_ROOTFS_ARTIFACT ?=
+VM_ROOTFS_SEED ?=
 
 # Diagnostic/CI fault injection knobs.
 VM_ROOTFS_SMOKE_FAIL_STAGE ?=
@@ -68,6 +69,17 @@ internal/vm/download:
 		--runtime-dir "$(VM_RUNTIME_DIR)" \
 		--rootfs-size "$(VM_ROOTFS_SIZE)" \
 		--recreate-rootfs "$(VM_RECREATE_ROOTFS)"
+	@if [ -n "$(VM_ROOTFS_SEED)" ]; then \
+		test -s "$(VM_ROOTFS_SEED)" || { \
+			printf "error: rootfs seed is unavailable: %s\n" "$(VM_ROOTFS_SEED)" >&2; \
+			exit 1; \
+		}; \
+		seed_tmp="$(VM_RUNTIME_DIR)/vm-disk.img.seed.tmp"; \
+		gzip -dc "$(VM_ROOTFS_SEED)" >"$${seed_tmp}"; \
+		qemu-img check -f raw "$${seed_tmp}"; \
+		mv "$${seed_tmp}" "$(VM_RUNTIME_DIR)/vm-disk.img"; \
+		printf "Restored verified rootfs seed: %s\n" "$(VM_ROOTFS_SEED)"; \
+	fi
 
 internal/vm/cloud-init:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" cloud-init \

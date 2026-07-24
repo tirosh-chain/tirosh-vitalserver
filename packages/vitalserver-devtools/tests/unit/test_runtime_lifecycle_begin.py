@@ -553,6 +553,42 @@ def test_golden_rootfs_preflight_accepts_explicit_inputs(
     assert report.passed
 
 
+def test_golden_rootfs_preflight_does_not_probe_network_for_verified_apt_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vm_home = tmp_path / "vm"
+    write_rootfs_input(vm_home, run_id="run-test")
+    write_run_context(vm_home, run_id="run-test")
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "running_vm_processes_for_home",
+        lambda _: [],
+    )
+
+    def unexpected_network_probe(_: str) -> list[runtime_lifecycle.PreflightCheck]:
+        raise AssertionError("verified APT cache must not probe the snapshot network")
+
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "check_apt_snapshot_available",
+        unexpected_network_probe,
+    )
+
+    report = runtime_lifecycle.golden_rootfs_preflight_report(
+        vm_home=vm_home,
+        expected_run_id="run-test",
+        apt_source="verified-cache",
+    )
+
+    assert report.passed
+    assert any(
+        check.name == "apt-source"
+        and check.status == runtime_lifecycle.PreflightStatus.PASSED
+        for check in report.checks
+    )
+
+
 def write_build_config(path: Path) -> None:
     path.parent.mkdir(parents=True)
     path.write_text(

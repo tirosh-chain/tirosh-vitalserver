@@ -239,13 +239,35 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
     func testPrepareAirgapRootfsDelegatesRootfsSmokeToGuestTools() throws {
         let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+        let aptPackages = try readGuestSupportFile("rootfs-apt-packages.txt")
+        let aptCacheContract = try readGuestSupportFile("rootfs-apt-cache-contract.txt")
 
         XCTAssertTrue(prepareAirgapRootfs.contains("RUNTIME_MANIFEST_FILE=\"${RUNTIME_DIR}/rootfs-runtime-manifest.json\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("busybox-static"))
+        XCTAssertTrue(aptPackages.contains("busybox-static"))
+        XCTAssertTrue(aptPackages.contains("docker-compose-v2"))
+        XCTAssertTrue(aptCacheContract.contains("installedPackageProof=exact-dpkg-version"))
+        XCTAssertTrue(aptCacheContract.contains("packageStateProof=dpkg-audit"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_PACKAGES_FILE=\"${DEPLOY_DIR}/rootfs-apt-packages.txt\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_BASE_PROOF_FILE=\"/var/lib/vitalserver/rootfs-apt-base.json\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("verify_apt_base_proof"))
+        XCTAssertTrue(
+            prepareAirgapRootfs.contains(
+                "configure_guest_clock\n  verify_apt_base_proof"
+            )
+        )
+        XCTAssertTrue(prepareAirgapRootfs.contains("Reusing verified APT-prepared rootfs base"))
         XCTAssertTrue(prepareAirgapRootfs.contains("install_guest_tools_for_rootfs_smoke"))
         XCTAssertTrue(prepareAirgapRootfs.contains("tirosh-vitalserver-rootfs-smoke"))
         XCTAssertTrue(prepareAirgapRootfs.contains("update_apt_indexes()"))
-        XCTAssertTrue(prepareAirgapRootfs.contains("ROOTFS_STAGE=\"apt-index-update\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("ROOTFS_STAGE=\"${stage}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("\"apt-index-update\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("\"apt-install\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_PROGRESS_JSON_FILE="))
+        XCTAssertTrue(prepareAirgapRootfs.contains("record_apt_progress()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("run_apt_command_with_progress()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_INDEX_UPDATE_TIMEOUT_SECONDS=1800"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_INSTALL_TIMEOUT_SECONDS=1800"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_PROGRESS_INTERVAL_SECONDS=30"))
         XCTAssertTrue(prepareAirgapRootfs.contains("Acquire::Retries=5"))
         XCTAssertTrue(prepareAirgapRootfs.contains("APT::Update::Error-Mode=any"))
         XCTAssertTrue(prepareAirgapRootfs.contains("update_apt_indexes\n  record_apt_plan"))

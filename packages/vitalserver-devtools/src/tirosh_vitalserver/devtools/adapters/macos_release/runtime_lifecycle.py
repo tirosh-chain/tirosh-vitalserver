@@ -341,6 +341,7 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
         data_run_dir / "rootfs-runtime-manifest.json",
         data_run_dir / "rootfs-smoke-diagnostics",
         data_run_dir / "rootfs-failure.json",
+        data_run_dir / "rootfs-apt-progress.json",
         data_run_dir / "rootfs-apt-plan.json",
         data_run_dir / "rootfs-apt-plan.txt",
         data_run_dir / "rootfs-apt-installed.json",
@@ -413,6 +414,7 @@ def preflight_golden_rootfs(input: GoldenRootfsPreflightInput) -> int:
     report = golden_rootfs_preflight_report(
         vm_home=vm_home,
         expected_run_id=input.expected_run_id,
+        apt_source=input.apt_source,
     )
     print_preflight_report(report)
     if report.passed:
@@ -424,6 +426,7 @@ def golden_rootfs_preflight_report(
     *,
     vm_home: Path,
     expected_run_id: str,
+    apt_source: str = "network",
 ) -> PreflightReport:
     checks: list[PreflightCheck] = []
     rootfs_input = vm_home / "data/deploy/build-metadata/rootfs-input.json"
@@ -438,8 +441,26 @@ def golden_rootfs_preflight_report(
     checks.append(metadata_check)
     checks.extend(check_rootfs_preflight_proof_absence(vm_home))
     snapshot = read_metadata_apt_snapshot(metadata)
-    if snapshot:
+    if apt_source == "verified-cache":
+        checks.append(
+            PreflightCheck(
+                name="apt-source",
+                status=PreflightStatus.PASSED,
+                message="APT state source is an explicitly verified local cache",
+                detail="network snapshot preflight is not required",
+            )
+        )
+    elif apt_source == "network" and snapshot:
         checks.extend(check_apt_snapshot_available(snapshot))
+    elif apt_source != "network":
+        checks.append(
+            PreflightCheck(
+                name="apt-source",
+                status=PreflightStatus.INVALID,
+                message="golden rootfs APT source is invalid",
+                detail=f"aptSource={apt_source}",
+            )
+        )
     return PreflightReport(
         name="golden-rootfs",
         checks=tuple(checks),
@@ -656,6 +677,7 @@ def check_rootfs_preflight_proof_absence(vm_home: Path) -> list[PreflightCheck]:
         "rootfs-ready": run_dir / "rootfs-ready",
         "rootfs-runtime-manifest": run_dir / "rootfs-runtime-manifest.json",
         "rootfs-failure": run_dir / "rootfs-failure.json",
+        "rootfs-apt-progress": run_dir / "rootfs-apt-progress.json",
         "rootfs-apt-plan": run_dir / "rootfs-apt-plan.json",
     }
     checks: list[PreflightCheck] = []
@@ -1062,6 +1084,7 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
     marker = vm_home_path(input.vm_home) / "data/run/rootfs-ready"
     manifest = vm_home_path(input.vm_home) / "data/run/rootfs-runtime-manifest.json"
     failure = vm_home_path(input.vm_home) / "data/run/rootfs-failure.json"
+    apt_progress = vm_home_path(input.vm_home) / "data/run/rootfs-apt-progress.json"
     apt_plan = vm_home_path(input.vm_home) / "data/run/rootfs-apt-plan.json"
     expected_run_id = expected_rootfs_run_id(input.vm_home, input.expected_run_id)
     print(f"Waiting for air-gapped rootfs marker: {marker}")
@@ -1079,6 +1102,14 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
             raise SystemExit(str(failure_result["message"]))
         if failure_result["message"]:
             last_state = str(failure_result["message"])
+        apt_progress_result = inspect_rootfs_apt_progress(
+            apt_progress,
+            expected_run_id=expected_run_id,
+        )
+        if apt_progress_result["terminal"]:
+            raise SystemExit(str(apt_progress_result["message"]))
+        if apt_progress_result["message"]:
+            last_state = str(apt_progress_result["message"])
         apt_plan_result = inspect_rootfs_apt_plan(
             apt_plan,
             expected_run_id=expected_run_id,
@@ -1097,6 +1128,11 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
             token
             for token in (
                 rootfs_document_progress_token(
+                    apt_progress,
+                    expected_run_id=expected_run_id,
+                    timestamp_field="updatedAt",
+                ),
+                rootfs_document_progress_token(
                     apt_plan,
                     expected_run_id=expected_run_id,
                     timestamp_field="generatedAt",
@@ -1112,11 +1148,16 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
             last_progress = current_progress
             deadline = time.monotonic() + input.timeout
         manifest_message = str(manifest_result["message"])
+        apt_progress_message = str(apt_progress_result["message"])
         apt_plan_message = str(apt_plan_result["message"])
-        last_state = (
-            f"{apt_plan_message}; {manifest_message}"
-            if apt_plan_message
-            else manifest_message
+        last_state = "; ".join(
+            message
+            for message in (
+                apt_progress_message,
+                apt_plan_message,
+                manifest_message,
+            )
+            if message
         )
         if marker.is_file() and marker.stat().st_size > 0:
             marker_result = inspect_rootfs_ready_marker(
@@ -1766,6 +1807,7 @@ def inspect_rootfs_failure_marker(
     stage = document.get("stage", "unknown")
     exit_code = document.get("exitCode", "unknown")
     reason = document.get("reason", "unknown")
+    apt_progress_path = document.get("aptProgressPath", "")
     apt_plan_path = document.get("aptPlanPath", "")
     return {
         "ready": False,
@@ -1774,7 +1816,8 @@ def inspect_rootfs_failure_marker(
             "error: guest rootfs preparation failed while waiting for "
             f"rootfs marker: runId={run_id or 'unknown'} stage={stage} "
             f"exitCode={exit_code} reason={reason} "
-            f"failure={failure} aptPlan={apt_plan_path}"
+            f"failure={failure} aptProgress={apt_progress_path} "
+            f"aptPlan={apt_plan_path}"
         ),
     }
 
@@ -1838,6 +1881,83 @@ def inspect_rootfs_apt_plan(
         "message": (
             f"error: rootfs apt plan has unsupported status: "
             f"status={status} aptPlan={apt_plan}"
+        ),
+    }
+
+
+def inspect_rootfs_apt_progress(
+    apt_progress: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    if not apt_progress.is_file():
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": "",
+        }
+    try:
+        document = json.loads(apt_progress.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                f"error: rootfs apt progress is unreadable: {apt_progress}: {error}"
+            ),
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (f"error: rootfs apt progress is not an object: {apt_progress}"),
+        }
+    run_id = document.get("runId")
+    if not isinstance(run_id, str) or not run_id:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (f"error: rootfs apt progress is missing runId: {apt_progress}"),
+        }
+    if expected_run_id and run_id != expected_run_id:
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": (
+                "stale rootfs apt progress runId mismatch: "
+                f"expected={expected_run_id} actual={run_id}"
+            ),
+        }
+    stage = document.get("stage")
+    status = document.get("status")
+    if not isinstance(stage, str) or not stage:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (f"error: rootfs apt progress is missing stage: {apt_progress}"),
+        }
+    if status == "failed":
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: rootfs apt command failed while waiting for rootfs "
+                f"marker: runId={run_id} stage={stage} "
+                f"aptProgress={apt_progress}"
+            ),
+        }
+    if status in {"running", "passed"}:
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": f"rootfs apt progress stage={stage} status={status}",
+        }
+    return {
+        "ready": False,
+        "terminal": True,
+        "message": (
+            "error: rootfs apt progress has unsupported status: "
+            f"status={status} aptProgress={apt_progress}"
         ),
     }
 

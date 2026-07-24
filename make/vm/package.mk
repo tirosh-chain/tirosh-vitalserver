@@ -32,6 +32,19 @@ VM_NGINX_ARTIFACT_BIN := .artifacts/nginx/macos/bin/nginx
 VM_PKG_BUILD_DIR ?= $(call VM_TOML_VALUE,workspace.build_dir)
 VM_PKG_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_PKG_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/rootfs-base.contract
+VM_PKG_APT_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz
+VM_PKG_APT_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.contract
+VM_PKG_APT_ROOTFS_SHA256 ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz.sha256
+VM_PKG_APT_ROOTFS_CONTRACT_VERSION := 1
+VM_PKG_APT_ROOTFS_CONTRACT_INPUTS := \
+	$(VM_BUILD_CONFIG) \
+	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/rootfs-apt-cache-contract.txt \
+	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/rootfs-apt-packages.txt
+VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT = $(shell { \
+	printf '%s\n' "vitalserver-apt-rootfs-contract-v$(VM_PKG_APT_ROOTFS_CONTRACT_VERSION)"; \
+	printf '%s\n' "rootfs-size=$(VM_ROOTFS_SIZE)"; \
+	cksum $(VM_PKG_APT_ROOTFS_CONTRACT_INPUTS); \
+} | cksum | awk '{print $$1 "-" $$2}')
 VM_PKG_ROOTFS_CONTRACT_VERSION := 6
 VM_PKG_ROOTFS_CONTRACT_INPUT_ROOTS := \
 	$(VM_BUILD_CONFIG) \
@@ -131,9 +144,15 @@ internal/vm/airgap-rootfs: internal/vm/release-contract
 	@if [ -n "$(VM_ROOTFS_SMOKE_FAIL_STAGE)" ] || [ "$(VM_ROOTFS_SMOKE_FAIL_CLEANUP)" = "true" ]; then \
 		python3 -c 'import json, sys; from pathlib import Path; path = Path(sys.argv[1]); document = json.loads(path.read_text(encoding="utf-8")); document["faultInjection"] = {"testMode": True, "failStage": sys.argv[2], "failCleanup": sys.argv[3] == "true"}; path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")' "$(VM_HOME)/data/deploy/build-metadata/rootfs-input.json" "$(VM_ROOTFS_SMOKE_FAIL_STAGE)" "$(VM_ROOTFS_SMOKE_FAIL_CLEANUP)"; \
 	fi
+	@set -e; \
+	apt_source="network"; \
+	if [ -n "$(VM_ROOTFS_SEED)" ]; then \
+		apt_source="verified-cache"; \
+	fi; \
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-preflight-golden-rootfs \
 		--vm-home "$(VM_HOME)" \
-		--expected-run-id "$(VM_ROOTFS_RUN_ID)"
+		--expected-run-id "$(VM_ROOTFS_RUN_ID)" \
+		--apt-source "$${apt_source}"
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" cloud-init \
 		--runtime-dir "$(VM_RUNTIME_DIR)" \
 		--bootstrap-script "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh"
@@ -203,6 +222,23 @@ internal/vm/golden-rootfs: internal/vm/release-contract
 		printf "Reusing golden rootfs cache: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
 	else \
 		rootfs_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
+		apt_rootfs_contract_expected="$(VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT)"; \
+		apt_rootfs_contract_actual=""; \
+		apt_rootfs_seed=""; \
+		if [ -s "$(VM_PKG_APT_ROOTFS_CONTRACT_STAMP)" ]; then \
+			apt_rootfs_contract_actual="$$(cat "$(VM_PKG_APT_ROOTFS_CONTRACT_STAMP)")"; \
+		fi; \
+		if [ -s "$(VM_PKG_APT_ROOTFS_CACHE)" ] \
+			&& [ -s "$(VM_PKG_APT_ROOTFS_SHA256)" ] \
+			&& [ "$${apt_rootfs_contract_actual}" = "$${apt_rootfs_contract_expected}" ] \
+			&& (cd "$(dir $(VM_PKG_APT_ROOTFS_CACHE))" && shasum -a 256 -c "$(notdir $(VM_PKG_APT_ROOTFS_SHA256))"); then \
+			apt_rootfs_seed="$(abspath $(VM_PKG_APT_ROOTFS_CACHE))"; \
+			printf "Reusing verified APT-prepared rootfs cache: %s\n" "$${apt_rootfs_seed}"; \
+		elif [ -e "$(VM_PKG_APT_ROOTFS_CACHE)" ] || [ -e "$(VM_PKG_APT_ROOTFS_CONTRACT_STAMP)" ] || [ -e "$(VM_PKG_APT_ROOTFS_SHA256)" ]; then \
+			printf "APT-prepared rootfs cache is incomplete, stale, or invalid; compiling from Ubuntu base\n"; \
+		else \
+			printf "APT-prepared rootfs cache is unavailable; compiling from Ubuntu base\n"; \
+		fi; \
 		if [ "$(VM_RECREATE_ROOTFS)" != "false" ]; then \
 			printf "Recreating golden rootfs cache: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
 		elif [ -s "$(VM_PKG_ROOTFS_CACHE)" ]; then \
@@ -218,6 +254,7 @@ internal/vm/golden-rootfs: internal/vm/release-contract
 		$(MAKE) internal/vm/airgap-rootfs \
 			VM_HOME="$(abspath $(VM_GOLDEN_HOME))" \
 			VM_RECREATE_ROOTFS=true \
+			VM_ROOTFS_SEED="$${apt_rootfs_seed}" \
 			VM_ROOTFS_RUN_ID="$${rootfs_run_id}"; \
 		test -s "$(VM_GOLDEN_HOME)/data/run/rootfs-ready" || { \
 			printf "missing air-gapped rootfs marker after prepare: %s\n" "$(VM_GOLDEN_HOME)/data/run/rootfs-ready" >&2; \
@@ -228,6 +265,16 @@ internal/vm/golden-rootfs: internal/vm/release-contract
 			--output "$(VM_PKG_ROOTFS_CACHE)" \
 			--compression-threads "$(VM_COMPRESSION_THREADS)" \
 			--expected-run-id "$${rootfs_run_id}"; \
+		if [ -z "$${apt_rootfs_seed}" ]; then \
+			apt_rootfs_cache_tmp="$(abspath $(VM_PKG_APT_ROOTFS_CACHE)).tmp"; \
+			cp "$(VM_PKG_ROOTFS_CACHE)" "$${apt_rootfs_cache_tmp}"; \
+			mv "$${apt_rootfs_cache_tmp}" "$(VM_PKG_APT_ROOTFS_CACHE)"; \
+			(cd "$(dir $(VM_PKG_APT_ROOTFS_CACHE))" && shasum -a 256 "$(notdir $(VM_PKG_APT_ROOTFS_CACHE))" >"$(notdir $(VM_PKG_APT_ROOTFS_SHA256)).tmp"); \
+			mv "$(VM_PKG_APT_ROOTFS_SHA256).tmp" "$(VM_PKG_APT_ROOTFS_SHA256)"; \
+			printf "%s\n" "$${apt_rootfs_contract_expected}" >"$(VM_PKG_APT_ROOTFS_CONTRACT_STAMP).tmp"; \
+			mv "$(VM_PKG_APT_ROOTFS_CONTRACT_STAMP).tmp" "$(VM_PKG_APT_ROOTFS_CONTRACT_STAMP)"; \
+			printf "Published verified APT-prepared rootfs cache: %s\n" "$(VM_PKG_APT_ROOTFS_CACHE)"; \
+		fi; \
 		mkdir -p "$(dir $(VM_PKG_ROOTFS_CONTRACT_STAMP))"; \
 		printf "%s\n" "$${rootfs_contract_expected}" >"$(VM_PKG_ROOTFS_CONTRACT_STAMP)"; \
 	fi

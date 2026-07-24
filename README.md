@@ -61,6 +61,8 @@ make dev/doctor           # local 개발 환경 점검
 make dist/pkg/dev         # development pkg build
 make dist/dmg/dev         # standard field-delivery DMG gate
 make dist/dmg/dev/cached  # source-contract/receipt-matched local DMG packaging only
+make dist/dmg/dev/compile # clean dev DMG compile; verified APT seed may be reused
+make dist/dmg/dev/verify  # verify an existing DMG and golden rootfs; never compile
 make dist/update/dev      # development product update bundle build
 
 make runtime/up           # local macOS VM runtime과 host proxy 실행
@@ -74,6 +76,34 @@ make docs/build           # MkDocs site build
 ```
 
 더 자세한 target은 `make help/{dev,dist,runtime,pwa,docs,compose,devtools}`로 확인합니다.
+
+#### DMG 명령 구분
+
+| 명령 | 언제 사용 | rootfs 동작 | 보장 범위 |
+|---|---|---|---|
+| `make dist/dmg/dev` | 개발 DMG를 현장 전달하기 전 | mutable disk를 새로 만들고 clean compile. 유효한 APT-prepared seed는 재사용 | review, compile, artifact verify, golden runtime smoke를 모두 수행하는 dev 현장 전달 gate |
+| `make dist/dmg/dev/cached` | 코드 수정 후 로컬 DMG를 가장 빨리 다시 만들 때 | 현재 전체 source fingerprint와 receipt가 일치하면 완성된 golden rootfs를 그대로 재사용 | packaging만 수행. review와 artifact verify, runtime smoke를 대신하지 않음 |
+| `make dist/dmg/dev/compile` | compile 단계만 다시 실행하거나 실패를 분리할 때 | mutable disk는 항상 새로 생성. APT 계약과 checksum이 맞으면 `apt-prepared-rootfs.raw.gz`에서 시작 | DMG artifact 생성까지만 보장. 현장 전달 proof가 아님 |
+| `make dist/dmg/dev/verify` | 이미 만든 DMG와 golden rootfs를 다시 검사할 때 | compile하지 않으며 현재 golden cache가 없거나 stale이면 즉시 실패 | artifact readback과 golden runtime smoke 진단 |
+| `make dist/dmg/release` | release DMG를 현장 전달할 때 | dev 표준 gate와 같은 clean compile 정책 | release branch guard를 포함한 release 현장 전달 gate |
+
+`clean compile`은 이전 mutable `vm-disk.img`를 이어서 사용하지 않는다는 뜻입니다.
+유효한 APT-prepared cache가 있으면 새 disk를 해당 immutable seed에서 복원하므로
+Ubuntu snapshot probe와 `apt-get update/install`은 실행하지 않습니다. APT cache가
+없거나 contract/checksum/Guest package proof가 맞지 않을 때만 Ubuntu base에서 APT를
+한 번 실행하고 새 cache를 발행합니다.
+
+캐시는 두 층입니다.
+
+```text
+apt-prepared-rootfs.raw.gz
+  Ubuntu + APT package state
+  -> APT/build 계약이 같으면 제품 소스 변경과 무관하게 재사용
+
+rootfs-base.raw.gz
+  APT base + 현재 Guest deploy + Docker images + rootfs smoke proof
+  -> 전체 source fingerprint와 receipt가 같을 때만 /cached에서 재사용
+```
 
 ## 3. Layout
 

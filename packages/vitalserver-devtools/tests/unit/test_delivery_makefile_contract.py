@@ -59,6 +59,40 @@ def test_rootfs_cache_miss_recreates_the_base_disk() -> None:
     assert airgap_rootfs_call < fresh_disk_flag
 
 
+def test_clean_rootfs_compile_reuses_only_verified_apt_prepared_seed() -> None:
+    makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    recipe = target_recipe(makefile, "internal/vm/golden-rootfs")
+
+    assert "VM_PKG_APT_ROOTFS_CONTRACT_VERSION := 1" in makefile
+    assert "rootfs-apt-packages.txt" in makefile
+    assert "rootfs-apt-cache-contract.txt" in makefile
+    apt_contract_inputs = makefile.split(
+        "VM_PKG_APT_ROOTFS_CONTRACT_INPUTS :=",
+        maxsplit=1,
+    )[1].split("VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT", maxsplit=1)[0]
+    assert "prepare-airgap-rootfs.sh" not in apt_contract_inputs
+    assert "shasum -a 256 -c" in recipe
+    assert 'VM_ROOTFS_SEED="$${apt_rootfs_seed}"' in recipe
+    assert "Published verified APT-prepared rootfs cache" in recipe
+
+
+def test_rootfs_seed_is_restored_after_fresh_ubuntu_disk_creation() -> None:
+    recipe = target_recipe(
+        RUNTIME_MAKEFILE.read_text(encoding="utf-8"),
+        "internal/vm/download",
+    )
+
+    assert_in_order(
+        recipe,
+        (
+            'ubuntu \\\n--runtime-dir "$(VM_RUNTIME_DIR)"',
+            'gzip -dc "$(VM_ROOTFS_SEED)"',
+            'qemu-img check -f raw',
+            'mv "$${seed_tmp}" "$(VM_RUNTIME_DIR)/vm-disk.img"',
+        ),
+    )
+
+
 def test_airgap_rootfs_waits_for_launcher_exit_before_mutating_runtime_files() -> None:
     recipe = target_recipe(
         PACKAGE_MAKEFILE.read_text(encoding="utf-8"),
@@ -78,6 +112,9 @@ def test_airgap_rootfs_waits_for_launcher_exit_before_mutating_runtime_files() -
 
     assert first_stop < first_wait < first_guard < second_stop < second_wait < second_guard
     assert recipe.count("macos-runtime-force-stop") >= 2
+    assert 'apt_source="network"' in recipe
+    assert 'apt_source="verified-cache"' in recipe
+    assert '--apt-source "$${apt_source}"' in recipe
 
 
 def test_vm_stage_materializes_host_settings_owner_after_guest_deploy() -> None:
