@@ -10,12 +10,14 @@ const {
 
 const schemas = createRecorderObservabilitySchemaRegistry();
 
-test("registry receipts exactly cover the authoritative seven-schema set", () => {
+test("registry receipts exactly cover the authoritative nine-schema set", () => {
   assert.deepStrictEqual(
     schemas.receipts().map((receipt) => receipt.sha256).sort(),
     [
       "079497384d1fbaa87846197df88ff7c279a20df1685149a455023d878974644f",
       "0ddc7ba83e0cfb7369f4d313ea350736c7a4e360617e78057ff55de711d85175",
+      "03aae2f7ba6f13af0b6c5da87bdc630b2c9458bd848954b7e1d6efaa95774fb7",
+      "2f3401d436bbca56da14c3c0a10bea04bba5aff966140903d3997ecc37584f79",
       "5c756e78fe771d5288c6ec6e4b3d3b43a8c95f54590b52aee687de7b19408daf",
       "84f3d071c837f57347f46aacd6467b933161843e20ae7843b0853f96979d783f",
       "8c3c0b2b2686ee993d6e86202140e8fb3c931ef5487b0f295f34afad285d78aa",

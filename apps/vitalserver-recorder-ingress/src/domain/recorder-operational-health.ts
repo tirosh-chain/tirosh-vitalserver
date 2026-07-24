@@ -8,7 +8,15 @@ export type RecorderOperationalHealthState =
 
 export type RecorderOperationalIssue = {
   code: string;
-  category: "power" | "storage" | "service" | "time" | "temperature" | "memory";
+  category:
+    | "boot"
+    | "power"
+    | "storage"
+    | "service"
+    | "time"
+    | "temperature"
+    | "memory"
+    | "evidence";
   severity: "warning" | "critical";
   title: string;
   detail: string;
@@ -37,6 +45,8 @@ export function assessRecorderOperationalHealth(
     assessMemory(object(payload.memory), issues);
     assessServices(object(payload.services), object(payload.vitalRecorder), issues);
     assessTime(string(observation?.ntpState), issues);
+    assessExplicitIncidentState(object(payload.incidentState), issues);
+    assessEvidenceHealth(object(payload.evidenceHealth), issues);
   }
 
   return {
@@ -51,6 +61,62 @@ export function assessRecorderOperationalHealth(
     issueCount: issues.length,
     issues,
   };
+}
+
+function assessExplicitIncidentState(
+  state: JSONObject | null,
+  issues: RecorderOperationalIssue[],
+): void {
+  if (!state || state.policyVersion !== "recorder-incident/v1") return;
+  const bootLoopState = string(state.bootLoopState);
+  if (bootLoopState === "warning" || bootLoopState === "critical") {
+    issues.push({
+      code: "boot-loop",
+      category: "boot",
+      severity: bootLoopState,
+      title: "Unexpected reboot pattern is active",
+      detail: `consecutive unexpected boots: ${integer(state.consecutiveUnexpectedBoots) ?? "not reported"}`,
+      field: "payload.incidentState.bootLoopState",
+    });
+  }
+  const undervoltageState = string(state.repeatedUndervoltageState);
+  if (undervoltageState === "warning" || undervoltageState === "critical") {
+    issues.push({
+      code: "repeated-undervoltage",
+      category: "power",
+      severity: undervoltageState,
+      title: "Repeated undervoltage evidence is active",
+      detail: `boots considered: ${integer(state.undervoltageBootsConsidered) ?? "not reported"}`,
+      field: "payload.incidentState.repeatedUndervoltageState",
+    });
+  }
+}
+
+function assessEvidenceHealth(
+  evidence: JSONObject | null,
+  issues: RecorderOperationalIssue[],
+): void {
+  const state = string(evidence?.state);
+  if (state === "degraded" || state === "stale") {
+    issues.push({
+      code: `evidence-health-${state}`,
+      category: "evidence",
+      severity: "warning",
+      title: "Recorder evidence health is degraded",
+      detail: state,
+      field: "payload.evidenceHealth.state",
+    });
+  }
+  if (state === "failed") {
+    issues.push({
+      code: "evidence-health-failed",
+      category: "evidence",
+      severity: "critical",
+      title: "Recorder evidence health failed",
+      detail: state,
+      field: "payload.evidenceHealth.state",
+    });
+  }
 }
 
 function assessPower(
@@ -292,6 +358,10 @@ function readingNumber(source: JSONObject | null): number | null {
     && Number.isFinite(source.value)
     ? source.value
     : null;
+}
+
+function integer(value: unknown): number | null {
+  return Number.isInteger(value) ? Number(value) : null;
 }
 
 function readingString(source: JSONObject | null): string | null {

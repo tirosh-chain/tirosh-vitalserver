@@ -7,6 +7,7 @@ import type {
 } from "../../../application/ports/outbound/recorder-observability-repository-port";
 import {
   evaluateRecorderObservability,
+  bootEventProjectionOrder,
   mergeCurrentProjection,
   summarizeCurrentProjection,
 } from "../../../domain/recorder-observability";
@@ -143,7 +144,12 @@ export function createRecorderObservabilityRepository(config: {
         [vrcode],
       );
       const row = result.rows[0] as CurrentRow | undefined;
-      if (resourceType === "bootEvent") return null;
+      if (resourceType === "bootEvent") {
+        const started = row?.document?.bootEvent?.started as
+          | AggregateEntry
+          | undefined;
+        return started ? currentFromEntry(started) : null;
+      }
       const entry = (
         resourceType === "recorderProfile"
           ? row?.document?.recorderProfile?.latest
@@ -160,7 +166,19 @@ export function createRecorderObservabilityRepository(config: {
         );
         const row = locked.rows[0] as CurrentRow | undefined;
         let document = { ...(row?.document || {}) };
-        if (replaceCurrent) {
+        const bootCurrent = row?.document?.bootEvent?.started as
+          | AggregateEntry
+          | undefined;
+        const bootOrder = candidate.resourceType === "bootEvent"
+          ? bootEventProjectionOrder(
+            candidate,
+            bootCurrent ? currentFromEntry(bootCurrent) : null,
+          )
+          : null;
+        const applyCurrent = bootOrder === null
+          ? replaceCurrent
+          : bootOrder === "replace";
+        if (applyCurrent) {
           document = mergeCurrentProjection(document, candidate);
           if (candidate.resourceType === "observation") {
             const associated = await loadAssociatedProfile(client, candidate);
@@ -173,6 +191,9 @@ export function createRecorderObservabilityRepository(config: {
           }
           associateProfile(document, candidate);
           await upsertCurrent(client, row, candidate, document);
+        } else if (bootOrder === "nonOrderable") {
+          document = recordNonOrderableBootProjection(document, candidate);
+          await upsertCurrent(client, row, candidate, document);
         }
         await client.query(
           `UPDATE recorder_observability.records
@@ -180,7 +201,9 @@ export function createRecorderObservabilityRepository(config: {
                   projected_at = CURRENT_TIMESTAMP,
                   projection_error = NULL
             WHERE record_id = $1 AND projection_state = 'pending'`,
-          [candidate.recordId, replaceCurrent ? "applied" : "ignored"],
+          [candidate.recordId, applyCurrent || bootOrder === "nonOrderable"
+            ? "applied"
+            : "ignored"],
         );
       });
     },
@@ -421,33 +444,142 @@ export function createRecorderObservabilityRepository(config: {
         query.incidentType,
       ];
       const cursorClause = query.cursor
-        ? `AND (received_at, record_id)
-                 < ($5::timestamptz, $6::bigint)`
+        ? query.cursor.code === null
+          ? `AND (received_at, record_id)
+                   < ($5::timestamptz, $6::bigint)`
+          : `AND (received_at, record_id, code)
+                   < ($5::timestamptz, $6::bigint, $7::text)`
         : "";
       if (query.cursor) {
         parameters.push(query.cursor.receivedAt, query.cursor.recordId);
+        if (query.cursor.code !== null) parameters.push(query.cursor.code);
       }
       parameters.push(query.limit + 1);
       const limitParameter = parameters.length;
       const result = await pool.query(
-        `SELECT record_id::text,
+        `WITH explicit_incidents AS (
+           SELECT record_id,
+                  claimed_event_id,
+                  received_at,
+                  'kernel'::text AS category,
+                  ('kernel-' || document->>'incidentType')::text AS code,
+                  CASE WHEN document->>'incidentType' = 'unknown'
+                    THEN 'warning'::text
+                    ELSE 'critical'::text
+                  END AS severity,
+                  'historical'::text AS state,
+                  document->>'incidentBootId' AS boot_id,
+                  document->>'capturedAt' AS occurred_at,
+                  document->>'captureTimeState' AS time_state,
+                  document->>'messageExcerpt' AS summary,
+                  jsonb_build_array(
+                    jsonb_build_object(
+                      'field', 'source',
+                      'state', 'reported',
+                      'detail', document->>'source'
+                    ),
+                    jsonb_build_object(
+                      'field', 'artifacts',
+                      'state', 'reported',
+                      'detail', jsonb_array_length(document->'artifacts')::text
+                        || ' retained artifact(s)'
+                    )
+                  ) AS evidence,
+                  'kernelIncident'::text AS source,
+                  document->>'capturedAt' AS captured_at,
+                  document->>'captureTimeState' AS capture_time_state,
+                  document->>'incidentType' AS incident_type,
+                  document->>'incidentBootId' AS incident_boot_id,
+                  document->>'messageExcerpt' AS message_excerpt,
+                  COALESCE((document->>'truncated')::boolean, false) AS truncated
+             FROM recorder_observability.records
+            WHERE disposition = 'accepted'
+              AND resource_type = 'kernelIncident'
+              AND vrcode = $1
+              AND received_at >= $2::timestamptz
+              AND received_at < $3::timestamptz
+
+           UNION ALL
+
+           SELECT record.record_id,
+                  record.claimed_event_id,
+                  record.received_at,
+                  signal->>'category' AS category,
+                  signal->>'code' AS code,
+                  signal->>'severity' AS severity,
+                  'historical'::text AS state,
+                  record.document->>'bootId' AS boot_id,
+                  record.document->>'deviceObservedAt' AS occurred_at,
+                  record.document->>'ntpState' AS time_state,
+                  signal->>'summary' AS summary,
+                  jsonb_build_array(
+                    jsonb_build_object(
+                      'field', 'assessment.policyVersion',
+                      'state', 'reported',
+                      'detail', record.document->'assessment'->>'policyVersion'
+                    ),
+                    jsonb_build_object(
+                      'field', 'assessment.consecutiveUnexpectedBoots',
+                      'state', 'reported',
+                      'detail', record.document->'assessment'
+                        ->>'consecutiveUnexpectedBoots'
+                    ),
+                    jsonb_build_object(
+                      'field', 'assessment.undervoltageBootsConsidered',
+                      'state', 'reported',
+                      'detail', record.document->'assessment'
+                        ->>'undervoltageBootsConsidered'
+                    ),
+                    jsonb_build_object(
+                      'field', 'assessment.evidenceState',
+                      'state', 'reported',
+                      'detail', record.document->'assessment'->>'evidenceState'
+                    )
+                  ) AS evidence,
+                  'bootEvent'::text AS source,
+                  NULL::text AS captured_at,
+                  NULL::text AS capture_time_state,
+                  signal->>'code' AS incident_type,
+                  NULL::text AS incident_boot_id,
+                  NULL::text AS message_excerpt,
+                  false AS truncated
+             FROM recorder_observability.records AS record
+            CROSS JOIN LATERAL jsonb_array_elements(
+              record.document->'assessment'->'signals'
+            ) AS signal
+            WHERE record.disposition = 'accepted'
+              AND record.resource_type = 'bootEvent'
+              AND record.schema_version = 'v2'
+              AND record.document->>'eventType' = 'boot-started'
+              AND record.vrcode = $1
+              AND record.received_at >= $2::timestamptz
+              AND record.received_at < $3::timestamptz
+              AND signal->>'state' = 'active'
+              AND signal->>'severity' IN ('warning', 'critical')
+         )
+         SELECT record_id::text,
                 claimed_event_id,
                 received_at,
-                document->>'capturedAt' AS captured_at,
-                document->>'captureTimeState' AS capture_time_state,
-                document->>'incidentType' AS incident_type,
-                document->>'incidentBootId' AS incident_boot_id,
-                document->>'messageExcerpt' AS message_excerpt,
-                (document->>'truncated')::boolean AS truncated
-           FROM recorder_observability.records
-          WHERE disposition = 'accepted'
-            AND resource_type = 'kernelIncident'
-            AND vrcode = $1
-            AND received_at >= $2::timestamptz
-            AND received_at < $3::timestamptz
-            AND ($4::text IS NULL OR document->>'incidentType' = $4)
+                category,
+                code,
+                severity,
+                state,
+                boot_id,
+                occurred_at,
+                time_state,
+                summary,
+                evidence,
+                source,
+                captured_at,
+                capture_time_state,
+                incident_type,
+                incident_boot_id,
+                message_excerpt,
+                truncated
+           FROM explicit_incidents
+          WHERE ($4::text IS NULL OR incident_type = $4)
             ${cursorClause}
-          ORDER BY received_at DESC, record_id DESC
+          ORDER BY received_at DESC, record_id DESC, code DESC
           LIMIT $${limitParameter}`,
         parameters,
       );
@@ -455,6 +587,20 @@ export function createRecorderObservabilityRepository(config: {
     },
     async close() {
       await pool.end();
+    },
+  };
+}
+
+function recordNonOrderableBootProjection(
+  document: AggregateDocument,
+  candidate: ProjectionCandidate,
+): AggregateDocument {
+  return {
+    ...document,
+    bootEvent: {
+      ...(document.bootEvent || {}),
+      orderingState: "nonOrderable",
+      lastNonOrderable: { ...candidate },
     },
   };
 }
@@ -553,18 +699,44 @@ function timelineRow(row: Record<string, unknown>): RecorderObservabilityTimelin
 
 function incidentRow(row: Record<string, unknown>): RecorderObservabilityIncidentRow {
   return {
+    incidentId: `${String(row.record_id)}:${String(row.code)}`,
     recordId: String(row.record_id),
     eventId: String(row.claimed_event_id),
+    category: row.category as RecorderObservabilityIncidentRow["category"],
+    code: String(row.code),
+    severity: row.severity as RecorderObservabilityIncidentRow["severity"],
+    state: row.state as RecorderObservabilityIncidentRow["state"],
+    bootId: nullableString(row.boot_id),
+    occurredAt: nullableString(row.occurred_at),
     receivedAt: (row.received_at as Date).toISOString(),
-    capturedAt: String(row.captured_at),
-    captureTimeState: String(row.capture_time_state),
+    timeState: nullableString(row.time_state),
+    summary: String(row.summary),
+    evidence: incidentEvidence(row.evidence),
+    source: row.source as RecorderObservabilityIncidentRow["source"],
+    capturedAt: nullableString(row.captured_at),
+    captureTimeState: nullableString(row.capture_time_state),
     incidentType: String(row.incident_type),
-    incidentBootId: row.incident_boot_id === null
-      ? null
-      : String(row.incident_boot_id),
-    messageExcerpt: String(row.message_excerpt),
+    incidentBootId: nullableString(row.incident_boot_id),
+    messageExcerpt: nullableString(row.message_excerpt),
     truncated: row.truncated === true,
   };
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function incidentEvidence(value: unknown): RecorderObservabilityIncidentRow["evidence"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const field = (entry as Record<string, unknown>).field;
+    const state = (entry as Record<string, unknown>).state;
+    const detail = (entry as Record<string, unknown>).detail;
+    return typeof field === "string" && typeof state === "string"
+      ? [{ field, state, detail: nullableString(detail) }]
+      : [];
+  });
 }
 
 async function admit(

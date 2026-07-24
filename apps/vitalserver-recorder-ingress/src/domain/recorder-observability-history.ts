@@ -24,25 +24,50 @@ export type RecorderObservabilityIncidentQuery = {
   from: string;
   until: string;
   incidentType: string | null;
-  cursor: { receivedAt: string; recordId: string } | null;
+  cursor: { receivedAt: string; recordId: string; code: string | null } | null;
   limit: number;
 };
 
 export type RecorderObservabilityIncidentRow = {
+  incidentId: string;
   recordId: string;
   eventId: string;
+  category: "kernel" | "boot" | "power" | "evidence";
+  code: string;
+  severity: "warning" | "critical";
+  state: "active" | "recovering" | "historical";
+  bootId: string | null;
+  occurredAt: string | null;
   receivedAt: string;
-  capturedAt: string;
-  captureTimeState: string;
+  timeState: string | null;
+  summary: string;
+  evidence: Array<{
+    field: string;
+    state: string;
+    detail: string | null;
+  }>;
+  source: "kernelIncident" | "bootEvent" | "observation";
+  // Kept for the explicitly retained kernel incident evidence contract.
+  capturedAt: string | null;
+  captureTimeState: string | null;
   incidentType: string;
   incidentBootId: string | null;
-  messageExcerpt: string;
+  messageExcerpt: string | null;
   truncated: boolean;
 };
 
 const MAX_TIMELINE_SECONDS = 24 * 60 * 60;
 const MAX_INCIDENT_SECONDS = 30 * 24 * 60 * 60;
-const INCIDENT_TYPES = new Set(["panic", "oops", "watchdog", "lockup", "unknown"]);
+const INCIDENT_TYPES = new Set([
+  "panic",
+  "oops",
+  "watchdog",
+  "lockup",
+  "unknown",
+  "boot-loop",
+  "repeated-undervoltage",
+  "ledger-continuity",
+]);
 
 export type RecorderObservabilityHistoryRoute =
   | { kind: "detail"; vrcode: string }
@@ -155,27 +180,33 @@ export function incidentsDocument(
     timeBasis: "receivedAt",
     incidents: visible,
     nextCursor: rows.length > query.limit && last
-      ? encodeIncidentCursor(last.receivedAt, last.recordId)
+      ? encodeIncidentCursor(last.receivedAt, last.recordId, last.code)
       : null,
     readError: null,
   };
 }
 
-export function encodeIncidentCursor(receivedAt: string, recordId: string): string {
-  return Buffer.from(JSON.stringify([receivedAt, recordId]), "utf8")
+export function encodeIncidentCursor(
+  receivedAt: string,
+  recordId: string,
+  code: string | null = null,
+): string {
+  return Buffer.from(JSON.stringify([receivedAt, recordId, code]), "utf8")
     .toString("base64url");
 }
 
 function decodeIncidentCursor(
   value: string,
-): { receivedAt: string; recordId: string } | null {
+): { receivedAt: string; recordId: string; code: string | null } | null {
   try {
     const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
-    if (!Array.isArray(decoded) || decoded.length !== 2) return null;
+    if (!Array.isArray(decoded) || (decoded.length !== 2 && decoded.length !== 3)) return null;
     const receivedAt = timestamp(decoded[0]);
     const recordId = decoded[1];
+    const code = decoded.length === 3 ? decoded[2] : null;
     return receivedAt && typeof recordId === "string" && /^[1-9][0-9]*$/.test(recordId)
-      ? { receivedAt: receivedAt.value, recordId }
+      && (code === null || typeof code === "string")
+      ? { receivedAt: receivedAt.value, recordId, code }
       : null;
   } catch (_error) {
     return null;

@@ -20,6 +20,18 @@
       "sha256": "079497384d1fbaa87846197df88ff7c279a20df1685149a455023d878974644f"
     },
     {
+      "resource": "boot-event",
+      "schemaVersion": "v2",
+      "path": "v2/boot-event.schema.json",
+      "sha256": "f60a1fa3170e110383738d5727526cd7fbe51b2aedcef372b3e2456fd168ad3e"
+    },
+    {
+      "resource": "observation",
+      "schemaVersion": "v2",
+      "path": "v2/observation.schema.json",
+      "sha256": "d1576c60ba733a38813654b71f10ae9ac0871e88bd91970d8f65f5b1425cc8cf"
+    },
+    {
       "resource": "diagnostic-log",
       "schemaVersion": "v1",
       "path": "v1/log.schema.json",

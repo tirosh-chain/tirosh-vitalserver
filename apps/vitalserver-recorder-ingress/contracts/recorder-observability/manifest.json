@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "sourceManifestFile": "source-manifest.json",
-  "sourceManifestSha256": "7e9bc3ace5e5e11c73250911f91ca4c42ac9e625f0a1f1305389517d6bc8ee79",
+  "sourceManifestSha256": "16ed54c8752559a911e82b87b19cf2d4f6c28d1974529f0975c1fa9227b2257c",
   "contracts": [
     {
       "resourceType": "recorderProfile",
@@ -10,7 +10,7 @@
       "file": "schemas/profile-v1.schema.json",
       "sha256": "8c3c0b2b2686ee993d6e86202140e8fb3c931ef5487b0f295f34afad285d78aa",
       "sourceRepository": "tirosh-vitalrecoder",
-      "sourceManifestSha256": "7e9bc3ace5e5e11c73250911f91ca4c42ac9e625f0a1f1305389517d6bc8ee79",
+      "sourceManifestSha256": "16ed54c8752559a911e82b87b19cf2d4f6c28d1974529f0975c1fa9227b2257c",
       "sourcePath": "contracts/observation/v1/profile.schema.json"
     },
     {
@@ -20,8 +20,28 @@
       "file": "schemas/boot-event-v1.schema.json",
       "sha256": "079497384d1fbaa87846197df88ff7c279a20df1685149a455023d878974644f",
       "sourceRepository": "tirosh-vitalrecoder",
-      "sourceManifestSha256": "7e9bc3ace5e5e11c73250911f91ca4c42ac9e625f0a1f1305389517d6bc8ee79",
+      "sourceManifestSha256": "16ed54c8752559a911e82b87b19cf2d4f6c28d1974529f0975c1fa9227b2257c",
       "sourcePath": "contracts/observation/v1/boot-event.schema.json"
+    },
+    {
+      "resourceType": "bootEvent",
+      "schemaVersion": "v2",
+      "kind": "boot-event",
+      "file": "schemas/boot-event-v2.schema.json",
+      "sha256": "f60a1fa3170e110383738d5727526cd7fbe51b2aedcef372b3e2456fd168ad3e",
+      "sourceRepository": "tirosh-vitalrecoder",
+      "sourceManifestSha256": "16ed54c8752559a911e82b87b19cf2d4f6c28d1974529f0975c1fa9227b2257c",
+      "sourcePath": "contracts/observation/v2/boot-event.schema.json"
+    },
+    {
+      "resourceType": "observation",
+      "schemaVersion": "v2",
+      "kind": "device-health",
+      "file": "schemas/observation-v2.schema.json",
+      "sha256": "d1576c60ba733a38813654b71f10ae9ac0871e88bd91970d8f65f5b1425cc8cf",
+      "sourceRepository": "tirosh-vitalrecoder",
+      "sourceManifestSha256": "16ed54c8752559a911e82b87b19cf2d4f6c28d1974529f0975c1fa9227b2257c",
+      "sourcePath": "contracts/observation/v2/observation.schema.json"
     },
     {
       "resourceType": "diagnosticEvent",
@@ -30,7 +50,7 @@
       "file": "schemas/diagnostic-log-v2.schema.json",
       "sha256": "fe0eb2e9a17844efd18ddc41b12affa51663cf286c61b3c85742b62f023dc2ba",
       "sourceRepository": "tirosh-vitalrecoder",
-      "sourceManifestSha256": "7e9bc3ace5e5e11c73250911f91ca4c42ac9e625f0a1f1305389517d6bc8ee79",
+      "sourceManifestSha256": "16ed54c8752559a911e82b87b19cf2d4f6c28d1974529f0975c1fa9227b2257c",
       "sourcePath": "contracts/observation/v2/log.schema.json"
     },
     {
@@ -40,7 +60,7 @@
       "file": "schemas/kernel-incident-v2.schema.json",
       "sha256": "0ddc7ba83e0cfb7369f4d313ea350736c7a4e360617e78057ff55de711d85175",
       "sourceRepository": "tirosh-vitalrecoder",
-      "sourceManifestSha256": "7e9bc3ace5e5e11c73250911f91ca4c42ac9e625f0a1f1305389517d6bc8ee79",
+      "sourceManifestSha256": "16ed54c8752559a911e82b87b19cf2d4f6c28d1974529f0975c1fa9227b2257c",
       "sourcePath": "contracts/observation/v2/kernel-incident.schema.json"
     },
     {

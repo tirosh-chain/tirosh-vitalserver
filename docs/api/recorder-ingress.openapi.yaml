@@ -120,8 +120,9 @@ paths:
       operationId: admitRecorderBootEvents
       summary: Durably admit Recorder boot events
       description: >
-        Accepts Recorder v1 boot-event NDJSON. boot-started and shutdown-clean
-        remain separate immutable events and are projected together.
+        Accepts Recorder v1 and v2 boot-event NDJSON. boot-started and
+        shutdown-clean remain separate immutable events. v2 adds a bounded,
+        non-causal incident assessment and an ordinal boot ledger.
       parameters:
         - $ref: "#/components/parameters/RecorderVrcode"
         - $ref: "#/components/parameters/ObserverDeviceID"
@@ -194,7 +195,7 @@ paths:
   /runtime/vitaldb/recorders/{vrcode}/observability/incidents:
     get:
       operationId: getRecorderObservabilityIncidents
-      summary: Read bounded Recorder kernel incidents
+      summary: Read bounded explicit Recorder incidents
       parameters:
         - $ref: "#/components/parameters/RecorderVrcode"
         - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
@@ -870,16 +871,36 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [recordId, eventId, receivedAt, capturedAt, captureTimeState, incidentType, incidentBootId, messageExcerpt, truncated]
+            required: [recordId, eventId, incidentId, category, code, severity, state, bootId, occurredAt, receivedAt, timeState, summary, evidence, source, capturedAt, captureTimeState, incidentType, incidentBootId, messageExcerpt, truncated]
             properties:
               recordId: {type: string}
               eventId: {type: string}
+              incidentId: {type: string, description: Stable per-signal incident identity.}
+              category: {type: string, enum: [kernel, boot, power, evidence]}
+              code: {type: string}
+              severity: {type: string, enum: [warning, critical]}
+              state: {type: string, enum: [active, recovering, historical]}
+              bootId: {type: string, nullable: true}
+              occurredAt: {type: string, format: date-time, nullable: true}
               receivedAt: {type: string, format: date-time}
-              capturedAt: {type: string, format: date-time}
-              captureTimeState: {type: string}
-              incidentType: {type: string, enum: [panic, oops, watchdog, lockup, unknown]}
+              timeState: {type: string, nullable: true}
+              summary: {type: string}
+              evidence:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [field, state, detail]
+                  properties:
+                    field: {type: string}
+                    state: {type: string}
+                    detail: {type: string, nullable: true}
+              source: {type: string, enum: [kernelIncident, bootEvent, observation]}
+              capturedAt: {type: string, format: date-time, nullable: true}
+              captureTimeState: {type: string, nullable: true}
+              incidentType: {type: string, enum: [panic, oops, watchdog, lockup, unknown, boot-loop, repeated-undervoltage, ledger-continuity]}
               incidentBootId: {type: string, nullable: true}
-              messageExcerpt: {type: string}
+              messageExcerpt: {type: string, nullable: true}
               truncated: {type: boolean}
         nextCursor: {type: string, nullable: true}
         readError: {type: string, nullable: true}

@@ -1,0 +1,805 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tirosh.local/contracts/vitalrecorder-boot-event-v2.schema.json",
+  "title": "Vital Recorder boot event v2",
+  "description": "Boot evidence with an ordinal ledger and bounded, non-causal incident assessment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "deviceId",
+    "bootId",
+    "kind",
+    "eventType",
+    "deviceObservedAt",
+    "ntpState",
+    "readIssues"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "v2"
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._-]{1,128}:[^:]{1,128}:boot-event:(boot-started|shutdown-clean)$"
+    },
+    "deviceId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "siteId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "bootId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "kind": {
+      "const": "boot-event"
+    },
+    "eventType": {
+      "enum": [
+        "boot-started",
+        "shutdown-clean"
+      ]
+    },
+    "deviceObservedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ntpState": {
+      "enum": [
+        "synchronized",
+        "host-clock-only",
+        "unsynchronized",
+        "invalid",
+        "read-failed",
+        "unsupported"
+      ]
+    },
+    "previousBoot": {
+      "$ref": "#/$defs/previousBoot"
+    },
+    "rebootIntent": {
+      "$ref": "#/$defs/rebootIntent"
+    },
+    "firmwarePower": {
+      "$ref": "#/$defs/firmwarePower"
+    },
+    "powerSupply": {
+      "$ref": "#/$defs/powerSupply"
+    },
+    "pstore": {
+      "$ref": "#/$defs/pstore"
+    },
+    "previousPowerSummary": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "ok"
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "schemaVersion",
+                "bootId",
+                "startedAt",
+                "updatedAt",
+                "readState",
+                "underVoltageSeen",
+                "transitionCount"
+              ],
+              "properties": {
+                "schemaVersion": {
+                  "const": "v1"
+                },
+                "bootId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "startedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "readState": {
+                  "enum": [
+                    "ok",
+                    "failed"
+                  ]
+                },
+                "detail": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "flags": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "underVoltageSeen": {
+                  "type": "boolean"
+                },
+                "transitionCount": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "detail"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "missing",
+                "invalid",
+                "failed",
+                "unsupported"
+              ]
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        }
+      ]
+    },
+    "shutdown": {
+      "$ref": "#/$defs/shutdown"
+    },
+    "ledger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "epochId",
+        "bootOrdinal",
+        "continuityState"
+      ],
+      "properties": {
+        "epochId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "bootOrdinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "continuityState": {
+          "enum": [
+            "initial",
+            "continuous",
+            "broken"
+          ]
+        }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyVersion",
+        "consecutiveUnexpectedBoots",
+        "undervoltageBootsConsidered",
+        "bootLoopState",
+        "repeatedUndervoltageState",
+        "evidenceState",
+        "signals"
+      ],
+      "properties": {
+        "policyVersion": {
+          "const": "recorder-incident/v1"
+        },
+        "consecutiveUnexpectedBoots": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "undervoltageBootsConsidered": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "bootLoopState": {
+          "enum": [
+            "none",
+            "warning",
+            "critical",
+            "unknown"
+          ]
+        },
+        "repeatedUndervoltageState": {
+          "enum": [
+            "none",
+            "warning",
+            "critical",
+            "unknown"
+          ]
+        },
+        "evidenceState": {
+          "enum": [
+            "healthy",
+            "degraded",
+            "failed",
+            "stale",
+            "unsupported"
+          ]
+        },
+        "signals": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "category",
+              "code",
+              "severity",
+              "state",
+              "summary"
+            ],
+            "properties": {
+              "category": {
+                "enum": [
+                  "boot",
+                  "power",
+                  "evidence"
+                ]
+              },
+              "code": {
+                "enum": [
+                  "boot-loop",
+                  "repeated-undervoltage",
+                  "ledger-continuity"
+                ]
+              },
+              "severity": {
+                "enum": [
+                  "none",
+                  "warning",
+                  "critical"
+                ]
+              },
+              "state": {
+                "enum": [
+                  "inactive",
+                  "active"
+                ]
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            }
+          }
+        }
+      }
+    },
+    "readIssues": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/readIssue"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "eventType": {
+            "const": "boot-started"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "ledger",
+          "assessment",
+          "previousBoot",
+          "rebootIntent",
+          "firmwarePower",
+          "powerSupply",
+          "pstore",
+          "previousPowerSummary"
+        ],
+        "not": {
+          "required": [
+            "shutdown"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "shutdown"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "previousBoot"
+              ]
+            },
+            {
+              "required": [
+                "rebootIntent"
+              ]
+            },
+            {
+              "required": [
+                "firmwarePower"
+              ]
+            },
+            {
+              "required": [
+                "powerSupply"
+              ]
+            },
+            {
+              "required": [
+                "pstore"
+              ]
+            },
+            {
+              "required": [
+                "ledger"
+              ]
+            },
+            {
+              "required": [
+                "assessment"
+              ]
+            },
+            {
+              "required": [
+                "previousPowerSummary"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "ntpState": {
+      "enum": [
+        "synchronized",
+        "host-clock-only",
+        "unsynchronized",
+        "invalid",
+        "read-failed",
+        "unsupported"
+      ]
+    },
+    "unavailableReadState": {
+      "enum": [
+        "missing",
+        "invalid",
+        "failed",
+        "unsupported"
+      ]
+    },
+    "stringReading": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "ok"
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "detail"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/unavailableReadState"
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        }
+      ]
+    },
+    "dateTimeReading": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "ok"
+            },
+            "value": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "detail"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/unavailableReadState"
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        }
+      ]
+    },
+    "booleanReading": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "ok"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "detail"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/unavailableReadState"
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        }
+      ]
+    },
+    "integerReading": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "ok"
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "detail"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/unavailableReadState"
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        }
+      ]
+    },
+    "stringArrayReading": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "ok"
+            },
+            "value": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "detail"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/unavailableReadState"
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        }
+      ]
+    },
+    "previousBoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bootId",
+        "cleanShutdown",
+        "shutdownAt"
+      ],
+      "properties": {
+        "bootId": {
+          "$ref": "#/$defs/stringReading"
+        },
+        "cleanShutdown": {
+          "$ref": "#/$defs/booleanReading"
+        },
+        "shutdownAt": {
+          "$ref": "#/$defs/dateTimeReading"
+        }
+      }
+    },
+    "rebootIntent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "recordedAt",
+            "reason",
+            "actor",
+            "command"
+          ],
+          "properties": {
+            "state": {
+              "const": "present"
+            },
+            "recordedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "actor": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "command": {
+              "enum": [
+                "reboot",
+                "shutdown",
+                "poweroff",
+                "unknown"
+              ]
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "detail"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "absent",
+                "read-failed"
+              ]
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        }
+      ]
+    },
+    "firmwarePower": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "throttleFlags",
+        "resetFlags",
+        "underVoltageOccurred"
+      ],
+      "properties": {
+        "throttleFlags": {
+          "$ref": "#/$defs/stringReading"
+        },
+        "resetFlags": {
+          "$ref": "#/$defs/stringReading"
+        },
+        "underVoltageOccurred": {
+          "$ref": "#/$defs/booleanReading"
+        }
+      }
+    },
+    "powerSupply": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxCurrentMilliAmps",
+        "usbMaxCurrentEnabled",
+        "usbOverCurrentDetected",
+        "resetEvent",
+        "usbPdPowerDataObjects"
+      ],
+      "properties": {
+        "maxCurrentMilliAmps": {
+          "$ref": "#/$defs/integerReading"
+        },
+        "usbMaxCurrentEnabled": {
+          "$ref": "#/$defs/booleanReading"
+        },
+        "usbOverCurrentDetected": {
+          "$ref": "#/$defs/booleanReading"
+        },
+        "resetEvent": {
+          "$ref": "#/$defs/stringReading"
+        },
+        "usbPdPowerDataObjects": {
+          "$ref": "#/$defs/stringReading"
+        }
+      }
+    },
+    "pstore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "files"
+      ],
+      "properties": {
+        "backend": {
+          "$ref": "#/$defs/stringReading"
+        },
+        "files": {
+          "$ref": "#/$defs/stringArrayReading"
+        }
+      }
+    },
+    "shutdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clean",
+        "shutdownAt",
+        "source"
+      ],
+      "properties": {
+        "clean": {
+          "const": true
+        },
+        "shutdownAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "const": "systemd"
+        }
+      }
+    },
+    "readIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "state",
+        "detail"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "state": {
+          "$ref": "#/$defs/unavailableReadState"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      }
+    }
+  }
+}

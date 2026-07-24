@@ -238,6 +238,9 @@ export function shouldReplaceCurrent(
   current: CurrentProjection | null,
 ): boolean {
   if (!current) return true;
+  if (candidate.resourceType === "bootEvent") {
+    return bootEventProjectionOrder(candidate, current) === "replace";
+  }
   if (
     (
       candidate.resourceType === "observation"
@@ -275,6 +278,90 @@ export function shouldReplaceCurrent(
     return candidate.receivedAt > current.receivedAt;
   }
   return BigInt(candidate.recordId) > BigInt(current.recordId);
+}
+
+export function bootEventProjectionOrder(
+  candidate: ProjectionCandidate,
+  current: CurrentProjection | null,
+): "replace" | "ignore" | "nonOrderable" {
+  if (!current) return "replace";
+  const eventType = candidate.document.eventType;
+  if (eventType === "shutdown-clean") {
+    return candidate.bootId && candidate.bootId === current.bootId
+      ? "replace"
+      : "ignore";
+  }
+  if (eventType !== "boot-started") return "ignore";
+  const candidateLedger = bootLedger(candidate.document);
+  const currentLedger = bootLedger(current.document);
+  if (Boolean(candidateLedger) !== Boolean(currentLedger)) return "nonOrderable";
+  if (!candidateLedger || !currentLedger) {
+    return legacyProjectionOrder(candidate, current) ? "replace" : "ignore";
+  }
+  if (
+    candidateLedger.continuityState === "broken"
+    || currentLedger.continuityState === "broken"
+    || candidateLedger.epochId !== currentLedger.epochId
+  ) {
+    return "nonOrderable";
+  }
+  return candidateLedger.bootOrdinal > currentLedger.bootOrdinal
+    ? "replace"
+    : "ignore";
+}
+
+function legacyProjectionOrder(
+  candidate: ProjectionCandidate,
+  current: CurrentProjection,
+): boolean {
+  const sameBoot = Boolean(
+    candidate.bootId
+    && current.bootId
+    && candidate.bootId === current.bootId,
+  );
+  const candidateObserved = candidate.deviceObservedAt
+    ? Date.parse(candidate.deviceObservedAt)
+    : Number.NaN;
+  const currentObserved = current.deviceObservedAt
+    ? Date.parse(current.deviceObservedAt)
+    : Number.NaN;
+  if (
+    sameBoot
+    && trustworthyDeviceTime(candidate.deviceTimeState)
+    && trustworthyDeviceTime(current.deviceTimeState)
+    && Number.isFinite(candidateObserved)
+    && Number.isFinite(currentObserved)
+    && candidateObserved !== currentObserved
+  ) {
+    return candidateObserved > currentObserved;
+  }
+  if (candidate.receivedAt !== current.receivedAt) {
+    return candidate.receivedAt > current.receivedAt;
+  }
+  return BigInt(candidate.recordId) > BigInt(current.recordId);
+}
+
+function bootLedger(document: Record<string, unknown>): {
+  epochId: string;
+  bootOrdinal: number;
+  continuityState: "initial" | "continuous" | "broken";
+} | null {
+  if (document.schemaVersion !== "v2") return null;
+  const ledger = document.ledger;
+  if (!ledger || typeof ledger !== "object" || Array.isArray(ledger)) return null;
+  const source = ledger as Record<string, unknown>;
+  const epochId = source.epochId;
+  const bootOrdinal = source.bootOrdinal;
+  const continuityState = source.continuityState;
+  return typeof epochId === "string"
+    && typeof bootOrdinal === "number"
+    && Number.isSafeInteger(bootOrdinal)
+    && bootOrdinal > 0
+    && (continuityState === "initial"
+      || continuityState === "continuous"
+      || continuityState === "broken")
+    ? { epochId, bootOrdinal, continuityState }
+    : null;
 }
 
 function trustworthyDeviceTime(state: string | null): boolean {

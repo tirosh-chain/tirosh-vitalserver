@@ -227,6 +227,82 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
     }],
   );
 
+  await repository.admit(batch({
+    requestId: "00000000-0000-4000-8000-000000000004",
+    resourceType: "bootEvent",
+    receivedAt: "2026-07-23T01:06:00Z",
+    lines: [preparedLine({
+      rawSha256: "3".repeat(64),
+      canonicalSha256: "4".repeat(64),
+      rawDocument: "{\"eventId\":\"boot-incident-1\"}",
+      identity: {
+        eventId: "boot-incident-1",
+        deviceId: "vr-brmh-15",
+        schemaVersion: "v2",
+        kind: "boot-event",
+        siteId: "brmh",
+        bootId: "boot-b",
+        sequence: null,
+        deviceObservedAt: "2026-07-23T01:05:59Z",
+        deviceTimeState: "synchronized",
+      },
+      document: {
+        schemaVersion: "v2",
+        eventId: "boot-incident-1",
+        deviceId: "vr-brmh-15",
+        bootId: "boot-b",
+        kind: "boot-event",
+        eventType: "boot-started",
+        deviceObservedAt: "2026-07-23T01:05:59Z",
+        ntpState: "synchronized",
+        assessment: {
+          policyVersion: "recorder-incident/v1",
+          consecutiveUnexpectedBoots: 2,
+          undervoltageBootsConsidered: 2,
+          evidenceState: "healthy",
+          signals: [
+            {
+              category: "boot",
+              code: "boot-loop",
+              severity: "warning",
+              state: "active",
+              summary: "unexpected boot sequence",
+            },
+            {
+              category: "power",
+              code: "repeated-undervoltage",
+              severity: "critical",
+              state: "active",
+              summary: "undervoltage across recent boots",
+            },
+          ],
+        },
+      },
+    })],
+  }));
+  const firstIncidentPage = await repository.readRecorderObservabilityIncidents({
+    vrcode: "BRMH-OR1",
+    from: "2026-07-23T01:00:00Z",
+    until: "2026-07-23T02:00:00Z",
+    incidentType: null,
+    cursor: null,
+    limit: 1,
+  });
+  assert.strictEqual(firstIncidentPage[0].code, "repeated-undervoltage");
+  const secondIncidentPage = await repository.readRecorderObservabilityIncidents({
+    vrcode: "BRMH-OR1",
+    from: "2026-07-23T01:00:00Z",
+    until: "2026-07-23T02:00:00Z",
+    incidentType: null,
+    cursor: {
+      receivedAt: firstIncidentPage[0].receivedAt,
+      recordId: firstIncidentPage[0].recordId,
+      code: firstIncidentPage[0].code,
+    },
+    limit: 1,
+  });
+  assert.strictEqual(secondIncidentPage[0].code, "boot-loop");
+
   const summaries = await repository.listCurrentRecorders();
   assert.deepStrictEqual(
     summaries.map((summary) => ({

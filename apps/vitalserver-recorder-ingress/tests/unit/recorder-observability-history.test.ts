@@ -40,7 +40,7 @@ test("timeline query requires a bounded explicit window and allowed bucket", () 
 });
 
 test("incident cursor is opaque, bounded, and advances after the last visible row", () => {
-  const cursor = encodeIncidentCursor("2026-07-24T00:00:00.000Z", "42");
+  const cursor = encodeIncidentCursor("2026-07-24T00:00:00.000Z", "42", "panic");
   const route = parseRecorderObservabilityHistoryRoute(
     "/runtime/vitaldb/recorders/VR_A/observability/incidents"
       + "?from=2026-07-01T00:00:00Z"
@@ -50,6 +50,7 @@ test("incident cursor is opaque, bounded, and advances after the last visible ro
   assert.deepStrictEqual(route.query.cursor, {
     receivedAt: "2026-07-24T00:00:00.000Z",
     recordId: "42",
+    code: "panic",
   });
   const rows = [
     incident("42", "2026-07-24T00:00:00.000Z"),
@@ -68,8 +69,36 @@ test("incident cursor is opaque, bounded, and advances after the last visible ro
         + "&until=2026-07-24T00:00:00Z"
         + `&cursor=${document.nextCursor}`,
     ).query.cursor,
-    { receivedAt: rows[0].receivedAt, recordId: rows[0].recordId },
+    { receivedAt: rows[0].receivedAt, recordId: rows[0].recordId, code: rows[0].code },
   );
+});
+
+test("incident cursor preserves a second explicit signal from one boot record", () => {
+  const rows = [
+    incident("42", "2026-07-24T00:00:00.000Z", "repeated-undervoltage"),
+    incident("42", "2026-07-24T00:00:00.000Z", "boot-loop"),
+  ];
+  const query = {
+    vrcode: "VR_A",
+    from: "2026-07-01T00:00:00.000Z",
+    until: "2026-07-24T00:00:00.000Z",
+    incidentType: null,
+    cursor: null,
+    limit: 1,
+  };
+  const first = incidentsDocument(query, rows);
+  const cursor = parseRecorderObservabilityHistoryRoute(
+    "/runtime/vitaldb/recorders/VR_A/observability/incidents"
+      + "?from=2026-07-01T00:00:00Z"
+      + "&until=2026-07-24T00:00:00Z"
+      + `&cursor=${first.nextCursor}`,
+  );
+  assert.strictEqual(first.incidents[0].incidentId, "42:repeated-undervoltage");
+  assert.deepStrictEqual(cursor.query.cursor, {
+    receivedAt: rows[0].receivedAt,
+    recordId: "42",
+    code: "repeated-undervoltage",
+  });
 });
 
 test("timeline empty state is not reported rather than empty loaded success", () => {
@@ -94,14 +123,25 @@ test("timeline preserves explicit unsupported separately from no report", () => 
   assert.strictEqual(document.supportState, "unsupported");
 });
 
-function incident(recordId, receivedAt) {
+function incident(recordId, receivedAt, code = "panic") {
   return {
+    incidentId: `${recordId}:${code}`,
     recordId,
     eventId: `event-${recordId}`,
+    category: code === "panic" ? "kernel" : "power",
+    code,
+    severity: "critical",
+    state: "historical",
+    bootId: null,
+    occurredAt: receivedAt,
     receivedAt,
+    timeState: "synchronized",
+    summary: code,
+    evidence: [],
+    source: code === "panic" ? "kernelIncident" : "bootEvent",
     capturedAt: receivedAt,
     captureTimeState: "synchronized",
-    incidentType: "panic",
+    incidentType: code,
     incidentBootId: null,
     messageExcerpt: "panic",
     truncated: false,

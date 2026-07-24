@@ -4,6 +4,7 @@ const assert = require("assert");
 const test = require("node:test");
 const {
   evaluateRecorderObservability,
+  bootEventProjectionOrder,
   mergeCurrentProjection,
   reportStateAt,
   shouldReplaceCurrent,
@@ -88,6 +89,44 @@ test("boot aggregate preserves start and shutdown and restart uses start only", 
     summarizeCurrentProjection(document).lastBootStartedAt,
     "2026-07-23T01:00:00Z",
   );
+});
+
+test("v2 boot ledger rejects delayed records and isolates mixed-version order", () => {
+  const current = {
+    ...candidate({
+      recordId: "40",
+      resourceType: "bootEvent",
+      bootId: "boot-4",
+      document: {
+        schemaVersion: "v2",
+        eventType: "boot-started",
+        ledger: { epochId: "ledger-a", bootOrdinal: 4, continuityState: "continuous" },
+      },
+      receivedAt: "2026-07-23T04:00:00Z",
+    }),
+    associatedProfileRecordId: null,
+  };
+  const delayed = candidate({
+    recordId: "41",
+    resourceType: "bootEvent",
+    bootId: "boot-3",
+    document: {
+      schemaVersion: "v2",
+      eventType: "boot-started",
+      ledger: { epochId: "ledger-a", bootOrdinal: 3, continuityState: "continuous" },
+    },
+    // A delayed buffered upload must not replace a later ordinal solely due to receipt.
+    receivedAt: "2026-07-23T05:00:00Z",
+  });
+  const legacy = candidate({
+    recordId: "42",
+    resourceType: "bootEvent",
+    document: { schemaVersion: "v1", eventType: "boot-started" },
+  });
+
+  assert.strictEqual(bootEventProjectionOrder(delayed, current), "ignore");
+  assert.strictEqual(shouldReplaceCurrent(delayed, current), false);
+  assert.strictEqual(bootEventProjectionOrder(legacy, current), "nonOrderable");
 });
 
 test("summary separates collection state and does not infer severity", () => {

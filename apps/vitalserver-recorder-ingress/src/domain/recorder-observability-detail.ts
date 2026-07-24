@@ -59,10 +59,26 @@ export type RecorderObservabilityDetail = {
     }>;
   };
   boot: {
-    state: "notReported" | "started" | "shutdownClean";
+    state: "notReported" | "started" | "shutdownClean" | "nonOrderable";
+    orderingState: "ordered" | "nonOrderable" | "unknown";
     bootId: string | null;
     startedAt: string | null;
     cleanShutdownAt: string | null;
+  };
+  evidenceHealth: {
+    state: "notReported" | "healthy" | "degraded" | "failed" | "stale" | "unsupported" | "invalid";
+    checkedAt: string | null;
+    checkCount: number;
+    detail: string | null;
+  };
+  incidentState: {
+    state: "notReported" | "reported" | "invalid";
+    policyVersion: string | null;
+    bootLoopState: "none" | "warning" | "critical" | "unknown" | null;
+    repeatedUndervoltageState: "none" | "warning" | "critical" | "unknown" | null;
+    evidenceState: "healthy" | "degraded" | "failed" | "stale" | "unsupported" | null;
+    consecutiveUnexpectedBoots: number | null;
+    undervoltageBootsConsidered: number | null;
   };
   operationalHealth: RecorderOperationalHealth;
   readings: {
@@ -165,17 +181,26 @@ export function mapRecorderObservabilityDetail(
       capabilities: capabilities(object(profile?.capabilities)),
     },
     boot: {
-      state: shutdownMatchesStartedBoot
+      state: string(bootRoot?.orderingState) === "nonOrderable"
+        ? "nonOrderable"
+        : shutdownMatchesStartedBoot
         ? "shutdownClean"
         : bootStarted
           ? "started"
           : "notReported",
+      orderingState: string(bootRoot?.orderingState) === "nonOrderable"
+        ? "nonOrderable"
+        : bootStartedDocument?.schemaVersion === "v2"
+          ? "ordered"
+          : "unknown",
       bootId: startedBootId,
       startedAt: string(bootStartedDocument?.deviceObservedAt),
       cleanShutdownAt: shutdownMatchesStartedBoot
         ? string(object(bootShutdownDocument?.shutdown)?.shutdownAt)
-        : null,
+          : null,
     },
+    evidenceHealth: evidenceHealth(object(payload?.evidenceHealth)),
+    incidentState: incidentState(object(payload?.incidentState)),
     operationalHealth,
     readings: {
       temperatureCelsius: reading(
@@ -222,6 +247,90 @@ export function mapRecorderObservabilityDetail(
     },
     readIssues: readIssues(health?.readIssues),
     readError: null,
+  };
+}
+
+function evidenceHealth(
+  source: Record<string, unknown> | null,
+): RecorderObservabilityDetail["evidenceHealth"] {
+  if (!source) {
+    return { state: "notReported", checkedAt: null, checkCount: 0, detail: null };
+  }
+  const state = string(source.state);
+  const checkedAt = string(source.checkedAt);
+  const checks = object(source.checks);
+  if (
+    ![
+      "healthy",
+      "degraded",
+      "failed",
+      "stale",
+      "unsupported",
+    ].includes(state || "")
+    || checkedAt === null
+    || checks === null
+  ) {
+    return {
+      state: "invalid",
+      checkedAt,
+      checkCount: checks ? Object.keys(checks).length : 0,
+      detail: "evidenceHealth contract is invalid",
+    };
+  }
+  return {
+    state: state as RecorderObservabilityDetail["evidenceHealth"]["state"],
+    checkedAt,
+    checkCount: Object.keys(checks).length,
+    detail: null,
+  };
+}
+
+function incidentState(
+  source: Record<string, unknown> | null,
+): RecorderObservabilityDetail["incidentState"] {
+  if (!source) {
+    return {
+      state: "notReported",
+      policyVersion: null,
+      bootLoopState: null,
+      repeatedUndervoltageState: null,
+      evidenceState: null,
+      consecutiveUnexpectedBoots: null,
+      undervoltageBootsConsidered: null,
+    };
+  }
+  const policyVersion = string(source.policyVersion);
+  const bootLoopState = enumValue(
+    source.bootLoopState,
+    ["none", "warning", "critical", "unknown"],
+  );
+  const repeatedUndervoltageState = enumValue(
+    source.repeatedUndervoltageState,
+    ["none", "warning", "critical", "unknown"],
+  );
+  const evidenceState = enumValue(
+    source.evidenceState,
+    ["healthy", "degraded", "failed", "stale", "unsupported"],
+  );
+  if (!policyVersion || !bootLoopState || !repeatedUndervoltageState || !evidenceState) {
+    return {
+      state: "invalid",
+      policyVersion,
+      bootLoopState,
+      repeatedUndervoltageState,
+      evidenceState,
+      consecutiveUnexpectedBoots: number(source.consecutiveUnexpectedBoots),
+      undervoltageBootsConsidered: number(source.undervoltageBootsConsidered),
+    };
+  }
+  return {
+    state: "reported",
+    policyVersion,
+    bootLoopState,
+    repeatedUndervoltageState,
+    evidenceState,
+    consecutiveUnexpectedBoots: number(source.consecutiveUnexpectedBoots),
+    undervoltageBootsConsidered: number(source.undervoltageBootsConsidered),
   };
 }
 
@@ -368,6 +477,15 @@ function string(value: unknown): string | null {
 
 function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function enumValue<T extends string>(
+  value: unknown,
+  values: readonly T[],
+): T | null {
+  return typeof value === "string" && values.includes(value as T)
+    ? value as T
+    : null;
 }
 
 function jsonValue(value: unknown): JSONValue {
