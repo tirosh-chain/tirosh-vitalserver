@@ -153,6 +153,8 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "/Library/Application Support/VitalServerHelper" in rendered
     assert_upload_proxy_streaming(proxy_config_template_text)
     assert_upload_proxy_streaming(guest_edge_config_text)
+    assert_recorder_observability_proxy_body_boundary(proxy_config_template_text)
+    assert_recorder_observability_proxy_body_boundary(guest_edge_config_text)
     assert_socketio_proxy_timeout(proxy_config_template_text)
     assert_socketio_proxy_timeout(guest_edge_config_text)
     assert_recorder_ingress_upload_timeout(root_compose_text)
@@ -693,11 +695,22 @@ def assert_upload_proxy_streaming(config_text: str) -> None:
 
     assert "location = /upload {" in config_text
     assert "location = /upload_vital.php {" in config_text
-    assert config_text.count("client_max_body_size 0;") == 2
+    assert "client_max_body_size 0;" in location_block(config_text, "= /upload")
+    assert "client_max_body_size 0;" in location_block(
+        config_text, "= /upload_vital.php"
+    )
     assert config_text.count("proxy_request_buffering off;") == 2
     assert config_text.count("client_body_timeout 1h;") == 2
     assert config_text.count("proxy_send_timeout 1h;") == 3
     assert config_text.count("proxy_read_timeout 1h;") == 3
+
+
+def assert_recorder_observability_proxy_body_boundary(config_text: str) -> None:
+    """Assert nginx delegates Recorder backlog size policy to recorder ingress."""
+
+    block = location_block(config_text, "^~ /api/v1/recorders/")
+    assert "client_max_body_size 0;" in block
+    assert "proxy_pass http://" in block
 
 
 def assert_socketio_proxy_timeout(config_text: str) -> None:

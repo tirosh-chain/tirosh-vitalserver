@@ -181,6 +181,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-178 | VitalServer upload는 성공했지만 native Recorder `.vital` 파일이 Recorder Details에 귀속되지 않음 | Recorder streaming / Runtime Control PWA | active | [Native Recorder Vital upload is not attributed to a Recorder](178_native-recorder-vital-upload-not-attributed.md) |
 | TS-179 | 중앙 PostgreSQL 마이그레이션이 기존 비관리 relation 또는 revision/DDL 오류로 기동을 차단함 | Guest bootstrap / Data store | active | [PostgreSQL schema migration failed](179_postgres_schema_migration_failed.md) |
 | TS-180 | PostgreSQL migration service 추가 후 distribution review의 Guest seccomp 선언 수 계약이 이전 값으로 남음 | Packaging / Guest containers | resolved | [Distribution review rejects the PostgreSQL migration service seccomp contract](180_distribution_review_compose_seccomp_count.md) |
+| TS-181 | 신규 관측은 202이지만 1 MiB 초과 Recorder 초기 backlog가 nginx HTML 413으로 거절됨 | Recorder observability / Host proxy / Guest edge | active | [Recorder observability backlog is rejected by nginx 413](181_recorder-observability-backlog-nginx-413.md) |
 
 ## Follow-up 규칙
 
