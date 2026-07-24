@@ -4,6 +4,7 @@ import { request as requestHTTP } from "node:http";
 import {
   composeHostAgentControlHTTPRequest,
   type RuntimeConsoleControlRequest,
+  type RuntimeConsoleControlRequestOptions,
   type RuntimeConsoleControlResponse,
   type RuntimeConsoleControlTransport,
 } from "@tirosh-chain/runtime-console-control-contract";
@@ -45,18 +46,43 @@ export type OperatorInterfaceBootstrapConfiguration = {
  * Host listener before this HTTP facade receives a request.
  */
 export class HostAgentLocalControlTransport implements RuntimeConsoleControlTransport {
-  public constructor(private readonly endpoint: HostAgentLocalControlDescriptor) {}
+  public constructor(
+    private readonly endpoint: HostAgentLocalControlDescriptor,
+    private readonly requestLocalHTTP: typeof requestHTTP = requestHTTP,
+  ) {}
 
-  public async request(controlRequest: RuntimeConsoleControlRequest): Promise<RuntimeConsoleControlResponse> {
+  public async request(
+    controlRequest: RuntimeConsoleControlRequest,
+    options?: RuntimeConsoleControlRequestOptions,
+  ): Promise<RuntimeConsoleControlResponse> {
+    if (options?.signal?.aborted === true) {
+      throw abortedControlRequestError();
+    }
     const request = composeHostAgentControlHTTPRequest(controlRequest);
     const encodedBody = request.body === undefined ? undefined : JSON.stringify(request.body);
     return new Promise<RuntimeConsoleControlResponse>((resolve, reject) => {
-      const pending = requestHTTP({
+      let settled = false;
+      const succeed = (response: RuntimeConsoleControlResponse): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(response);
+      };
+      const fail = (error: Error): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(error);
+      };
+      const pending = this.requestLocalHTTP({
         protocol: "http:",
         hostname: "host-agent.local",
         method: request.method,
         path: request.path,
         socketPath: this.endpoint.address,
+        signal: options?.signal,
         headers: {
           Accept: "application/json",
           ...(encodedBody === undefined ? {} : { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(encodedBody) }),
@@ -72,25 +98,31 @@ export class HostAgentLocalControlTransport implements RuntimeConsoleControlTran
           }
           chunks.push(chunk);
         });
-        response.on("error", reject);
+        response.on("error", fail);
         response.on("end", () => {
           try {
             const encodedDocument = Buffer.concat(chunks).toString("utf8");
             const document: unknown = JSON.parse(encodedDocument);
-            resolve({ httpStatus: response.statusCode ?? 0, document });
+            succeed({ httpStatus: response.statusCode ?? 0, document });
           } catch (error: unknown) {
-            reject(asError(error, "Host Agent local control response is not valid JSON"));
+            fail(asError(error, "Host Agent local control response is not valid JSON"));
           }
         });
       });
       pending.setTimeout(10_000, () => pending.destroy(new Error("Host Agent local control request timed out")));
-      pending.on("error", reject);
+      pending.on("error", fail);
       if (encodedBody !== undefined) {
         pending.write(encodedBody);
       }
       pending.end();
     });
   }
+}
+
+function abortedControlRequestError(): Error {
+  const error = new Error("Host Agent local control request was cancelled");
+  error.name = "AbortError";
+  return error;
 }
 
 /**

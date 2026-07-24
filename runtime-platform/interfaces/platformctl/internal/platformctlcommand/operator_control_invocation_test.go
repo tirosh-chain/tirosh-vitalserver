@@ -3,6 +3,7 @@ package platformctlcommand_test
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/platformctl/internal/platformctlcommand"
@@ -63,7 +64,6 @@ func TestParseMapsOperationalOwnerReadsWithoutGenericPathEscape(t *testing.T) {
 		{arguments: []string{"host-clock-quality"}, route: "/v1/platform/time/clock-quality"},
 		{arguments: []string{"runtime", "guest-clock-quality"}, route: "/v1/time/clock-quality"},
 		{arguments: []string{"runtime", "lab-recorders"}, route: "/v1/runtime/lab/recorders"},
-		{arguments: []string{"runtime", "recorder-observations"}, route: "/v1/runtime/catalog/recorder-observations"},
 		{arguments: []string{"runtime", "external-upstreams"}, route: "/v1/runtime/external-upstreams"},
 	}
 	for _, testCase := range testCases {
@@ -251,6 +251,44 @@ func TestParseMapsManualArtifactExportFromExplicitOwnerReferences(t *testing.T) 
 		"--gateway-url", "http://127.0.0.1:8090",
 	)); err == nil {
 		t.Fatal("unpublished Gateway URL option was accepted")
+	}
+}
+
+func TestParseMapsRecorderArtifactAndArchiveArtifactOwnerReads(t *testing.T) {
+	endpoint := []string{"--control-endpoint", "http://127.0.0.1:18280"}
+	recorderArtifacts, err := platformctlcommand.Parse(append(endpoint,
+		"recorder", "artifacts",
+		"--recorder-id", "recorder-1",
+		"--limit", "100",
+	))
+	if err != nil {
+		t.Fatalf("parse Recorder artifact page read: %v", err)
+	}
+	if recorderArtifacts.Method != http.MethodGet ||
+		recorderArtifacts.Route != "/v1/runtime/recorders/recorder-1/artifacts?limit=100" {
+		t.Fatalf("Recorder artifact page invocation=%+v", recorderArtifacts)
+	}
+	archiveArtifact, err := platformctlcommand.Parse(append(endpoint,
+		"archive", "artifact",
+		"--artifact-id", "archive-artifact-1",
+	))
+	if err != nil {
+		t.Fatalf("parse Archive artifact detail read: %v", err)
+	}
+	if archiveArtifact.Method != http.MethodGet ||
+		archiveArtifact.Route != "/v1/runtime/artifacts/archive-artifact-1" {
+		t.Fatalf("Archive artifact detail invocation=%+v", archiveArtifact)
+	}
+	for _, arguments := range [][]string{
+		append(endpoint, "recorder", "artifacts", "--recorder-id", "../escape", "--limit", "100"),
+		append(endpoint, "recorder", "artifacts", "--recorder-id", "recorder-1"),
+		append(endpoint, "recorder", "artifacts", "--recorder-id", "recorder-1", "--limit", "101"),
+		append(endpoint, "archive", "artifact", "--artifact-id", "../escape"),
+		append(endpoint, "archive", "artifact", "--artifact-id", "artifact-1", "--raw-json", "{}"),
+	} {
+		if _, err := platformctlcommand.Parse(arguments); err == nil {
+			t.Fatalf("unpublished or invalid owner read was accepted: %v", arguments)
+		}
 	}
 }
 
@@ -460,5 +498,129 @@ func TestParseMapsOwnerScopedTelemetryPipelineWithFixedSignalSet(t *testing.T) {
 		"--allowed-attribute-keys", "authorization", "--max-attributes", "1", "--max-value-length", "1", "--max-distinct-values-per-key", "1",
 	)); err == nil {
 		t.Fatal("sensitive telemetry attribute was accepted")
+	}
+}
+
+func TestParseMapsExplicitRecorderAssignmentEvidenceCommand(t *testing.T) {
+	invocation, err := platformctlcommand.Parse([]string{
+		"--control-endpoint", "http://127.0.0.1:18280",
+		"recorder", "assignment",
+		"--request-id", "assignment-request-1",
+		"--evidence-id", "assignment-evidence-1",
+		"--recorder-id", "recorder-1",
+		"--bed-name", "OR-01",
+		"--effective-from", "2026-07-24T10:00:00Z",
+		"--effective-until", "2026-07-24T12:00:00Z",
+		"--observed-at", "2026-07-24T10:00:00Z",
+		"--source-reference-kind", "administrator-command",
+		"--source-reference-id", "operator-assignment-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invocation.Method != http.MethodPost ||
+		invocation.Route != "/v1/runtime/recorder-assignments" {
+		t.Fatalf("invocation=%#v", invocation)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(invocation.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["sourceKind"] != "administrator" ||
+		body["bedName"] != "OR-01" ||
+		body["effectiveUntil"] != "2026-07-24T12:00:00Z" {
+		t.Fatalf("body=%#v", body)
+	}
+}
+
+func TestParseMapsGuestOperationalStateBackupRestoreAndRead(t *testing.T) {
+	endpoint := []string{
+		"--control-endpoint",
+		"http://127.0.0.1:18280",
+	}
+	backup, err := platformctlcommand.Parse(append(
+		endpoint,
+		"operational-state", "backup",
+		"--request-id", "backup-request-1",
+		"--operation-id", "backup-operation-1",
+		"--destination-resource-type", "guest-backup-destination",
+		"--destination-resource-id", "guest-local-operational-state",
+		"--requested-at", "2026-07-24T22:00:00Z",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backup.Method != http.MethodPost ||
+		backup.Route != "/v1/runtime/operational-state/backups" {
+		t.Fatalf("backup=%#v", backup)
+	}
+	var backupBody map[string]any
+	if err := json.Unmarshal(backup.Body, &backupBody); err != nil {
+		t.Fatal(err)
+	}
+	if backupBody["operationId"] != "backup-operation-1" {
+		t.Fatalf("backup body=%#v", backupBody)
+	}
+
+	restore, err := platformctlcommand.Parse(append(
+		endpoint,
+		"operational-state", "restore",
+		"--request-id", "restore-request-1",
+		"--operation-id", "restore-operation-1",
+		"--manifest-resource-type", "guest-backup-manifest",
+		"--manifest-resource-id", "guest-backup-0123456789abcdef0123456789abcdef",
+		"--manifest-sha256", strings.Repeat("a", 64),
+		"--target-resource-type", "guest-restore-target",
+		"--target-resource-id", "maintenance-target-1",
+		"--requested-at", "2026-07-24T22:01:00Z",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restore.Method != http.MethodPost ||
+		restore.Route != "/v1/runtime/operational-state/restores" {
+		t.Fatalf("restore=%#v", restore)
+	}
+	if _, err := platformctlcommand.Parse(append(
+		endpoint,
+		"operational-state", "restore",
+		"--request-id", "restore-request-2",
+		"--operation-id", "restore-operation-2",
+		"--manifest-resource-type", "guest-backup-manifest",
+		"--manifest-resource-id", "guest-backup-0123456789abcdef0123456789abcdef",
+		"--manifest-sha256", "not-a-digest",
+		"--target-resource-type", "guest-restore-target",
+		"--target-resource-id", "maintenance-target-1",
+		"--requested-at", "2026-07-24T22:01:00Z",
+	)); err == nil {
+		t.Fatal("invalid manifest digest was accepted")
+	}
+
+	readInvocation, err := platformctlcommand.Parse(append(
+		endpoint,
+		"operational-state", "read",
+		"--operation-id", "backup-operation-1",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readInvocation.Method != http.MethodGet ||
+		readInvocation.Route !=
+			"/v1/runtime/operational-state/operations/backup-operation-1" {
+		t.Fatalf("read=%#v", readInvocation)
+	}
+}
+
+func TestParseMapsGuestOperationalStateIdentityRead(t *testing.T) {
+	invocation, err := platformctlcommand.Parse([]string{
+		"--control-endpoint", "http://127.0.0.1:18280",
+		"runtime", "operational-state-identity",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invocation.Method != http.MethodGet ||
+		invocation.Route != "/v1/runtime/operational-state/identity" {
+		t.Fatalf("invocation=%#v", invocation)
 	}
 }

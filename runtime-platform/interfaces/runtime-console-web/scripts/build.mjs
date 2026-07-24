@@ -14,4 +14,14 @@ await build({
   sourcemap: true,
   logLevel: "info",
 });
+await build({
+  entryPoints: ["src/recorder_detail_presenter.ts"],
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  target: ["node20"],
+  outfile: "dist/recorder-detail-presenter.mjs",
+  sourcemap: true,
+  logLevel: "info",
+});
 await cp("src/runtime_console.html", "dist/index.html");

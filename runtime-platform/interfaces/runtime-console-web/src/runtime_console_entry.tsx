@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 
 import type {
@@ -11,10 +11,15 @@ import type {
   RuntimeConsoleExternalUpstreamApplyRequest,
   RuntimeConsoleLabResourceAction,
   RuntimeConsoleLabResourceCommandRequest,
+  RuntimeConsoleLabReplayCreateRequest,
+  RuntimeConsoleLabReplayReadRequest,
   RuntimeConsoleLabSessionCreateRequest,
+  RuntimeConsoleRecorderListReadRequest,
   RuntimeConsoleUpdateBundleApplyRequest,
   RuntimeConsoleUpdateBundleImportRequest,
   RuntimeConsoleReadName,
+  RuntimeConsoleRecorderDetailReadRequest,
+  RuntimeConsoleRecorderDetailResource,
   RuntimeConsoleTopologyApplyRequest,
   RuntimeConsoleTopologyProfileKind,
   RuntimeConsoleOperationalScope,
@@ -22,6 +27,12 @@ import type {
   RuntimeConsoleTimeAuthorityApplyRequest,
 } from "@tirosh-chain/runtime-console-control-contract";
 
+import {
+  displayByteSize,
+  presentRecorderArtifact,
+  presentRecorderIncident,
+  presentRecorderObservation,
+} from "./recorder_detail_presenter.js";
 import "./runtime_console_styles.css";
 
 declare global {
@@ -48,6 +59,64 @@ type LabResourceOption = {
   readonly state: string;
 };
 
+type LabReplayOperationView = {
+  readonly id: string;
+  readonly requestId: string;
+  readonly resourceRevision: number;
+  readonly state: string;
+  readonly recorderGatewayRecorderCode: string;
+  readonly messagesSent: number;
+  readonly nextFrameOffsetSecond: number;
+  readonly lastSendState: string;
+  readonly validationReceipt?: Record<string, unknown>;
+  readonly preparationReceipt?: Record<string, unknown>;
+  readonly upstreamDeliveryReceipt?: Record<string, unknown>;
+  readonly failure?: Record<string, unknown>;
+  readonly stoppedFromState?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type RecorderDetailReadView = {
+  readonly pending: boolean;
+  readonly response?: RuntimeConsoleControlResponse;
+  readonly interfaceError?: string;
+};
+
+type RecorderDetailOption = {
+  readonly recorderId: string;
+  readonly supportState: string;
+  readonly reportState: string;
+  readonly expectationState: string;
+  readonly readState: string;
+  readonly latestOccurredAt?: string;
+};
+
+const recorderDetailResources = [
+  "observability-summary",
+  "observation-timeline",
+  "incidents",
+  "artifacts",
+] as const satisfies readonly RuntimeConsoleRecorderDetailResource[];
+
+const initialRecorderDetailViews: Readonly<Record<RuntimeConsoleRecorderDetailResource, RecorderDetailReadView>> = {
+  "observability-summary": { pending: false },
+  "observation-timeline": { pending: false },
+  "incidents": { pending: false },
+  "artifacts": { pending: false },
+};
+
+function recorderDetailViewRecord(
+  view: (resource: RuntimeConsoleRecorderDetailResource) => RecorderDetailReadView,
+): Readonly<Record<RuntimeConsoleRecorderDetailResource, RecorderDetailReadView>> {
+  return {
+    "observability-summary": view("observability-summary"),
+    "observation-timeline": view("observation-timeline"),
+    "incidents": view("incidents"),
+    "artifacts": view("artifacts"),
+  };
+}
+
 const readLabels: Readonly<Record<RuntimeConsoleReadName, string>> = {
   "installation": "Host installation",
   "guest-runtime-control-endpoint": "Guest control endpoint",
@@ -63,7 +132,6 @@ const readLabels: Readonly<Record<RuntimeConsoleReadName, string>> = {
   "archive-credential-material": "Archive credential material",
   "external-upstreams": "External upstreams",
   "outbound-relays": "Outbound relays",
-  "recorder-observations": "Vital Recorder observations",
 };
 
 const runtimeConsoleReadEntries = Object.entries(readLabels) as ReadonlyArray<readonly [RuntimeConsoleReadName, string]>;
@@ -83,11 +151,15 @@ const initialReadViews: Readonly<Record<RuntimeConsoleReadName, ReadView>> = {
   "archive-credential-material": { pending: false },
   "external-upstreams": { pending: false },
   "outbound-relays": { pending: false },
-  "recorder-observations": { pending: false },
 };
 
 function RuntimeConsoleApplication({ transport }: { readonly transport?: RuntimeConsoleControlTransport }): ReactElement {
   const [reads, setReads] = useState<Readonly<Record<RuntimeConsoleReadName, ReadView>>>(initialReadViews);
+  const [recorderListView, setRecorderListView] = useState<ReadView>({ pending: false });
+  const [recorderDetailID, setRecorderDetailID] = useState("");
+  const [recorderDetailViews, setRecorderDetailViews] = useState<Readonly<Record<RuntimeConsoleRecorderDetailResource, RecorderDetailReadView>>>(initialRecorderDetailViews);
+  const recorderDetailGeneration = useRef(0);
+  const recorderDetailAbortController = useRef<AbortController | undefined>(undefined);
   const [requestId, setRequestId] = useState("");
   const [commandResponse, setCommandResponse] = useState<RuntimeConsoleControlResponse | undefined>();
   const [commandInterfaceError, setCommandInterfaceError] = useState<string | undefined>();
@@ -113,6 +185,16 @@ function RuntimeConsoleApplication({ transport }: { readonly transport?: Runtime
   const [labRecorderCount, setLabRecorderCount] = useState("1");
   const [labCreatePending, setLabCreatePending] = useState(false);
   const [labCreateResponse, setLabCreateResponse] = useState<RuntimeConsoleControlResponse | undefined>();
+  const [labReplayRequestID, setLabReplayRequestID] = useState("");
+  const [labReplayID, setLabReplayID] = useState("");
+  const [labReplaySourceID, setLabReplaySourceID] = useState("");
+  const [labReplaySourceSHA256, setLabReplaySourceSHA256] = useState("");
+  const [labReplayRecorderCode, setLabReplayRecorderCode] = useState("");
+  const [labReplayRequestedAt, setLabReplayRequestedAt] = useState("");
+  const [labReplayCreatePending, setLabReplayCreatePending] = useState(false);
+  const [labReplayReadPending, setLabReplayReadPending] = useState(false);
+  const [labReplayResponse, setLabReplayResponse] = useState<RuntimeConsoleControlResponse | undefined>();
+  const [labReplayInterfaceError, setLabReplayInterfaceError] = useState<string | undefined>();
   const [labResourceRequestID, setLabResourceRequestID] = useState("");
   const [selectedLabResourceKey, setSelectedLabResourceKey] = useState("");
   const [labResourceAction, setLabResourceAction] = useState<RuntimeConsoleLabResourceAction>("start");
@@ -195,6 +277,105 @@ function RuntimeConsoleApplication({ transport }: { readonly transport?: Runtime
     }
   }, [transport]);
 
+  const changeRecorderDetailID = useCallback((recorderId: string): void => {
+    recorderDetailAbortController.current?.abort();
+    recorderDetailAbortController.current = undefined;
+    recorderDetailGeneration.current += 1;
+    setRecorderDetailID(recorderId);
+    setRecorderDetailViews(initialRecorderDetailViews);
+  }, []);
+
+  const cancelRecorderDetailReads = useCallback((): void => {
+    recorderDetailAbortController.current?.abort();
+    recorderDetailAbortController.current = undefined;
+    recorderDetailGeneration.current += 1;
+    setRecorderDetailViews((current) => recorderDetailViewRecord(
+      (resource) => ({ ...current[resource], pending: false }),
+    ));
+  }, []);
+
+  const readRecorderDetail = useCallback(async (): Promise<void> => {
+    const recorderId = recorderDetailID;
+    recorderDetailAbortController.current?.abort();
+    const abortController = new AbortController();
+    recorderDetailAbortController.current = abortController;
+    const generation = recorderDetailGeneration.current + 1;
+    recorderDetailGeneration.current = generation;
+    if (transport === undefined) {
+      setRecorderDetailViews(recorderDetailViewRecord(
+        () => ({ pending: false, interfaceError: "The desktop control transport was not provided." }),
+      ));
+      return;
+    }
+    setRecorderDetailViews(recorderDetailViewRecord(() => ({ pending: true })));
+    await Promise.all(recorderDetailResources.map(async (resource) => {
+      const request: RuntimeConsoleRecorderDetailReadRequest = {
+        kind: "recorder-detail-read",
+        resource,
+        recorderId,
+        ...(resource === "observability-summary" ? {} : { limit: 25 }),
+      };
+      try {
+        const response = await transport.request(request, { signal: abortController.signal });
+        if (recorderDetailGeneration.current !== generation) {
+          return;
+        }
+        setRecorderDetailViews((current) => ({
+          ...current,
+          [resource]: { pending: false, response },
+        }));
+      } catch (error: unknown) {
+        if (recorderDetailGeneration.current !== generation) {
+          return;
+        }
+        setRecorderDetailViews((current) => ({
+          ...current,
+          [resource]: { pending: false, interfaceError: interfaceErrorMessage(error) },
+        }));
+      }
+    }));
+    if (recorderDetailAbortController.current === abortController) {
+      recorderDetailAbortController.current = undefined;
+    }
+  }, [recorderDetailID, transport]);
+
+  const readRecorderList = useCallback(async (cursor?: string): Promise<void> => {
+    if (transport === undefined) {
+      setRecorderListView({
+        pending: false,
+        interfaceError: "The desktop control transport was not provided.",
+      });
+      return;
+    }
+    const request: RuntimeConsoleRecorderListReadRequest = {
+      kind: "recorder-list-read",
+      limit: 100,
+      ...(cursor === undefined ? {} : { cursor }),
+    };
+    setRecorderListView({ pending: true });
+    try {
+      setRecorderListView({
+        pending: false,
+        response: await transport.request(request),
+      });
+    } catch (error: unknown) {
+      setRecorderListView({
+        pending: false,
+        interfaceError: interfaceErrorMessage(error),
+      });
+    }
+  }, [transport]);
+
+  useEffect(() => () => {
+    recorderDetailAbortController.current?.abort();
+    recorderDetailAbortController.current = undefined;
+    recorderDetailGeneration.current += 1;
+  }, []);
+
+  useEffect(() => {
+    void readRecorderList();
+  }, [readRecorderList]);
+
   useEffect(() => {
     void Promise.all(runtimeConsoleReadEntries.map(([resource]) => readOwnerResource(resource)));
   }, [readOwnerResource]);
@@ -237,6 +418,14 @@ function RuntimeConsoleApplication({ transport }: { readonly transport?: Runtime
       (reads["lab-recorders"] ?? initialReadViews["lab-recorders"]).response,
     ),
     [reads, selectedLabResourceKey],
+  );
+  const recorderDetailOptions = useMemo(
+    () => ownerSuppliedRecorderDetailOptions(recorderListView.response),
+    [recorderListView.response],
+  );
+  const recorderListNextCursor = useMemo(
+    () => ownerSuppliedRecorderListNextCursor(recorderListView.response),
+    [recorderListView.response],
   );
   const topologyOwnerInput = useMemo(
     () => ownerSuppliedTopologyInput((reads["runtime-topology"] ?? initialReadViews["runtime-topology"]).response),
@@ -427,6 +616,56 @@ function RuntimeConsoleApplication({ transport }: { readonly transport?: Runtime
       setLabCreatePending(false);
     }
   }, [labCreateRequestID, labName, labRecorderCount, labScenario, labSessionID, readOwnerResource, transport]);
+
+  const createLabReplay = useCallback(async (): Promise<void> => {
+    if (transport === undefined) {
+      setLabReplayInterfaceError("The desktop control transport was not provided.");
+      return;
+    }
+    const request: RuntimeConsoleLabReplayCreateRequest = {
+      kind: "lab-replay-create",
+      requestId: labReplayRequestID,
+      replayId: labReplayID,
+      sourceReference: {
+        resourceType: "lab-replay-source",
+        resourceId: labReplaySourceID,
+      },
+      sourceSha256: labReplaySourceSHA256,
+      recorderGatewayRecorderCode: labReplayRecorderCode,
+      requestedAt: labReplayRequestedAt,
+    };
+    setLabReplayCreatePending(true);
+    setLabReplayInterfaceError(undefined);
+    setLabReplayResponse(undefined);
+    try {
+      setLabReplayResponse(await transport.request(request));
+    } catch (error: unknown) {
+      setLabReplayInterfaceError(interfaceErrorMessage(error));
+    } finally {
+      setLabReplayCreatePending(false);
+    }
+  }, [labReplayID, labReplayRecorderCode, labReplayRequestID, labReplayRequestedAt, labReplaySourceID, labReplaySourceSHA256, transport]);
+
+  const readLabReplay = useCallback(async (): Promise<void> => {
+    if (transport === undefined) {
+      setLabReplayInterfaceError("The desktop control transport was not provided.");
+      return;
+    }
+    const request: RuntimeConsoleLabReplayReadRequest = {
+      kind: "lab-replay-read",
+      replayId: labReplayID,
+    };
+    setLabReplayReadPending(true);
+    setLabReplayInterfaceError(undefined);
+    setLabReplayResponse(undefined);
+    try {
+      setLabReplayResponse(await transport.request(request));
+    } catch (error: unknown) {
+      setLabReplayInterfaceError(interfaceErrorMessage(error));
+    } finally {
+      setLabReplayReadPending(false);
+    }
+  }, [labReplayID, transport]);
 
   const executeLabResourceCommand = useCallback(async (): Promise<void> => {
     if (transport === undefined) {
@@ -661,6 +900,50 @@ function RuntimeConsoleApplication({ transport }: { readonly transport?: Runtime
         </div>
       </section>
 
+      <section aria-labelledby="recorder-detail-heading">
+        <div className="section-heading">
+          <div>
+            <h2 id="recorder-detail-heading">Recorder detail</h2>
+            <p>Enter the Catalog-owned Recorder ID. Detail reads start only on request, use a bounded first page, and a changed Recorder ID or Cancel action prevents an older response from replacing the current view.</p>
+          </div>
+          <button type="button" disabled={!recorderDetailResources.some((resource) => recorderDetailViews[resource].pending)} onClick={cancelRecorderDetailReads}>Cancel detail read</button>
+        </div>
+        <div className="card-heading">
+          <p>{recorderListView.pending ? "Reading Catalog-owned Recorder page…" : `${recorderDetailOptions.length} Recorder(s) in this owner page.`}</p>
+          <div className="command-buttons">
+            <button type="button" disabled={recorderListView.pending} onClick={() => void readRecorderList()}>First Recorder page</button>
+            <button type="button" disabled={recorderListView.pending || recorderListNextCursor === undefined} onClick={() => void readRecorderList(recorderListNextCursor)}>Next Recorder page</button>
+          </div>
+        </div>
+        <InterfaceError message={recorderListView.interfaceError} />
+        <div className="recorder-list" role="list">
+          {recorderDetailOptions.map((option) => (
+            <button key={option.recorderId} type="button" className="recorder-list-row" onClick={() => changeRecorderDetailID(option.recorderId)}>
+              <strong>{option.recorderId}</strong>
+              <span>Support: {option.supportState}</span>
+              <span>Expected: {option.expectationState}</span>
+              <span>Report: {option.reportState}</span>
+              <span>Read: {option.readState}</span>
+              <span>Last report: {option.latestOccurredAt ?? "Not provided by owner"}</span>
+            </button>
+          ))}
+        </div>
+        <label htmlFor="recorder-detail-id">Recorder ID</label>
+        <input id="recorder-detail-id" list="recorder-detail-options" value={recorderDetailID} onChange={(event) => changeRecorderDetailID(event.target.value)} placeholder="recorder-lab-recorder-1" />
+        <datalist id="recorder-detail-options">
+          {recorderDetailOptions.map((option) => <option key={option.recorderId} value={option.recorderId}>{option.reportState} · {option.expectationState}</option>)}
+        </datalist>
+        <button type="button" disabled={recorderDetailID === "" || recorderDetailResources.some((resource) => recorderDetailViews[resource].pending)} onClick={() => void readRecorderDetail()}>
+          {recorderDetailResources.some((resource) => recorderDetailViews[resource].pending) ? "Reading detail…" : "Read Recorder detail"}
+        </button>
+        <div className="resource-grid recorder-detail-grid">
+          <RecorderObservabilityCard view={recorderDetailViews["observability-summary"]} />
+          <RecorderObservationHistoryCard view={recorderDetailViews["observation-timeline"]} />
+          <RecorderIncidentCard view={recorderDetailViews.incidents} />
+          <RecorderArtifactCard view={recorderDetailViews.artifacts} />
+        </div>
+      </section>
+
       <section aria-labelledby="guest-start-heading">
         <h2 id="guest-start-heading">Request Guest lifecycle action</h2>
         <p>The endpoint identity and revision below are read from the Host-owned resource. The operator supplies a new request ID for each distinct action; only a retry of the exact same action may reuse it.</p>
@@ -827,6 +1110,26 @@ function RuntimeConsoleApplication({ transport }: { readonly transport?: Runtime
         <input id="lab-recorder-count" type="number" min="1" max="64" value={labRecorderCount} onChange={(event) => setLabRecorderCount(event.target.value)} />
         <button type="button" disabled={labCreatePending} onClick={() => void createLabSession()}>{labCreatePending ? "Creating…" : "Create prepared Lab session"}</button>
         {labCreateResponse !== undefined ? <ControlResponseCard label="Lab create response" response={labCreateResponse} /> : null}
+        <h3>Replay an admitted .vital source</h3>
+        <p>The source owner must first admit the immutable <code>.vital</code> source and publish its source ID and SHA-256. This command supplies those exact values; the Console neither uploads a file nor infers source identity, request time, recorder code, or delivery success.</p>
+        <label htmlFor="lab-replay-request-id">Replay request ID</label>
+        <input id="lab-replay-request-id" value={labReplayRequestID} onChange={(event) => setLabReplayRequestID(event.target.value)} placeholder="operator-lab-replay-001" />
+        <label htmlFor="lab-replay-id">Replay ID</label>
+        <input id="lab-replay-id" value={labReplayID} onChange={(event) => setLabReplayID(event.target.value)} placeholder="lab-replay-001" />
+        <label htmlFor="lab-replay-source-id">Admitted source ID</label>
+        <input id="lab-replay-source-id" value={labReplaySourceID} onChange={(event) => setLabReplaySourceID(event.target.value)} placeholder="lab-replay-source-001" />
+        <label htmlFor="lab-replay-source-sha256">Source SHA-256</label>
+        <input id="lab-replay-source-sha256" value={labReplaySourceSHA256} onChange={(event) => setLabReplaySourceSHA256(event.target.value)} placeholder="64 lowercase hexadecimal characters" />
+        <label htmlFor="lab-replay-recorder-code">Recorder Gateway recorder code</label>
+        <input id="lab-replay-recorder-code" value={labReplayRecorderCode} onChange={(event) => setLabReplayRecorderCode(event.target.value)} placeholder="LAB-RECORDER-01" />
+        <label htmlFor="lab-replay-requested-at">Requested at (RFC 3339)</label>
+        <input id="lab-replay-requested-at" value={labReplayRequestedAt} onChange={(event) => setLabReplayRequestedAt(event.target.value)} placeholder="2026-07-24T16:00:00Z" />
+        <div className="command-buttons">
+          <button type="button" disabled={labReplayCreatePending || labReplayReadPending} onClick={() => void createLabReplay()}>{labReplayCreatePending ? "Admitting…" : "Create replay operation"}</button>
+          <button type="button" disabled={labReplayCreatePending || labReplayReadPending} onClick={() => void readLabReplay()}>{labReplayReadPending ? "Reading…" : "Read replay operation"}</button>
+        </div>
+        <InterfaceError message={labReplayInterfaceError} />
+        {labReplayResponse !== undefined ? <LabReplayResponseCard response={labReplayResponse} /> : null}
         <h3>Request selected resource action</h3>
         <p>Refresh before every action. A response from this request is a durable Guest operation result, not an inferred VitalServer, packet-delivery, archive-export, or browser-monitoring success.</p>
         <label htmlFor="lab-resource">Lab-owned resource</label>
@@ -898,12 +1201,264 @@ function OwnerReadCard({ label, view, refresh }: { readonly label: string; reado
   );
 }
 
+function RecorderObservabilityCard({ view }: { readonly view: RecorderDetailReadView }): ReactElement {
+  const ownerRead = view.response === undefined ? undefined : ownerReadDocument(view.response);
+  const summary = ownerRead?.state === "available" && isRecord(ownerRead.value) ? ownerRead.value : undefined;
+  return (
+    <article className="resource-card">
+      <h3>Device report</h3>
+      {view.pending ? <p>Reading owner state…</p> : null}
+      <InterfaceError message={view.interfaceError} />
+      {view.response === undefined && !view.pending && view.interfaceError === undefined ? <p>Not read</p> : null}
+      {ownerRead === undefined && view.response !== undefined ? <p>Owner response shape is invalid; no report state was inferred.</p> : null}
+      {ownerRead !== undefined ? <p>Owner read: <strong>{ownerRead.state}</strong></p> : null}
+      {summary === undefined ? null : (
+        <dl className="recorder-summary">
+          <div><dt>Reporting</dt><dd><OwnerStateBadge value={summary.reportState} /></dd></div>
+          <div><dt>Expected</dt><dd><OwnerStateBadge value={summary.expectationState} /></dd></div>
+          <div><dt>Supported</dt><dd><OwnerStateBadge value={summary.supportState} /></dd></div>
+          <div><dt>Owner read</dt><dd><OwnerStateBadge value={summary.readState} /></dd></div>
+          <div><dt>Latest observation</dt><dd>{explicitText(summary.latestOccurredAt)}</dd></div>
+          <div><dt>Recorder boot</dt><dd>{explicitText(summary.latestBootId)}</dd></div>
+          <div><dt>Sequence</dt><dd>{explicitText(summary.latestSequence)}</dd></div>
+          <div><dt>Updated</dt><dd>{explicitText(summary.updatedAt)}</dd></div>
+        </dl>
+      )}
+      {view.response === undefined ? null : <OwnerResponseDetails label="Device report owner response" response={view.response} />}
+    </article>
+  );
+}
+
+function RecorderObservationHistoryCard({ view }: { readonly view: RecorderDetailReadView }): ReactElement {
+  const ownerRead = view.response === undefined ? undefined : ownerReadDocument(view.response);
+  const page = ownerRead?.state === "available" && isRecord(ownerRead.value) ? ownerRead.value : undefined;
+  const items = page !== undefined && Array.isArray(page.items) ? page.items : undefined;
+  return (
+    <article className="resource-card">
+      <h3>Observation history</h3>
+      {view.pending ? <p>Reading owner state…</p> : null}
+      <InterfaceError message={view.interfaceError} />
+      {view.response === undefined && !view.pending && view.interfaceError === undefined ? <p>Not read</p> : null}
+      {ownerRead === undefined && view.response !== undefined ? <p>Owner response shape is invalid; no empty history was inferred.</p> : null}
+      {ownerRead !== undefined ? <p>Owner read: <strong>{ownerRead.state}</strong></p> : null}
+      {items === undefined ? null : (
+        <>
+          <p><strong>{items.length}</strong> owner-published observation(s) in this bounded page.</p>
+          <div className="recorder-event-list">
+            {items.map((item, index) => <RecorderObservationItem key={ownerItemKey(item, index)} item={item} />)}
+          </div>
+          {typeof page?.nextCursor === "string" ? <p>More items are available from the owner cursor.</p> : null}
+        </>
+      )}
+      {view.response === undefined ? null : <OwnerResponseDetails label="Observation history owner response" response={view.response} />}
+    </article>
+  );
+}
+
+function RecorderIncidentCard({ view }: { readonly view: RecorderDetailReadView }): ReactElement {
+  const ownerRead = view.response === undefined ? undefined : ownerReadDocument(view.response);
+  const page = ownerRead?.state === "available" && isRecord(ownerRead.value) ? ownerRead.value : undefined;
+  const items = page !== undefined && Array.isArray(page.items) ? page.items : undefined;
+  return (
+    <article className="resource-card">
+      <h3>Reported incidents</h3>
+      {view.pending ? <p>Reading owner state…</p> : null}
+      <InterfaceError message={view.interfaceError} />
+      {view.response === undefined && !view.pending && view.interfaceError === undefined ? <p>Not read</p> : null}
+      {ownerRead === undefined && view.response !== undefined ? <p>Owner response shape is invalid; no empty incident history was inferred.</p> : null}
+      {ownerRead !== undefined ? <p>Owner read: <strong>{ownerRead.state}</strong></p> : null}
+      {items === undefined ? null : items.length === 0 ? <p>No incidents were published in this page.</p> : (
+        <div className="recorder-event-list">
+          {items.map((item, index) => <RecorderIncidentItem key={ownerItemKey(item, index)} item={item} />)}
+        </div>
+      )}
+      {page !== undefined && typeof page.nextCursor === "string" ? <p>More incidents are available from the owner cursor.</p> : null}
+      {view.response === undefined ? null : <OwnerResponseDetails label="Reported incidents owner response" response={view.response} />}
+    </article>
+  );
+}
+
+function RecorderArtifactCard({ view }: { readonly view: RecorderDetailReadView }): ReactElement {
+  const ownerRead = view.response === undefined ? undefined : ownerReadDocument(view.response);
+  const page = ownerRead?.state === "available" && isRecord(ownerRead.value) ? ownerRead.value : undefined;
+  const items = page !== undefined && Array.isArray(page.items) ? page.items : undefined;
+  return (
+    <article className="resource-card">
+      <h3>Vital files</h3>
+      {view.pending ? <p>Reading owner state…</p> : null}
+      <InterfaceError message={view.interfaceError} />
+      {view.response === undefined && !view.pending && view.interfaceError === undefined ? <p>Not read</p> : null}
+      {ownerRead === undefined && view.response !== undefined ? <p>Owner response shape is invalid; no empty artifact history was inferred.</p> : null}
+      {ownerRead !== undefined ? <p>Owner read: <strong>{ownerRead.state}</strong></p> : null}
+      {items === undefined ? null : items.length === 0 ? <p>No Vital files were published in this page.</p> : (
+        <div className="recorder-event-list">
+          {items.map((item, index) => <RecorderArtifactItem key={ownerItemKey(item, index)} item={item} />)}
+        </div>
+      )}
+      {page !== undefined && typeof page.nextCursor === "string" ? <p>More Vital files are available from the owner cursor.</p> : null}
+      {view.response === undefined ? null : <OwnerResponseDetails label="Vital files owner response" response={view.response} />}
+    </article>
+  );
+}
+
+function RecorderObservationItem({ item }: { readonly item: unknown }): ReactElement {
+  const observation = presentRecorderObservation(item);
+  if (observation === undefined) {
+    return <div className="recorder-event invalid-owner-item">Invalid owner item; no observation state was inferred.</div>;
+  }
+  return (
+    <div className="recorder-event">
+      <div className="recorder-event-heading">
+        <strong>{explicitText(observation.occurredAt)}</strong>
+        <OwnerStateBadge value={observation.runtimeState} />
+      </div>
+      <dl className="recorder-event-facts">
+        <div><dt>Runtime version</dt><dd>{explicitText(observation.runtimeVersion)}</dd></div>
+        <div><dt>Time</dt><dd>{explicitText(observation.timeState)}</dd></div>
+        <div><dt>Boot</dt><dd>{explicitText(observation.bootId)}</dd></div>
+        <div><dt>Sequence</dt><dd>{explicitText(observation.sequence)}</dd></div>
+        <div><dt>Received</dt><dd>{explicitText(observation.receivedAt)}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+function RecorderIncidentItem({ item }: { readonly item: unknown }): ReactElement {
+  const incident = presentRecorderIncident(item);
+  if (incident === undefined) {
+    return <div className="recorder-event invalid-owner-item">Invalid owner item; no incident state was inferred.</div>;
+  }
+  return (
+    <div className="recorder-event recorder-incident">
+      <div className="recorder-event-heading">
+        <strong>{explicitText(incident.code)}</strong>
+        <span>{explicitText(incident.occurredAt)}</span>
+      </div>
+      <p>{explicitText(incident.message)}</p>
+      <dl className="recorder-event-facts">
+        <div><dt>Dependency</dt><dd>{explicitText(incident.dependency)}</dd></div>
+        <div><dt>Retryable</dt><dd>{explicitText(incident.retryable)}</dd></div>
+        <div><dt>Received</dt><dd>{explicitText(incident.receivedAt)}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+function RecorderArtifactItem({ item }: { readonly item: unknown }): ReactElement {
+  const artifact = presentRecorderArtifact(item);
+  if (artifact === undefined) {
+    return <div className="recorder-event invalid-owner-item">Invalid owner item; no artifact state was inferred.</div>;
+  }
+  return (
+    <div className="recorder-event">
+      <div className="recorder-event-heading">
+        <strong>{explicitText(artifact.originalFileName)}</strong>
+        <OwnerStateBadge value={artifact.finalizationState} />
+      </div>
+      <dl className="recorder-event-facts">
+        <div><dt>Finalized</dt><dd>{explicitText(artifact.finalizedAt)}</dd></div>
+        <div><dt>Size</dt><dd>{displayByteSize(artifact.byteSize)}</dd></div>
+        <div><dt>Bed reported</dt><dd>{explicitText(artifact.reportedBedName)}</dd></div>
+        <div><dt>Attribution</dt><dd><OwnerStateBadge value={artifact.attributionOutcome} /></dd></div>
+        <div><dt>Upload attempts</dt><dd>{artifact.uploadAttemptCount ?? "Not provided by owner"}</dd></div>
+        <div><dt>Index receipts</dt><dd>{artifact.indexingReceiptCount ?? "Not provided by owner"}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+function OwnerStateBadge({ value }: { readonly value: unknown }): ReactElement {
+  const text = explicitText(value);
+  const stateClass = typeof value === "string" ? " state-" + value.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase() : "";
+  return <span className={"owner-state" + stateClass}>{text}</span>;
+}
+
+function OwnerResponseDetails({ label, response }: { readonly label: string; readonly response: RuntimeConsoleControlResponse }): ReactElement {
+  return (
+    <details className="owner-response-details">
+      <summary>Technical owner response</summary>
+      <ControlResponseCard label={label} response={response} />
+    </details>
+  );
+}
+
+function ownerItemKey(item: unknown, index: number): string {
+  return isRecord(item) && typeof item.id === "string" && item.id !== "" ? item.id : "owner-item-" + index;
+}
+
+
 function ControlResponseCard({ label, response }: { readonly label: string; readonly response: RuntimeConsoleControlResponse }): ReactElement {
   return (
     <div className="response-card">
       <p><strong>{label}</strong> · HTTP {response.httpStatus}</p>
       <pre>{JSON.stringify(response.document, null, 2)}</pre>
     </div>
+  );
+}
+
+function ownerReadDocument(response: RuntimeConsoleControlResponse): { readonly state: string; readonly value?: unknown } | undefined {
+  if (!isRecord(response.document) || typeof response.document.state !== "string" || response.document.state === "") {
+    return undefined;
+  }
+  return response.document.value === undefined
+    ? { state: response.document.state }
+    : { state: response.document.state, value: response.document.value };
+}
+
+function explicitText(value: unknown): string {
+  if (typeof value === "string" && value !== "") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toString();
+  }
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  return "Not provided by owner";
+}
+
+function LabReplayResponseCard({ response }: { readonly response: RuntimeConsoleControlResponse }): ReactElement {
+  const operation = ownerSuppliedLabReplayOperation(response);
+  return (
+    <>
+      {operation === undefined ? null : (
+        <article className="replay-operation-card" aria-label="Lab replay operation state">
+          <div className="card-heading">
+            <h4>Replay {operation.id}</h4>
+            <strong>{operation.state}</strong>
+          </div>
+          <dl className="command-inputs">
+            <div><dt>Request</dt><dd>{operation.requestId}</dd></div>
+            <div><dt>Revision</dt><dd>{operation.resourceRevision}</dd></div>
+            <div><dt>Recorder code</dt><dd>{operation.recorderGatewayRecorderCode}</dd></div>
+            <div><dt>Messages sent</dt><dd>{operation.messagesSent}</dd></div>
+            <div><dt>Next frame offset</dt><dd>{operation.nextFrameOffsetSecond} s</dd></div>
+            <div><dt>Last send state</dt><dd>{operation.lastSendState}</dd></div>
+            <div><dt>Created</dt><dd>{operation.createdAt}</dd></div>
+            <div><dt>Updated</dt><dd>{operation.updatedAt}</dd></div>
+            {operation.stoppedFromState === undefined ? null : <div><dt>Stopped from</dt><dd>{operation.stoppedFromState}</dd></div>}
+          </dl>
+          <ReplayEvidence label="Validation and spool receipt" receipt={operation.validationReceipt} />
+          <ReplayEvidence label="Runner preparation receipt" receipt={operation.preparationReceipt} />
+          <ReplayEvidence label="Upstream delivery receipt" receipt={operation.upstreamDeliveryReceipt} />
+          <ReplayEvidence label="Typed failure" receipt={operation.failure} />
+        </article>
+      )}
+      <ControlResponseCard label="Lab replay owner response" response={response} />
+    </>
+  );
+}
+
+function ReplayEvidence({ label, receipt }: { readonly label: string; readonly receipt?: Record<string, unknown> }): ReactElement | null {
+  if (receipt === undefined) {
+    return null;
+  }
+  return (
+    <details className="replay-evidence">
+      <summary>{label}</summary>
+      <pre>{JSON.stringify(receipt, null, 2)}</pre>
+    </details>
   );
 }
 
@@ -948,6 +1503,80 @@ function ownerSuppliedArchiveExportProvider(response: RuntimeConsoleControlRespo
   return { kind, id, capabilityRevision };
 }
 
+function ownerSuppliedLabReplayOperation(response: RuntimeConsoleControlResponse): LabReplayOperationView | undefined {
+  const document = response.document;
+  const value = isRecord(document) && document.state === "available" && isRecord(document.value)
+    ? document.value
+    : document;
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const {
+    id,
+    requestId,
+    resourceRevision,
+    state,
+    recorderGatewayRecorderCode,
+    messagesSent,
+    nextFrameOffsetSecond,
+    lastSendState,
+    createdAt,
+    updatedAt,
+  } = value;
+  if (
+    typeof id !== "string" || id === "" ||
+    typeof requestId !== "string" || requestId === "" ||
+    typeof resourceRevision !== "number" || !Number.isInteger(resourceRevision) || resourceRevision < 1 ||
+    typeof state !== "string" || state === "" ||
+    typeof recorderGatewayRecorderCode !== "string" || recorderGatewayRecorderCode === "" ||
+    typeof messagesSent !== "number" || !Number.isInteger(messagesSent) || messagesSent < 0 ||
+    typeof nextFrameOffsetSecond !== "number" || !Number.isInteger(nextFrameOffsetSecond) || nextFrameOffsetSecond < 0 ||
+    typeof lastSendState !== "string" || lastSendState === "" ||
+    typeof createdAt !== "string" || createdAt === "" ||
+    typeof updatedAt !== "string" || updatedAt === ""
+  ) {
+    return undefined;
+  }
+  const validationReceipt = optionalRecord(value.validationReceipt);
+  const preparationReceipt = optionalRecord(value.preparationReceipt);
+  const upstreamDeliveryReceipt = optionalRecord(value.upstreamDeliveryReceipt);
+  const failure = optionalRecord(value.failure);
+  const stoppedFromState = value.stoppedFromState;
+  if (
+    validationReceipt instanceof Error ||
+    preparationReceipt instanceof Error ||
+    upstreamDeliveryReceipt instanceof Error ||
+    failure instanceof Error ||
+    (stoppedFromState !== undefined && (typeof stoppedFromState !== "string" || stoppedFromState === ""))
+  ) {
+    return undefined;
+  }
+  return {
+    id,
+    requestId,
+    resourceRevision,
+    state,
+    recorderGatewayRecorderCode,
+    messagesSent,
+    nextFrameOffsetSecond,
+    lastSendState,
+    ...(validationReceipt === undefined ? {} : { validationReceipt }),
+    ...(preparationReceipt === undefined ? {} : { preparationReceipt }),
+    ...(upstreamDeliveryReceipt === undefined ? {} : { upstreamDeliveryReceipt }),
+    ...(failure === undefined ? {} : { failure }),
+    ...(stoppedFromState === undefined ? {} : { stoppedFromState }),
+    createdAt,
+    updatedAt,
+  };
+}
+
+function optionalRecord(value: unknown): Record<string, unknown> | undefined | Error {
+  if (value === undefined) {
+    return undefined;
+  }
+  return isRecord(value) ? value : new Error("optional replay evidence is not an object");
+}
+
 function ownerSuppliedInstallationInput(response: RuntimeConsoleControlResponse | undefined): { readonly id: string; readonly revision: number } | undefined {
   if (response === undefined || !isRecord(response.document) || response.document.state !== "available" || !isRecord(response.document.value)) {
     return undefined;
@@ -979,6 +1608,66 @@ function ownerSuppliedLabResourceOptions(
     ...ownerSuppliedLabResourceOptionsFor("lab-bed", "assignmentState", beds),
     ...ownerSuppliedLabResourceOptionsFor("virtual-recorder", "executionState", recorders),
   ];
+}
+
+function ownerSuppliedRecorderDetailOptions(
+  response: RuntimeConsoleControlResponse | undefined,
+): readonly RecorderDetailOption[] {
+  if (
+    response === undefined ||
+    !isRecord(response.document) ||
+    response.document.state !== "available" ||
+    !isRecord(response.document.value) ||
+    !Array.isArray(response.document.value.items)
+  ) {
+    return [];
+  }
+  const options: RecorderDetailOption[] = [];
+  for (const value of response.document.value.items) {
+    if (!isRecord(value)) {
+      continue;
+    }
+    const recorderId = value.recorderId;
+    const supportState = value.supportState;
+    const reportState = value.reportState;
+    const expectationState = value.expectationState;
+    const readState = value.readState;
+    const latestOccurredAt = value.latestOccurredAt;
+    if (
+      typeof recorderId !== "string" || recorderId === "" ||
+      typeof supportState !== "string" || supportState === "" ||
+      typeof reportState !== "string" || reportState === "" ||
+      typeof expectationState !== "string" || expectationState === "" ||
+      typeof readState !== "string" || readState === "" ||
+      (latestOccurredAt !== undefined && (typeof latestOccurredAt !== "string" || latestOccurredAt === ""))
+    ) {
+      continue;
+    }
+    options.push({
+      recorderId,
+      supportState,
+      reportState,
+      expectationState,
+      readState,
+      ...(latestOccurredAt === undefined ? {} : { latestOccurredAt }),
+    });
+  }
+  return options;
+}
+
+function ownerSuppliedRecorderListNextCursor(
+  response: RuntimeConsoleControlResponse | undefined,
+): string | undefined {
+  if (
+    response === undefined ||
+    !isRecord(response.document) ||
+    response.document.state !== "available" ||
+    !isRecord(response.document.value)
+  ) {
+    return undefined;
+  }
+  const cursor = response.document.value.nextCursor;
+  return typeof cursor === "string" && cursor !== "" ? cursor : undefined;
 }
 
 function ownerSuppliedManualArchiveExportCandidate(

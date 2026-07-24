@@ -12,8 +12,10 @@ import {
 } from "./host_agent_local_control_transport.js";
 
 const controlChannel = "runtime-console-control:request";
+const cancelControlChannel = "runtime-console-control:request-cancel";
 const selectUpdateBundleDirectoryChannel = "runtime-console-control:select-update-bundle-directory";
 let hostAgentControlTransport: HostAgentLocalControlTransport | undefined;
+const pendingControlRequests = new Map<string, AbortController>();
 
 async function createRuntimeConsoleWindow(): Promise<void> {
   const window = new BrowserWindow({
@@ -40,11 +42,31 @@ void app.whenReady().then(async () => {
 	const descriptor = await readHostAgentLocalControlDescriptor(descriptorPath);
 	assertHostAgentLocalControlTransportForPlatform(descriptor, process.platform);
 	hostAgentControlTransport = new HostAgentLocalControlTransport(descriptor);
-  ipcMain.handle(controlChannel, async (_event, value: unknown) => {
+  ipcMain.handle(controlChannel, async (event, value: unknown) => {
     if (hostAgentControlTransport === undefined) {
       throw new Error("Host Agent control transport is not initialized");
     }
-    return hostAgentControlTransport.request(assertRuntimeConsoleControlRequest(value));
+    const envelope = assertControlRequestEnvelope(value);
+    const key = controlRequestKey(event.sender.id, envelope.transportRequestId);
+    if (pendingControlRequests.has(key)) {
+      throw new Error("Runtime Console transport request ID is already pending");
+    }
+    const controller = new AbortController();
+    pendingControlRequests.set(key, controller);
+    try {
+      return await hostAgentControlTransport.request(
+        assertRuntimeConsoleControlRequest(envelope.request),
+        { signal: controller.signal },
+      );
+    } finally {
+      pendingControlRequests.delete(key);
+    }
+  });
+  ipcMain.on(cancelControlChannel, (event, value: unknown) => {
+    if (typeof value !== "string" || !validTransportRequestID(value)) {
+      return;
+    }
+    pendingControlRequests.get(controlRequestKey(event.sender.id, value))?.abort();
   });
   ipcMain.handle(selectUpdateBundleDirectoryChannel, async () => {
     const selection = await dialog.showOpenDialog({
@@ -76,3 +98,32 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+
+function assertControlRequestEnvelope(value: unknown): {
+  transportRequestId: string;
+  request: unknown;
+} {
+  if (
+    typeof value !== "object"
+    || value === null
+    || Array.isArray(value)
+    || !("transportRequestId" in value)
+    || !("request" in value)
+    || typeof value.transportRequestId !== "string"
+    || !validTransportRequestID(value.transportRequestId)
+  ) {
+    throw new Error("Runtime Console control request envelope is invalid");
+  }
+  return {
+    transportRequestId: value.transportRequestId,
+    request: value.request,
+  };
+}
+
+function validTransportRequestID(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(value);
+}
+
+function controlRequestKey(senderID: number, transportRequestID: string): string {
+  return `${senderID}:${transportRequestID}`;
+}

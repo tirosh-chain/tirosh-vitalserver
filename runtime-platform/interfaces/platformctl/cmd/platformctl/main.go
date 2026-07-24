@@ -23,13 +23,14 @@ const usage = `Usage:
   platformctl --local-control-descriptor <absolute-path> guest-runtime-control-endpoint
   platformctl --local-control-descriptor <absolute-path> guest <start|stop|reboot> --request-id <id> --guest-runtime-control-endpoint-id <id> --expected-resource-revision <revision>
   platformctl --local-control-descriptor <absolute-path> operation <host|runtime> --operation-id <id>
-  platformctl --local-control-descriptor <absolute-path> runtime <readiness|topology|capabilities|lab-sessions|lab-beds|lab-recorders|archive-export-provider|external-upstreams|outbound-relays|recorder-observations|guest-clock-quality>
+  platformctl --local-control-descriptor <absolute-path> runtime <readiness|topology|capabilities|operational-state-identity|lab-sessions|lab-beds|lab-recorders|archive-export-provider|external-upstreams|outbound-relays|recorder-observations|guest-clock-quality>
   platformctl --local-control-descriptor <absolute-path> host-clock-quality
   platformctl --local-control-descriptor <absolute-path> update import --request-id <id> --source-directory <absolute-host-directory>
   platformctl --local-control-descriptor <absolute-path> update read --bundle-id <id>
   platformctl --local-control-descriptor <absolute-path> update apply --request-id <id> --installation-id <id> --expected-installation-revision <revision> --bundle-id <id>
   platformctl --local-control-descriptor <absolute-path> lab create --request-id <id> --session-id <id> --name <base-name> --scenario <scenario-id> --recorder-count <1..64>
   platformctl --local-control-descriptor <absolute-path> lab resource --request-id <id> --resource-type <lab-session|lab-bed|virtual-recorder> --resource-id <id> --expected-resource-revision <revision> --action <start|stop|hide|unhide|detach|delete> [--cascade <none|owned-resources>]
+  platformctl --local-control-descriptor <absolute-path> archive artifact --artifact-id <id>
   platformctl --local-control-descriptor <absolute-path> archive credential-material
   printf '%s\\n' '<password>' | platformctl --local-control-descriptor <absolute-path> archive credential-material provision --credential-kind <id> --credential-id <id> --user-id <id> --password-stdin true
   platformctl --local-control-descriptor <absolute-path> archive export --request-id <id> --virtual-recorder-id <id> --expected-resource-revision <revision> --cold-path-finalization-receipt-id <id> --provider-kind <id> --provider-id <id> --provider-capability-revision <revision>
@@ -37,6 +38,11 @@ const usage = `Usage:
   platformctl --local-control-descriptor <absolute-path> topology apply --request-id <id> --topology-id <id> --expected-resource-revision <revision> --profile-kind <bundled-upstream|external-upstream> --endpoint-resource-type <id> --endpoint-resource-id <id> [--credential-kind <id> --credential-id <id>]
   platformctl --local-control-descriptor <absolute-path> time apply --scope <host|guest> --request-id <id> --authority-id <id> --expected-resource-revision <revision> --node-kind <id> --node-id <id> --profile <id> --source-profile <id> --source-id <id>
   platformctl --local-control-descriptor <absolute-path> telemetry apply --scope <host|guest> --request-id <id> --pipeline-id <id> --expected-resource-revision <revision> --node-kind <id> --node-id <id> --collector-resource-type <id> --collector-resource-id <id> --allowed-attribute-keys <comma-separated-keys> --max-attributes <1..32> --max-value-length <1..256> --max-distinct-values-per-key <1..100>
+  platformctl --local-control-descriptor <absolute-path> recorder artifacts --recorder-id <id> --limit <1..100>
+  platformctl --local-control-descriptor <absolute-path> recorder assignment --request-id <id> --evidence-id <id> --recorder-id <id> --bed-name <name> --effective-from <RFC3339> [--effective-until <RFC3339>] --observed-at <RFC3339> --source-reference-kind <id> --source-reference-id <id>
+  platformctl --local-control-descriptor <absolute-path> operational-state backup --request-id <id> --operation-id <id> --destination-resource-type <id> --destination-resource-id <id> --requested-at <RFC3339>
+  platformctl --local-control-descriptor <absolute-path> operational-state restore --request-id <id> --operation-id <id> --manifest-resource-type <id> --manifest-resource-id <id> --manifest-sha256 <sha256> --target-resource-type <id> --target-resource-id <id> --requested-at <RFC3339>
+  platformctl --local-control-descriptor <absolute-path> operational-state read --operation-id <id>
 
   # Explicit development-only loopback facade; it is not OS authorization.
   platformctl --control-endpoint <http://127.0.0.1:port> <same command>

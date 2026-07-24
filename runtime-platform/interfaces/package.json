@@ -15,7 +15,7 @@
     "license-check": "node tooling/verify_npm_license_policy.mjs",
     "check": "npm run license-check && npm run check --workspace=@tirosh-chain/runtime-console-control-contract && npm run build --workspace=@tirosh-chain/runtime-console-control-contract && npm run check --workspace=@tirosh-chain/runtime-console-web && npm run check --workspace=@tirosh-chain/runtime-console-desktop",
     "build": "npm run build --workspace=@tirosh-chain/runtime-console-control-contract && npm run build --workspace=@tirosh-chain/runtime-console-web && npm run build --workspace=@tirosh-chain/runtime-console-desktop",
-    "test": "npm run test --workspace=@tirosh-chain/runtime-console-control-contract && npm run test --workspace=@tirosh-chain/runtime-console-desktop",
+    "test": "npm run test --workspace=@tirosh-chain/runtime-console-control-contract && npm run test --workspace=@tirosh-chain/runtime-console-web && npm run test --workspace=@tirosh-chain/runtime-console-desktop",
     "package:macos": "npm run build && npm run package:macos --workspace=@tirosh-chain/runtime-console-desktop",
     "package:macos-application": "npm run build && npm run package:macos-application --workspace=@tirosh-chain/runtime-console-desktop",
     "package:windows": "npm run build && npm run package:windows --workspace=@tirosh-chain/runtime-console-desktop",

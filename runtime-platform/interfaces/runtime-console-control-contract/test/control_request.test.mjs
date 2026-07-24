@@ -12,16 +12,131 @@ test("maps only named public reads", () => {
     { method: "GET", path: "/v1/runtime/readiness" },
   );
   assert.deepEqual(
-    composeHostAgentControlHTTPRequest({ kind: "read", resource: "recorder-observations" }),
-    { method: "GET", path: "/v1/runtime/catalog/recorder-observations" },
-  );
-  assert.deepEqual(
     composeHostAgentControlHTTPRequest({ kind: "read", resource: "host-clock-quality" }),
     { method: "GET", path: "/v1/platform/time/clock-quality" },
   );
   assert.throws(
     () => assertRuntimeConsoleControlRequest({ kind: "read", resource: "raw-control-path" }),
     /not published/,
+  );
+});
+
+test("maps Lab replay command and operation read without inventing source state", () => {
+  const request = assertRuntimeConsoleControlRequest({
+    kind: "lab-replay-create",
+    requestId: "lab-replay-request-1",
+    replayId: "lab-replay-1",
+    sourceReference: {
+      resourceType: "lab-replay-source",
+      resourceId: "lab-replay-source-1",
+    },
+    sourceSha256: "a".repeat(64),
+    recorderGatewayRecorderCode: "LAB-RECORDER-01",
+    requestedAt: "2026-07-24T16:00:00Z",
+  });
+  assert.deepEqual(composeHostAgentControlHTTPRequest(request), {
+    method: "POST",
+    path: "/v1/runtime/lab/replays",
+    body: {
+      schemaVersion: "v1",
+      requestId: "lab-replay-request-1",
+      replayId: "lab-replay-1",
+      sourceReference: {
+        resourceType: "lab-replay-source",
+        resourceId: "lab-replay-source-1",
+      },
+      sourceSha256: "a".repeat(64),
+      recorderGatewayRecorderCode: "LAB-RECORDER-01",
+      requestedAt: "2026-07-24T16:00:00Z",
+    },
+  });
+  assert.deepEqual(
+    composeHostAgentControlHTTPRequest({
+      kind: "lab-replay-read",
+      replayId: "lab-replay-1",
+    }),
+    { method: "GET", path: "/v1/runtime/lab/replays/lab-replay-1" },
+  );
+  assert.throws(
+    () => assertRuntimeConsoleControlRequest({
+      ...request,
+      sourceReference: {
+        resourceType: "recorder-vital-upload",
+        resourceId: "lab-replay-source-1",
+      },
+    }),
+    /lab-replay-source reference/,
+  );
+});
+
+test("maps only bounded named Recorder detail reads", () => {
+  assert.deepEqual(
+    composeHostAgentControlHTTPRequest(assertRuntimeConsoleControlRequest({
+      kind: "recorder-list-read",
+      limit: 25,
+      cursor: "cursor-1",
+    })),
+    { method: "GET", path: "/v1/runtime/recorders?limit=25&cursor=cursor-1" },
+  );
+  assert.deepEqual(
+    composeHostAgentControlHTTPRequest(assertRuntimeConsoleControlRequest({
+      kind: "recorder-detail-read",
+      resource: "observability-summary",
+      recorderId: "recorder-lab-1",
+    })),
+    { method: "GET", path: "/v1/runtime/recorders/recorder-lab-1/observability" },
+  );
+  assert.deepEqual(
+    composeHostAgentControlHTTPRequest(assertRuntimeConsoleControlRequest({
+      kind: "recorder-detail-read",
+      resource: "observation-timeline",
+      recorderId: "recorder-lab-1",
+      limit: 25,
+      cursor: "cursor-1",
+    })),
+    { method: "GET", path: "/v1/runtime/recorders/recorder-lab-1/observability/timeline?limit=25&cursor=cursor-1" },
+  );
+  assert.deepEqual(
+    composeHostAgentControlHTTPRequest(assertRuntimeConsoleControlRequest({
+      kind: "recorder-detail-read",
+      resource: "incidents",
+      recorderId: "recorder-lab-1",
+      limit: 25,
+    })),
+    { method: "GET", path: "/v1/runtime/recorders/recorder-lab-1/observability/incidents?limit=25" },
+  );
+  assert.deepEqual(
+    composeHostAgentControlHTTPRequest(assertRuntimeConsoleControlRequest({
+      kind: "recorder-detail-read",
+      resource: "artifacts",
+      recorderId: "recorder-lab-1",
+      limit: 25,
+    })),
+    { method: "GET", path: "/v1/runtime/recorders/recorder-lab-1/artifacts?limit=25" },
+  );
+  assert.throws(
+    () => assertRuntimeConsoleControlRequest({
+      kind: "recorder-list-read",
+      limit: 0,
+    }),
+    /limit/,
+  );
+  assert.throws(
+    () => assertRuntimeConsoleControlRequest({
+      kind: "recorder-detail-read",
+      resource: "raw-postgresql",
+      recorderId: "recorder-lab-1",
+    }),
+    /Recorder detail resource is not published/,
+  );
+  assert.throws(
+    () => assertRuntimeConsoleControlRequest({
+      kind: "recorder-detail-read",
+      resource: "artifacts",
+      recorderId: "recorder-lab-1",
+      limit: 101,
+    }),
+    /limit/,
   );
 });
 

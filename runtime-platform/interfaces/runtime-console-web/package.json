@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "tsc --project tsconfig.json --noEmit"
+    "check": "tsc --project tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
   }
 }

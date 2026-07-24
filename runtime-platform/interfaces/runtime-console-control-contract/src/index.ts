@@ -19,7 +19,6 @@ export const runtimeConsoleReadNames = [
   "archive-credential-material",
   "external-upstreams",
   "outbound-relays",
-  "recorder-observations",
 ] as const;
 
 export type RuntimeConsoleReadName = (typeof runtimeConsoleReadNames)[number];
@@ -120,6 +119,44 @@ export interface RuntimeConsoleLabSessionCreateRequest {
   readonly recorderCount: number;
 }
 
+export interface RuntimeConsoleLabReplayReadRequest {
+  readonly kind: "lab-replay-read";
+  readonly replayId: string;
+}
+
+export interface RuntimeConsoleLabReplayCreateRequest {
+  readonly kind: "lab-replay-create";
+  readonly requestId: string;
+  readonly replayId: string;
+  readonly sourceReference: {
+    readonly resourceType: "lab-replay-source";
+    readonly resourceId: string;
+  };
+  readonly sourceSha256: string;
+  readonly recorderGatewayRecorderCode: string;
+  readonly requestedAt: string;
+}
+
+export interface RuntimeConsoleRecorderListReadRequest {
+  readonly kind: "recorder-list-read";
+  readonly limit: number;
+  readonly cursor?: string;
+}
+
+export type RuntimeConsoleRecorderDetailResource =
+  | "observability-summary"
+  | "observation-timeline"
+  | "incidents"
+  | "artifacts";
+
+export interface RuntimeConsoleRecorderDetailReadRequest {
+  readonly kind: "recorder-detail-read";
+  readonly resource: RuntimeConsoleRecorderDetailResource;
+  readonly recorderId: string;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
 export interface RuntimeConsoleLabResourceCommandRequest {
   readonly kind: "lab-resource-command";
   readonly requestId: string;
@@ -184,15 +221,22 @@ export interface RuntimeConsoleTelemetryPipelineApplyRequest {
   readonly redaction: RuntimeConsoleTelemetryRedactionPolicy;
 }
 
-export type RuntimeConsoleControlRequest = RuntimeConsoleReadRequest | RuntimeConsoleGuestLifecycleRequest | RuntimeConsoleArchiveCredentialMaterialProvisionRequest | RuntimeConsoleArtifactExportRequest | RuntimeConsoleUpdateBundleImportRequest | RuntimeConsoleUpdateBundleApplyRequest | RuntimeConsoleLabSessionCreateRequest | RuntimeConsoleLabResourceCommandRequest | RuntimeConsoleExternalUpstreamApplyRequest | RuntimeConsoleTopologyApplyRequest | RuntimeConsoleTimeAuthorityApplyRequest | RuntimeConsoleTelemetryPipelineApplyRequest;
+export type RuntimeConsoleControlRequest = RuntimeConsoleReadRequest | RuntimeConsoleGuestLifecycleRequest | RuntimeConsoleArchiveCredentialMaterialProvisionRequest | RuntimeConsoleArtifactExportRequest | RuntimeConsoleUpdateBundleImportRequest | RuntimeConsoleUpdateBundleApplyRequest | RuntimeConsoleLabSessionCreateRequest | RuntimeConsoleLabReplayReadRequest | RuntimeConsoleLabReplayCreateRequest | RuntimeConsoleRecorderListReadRequest | RuntimeConsoleRecorderDetailReadRequest | RuntimeConsoleLabResourceCommandRequest | RuntimeConsoleExternalUpstreamApplyRequest | RuntimeConsoleTopologyApplyRequest | RuntimeConsoleTimeAuthorityApplyRequest | RuntimeConsoleTelemetryPipelineApplyRequest;
 
 export interface RuntimeConsoleControlResponse {
   readonly httpStatus: number;
   readonly document: unknown;
 }
 
+export interface RuntimeConsoleControlRequestOptions {
+  readonly signal?: AbortSignal;
+}
+
 export interface RuntimeConsoleControlTransport {
-  request(request: RuntimeConsoleControlRequest): Promise<RuntimeConsoleControlResponse>;
+  request(
+    request: RuntimeConsoleControlRequest,
+    options?: RuntimeConsoleControlRequestOptions,
+  ): Promise<RuntimeConsoleControlResponse>;
 }
 
 export interface HostAgentControlHTTPRequest {
@@ -216,7 +260,6 @@ const publicReadPaths: Readonly<Record<RuntimeConsoleReadName, string>> = {
   "archive-credential-material": "/v1/runtime/archive/credential-material",
   "external-upstreams": "/v1/runtime/external-upstreams",
   "outbound-relays": "/v1/runtime/relay-targets",
-  "recorder-observations": "/v1/runtime/catalog/recorder-observations",
 };
 
 /**
@@ -229,6 +272,55 @@ export function composeHostAgentControlHTTPRequest(request: RuntimeConsoleContro
       throw new Error("runtime console read resource is not published");
     }
     return { method: "GET", path: publicReadPaths[request.resource] };
+  }
+
+  if (request.kind === "lab-replay-read") {
+    return {
+      method: "GET",
+      path: `/v1/runtime/lab/replays/${identifier(request.replayId, "replayId")}`,
+    };
+  }
+
+  if (request.kind === "lab-replay-create") {
+    assertLabReplayCreateRequestShape(request);
+    return {
+      method: "POST",
+      path: "/v1/runtime/lab/replays",
+      body: {
+        schemaVersion: "v1",
+        requestId: request.requestId,
+        replayId: request.replayId,
+        sourceReference: request.sourceReference,
+        sourceSha256: request.sourceSha256,
+        recorderGatewayRecorderCode: request.recorderGatewayRecorderCode,
+        requestedAt: request.requestedAt,
+      },
+    };
+  }
+
+  if (request.kind === "recorder-list-read") {
+    const normalized = recorderListReadRequest(request);
+    return {
+      method: "GET",
+      path: `/v1/runtime/recorders?limit=${normalized.limit}${normalized.cursor === undefined ? "" : `&cursor=${encodeURIComponent(normalized.cursor)}`}`,
+    };
+  }
+
+  if (request.kind === "recorder-detail-read") {
+    const normalized = recorderDetailReadRequest(request);
+    const suffix: Readonly<Record<RuntimeConsoleRecorderDetailResource, string>> = {
+      "observability-summary": "/observability",
+      "observation-timeline": "/observability/timeline",
+      "incidents": "/observability/incidents",
+      "artifacts": "/artifacts",
+    };
+    const query = normalized.limit === undefined
+      ? ""
+      : `?limit=${normalized.limit}${normalized.cursor === undefined ? "" : `&cursor=${encodeURIComponent(normalized.cursor)}`}`;
+    return {
+      method: "GET",
+      path: `/v1/runtime/recorders/${normalized.recorderId}${suffix[normalized.resource]}${query}`,
+    };
   }
 
 	if (request.kind === "archive-credential-material-provision") {
@@ -493,6 +585,39 @@ export function assertRuntimeConsoleControlRequest(value: unknown): RuntimeConso
       recorderCount: boundedPositiveInteger(value.recorderCount, "recorderCount", 64),
     };
   }
+  if (value.kind === "lab-replay-read") {
+    return {
+      kind: "lab-replay-read",
+      replayId: identifier(value.replayId, "replayId"),
+    };
+  }
+  if (value.kind === "lab-replay-create") {
+    if (!isRecord(value.sourceReference) ||
+        !hasOnlyKeys(value.sourceReference, ["resourceType", "resourceId"]) ||
+        value.sourceReference.resourceType !== "lab-replay-source") {
+      throw new Error("sourceReference must be an exact lab-replay-source reference");
+    }
+    const request: RuntimeConsoleLabReplayCreateRequest = {
+      kind: "lab-replay-create",
+      requestId: identifier(value.requestId, "requestId"),
+      replayId: identifier(value.replayId, "replayId"),
+      sourceReference: {
+        resourceType: "lab-replay-source",
+        resourceId: identifier(value.sourceReference.resourceId, "sourceReference.resourceId"),
+      },
+      sourceSha256: sha256(value.sourceSha256, "sourceSha256"),
+      recorderGatewayRecorderCode: identifier(value.recorderGatewayRecorderCode, "recorderGatewayRecorderCode"),
+      requestedAt: timestamp(value.requestedAt, "requestedAt"),
+    };
+    assertLabReplayCreateRequestShape(request);
+    return request;
+  }
+  if (value.kind === "recorder-detail-read") {
+    return recorderDetailReadRequest(value);
+  }
+  if (value.kind === "recorder-list-read") {
+    return recorderListReadRequest(value);
+  }
   if (value.kind === "lab-resource-command") {
     const action = labResourceAction(value.action);
     const resourceType = labResourceType(value.resourceType);
@@ -606,6 +731,69 @@ function assertLabSessionCreateRequestShape(request: RuntimeConsoleLabSessionCre
   boundedLabText(request.name, "name");
   boundedLabText(request.scenario, "scenario");
   boundedPositiveInteger(request.recorderCount, "recorderCount", 64);
+}
+
+function assertLabReplayCreateRequestShape(request: RuntimeConsoleLabReplayCreateRequest): void {
+  identifier(request.requestId, "requestId");
+  identifier(request.replayId, "replayId");
+  if (request.sourceReference.resourceType !== "lab-replay-source") {
+    throw new Error("sourceReference.resourceType must be lab-replay-source");
+  }
+  identifier(request.sourceReference.resourceId, "sourceReference.resourceId");
+  sha256(request.sourceSha256, "sourceSha256");
+  identifier(request.recorderGatewayRecorderCode, "recorderGatewayRecorderCode");
+  timestamp(request.requestedAt, "requestedAt");
+}
+
+function recorderListReadRequest(value: unknown): RuntimeConsoleRecorderListReadRequest {
+  if (!isRecord(value) || value.kind !== "recorder-list-read") {
+    throw new Error("Recorder list read must be an object");
+  }
+  const limit = boundedPositiveInteger(value.limit, "limit", 100);
+  const cursor = value.cursor === undefined ? undefined : boundedCursor(value.cursor);
+  return {
+    kind: "recorder-list-read",
+    limit,
+    ...(cursor === undefined ? {} : { cursor }),
+  };
+}
+
+function recorderDetailReadRequest(value: unknown): RuntimeConsoleRecorderDetailReadRequest {
+  if (!isRecord(value) || value.kind !== "recorder-detail-read") {
+    throw new Error("Recorder detail read must be an object");
+  }
+  const resource = recorderDetailResource(value.resource);
+  const recorderId = identifier(value.recorderId, "recorderId");
+  if (resource === "observability-summary") {
+    if (value.limit !== undefined || value.cursor !== undefined) {
+      throw new Error("observability-summary does not accept pagination");
+    }
+    return { kind: "recorder-detail-read", resource, recorderId };
+  }
+  const limit = boundedPositiveInteger(value.limit, "limit", 100);
+  const cursor = value.cursor === undefined ? undefined : boundedCursor(value.cursor);
+  return {
+    kind: "recorder-detail-read",
+    resource,
+    recorderId,
+    limit,
+    ...(cursor === undefined ? {} : { cursor }),
+  };
+}
+
+function recorderDetailResource(value: unknown): RuntimeConsoleRecorderDetailResource {
+  if (value === "observability-summary" || value === "observation-timeline" || value === "incidents" || value === "artifacts") {
+    return value;
+  }
+  throw new Error("Recorder detail resource is not published");
+}
+
+function boundedCursor(value: unknown): string {
+  const cursor = nonEmptyString(value, "cursor");
+  if (cursor.length > 2048) {
+    throw new Error("cursor must contain at most 2048 characters");
+  }
+  return cursor;
 }
 
 function assertLabResourceCommandRequestShape(request: RuntimeConsoleLabResourceCommandRequest): void {
@@ -780,6 +968,22 @@ function identifier(value: unknown, field: string): string {
     throw new Error(`${field} must be a v1 identifier`);
   }
   return text;
+}
+
+function sha256(value: unknown, field: string): string {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    throw new Error(`${field} must be a lowercase SHA-256 digest`);
+  }
+  return value;
+}
+
+function timestamp(value: unknown, field: string): string {
+  if (typeof value !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+      Number.isNaN(Date.parse(value))) {
+    throw new Error(`${field} must be an RFC 3339 timestamp`);
+  }
+  return value;
 }
 
 function nonNegativeInteger(value: unknown, field: string): number {

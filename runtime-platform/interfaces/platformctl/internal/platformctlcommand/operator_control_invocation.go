@@ -79,6 +79,12 @@ func Parse(arguments []string) (Invocation, error) {
 	if len(command) >= 2 && command[0] == "telemetry" {
 		return parseTelemetryPipelineCommand(invocation, command[1:])
 	}
+	if len(command) >= 2 && command[0] == "recorder" {
+		return parseRecorderCommand(invocation, command[1:])
+	}
+	if len(command) >= 2 && command[0] == "operational-state" {
+		return parseOperationalStateCommand(invocation, command[1:])
+	}
 	if len(command) == 2 && command[0] == "runtime" {
 		switch command[1] {
 		case "readiness":
@@ -87,6 +93,8 @@ func Parse(arguments []string) (Invocation, error) {
 			return read(invocation, "/v1/runtime/topology"), nil
 		case "capabilities":
 			return read(invocation, "/v1/runtime/capabilities"), nil
+		case "operational-state-identity":
+			return read(invocation, "/v1/runtime/operational-state/identity"), nil
 		case "lab-sessions":
 			return read(invocation, "/v1/runtime/lab/sessions"), nil
 		case "lab-beds":
@@ -101,8 +109,6 @@ func Parse(arguments []string) (Invocation, error) {
 			return read(invocation, "/v1/runtime/external-upstreams"), nil
 		case "outbound-relays":
 			return read(invocation, "/v1/runtime/relay-targets"), nil
-		case "recorder-observations":
-			return read(invocation, "/v1/runtime/catalog/recorder-observations"), nil
 		case "guest-clock-quality":
 			return read(invocation, "/v1/time/clock-quality"), nil
 		}
@@ -166,6 +172,270 @@ func Parse(arguments []string) (Invocation, error) {
 		return invocation, nil
 	}
 	return Invocation{}, errors.New("unknown command; run platformctl help")
+}
+
+func parseOperationalStateCommand(
+	invocation Invocation,
+	command []string,
+) (Invocation, error) {
+	if len(command) < 1 {
+		return Invocation{}, errors.New(
+			"operational-state command must be backup, restore, or read",
+		)
+	}
+	flags, err := parseNamedFlags(command[1:])
+	if err != nil {
+		return Invocation{}, err
+	}
+	if command[0] == "read" {
+		if err := requireOnlyFlags(flags, "--operation-id"); err != nil {
+			return Invocation{}, err
+		}
+		operationID, err := requiredIdentifierFlag(flags, "--operation-id")
+		if err != nil {
+			return Invocation{}, err
+		}
+		return read(
+			invocation,
+			"/v1/runtime/operational-state/operations/"+operationID,
+		), nil
+	}
+	requestID, err := requiredIdentifierFlag(flags, "--request-id")
+	if err != nil {
+		return Invocation{}, err
+	}
+	operationID, err := requiredIdentifierFlag(flags, "--operation-id")
+	if err != nil {
+		return Invocation{}, err
+	}
+	requestedAt, err := requiredBoundedTextFlag(flags, "--requested-at", 64)
+	if err != nil {
+		return Invocation{}, err
+	}
+	body := map[string]any{
+		"schemaVersion": "v1",
+		"requestId":     requestID,
+		"operationId":   operationID,
+		"requestedAt":   requestedAt,
+	}
+	var route string
+	switch command[0] {
+	case "backup":
+		if err := requireOnlyFlags(
+			flags,
+			"--request-id",
+			"--operation-id",
+			"--destination-resource-type",
+			"--destination-resource-id",
+			"--requested-at",
+		); err != nil {
+			return Invocation{}, err
+		}
+		resourceType, err := requiredIdentifierFlag(
+			flags,
+			"--destination-resource-type",
+		)
+		if err != nil {
+			return Invocation{}, err
+		}
+		resourceID, err := requiredIdentifierFlag(
+			flags,
+			"--destination-resource-id",
+		)
+		if err != nil {
+			return Invocation{}, err
+		}
+		body["destinationReference"] = map[string]string{
+			"resourceType": resourceType,
+			"resourceId":   resourceID,
+		}
+		route = "/v1/runtime/operational-state/backups"
+	case "restore":
+		if err := requireOnlyFlags(
+			flags,
+			"--request-id",
+			"--operation-id",
+			"--manifest-resource-type",
+			"--manifest-resource-id",
+			"--manifest-sha256",
+			"--target-resource-type",
+			"--target-resource-id",
+			"--requested-at",
+		); err != nil {
+			return Invocation{}, err
+		}
+		manifestType, err := requiredIdentifierFlag(
+			flags,
+			"--manifest-resource-type",
+		)
+		if err != nil {
+			return Invocation{}, err
+		}
+		manifestID, err := requiredIdentifierFlag(
+			flags,
+			"--manifest-resource-id",
+		)
+		if err != nil {
+			return Invocation{}, err
+		}
+		manifestSHA256, err := requiredFlag(flags, "--manifest-sha256")
+		if err != nil ||
+			len(manifestSHA256) != 64 ||
+			strings.Trim(manifestSHA256, "0123456789abcdef") != "" {
+			return Invocation{}, errors.New(
+				"--manifest-sha256 must be 64 lowercase hexadecimal characters",
+			)
+		}
+		targetType, err := requiredIdentifierFlag(
+			flags,
+			"--target-resource-type",
+		)
+		if err != nil {
+			return Invocation{}, err
+		}
+		targetID, err := requiredIdentifierFlag(
+			flags,
+			"--target-resource-id",
+		)
+		if err != nil {
+			return Invocation{}, err
+		}
+		body["manifestReference"] = map[string]string{
+			"resourceType": manifestType,
+			"resourceId":   manifestID,
+		}
+		body["manifestSha256"] = manifestSHA256
+		body["targetReference"] = map[string]string{
+			"resourceType": targetType,
+			"resourceId":   targetID,
+		}
+		route = "/v1/runtime/operational-state/restores"
+	default:
+		return Invocation{}, errors.New(
+			"operational-state command must be backup, restore, or read",
+		)
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return Invocation{}, fmt.Errorf(
+			"encode operational-state command: %w",
+			err,
+		)
+	}
+	invocation.Method = http.MethodPost
+	invocation.Route = route
+	invocation.Body = encoded
+	return invocation, nil
+}
+
+func parseRecorderCommand(invocation Invocation, command []string) (Invocation, error) {
+	if len(command) >= 1 && command[0] == "artifacts" {
+		flags, err := parseNamedFlags(command[1:])
+		if err != nil {
+			return Invocation{}, err
+		}
+		if err := requireOnlyFlags(flags, "--recorder-id", "--limit"); err != nil {
+			return Invocation{}, err
+		}
+		recorderID, err := requiredIdentifierFlag(flags, "--recorder-id")
+		if err != nil {
+			return Invocation{}, err
+		}
+		limit, err := requiredPositiveInteger(flags, "--limit")
+		if err != nil || limit > 100 {
+			return Invocation{}, errors.New(
+				"--limit must be an integer from 1 through 100",
+			)
+		}
+		return read(
+			invocation,
+			"/v1/runtime/recorders/"+recorderID+
+				"/artifacts?limit="+strconv.Itoa(limit),
+		), nil
+	}
+	if len(command) < 1 || command[0] != "assignment" {
+		return Invocation{}, errors.New(
+			"recorder command must be artifacts or assignment",
+		)
+	}
+	flags, err := parseNamedFlags(command[1:])
+	if err != nil {
+		return Invocation{}, err
+	}
+	if err := requireOnlyFlags(
+		flags,
+		"--request-id",
+		"--evidence-id",
+		"--recorder-id",
+		"--bed-name",
+		"--effective-from",
+		"--effective-until",
+		"--observed-at",
+		"--source-reference-kind",
+		"--source-reference-id",
+	); err != nil {
+		return Invocation{}, err
+	}
+	requestID, err := requiredIdentifierFlag(flags, "--request-id")
+	if err != nil {
+		return Invocation{}, err
+	}
+	evidenceID, err := requiredIdentifierFlag(flags, "--evidence-id")
+	if err != nil {
+		return Invocation{}, err
+	}
+	recorderID, err := requiredIdentifierFlag(flags, "--recorder-id")
+	if err != nil {
+		return Invocation{}, err
+	}
+	bedName, err := requiredBoundedTextFlag(flags, "--bed-name", 255)
+	if err != nil {
+		return Invocation{}, err
+	}
+	effectiveFrom, err := requiredBoundedTextFlag(flags, "--effective-from", 64)
+	if err != nil {
+		return Invocation{}, err
+	}
+	observedAt, err := requiredBoundedTextFlag(flags, "--observed-at", 64)
+	if err != nil {
+		return Invocation{}, err
+	}
+	sourceReferenceKind, err := requiredIdentifierFlag(flags, "--source-reference-kind")
+	if err != nil {
+		return Invocation{}, err
+	}
+	sourceReferenceID, err := requiredIdentifierFlag(flags, "--source-reference-id")
+	if err != nil {
+		return Invocation{}, err
+	}
+	body := map[string]any{
+		"schemaVersion": "v1",
+		"requestId":     requestID,
+		"evidenceId":    evidenceID,
+		"recorderId":    recorderID,
+		"bedName":       bedName,
+		"effectiveFrom": effectiveFrom,
+		"observedAt":    observedAt,
+		"sourceKind":    "administrator",
+		"sourceReference": map[string]any{
+			"kind": sourceReferenceKind,
+			"id":   sourceReferenceID,
+		},
+	}
+	if effectiveUntil, exists := flags["--effective-until"]; exists {
+		if len(effectiveUntil) > 64 {
+			return Invocation{}, errors.New("--effective-until must contain at most 64 bytes")
+		}
+		body["effectiveUntil"] = effectiveUntil
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return Invocation{}, fmt.Errorf("encode Recorder assignment command: %w", err)
+	}
+	invocation.Method = http.MethodPost
+	invocation.Route = "/v1/runtime/recorder-assignments"
+	invocation.Body = encoded
+	return invocation, nil
 }
 
 // parseUpdateCommand is intentionally a small named mapping, not a generic
@@ -368,8 +638,24 @@ func parseArchiveCommand(invocation Invocation, command []string) (Invocation, e
 	if len(command) >= 1 && command[0] == "credential-material" {
 		return parseArchiveCredentialMaterialProvisionCommand(invocation, command[1:])
 	}
+	if len(command) >= 1 && command[0] == "artifact" {
+		flags, err := parseNamedFlags(command[1:])
+		if err != nil {
+			return Invocation{}, err
+		}
+		if err := requireOnlyFlags(flags, "--artifact-id"); err != nil {
+			return Invocation{}, err
+		}
+		artifactID, err := requiredIdentifierFlag(flags, "--artifact-id")
+		if err != nil {
+			return Invocation{}, err
+		}
+		return read(invocation, "/v1/runtime/artifacts/"+artifactID), nil
+	}
 	if len(command) == 0 || command[0] != "export" {
-		return Invocation{}, errors.New("archive command must be export or credential-material")
+		return Invocation{}, errors.New(
+			"archive command must be artifact, export, or credential-material",
+		)
 	}
 	flags, err := parseNamedFlags(command[1:])
 	if err != nil {

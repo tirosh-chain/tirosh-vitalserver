@@ -20,7 +20,7 @@ h1, h2, h3, p { margin-top: 0; }
 
 .resource-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 1rem; }
 
-.resource-card, .response-card { background: #16212b; border: 1px solid #3a4c5d; border-radius: 8px; padding: 1rem; }
+.resource-card, .response-card, .replay-operation-card { background: #16212b; border: 1px solid #3a4c5d; border-radius: 8px; padding: 1rem; }
 
 button { appearance: none; border: 0; border-radius: 6px; padding: .55rem .85rem; background: #1677d2; color: white; font: inherit; cursor: pointer; }
 button:disabled { background: #53606d; cursor: progress; }
@@ -31,12 +31,41 @@ input { display: block; width: min(100%, 540px); margin: .4rem 0 1rem; padding: 
 
 .command-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .5rem 1rem; }
 .command-inputs div { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.recorder-detail-grid { margin-top: 1rem; }
+.recorder-list { display: grid; gap: .6rem; margin: .75rem 0 1rem; }
+.recorder-list-row { display: grid; grid-template-columns: minmax(12rem, 1.4fr) repeat(5, minmax(8rem, 1fr)); gap: .75rem; align-items: center; width: 100%; text-align: left; background: #16212b; border: 1px solid #3a4c5d; }
+.recorder-list-row:hover, .recorder-list-row:focus-visible { border-color: #6ec1ff; background: #203647; }
+.recorder-summary { display: grid; gap: .55rem; }
+.recorder-summary div { display: grid; grid-template-columns: minmax(8rem, .8fr) minmax(10rem, 1.2fr); gap: .75rem; }
+.recorder-event-list { display: grid; gap: .75rem; }
+.recorder-event { background: #111c25; border: 1px solid #344555; border-radius: 8px; padding: .85rem; }
+.recorder-event-heading { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin-bottom: .75rem; }
+.recorder-event-heading strong { font-size: 1.05rem; overflow-wrap: anywhere; }
+.recorder-event-heading > span:not(.owner-state) { color: #b8c3ce; }
+.recorder-event-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .65rem 1rem; margin: 0; }
+.recorder-event-facts div { min-width: 0; }
+.recorder-event-facts dd { margin-top: .2rem; overflow-wrap: anywhere; }
+.recorder-incident { border-color: #9b5b60; }
+.recorder-incident p { color: #ffd6d6; }
+.invalid-owner-item { color: #ffb4b4; border-color: #9b5b60; }
+.owner-state { display: inline-flex; align-items: center; width: fit-content; border-radius: 999px; padding: .2rem .55rem; background: #40505f; color: #f1f5f8; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: .88rem; font-weight: 700; }
+.state-current, .state-ready, .state-available, .state-supported, .state-expected, .state-finalized, .state-matched { background: #17633d; color: #d9ffe9; }
+.state-stale, .state-not-reported, .state-unresolved, .state-ambiguous { background: #765815; color: #fff2c2; }
+.state-failed, .state-unavailable, .state-invalid, .state-unsupported { background: #7e3038; color: #ffe1e3; }
+.owner-response-details { margin-top: 1rem; border-top: 1px solid #344555; padding-top: .75rem; }
+.owner-response-details summary { cursor: pointer; color: #b8dafa; font-weight: 650; }
 dt { color: #b8c3ce; }
 dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 .response-card { margin-top: 1rem; }
 .response-card p { color: #9dc9f2; }
+.replay-operation-card { margin-top: 1rem; }
+.replay-operation-card h4 { margin: 0; }
+.replay-operation-card > .card-heading strong { color: #6ec1ff; }
+.replay-evidence { margin-top: .75rem; border-top: 1px solid #344555; padding-top: .75rem; }
+.replay-evidence summary { cursor: pointer; color: #b8dafa; font-weight: 650; }
 pre { max-height: 18rem; overflow: auto; white-space: pre-wrap; word-break: break-word; color: #dce7f2; }
 .interface-error { color: #ff9999; font-weight: 600; }
 
-@media (max-width: 600px) { main { padding: 1rem; } .section-heading, .card-heading { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 900px) { .recorder-list-row { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { main { padding: 1rem; } .section-heading, .card-heading { align-items: flex-start; flex-direction: column; } .recorder-list-row { grid-template-columns: 1fr; } }
