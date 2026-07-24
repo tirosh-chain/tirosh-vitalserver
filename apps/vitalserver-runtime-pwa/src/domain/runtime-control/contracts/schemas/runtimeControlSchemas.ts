@@ -1705,10 +1705,44 @@ export const recorderObservabilityDetailSchema = z
       .strict(),
     boot: z
       .object({
-        state: z.enum(["notReported", "started", "shutdownClean"]),
+        state: z.enum(["notReported", "started", "shutdownClean", "nonOrderable"]),
+        orderingState: z.enum(["ordered", "nonOrderable", "unknown"]),
         bootId: requiredNullableString,
         startedAt: requiredNullableString,
         cleanShutdownAt: requiredNullableString
+      })
+      .strict(),
+    evidenceHealth: z
+      .object({
+        state: z.enum([
+          "notReported",
+          "healthy",
+          "degraded",
+          "failed",
+          "stale",
+          "unsupported",
+          "invalid"
+        ]),
+        checkedAt: requiredNullableString,
+        checkCount: z.number().int().nonnegative(),
+        detail: requiredNullableString
+      })
+      .strict(),
+    incidentState: z
+      .object({
+        state: z.enum(["notReported", "reported", "invalid"]),
+        policyVersion: requiredNullableString,
+        bootLoopState: z
+          .enum(["none", "warning", "critical", "unknown"])
+          .nullable(),
+        repeatedUndervoltageState: z
+          .enum(["none", "warning", "critical", "unknown"])
+          .nullable(),
+        evidenceState: z
+          .enum(["healthy", "degraded", "failed", "stale", "unsupported"])
+          .nullable(),
+        consecutiveUnexpectedBoots: z.number().int().nonnegative().nullable(),
+        undervoltageBootsConsidered: z.number().int().nonnegative().nullable()
       })
       .strict(),
     operationalHealth: z
@@ -1721,12 +1755,14 @@ export const recorderObservabilityDetailSchema = z
             .object({
               code: z.string(),
               category: z.enum([
+                "boot",
                 "power",
                 "storage",
                 "service",
                 "time",
                 "temperature",
-                "memory"
+                "memory",
+                "evidence"
               ]),
               severity: z.enum(["warning", "critical"]),
               title: z.string(),
@@ -1851,12 +1887,40 @@ export const recorderObservabilityIncidentsSchema = z
         .object({
           recordId: z.string(),
           eventId: z.string(),
+          incidentId: z.string(),
+          category: z.enum(["kernel", "boot", "power", "evidence"]),
+          code: z.string(),
+          severity: z.enum(["warning", "critical"]),
+          state: z.enum(["active", "recovering", "historical"]),
+          bootId: requiredNullableString,
+          occurredAt: requiredNullableString,
           receivedAt: z.string(),
-          capturedAt: z.string(),
-          captureTimeState: z.string(),
-          incidentType: z.enum(["panic", "oops", "watchdog", "lockup", "unknown"]),
+          timeState: requiredNullableString,
+          summary: z.string(),
+          evidence: z.array(
+            z
+              .object({
+                field: z.string(),
+                state: z.string(),
+                detail: requiredNullableString
+              })
+              .strict()
+          ),
+          source: z.enum(["kernelIncident", "bootEvent", "observation"]),
+          capturedAt: requiredNullableString,
+          captureTimeState: requiredNullableString,
+          incidentType: z.enum([
+            "panic",
+            "oops",
+            "watchdog",
+            "lockup",
+            "unknown",
+            "boot-loop",
+            "repeated-undervoltage",
+            "ledger-continuity"
+          ]),
           incidentBootId: requiredNullableString,
-          messageExcerpt: z.string(),
+          messageExcerpt: requiredNullableString,
           truncated: z.boolean()
         })
         .strict()

@@ -1686,9 +1686,25 @@ function fullRecorderObservabilityDetail() {
     },
     boot: {
       state: "started",
+      orderingState: "ordered",
       bootId: "boot-1",
       startedAt: "2026-07-23T00:00:00Z",
       cleanShutdownAt: null
+    },
+    evidenceHealth: {
+      state: "healthy",
+      checkedAt: "2026-07-24T00:00:00Z",
+      checkCount: 3,
+      detail: null
+    },
+    incidentState: {
+      state: "reported",
+      policyVersion: "recorder-incident/v1",
+      bootLoopState: "none",
+      repeatedUndervoltageState: "none",
+      evidenceState: "healthy",
+      consecutiveUnexpectedBoots: 0,
+      undervoltageBootsConsidered: 0
     },
     operationalHealth: {
       state: "healthy",

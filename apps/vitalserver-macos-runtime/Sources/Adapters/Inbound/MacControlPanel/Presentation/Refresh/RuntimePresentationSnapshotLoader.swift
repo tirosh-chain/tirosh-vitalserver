@@ -100,6 +100,15 @@ struct RuntimePresentationSnapshotLoader {
         return controlClient.loadRecorderObservabilityDetail(vrcode: vrcode)
     }
 
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async -> RuntimeRecorderObservabilityIncidents {
+        if let snapshotReader {
+            return await snapshotReader.loadRecorderObservabilityIncidents(query: query)
+        }
+        return controlClient.loadRecorderObservabilityIncidents(query: query)
+    }
+
     func loadVitalRelationships() async -> RuntimeVitalRelationshipHistory {
         if let snapshotReader {
             return await snapshotReader.loadVitalDBRelationships()

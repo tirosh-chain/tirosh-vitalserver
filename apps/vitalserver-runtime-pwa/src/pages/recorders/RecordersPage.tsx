@@ -783,6 +783,7 @@ function RecorderObservabilityDetailSection({
           Recorder list and health detail report different support or report states.
         </p>
       ) : null}
+      <RecorderCurrentIncidentState detail={detail} />
       <KeyValueRows
         rows={[
           { label: "Support", value: formatDetailSupport(detail) },
@@ -791,6 +792,14 @@ function RecorderObservabilityDetailSection({
           {
             label: "Operational health",
             value: formatDetailOperationalHealth(detail)
+          },
+          {
+            label: "Evidence health",
+            value: formatEvidenceHealth(detail)
+          },
+          {
+            label: "Incident assessment",
+            value: formatIncidentState(detail)
           },
           { label: "Temperature", value: formatReading(detail.readings.temperatureCelsius, " °C") },
           {
@@ -878,6 +887,68 @@ function RecorderObservabilityDetailSection({
   );
 }
 
+function RecorderCurrentIncidentState({
+  detail
+}: {
+  detail: RuntimeRecorderObservabilityDetail;
+}) {
+  const incidentState = detail.incidentState;
+  if (incidentState.state === "notReported") {
+    return (
+      <p className="muted">
+        Current reboot and power incident state has not been reported by this Recorder.
+      </p>
+    );
+  }
+  if (incidentState.state === "invalid") {
+    return (
+      <p className="error-text">
+        Current reboot and power incident state could not be read as a valid contract.
+      </p>
+    );
+  }
+  const issues = [
+    incidentState.bootLoopState === "warning" || incidentState.bootLoopState === "critical"
+      ? {
+          code: "boot-loop",
+          severity: incidentState.bootLoopState,
+          summary: `${incidentState.consecutiveUnexpectedBoots ?? NOT_REPORTED} consecutive unexpected boot(s)`
+        }
+      : null,
+    incidentState.repeatedUndervoltageState === "warning" ||
+    incidentState.repeatedUndervoltageState === "critical"
+      ? {
+          code: "repeated-undervoltage",
+          severity: incidentState.repeatedUndervoltageState,
+          summary: `${incidentState.undervoltageBootsConsidered ?? NOT_REPORTED} boot(s) with undervoltage evidence`
+        }
+      : null
+  ].filter((value): value is { code: string; severity: "warning" | "critical"; summary: string } => value !== null);
+  if (issues.length === 0) {
+    return (
+      <p className="muted">
+        No active reboot or repeated-undervoltage incident is reported for the current boot.
+      </p>
+    );
+  }
+  return (
+    <div className="recorder-operational-health">
+      <h4>Active Recorder incidents</h4>
+      <ul className="recorder-operational-issues">
+        {issues.map((issue) => (
+          <li key={issue.code} className={`recorder-operational-issue-${issue.severity}`}>
+            <strong>{issue.code}</strong>
+            <span>{issue.summary}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="muted">
+        This is Recorder-reported evidence, not a root-cause determination.
+      </p>
+    </div>
+  );
+}
+
 function RecorderObservabilityHistory({
   recorder,
   timeline,
@@ -936,15 +1007,17 @@ function RecorderObservabilityHistory({
       ) : incidents?.incidents.length ? (
         <ul className="recorder-observability-issues">
           {incidents.incidents.map((incident) => (
-            <li key={incident.recordId}>
-              <strong>{incident.incidentType}</strong>{" "}
-              {formatLocalDateTime(incident.receivedAt)} — {incident.messageExcerpt}
+            <li key={incident.incidentId}>
+              <strong>{incident.code}</strong>{" "}
+              ({incident.severity}, {incident.state}) {formatLocalDateTime(incident.receivedAt)} — {incident.summary}
+              {incident.occurredAt ? ` Device time: ${formatLocalDateTime(incident.occurredAt)}.` : ""}
+              {incident.timeState ? ` Clock state: ${incident.timeState}.` : ""}
               {incident.truncated ? " (truncated)" : ""}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="muted">No kernel incident was received during this window.</p>
+        <p className="muted">No Recorder incident was received during this window.</p>
       )}
     </div>
   );
@@ -1084,6 +1157,8 @@ function formatBoot(detail: RuntimeRecorderObservabilityDetail): string {
       return `Started ${formatLocalDateTime(detail.boot.startedAt)}`;
     case "shutdownClean":
       return `Clean shutdown ${formatLocalDateTime(detail.boot.cleanShutdownAt)}`;
+    case "nonOrderable":
+      return "Boot order is not comparable; retained current boot was not replaced";
     case "notReported":
       return "Not reported";
   }
@@ -1159,6 +1234,26 @@ function formatDetailOperationalHealth(
         ? `Unknown — ${count} issue${count === 1 ? "" : "s"} in the latest report`
         : "Unknown";
   }
+}
+
+function formatEvidenceHealth(detail: RuntimeRecorderObservabilityDetail): string {
+  const evidence = detail.evidenceHealth;
+  if (evidence.state === "notReported") return "Not reported";
+  if (evidence.state === "invalid") return `Invalid — ${evidence.detail ?? "no detail"}`;
+  const checkedAt = evidence.checkedAt
+    ? `; checked ${formatLocalDateTime(evidence.checkedAt)}`
+    : "";
+  return `${evidence.state}; ${evidence.checkCount} check(s)${checkedAt}`;
+}
+
+function formatIncidentState(detail: RuntimeRecorderObservabilityDetail): string {
+  const state = detail.incidentState;
+  if (state.state !== "reported") return state.state === "notReported" ? "Not reported" : "Invalid";
+  return [
+    `boot loop: ${state.bootLoopState ?? "unknown"}`,
+    `repeated undervoltage: ${state.repeatedUndervoltageState ?? "unknown"}`,
+    `evidence: ${state.evidenceState ?? "unknown"}`
+  ].join("; ");
 }
 
 function RecorderVitalFiles({

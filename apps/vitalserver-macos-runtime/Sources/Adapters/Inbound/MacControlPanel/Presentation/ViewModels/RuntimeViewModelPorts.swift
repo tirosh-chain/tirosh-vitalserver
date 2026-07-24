@@ -16,6 +16,9 @@ public protocol RuntimeViewModelSnapshotReading: Sendable {
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRecorderVitalFiles(vrcode: String) async -> RuntimeVitalRecorderVitalFileHistory
     func loadRecorderObservabilityDetail(vrcode: String) async -> RuntimeRecorderObservabilityDetail
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async -> RuntimeRecorderObservabilityIncidents
     func loadVitalDBRelationships() async -> RuntimeVitalRelationshipHistory
     func loadBackups(latestBackupPath: String?) async throws -> [RuntimeBackup]
     func loadRedisBackups() async throws -> [RuntimeBackup]
@@ -41,6 +44,15 @@ public extension RuntimeViewModelSnapshotReading {
         .unavailable(
             vrcode: vrcode,
             readError: "recorder-observability-detail reader is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async -> RuntimeRecorderObservabilityIncidents {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "recorder-observability-incidents reader is unavailable"
         )
     }
 }

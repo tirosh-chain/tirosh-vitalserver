@@ -2401,9 +2401,25 @@ function recorderObservabilityDetail() {
     },
     boot: {
       state: "started" as const,
+      orderingState: "ordered" as const,
       bootId: "boot-1",
       startedAt: "2026-05-30T00:00:00Z",
       cleanShutdownAt: null
+    },
+    evidenceHealth: {
+      state: "healthy" as const,
+      checkedAt: "2026-05-31T00:59:29Z",
+      checkCount: 3,
+      detail: null
+    },
+    incidentState: {
+      state: "reported" as const,
+      policyVersion: "recorder-incident/v1",
+      bootLoopState: "none" as const,
+      repeatedUndervoltageState: "none" as const,
+      evidenceState: "healthy" as const,
+      consecutiveUnexpectedBoots: 0,
+      undervoltageBootsConsidered: 0
     },
     operationalHealth: {
       state: "warning" as const,

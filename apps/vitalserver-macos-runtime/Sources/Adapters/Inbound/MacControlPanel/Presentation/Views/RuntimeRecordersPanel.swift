@@ -753,7 +753,11 @@ struct RuntimeRecordersPanel: View {
             }
         }
         .task(id: recorder.vrcode) {
-            await viewModel.refreshRecorderObservabilityDetail(vrcode: recorder.vrcode)
+            async let detail: Void = viewModel.refreshRecorderObservabilityDetail(vrcode: recorder.vrcode)
+            async let incidents: Void = viewModel.refreshRecorderObservabilityIncidents(
+                query: recorderObservabilityIncidentQuery(vrcode: recorder.vrcode)
+            )
+            _ = await (detail, incidents)
         }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -786,6 +790,8 @@ struct RuntimeRecordersPanel: View {
                     "Operational health",
                     recorderOperationalHealthText(detail.operationalHealth)
                 )
+                detailRow("Evidence health", recorderObservabilityEvidenceHealthText(detail.evidenceHealth))
+                detailRow("Incident assessment", recorderObservabilityIncidentStateText(detail.incidentState))
                 detailRow(
                     "Temperature",
                     recorderObservabilityReadingText(
@@ -835,6 +841,7 @@ struct RuntimeRecordersPanel: View {
                 detailRow("Boot", recorderObservabilityBootText(detail))
                 detailRow("Read issues", String(detail.report.readIssueCount))
             }
+            recorderCurrentIncidentState(detail.incidentState)
             if !detail.operationalHealth.issues.isEmpty {
                 Text("Latest reported issues")
                     .font(.subheadline)
@@ -882,7 +889,93 @@ struct RuntimeRecordersPanel: View {
                     .foregroundStyle(.secondary)
                 }
             }
+            recorderIncidentHistory(vrcode: recorder.vrcode)
         }
+    }
+
+    @ViewBuilder
+    private func recorderCurrentIncidentState(
+        _ incidentState: RuntimeRecorderObservabilityIncidentState
+    ) -> some View {
+        switch incidentState.state {
+        case "notReported":
+            Text("Current incident assessment has not been reported by this Recorder.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case "invalid":
+            Text("Current incident assessment is invalid.")
+                .font(.caption)
+                .foregroundStyle(.red)
+        case "reported":
+            if incidentState.bootLoopState == "warning" || incidentState.bootLoopState == "critical" {
+                Text("Current boot-loop assessment: \(incidentState.bootLoopState ?? "unknown").")
+                    .font(.caption)
+                    .foregroundStyle(incidentState.bootLoopState == "critical" ? Color.red : Color.orange)
+            }
+            if incidentState.repeatedUndervoltageState == "warning"
+                || incidentState.repeatedUndervoltageState == "critical" {
+                Text("Current repeated-undervoltage assessment: \(incidentState.repeatedUndervoltageState ?? "unknown").")
+                    .font(.caption)
+                    .foregroundStyle(incidentState.repeatedUndervoltageState == "critical" ? Color.red : Color.orange)
+            }
+        default:
+            Text("Current incident assessment state: \(incidentState.state).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func recorderIncidentHistory(vrcode: String) -> some View {
+        let query = recorderObservabilityIncidentQuery(vrcode: vrcode)
+        if let page = viewModel.recorderObservabilityIncidentPage(query: query) {
+            Text("Recent reported incidents")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .padding(.top, 4)
+            if page.state == .unavailable {
+                Text("Incident history is unavailable: \(page.readError ?? "No failure detail was provided.")")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if page.incidents.isEmpty {
+                Text("No reported incident records in the last 30 days.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(page.incidents, id: \.incidentId) { incident in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(incident.code) — \(incident.severity)")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                        Text(incident.summary)
+                            .font(.caption)
+                        Text("Reported \(viewModel.presentationFormatter.systemTimeText(incident.receivedAt))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(incident.severity == "critical" ? Color.red : Color.orange)
+                }
+            }
+        }
+    }
+
+    private func recorderObservabilityIncidentQuery(
+        vrcode: String,
+        now: Date = Date()
+    ) -> RuntimeRecorderObservabilityIncidentQuery {
+        let formatter = ISO8601DateFormatter()
+        let until = formatter.string(from: now)
+        let from = formatter.string(
+            from: Calendar.current.date(byAdding: .day, value: -30, to: now) ?? now
+        )
+        return RuntimeRecorderObservabilityIncidentQuery(
+            vrcode: vrcode,
+            from: from,
+            until: until,
+            type: nil,
+            cursor: nil,
+            limit: 20
+        )
     }
 
     private func recorderObservabilitySummaryMismatch(
@@ -1005,8 +1098,31 @@ struct RuntimeRecordersPanel: View {
                     detail.boot.cleanShutdownAt
                 )
         default:
+            return detail.boot.orderingState == "nonOrderable"
+                ? "Reported, but order cannot be established across boot evidence"
+                : "Not reported"
+        }
+    }
+
+    private func recorderObservabilityEvidenceHealthText(
+        _ evidenceHealth: RuntimeRecorderObservabilityEvidenceHealth
+    ) -> String {
+        guard evidenceHealth.state != "notReported" else {
             return "Not reported"
         }
+        return evidenceHealth.state + (evidenceHealth.detail.map { " — \($0)" } ?? "")
+    }
+
+    private func recorderObservabilityIncidentStateText(
+        _ incidentState: RuntimeRecorderObservabilityIncidentState
+    ) -> String {
+        guard incidentState.state == "reported" else {
+            return incidentState.state
+        }
+        let states = [incidentState.bootLoopState, incidentState.repeatedUndervoltageState]
+            .compactMap { $0 }
+            .filter { $0 != "none" }
+        return states.isEmpty ? "No active reported assessment" : states.joined(separator: ", ")
     }
 
     private func recorderObservabilitySupportText(

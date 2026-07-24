@@ -28,6 +28,15 @@ public enum RuntimeRecorderObservabilityIncidentType: String, Codable, Equatable
     case watchdog
     case lockup
     case unknown
+    case bootLoop = "boot-loop"
+    case repeatedUndervoltage = "repeated-undervoltage"
+    case ledgerContinuity = "ledger-continuity"
+}
+
+public struct RuntimeRecorderObservabilityIncidentEvidence: Codable, Equatable, Sendable {
+    public let field: String
+    public let state: String
+    public let detail: String
 }
 
 public struct RuntimeRecorderObservabilityTimelineQuery: Equatable, Sendable {
@@ -109,14 +118,25 @@ public struct RuntimeRecorderObservabilityTimeline: Codable, Equatable, Sendable
 }
 
 public struct RuntimeRecorderObservabilityIncident: Codable, Equatable, Sendable {
+    public let incidentId: String
     public let recordId: String
     public let eventId: String
+    public let category: String
+    public let code: String
+    public let severity: String
+    public let state: String
+    public let bootId: String?
+    public let occurredAt: String?
     public let receivedAt: String
-    public let capturedAt: String
-    public let captureTimeState: String
+    public let timeState: String
+    public let summary: String
+    public let evidence: [RuntimeRecorderObservabilityIncidentEvidence]
+    public let source: String
+    public let capturedAt: String?
+    public let captureTimeState: String?
     public let incidentType: RuntimeRecorderObservabilityIncidentType
     public let incidentBootId: String?
-    public let messageExcerpt: String
+    public let messageExcerpt: String?
     public let truncated: Bool
 }
 

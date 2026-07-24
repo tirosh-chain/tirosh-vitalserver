@@ -98,9 +98,31 @@ public struct RuntimeRecorderObservabilityProfile: Codable, Equatable, Sendable 
 
 public struct RuntimeRecorderObservabilityBoot: Codable, Equatable, Sendable {
     public let state: String
+    public let orderingState: String
     public let bootId: String?
     public let startedAt: String?
     public let cleanShutdownAt: String?
+}
+
+/// Health of the evidence collectors on the Recorder. This is reported by the
+/// Recorder; it is deliberately not inferred from the absence of incidents.
+public struct RuntimeRecorderObservabilityEvidenceHealth: Codable, Equatable, Sendable {
+    public let state: String
+    public let checkedAt: String?
+    public let checkCount: Int
+    public let detail: String?
+}
+
+/// Current, policy-produced incident assessment for the latest observation.
+/// Historical incidents are represented separately by the incident history API.
+public struct RuntimeRecorderObservabilityIncidentState: Codable, Equatable, Sendable {
+    public let state: String
+    public let policyVersion: String?
+    public let bootLoopState: String?
+    public let repeatedUndervoltageState: String?
+    public let evidenceState: String?
+    public let consecutiveUnexpectedBoots: Int?
+    public let undervoltageBootsConsidered: Int?
 }
 
 public struct RuntimeRecorderObservabilityNetworkInterface: Codable, Equatable, Sendable {
@@ -137,6 +159,8 @@ public struct RuntimeRecorderObservabilityDetail: Codable, Equatable, Sendable {
     public let report: RuntimeRecorderObservabilityReport
     public let profile: RuntimeRecorderObservabilityProfile
     public let boot: RuntimeRecorderObservabilityBoot
+    public let evidenceHealth: RuntimeRecorderObservabilityEvidenceHealth
+    public let incidentState: RuntimeRecorderObservabilityIncidentState
     public let operationalHealth: RuntimeRecorderOperationalHealth
     public let readings: RuntimeRecorderObservabilityReadings
     public let readIssues: [RuntimeRecorderObservabilityReadIssue]
@@ -182,9 +206,25 @@ public struct RuntimeRecorderObservabilityDetail: Codable, Equatable, Sendable {
             ),
             boot: RuntimeRecorderObservabilityBoot(
                 state: "notReported",
+                orderingState: "unknown",
                 bootId: nil,
                 startedAt: nil,
                 cleanShutdownAt: nil
+            ),
+            evidenceHealth: RuntimeRecorderObservabilityEvidenceHealth(
+                state: "notReported",
+                checkedAt: nil,
+                checkCount: 0,
+                detail: nil
+            ),
+            incidentState: RuntimeRecorderObservabilityIncidentState(
+                state: "notReported",
+                policyVersion: nil,
+                bootLoopState: nil,
+                repeatedUndervoltageState: nil,
+                evidenceState: nil,
+                consecutiveUnexpectedBoots: nil,
+                undervoltageBootsConsidered: nil
             ),
             operationalHealth: RuntimeRecorderOperationalHealth(
                 state: .unknown,

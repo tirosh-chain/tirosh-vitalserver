@@ -1993,6 +1993,30 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
     }
 
+    func testRecorderObservabilityIncidentHistoryLoadsOnlyWhenExplicitlyRequested() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        let query = RuntimeRecorderObservabilityIncidentQuery(
+            vrcode: "06311eba",
+            from: "2026-07-01T00:00:00Z",
+            until: "2026-07-31T00:00:00Z",
+            type: nil,
+            cursor: nil,
+            limit: 20
+        )
+
+        XCTAssertEqual(client.loadRecorderObservabilityIncidentsCount, 0)
+        await viewModel.refreshRecorderObservabilityIncidents(query: query)
+
+        XCTAssertEqual(client.loadRecorderObservabilityIncidentsCount, 1)
+        XCTAssertEqual(client.recorderObservabilityIncidentQueries, [query])
+        XCTAssertEqual(viewModel.recorderObservabilityIncidentPage(query: query)?.vrcode, "06311eba")
+    }
+
     func testRuntimeControlRecoveryRelaunchesHelperForFreshLocalSession() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
@@ -2251,6 +2275,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var vitalDBRecorderVitalFileVrcodes: [String] = []
     var loadRecorderObservabilityDetailCount = 0
     var recorderObservabilityDetailVrcodes: [String] = []
+    var loadRecorderObservabilityIncidentsCount = 0
+    var recorderObservabilityIncidentQueries: [RuntimeRecorderObservabilityIncidentQuery] = []
     var loadRedisRelayStatusCount = 0
     var runtimeStackStatusCount = 0
     var serviceResourceRequests: [String] = []
@@ -2438,6 +2464,17 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return .unavailable(
             vrcode: vrcode,
             readError: "fixture observability detail is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        loadRecorderObservabilityIncidentsCount += 1
+        recorderObservabilityIncidentQueries.append(query)
+        return .unavailable(
+            vrcode: query.vrcode,
+            readError: "fixture incident history is unavailable"
         )
     }
 

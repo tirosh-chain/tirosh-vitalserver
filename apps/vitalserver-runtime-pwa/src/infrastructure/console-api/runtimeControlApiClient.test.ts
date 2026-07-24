@@ -1187,9 +1187,25 @@ function unavailableRecorderObservability() {
     },
     boot: {
       state: "notReported",
+      orderingState: "unknown",
       bootId: null,
       startedAt: null,
       cleanShutdownAt: null
+    },
+    evidenceHealth: {
+      state: "notReported",
+      checkedAt: null,
+      checkCount: 0,
+      detail: null
+    },
+    incidentState: {
+      state: "notReported",
+      policyVersion: null,
+      bootLoopState: null,
+      repeatedUndervoltageState: null,
+      evidenceState: null,
+      consecutiveUnexpectedBoots: null,
+      undervoltageBootsConsidered: null
     },
     operationalHealth: {
       state: "unknown",

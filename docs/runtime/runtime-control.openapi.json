@@ -3378,6 +3378,7 @@
         "required": [
           "schemaVersion",
           "state",
+          "orderingState",
           "mode",
           "currentStep",
           "updatedAt",
@@ -4259,9 +4260,11 @@
             "enum": [
               "notReported",
               "started",
-              "shutdownClean"
+              "shutdownClean",
+              "nonOrderable"
             ]
           },
+          "orderingState": {"type": "string", "enum": ["ordered", "nonOrderable", "unknown"]},
           "bootId": {"type": ["string", "null"]},
           "startedAt": {"type": ["string", "null"]},
           "cleanShutdownAt": {"type": ["string", "null"]}
@@ -4302,11 +4305,13 @@
             "type": "string",
             "enum": [
               "power",
+              "boot",
               "storage",
               "service",
               "time",
               "temperature",
-              "memory"
+              "memory",
+              "evidence"
             ]
           },
           "severity": {
@@ -4375,6 +4380,31 @@
           }
         }
       },
+      "RuntimeRecorderEvidenceHealth": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "checkedAt", "checkCount", "detail"],
+        "properties": {
+          "state": {"type": "string", "enum": ["notReported", "healthy", "degraded", "failed", "stale", "unsupported", "invalid"]},
+          "checkedAt": {"type": ["string", "null"], "format": "date-time"},
+          "checkCount": {"type": "integer", "minimum": 0},
+          "detail": {"type": ["string", "null"]}
+        }
+      },
+      "RuntimeRecorderIncidentState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "policyVersion", "bootLoopState", "repeatedUndervoltageState", "evidenceState", "consecutiveUnexpectedBoots", "undervoltageBootsConsidered"],
+        "properties": {
+          "state": {"type": "string", "enum": ["notReported", "reported", "invalid"]},
+          "policyVersion": {"type": ["string", "null"]},
+          "bootLoopState": {"type": ["string", "null"], "enum": ["none", "warning", "critical", "unknown", null]},
+          "repeatedUndervoltageState": {"type": ["string", "null"], "enum": ["none", "warning", "critical", "unknown", null]},
+          "evidenceState": {"type": ["string", "null"], "enum": ["healthy", "degraded", "failed", "stale", "unsupported", null]},
+          "consecutiveUnexpectedBoots": {"type": ["integer", "null"], "minimum": 0},
+          "undervoltageBootsConsidered": {"type": ["integer", "null"], "minimum": 0}
+        }
+      },
       "RuntimeRecorderObservabilityDetail": {
         "type": "object",
         "additionalProperties": false,
@@ -4385,6 +4415,8 @@
           "report",
           "profile",
           "boot",
+          "evidenceHealth",
+          "incidentState",
           "operationalHealth",
           "readings",
           "readIssues",
@@ -4404,6 +4436,8 @@
           "report": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReport"},
           "profile": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityProfile"},
           "boot": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityBoot"},
+          "evidenceHealth": {"$ref": "#/components/schemas/RuntimeRecorderEvidenceHealth"},
+          "incidentState": {"$ref": "#/components/schemas/RuntimeRecorderIncidentState"},
           "operationalHealth": {"$ref": "#/components/schemas/RuntimeRecorderOperationalHealth"},
           "readings": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReadings"},
           "readIssues": {
@@ -4499,22 +4533,46 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "recordId", "eventId", "receivedAt", "capturedAt",
-          "captureTimeState", "incidentType", "incidentBootId",
-          "messageExcerpt", "truncated"
+          "recordId", "eventId", "incidentId", "category", "code", "severity", "state",
+          "bootId", "occurredAt", "receivedAt", "timeState", "summary",
+          "evidence", "source", "capturedAt", "captureTimeState",
+          "incidentType", "incidentBootId", "messageExcerpt", "truncated"
         ],
         "properties": {
           "recordId": {"type": "string"},
           "eventId": {"type": "string"},
+          "incidentId": {"type": "string"},
+          "category": {"type": "string", "enum": ["kernel", "boot", "power", "evidence"]},
+          "code": {"type": "string"},
+          "severity": {"type": "string", "enum": ["warning", "critical"]},
+          "state": {"type": "string", "enum": ["active", "recovering", "historical"]},
+          "bootId": {"type": ["string", "null"]},
+          "occurredAt": {"type": ["string", "null"], "format": "date-time"},
           "receivedAt": {"type": "string", "format": "date-time"},
-          "capturedAt": {"type": "string", "format": "date-time"},
-          "captureTimeState": {"type": "string"},
+          "timeState": {"type": ["string", "null"]},
+          "summary": {"type": "string"},
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "state", "detail"],
+              "properties": {
+                "field": {"type": "string"},
+                "state": {"type": "string"},
+                "detail": {"type": ["string", "null"]}
+              }
+            }
+          },
+          "source": {"type": "string", "enum": ["kernelIncident", "bootEvent", "observation"]},
+          "capturedAt": {"type": ["string", "null"], "format": "date-time"},
+          "captureTimeState": {"type": ["string", "null"]},
           "incidentType": {
             "type": "string",
-            "enum": ["panic", "oops", "watchdog", "lockup", "unknown"]
+            "enum": ["panic", "oops", "watchdog", "lockup", "unknown", "boot-loop", "repeated-undervoltage", "evidence-read-failed", "evidence-continuity-broken"]
           },
           "incidentBootId": {"type": ["string", "null"]},
-          "messageExcerpt": {"type": "string"},
+          "messageExcerpt": {"type": ["string", "null"]},
           "truncated": {"type": "boolean"}
         }
       },

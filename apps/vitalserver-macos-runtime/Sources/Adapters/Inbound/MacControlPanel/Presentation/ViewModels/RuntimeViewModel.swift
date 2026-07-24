@@ -69,6 +69,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
     @Published var recorderVitalFileHistories: [String: RuntimeVitalRecorderVitalFileHistory] = [:]
     @Published var recorderObservabilityDetails: [String: RuntimeRecorderObservabilityDetail] = [:]
+    @Published var recorderObservabilityIncidents: [String: RuntimeRecorderObservabilityIncidents] = [:]
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory() {
         didSet {
             vitalRelationshipPresentationIndex = RuntimeVitalRelationshipPresentationIndex(
@@ -417,6 +418,31 @@ public final class RuntimeViewModel: ObservableObject {
             return
         }
         recorderObservabilityDetails[vrcode] = detail
+    }
+
+    func refreshRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async {
+        let incidents = await snapshots.loadRecorderObservabilityIncidents(query: query)
+        guard !Task.isCancelled else {
+            return
+        }
+        recorderObservabilityIncidents[recorderObservabilityIncidentKey(query)] = incidents
+    }
+
+    func recorderObservabilityIncidentPage(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents? {
+        recorderObservabilityIncidents[recorderObservabilityIncidentKey(query)]
+    }
+
+    private func recorderObservabilityIncidentKey(
+        _ query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> String {
+        // The panel maintains one fixed recent-history window per Recorder.
+        // Keeping this key on the Recorder identity avoids treating a fresh UI
+        // render's wall-clock `until` value as a different cached result.
+        query.vrcode
     }
 
     @discardableResult

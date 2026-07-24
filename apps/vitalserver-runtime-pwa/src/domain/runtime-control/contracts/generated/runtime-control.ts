@@ -1919,7 +1919,9 @@ export interface components {
         };
         RuntimeRecorderObservabilityBoot: {
             /** @enum {string} */
-            state: "notReported" | "started" | "shutdownClean";
+            state: "notReported" | "started" | "shutdownClean" | "nonOrderable";
+            /** @enum {string} */
+            orderingState?: "ordered" | "nonOrderable" | "unknown";
             bootId: string | null;
             startedAt: string | null;
             cleanShutdownAt: string | null;
@@ -1934,7 +1936,7 @@ export interface components {
         RuntimeRecorderOperationalIssue: {
             code: string;
             /** @enum {string} */
-            category: "power" | "storage" | "service" | "time" | "temperature" | "memory";
+            category: "power" | "boot" | "storage" | "service" | "time" | "temperature" | "memory" | "evidence";
             /** @enum {string} */
             severity: "warning" | "critical";
             title: string;
@@ -1960,6 +1962,27 @@ export interface components {
             publisherBufferLimitBytes: components["schemas"]["RuntimeRecorderObservabilityReading"];
             networkInterfaces: components["schemas"]["RuntimeRecorderObservabilityNetworkInterface"][];
         };
+        RuntimeRecorderEvidenceHealth: {
+            /** @enum {string} */
+            state: "notReported" | "healthy" | "degraded" | "failed" | "stale" | "unsupported" | "invalid";
+            /** Format: date-time */
+            checkedAt: string | null;
+            checkCount: number;
+            detail: string | null;
+        };
+        RuntimeRecorderIncidentState: {
+            /** @enum {string} */
+            state: "notReported" | "reported" | "invalid";
+            policyVersion: string | null;
+            /** @enum {string|null} */
+            bootLoopState: "none" | "warning" | "critical" | "unknown" | null;
+            /** @enum {string|null} */
+            repeatedUndervoltageState: "none" | "warning" | "critical" | "unknown" | null;
+            /** @enum {string|null} */
+            evidenceState: "healthy" | "degraded" | "failed" | "stale" | "unsupported" | null;
+            consecutiveUnexpectedBoots: number | null;
+            undervoltageBootsConsidered: number | null;
+        };
         RuntimeRecorderObservabilityDetail: {
             /** @enum {string} */
             state: "loaded" | "notReported" | "unavailable";
@@ -1968,6 +1991,8 @@ export interface components {
             report: components["schemas"]["RuntimeRecorderObservabilityReport"];
             profile: components["schemas"]["RuntimeRecorderObservabilityProfile"];
             boot: components["schemas"]["RuntimeRecorderObservabilityBoot"];
+            evidenceHealth: components["schemas"]["RuntimeRecorderEvidenceHealth"];
+            incidentState: components["schemas"]["RuntimeRecorderIncidentState"];
             operationalHealth: components["schemas"]["RuntimeRecorderOperationalHealth"];
             readings: components["schemas"]["RuntimeRecorderObservabilityReadings"];
             readIssues: {
@@ -2013,15 +2038,35 @@ export interface components {
         RuntimeRecorderObservabilityIncident: {
             recordId: string;
             eventId: string;
+            incidentId: string;
+            /** @enum {string} */
+            category: "kernel" | "boot" | "power" | "evidence";
+            code: string;
+            /** @enum {string} */
+            severity: "warning" | "critical";
+            /** @enum {string} */
+            state: "active" | "recovering" | "historical";
+            bootId: string | null;
+            /** Format: date-time */
+            occurredAt: string | null;
             /** Format: date-time */
             receivedAt: string;
-            /** Format: date-time */
-            capturedAt: string;
-            captureTimeState: string;
+            timeState: string | null;
+            summary: string;
+            evidence: {
+                field: string;
+                state: string;
+                detail: string | null;
+            }[];
             /** @enum {string} */
-            incidentType: "panic" | "oops" | "watchdog" | "lockup" | "unknown";
+            source: "kernelIncident" | "bootEvent" | "observation";
+            /** Format: date-time */
+            capturedAt: string | null;
+            captureTimeState: string | null;
+            /** @enum {string} */
+            incidentType: "panic" | "oops" | "watchdog" | "lockup" | "unknown" | "boot-loop" | "repeated-undervoltage" | "evidence-read-failed" | "evidence-continuity-broken";
             incidentBootId: string | null;
-            messageExcerpt: string;
+            messageExcerpt: string | null;
             truncated: boolean;
         };
         RuntimeRecorderObservabilityIncidents: {
