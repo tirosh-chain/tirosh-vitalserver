@@ -108,7 +108,7 @@ optional_bundle_path = ".tmp/vitalserver-vm-pkg/optional-docker-images/vitalserv
 app_dockerfile = "apps/vitalserver/docker/Dockerfile"
 postgres_migrator_image = "vitalserver-postgres-migrator:0.2.0"
 postgres_migrator_dockerfile = "apps/vitalserver-postgres-migrator/Dockerfile"
-recorder_ingress_image = "vitalserver-recorder-ingress:0.2.0"
+recorder_ingress_image = "vitalserver-recorder-ingress:0.2.1"
 recorder_ingress_dockerfile = "apps/vitalserver-recorder-ingress/Dockerfile"
 recorder_recovery_image = "vitalserver-recorder-recovery:0.2.0"
 recorder_recovery_dockerfile = "apps/vitalserver-recorder-recovery/Dockerfile"
@@ -121,7 +121,7 @@ lab_dockerfile = "apps/vitalserver-lab/Dockerfile"
 images = [
   "vitalserver:2.3.4",
   "vitalserver-postgres-migrator:0.2.0",
-  "vitalserver-recorder-ingress:0.2.0",
+  "vitalserver-recorder-ingress:0.2.1",
   "vitalserver-recorder-recovery:0.2.0",
   "vitaldb-observer:0.2.0",
   "vitalserver-redis-relay:0.2.0",

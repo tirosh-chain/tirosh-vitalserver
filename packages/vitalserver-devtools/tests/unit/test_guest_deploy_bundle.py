@@ -96,7 +96,7 @@ def runtime_product_minimal_compose(
         "redis": "redis:3.2.12-alpine",
         "app": "vitalserver:2.3.4",
         "recorder-recovery": "vitalserver-recorder-recovery:0.2.0",
-        "recorder-ingress": "vitalserver-recorder-ingress:0.2.0",
+        "recorder-ingress": "vitalserver-recorder-ingress:0.2.1",
         "vitaldb-observer": "vitaldb-observer:0.2.0",
         "redis-relay": "vitalserver-redis-relay:0.2.0",
         "edge": "nginx:1.24-alpine",

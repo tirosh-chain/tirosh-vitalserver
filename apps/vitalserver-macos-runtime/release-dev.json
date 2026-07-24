@@ -1,7 +1,7 @@
 {
   "channel": "dev",
-  "helperVersion": "0.2.0",
-  "releaseLabel": "0.2.0-dev",
+  "helperVersion": "0.2.1",
+  "releaseLabel": "0.2.1-dev",
   "minUpdaterVersion": "0.1.15",
   "targetPlatform": "macos-arm64",
   "distribution": {
@@ -25,8 +25,8 @@
     },
     "recorderIngress": {
       "displayName": "Recorder ingress",
-      "image": "vitalserver-recorder-ingress:0.2.0",
-      "version": "0.2.0"
+      "image": "vitalserver-recorder-ingress:0.2.1",
+      "version": "0.2.1"
     },
     "recorderRecovery": {
       "displayName": "Recorder recovery",
