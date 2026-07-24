@@ -40,9 +40,11 @@ from vitalserver_lab.settings import (
     load_settings,
 )
 from vitalserver_lab.vital_replay import (
+    LabReplayStringTrackPolicy,
     LabVitalReplayFrame,
     VitalReplaySourceError,
 )
+from vitalserver_lab.vital_replay_spool import StreamingVitalReplaySourceFactory
 
 
 def test_health_and_ready_are_explicit() -> None:
@@ -1240,6 +1242,19 @@ def test_replay_file_validation_failure_is_persisted_and_cleared_on_retry(
     assert restarted["body"]["session"]["state"] == "running"
     assert "failure" not in restarted["body"]["session"]
     assert "failure" not in loaded_after_restart["body"]["session"]
+
+
+def test_default_execution_engine_skips_vital_string_tracks() -> None:
+    engine = LabExecutionEngine(sender=FakeSender())
+
+    assert isinstance(
+        engine.vital_replay_source_factory,
+        StreamingVitalReplaySourceFactory,
+    )
+    assert (
+        engine.vital_replay_source_factory.string_track_policy
+        is LabReplayStringTrackPolicy.SKIP
+    )
 
 
 def test_replay_vital_file_rejects_unavailable_or_unmounted_source(

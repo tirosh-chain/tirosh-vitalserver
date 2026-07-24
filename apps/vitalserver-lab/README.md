@@ -74,8 +74,10 @@ hard-coded offset.
 Replay reads the explicit VitalDB track type before interpreting sample rate.
 Waveform tracks (`type=1`) require a positive rate; numeric tracks (`type=2`)
 accept the VitalDB-standard zero rate and are sampled on the Lab one-second
-tick. A valid string track (`type=5`) follows the explicitly selected reject or
-skip policy. Other types fail with `unsupportedTrackType`.
+tick. The product composition explicitly skips valid string tracks (`type=5`)
+while preserving waveform and numeric tracks from the same file. Tests may
+select the reject policy to verify strict validation. Other types fail with
+`unsupportedTrackType`.
 
 Missing or non-finite frame data is not filled from an older value. The runtime
 composition explicitly selects `omitTrack`; tests can select `failFrame` when a

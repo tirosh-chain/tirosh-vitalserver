@@ -247,7 +247,7 @@ class LabExecutionEngine:
         self.vital_replay_source_factory = (
             vital_replay_source_factory
             or StreamingVitalReplaySourceFactory(
-                string_track_policy=LabReplayStringTrackPolicy.REJECT,
+                string_track_policy=LabReplayStringTrackPolicy.SKIP,
                 gap_policy=LabReplayGapPolicy.OMIT_TRACK,
             )
         )
