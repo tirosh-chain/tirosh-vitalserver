@@ -94,9 +94,13 @@ immutable proof-set candidate plus review record. It never changes the source
 template. `make release-ready` accepts an explicit
 `RELEASE_DELIVERY_PLANS_DOCUMENT`, C24 candidate
 `RELEASE_DELIVERY_PROOF_SET_DOCUMENT`, and
-`RELEASE_DELIVERY_PROOF_ATTACHMENT_REVIEW_DOCUMENT`. It independently fixes
-the C74 source to the checked-in canonical C24 template, so an intermediate
-candidate cannot become the source of an unverified review chain. See
+`RELEASE_DELIVERY_PROOF_ATTACHMENT_REVIEW_DOCUMENT`. The explicit
+`RELEASE_DELIVERY_PLAN_ID` selects the one platform release being asserted;
+structural errors anywhere in the shared C23/C24 documents still fail, but
+pending proof belonging to a different planned platform does not block the
+selected release. It independently fixes the C74 source to the checked-in
+canonical C24 template, so an intermediate candidate cannot become the source
+of an unverified review chain. See
 [Release Delivery Proof Attachment Boundary](../../../docs/architecture/release-delivery-proof-attachment-boundary.md).
 
 No plan uses a default data path, VM name, service name, credential, or OS

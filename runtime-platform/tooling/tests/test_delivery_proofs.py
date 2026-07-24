@@ -25,7 +25,11 @@ class DeliveryProofTests(unittest.TestCase):
     def test_pending_clean_host_proofs_are_explicit_and_structurally_valid(self) -> None:
         findings, pending = verify_delivery_proofs.validate(self.root)
         self.assertEqual([], findings)
-        self.assertEqual(24, len(pending))
+        self.assertEqual(25, len(pending))
+        self.assertIn(
+            "macos-runtime-platform-release/installed-guest-runtime=pending",
+            pending,
+        )
         self.assertTrue(any("windows-runtime-platform-release/clean-install=pending" == value for value in pending))
 
     def test_release_ready_gate_refuses_pending_evidence(self) -> None:
@@ -33,6 +37,37 @@ class DeliveryProofTests(unittest.TestCase):
         release_ready_findings = findings + [f"release proof is not verified: {label}" for label in pending]
         self.assertTrue(release_ready_findings)
         self.assertIn("release proof is not verified: windows-runtime-platform-release/clean-install=pending", release_ready_findings)
+
+    def test_release_gate_selects_only_the_explicit_delivery_plan(self) -> None:
+        findings, pending = verify_delivery_proofs.validate(self.root)
+        self.assertEqual([], findings)
+        macos_pending = verify_delivery_proofs.pending_for_plan(
+            pending,
+            "macos-runtime-platform-release",
+        )
+        self.assertEqual(9, len(macos_pending))
+        self.assertTrue(
+            all(
+                label.startswith("macos-runtime-platform-release/")
+                for label in macos_pending
+            )
+        )
+
+    def test_release_gate_rejects_an_undeclared_delivery_plan(self) -> None:
+        with mock.patch("sys.stdout", new=io.StringIO()) as output:
+            exit_code = verify_delivery_proofs.main(
+                [
+                    "--root",
+                    str(self.root),
+                    "--release-delivery-plan-id",
+                    "unknown-runtime-platform-release",
+                ]
+            )
+        self.assertEqual(1, exit_code)
+        self.assertIn(
+            "selected release delivery plan is not declared",
+            output.getvalue(),
+        )
 
     def test_c74_review_binds_the_exact_candidate_and_only_its_reviewed_change(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

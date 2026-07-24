@@ -36,6 +36,7 @@
         "clean-install",
         "service-registration",
         "reboot",
+        "installed-guest-runtime",
         "update",
         "rollback",
         "uninstall-reinstall"

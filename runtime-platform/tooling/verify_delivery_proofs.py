@@ -24,6 +24,13 @@ RUNNER_BY_PLATFORM = {
 }
 
 
+def pending_for_plan(pending: Sequence[str], plan_id: str) -> List[str]:
+    """Select only the explicit pending stages owned by one C23 plan."""
+
+    prefix = plan_id + "/"
+    return [label for label in pending if label.startswith(prefix)]
+
+
 def validate(root: Path) -> Tuple[List[str], List[str]]:
     """Verify the checked-in C23 plan and C24 proof-set documents."""
 
@@ -552,7 +559,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument(
         "--require-verified",
         action="store_true",
-        help="fail unless every declared required delivery stage has verified clean-host evidence",
+        help="fail unless every required stage for the selected plan, or every plan when none is selected, has verified clean-host evidence",
+    )
+    parser.add_argument(
+        "--release-delivery-plan-id",
+        help="explicit C23 plan whose pending stages are evaluated by --require-verified",
     )
     arguments = parser.parse_args(argv)
     root = arguments.root.resolve()
@@ -590,6 +601,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             proof_set_document_path,
             review_document_path,
         )
+    if arguments.release_delivery_plan_id is not None:
+        try:
+            selected_plans_document = load_json(plans_document_path)
+        except ContractToolError as error:
+            findings.append(str(error))
+        else:
+            selected_plans = selected_plans_document.get("plans")
+            selected_plan_ids = (
+                {
+                    plan["id"]
+                    for plan in selected_plans
+                    if isinstance(plan, dict)
+                    and isinstance(plan.get("id"), str)
+                }
+                if isinstance(selected_plans, list)
+                else set()
+            )
+            if arguments.release_delivery_plan_id not in selected_plan_ids:
+                findings.append(
+                    "selected release delivery plan is not declared: "
+                    + arguments.release_delivery_plan_id
+                )
+            pending = pending_for_plan(
+                pending,
+                arguments.release_delivery_plan_id,
+            )
     if arguments.require_verified:
         canonical_source_proof_set_document_path = (
             root / "product" / "delivery" / "release-delivery-proofs.v1.json"

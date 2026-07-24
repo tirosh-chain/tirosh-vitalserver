@@ -17,6 +17,8 @@ The runner intentionally separates these operations:
 * service registration observes each C23-named launchd service after install;
 * reboot uses a durable boot-session checkpoint and never reboots a Host by
   itself.
+* installed Guest runtime evidence attaches the exact verified C78 first-boot,
+  direct-upload lineage, and post-reboot documents as a separate C24 stage.
 
 Missing commands, ambiguous command output, a changed artifact, an existing
 receipt, and a missing service remain explicit failures.  None become a clean
@@ -40,6 +42,7 @@ from typing import Any, Mapping, Sequence
 
 from tooling import host_platform_release_transition_evidence
 from tooling import macos_host_installation_observation
+from tooling.contracts import ContractRepository, ContractToolError
 from tooling.product_delivery_release_plan import (
     MacOSHostPackageReleasePlan,
     ProductDeliveryReleasePlanError,
@@ -57,6 +60,7 @@ CLEAN_INSTALL_STAGE = "clean-install"
 SERVICE_REGISTRATION_STAGE = "service-registration"
 REBOOT_CHECKPOINT_STAGE = "reboot-checkpoint"
 REBOOT_STAGE = "reboot"
+INSTALLED_GUEST_RUNTIME_STAGE = "installed-guest-runtime"
 UPDATE_STAGE = "update"
 ROLLBACK_STAGE = "rollback"
 UNINSTALL_REINSTALL_STAGE = "uninstall-reinstall"
@@ -66,6 +70,7 @@ C24_PROOF_STAGES = (
     CLEAN_INSTALL_STAGE,
     SERVICE_REGISTRATION_STAGE,
     REBOOT_STAGE,
+    INSTALLED_GUEST_RUNTIME_STAGE,
     UNINSTALL_REINSTALL_STAGE,
     UPDATE_STAGE,
     ROLLBACK_STAGE,
@@ -78,6 +83,7 @@ RELEASE_EVIDENCE_STAGES = {
     SERVICE_REGISTRATION_STAGE,
     REBOOT_CHECKPOINT_STAGE,
     REBOOT_STAGE,
+    INSTALLED_GUEST_RUNTIME_STAGE,
     UPDATE_STAGE,
     ROLLBACK_STAGE,
     UNINSTALL_REINSTALL_STAGE,
@@ -168,7 +174,8 @@ class MacOSCleanHostReleaseEvidenceJournal:
         validate_new_journal_path(journal_path)
         journal = cls(journal_path)
         try:
-            with sqlite3.connect(journal_path) as connection:
+            connection = sqlite3.connect(journal_path)
+            try:
                 connection.executescript(
                     """
                     CREATE TABLE evidence_run (
@@ -236,6 +243,9 @@ class MacOSCleanHostReleaseEvidenceJournal:
                         evidence_run.created_at,
                     ),
                 )
+                connection.commit()
+            finally:
+                connection.close()
         except sqlite3.Error as error:
             raise MacOSCleanHostReleaseEvidenceRunError(
                 "macOS clean-Host release evidence journal creation failed: "
@@ -750,6 +760,51 @@ class MacOSCleanHostReleaseEvidenceRunner:
                 evidence_run, REBOOT_STAGE, observed_at, issue
             ),
             issue,
+        )
+
+    def record_installed_guest_runtime(
+        self,
+        contract_root: Path,
+        first_boot_evidence_path: Path,
+        direct_upload_evidence_path: Path,
+        post_reboot_evidence_path: Path,
+    ) -> MacOSCleanHostReleaseEvidenceStageRecord:
+        """Attach one complete verified C78 chain after the observed Host reboot."""
+
+        evidence_run = self.require_verified_predecessor(REBOOT_STAGE)
+        observed_at = utc_timestamp()
+        details, observed_issue = observe_installed_guest_runtime_evidence(
+            evidence_run,
+            contract_root,
+            first_boot_evidence_path,
+            direct_upload_evidence_path,
+            post_reboot_evidence_path,
+        )
+        observed_artifact = observed_installer_artifact(evidence_run, observed_at)
+        details = {
+            **details,
+            "observedInstallerArtifact": observed_artifact,
+        }
+        return self.record_stage_with_c24_proof(
+            evidence_run,
+            INSTALLED_GUEST_RUNTIME_STAGE,
+            "verified" if observed_issue is None else "failed",
+            observed_at,
+            details,
+            compose_verified_c24_proof(
+                evidence_run,
+                INSTALLED_GUEST_RUNTIME_STAGE,
+                observed_at,
+                observed_artifact,
+            )
+            if observed_issue is None
+            else compose_failed_c24_proof(
+                evidence_run,
+                INSTALLED_GUEST_RUNTIME_STAGE,
+                observed_at,
+                observed_issue,
+            ),
+            observed_issue,
         )
 
     def record_host_platform_update(
@@ -1844,6 +1899,188 @@ def macos_reinstall_after_preserving_removal_issue(
     )
 
 
+def observe_installed_guest_runtime_evidence(
+    evidence_run: MacOSCleanHostReleaseEvidenceRun,
+    contract_root: Path,
+    first_boot_evidence_path: Path,
+    direct_upload_evidence_path: Path,
+    post_reboot_evidence_path: Path,
+) -> tuple[Mapping[str, Any], Mapping[str, str] | None]:
+    """Validate and bind the three immutable C78 owner documents.
+
+    C24 does not rediscover Guest state here. It only validates caller-selected
+    C78 documents, their release/runner identity, and their explicit evidence
+    chain before embedding the exact documents and byte identities in one C24
+    stage evidence record.
+    """
+
+    source_paths = (
+        ("first-boot-checkpoint", first_boot_evidence_path),
+        ("direct-upload-lineage", direct_upload_evidence_path),
+        ("post-reboot-identity", post_reboot_evidence_path),
+    )
+    details: dict[str, Any] = {
+        "guestInstalledRuntimeEvidenceSources": [
+            {"stage": stage, "path": str(path)} for stage, path in source_paths
+        ]
+    }
+    if (
+        not contract_root.is_absolute()
+        or not contract_root.is_dir()
+        or not (
+            contract_root / "contracts" / "catalog" / "v1.json"
+        ).is_file()
+    ):
+        return details, {
+            "code": "installed-guest-runtime-contract-root-invalid",
+            "message": "The selected C78 contract root is not an explicit runtime-platform contract repository.",
+        }
+    if len({path for _, path in source_paths}) != len(source_paths):
+        return details, {
+            "code": "installed-guest-runtime-evidence-path-duplicated",
+            "message": "Each C78 stage must be supplied by a distinct evidence file.",
+        }
+
+    try:
+        repository = ContractRepository(contract_root)
+        repository.load()
+    except ContractToolError as error:
+        return details, {
+            "code": "installed-guest-runtime-contract-unavailable",
+            "message": "The selected C78 contract repository could not be loaded: "
+            + str(error),
+        }
+
+    documents: dict[str, Mapping[str, Any]] = {}
+    source_identities: list[Mapping[str, str]] = []
+    for expected_stage, path in source_paths:
+        if not path.is_absolute() or path.is_symlink() or not path.is_file():
+            return details, {
+                "code": "installed-guest-runtime-evidence-source-invalid",
+                "message": "C78 evidence must be an absolute regular non-symlink file for stage "
+                + expected_stage
+                + ".",
+            }
+        try:
+            payload = path.read_bytes()
+        except OSError as error:
+            return details, {
+                "code": "installed-guest-runtime-evidence-read-failed",
+                "message": "C78 evidence could not be read for stage "
+                + expected_stage
+                + ": "
+                + str(error),
+            }
+        try:
+            document = json.loads(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            return details, {
+                "code": "installed-guest-runtime-evidence-decode-failed",
+                "message": "C78 evidence is not valid JSON for stage "
+                + expected_stage
+                + ": "
+                + str(error),
+            }
+        if not isinstance(document, dict):
+            return details, {
+                "code": "installed-guest-runtime-evidence-contract-invalid",
+                "message": "C78 evidence must be an object for stage "
+                + expected_stage
+                + ".",
+            }
+        findings = repository.validate_instance(
+            "guest-installed-runtime-evidence.schema.json", document
+        )
+        if findings:
+            return details, {
+                "code": "installed-guest-runtime-evidence-contract-invalid",
+                "message": "C78 evidence failed its published contract for stage "
+                + expected_stage
+                + ": "
+                + "; ".join(finding.render() for finding in findings),
+            }
+        if document.get("stage") != expected_stage:
+            return details, {
+                "code": "installed-guest-runtime-evidence-stage-mismatch",
+                "message": "The selected C78 evidence stage does not match "
+                + expected_stage
+                + ".",
+            }
+        if document.get("status") != "verified":
+            return details, {
+                "code": "installed-guest-runtime-evidence-not-verified",
+                "message": "C24 cannot attach non-verified C78 evidence for stage "
+                + expected_stage
+                + ".",
+            }
+        if (
+            document.get("releaseDeliveryPlanId")
+            != evidence_run.release_delivery_plan_id
+        ):
+            return details, {
+                "code": "installed-guest-runtime-release-plan-mismatch",
+                "message": "C78 evidence does not name the C24 release delivery plan for stage "
+                + expected_stage
+                + ".",
+            }
+        runner = document.get("runner")
+        if (
+            not isinstance(runner, dict)
+            or runner.get("id") != evidence_run.runner_id
+        ):
+            return details, {
+                "code": "installed-guest-runtime-runner-mismatch",
+                "message": "C78 evidence does not name the C24 clean-Host runner for stage "
+                + expected_stage
+                + ".",
+            }
+        documents[expected_stage] = document
+        source_identities.append(
+            {
+                "stage": expected_stage,
+                "uri": path.as_uri(),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        )
+
+    first_boot = documents["first-boot-checkpoint"]
+    direct_upload = documents["direct-upload-lineage"]
+    post_reboot = documents["post-reboot-identity"]
+    if (
+        direct_upload.get("checkpointEvidenceId") != first_boot.get("evidenceId")
+        or post_reboot.get("checkpointEvidenceId") != first_boot.get("evidenceId")
+        or post_reboot.get("directUploadEvidenceId")
+        != direct_upload.get("evidenceId")
+    ):
+        return details, {
+            "code": "installed-guest-runtime-evidence-chain-mismatch",
+            "message": "C78 evidence references do not form one first-boot, direct-upload, and post-reboot chain.",
+        }
+    if (
+        post_reboot.get("hostBootSessionIdentifier")
+        == first_boot.get("hostBootSessionIdentifier")
+    ):
+        return details, {
+            "code": "installed-guest-runtime-reboot-not-observed",
+            "message": "C78 first-boot and post-reboot evidence name the same Host boot session.",
+        }
+    first_identity = first_boot["identity"]
+    post_identity = post_reboot["identity"]
+    for owner in ("sqlite", "postgresql", "bootstrap"):
+        if first_identity.get(owner) != post_identity.get(owner):
+            return details, {
+                "code": "installed-guest-runtime-owner-identity-mismatch",
+                "message": "C78 Guest " + owner + " owner identity changed after reboot.",
+            }
+
+    return {
+        "guestInstalledRuntimeEvidenceSources": source_identities,
+        "guestInstalledRuntimeEvidence": [
+            documents[stage] for stage, _ in source_paths
+        ],
+    }, None
+
+
 def compose_verified_c24_proof(
     evidence_run: MacOSCleanHostReleaseEvidenceRun,
     stage: str,
@@ -2197,6 +2434,22 @@ def parse_arguments(arguments: Sequence[str]) -> argparse.Namespace:
         if command_name == "write-stage-proof-fragment":
             command.add_argument("--output-proof-fragment", required=True, type=Path)
 
+    installed_guest_runtime = subcommands.add_parser(
+        "record-installed-guest-runtime",
+        help="attach one complete verified C78 evidence chain after reboot",
+    )
+    installed_guest_runtime.add_argument("--journal-path", required=True)
+    installed_guest_runtime.add_argument("--contract-root", required=True, type=Path)
+    installed_guest_runtime.add_argument(
+        "--first-boot-evidence", required=True, type=Path
+    )
+    installed_guest_runtime.add_argument(
+        "--direct-upload-evidence", required=True, type=Path
+    )
+    installed_guest_runtime.add_argument(
+        "--post-reboot-evidence", required=True, type=Path
+    )
+
     for command_name in ("record-host-platform-update", "record-host-platform-rollback"):
         command = subcommands.add_parser(command_name)
         command.add_argument("--journal-path", required=True)
@@ -2279,6 +2532,13 @@ def main(arguments: Sequence[str]) -> int:
             stage_record = evidence_runner.record_reboot_checkpoint()
         elif parsed.command == "record-reboot":
             stage_record = evidence_runner.record_reboot()
+        elif parsed.command == "record-installed-guest-runtime":
+            stage_record = evidence_runner.record_installed_guest_runtime(
+                parsed.contract_root,
+                parsed.first_boot_evidence,
+                parsed.direct_upload_evidence,
+                parsed.post_reboot_evidence,
+            )
         elif parsed.command in {"record-host-platform-update", "record-host-platform-rollback"}:
             record_transition = (
                 evidence_runner.record_host_platform_update

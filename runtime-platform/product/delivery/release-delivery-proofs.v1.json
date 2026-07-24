@@ -55,6 +55,16 @@
       "planId": "macos-runtime-platform-release",
       "platform": "macos",
       "providerKind": "macos-virtualization",
+      "stage": "installed-guest-runtime",
+      "status": "pending",
+      "recordedAt": "2026-07-24T00:00:00Z",
+      "runner": { "kind": "not-assigned" },
+      "issue": { "code": "macos-installed-guest-runtime-not-proven", "message": "No C78 first-boot, direct-upload lineage, and post-reboot identity evidence has been attached." }
+    },
+    {
+      "planId": "macos-runtime-platform-release",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
       "stage": "update",
       "status": "pending",
       "recordedAt": "2026-07-17T00:00:00Z",

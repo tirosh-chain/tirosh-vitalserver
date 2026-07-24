@@ -262,6 +262,65 @@ bootstrap/completion command, per-layer execution evidence, Host SQLite journal�
 
 **완료 조건:** portable acceptance가 C25→C29 handoff, request/report idempotency, restart recovery, C26 ordering, unavailable bootstrap, invalid C28 report가 release를 전진시키지 않는 것을 public contract로 증명한다. macOS native signature/file staging/PKG activation, three layer actual replacement, update/rollback clean-host evidence는 아직 완료가 아니다.
 
+### Helper 0.2 product capability adoption
+
+> 상태: **C1 Catalog와 C2 Archive lineage는 완료되었다. C3 direct upload와
+> PostgreSQL bootstrap 구현은 완료되었으며, 실제 clean Guest의 install/reboot
+> proof가 release gate로 남아 있다. C4는 assignment owner, Lab replay source
+> streaming admission, pure replay transition, v1~v3 bounded record parser,
+> operation-owned durable spool, transition/effect outbox와 C75 command/read
+> API, durable prepare/send/upstream-confirm effect worker와 Gateway idempotent
+> ingress/delivery receipt 연결과 Runner→Gateway terminal-failure
+> cross-process acceptance까지 구현되었다. Runtime Console은 C75 replay
+> 생성/조회와 owner operation·receipt·typed failure를 표시한다. bounded
+> Catalog Recorder list와 lazy Detail, selection/unmount cancellation도
+> Desktop local-control request까지 연결되었다. C76 backup/restore contract,
+> pure ordered state machine, SQLite/PostgreSQL adapters, production composition,
+> C37와 Host facade가 연결되었다. 실제 Guest SQLite online snapshot과
+> seeded PostgreSQL 16 custom dump를 하나의 immutable manifest로 묶어
+> absent/empty target에 복원하고 owner evidence를 대조하는 combined
+> workflow acceptance는 통과했다. installed Guest의 public facade read는
+> C3/C24 proof에 남아 있다. C77 Guest operational-state identity owner
+> contract와 Guest API, Host facade, platformctl read는 구현되어 SQLite와
+> PostgreSQL identity/revision/schema set을 partial fallback 없이 제공한다.
+> C78 first-boot/direct-upload/post-reboot 문서를 별도 C24
+> `installed-guest-runtime` stage에 결속하는 contract와 macOS runner는
+> 구현되었다. 이제 clean ARM64 Guest에서 실제 C78 chain을 생성하고 해당
+> C24 stage에 첨부해야 한다.
+> PostgreSQL-backed Guest Runtime→Runner→Gateway
+> →Socket.IO VitalServer acknowledgement 전체 성공 경로 acceptance도
+> 구현되었다. frozen real-file corpus와 clean Guest/reboot proof는 아직
+> release evidence가 아니다.**
+
+Helper 0.2에서 검증한 Recorder observability, Recorder-uploaded `.vital`
+lineage, typed replay failure와 package/runtime boot proof는 legacy source를
+이식하지 않고 vNext owner contract로 다시 구현한다.
+
+1. Recorder observation evidence/current/expectation/history는 Guest Runtime의
+   Recorder Observation Catalog module이 소유하고 Guest PostgreSQL
+   `recorder_catalog` schema에 저장한다.
+2. Runtime/Lab operation ledger는 Guest SQLite에 남긴다. Catalog를 두
+   database에 dual-write하지 않는다.
+3. Recorder direct upload, Gateway cold path, Lab export와 manual upload는
+   closed source kind와 서로 다른 source receipt를 사용한다.
+4. bed name은 attribution evidence이며 Recorder identity가 아니다.
+5. `.vital` parser는 waveform/numeric/string track 의미와 지원하는 과거 file
+   version을 보존하고, replay failure를 terminal operation에 남긴다.
+6. Runtime Console은 bounded/lazy owner read를 사용하며 connection, Recorder
+   report와 upstream delivery를 하나의 `online` 상태로 합치지 않는다.
+7. macOS package generation, package 설치와 installed Guest product acceptance를
+   분리한다. Developer ID clean-host lifecycle은 C24의 기존 stage에,
+   verified C78 chain은 별도 `installed-guest-runtime` stage에 첨부한다.
+
+schema, API, phase별 acceptance와 commit 순서는
+[Helper 0.2 Capability Adoption Plan](../../runtime-platform/docs/architecture/helper-0.2-capability-adoption-plan.md)을
+따른다.
+
+**완료 조건:** PostgreSQL Catalog admission/current/expectation/history,
+artifact lineage, typed replay failure, Console Detail과 matching macOS C24
+proof가 각각 자기 owner contract와 acceptance를 통과한다. Helper DB,
+legacy state file 또는 dual-write는 vNext runtime dependency가 아니다.
+
 ## 5. 첫 12개 구현 change
 
 각 change는 독립 review·revert가 가능해야 한다.

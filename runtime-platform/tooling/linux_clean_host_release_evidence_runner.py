@@ -129,7 +129,8 @@ class LinuxCleanHostReleaseEvidenceJournal:
                 "Linux clean-Host release evidence journal already exists"
             )
         try:
-            with sqlite3.connect(journal_path) as connection:
+            connection = sqlite3.connect(journal_path)
+            try:
                 connection.executescript(
                     """
                     CREATE TABLE evidence_run (
@@ -151,6 +152,9 @@ class LinuxCleanHostReleaseEvidenceJournal:
                     "INSERT INTO evidence_run (run_id, payload_json) VALUES (?, ?)",
                     (evidence_run.run_id, canonical_json(evidence_run_document(evidence_run))),
                 )
+                connection.commit()
+            finally:
+                connection.close()
         except sqlite3.Error as error:
             raise LinuxCleanHostReleaseEvidenceRunError(
                 "Linux clean-Host release evidence journal create failed: " + str(error)

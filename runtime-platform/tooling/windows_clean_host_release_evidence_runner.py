@@ -135,7 +135,8 @@ class WindowsCleanHostReleaseEvidenceJournal:
         validate_new_journal_path(journal_path)
         journal = cls(journal_path)
         try:
-            with sqlite3.connect(journal_path) as connection:
+            connection = sqlite3.connect(journal_path)
+            try:
                 connection.executescript(
                     """
                     CREATE TABLE evidence_run (
@@ -202,6 +203,9 @@ class WindowsCleanHostReleaseEvidenceJournal:
                         evidence_run.created_at,
                     ),
                 )
+                connection.commit()
+            finally:
+                connection.close()
         except sqlite3.Error as error:
             raise WindowsCleanHostReleaseEvidenceRunError(
                 "Windows clean-Host release evidence journal create failed: " + str(error)

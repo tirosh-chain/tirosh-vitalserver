@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -307,10 +308,11 @@ class MacOSDevelopmentInstallationEvidenceRunnerTests(unittest.TestCase):
         )
 
     def test_pre_update_handoff_development_evidence_journal_cannot_be_resumed(self) -> None:
-        with sqlite3.connect(self.journal_path) as connection:
+        with closing(sqlite3.connect(self.journal_path)) as connection:
             connection.execute(
                 "CREATE TABLE development_installation_run (run_id TEXT NOT NULL)"
             )
+            connection.commit()
 
         with self.assertRaisesRegex(
             evidence_runner.MacOSDevelopmentInstallationEvidenceRunError,

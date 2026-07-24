@@ -122,7 +122,8 @@ class MacOSDevelopmentInstallationEvidenceJournal:
         validate_new_journal_path(journal_path)
         journal = cls(journal_path)
         try:
-            with sqlite3.connect(journal_path) as connection:
+            connection = sqlite3.connect(journal_path)
+            try:
                 connection.executescript(
                     """
                     CREATE TABLE development_installation_run (
@@ -187,6 +188,9 @@ class MacOSDevelopmentInstallationEvidenceJournal:
                         evidence_run.created_at,
                     ),
                 )
+                connection.commit()
+            finally:
+                connection.close()
         except sqlite3.Error as error:
             raise MacOSDevelopmentInstallationEvidenceRunError(
                 "macOS development installation evidence journal creation failed: "

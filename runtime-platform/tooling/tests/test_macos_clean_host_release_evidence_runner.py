@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -169,6 +170,79 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             ),
         )
 
+    def write_verified_c78_evidence_chain(self) -> tuple[Path, Path, Path]:
+        contract_root = Path(__file__).resolve().parents[2]
+        first_boot = json.loads(
+            (
+                contract_root
+                / "contracts/examples/v1/valid/guest-installed-runtime-evidence-first-boot.json"
+            ).read_text(encoding="utf-8")
+        )
+        first_boot["evidenceId"] = "c78-run-01-first-boot-checkpoint"
+        first_boot["runner"]["id"] = "macos-clean-host-runner-01"
+
+        assignment_receipt = json.loads(
+            (
+                contract_root
+                / "contracts/examples/v1/valid/recorder-assignment-evidence-receipt.json"
+            ).read_text(encoding="utf-8")
+        )
+        artifact = json.loads(
+            (
+                contract_root
+                / "contracts/examples/v1/valid/archive-artifact-detail.json"
+            ).read_text(encoding="utf-8")
+        )
+        direct_upload = {
+            "schemaVersion": "v1",
+            "evidenceId": "c78-run-01-direct-upload-lineage",
+            "releaseDeliveryPlanId": "macos-runtime-platform-release",
+            "stage": "direct-upload-lineage",
+            "status": "verified",
+            "recordedAt": "2026-07-24T23:31:00Z",
+            "runner": {
+                "kind": "guest-installed-runtime",
+                "id": "macos-clean-host-runner-01",
+            },
+            "checkpointEvidenceId": first_boot["evidenceId"],
+            "edgeEndpoint": "http://edge/",
+            "sourceVitalFile": {
+                "fileName": "OR-01-20260724.vital",
+                "byteSize": 20480,
+                "sha256": "a" * 64,
+            },
+            "uploadId": "upload-01",
+            "recorderId": "recorder-1",
+            "reportedBedName": "OR-01",
+            "declaredRecorderCode": "VR-01",
+            "assignmentReceipt": assignment_receipt,
+            "artifact": artifact,
+        }
+        post_reboot = json.loads(json.dumps(first_boot))
+        post_reboot.update(
+            {
+                "evidenceId": "c78-run-01-post-reboot-identity",
+                "stage": "post-reboot-identity",
+                "recordedAt": "2026-07-24T23:40:00Z",
+                "checkpointEvidenceId": first_boot["evidenceId"],
+                "directUploadEvidenceId": direct_upload["evidenceId"],
+                "hostBootSessionIdentifier": "host-boot-session-after",
+                "readinessObservedAt": "2026-07-24T23:39:59Z",
+            }
+        )
+        post_reboot["identity"]["observedAt"] = "2026-07-24T23:39:59Z"
+
+        paths = (
+            self.root / "c78-first-boot.json",
+            self.root / "c78-direct-upload.json",
+            self.root / "c78-post-reboot.json",
+        )
+        for path, document in zip(
+            paths, (first_boot, direct_upload, post_reboot), strict=True
+        ):
+            path.write_text(json.dumps(document), encoding="utf-8")
+        return paths
+
     def test_collects_explicit_clean_host_install_service_and_reboot_evidence(self) -> None:
         evidence_run = self.create_evidence_run()
         self.assertEqual(
@@ -201,6 +275,15 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             service_registration = runner.record_service_registration()
             reboot_checkpoint = runner.record_reboot_checkpoint()
             reboot = runner.record_reboot()
+            first_boot, direct_upload, post_reboot = (
+                self.write_verified_c78_evidence_chain()
+            )
+            installed_guest_runtime = runner.record_installed_guest_runtime(
+                Path(__file__).resolve().parents[2],
+                first_boot,
+                direct_upload,
+                post_reboot,
+            )
 
         self.assertEqual("verified", artifact_integrity.status)
         self.assertEqual("verified", clean_host_preflight.status)
@@ -208,6 +291,7 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
         self.assertEqual("verified", service_registration.status)
         self.assertEqual("verified", reboot_checkpoint.status)
         self.assertEqual("verified", reboot.status)
+        self.assertEqual("verified", installed_guest_runtime.status)
         self.assertTrue(artifact_integrity.evidence_path.is_file())
         self.assertEqual(
             "artifact-integrity", artifact_integrity.c24_proof["stage"]
@@ -232,6 +316,23 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             ],
         )
         self.assertEqual("reboot", reboot.c24_proof["stage"])
+        self.assertEqual(
+            "installed-guest-runtime",
+            installed_guest_runtime.c24_proof["stage"],
+        )
+        self.assertEqual(
+            [
+                "first-boot-checkpoint",
+                "direct-upload-lineage",
+                "post-reboot-identity",
+            ],
+            [
+                item["stage"]
+                for item in json.loads(
+                    installed_guest_runtime.evidence_path.read_text(encoding="utf-8")
+                )["details"]["guestInstalledRuntimeEvidence"]
+            ],
+        )
         contract_repository = ContractRepository(
             Path(__file__).resolve().parents[2]
         )
@@ -241,6 +342,7 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             clean_install,
             service_registration,
             reboot,
+            installed_guest_runtime,
         ):
             self.assertEqual(
                 [],
@@ -273,6 +375,50 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             json.loads(reboot.evidence_path.read_text(encoding="utf-8"))["details"][
                 "postRebootBootSessionObservation"
             ]["bootSessionIdentifier"],
+        )
+
+    def test_records_failed_installed_guest_runtime_when_c78_chain_is_mismatched(
+        self,
+    ) -> None:
+        self.create_evidence_run()
+        runner = evidence_runner.MacOSCleanHostReleaseEvidenceRunner(
+            evidence_runner.MacOSCleanHostReleaseEvidenceJournal(self.journal_path)
+        )
+        with mock.patch.object(
+            evidence_runner,
+            "execute_macos_clean_host_command",
+            side_effect=self.command_result,
+        ), mock.patch.object(
+            evidence_runner,
+            "observe_macos_installer_artifact_release_identity",
+            return_value=self.available_installer_artifact_package_metadata_observation(),
+        ), mock.patch.object(evidence_runner.os, "geteuid", return_value=0):
+            runner.record_artifact_integrity()
+            runner.record_clean_host_preflight()
+            runner.execute_clean_install()
+            self.launchd_services_registered = True
+            runner.record_service_registration()
+            runner.record_reboot_checkpoint()
+            runner.record_reboot()
+
+        first_boot, direct_upload, post_reboot = (
+            self.write_verified_c78_evidence_chain()
+        )
+        direct_document = json.loads(direct_upload.read_text(encoding="utf-8"))
+        direct_document["checkpointEvidenceId"] = "different-first-boot-evidence"
+        direct_upload.write_text(json.dumps(direct_document), encoding="utf-8")
+
+        installed_guest_runtime = runner.record_installed_guest_runtime(
+            Path(__file__).resolve().parents[2],
+            first_boot,
+            direct_upload,
+            post_reboot,
+        )
+
+        self.assertEqual("failed", installed_guest_runtime.status)
+        self.assertEqual(
+            "installed-guest-runtime-evidence-chain-mismatch",
+            installed_guest_runtime.c24_proof["issue"]["code"],
         )
 
     def test_missing_required_update_handoff_supervisor_registration_fails_service_evidence(self) -> None:
@@ -382,8 +528,11 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
         )
 
     def test_pre_update_handoff_evidence_journal_cannot_be_resumed(self) -> None:
-        with sqlite3.connect(self.journal_path) as connection:
-            connection.execute("CREATE TABLE evidence_run (run_id TEXT NOT NULL)")
+        with closing(sqlite3.connect(self.journal_path)) as connection:
+            with connection:
+                connection.execute(
+                    "CREATE TABLE evidence_run (run_id TEXT NOT NULL)"
+                )
 
         with self.assertRaisesRegex(
             evidence_runner.MacOSCleanHostReleaseEvidenceRunError,

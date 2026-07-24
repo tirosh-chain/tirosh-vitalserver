@@ -47,6 +47,16 @@ class LinuxHostReleaseInputPreparerTests(unittest.TestCase):
                 "dataDirectory": preparer.DATA_ROOT,
             },
             "guestRuntimeControlEndpoint": {"id": "linux-guest", "scheme": "http", "host": "192.0.2.10", "port": 18443},
+            "operationalStateBackup": {
+                "scheduleId": "daily-primary",
+                "intervalSeconds": 86400,
+                "retryIntervalSeconds": 60,
+                "destinationReference": {
+                    "resourceType": "guest-backup-destination",
+                    "resourceId": "guest-local-operational-state",
+                },
+                "retentionPolicy": "retain-all",
+            },
             "provider": {
                 "kind": "linux-kvm-libvirt-systemd", "id": "linux-reference-provider",
                 "nativeProviderBridgeExecutablePath": self.current + "/bin/linux-kvm-libvirt-systemd-bridge",

@@ -796,10 +796,35 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
 
     def test_payload_copy_does_not_preserve_build_host_extended_attributes(self) -> None:
         attribute_name = "user.vitalserver.package-composer-test"
-        try:
-            os.setxattr(self.host_agent_binary, attribute_name, b"unowned-build-host-metadata")
-        except (AttributeError, OSError) as error:
-            self.skipTest("test filesystem cannot create an extended attribute: " + str(error))
+        if hasattr(os, "setxattr"):
+            try:
+                os.setxattr(
+                    self.host_agent_binary,
+                    attribute_name,
+                    b"unowned-build-host-metadata",
+                )
+            except OSError as error:
+                self.skipTest(
+                    "test filesystem cannot create an extended attribute: "
+                    + str(error)
+                )
+        elif Path("/usr/bin/xattr").is_file():
+            subprocess.run(
+                [
+                    "/usr/bin/xattr",
+                    "-w",
+                    attribute_name,
+                    "unowned-build-host-metadata",
+                    str(self.host_agent_binary),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            self.skipTest(
+                "test platform has no extended-attribute write interface"
+            )
 
         documents = composer.load_macos_host_package_documents(self.composition())
         with tempfile.TemporaryDirectory() as payload_directory:
@@ -811,7 +836,16 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 / self.release_slot_id
                 / "bin/host-agent"
             )
-            self.assertNotIn(attribute_name, os.listxattr(staged_host_agent))
+            if hasattr(os, "listxattr"):
+                staged_attributes = os.listxattr(staged_host_agent)
+            else:
+                staged_attributes = subprocess.run(
+                    ["/usr/bin/xattr", str(staged_host_agent)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.splitlines()
+            self.assertNotIn(attribute_name, staged_attributes)
             self.assertEqual(0o755, staged_host_agent.stat().st_mode & 0o777)
             staged_host_agent_configuration = (
                 payload_root

@@ -152,6 +152,12 @@ class HostPlatformReleaseTransitionEvidenceTests(unittest.TestCase):
                 "currentReleaseLinkPath": manifest["activation"]["currentReleaseLinkPath"],
                 "observedTargetPath": manifest["activation"]["expectedReleaseRootPath"],
             },
+            "operatorApplication": {
+                "state": "matching",
+                "applicationBundlePath": manifest["operatorInterface"][
+                    "applicationBundlePath"
+                ],
+            },
             "requiredServices": [
                 {
                     "role": service["role"],

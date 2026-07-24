@@ -6,6 +6,13 @@ Tooling must not become a runtime dependency or infer product state from missing
 
 `verify_reference_fixtures.py` verifies only the quarantined fixture collection: manifest provenance, sanitization declarations, digest integrity, and registration. It never captures or reads legacy source files. `contracts.py` validates canonical contract source and generates the resolved OpenAPI bundle.
 
+`vital_replay_corpus.py` verifies one externally supplied C79 replay corpus.
+The manifest must already contain a human approval for non-identification,
+redistribution, and non-clinical use. The tool binds that decision to the exact
+registered `.vital` names, byte sizes, and SHA-256 values and rejects symlinks,
+missing entries, and unregistered `.vital` files. It never examines content to
+invent an approval.
+
 `macos_guest_artifact_manifest_composer.py` reads only the explicitly named C35
 outputs and writes C34 `MacOSGuestArtifactManifest`. It calculates immutable
 digest identity but does not compile, boot, or validate a Guest image.
@@ -222,6 +229,11 @@ environment. The runner binds one C23-selected PKG SHA-256 at run creation,
 requires an explicit signed installer-artifact release-identity observation,
 then separately observes clean-host receipt and launchd absence, installer
 receipt, all three launchd registrations, and a changed boot-session identifier.
+After C78 has recorded its first-boot, direct-upload lineage, and post-reboot
+documents, `record-installed-guest-runtime` validates those exact caller-selected
+files against the canonical contracts and binds them into the separate C24
+`installed-guest-runtime` stage. Package installation and Guest product
+readiness therefore remain different proof facts.
 The installer effect requires root plus the explicit `--authorize-clean-install`
 grant; reboot remains an operator action between a durable checkpoint and its
 later observation. It writes C24 proof fragments for review rather than
@@ -343,6 +355,17 @@ The runner writes a failed C24 fragment when that contract chain or the fresh
 OS observations disagree. It never executes an update itself. A successful
 update and a failed-update rollback are distinct scenarios, so one evidence
 journal deliberately rejects an attempt to record both.
+
+`guest_installed_runtime_evidence_runner.py` owns C78 first-boot and
+post-reboot Guest evidence. `create-run` binds one explicit `platformctl`,
+C52 local-control descriptor, macOS `sysctl`, canonical contract root, release
+plan, and new evidence directory. `record-first-boot` requires the Guest
+readiness owner to report `ready` and C77 to be available. After an operator
+performs the real Host reboot, `record-post-reboot` requires a different
+Host boot-session ID and exact equality of C77 `sqlite`, `postgresql`, and
+`bootstrap` identity. It writes immutable schema-validated evidence and a
+separate SQLite collection journal; it neither reboots the Host nor reads
+Guest files, databases, processes, or logs.
 
 `guest-bundled-upstream-image-set-archive-composer/` creates the deterministic
 C64 image-set archive from explicit local Compose and OCI/Docker image archive

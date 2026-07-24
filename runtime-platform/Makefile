@@ -19,6 +19,7 @@ MACOS_DEVELOPMENT_UPSTREAM_PLACEMENT ?= external-vitalserver
 RELEASE_DELIVERY_PLANS_DOCUMENT ?= $(CURDIR)/product/delivery/release-delivery-plans.v1.json
 RELEASE_DELIVERY_PROOF_SET_DOCUMENT ?= $(CURDIR)/product/delivery/release-delivery-proofs.v1.json
 RELEASE_DELIVERY_PROOF_ATTACHMENT_REVIEW_DOCUMENT ?=
+RELEASE_DELIVERY_PLAN_ID ?= macos-runtime-platform-release
 
 # The development package never discovers an upstream choice from a file or an
 # endpoint. The caller chooses one named placement; C41 validates the selected
@@ -87,6 +88,7 @@ endif
 	runtime-console-package-linux-deb \
 	host-edge-proxy-test \
 	host-guest-acceptance \
+	guest-operational-state-backup-restore-acceptance \
 	macos-provider-test \
 	guest-artifact-compiler-test \
 	guest-artifact-compilation-input-assembler-test \
@@ -134,6 +136,9 @@ endif
 	macos-development-release-input-prepare \
 	macos-development-release-package-build \
 	macos-clean-host-release-evidence-runner-test \
+	guest-installed-runtime-evidence-runner-test \
+	vital-replay-corpus-test \
+	vital-replay-corpus-verify \
 	windows-clean-host-release-evidence-runner-test \
 	linux-clean-host-release-evidence-runner-test \
 	release-delivery-proof-attachment-test \
@@ -149,6 +154,8 @@ endif
 	guest-node-services-bundle \
 	recorder-gateway-acceptance \
 	lab-recorder-runner-gateway-acceptance \
+	lab-replay-guest-runtime-acceptance \
+	lab-replay-approved-corpus-acceptance \
 	lab-archive-acceptance \
 	external-time-observability-acceptance \
 	portable-provider-test \
@@ -166,7 +173,7 @@ endif
 	installation-update-acceptance \
 	check
 
-check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test guest-product-amd64-build guest-product-release-manager-test guest-product-release-effect-executor-test guest-product-release-effect-executor-cross-platform-build guest-bundled-upstream-image-set-manager-test guest-bundled-upstream-image-set-manager-linux-build guest-bundled-upstream-image-set-effect-executor-test guest-bundled-upstream-image-set-effect-executor-cross-platform-build guest-bundled-upstream-image-set-archive-composer-test guest-product-release-update-composer-test guest-product-release-archive-composer-test host-platform-release-archive-composer-test guest-product-release-update-composition-acceptance platformctl-test platformctl-cross-platform-build runtime-console-test host-guest-acceptance macos-provider-test guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test native-guest-artifact-input-preparer-test guest-telemetry-collector-artifact-builder-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-linux-source-disk-materializer-test guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test linux-host-package-composer-test linux-host-release-input-preparer-test windows-host-msi-composer-test windows-host-release-input-preparer-test macos-release-package-assembly-test macos-development-release-input-preparer-test macos-development-guest-boot-input-assembly-test macos-clean-host-release-evidence-runner-test windows-clean-host-release-evidence-runner-test linux-clean-host-release-evidence-runner-test release-delivery-proof-attachment-test release-artifact-sbom-notices-test host-platform-release-transition-evidence-test macos-development-installation-evidence-runner-test recorder-gateway-check lab-recorder-runner-check guest-node-services-bundle-test recorder-gateway-acceptance lab-recorder-runner-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test host-update-handoff-supervisor-test host-service-runner-test host-service-runner-cross-platform-build host-installation-manager-test host-installation-manager-build release-composer-test installation-update-acceptance
+check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test guest-product-amd64-build guest-product-release-manager-test guest-product-release-effect-executor-test guest-product-release-effect-executor-cross-platform-build guest-bundled-upstream-image-set-manager-test guest-bundled-upstream-image-set-manager-linux-build guest-bundled-upstream-image-set-effect-executor-test guest-bundled-upstream-image-set-effect-executor-cross-platform-build guest-bundled-upstream-image-set-archive-composer-test guest-product-release-update-composer-test guest-product-release-archive-composer-test host-platform-release-archive-composer-test guest-product-release-update-composition-acceptance platformctl-test platformctl-cross-platform-build runtime-console-test host-guest-acceptance macos-provider-test guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test native-guest-artifact-input-preparer-test guest-telemetry-collector-artifact-builder-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-linux-source-disk-materializer-test guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test linux-host-package-composer-test linux-host-release-input-preparer-test windows-host-msi-composer-test windows-host-release-input-preparer-test macos-release-package-assembly-test macos-development-release-input-preparer-test macos-development-guest-boot-input-assembly-test macos-clean-host-release-evidence-runner-test guest-installed-runtime-evidence-runner-test vital-replay-corpus-test windows-clean-host-release-evidence-runner-test linux-clean-host-release-evidence-runner-test release-delivery-proof-attachment-test release-artifact-sbom-notices-test host-platform-release-transition-evidence-test macos-development-installation-evidence-runner-test recorder-gateway-check lab-recorder-runner-check guest-node-services-bundle-test recorder-gateway-acceptance lab-recorder-runner-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test host-update-handoff-supervisor-test host-service-runner-test host-service-runner-cross-platform-build host-installation-manager-test host-installation-manager-build release-composer-test installation-update-acceptance
 
 bootstrap-contract-tools:
 	$(SYSTEM_PYTHON) -m venv $(VENV)
@@ -354,6 +361,24 @@ runtime-console-package-linux-deb: runtime-console-check runtime-console-audit
 
 host-guest-acceptance: ensure-go
 	RUNTIME_PLATFORM_GO="$(GO)" $(SYSTEM_PYTHON) -m unittest acceptance.harness.test_host_guest_control
+
+guest-operational-state-backup-restore-acceptance: ensure-go
+	@test -n "$(VITALSERVER_GUEST_STATE_BACKUP_TEST_SOURCE_DATABASE_URL)" \
+		&& test -n "$(VITALSERVER_GUEST_STATE_BACKUP_TEST_EMPTY_TARGET_DATABASE_URL)" \
+		&& test -n "$(VITALSERVER_GUEST_STATE_BACKUP_TEST_PG_DUMP_PATH)" \
+		&& test -n "$(VITALSERVER_GUEST_STATE_BACKUP_TEST_PG_RESTORE_PATH)" \
+		|| { printf '%s\n' 'C76 acceptance requires a freshly migrated source URL, a distinct empty target URL, and absolute pg_dump/pg_restore paths'; exit 2; }
+	cd services/guest-runtime && \
+		VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL="$(VITALSERVER_GUEST_STATE_BACKUP_TEST_SOURCE_DATABASE_URL)" \
+		$(GO) test -count=1 ./internal/adapters/gueststatepostgresqlrepository
+	cd services/guest-runtime && \
+		VITALSERVER_GUEST_STATE_BACKUP_TEST_SOURCE_DATABASE_URL="$(VITALSERVER_GUEST_STATE_BACKUP_TEST_SOURCE_DATABASE_URL)" \
+		VITALSERVER_GUEST_STATE_BACKUP_TEST_EMPTY_TARGET_DATABASE_URL="$(VITALSERVER_GUEST_STATE_BACKUP_TEST_EMPTY_TARGET_DATABASE_URL)" \
+		VITALSERVER_GUEST_STATE_BACKUP_TEST_PG_DUMP_PATH="$(VITALSERVER_GUEST_STATE_BACKUP_TEST_PG_DUMP_PATH)" \
+		VITALSERVER_GUEST_STATE_BACKUP_TEST_PG_RESTORE_PATH="$(VITALSERVER_GUEST_STATE_BACKUP_TEST_PG_RESTORE_PATH)" \
+		$(GO) test -count=1 \
+			-run TestGuestOperationalStateBackupRestoresBothOwnedDatabasesToEmptyTargets \
+			./internal/adapters/gueststatebackupstageexecutor
 
 macos-provider-test:
 	@$(SWIFT) --version >/dev/null 2>&1 || { printf '%s\n' 'Swift is unavailable; install Xcode Command Line Tools or set SWIFT'; exit 2; }
@@ -768,6 +793,20 @@ macos-development-release-package-build:
 macos-clean-host-release-evidence-runner-test: ensure-contract-python
 	$(PYTHON) -m unittest tooling.tests.test_macos_clean_host_release_evidence_runner
 
+guest-installed-runtime-evidence-runner-test: ensure-contract-python
+	PYTHONWARNINGS=error::ResourceWarning $(PYTHON) -m unittest tooling.tests.test_guest_installed_runtime_evidence_runner
+
+vital-replay-corpus-test: ensure-contract-python
+	PYTHONWARNINGS=error::ResourceWarning $(PYTHON) -m unittest tooling.tests.test_vital_replay_corpus
+
+vital-replay-corpus-verify: ensure-contract-python
+	@[ -n "$(VITAL_REPLAY_CORPUS_MANIFEST)" ] || { printf '%s\n' 'set VITAL_REPLAY_CORPUS_MANIFEST to an absolute approved C79 manifest path'; exit 2; }
+	@[ -n "$(VITAL_REPLAY_CORPUS_DIRECTORY)" ] || { printf '%s\n' 'set VITAL_REPLAY_CORPUS_DIRECTORY to the absolute reviewed corpus directory'; exit 2; }
+	$(PYTHON) -m tooling.vital_replay_corpus \
+		--contract-root "$(CURDIR)" \
+		--manifest "$(VITAL_REPLAY_CORPUS_MANIFEST)" \
+		--corpus-directory "$(VITAL_REPLAY_CORPUS_DIRECTORY)"
+
 windows-clean-host-release-evidence-runner-test: ensure-contract-python
 	$(PYTHON) -m unittest tooling.tests.test_windows_clean_host_release_evidence_runner
 
@@ -842,6 +881,33 @@ lab-recorder-runner-gateway-acceptance: recorder-gateway-check lab-recorder-runn
 	@node_path="$$(command -v "$(NODE)")"; \
 	PATH="$$(dirname "$$node_path"):$$PATH" RUNTIME_PLATFORM_NODE="$(NODE)" $(PYTHON) -m unittest acceptance.harness.test_lab_recorder_runner_gateway
 
+lab-replay-guest-runtime-acceptance: recorder-gateway-check lab-recorder-runner-check ensure-contract-python ensure-go
+	@test -n "$(VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL)" \
+		|| { printf '%s\n' 'C4 acceptance requires a migrated PostgreSQL test database URL'; exit 2; }
+	@node_path="$$(command -v "$(NODE)")"; \
+	PATH="$$(dirname "$$node_path"):$$PATH" \
+		RUNTIME_PLATFORM_GO="$(GO)" \
+		RUNTIME_PLATFORM_NODE="$(NODE)" \
+		VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL="$(VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL)" \
+		$(PYTHON) -m unittest acceptance.harness.test_lab_replay_guest_runtime
+
+lab-replay-approved-corpus-acceptance: recorder-gateway-check lab-recorder-runner-check ensure-contract-python ensure-go
+	@test -n "$(VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL)" \
+		|| { printf '%s\n' 'C79 replay acceptance requires a migrated PostgreSQL test database URL'; exit 2; }
+	@test -n "$(VITAL_REPLAY_CORPUS_MANIFEST)" \
+		|| { printf '%s\n' 'C79 replay acceptance requires an absolute approved manifest path'; exit 2; }
+	@test -n "$(VITAL_REPLAY_CORPUS_DIRECTORY)" \
+		|| { printf '%s\n' 'C79 replay acceptance requires an absolute reviewed corpus directory'; exit 2; }
+	@node_path="$$(command -v "$(NODE)")"; \
+	PATH="$$(dirname "$$node_path"):$$PATH" \
+		RUNTIME_PLATFORM_GO="$(GO)" \
+		RUNTIME_PLATFORM_NODE="$(NODE)" \
+		RUNTIME_PLATFORM_VITAL_REPLAY_CORPUS_MANIFEST="$(VITAL_REPLAY_CORPUS_MANIFEST)" \
+		RUNTIME_PLATFORM_VITAL_REPLAY_CORPUS_DIRECTORY="$(VITAL_REPLAY_CORPUS_DIRECTORY)" \
+		VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL="$(VITALSERVER_RECORDER_CATALOG_TEST_DATABASE_URL)" \
+		$(PYTHON) -m unittest \
+		acceptance.harness.test_lab_replay_guest_runtime.LabReplayGuestRuntimeAcceptance.test_guest_worker_persists_vitalserver_acknowledged_replay
+
 lab-archive-acceptance: ensure-go ensure-contract-python
 	RUNTIME_PLATFORM_GO="$(GO)" $(PYTHON) -m unittest acceptance.harness.test_lab_archive_deletion
 
@@ -866,7 +932,7 @@ delivery-proof-check: ensure-contract-python
 # clean-host runner after evidence is attached.
 release-ready: ensure-contract-python
 	@[ -n "$(RELEASE_DELIVERY_PROOF_ATTACHMENT_REVIEW_DOCUMENT)" ] || { printf '%s\n' 'set RELEASE_DELIVERY_PROOF_ATTACHMENT_REVIEW_DOCUMENT to an absolute C74 review document path'; exit 2; }
-	$(PYTHON) -m tooling.verify_delivery_proofs --root . --release-delivery-plans-document "$(RELEASE_DELIVERY_PLANS_DOCUMENT)" --source-release-delivery-proof-set-document "$(CURDIR)/product/delivery/release-delivery-proofs.v1.json" --release-delivery-proof-set-document "$(RELEASE_DELIVERY_PROOF_SET_DOCUMENT)" --release-delivery-proof-attachment-review-document "$(RELEASE_DELIVERY_PROOF_ATTACHMENT_REVIEW_DOCUMENT)" --require-verified
+	$(PYTHON) -m tooling.verify_delivery_proofs --root . --release-delivery-plans-document "$(RELEASE_DELIVERY_PLANS_DOCUMENT)" --source-release-delivery-proof-set-document "$(CURDIR)/product/delivery/release-delivery-proofs.v1.json" --release-delivery-proof-set-document "$(RELEASE_DELIVERY_PROOF_SET_DOCUMENT)" --release-delivery-proof-attachment-review-document "$(RELEASE_DELIVERY_PROOF_ATTACHMENT_REVIEW_DOCUMENT)" --release-delivery-plan-id "$(RELEASE_DELIVERY_PLAN_ID)" --require-verified
 
 cross-platform-delivery-acceptance: ensure-go ensure-contract-python
 	RUNTIME_PLATFORM_GO="$(GO)" $(PYTHON) -m unittest acceptance.harness.test_cross_platform_delivery

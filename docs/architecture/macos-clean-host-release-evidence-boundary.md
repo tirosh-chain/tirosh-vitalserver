@@ -13,6 +13,7 @@ PKG가 build 또는 payload verification을 통과했다고 해서 clean macOS H
 | PKG payload와 C32–C39/C44 provenance 및 external-topology C46 input identity | Package composer/verifier | build result | clean Host installation |
 | 한 clean Host run의 단계/증거 | `MacOSCleanHostReleaseEvidenceJournal` | runner-owned SQLite | Host Agent/Guest Runtime runtime state |
 | PKG receipt와 launchd registration의 실제 현재 사실 | macOS `pkgutil` / `launchctl` | command observation | Guest VM start/readiness |
+| 설치된 Guest의 first boot, Recorder upload lineage, reboot identity | C78 Guest installed-runtime runner | 세 immutable C78 document | PKG receipt·process/log 존재 |
 | release proof | Release process | C24 `ReleaseDeliveryProofSet` | Host/Guest domain state |
 
 `tooling/macos_clean_host_release_evidence_runner.py`는 위 표의 세 번째 행만
@@ -72,6 +73,7 @@ stateDiagram-v2
     clean_install --> service_registration: three C23 launchd services observed
     service_registration --> reboot_checkpoint: pre-reboot boot-session observed
     reboot_checkpoint --> reboot: changed boot-session + receipt/services observed
+    reboot --> installed_guest_runtime: verified C78 chain attached
     reboot --> update: separate succeeded C29/C28/C55 apply scenario
     reboot --> rollback: separate failed C29/C28/C55 rollback scenario
     reboot --> uninstall_reinstall: explicit C54 preservation removal + receipt/service absence + fresh installer effect
@@ -81,6 +83,7 @@ stateDiagram-v2
     clean_install --> failed
     service_registration --> failed
     reboot --> failed
+    installed_guest_runtime --> failed
 ```
 
 각 stage는 journal에서 한 번만 기록된다. 실패한 command를 다른 output으로 재시도해
@@ -104,6 +107,7 @@ release tooling이 개발자 Mac을 몰래 재부팅하거나, process uptime만
 | install | `installer -pkg <bound PKG> -target /` | explicit root process에서 installer success 후 exact receipt observed | C24 `clean-install=failed` |
 | service registration | 세 `launchctl print` | 세 C23 label 모두 registered | C24 `service-registration=failed` |
 | reboot | `sysctl -n kern.bootsessionuuid` + receipt/service checks | checkpoint와 다른 boot session, receipt/service retained | C24 `reboot=failed` |
+| installed Guest runtime | caller-selected C78 first-boot/direct-upload/post-reboot documents + canonical contract repository | 세 문서가 모두 contract-valid/verified이고 같은 C23 plan·runner를 명시하며, evidence ID chain·changed boot session·C77 owner identity가 일치 | C24 `installed-guest-runtime=failed`; runner는 Guest state를 다시 탐색하지 않음 |
 | update | explicit C23 + C29/C55/C48/C49 paths, then `pkgutil`/`launchctl` | succeeded C29/C28/C55 apply and C48/C49 facts agree with fresh native receipt/services | C24 `update=failed`; command never executes an update |
 | rollback | explicit C23 + failed C29/C28/C55 rollback/C48/C49 paths, then `pkgutil`/`launchctl` | restored C48 version and native receipt/services agree | C24 `rollback=failed`; one journal cannot contain both update and rollback scenarios |
 | uninstall/reinstall | installed `host-installation-manager --mode remove` + `pkgutil`/`launchctl` + `installer` | C54 `preserve-mutable-data` receipt has the exact installation/release IDs, manager-owned receipt removal, C23 receipt/service absence, then exact bound PKG receipt/service recovery | C54 receipt failure, non-zero remove, ambiguous absence, or failed reinstall is C24 `uninstall-reinstall=failed`; reinstall is not executed after a failed removal proof |
@@ -153,6 +157,14 @@ python3 -m tooling.macos_clean_host_release_evidence_runner record-reboot-checkp
 # Operator performs the actual reboot here.
 python3 -m tooling.macos_clean_host_release_evidence_runner record-reboot \
   --journal-path /absolute/evidence/macos-020/release-evidence.sqlite
+
+# C78 runner가 같은 runner ID로 발행한 세 immutable document만 결속한다.
+python3 -m tooling.macos_clean_host_release_evidence_runner record-installed-guest-runtime \
+  --journal-path /absolute/evidence/macos-020/release-evidence.sqlite \
+  --contract-root /absolute/source/runtime-platform \
+  --first-boot-evidence /absolute/evidence/c78/first-boot-checkpoint.json \
+  --direct-upload-evidence /absolute/evidence/c78/direct-upload-lineage.json \
+  --post-reboot-evidence /absolute/evidence/c78/post-reboot-identity.json
 
 # Run this only after the staged updater has already produced C29/C28/C55 and
 # Host Installation Manager has produced fresh C48/C49 facts. It records
@@ -211,7 +223,10 @@ release evidence를 성공처럼 보이지 않게 하는 정상 동작이다.
 3. run 생성 후 PKG bytes가 바뀌면 동일 release evidence로 사용하지 않는 규칙;
 4. stage evidence가 overwrite되지 않는 규칙;
 5. C54 receipt/receipt absence/service absence를 모두 확인한 뒤에만 재설치하는 규칙,
-   그리고 C54 receipt가 invalid이면 재설치를 수행하지 않는 규칙.
+   그리고 C54 receipt가 invalid이면 재설치를 수행하지 않는 규칙;
+6. C78 세 문서가 같은 plan/runner/evidence chain, changed boot session과 동일한
+   C77 SQLite/PostgreSQL/bootstrap identity를 제공할 때만 별도
+   `installed-guest-runtime` C24 stage가 verified가 되는 규칙.
 
 이는 runner의 decision/recording contract proof다. 실제 C23 policy에 맞는 PKG, clean
 Host, launchd, reboot evidence가 C24에 attach되기 전에는 제품 설치 proof가 아니다.

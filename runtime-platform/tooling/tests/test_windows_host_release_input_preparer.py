@@ -53,6 +53,16 @@ class WindowsHostReleaseInputPreparerTests(unittest.TestCase):
                 "dataDirectory": self.product_root + r"\data",
             },
             "guestRuntimeControlEndpoint": {"id": "guest-runtime", "scheme": "http", "host": "192.0.2.10", "port": 18443},
+            "operationalStateBackup": {
+                "scheduleId": "daily-primary",
+                "intervalSeconds": 86400,
+                "retryIntervalSeconds": 60,
+                "destinationReference": {
+                    "resourceType": "guest-backup-destination",
+                    "resourceId": "guest-local-operational-state",
+                },
+                "retentionPolicy": "retain-all",
+            },
             "provider": {
                 "kind": "windows-hyperv-scm",
                 "id": "vitalserver-windows-hyperv-provider",
