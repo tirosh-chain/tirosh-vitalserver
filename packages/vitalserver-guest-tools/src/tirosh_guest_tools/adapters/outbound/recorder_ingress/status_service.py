@@ -393,6 +393,7 @@ def _validated_observability_detail(
     report = document.get("report")
     profile = document.get("profile")
     boot = document.get("boot")
+    operational_health = document.get("operationalHealth")
     readings = document.get("readings")
     read_issues = document.get("readIssues")
     if not isinstance(support, dict) or support.get("state") not in {
@@ -423,6 +424,7 @@ def _validated_observability_detail(
         "shutdownClean",
     }:
         raise _observability_contract_error("detail boot is invalid")
+    _validate_operational_health(operational_health)
     if not isinstance(readings, dict):
         raise _observability_contract_error("detail readings is invalid")
     required_readings = {
@@ -480,6 +482,32 @@ def _validate_observability_reading(value: object, name: str) -> None:
         )
 
 
+def _validate_operational_health(value: object) -> None:
+    if (
+        not isinstance(value, dict)
+        or value.get("state") not in {"healthy", "warning", "critical", "unknown"}
+        or not isinstance(value.get("issues"), list)
+        or value.get("issueCount") != len(value["issues"])
+        or (
+            value.get("evaluatedAt") is not None
+            and not isinstance(value.get("evaluatedAt"), str)
+        )
+    ):
+        raise _observability_contract_error("operational health is invalid")
+    for index, issue in enumerate(value["issues"]):
+        if (
+            not isinstance(issue, dict)
+            or issue.get("severity") not in {"warning", "critical"}
+            or not all(
+                isinstance(issue.get(field), str)
+                for field in ("code", "category", "title", "detail", "field")
+            )
+        ):
+            raise _observability_contract_error(
+                f"operational health issue {index} is invalid"
+            )
+
+
 def _validate_observability_summary(summary: object) -> None:
     if not isinstance(summary, dict) or not isinstance(summary.get("vrcode"), str):
         raise _observability_contract_error("summary VRCODE is invalid")
@@ -517,6 +545,24 @@ def _validate_observability_summary(summary: object) -> None:
         or read_issue_count < 0
     ):
         raise _observability_contract_error("summary readIssueCount is invalid")
+    if summary.get("operationalHealthState") not in {
+        "healthy",
+        "warning",
+        "critical",
+        "unknown",
+    }:
+        raise _observability_contract_error(
+            "summary operationalHealthState is invalid"
+        )
+    operational_issue_count = summary.get("operationalIssueCount")
+    if (
+        not isinstance(operational_issue_count, int)
+        or isinstance(operational_issue_count, bool)
+        or operational_issue_count < 0
+    ):
+        raise _observability_contract_error(
+            "summary operationalIssueCount is invalid"
+        )
 
 
 def _empty_observability(
@@ -537,6 +583,8 @@ def _empty_observability(
         "latestObservationReceivedAt": None,
         "lastBootStartedAt": None,
         "readIssueCount": None,
+        "operationalHealthState": "unknown",
+        "operationalIssueCount": 0,
         "expectedSince": None,
         "recorderVersion": None,
         "producerVersion": None,
@@ -590,6 +638,12 @@ def _empty_observability_detail(
             "bootId": None,
             "startedAt": None,
             "cleanShutdownAt": None,
+        },
+        "operationalHealth": {
+            "state": "unknown",
+            "evaluatedAt": None,
+            "issueCount": 0,
+            "issues": [],
         },
         "readings": {
             "temperatureCelsius": dict(missing),

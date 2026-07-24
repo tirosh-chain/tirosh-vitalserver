@@ -630,6 +630,8 @@ components:
         - latestObservationReceivedAt
         - lastBootStartedAt
         - readIssueCount
+        - operationalHealthState
+        - operationalIssueCount
         - expectedSince
         - recorderVersion
         - producerVersion
@@ -648,6 +650,10 @@ components:
         latestObservationReceivedAt: {type: string, nullable: true}
         lastBootStartedAt: {type: string, nullable: true}
         readIssueCount: {type: integer, minimum: 0}
+        operationalHealthState:
+          type: string
+          enum: [healthy, warning, critical, unknown]
+        operationalIssueCount: {type: integer, minimum: 0}
         expectedSince: {type: string, nullable: true}
         recorderVersion: {type: string, nullable: true}
         producerVersion: {type: string, nullable: true}
@@ -672,6 +678,7 @@ components:
         - report
         - profile
         - boot
+        - operationalHealth
         - readings
         - readIssues
         - readError
@@ -740,6 +747,8 @@ components:
             bootId: {type: string, nullable: true}
             startedAt: {type: string, nullable: true}
             cleanShutdownAt: {type: string, nullable: true}
+        operationalHealth:
+          $ref: "#/components/schemas/RecorderOperationalHealth"
         readings:
           type: object
           additionalProperties: false
@@ -777,6 +786,33 @@ components:
               state: {type: string}
               detail: {type: string}
         readError: {type: string, nullable: true}
+    RecorderOperationalHealth:
+      type: object
+      additionalProperties: false
+      required: [state, evaluatedAt, issueCount, issues]
+      properties:
+        state:
+          type: string
+          enum: [healthy, warning, critical, unknown]
+        evaluatedAt: {type: string, nullable: true}
+        issueCount: {type: integer, minimum: 0}
+        issues:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, category, severity, title, detail, field]
+            properties:
+              code: {type: string}
+              category:
+                type: string
+                enum: [power, storage, service, time, temperature, memory]
+              severity:
+                type: string
+                enum: [warning, critical]
+              title: {type: string}
+              detail: {type: string}
+              field: {type: string}
     RecorderObservabilityReading:
       type: object
       additionalProperties: false

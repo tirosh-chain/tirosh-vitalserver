@@ -2667,6 +2667,8 @@ final class RuntimeControlContractsTests: XCTestCase {
           "latestObservationReceivedAt": null,
           "lastBootStartedAt": null,
           "readIssueCount": 0,
+          "operationalHealthState": "unknown",
+          "operationalIssueCount": 0,
           "expectedSince": null,
           "recorderVersion": null,
           "producerVersion": null,
@@ -2679,6 +2681,8 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         XCTAssertEqual(value.supportState, .unknown)
         XCTAssertEqual(value.reportState, .notEvaluated)
+        XCTAssertEqual(value.operationalHealthState, .unknown)
+        XCTAssertEqual(value.operationalIssueCount, 0)
     }
 
     func testVitalBedRecordEncodesNullableFieldsAsExplicitNull() throws {

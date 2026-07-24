@@ -1110,6 +1110,17 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
                 "state":"started","bootId":"boot-001",
                 "startedAt":"2026-07-23T23:00:00Z","cleanShutdownAt":null
               },
+              "operationalHealth":{
+                "state":"warning","evaluatedAt":"2026-07-24T00:00:00Z",
+                "issueCount":1,
+                "issues":[{
+                  "code":"systemd-system-degraded","category":"service",
+                  "severity":"warning",
+                  "title":"System service state is not fully running",
+                  "detail":"degraded; failed units: rpi-eeprom-update.service",
+                  "field":"payload.services.systemRunning"
+                }]
+              },
               "readings":{
                 "temperatureCelsius":{
                   "state":"ok","value":52.5,"detail":null,
@@ -1140,6 +1151,8 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(detail.profile.state, .associated)
         XCTAssertEqual(detail.readings.temperatureCelsius.value, .double(52.5))
         XCTAssertEqual(detail.readings.memoryAvailableBytes.state, .missing)
+        XCTAssertEqual(detail.operationalHealth.state, .warning)
+        XCTAssertEqual(detail.operationalHealth.issueCount, 1)
         XCTAssertEqual(
             client.requests.first?.url?.absoluteString,
             "http://127.0.0.1:18330/runtime/vitaldb/recorders/VR%2FA/observability"

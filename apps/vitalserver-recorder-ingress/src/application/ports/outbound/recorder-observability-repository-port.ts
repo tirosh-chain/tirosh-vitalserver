@@ -13,6 +13,9 @@ import type {
   RecorderObservabilitySupportState,
 } from "../../../domain/recorder-observability";
 import type {
+  RecorderOperationalHealthState,
+} from "../../../domain/recorder-operational-health";
+import type {
   RecorderObservabilityIncidentQuery,
   RecorderObservabilityIncidentRow,
   RecorderObservabilityTimelineQuery,
@@ -29,6 +32,8 @@ export type RecorderObservabilitySummaryReadModel = {
   latestObservationReceivedAt: string | null;
   lastBootStartedAt: string | null;
   readIssueCount: number;
+  operationalHealthState: RecorderOperationalHealthState;
+  operationalIssueCount: number;
   expectedSince: string | null;
   recorderVersion: string | null;
   producerVersion: string | null;

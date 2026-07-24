@@ -1191,6 +1191,12 @@ function unavailableRecorderObservability() {
       startedAt: null,
       cleanShutdownAt: null
     },
+    operationalHealth: {
+      state: "unknown",
+      evaluatedAt: null,
+      issueCount: 0,
+      issues: []
+    },
     readings: {
       temperatureCelsius: missing,
       memoryAvailableBytes: missing,

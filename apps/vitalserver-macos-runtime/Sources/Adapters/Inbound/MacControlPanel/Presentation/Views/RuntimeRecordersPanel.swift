@@ -255,7 +255,7 @@ struct RuntimeRecordersPanel: View {
             tableHeader("VRecorder", minWidth: 170)
             tableHeader(AppConstants.Labels.bed, minWidth: 180)
             tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 140)
-            tableHeader("Health report", minWidth: 180)
+            tableHeader("Device health", minWidth: 220)
             tableHeader(AppConstants.Labels.anomaly, minWidth: 190)
             tableHeader("IP", minWidth: 230)
         }
@@ -273,7 +273,7 @@ struct RuntimeRecordersPanel: View {
                     tableRecorderIdentity(recorder, minWidth: 170)
                     tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 180)
                     tableValue(viewModel.presentationFormatter.systemTimeAgeText(recorder.lastSeenAt), minWidth: 140)
-                    tableValue(recorderObservabilityReportText(recorder.observability), minWidth: 180)
+                    tableValue(recorderOperationalHealthSummary(recorder.observability), minWidth: 220)
                     tableValue(recorderAnomalyText(recorder), minWidth: 190)
                     tableIPValue(recorder, minWidth: 230)
                 }
@@ -783,6 +783,10 @@ struct RuntimeRecordersPanel: View {
                     viewModel.presentationFormatter.systemTimeText(detail.report.receivedAt)
                 )
                 detailRow(
+                    "Operational health",
+                    recorderOperationalHealthText(detail.operationalHealth)
+                )
+                detailRow(
                     "Temperature",
                     recorderObservabilityReadingText(
                         detail.readings.temperatureCelsius,
@@ -831,6 +835,38 @@ struct RuntimeRecordersPanel: View {
                 detailRow("Boot", recorderObservabilityBootText(detail))
                 detailRow("Read issues", String(detail.report.readIssueCount))
             }
+            if !detail.operationalHealth.issues.isEmpty {
+                Text("Latest reported issues")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .padding(.top, 4)
+                ForEach(detail.operationalHealth.issues, id: \.code) { issue in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(issue.title)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                        Text(issue.detail)
+                            .font(.caption)
+                    }
+                    .foregroundStyle(
+                        issue.severity == .critical ? Color.red : Color.orange
+                    )
+                }
+                if detail.report.state != "current" {
+                    Text(
+                        "These issues came from the latest report; "
+                            + "current device state is unknown."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            if !detail.readIssues.isEmpty {
+                Text("Telemetry read issues")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .padding(.top, 4)
+            }
             ForEach(Array(detail.readIssues.enumerated()), id: \.offset) { _, issue in
                 Text("\(issue.field): \(issue.state) — \(issue.detail)")
                     .font(.caption)
@@ -858,6 +894,10 @@ struct RuntimeRecordersPanel: View {
         }
         return summary.supportState.rawValue != detail.support.state
             || summary.reportState.rawValue != detail.report.state
+            || (
+                summary.operationalHealthState != nil
+                    && summary.operationalHealthState != detail.operationalHealth.state
+            )
     }
 
     private func recorderObservabilityDetailSupportText(
@@ -1001,6 +1041,42 @@ struct RuntimeRecordersPanel: View {
             return "Unavailable"
         case .notEvaluated, nil:
             return "Not evaluated"
+        }
+    }
+
+    private func recorderOperationalHealthSummary(
+        _ observability: RuntimeRecorderObservability?
+    ) -> String {
+        let report = recorderObservabilityReportText(observability)
+        let count = observability?.operationalIssueCount ?? 0
+        let health: String
+        switch observability?.operationalHealthState {
+        case .healthy:
+            health = "Healthy"
+        case .warning:
+            health = "Warning (\(count))"
+        case .critical:
+            health = "Critical (\(count))"
+        case .unknown, nil:
+            health = "Unknown"
+        }
+        return "\(health) · report \(report)"
+    }
+
+    private func recorderOperationalHealthText(
+        _ health: RuntimeRecorderOperationalHealth
+    ) -> String {
+        switch health.state {
+        case .healthy:
+            return "Healthy"
+        case .warning:
+            return "Warning — \(health.issueCount) reported issue(s)"
+        case .critical:
+            return "Critical — \(health.issueCount) reported issue(s)"
+        case .unknown:
+            return health.issueCount > 0
+                ? "Unknown — \(health.issueCount) issue(s) in the latest report"
+                : "Unknown"
         }
     }
 

@@ -4285,6 +4285,63 @@
           "txErrors": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReading"}
         }
       },
+      "RuntimeRecorderOperationalIssue": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "category",
+          "severity",
+          "title",
+          "detail",
+          "field"
+        ],
+        "properties": {
+          "code": {"type": "string"},
+          "category": {
+            "type": "string",
+            "enum": [
+              "power",
+              "storage",
+              "service",
+              "time",
+              "temperature",
+              "memory"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["warning", "critical"]
+          },
+          "title": {"type": "string"},
+          "detail": {"type": "string"},
+          "field": {"type": "string"}
+        }
+      },
+      "RuntimeRecorderOperationalHealth": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "evaluatedAt",
+          "issueCount",
+          "issues"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["healthy", "warning", "critical", "unknown"]
+          },
+          "evaluatedAt": {"type": ["string", "null"]},
+          "issueCount": {"type": "integer", "minimum": 0},
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeRecorderOperationalIssue"
+            }
+          }
+        }
+      },
       "RuntimeRecorderObservabilityReadings": {
         "type": "object",
         "additionalProperties": false,
@@ -4328,6 +4385,7 @@
           "report",
           "profile",
           "boot",
+          "operationalHealth",
           "readings",
           "readIssues",
           "readError"
@@ -4346,6 +4404,7 @@
           "report": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReport"},
           "profile": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityProfile"},
           "boot": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityBoot"},
+          "operationalHealth": {"$ref": "#/components/schemas/RuntimeRecorderOperationalHealth"},
           "readings": {"$ref": "#/components/schemas/RuntimeRecorderObservabilityReadings"},
           "readIssues": {
             "type": "array",
@@ -4910,6 +4969,8 @@
           "latestObservationReceivedAt",
           "lastBootStartedAt",
           "readIssueCount",
+          "operationalHealthState",
+          "operationalIssueCount",
           "expectedSince",
           "recorderVersion",
           "producerVersion",
@@ -4955,6 +5016,14 @@
             "type": ["string", "null"]
           },
           "readIssueCount": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "operationalHealthState": {
+            "type": ["string", "null"],
+            "enum": ["healthy", "warning", "critical", "unknown", null]
+          },
+          "operationalIssueCount": {
             "type": ["integer", "null"],
             "minimum": 0
           },

@@ -288,6 +288,12 @@ def test_recorder_ingress_adapter_accepts_typed_observability_detail(
             "startedAt": "2026-07-23T23:00:00Z",
             "cleanShutdownAt": None,
         },
+        "operationalHealth": {
+            "state": "healthy",
+            "evaluatedAt": "2026-07-24T00:00:00Z",
+            "issueCount": 0,
+            "issues": [],
+        },
         "readings": {
             "temperatureCelsius": missing,
             "memoryAvailableBytes": missing,

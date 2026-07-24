@@ -2,6 +2,10 @@ import type {
   RecorderObservabilityReportState,
   RecorderObservabilitySupportState,
 } from "./recorder-observability";
+import {
+  assessRecorderOperationalHealth,
+  type RecorderOperationalHealth,
+} from "./recorder-operational-health";
 
 type JSONValue =
   | null
@@ -60,6 +64,7 @@ export type RecorderObservabilityDetail = {
     startedAt: string | null;
     cleanShutdownAt: string | null;
   };
+  operationalHealth: RecorderOperationalHealth;
   readings: {
     temperatureCelsius: RecorderObservabilityReading;
     memoryAvailableBytes: RecorderObservabilityReading;
@@ -116,6 +121,10 @@ export function mapRecorderObservabilityDetail(
   const shutdownMatchesStartedBoot = startedBootId !== null
     && shutdownBootId === startedBootId;
   const observedAt = string(health?.deviceObservedAt);
+  const operationalHealth = assessRecorderOperationalHealth(
+    health,
+    row.reportState,
+  );
 
   return {
     state: "loaded",
@@ -167,6 +176,7 @@ export function mapRecorderObservabilityDetail(
         ? string(object(bootShutdownDocument?.shutdown)?.shutdownAt)
         : null,
     },
+    operationalHealth,
     readings: {
       temperatureCelsius: reading(
         object(object(payload?.raspberryPi)?.temperatureCelsius),

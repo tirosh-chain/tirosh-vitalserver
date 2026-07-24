@@ -2453,6 +2453,12 @@ def _recorder_observability_detail_unavailable_document(
             "startedAt": None,
             "cleanShutdownAt": None,
         },
+        "operationalHealth": {
+            "state": "unknown",
+            "evaluatedAt": None,
+            "issueCount": 0,
+            "issues": [],
+        },
         "readings": {
             "temperatureCelsius": dict(missing),
             "memoryAvailableBytes": dict(missing),

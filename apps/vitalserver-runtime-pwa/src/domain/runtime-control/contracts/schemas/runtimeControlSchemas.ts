@@ -1384,6 +1384,10 @@ const recorderObservabilitySchema = z
     latestObservationReceivedAt: requiredNullableString.optional(),
     lastBootStartedAt: requiredNullableString.optional(),
     readIssueCount: z.number().int().nonnegative().nullable().optional(),
+    operationalHealthState: z
+      .enum(["healthy", "warning", "critical", "unknown"])
+      .optional(),
+    operationalIssueCount: z.number().int().nonnegative().optional(),
     expectedSince: requiredNullableString.optional(),
     recorderVersion: requiredNullableString.optional(),
     producerVersion: requiredNullableString.optional(),
@@ -1707,6 +1711,41 @@ export const recorderObservabilityDetailSchema = z
         cleanShutdownAt: requiredNullableString
       })
       .strict(),
+    operationalHealth: z
+      .object({
+        state: z.enum(["healthy", "warning", "critical", "unknown"]),
+        evaluatedAt: requiredNullableString,
+        issueCount: z.number().int().nonnegative(),
+        issues: z.array(
+          z
+            .object({
+              code: z.string(),
+              category: z.enum([
+                "power",
+                "storage",
+                "service",
+                "time",
+                "temperature",
+                "memory"
+              ]),
+              severity: z.enum(["warning", "critical"]),
+              title: z.string(),
+              detail: z.string(),
+              field: z.string()
+            })
+            .strict()
+        )
+      })
+      .strict()
+      .superRefine((health, context) => {
+        if (health.issueCount !== health.issues.length) {
+          context.addIssue({
+            code: "custom",
+            path: ["issueCount"],
+            message: "operational health issueCount must match issues"
+          });
+        }
+      }),
     readings: z
       .object({
         temperatureCelsius: recorderObservabilityReadingSchema,

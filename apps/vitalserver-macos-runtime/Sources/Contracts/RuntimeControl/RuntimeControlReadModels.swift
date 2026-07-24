@@ -971,6 +971,8 @@ public struct RuntimeRecorderObservability: Codable, Equatable, Sendable {
     public let latestObservationReceivedAt: String?
     public let lastBootStartedAt: String?
     public let readIssueCount: Int?
+    public let operationalHealthState: RuntimeRecorderOperationalHealthState?
+    public let operationalIssueCount: Int?
     public let expectedSince: String?
     public let recorderVersion: String?
     public let producerVersion: String?

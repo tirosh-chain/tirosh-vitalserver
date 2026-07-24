@@ -650,6 +650,8 @@ observability.collectionState
 observability.profileState
 observability.lastBootStartedAt
 observability.readIssueCount
+observability.operationalHealthState
+observability.operationalIssueCount
 ```
 
 `notReported`는 support state가 아닙니다. 조회가 성공했지만 expectation과
@@ -670,6 +672,25 @@ GET /runtime/vitaldb/recorders/{vrcode}/observability
 - recent restart evidence
 - active signals
 - read errors
+
+`reportState`와 `operationalHealthState`는 같은 축이 아닙니다. `current`는
+마지막 report가 freshness 계약 안에 있다는 뜻이며 장비가 정상이라는 뜻이
+아닙니다. 반대로 `readIssues`는 collector가 값을 읽지 못한 데이터 품질
+증거이며, 저전압·systemd degraded처럼 성공적으로 읽힌 이상 상태와도 다릅니다.
+
+Ingress domain은 accepted observation의 명시적 reading만 사용해
+`operationalHealth`를 계산합니다. 현재 정책은 다음 신호를 포함합니다.
+
+- Raspberry Pi 현재/과거 저전압, frequency cap, CPU throttle, thermal limit
+- CPU 고온과 낮은 available-memory 비율
+- root/data read-only 또는 높은 사용률, ext4 error/warning counter
+- `vr.service` inactive, systemd degraded/failed units
+- `ntpState` 비동기화
+
+UI는 이 정책을 다시 계산하지 않습니다. 목록은 operational health와 report
+freshness를 함께 표시하고, 상세는 issue의 severity, title, detail과 source field를
+표시합니다. Stale report의 issue evidence는 보존하지만 현재 상태라고 주장하지
+않고 `unknown`으로 표시합니다.
 
 ### 9-3. Timeline과 incidents
 

@@ -721,6 +721,12 @@ class FakeRecorderIngress:
                 "startedAt": None,
                 "cleanShutdownAt": None,
             },
+            "operationalHealth": {
+                "state": "unknown",
+                "evaluatedAt": None,
+                "issueCount": 0,
+                "issues": [],
+            },
             "readings": {
                 "temperatureCelsius": dict(missing),
                 "memoryAvailableBytes": dict(missing),

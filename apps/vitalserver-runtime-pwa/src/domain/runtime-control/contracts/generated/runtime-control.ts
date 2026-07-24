@@ -1931,6 +1931,23 @@ export interface components {
             rxErrors: components["schemas"]["RuntimeRecorderObservabilityReading"];
             txErrors: components["schemas"]["RuntimeRecorderObservabilityReading"];
         };
+        RuntimeRecorderOperationalIssue: {
+            code: string;
+            /** @enum {string} */
+            category: "power" | "storage" | "service" | "time" | "temperature" | "memory";
+            /** @enum {string} */
+            severity: "warning" | "critical";
+            title: string;
+            detail: string;
+            field: string;
+        };
+        RuntimeRecorderOperationalHealth: {
+            /** @enum {string} */
+            state: "healthy" | "warning" | "critical" | "unknown";
+            evaluatedAt: string | null;
+            issueCount: number;
+            issues: components["schemas"]["RuntimeRecorderOperationalIssue"][];
+        };
         RuntimeRecorderObservabilityReadings: {
             temperatureCelsius: components["schemas"]["RuntimeRecorderObservabilityReading"];
             memoryAvailableBytes: components["schemas"]["RuntimeRecorderObservabilityReading"];
@@ -1951,6 +1968,7 @@ export interface components {
             report: components["schemas"]["RuntimeRecorderObservabilityReport"];
             profile: components["schemas"]["RuntimeRecorderObservabilityProfile"];
             boot: components["schemas"]["RuntimeRecorderObservabilityBoot"];
+            operationalHealth: components["schemas"]["RuntimeRecorderOperationalHealth"];
             readings: components["schemas"]["RuntimeRecorderObservabilityReadings"];
             readIssues: {
                 field: string;
@@ -2116,6 +2134,9 @@ export interface components {
             latestObservationReceivedAt: string | null;
             lastBootStartedAt: string | null;
             readIssueCount: number | null;
+            /** @enum {string|null} */
+            operationalHealthState: "healthy" | "warning" | "critical" | "unknown" | null;
+            operationalIssueCount: number | null;
             /** @description Time from which a first health report is explicitly expected for a supported Recorder deployment. */
             expectedSince: string | null;
             /** @description Recorder application version captured by the explicit support expectation. */

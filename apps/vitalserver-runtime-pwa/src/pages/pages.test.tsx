@@ -452,14 +452,15 @@ describe("runtime console pages", () => {
       "VRecorder",
       "Bed",
       "Last seen",
-      "Health report",
+      "Device health",
       "Anomaly",
       "IP"
     ]);
     expect(within(recorderTable).queryByText("Visibility")).not.toBeInTheDocument();
     expect(within(recorderTable).queryByRole("button", { name: "Hide" })).not.toBeInTheDocument();
     expect(within(recorderTable).getByText("30s ago")).toBeInTheDocument();
-    expect(within(recorderTable).getByText("Current")).toBeInTheDocument();
+    expect(within(recorderTable).getByText("Warning (1)")).toBeInTheDocument();
+    expect(within(recorderTable).getByText("Report Current")).toBeInTheDocument();
 
     fireEvent.click(within(recorderTable).getByText("VR_A").closest("tr")!);
     expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith("VR_A");
@@ -480,6 +481,15 @@ describe("runtime console pages", () => {
     expect(within(recorderDetails).getByText("Supported")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("52.5 °C")).toBeInTheDocument();
     expect(within(recorderDetails).getByText("Publisher buffer")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Latest reported issues")).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByText("System service state is not fully running")
+    ).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByText(
+        "degraded; failed units: rpi-eeprom-update.service"
+      )
+    ).toBeInTheDocument();
     expect(within(recorderDetails).getByText("Last 24 hours")).toBeInTheDocument();
     expect(
       within(recorderDetails).getByText("No health report was received during this window.")
@@ -2395,6 +2405,21 @@ function recorderObservabilityDetail() {
       startedAt: "2026-05-30T00:00:00Z",
       cleanShutdownAt: null
     },
+    operationalHealth: {
+      state: "warning" as const,
+      evaluatedAt: "2026-05-31T00:59:29Z",
+      issueCount: 1,
+      issues: [
+        {
+          code: "systemd-system-degraded",
+          category: "service" as const,
+          severity: "warning" as const,
+          title: "System service state is not fully running",
+          detail: "degraded; failed units: rpi-eeprom-update.service",
+          field: "payload.services.systemRunning"
+        }
+      ]
+    },
     readings: {
       temperatureCelsius: {
         state: "ok" as const,
@@ -2497,6 +2522,8 @@ function recorders() {
           latestObservationReceivedAt: "2026-05-31T00:59:30Z",
           lastBootStartedAt: "2026-05-30T00:00:00Z",
           readIssueCount: 0,
+          operationalHealthState: "warning",
+          operationalIssueCount: 1,
           readError: null
         },
         activityTimeline: [

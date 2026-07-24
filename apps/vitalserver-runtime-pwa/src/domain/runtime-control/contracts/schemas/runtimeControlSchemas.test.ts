@@ -43,6 +43,15 @@ describe("runtime control contract schemas", () => {
         readError: null
       }).success
     ).toBe(false);
+    expect(
+      recorderObservabilityDetailSchema.safeParse({
+        ...detail,
+        operationalHealth: {
+          ...detail.operationalHealth,
+          issueCount: 1
+        }
+      }).success
+    ).toBe(false);
   });
 
   it("requires complete Product Lab session failure evidence", () => {
@@ -1680,6 +1689,12 @@ function fullRecorderObservabilityDetail() {
       bootId: "boot-1",
       startedAt: "2026-07-23T00:00:00Z",
       cleanShutdownAt: null
+    },
+    operationalHealth: {
+      state: "healthy",
+      evaluatedAt: "2026-07-24T00:00:00Z",
+      issueCount: 0,
+      issues: []
     },
     readings: {
       temperatureCelsius: {

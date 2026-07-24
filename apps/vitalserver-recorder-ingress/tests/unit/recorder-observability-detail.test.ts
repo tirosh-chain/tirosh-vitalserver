@@ -112,6 +112,7 @@ test("detail mapper exposes typed state without leaking aggregate JSONB", () => 
   assert.strictEqual(detail.profile.collection.observationIntervalSeconds, 60);
   assert.strictEqual(detail.profile.software.vitalRecorderVersion.value, "4.0.1");
   assert.strictEqual(detail.boot.state, "started");
+  assert.strictEqual(detail.operationalHealth.state, "healthy");
   assert.strictEqual(detail.readIssues[0].state, "failed");
   assert.strictEqual(JSON.stringify(detail).includes("raw-event-id"), false);
   assert.strictEqual(Object.hasOwn(detail, "resources"), false);
@@ -138,6 +139,7 @@ test("detail mapper preserves absent health as missing readings", () => {
   assert.strictEqual(detail.profile.state, "missing");
   assert.strictEqual(detail.profile.collection, null);
   assert.strictEqual(detail.boot.state, "notReported");
+  assert.strictEqual(detail.operationalHealth.state, "unknown");
 });
 
 test("detail mapper does not combine shutdown and start from different boots", () => {
@@ -189,4 +191,5 @@ test("detail mapper does not combine shutdown and start from different boots", (
   assert.strictEqual(detail.boot.cleanShutdownAt, null);
   assert.strictEqual(detail.readings.temperatureCelsius.state, "invalid");
   assert.strictEqual(detail.readIssues[0].state, "invalid");
+  assert.strictEqual(detail.operationalHealth.state, "healthy");
 });

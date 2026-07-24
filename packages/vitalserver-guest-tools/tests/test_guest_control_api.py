@@ -831,6 +831,8 @@ def _recorder_observability_list() -> dict[str, object]:
                 "latestObservationReceivedAt": "2026-07-01T00:00:00+00:00",
                 "lastBootStartedAt": "2026-07-01T00:00:00+00:00",
                 "readIssueCount": 0,
+                "operationalHealthState": "healthy",
+                "operationalIssueCount": 0,
                 "expectedSince": None,
                 "recorderVersion": None,
                 "producerVersion": None,
@@ -881,6 +883,12 @@ def _recorder_observability_detail(vrcode: str) -> dict[str, object]:
             "bootId": None,
             "startedAt": None,
             "cleanShutdownAt": None,
+        },
+        "operationalHealth": {
+            "state": "healthy",
+            "evaluatedAt": "2026-07-01T00:00:00+00:00",
+            "issueCount": 0,
+            "issues": [],
         },
         "readings": {
             "temperatureCelsius": dict(missing),

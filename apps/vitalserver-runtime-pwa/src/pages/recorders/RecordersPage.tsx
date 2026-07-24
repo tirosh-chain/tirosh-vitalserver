@@ -287,11 +287,16 @@ export function RecordersPage() {
                 },
                 {
                   key: "healthReport",
-                  header: "Health report",
+                  header: "Device health",
                   render: (recorder) => (
-                    <StatusBadge tone={observabilityTone(recorder.observability)}>
-                      {formatObservabilityReport(recorder.observability)}
-                    </StatusBadge>
+                    <div className="recorder-health-summary">
+                      <StatusBadge tone={operationalHealthTone(recorder.observability)}>
+                        {formatOperationalHealth(recorder.observability)}
+                      </StatusBadge>
+                      <span className="muted">
+                        Report {formatObservabilityReport(recorder.observability)}
+                      </span>
+                    </div>
                   )
                 },
                 {
@@ -766,7 +771,10 @@ function RecorderObservabilityDetailSection({
   const summaryMismatch =
     recorder.observability !== undefined &&
     (recorder.observability.supportState !== detail.support.state ||
-      recorder.observability.reportState !== detail.report.state);
+      recorder.observability.reportState !== detail.report.state ||
+      (recorder.observability.operationalHealthState !== undefined &&
+        recorder.observability.operationalHealthState !==
+          detail.operationalHealth.state));
 
   return (
     <>
@@ -780,6 +788,10 @@ function RecorderObservabilityDetailSection({
           { label: "Support", value: formatDetailSupport(detail) },
           { label: "Report", value: formatDetailReport(detail) },
           { label: "Last report", value: formatLocalDateTime(detail.report.receivedAt) },
+          {
+            label: "Operational health",
+            value: formatDetailOperationalHealth(detail)
+          },
           { label: "Temperature", value: formatReading(detail.readings.temperatureCelsius, " °C") },
           {
             label: "Memory available",
@@ -816,14 +828,38 @@ function RecorderObservabilityDetailSection({
           { label: "Read issues", value: detail.report.readIssueCount }
         ]}
       />
+      {detail.operationalHealth.issues.length > 0 ? (
+        <div className="recorder-operational-health">
+          <h4>Latest reported issues</h4>
+          <ul className="recorder-operational-issues">
+            {detail.operationalHealth.issues.map((issue) => (
+              <li
+                key={issue.code}
+                className={`recorder-operational-issue-${issue.severity}`}
+              >
+                <strong>{issue.title}</strong>
+                <span>{issue.detail}</span>
+              </li>
+            ))}
+          </ul>
+          {detail.report.state !== "current" ? (
+            <p className="muted">
+              These issues came from the latest report; current device state is unknown.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {detail.readIssues.length > 0 ? (
-        <ul className="recorder-observability-issues">
-          {detail.readIssues.map((issue, index) => (
-            <li key={`${issue.field}-${index}`}>
-              <strong>{issue.field}</strong>: {issue.state} — {issue.detail}
-            </li>
-          ))}
-        </ul>
+        <div className="recorder-observability-read-issues">
+          <h4>Telemetry read issues</h4>
+          <ul className="recorder-observability-issues">
+            {detail.readIssues.map((issue, index) => (
+              <li key={`${issue.field}-${index}`}>
+                <strong>{issue.field}</strong>: {issue.state} — {issue.detail}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       {detail.readings.networkInterfaces.length > 0 ? (
         <div className="recorder-observability-network">
@@ -1076,20 +1112,52 @@ function formatObservabilityReport(
   }
 }
 
-function observabilityTone(
+function formatOperationalHealth(
+  observability: VitalDBRecorderRecord["observability"]
+): string {
+  const count = observability?.operationalIssueCount ?? 0;
+  switch (observability?.operationalHealthState) {
+    case "healthy":
+      return "Healthy";
+    case "warning":
+      return `Warning (${count})`;
+    case "critical":
+      return `Critical (${count})`;
+    default:
+      return "Unknown";
+  }
+}
+
+function operationalHealthTone(
   observability: VitalDBRecorderRecord["observability"]
 ): "success" | "warning" | "danger" | "neutral" {
-  switch (observability?.reportState) {
-    case "current":
+  switch (observability?.operationalHealthState) {
+    case "healthy":
       return "success";
-    case "awaitingFirstReport":
-    case "stale":
+    case "warning":
       return "warning";
-    case "missing":
-    case "readFailed":
+    case "critical":
       return "danger";
     default:
       return "neutral";
+  }
+}
+
+function formatDetailOperationalHealth(
+  detail: RuntimeRecorderObservabilityDetail
+): string {
+  const count = detail.operationalHealth.issueCount;
+  switch (detail.operationalHealth.state) {
+    case "healthy":
+      return "Healthy";
+    case "warning":
+      return `Warning — ${count} reported issue${count === 1 ? "" : "s"}`;
+    case "critical":
+      return `Critical — ${count} reported issue${count === 1 ? "" : "s"}`;
+    case "unknown":
+      return count > 0
+        ? `Unknown — ${count} issue${count === 1 ? "" : "s"} in the latest report`
+        : "Unknown";
   }
 }
 

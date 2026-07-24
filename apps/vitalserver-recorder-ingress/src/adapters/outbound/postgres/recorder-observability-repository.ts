@@ -26,6 +26,8 @@ import type {
   RecorderObservabilityIncidentRow,
   RecorderObservabilityTimelineRow,
 } from "../../../domain/recorder-observability-history";
+import { assessRecorderOperationalHealth } from
+  "../../../domain/recorder-operational-health";
 
 type AggregateEntry = ProjectionCandidate & {
   associatedProfileRecordId?: string | null;
@@ -1093,6 +1095,10 @@ function summaryFromRow(
     now: iso(row.evaluated_at) || "",
     firstReportGraceSeconds,
   });
+  const operationalHealth = assessRecorderOperationalHealth(
+    row.document?.observation?.document || null,
+    evaluation.reportState,
+  );
   return {
     vrcode: String(row.vrcode),
     ...evaluation,
@@ -1101,6 +1107,8 @@ function summaryFromRow(
     latestObservationReceivedAt: iso(row.latest_observation_received_at),
     lastBootStartedAt: iso(row.recent_restart_at),
     readIssueCount: Number(row.active_signal_count || 0),
+    operationalHealthState: operationalHealth.state,
+    operationalIssueCount: operationalHealth.issueCount,
     expectedSince: expectation?.expectedSince || null,
     recorderVersion: expectation?.recorderVersion || null,
     producerVersion: expectation?.producerVersion || null,

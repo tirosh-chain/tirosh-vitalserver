@@ -21,6 +21,34 @@ public enum RuntimeRecorderObservabilityProfileState: String, Codable, Equatable
     case invalid
 }
 
+public enum RuntimeRecorderOperationalHealthState: String, Codable, Equatable, Sendable {
+    case healthy
+    case warning
+    case critical
+    case unknown
+}
+
+public enum RuntimeRecorderOperationalIssueSeverity: String, Codable, Equatable, Sendable {
+    case warning
+    case critical
+}
+
+public struct RuntimeRecorderOperationalIssue: Codable, Equatable, Sendable {
+    public let code: String
+    public let category: String
+    public let severity: RuntimeRecorderOperationalIssueSeverity
+    public let title: String
+    public let detail: String
+    public let field: String
+}
+
+public struct RuntimeRecorderOperationalHealth: Codable, Equatable, Sendable {
+    public let state: RuntimeRecorderOperationalHealthState
+    public let evaluatedAt: String?
+    public let issueCount: Int
+    public let issues: [RuntimeRecorderOperationalIssue]
+}
+
 public struct RuntimeRecorderObservabilityReading: Codable, Equatable, Sendable {
     public let state: RuntimeRecorderObservabilityReadingState
     public let value: RuntimeJSONValue?
@@ -109,6 +137,7 @@ public struct RuntimeRecorderObservabilityDetail: Codable, Equatable, Sendable {
     public let report: RuntimeRecorderObservabilityReport
     public let profile: RuntimeRecorderObservabilityProfile
     public let boot: RuntimeRecorderObservabilityBoot
+    public let operationalHealth: RuntimeRecorderOperationalHealth
     public let readings: RuntimeRecorderObservabilityReadings
     public let readIssues: [RuntimeRecorderObservabilityReadIssue]
     public let readError: String?
@@ -156,6 +185,12 @@ public struct RuntimeRecorderObservabilityDetail: Codable, Equatable, Sendable {
                 bootId: nil,
                 startedAt: nil,
                 cleanShutdownAt: nil
+            ),
+            operationalHealth: RuntimeRecorderOperationalHealth(
+                state: .unknown,
+                evaluatedAt: nil,
+                issueCount: 0,
+                issues: []
             ),
             readings: RuntimeRecorderObservabilityReadings(
                 temperatureCelsius: missing,
