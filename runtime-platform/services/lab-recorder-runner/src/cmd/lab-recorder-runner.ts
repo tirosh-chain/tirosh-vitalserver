@@ -1,35 +1,51 @@
 import { parseArgs } from "node:util";
 
-import { LabRecorderRunnerApplicationService } from "../labrecorderrunnerapplication/lab-recorder-runner-application-service.js";
+import {
+  CryptoLabRecorderRunnerIdentifierGenerator,
+  LabRecorderRunnerApplicationService,
+  SystemLabRecorderRunnerClock,
+} from "../labrecorderrunnerapplication/lab-recorder-runner-application-service.js";
+import { LabReplayApplicationService } from "../labrecorderrunnerapplication/lab-replay-application-service.js";
 import { LabScenarioCatalog } from "../adapters/labscenariocatalogfile/lab-scenario-catalog-file.js";
 import { createLabRecorderRunnerControlHTTPServer } from "../adapters/labrecorderrunnerinbound/lab-recorder-runner-control-http-server.js";
 import { RecorderGatewaySocketIoLabRecorderScenarioExecutionPort } from "../adapters/recordergatewaysocketio/lab-recorder-scenario-socketio-execution-port.js";
-import { GuestRuntimeRecorderObservationCatalogClient } from "../adapters/guest-runtime-observation-catalog/guest-runtime-recorder-observation-catalog-client.js";
+import { RecorderGatewayObservationCatalogClient } from "../adapters/recorder-gateway-observation-catalog/recorder-gateway-observation-catalog-client.js";
+import { FileLabReplaySessionStore } from "../adapters/labreplaystatefile/file-lab-replay-session-store.js";
+import { SocketIoLabReplayRecorderGatewayPort } from "../adapters/recordergatewaysocketio/lab-replay-recorder-gateway-port.js";
 
 const { values } = parseArgs({
   options: {
     listen: { type: "string" },
     "recorder-gateway-endpoint": { type: "string" },
     "scenario-catalog": { type: "string" },
-    "guest-runtime-observation-catalog-endpoint": { type: "string" },
+    "lab-replay-state-directory": { type: "string" },
   },
 });
 
 const listen = values.listen;
 const recorderGatewayEndpoint = values["recorder-gateway-endpoint"];
 const scenarioCatalogPath = values["scenario-catalog"];
-const observationCatalogEndpoint = values["guest-runtime-observation-catalog-endpoint"];
-if (listen === undefined || recorderGatewayEndpoint === undefined || scenarioCatalogPath === undefined || observationCatalogEndpoint === undefined) {
-	console.error("--listen, --recorder-gateway-endpoint, --scenario-catalog, and --guest-runtime-observation-catalog-endpoint are required");
+const labReplayStateDirectory = values["lab-replay-state-directory"];
+if (listen === undefined || recorderGatewayEndpoint === undefined || scenarioCatalogPath === undefined || labReplayStateDirectory === undefined) {
+  console.error("--listen, --recorder-gateway-endpoint, --scenario-catalog, and --lab-replay-state-directory are required");
   process.exitCode = 2;
 } else {
   try {
     const address = parseLoopbackListenAddress(listen);
     const catalog = await LabScenarioCatalog.read(scenarioCatalogPath);
     const execution = new RecorderGatewaySocketIoLabRecorderScenarioExecutionPort(recorderGatewayEndpoint);
-    const observations = GuestRuntimeRecorderObservationCatalogClient.create(observationCatalogEndpoint);
-    const service = new LabRecorderRunnerApplicationService(execution, observations);
-    const server = createLabRecorderRunnerControlHTTPServer(service, catalog);
+    const observations = RecorderGatewayObservationCatalogClient.create(recorderGatewayEndpoint);
+    const clock = new SystemLabRecorderRunnerClock();
+    const identifiers = new CryptoLabRecorderRunnerIdentifierGenerator();
+    const service = new LabRecorderRunnerApplicationService(execution, observations, clock, identifiers);
+    const replayService = new LabReplayApplicationService(
+      new FileLabReplaySessionStore(labReplayStateDirectory),
+      new SocketIoLabReplayRecorderGatewayPort(recorderGatewayEndpoint),
+      clock,
+      identifiers,
+    );
+    await replayService.initialize();
+    const server = createLabRecorderRunnerControlHTTPServer(service, replayService, catalog);
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(address.port, address.host, () => {

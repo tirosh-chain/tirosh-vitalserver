@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { readFile } from "node:fs/promises";
 
 import { createRecorderGatewayRuntime } from "../recorder-gateway-runtime-composition.js";
 
@@ -19,6 +20,14 @@ const { values } = parseArgs({
     "replay-max-attempts": { type: "string" },
     "replay-retry-delay-ms": { type: "string" },
     "replay-lease-duration-ms": { type: "string" },
+    "guest-runtime-observation-catalog-endpoint": { type: "string" },
+    "guest-runtime-observation-catalog-bearer-token-material-path": { type: "string" },
+    "recorder-vital-upload-max-bytes": { type: "string" },
+    "recorder-vital-upload-recovery-interval-ms": { type: "string" },
+    "recorder-vital-upload-recovery-max-items": { type: "string" },
+    "guest-runtime-archive-source-admission-endpoint": { type: "string" },
+    "guest-runtime-archive-source-admission-bearer-token-material-path": { type: "string" },
+    "guest-runtime-archive-source-admission-request-timeout-ms": { type: "string" },
   },
 });
 
@@ -30,8 +39,15 @@ if (
   values["capability-revision"] === undefined || values["vitalserver-delivery-acknowledgement-timeout-ms"] === undefined || values["delivery-replay-max-items"] === undefined ||
   values["delivery-replay-max-bytes"] === undefined || values["cold-path-capture-max-retained-packets"] === undefined || values["cold-path-capture-max-retained-payload-bytes"] === undefined || values["replay-interval-ms"] === undefined || values["replay-max-attempts"] === undefined ||
   values["replay-retry-delay-ms"] === undefined || values["replay-lease-duration-ms"] === undefined
+  || values["guest-runtime-observation-catalog-endpoint"] === undefined || values["guest-runtime-observation-catalog-bearer-token-material-path"] === undefined
+  || values["recorder-vital-upload-max-bytes"] === undefined
+  || values["recorder-vital-upload-recovery-interval-ms"] === undefined
+  || values["recorder-vital-upload-recovery-max-items"] === undefined
+  || values["guest-runtime-archive-source-admission-endpoint"] === undefined
+  || values["guest-runtime-archive-source-admission-bearer-token-material-path"] === undefined
+  || values["guest-runtime-archive-source-admission-request-timeout-ms"] === undefined
 ) {
-  console.error("--listen, --state-dir, --vitalserver-delivery-url, --provider-kind, --provider-id, --capability-revision, --vitalserver-delivery-acknowledgement-timeout-ms, --delivery-replay-max-items, --delivery-replay-max-bytes, --cold-path-capture-max-retained-packets, --cold-path-capture-max-retained-payload-bytes, --replay-interval-ms, --replay-max-attempts, --replay-retry-delay-ms, and --replay-lease-duration-ms are required");
+  console.error("Recorder Gateway required ingress, replay, Catalog, and Archive source admission configuration is incomplete");
   process.exitCode = 2;
 } else {
   const address = parseListenAddress(listen);
@@ -45,6 +61,30 @@ if (
   const maxAttempts = integerOption(values["replay-max-attempts"], "--replay-max-attempts");
   const retryDelayMs = integerOption(values["replay-retry-delay-ms"], "--replay-retry-delay-ms");
   const leaseDurationMs = integerOption(values["replay-lease-duration-ms"], "--replay-lease-duration-ms");
+  const guestRuntimeObservationCatalogBearerToken = await readExactMaterial(
+    values["guest-runtime-observation-catalog-bearer-token-material-path"],
+    "Guest Runtime observation Catalog bearer token",
+  );
+  const recorderVitalUploadMaximumBytes = integerOption(
+    values["recorder-vital-upload-max-bytes"],
+    "--recorder-vital-upload-max-bytes",
+  );
+  const recorderVitalUploadRecoveryIntervalMs = integerOption(
+    values["recorder-vital-upload-recovery-interval-ms"],
+    "--recorder-vital-upload-recovery-interval-ms",
+  );
+  const recorderVitalUploadRecoveryMaxItems = integerOption(
+    values["recorder-vital-upload-recovery-max-items"],
+    "--recorder-vital-upload-recovery-max-items",
+  );
+  const guestRuntimeArchiveSourceAdmissionRequestTimeoutMs = integerOption(
+    values["guest-runtime-archive-source-admission-request-timeout-ms"],
+    "--guest-runtime-archive-source-admission-request-timeout-ms",
+  );
+  const guestRuntimeArchiveSourceAdmissionBearerToken = await readExactMaterial(
+    values["guest-runtime-archive-source-admission-bearer-token-material-path"],
+    "Guest Runtime Archive source admission bearer token",
+  );
   const runtime = await createRecorderGatewayRuntime({
     stateDirectory,
     vitalServerDeliveryURL,
@@ -54,6 +94,14 @@ if (
     coldPathCapture: { maxRetainedPackets, maxRetainedPayloadBytes },
     replay: { maxAttempts, retryDelayMs, leaseDurationMs },
     provider: { kind: values["provider-kind"], id: values["provider-id"], capabilityRevision },
+    guestRuntimeObservationCatalogEndpoint: values["guest-runtime-observation-catalog-endpoint"],
+    guestRuntimeObservationCatalogBearerToken,
+    recorderVitalUploadMaximumBytes,
+    recorderVitalUploadRecoveryIntervalMs,
+    recorderVitalUploadRecoveryMaxItems,
+    guestRuntimeArchiveSourceAdmissionEndpoint: values["guest-runtime-archive-source-admission-endpoint"],
+    guestRuntimeArchiveSourceAdmissionBearerToken,
+    guestRuntimeArchiveSourceAdmissionRequestTimeoutMs,
   });
   const bound = await runtime.start(address.host, address.port);
   console.log(JSON.stringify({ event: "recorder-gateway.listening", address: bound.address, port: bound.port }));
@@ -66,6 +114,14 @@ if (
   process.once("SIGTERM", () => {
     void shutdown();
   });
+}
+
+async function readExactMaterial(path: string, label: string): Promise<string> {
+  const value = await readFile(path, "utf8");
+  if (value === "" || value.trim() !== value) {
+    throw new Error(`${label} material must be non-empty without surrounding whitespace`);
+  }
+  return value;
 }
 
 function parseListenAddress(value: string): { host: string; port: number } {

@@ -46,6 +46,10 @@ export function attachRecorderGatewaySocketIoIngress(
       void admitSocketIoRecorderPacket(service, joined, payload, acknowledgement);
     });
 
+    socket.on("send_data_idempotent", (payload: unknown, acknowledgement: unknown) => {
+      void admitIdempotentSocketIoRecorderPacket(service, joined, payload, acknowledgement);
+    });
+
     socket.on("req_cmd", (_request: unknown, acknowledgement: unknown) => {
       acknowledgeRecorderIngress(acknowledgement, {
         schemaVersion: recorderGatewaySchemaVersion,
@@ -60,6 +64,50 @@ export function attachRecorderGatewaySocketIoIngress(
     });
   });
   return socketServer;
+}
+
+async function admitIdempotentSocketIoRecorderPacket(
+  service: RecorderGatewayIngressAndColdPathApplicationService,
+  joined: JoinedRecorder | undefined,
+  envelope: unknown,
+  acknowledgement: unknown,
+): Promise<void> {
+  if (joined === undefined) {
+    acknowledgeRecorderIngress(acknowledgement, rejectedRecorderIngress("recorder-session-not-joined", "send_data_idempotent requires a prior accepted join_vr on this socket session"));
+    return;
+  }
+  if (!isRecord(envelope)) {
+    acknowledgeRecorderIngress(acknowledgement, rejectedRecorderIngress("invalid-idempotent-ingress-envelope", "send_data_idempotent requires an explicit identity envelope"));
+    return;
+  }
+  const normalized = normalizeSocketIoRecorderPacketPayload(envelope.payload);
+  if (
+    normalized === undefined ||
+    !isIdentifier(envelope.receiptId) ||
+    !isIdentifier(envelope.requestId) ||
+    !isIdentifier(envelope.deliveryRequestId) ||
+    !isIdentifier(envelope.packetId) ||
+    !isIdentifier(envelope.durableIngressStateReceiptId)
+  ) {
+    acknowledgeRecorderIngress(acknowledgement, rejectedRecorderIngress("invalid-idempotent-ingress-envelope", "send_data_idempotent requires packet bytes and five valid ingress identities"));
+    return;
+  }
+  const admission = await service.admitRecorderPacket({
+    recorderId: joined.recorderId,
+    connection: joined.connection,
+    coldPathCaptureId: joined.coldPathCaptureId,
+    payload: normalized.payload,
+    payloadEncoding: normalized.encoding,
+    identity: {
+      kind: "caller-supplied",
+      receiptId: envelope.receiptId,
+      requestId: envelope.requestId,
+      deliveryRequestId: envelope.deliveryRequestId,
+      packetId: envelope.packetId,
+      durableIngressStateReceiptId: envelope.durableIngressStateReceiptId,
+    },
+  });
+  acknowledgeRecorderIngress(acknowledgement, admission.acknowledgement);
 }
 
 async function openSocketIoRecorderColdPathCapture(
@@ -131,6 +179,7 @@ async function admitSocketIoRecorderPacket(
     coldPathCaptureId: joined.coldPathCaptureId,
     payload: normalized.payload,
     payloadEncoding: normalized.encoding,
+    identity: { kind: "gateway-allocated" },
   });
   acknowledgeRecorderIngress(acknowledgement, admission.acknowledgement);
 }
@@ -146,6 +195,14 @@ function normalizeSocketIoRecorderPacketPayload(payload: unknown): { payload: Ui
     return { payload: Buffer.from(payload), encoding: "binary" };
   }
   return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isIdentifier(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
 }
 
 function acknowledgeRecorderIngress(candidate: unknown, payload: RecorderIngressAcknowledgement): void {

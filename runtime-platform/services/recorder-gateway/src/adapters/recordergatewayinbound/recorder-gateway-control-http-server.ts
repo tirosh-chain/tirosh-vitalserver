@@ -1,15 +1,30 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import type { RecorderGatewayIngressAndColdPathApplicationService } from "../../recordergatewayapplication/recorder-gateway-ingress-and-cold-path-application-service.js";
+import type { RecorderGatewayVitalUploadApplicationService } from "../../recordergatewayapplication/recorder-gateway-vital-upload-application-service.js";
+import type { RecorderObservationCatalogPublisher } from "../guestruntimeobservationcatalog/guest-runtime-observation-catalog-client.js";
+import {
+  RecorderVitalUploadRejectedError,
+} from "../recordervitaluploadspoolfile/file-recorder-vital-upload-spool.js";
 import {
   isRecorderGatewayIdentifier,
   recorderGatewaySchemaVersion,
   type RecorderColdPathCaptureFinalizationCommand,
 } from "../../recordergatewaydomain/recorder-gateway-ingress-and-cold-path-contracts.js";
 
-export function createRecorderGatewayControlHTTPServer(service: RecorderGatewayIngressAndColdPathApplicationService) {
+export function createRecorderGatewayControlHTTPServer(
+  service: RecorderGatewayIngressAndColdPathApplicationService,
+  observationPublisher: RecorderObservationCatalogPublisher,
+  vitalUploadService?: RecorderGatewayVitalUploadApplicationService,
+) {
   return createServer((request, response) => {
-    void handleRecorderGatewayControlRequest(service, request, response).catch(() => {
+    void handleRecorderGatewayControlRequest(
+      service,
+      observationPublisher,
+      vitalUploadService,
+      request,
+      response,
+    ).catch(() => {
       if (!response.headersSent) {
         writeJson(response, 500, {
           schemaVersion: recorderGatewaySchemaVersion,
@@ -28,11 +43,46 @@ export function createRecorderGatewayControlHTTPServer(service: RecorderGatewayI
 
 async function handleRecorderGatewayControlRequest(
   service: RecorderGatewayIngressAndColdPathApplicationService,
+  observationPublisher: RecorderObservationCatalogPublisher,
+  vitalUploadService: RecorderGatewayVitalUploadApplicationService | undefined,
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://gateway.local");
   if (request.method === "GET") {
+    const ingressDeliveryReceiptID = readRecorderGatewayIngressDeliveryPathIdentifier(url.pathname);
+    if (ingressDeliveryReceiptID !== undefined) {
+      writeJson(
+        response,
+        200,
+        await service.readLatestVitalServerDeliveryForIngressReceipt(ingressDeliveryReceiptID),
+      );
+      return;
+    }
+    const vitalUploadDispatchID = readRecorderGatewayControlPathIdentifier(
+      url.pathname,
+      "/v1/recorder-vital-uploads/",
+    );
+    if (vitalUploadDispatchID !== undefined) {
+      if (!isLoopbackRecorderGatewayControlClient(request)) {
+        writeJson(response, 403, recorderGatewayControlAccessDenied());
+        return;
+      }
+      if (vitalUploadService === undefined) {
+        writeJson(response, 503, recorderVitalUploadUnavailable());
+        return;
+      }
+      try {
+        writeJson(
+          response,
+          200,
+          await vitalUploadService.readRecorderVitalUploadDispatch(vitalUploadDispatchID),
+        );
+      } catch {
+        writeJson(response, 503, recorderVitalUploadOutcomeUnknown());
+      }
+      return;
+    }
     const ingressReceiptID = readRecorderGatewayControlPathIdentifier(url.pathname, "/v1/recorder-ingress/receipts/");
     if (ingressReceiptID !== undefined) {
       writeJson(response, 200, await service.readRecorderIngressReceipt(ingressReceiptID));
@@ -77,6 +127,76 @@ async function handleRecorderGatewayControlRequest(
     }
   }
   if (request.method === "POST") {
+    if (url.pathname === "/upload") {
+      if (vitalUploadService === undefined) {
+        writeJson(response, 503, recorderVitalUploadUnavailable());
+        return;
+      }
+      try {
+        const result = await vitalUploadService.admitAndDispatchRecorderVitalUpload({
+          headers: request.headers,
+          body: request,
+          receivedAt: new Date().toISOString(),
+        });
+        switch (result.dispatch.state) {
+          case "archive-admitted":
+            writePlainText(response, 200, "success");
+            break;
+          case "quarantined":
+            writeJson(response, 422, result.dispatch);
+            break;
+          case "rejected":
+            writeJson(response, 400, result.dispatch);
+            break;
+          case "pending":
+          case "dispatching":
+          case "unknown":
+            writeJson(response, 503, result.dispatch);
+            break;
+        }
+      } catch (error) {
+        if (error instanceof RecorderVitalUploadRejectedError) {
+          writeJson(response, 400, {
+            schemaVersion: recorderGatewaySchemaVersion,
+            state: "rejected",
+            issue: {
+              code: error.code,
+              message: error.message,
+              retryable: false,
+              dependency: "recorder-vital-upload-spool",
+            },
+          });
+          return;
+        }
+        writeJson(response, 503, recorderVitalUploadOutcomeUnknown());
+      }
+      return;
+    }
+    if (url.pathname === "/internal/v1/recorder-observations") {
+      if (!isLoopbackRecorderGatewayControlClient(request)) {
+        writeJson(response, 403, recorderGatewayControlAccessDenied());
+        return;
+      }
+      let command: unknown;
+      try {
+        command = await readRecorderGatewayControlJsonBody(request);
+        const outcome = await observationPublisher.publish(command);
+        writeJson(response, outcome.status, outcome.document);
+      } catch {
+        writeJson(response, 503, {
+          schemaVersion: recorderGatewaySchemaVersion,
+          state: "failed",
+          admissionState: "unknown",
+          issue: {
+            code: "recorder-observation-catalog-publish-outcome-unknown",
+            message: "Recorder Gateway could not determine the Guest Runtime Catalog admission outcome",
+            retryable: true,
+            dependency: "guest-runtime-observation-catalog",
+          },
+        });
+      }
+      return;
+    }
     const coldPathCaptureID = readRecorderGatewayControlFinalizationCaptureIdentifier(url.pathname);
     if (coldPathCaptureID !== undefined) {
       if (!isLoopbackRecorderGatewayControlClient(request)) {
@@ -146,6 +266,23 @@ function readRecorderGatewayControlPathIdentifier(path: string, prefix: string):
   }
   try {
     return decodeURIComponent(identifier);
+  } catch {
+    return "invalid";
+  }
+}
+
+function readRecorderGatewayIngressDeliveryPathIdentifier(path: string): string | undefined {
+  const prefix = "/v1/recorder-ingress/receipts/";
+  const suffix = "/delivery";
+  if (!path.startsWith(prefix) || !path.endsWith(suffix)) {
+    return undefined;
+  }
+  const encoded = path.slice(prefix.length, -suffix.length);
+  if (encoded === "" || encoded.includes("/")) {
+    return "invalid";
+  }
+  try {
+    return decodeURIComponent(encoded);
   } catch {
     return "invalid";
   }
@@ -234,6 +371,44 @@ function writeJson(response: ServerResponse, status: number, value: unknown): vo
   response.statusCode = status;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.end(`${JSON.stringify(value)}\n`);
+}
+
+function writePlainText(
+  response: ServerResponse,
+  status: number,
+  value: string,
+): void {
+  response.statusCode = status;
+  response.setHeader("content-type", "text/plain; charset=utf-8");
+  response.end(value);
+}
+
+function recorderVitalUploadUnavailable(): object {
+  return {
+    schemaVersion: recorderGatewaySchemaVersion,
+    state: "failed",
+    admissionState: "not-admitted",
+    issue: {
+      code: "recorder-vital-upload-unavailable",
+      message: "Recorder Gateway Vital upload module is not configured",
+      retryable: false,
+      dependency: "recorder-vital-upload",
+    },
+  };
+}
+
+function recorderVitalUploadOutcomeUnknown(): object {
+  return {
+    schemaVersion: recorderGatewaySchemaVersion,
+    state: "failed",
+    admissionState: "unknown",
+    issue: {
+      code: "recorder-vital-upload-outcome-unknown",
+      message: "Recorder Gateway could not determine the durable Archive admission outcome",
+      retryable: true,
+      dependency: "recorder-vital-upload",
+    },
+  };
 }
 
 function writeRecorderColdPathPacketSequence(response: ServerResponse, value: Uint8Array): void {

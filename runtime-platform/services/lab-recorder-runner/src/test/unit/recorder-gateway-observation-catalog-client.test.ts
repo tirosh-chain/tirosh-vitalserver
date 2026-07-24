@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import test from "node:test";
 
-import { GuestRuntimeRecorderObservationCatalogClient } from "../../adapters/guest-runtime-observation-catalog/guest-runtime-recorder-observation-catalog-client.js";
+import { RecorderGatewayObservationCatalogClient } from "../../adapters/recorder-gateway-observation-catalog/recorder-gateway-observation-catalog-client.js";
 import type { RecorderObservationPublishCommand } from "../../labrecorderrunnerdomain/lab-recorder-run-contracts.js";
 
-test("the Guest Runtime catalog client publishes the Recorder-owned C19 envelope only after C20 succeeds", async () => {
+test("the Recorder Gateway catalog client publishes the Recorder-owned C19 envelope only after C20 succeeds", async () => {
   let requestMethod: string | undefined;
   let requestPath: string | undefined;
   let receivedBody: unknown;
@@ -20,38 +20,38 @@ test("the Guest Runtime catalog client publishes the Recorder-owned C19 envelope
     request.on("end", () => {
       receivedBody = JSON.parse(body) as unknown;
       response.writeHead(202, { "content-type": "application/json" });
-      response.end(JSON.stringify({ schemaVersion: "v1", state: "succeeded" }));
+      response.end(JSON.stringify({ schemaVersion: "v1", outcome: "accepted" }));
     });
   });
   const endpoint = await listenOnLoopback(server);
   try {
     const command = recorderObservationCommand();
-    const client = GuestRuntimeRecorderObservationCatalogClient.create(endpoint);
+    const client = RecorderGatewayObservationCatalogClient.create(endpoint);
 
     assert.deepEqual(await client.publishRecorderObservation(command), { state: "published", observationId: command.observationId });
     assert.equal(requestMethod, "POST");
-    assert.equal(requestPath, "/v1/runtime/catalog/recorder-observations");
+    assert.equal(requestPath, "/internal/v1/recorder-observations");
     assert.deepEqual(receivedBody, command);
   } finally {
     await close(server);
   }
 });
 
-test("the Guest Runtime catalog client preserves a rejected catalog submission as an explicit Runner delivery failure", async () => {
+test("the Recorder Gateway catalog client preserves a rejected catalog submission as an explicit Runner delivery failure", async () => {
   const server = createServer((_request, response) => {
     response.writeHead(503, { "content-type": "application/json" });
     response.end(JSON.stringify({ schemaVersion: "v1", state: "unavailable" }));
   });
   const endpoint = await listenOnLoopback(server);
   try {
-    const result = await GuestRuntimeRecorderObservationCatalogClient.create(endpoint).publishRecorderObservation(recorderObservationCommand());
+    const result = await RecorderGatewayObservationCatalogClient.create(endpoint).publishRecorderObservation(recorderObservationCommand());
     assert.deepEqual(result, {
       state: "failed",
       issue: {
-        code: "guest-runtime-observation-catalog-rejected",
-        message: "Guest Runtime catalog did not accept Recorder observation (HTTP 503)",
+        code: "recorder-gateway-observation-catalog-rejected",
+        message: "Recorder Gateway did not accept Recorder observation (HTTP 503)",
         retryable: true,
-        dependency: "guest-runtime-observation-catalog",
+        dependency: "recorder-gateway-observation-catalog",
       },
     });
   } finally {

@@ -1,38 +1,38 @@
 import type { RecorderObservationDelivery, RecorderObservationPublishCommand } from "../../labrecorderrunnerdomain/lab-recorder-run-contracts.js";
 import type { RecorderObservationPublisher } from "../../labrecorderrunnerapplication/lab-recorder-runner-ports.js";
 
-// GuestRuntimeRecorderObservationCatalogClient is the external C19 adapter.
-// The Runner sends a Recorder-owned envelope; the Guest catalog alone assigns
-// received/persisted timestamps and owns its projection/operation state.
-export class GuestRuntimeRecorderObservationCatalogClient implements RecorderObservationPublisher {
+// RecorderGatewayObservationCatalogClient publishes only to the
+// Recorder Gateway loopback admission route. Gateway owns the authenticated
+// hop to Guest Runtime; the Runner never bypasses that owner boundary.
+export class RecorderGatewayObservationCatalogClient implements RecorderObservationPublisher {
   public constructor(private readonly endpoint: URL, private readonly timeoutMilliseconds = 5000) {}
 
-  public static create(endpoint: string, timeoutMilliseconds = 5000): GuestRuntimeRecorderObservationCatalogClient {
+  public static create(endpoint: string, timeoutMilliseconds = 5000): RecorderGatewayObservationCatalogClient {
     const parsed = new URL(endpoint);
     if (parsed.protocol !== "http:" || (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "::1") || parsed.port === "" || parsed.username !== "" || parsed.password !== "" || (parsed.pathname !== "" && parsed.pathname !== "/") || parsed.search !== "" || parsed.hash !== "") {
-      throw new Error("Guest Runtime observation catalog endpoint must be a bare Guest-loopback HTTP URL with an explicit port");
+      throw new Error("Recorder Gateway observation catalog endpoint must be a bare Guest-loopback HTTP URL with an explicit port");
     }
     if (!Number.isInteger(timeoutMilliseconds) || timeoutMilliseconds < 100 || timeoutMilliseconds > 60_000) {
-      throw new Error("Guest Runtime observation catalog timeout must be between 100 and 60000 milliseconds");
+      throw new Error("Recorder Gateway observation catalog timeout must be between 100 and 60000 milliseconds");
     }
     parsed.pathname = "";
-    return new GuestRuntimeRecorderObservationCatalogClient(parsed, timeoutMilliseconds);
+    return new RecorderGatewayObservationCatalogClient(parsed, timeoutMilliseconds);
   }
 
   public async publishRecorderObservation(command: RecorderObservationPublishCommand): Promise<RecorderObservationDelivery> {
     const target = new URL(this.endpoint);
-    target.pathname = "/v1/runtime/catalog/recorder-observations";
+    target.pathname = "/internal/v1/recorder-observations";
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMilliseconds);
     try {
       const response = await fetch(target, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(command), signal: controller.signal });
       const decoded = await decodeResponse(response);
-      if (response.status === 202 && decoded !== undefined && decoded.schemaVersion === "v1" && decoded.state === "succeeded") {
+      if (response.status === 202 && decoded !== undefined && decoded.schemaVersion === "v1" && (decoded.outcome === "accepted" || decoded.outcome === "duplicate")) {
         return { state: "published", observationId: command.observationId };
       }
-      return { state: "failed", issue: { code: "guest-runtime-observation-catalog-rejected", message: `Guest Runtime catalog did not accept Recorder observation (HTTP ${response.status})`, retryable: response.status >= 500, dependency: "guest-runtime-observation-catalog" } };
+      return { state: "failed", issue: { code: "recorder-gateway-observation-catalog-rejected", message: `Recorder Gateway did not accept Recorder observation (HTTP ${response.status})`, retryable: response.status >= 500, dependency: "recorder-gateway-observation-catalog" } };
     } catch (error) {
-      return { state: "failed", issue: { code: "guest-runtime-observation-catalog-unavailable", message: `Guest Runtime catalog request failed: ${error instanceof Error ? error.message : "unknown error"}`, retryable: true, dependency: "guest-runtime-observation-catalog" } };
+      return { state: "failed", issue: { code: "recorder-gateway-observation-catalog-unavailable", message: `Recorder Gateway catalog request failed: ${error instanceof Error ? error.message : "unknown error"}`, retryable: true, dependency: "recorder-gateway-observation-catalog" } };
     } finally {
       clearTimeout(timeout);
     }

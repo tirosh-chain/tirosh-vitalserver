@@ -13,6 +13,7 @@ import {
 import { RecorderGatewayIngressDurableStateOperationMutex } from "./recorder-gateway-ingress-durable-state-operation-mutex.js";
 import {
   failedRecorderGatewayRead,
+  emptyRecorderGatewayRead,
   encodeRecorderColdPathPacketSequence,
   finalizeRecorderColdPathCapturePacketSequence,
   invalidRecorderGatewayRead,
@@ -177,6 +178,41 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
         return { acknowledgement: rejectedRecorderIngressAcknowledgement(inputIssue.code, inputIssue.message) };
       }
       const now = this.clock.now();
+      const packetDigest = createHash("sha256").update(input.payload).digest("hex");
+      if (input.identity.kind === "caller-supplied") {
+        const existing = await this.readMatchingCallerSuppliedIngress(input, packetDigest);
+        if (existing.state === "matched") {
+          return {
+            acknowledgement: {
+              schemaVersion: recorderGatewaySchemaVersion,
+              state: "accepted",
+              receiptId: existing.receipt.id,
+            },
+            receipt: existing.receipt,
+          };
+        }
+        if (existing.state === "conflict") {
+          return {
+            acknowledgement: rejectedRecorderIngressAcknowledgement(
+              "recorder-ingress-idempotency-conflict",
+              "caller-supplied ingress identity already belongs to different packet evidence",
+            ),
+          };
+        }
+        if (existing.state === "failed") {
+          return {
+            acknowledgement: failedRecorderIngressAcknowledgement(
+              input.identity.receiptId,
+              {
+                code: "recorder-ingress-idempotency-read-failed",
+                message: "Recorder Gateway could not read the caller-supplied ingress identity",
+                retryable: true,
+                dependency: "gateway-ingress-durable-state",
+              },
+            ),
+          };
+        }
+      }
       let capture: RecorderColdPathCapture;
       try {
         capture = await this.durableStateStore.readRecorderColdPathCapture(input.coldPathCaptureId);
@@ -238,18 +274,8 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
         };
       }
 
-      let receiptId: string;
-      let requestId: string;
-      let deliveryRequestId: string;
-      let packetId: string;
-      let durableIngressStateReceiptId: string;
-      try {
-        receiptId = this.identifiers.newRecorderGatewayIdentifier("ingress-receipt");
-        requestId = this.identifiers.newRecorderGatewayIdentifier("ingress-request");
-        deliveryRequestId = this.identifiers.newRecorderGatewayIdentifier("delivery-request");
-        packetId = this.identifiers.newRecorderGatewayIdentifier("packet");
-        durableIngressStateReceiptId = this.identifiers.newRecorderGatewayIdentifier("durable-ingress-state-receipt");
-      } catch {
+      const identities = this.resolveRecorderIngressIdentities(input);
+      if (identities === undefined) {
         return {
           acknowledgement: failedRecorderIngressAcknowledgement(undefined, {
             code: "recorder-ingress-identity-allocation-failed",
@@ -260,16 +286,15 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
         };
       }
       const at = recorderGatewayTimestamp(now);
-      const packetDigest = createHash("sha256").update(input.payload).digest("hex");
 
       const receipt: RecorderIngressReceipt = {
         schemaVersion: recorderGatewaySchemaVersion,
-        id: receiptId,
-        requestId,
+        id: identities.receiptId,
+        requestId: identities.requestId,
         recorderId: input.recorderId,
         connection: input.connection,
         packet: {
-          packetId,
+          packetId: identities.packetId,
           byteCount: input.payload.byteLength,
           payloadDigest: packetDigest,
           receivedAt: at,
@@ -278,7 +303,7 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
         ingressState: "accepted",
         durableIngressStateHandoff: {
           state: "stored",
-          durableIngressStateReceiptId,
+          durableIngressStateReceiptId: identities.durableIngressStateReceiptId,
           persistedAt: at,
         },
         coldPathCapture: {
@@ -288,7 +313,7 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
         },
         delivery: {
           state: "requested",
-          requestId: deliveryRequestId,
+          requestId: identities.deliveryRequestId,
         },
         recordedAt: at,
       };
@@ -312,8 +337,21 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
       try {
         await this.durableStateStore.persistAcceptedRecorderGatewayIngressDurableRecord(record);
       } catch {
+        if (input.identity.kind === "caller-supplied") {
+          const resolved = await this.readMatchingCallerSuppliedIngress(input, packetDigest);
+          if (resolved.state === "matched") {
+            return {
+              acknowledgement: {
+                schemaVersion: recorderGatewaySchemaVersion,
+                state: "accepted",
+                receiptId: resolved.receipt.id,
+              },
+              receipt: resolved.receipt,
+            };
+          }
+        }
         return {
-          acknowledgement: failedRecorderIngressAcknowledgement(receiptId, {
+          acknowledgement: failedRecorderIngressAcknowledgement(identities.receiptId, {
             code: "ingress-admission-outcome-unknown",
             message: "Recorder Gateway could not determine whether the packet was durably admitted",
             retryable: true,
@@ -322,8 +360,76 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
         };
       }
       return {
-        acknowledgement: { schemaVersion: recorderGatewaySchemaVersion, state: "accepted", receiptId },
+        acknowledgement: {
+          schemaVersion: recorderGatewaySchemaVersion,
+          state: "accepted",
+          receiptId: identities.receiptId,
+        },
         receipt,
+      };
+    });
+  }
+
+  public async readLatestVitalServerDeliveryForIngressReceipt(
+    ingressReceiptId: string,
+  ): Promise<RecorderGatewayReadResult<VitalServerDeliveryReceipt>> {
+    return this.durableStateOperationMutex.runExclusiveRecorderGatewayIngressDurableStateOperation(async () => {
+      const at = recorderGatewayTimestamp(this.clock.now());
+      if (!isRecorderGatewayIdentifier(ingressReceiptId)) {
+        return invalidRecorderGatewayRead(at, {
+          code: "invalid-ingress-receipt-id",
+          message: "receiptId must be a v1 identifier",
+        });
+      }
+      let ingressReceipt: RecorderIngressReceipt;
+      try {
+        ingressReceipt = await this.durableStateStore.readRecorderIngressReceipt(ingressReceiptId);
+      } catch (error) {
+        if (error instanceof RecorderGatewayIngressDurableStateResourceNotFoundError) {
+          return missingRecorderGatewayRead(at, {
+            code: "ingress-receipt-missing",
+            message: "the requested ingress receipt does not exist",
+          });
+        }
+        return failedRecorderGatewayRead(at, {
+          code: "gateway-ingress-durable-state-read-failed",
+          message: "Recorder Gateway could not read the requested ingress receipt",
+          retryable: true,
+          dependency: "gateway-ingress-durable-state",
+        });
+      }
+      let latest: VitalServerDeliveryReceipt | undefined;
+      try {
+        for (let attempt = 1; attempt <= this.configuration.replay.maxAttempts; attempt += 1) {
+          const candidate = await this.durableStateStore.findVitalServerDeliveryReceiptForAttempt(
+            ingressReceipt.delivery.requestId,
+            attempt,
+          );
+          if (candidate !== undefined) {
+            latest = candidate;
+          }
+        }
+      } catch {
+        return failedRecorderGatewayRead(at, {
+          code: "gateway-delivery-receipt-read-failed",
+          message: "Recorder Gateway could not read VitalServer delivery evidence for the ingress receipt",
+          retryable: true,
+          dependency: "gateway-ingress-durable-state",
+        });
+      }
+      if (latest === undefined) {
+        return emptyRecorderGatewayRead(at, {
+          code: "vitalserver-delivery-not-attempted",
+          message: "the accepted ingress packet has no completed VitalServer delivery attempt",
+          retryable: true,
+          dependency: "vitalserver-delivery",
+        });
+      }
+      return {
+        schemaVersion: recorderGatewaySchemaVersion,
+        state: "available",
+        observedAt: at,
+        value: latest,
       };
     });
   }
@@ -725,6 +831,63 @@ export class RecorderGatewayIngressAndColdPathApplicationService {
       completedAt: recorderGatewayTimestamp(completedAt),
     };
   }
+
+  private resolveRecorderIngressIdentities(input: RecorderPacketIngressInput): {
+    receiptId: string;
+    requestId: string;
+    deliveryRequestId: string;
+    packetId: string;
+    durableIngressStateReceiptId: string;
+  } | undefined {
+    if (input.identity.kind === "caller-supplied") {
+      return { ...input.identity };
+    }
+    try {
+      return {
+        receiptId: this.identifiers.newRecorderGatewayIdentifier("ingress-receipt"),
+        requestId: this.identifiers.newRecorderGatewayIdentifier("ingress-request"),
+        deliveryRequestId: this.identifiers.newRecorderGatewayIdentifier("delivery-request"),
+        packetId: this.identifiers.newRecorderGatewayIdentifier("packet"),
+        durableIngressStateReceiptId: this.identifiers.newRecorderGatewayIdentifier("durable-ingress-state-receipt"),
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async readMatchingCallerSuppliedIngress(
+    input: RecorderPacketIngressInput,
+    packetDigest: string,
+  ): Promise<
+    | { state: "missing" | "failed" | "conflict" }
+    | { state: "matched"; receipt: RecorderIngressReceipt }
+  > {
+    if (input.identity.kind !== "caller-supplied") {
+      return { state: "conflict" };
+    }
+    let receipt: RecorderIngressReceipt;
+    try {
+      receipt = await this.durableStateStore.readRecorderIngressReceipt(input.identity.receiptId);
+    } catch (error) {
+      if (error instanceof RecorderGatewayIngressDurableStateResourceNotFoundError) {
+        return { state: "missing" };
+      }
+      return { state: "failed" };
+    }
+    if (
+      receipt.id !== input.identity.receiptId ||
+      receipt.requestId !== input.identity.requestId ||
+      receipt.delivery.requestId !== input.identity.deliveryRequestId ||
+      receipt.packet.packetId !== input.identity.packetId ||
+      receipt.durableIngressStateHandoff.durableIngressStateReceiptId !== input.identity.durableIngressStateReceiptId ||
+      receipt.recorderId !== input.recorderId ||
+      receipt.packet.byteCount !== input.payload.byteLength ||
+      receipt.packet.payloadDigest !== packetDigest
+    ) {
+      return { state: "conflict" };
+    }
+    return { state: "matched", receipt };
+  }
 }
 
 function validateRecorderColdPathCaptureFinalizationCommand(command: RecorderColdPathCaptureFinalizationCommand): RecorderGatewayIssue | undefined {
@@ -738,17 +901,27 @@ function validateRecorderColdPathCaptureFinalizationCommand(command: RecorderCol
 }
 
 function validateRecorderPacketIngressInput(input: RecorderPacketIngressInput): RecorderGatewayIssue | undefined {
+  const validIdentity = input.identity.kind === "gateway-allocated" ||
+    (
+      input.identity.kind === "caller-supplied" &&
+      isRecorderGatewayIdentifier(input.identity.receiptId) &&
+      isRecorderGatewayIdentifier(input.identity.requestId) &&
+      isRecorderGatewayIdentifier(input.identity.deliveryRequestId) &&
+      isRecorderGatewayIdentifier(input.identity.packetId) &&
+      isRecorderGatewayIdentifier(input.identity.durableIngressStateReceiptId)
+    );
   if (
     !isRecorderGatewayIdentifier(input.recorderId) ||
     !isRecorderGatewayIdentifier(input.connection.sessionId) ||
     input.connection.protocolVersion !== "v2" ||
     !isRecorderGatewayIdentifier(input.coldPathCaptureId) ||
     !(input.payload instanceof Uint8Array) ||
-    (input.payloadEncoding !== "binary" && input.payloadEncoding !== "binary-string")
+    (input.payloadEncoding !== "binary" && input.payloadEncoding !== "binary-string") ||
+    !validIdentity
   ) {
     return {
       code: "invalid-recorder-packet-ingress-input",
-      message: "recorderId, connection, coldPathCaptureId, packet bytes, and payload encoding must describe one v2 recorder ingress packet",
+      message: "recorderId, connection, coldPathCaptureId, packet bytes, payload encoding, and ingress identity must describe one v2 recorder ingress packet",
     };
   }
   return undefined;

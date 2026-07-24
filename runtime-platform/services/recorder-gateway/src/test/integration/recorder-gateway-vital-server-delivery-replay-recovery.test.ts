@@ -85,6 +85,7 @@ test("VitalServer delivery replay capacity, retry receipts, and cold-path captur
     coldPathCaptureId,
     payload: Buffer.from([7, 8, 9]),
     payloadEncoding: "binary",
+    identity: { kind: "gateway-allocated" },
   };
   const admitted = await service.admitRecorderPacket(input);
   assert.equal(admitted.acknowledgement.state, "accepted");
@@ -116,12 +117,73 @@ test("VitalServer delivery replay capacity, retry receipts, and cold-path captur
   const secondDelivery = await store.findVitalServerDeliveryReceiptForAttempt(ingress.value?.delivery.requestId ?? "", 2);
   assert.equal(firstDelivery?.outcome.state, "unavailable");
   assert.equal(secondDelivery?.outcome.state, "succeeded");
+  const latestDelivery = await service.readLatestVitalServerDeliveryForIngressReceipt(
+    admitted.acknowledgement.receiptId ?? "",
+  );
+  assert.equal(latestDelivery.state, "available");
+  assert.equal(latestDelivery.value?.attempt, 2);
+  assert.equal(latestDelivery.value?.outcome.state, "succeeded");
 
   const retainedColdPathPackets = await store.readRecorderColdPathCapturedPackets(coldPathCaptureId);
   assert.equal(retainedColdPathPackets.length, 1);
   const retainedColdPathPacket = retainedColdPathPackets[0];
   assert.ok(retainedColdPathPacket);
   assert.deepEqual(Buffer.from(retainedColdPathPacket.payloadBase64, "base64"), Buffer.from([7, 8, 9]));
+});
+
+test("caller-supplied ingress identities make an acknowledged Lab replay packet idempotent", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "recorder-gateway-idempotent-ingress-"));
+  context.after(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+  const service = new RecorderGatewayIngressAndColdPathApplicationService(
+    new FileRecorderGatewayIngressDurableStateStore(directory),
+    new SequencedVitalServerPacketDelivery([]),
+    new ManualRecorderGatewayClock(new Date("2026-07-17T00:00:00.000Z")),
+    new SequentialRecorderGatewayIdentifierGenerator(),
+    recorderGatewayIngressAndColdPathConfiguration({ maxPendingItems: 1 }),
+  );
+  await service.initializeRecorderGatewayIngressDurableState();
+  const connection: RecorderGatewayConnection = {
+    sessionId: "socket-session-idempotent",
+    protocolVersion: "v2",
+  };
+  const coldPathCaptureId = await openRecorderColdPathCapture(
+    service,
+    "recorder-idempotent",
+    connection,
+  );
+  const input: RecorderPacketIngressInput = {
+    recorderId: "recorder-idempotent",
+    connection,
+    coldPathCaptureId,
+    payload: Buffer.from([1, 2, 3]),
+    payloadEncoding: "binary",
+    identity: {
+      kind: "caller-supplied",
+      receiptId: "lab-ingress-receipt-1",
+      requestId: "lab-ingress-request-1",
+      deliveryRequestId: "lab-delivery-request-1",
+      packetId: "lab-packet-1",
+      durableIngressStateReceiptId: "lab-durable-receipt-1",
+    },
+  };
+  const first = await service.admitRecorderPacket(input);
+  const retry = await service.admitRecorderPacket({
+    ...input,
+    connection: { sessionId: "socket-session-reconnected", protocolVersion: "v2" },
+    coldPathCaptureId: "new-capture-is-not-read-for-an-existing-identity",
+  });
+  assert.equal(first.acknowledgement.state, "accepted");
+  assert.equal(retry.acknowledgement.state, "accepted");
+  assert.equal(retry.acknowledgement.receiptId, first.acknowledgement.receiptId);
+
+  const conflict = await service.admitRecorderPacket({
+    ...input,
+    payload: Buffer.from([9]),
+  });
+  assert.equal(conflict.acknowledgement.state, "rejected");
+  assert.equal(conflict.acknowledgement.issue?.code, "recorder-ingress-idempotency-conflict");
 });
 
 test("an expired VitalServer delivery replay lease records unknown delivery before any retry", async (context) => {
@@ -148,6 +210,7 @@ test("an expired VitalServer delivery replay lease records unknown delivery befo
     coldPathCaptureId,
     payload: Buffer.from([5]),
     payloadEncoding: "binary",
+    identity: { kind: "gateway-allocated" },
   });
   assert.equal(admitted.acknowledgement.state, "accepted");
   assert.ok(admitted.receipt);
@@ -185,6 +248,7 @@ test("delivery replay capacity read failure produces explicit failed admission w
     coldPathCaptureId,
     payload: Buffer.from([1]),
     payloadEncoding: "binary",
+    identity: { kind: "gateway-allocated" },
   });
   assert.equal(admission.acknowledgement.state, "failed");
   assert.equal(admission.acknowledgement.issue?.code, "recorder-gateway-ingress-durable-state-unavailable");

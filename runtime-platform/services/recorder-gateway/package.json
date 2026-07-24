@@ -13,10 +13,12 @@
     "test": "npm run build && find src/test -name '*.test.ts' -print | sort | sed 's#^src/#dist/#; s#\\.ts$#.js#' | xargs node --test"
   },
   "dependencies": {
+    "busboy": "1.6.0",
     "socket.io": "4.8.3",
     "socket.io-client": "4.8.3"
   },
   "devDependencies": {
+    "@types/busboy": "1.5.4",
     "@types/node": "20.19.43",
     "typescript": "5.9.3",
     "ws": "8.21.1"

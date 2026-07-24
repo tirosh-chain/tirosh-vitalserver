@@ -1,4 +1,8 @@
 import type { LabRecorderRun, LabRecorderRunnerIssue, RecorderObservationDelivery, RecorderObservationPublishCommand, StartLabRecorderRunCommand } from "../labrecorderrunnerdomain/lab-recorder-run-contracts.js";
+import type {
+  LabReplayFrame,
+  LabReplaySession,
+} from "../labrecorderrunnerdomain/lab-replay-contracts.js";
 
 export interface LabRecorderRunnerClock {
   now(): Date;
@@ -28,4 +32,52 @@ export interface LabRecorderScenarioExecutionPort {
 // and must return its own explicit catalog-submission outcome.
 export interface RecorderObservationPublisher {
   publishRecorderObservation(command: RecorderObservationPublishCommand): Promise<RecorderObservationDelivery>;
+}
+
+export class LabReplaySessionNotFoundError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "LabReplaySessionNotFoundError";
+  }
+}
+
+export interface LabReplaySessionStore {
+  initialize(): Promise<void>;
+  readByReplayId(replayId: string): Promise<LabReplaySession>;
+  readByRunnerSessionId(runnerSessionId: string): Promise<LabReplaySession>;
+  create(session: LabReplaySession): Promise<void>;
+  replace(current: LabReplaySession, next: LabReplaySession): Promise<void>;
+}
+
+export interface LabReplayGatewayFrameAdmission {
+  frame: LabReplayFrame;
+  identity: {
+    receiptId: string;
+    requestId: string;
+    deliveryRequestId: string;
+    packetId: string;
+    durableIngressStateReceiptId: string;
+  };
+}
+
+export interface LabReplayGatewayPort {
+  admitFrames(
+    recorderGatewayRecorderCode: string,
+    frames: LabReplayGatewayFrameAdmission[],
+  ): Promise<
+    | { state: "accepted"; ingressReceiptIds: string[] }
+    | { state: "rejected" | "failed"; issue: LabRecorderRunnerIssue }
+  >;
+  readLatestDelivery(
+    ingressReceiptId: string,
+  ): Promise<
+    | {
+      state: "available";
+      deliveryReceiptId: string;
+      attemptOutcome: "succeeded" | "failed" | "unavailable" | "unsupported" | "unknown";
+      retryState: "not-scheduled" | "scheduled" | "exhausted";
+    }
+    | { state: "pending" }
+    | { state: "failed"; issue: LabRecorderRunnerIssue }
+  >;
 }

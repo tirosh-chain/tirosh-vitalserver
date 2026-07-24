@@ -214,6 +214,16 @@ export interface RecorderPacketIngressInput {
   coldPathCaptureId: string;
   payload: Uint8Array;
   payloadEncoding: "binary" | "binary-string";
+  identity:
+    | { kind: "gateway-allocated" }
+    | {
+      kind: "caller-supplied";
+      receiptId: string;
+      requestId: string;
+      deliveryRequestId: string;
+      packetId: string;
+      durableIngressStateReceiptId: string;
+    };
 }
 
 export interface RecorderIngressAcknowledgement {
@@ -334,4 +344,8 @@ export function missingRecorderGatewayRead<T>(observedAt: string, issue: Recorde
 
 export function invalidRecorderGatewayRead<T>(observedAt: string, issue: RecorderGatewayIssue): RecorderGatewayReadResult<T> {
   return { schemaVersion: recorderGatewaySchemaVersion, state: "invalid", observedAt, issue };
+}
+
+export function emptyRecorderGatewayRead<T>(observedAt: string, issue: RecorderGatewayIssue): RecorderGatewayReadResult<T> {
+  return { schemaVersion: recorderGatewaySchemaVersion, state: "empty", observedAt, issue };
 }

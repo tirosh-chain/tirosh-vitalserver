@@ -26,6 +26,14 @@ const runtime = await createRecorderGatewayRuntime({
   coldPathCapture: { maxRetainedPackets: 10, maxRetainedPayloadBytes: 1_000_000 },
   replay: { maxAttempts: 3, retryDelayMs: 10, leaseDurationMs: 1000 },
   provider: { kind: "vitalserver", id: "vitalserver-acceptance-fixture", capabilityRevision: 1 },
+  guestRuntimeObservationCatalogEndpoint: "http://127.0.0.1:1",
+  guestRuntimeObservationCatalogBearerToken: "acceptance-catalog-token",
+  recorderVitalUploadMaximumBytes: 1_000_000,
+  recorderVitalUploadRecoveryIntervalMs: 60_000,
+  recorderVitalUploadRecoveryMaxItems: 10,
+  guestRuntimeArchiveSourceAdmissionEndpoint: "http://127.0.0.1:1/internal/v1/archive/recorder-uploads",
+  guestRuntimeArchiveSourceAdmissionBearerToken: "acceptance-archive-token",
+  guestRuntimeArchiveSourceAdmissionRequestTimeoutMs: 1_000,
 });
 let first;
 let second;
