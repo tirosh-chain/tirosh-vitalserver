@@ -33,13 +33,25 @@ class MacOSDevelopmentInstallationEvidenceRunnerTests(unittest.TestCase):
             / "delivery"
             / "release-delivery-plans.v1.json"
         )
+        command_directory = self.root / "commands"
+        command_directory.mkdir()
         self.command_contract = (
             evidence_runner.MacOSDevelopmentInstallationCommandContract(
-                pkgutil_executable=Path("/usr/sbin/pkgutil"),
-                installer_executable=Path("/usr/sbin/installer"),
-                launchctl_executable=Path("/bin/launchctl"),
-                codesign_executable=Path("/usr/bin/codesign"),
-                sysctl_executable=Path("/usr/sbin/sysctl"),
+                pkgutil_executable=self.create_command_fixture(
+                    command_directory / "pkgutil"
+                ),
+                installer_executable=self.create_command_fixture(
+                    command_directory / "installer"
+                ),
+                launchctl_executable=self.create_command_fixture(
+                    command_directory / "launchctl"
+                ),
+                codesign_executable=self.create_command_fixture(
+                    command_directory / "codesign"
+                ),
+                sysctl_executable=self.create_command_fixture(
+                    command_directory / "sysctl"
+                ),
             )
         )
         self.package_receipt_installed = False
@@ -49,6 +61,16 @@ class MacOSDevelopmentInstallationEvidenceRunnerTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
+
+    def create_command_fixture(self, path: Path) -> Path:
+        path.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' 'test command fixture must not execute' >&2\n"
+            "exit 97\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o700)
+        return path
 
     def create_evidence_run(self) -> evidence_runner.MacOSDevelopmentInstallationEvidenceRun:
         return evidence_runner.create_macos_development_installation_evidence_run(

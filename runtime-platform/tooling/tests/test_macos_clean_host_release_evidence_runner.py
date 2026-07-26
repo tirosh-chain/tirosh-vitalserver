@@ -30,12 +30,16 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             / "delivery"
             / "release-delivery-plans.v1.json"
         )
+        pkgutil_executable = self.write_command_contract_fixture("pkgutil")
+        installer_executable = self.write_command_contract_fixture("installer")
+        launchctl_executable = self.write_command_contract_fixture("launchctl")
+        sysctl_executable = self.write_command_contract_fixture("sysctl")
         self.command_contract = (
             evidence_runner.MacOSCleanHostReleaseEvidenceCommandContract(
-                pkgutil_executable=Path("/usr/sbin/pkgutil"),
-                installer_executable=Path("/usr/sbin/installer"),
-                launchctl_executable=Path("/bin/launchctl"),
-                sysctl_executable=Path("/usr/sbin/sysctl"),
+                pkgutil_executable=pkgutil_executable,
+                installer_executable=installer_executable,
+                launchctl_executable=launchctl_executable,
+                sysctl_executable=sysctl_executable,
             )
         )
         self.package_receipt_installed = False
@@ -56,6 +60,13 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
+
+    def write_command_contract_fixture(self, executable_name: str) -> Path:
+        executable_path = self.root / "commands" / executable_name
+        executable_path.parent.mkdir(exist_ok=True)
+        executable_path.write_text("#!/bin/sh\nexit 64\n", encoding="utf-8")
+        executable_path.chmod(0o755)
+        return executable_path
 
     def create_evidence_run(self) -> evidence_runner.MacOSCleanHostReleaseEvidenceRun:
         return evidence_runner.create_macos_clean_host_release_evidence_run(
